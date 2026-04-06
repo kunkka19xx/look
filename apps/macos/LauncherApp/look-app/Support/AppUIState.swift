@@ -12,4 +12,5 @@ extension Notification.Name {
     static let lookToggleWindowRequested = Notification.Name("look.toggleWindowRequested")
     static let lookActivateLauncherRequested = Notification.Name("look.activateLauncherRequested")
     static let lookHideLauncherRequested = Notification.Name("look.hideLauncherRequested")
+    static let lookToggleClipboardRequested = Notification.Name("look.toggleClipboardRequested")
 }

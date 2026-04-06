@@ -23,6 +23,7 @@ struct look_appApp: App {
         }
 
         hotKeyManager.registerToggleHotKey()
+        ClipboardMonitor.shared.start()
     }
 
     private func handleCLIFlags() -> Int32? {
@@ -146,6 +147,12 @@ struct look_appApp: App {
             }
 
             CommandGroup(after: .appSettings) {
+                Button("Clipboard History") {
+                    NotificationCenter.default.post(name: .lookToggleClipboardRequested, object: nil)
+                }
+                .keyboardShortcut("h", modifiers: [.command, .shift])
+
+                Divider()
                 Button("Theme Settings") {
                     appUIState.showsThemeSettings.toggle()
                 }

@@ -1,4 +1,4 @@
-use look_indexing::{Candidate, CandidateKind};
+use look_indexing::{Candidate, CandidateKind, ClipboardContentType, ClipboardItem};
 use rusqlite::{Connection, params};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -301,6 +301,143 @@ impl SqliteStore {
         Ok(())
     }
 
+    pub fn insert_clipboard_item(&self, item: &ClipboardItem) -> StorageResult<()> {
+        self.conn.execute(
+            "INSERT INTO clipboard_history (id, content_type, content, preview, source_app, created_at_unix_s, last_used_at_unix_s, use_count, pinned)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(id) DO UPDATE SET
+               last_used_at_unix_s = excluded.created_at_unix_s,
+               use_count = clipboard_history.use_count + 1",
+            params![
+                item.id,
+                item.content_type.to_string(),
+                item.content,
+                item.preview,
+                item.source_app,
+                item.created_at_unix_s,
+                item.last_used_at_unix_s,
+                item.use_count,
+                item.pinned as i32,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_clipboard_items(
+        &self,
+        query: Option<&str>,
+        content_type: Option<&str>,
+        limit: usize,
+    ) -> StorageResult<Vec<ClipboardItem>> {
+        let mut conditions = Vec::new();
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if let Some(q) = query {
+            if !q.trim().is_empty() {
+                conditions.push(format!("content LIKE ?{}", param_values.len() + 1));
+                param_values.push(Box::new(format!("%{q}%")));
+            }
+        }
+
+        if let Some(ct) = content_type {
+            if !ct.trim().is_empty() {
+                conditions.push(format!("content_type = ?{}", param_values.len() + 1));
+                param_values.push(Box::new(ct.to_string()));
+            }
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+
+        let sql = format!(
+            "SELECT id, content_type, content, preview, source_app, created_at_unix_s, last_used_at_unix_s, use_count, pinned
+             FROM clipboard_history
+             {where_clause}
+             ORDER BY pinned DESC, created_at_unix_s DESC
+             LIMIT ?{}",
+            param_values.len() + 1
+        );
+
+        param_values.push(Box::new(limit as i64));
+
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let mut rows = stmt.query(params_refs.as_slice())?;
+
+        let mut out = Vec::new();
+        while let Some(row) = rows.next()? {
+            let ct_raw: String = row.get(1)?;
+            let pinned_raw: i32 = row.get(8)?;
+            out.push(ClipboardItem {
+                id: row.get(0)?,
+                content_type: parse_clipboard_content_type(&ct_raw)?,
+                content: row.get(2)?,
+                preview: row.get(3)?,
+                source_app: row.get(4)?,
+                created_at_unix_s: row.get(5)?,
+                last_used_at_unix_s: row.get(6)?,
+                use_count: row.get(7)?,
+                pinned: pinned_raw != 0,
+            });
+        }
+
+        Ok(out)
+    }
+
+    pub fn delete_clipboard_item(&self, item_id: &str) -> StorageResult<bool> {
+        let count = self.conn.execute(
+            "DELETE FROM clipboard_history WHERE id = ?1",
+            params![item_id],
+        )?;
+        Ok(count > 0)
+    }
+
+    pub fn clear_clipboard_history(&self, older_than_unix_s: Option<i64>) -> StorageResult<u64> {
+        let count = match older_than_unix_s {
+            Some(ts) => self.conn.execute(
+                "DELETE FROM clipboard_history WHERE pinned = 0 AND created_at_unix_s < ?1",
+                params![ts],
+            )?,
+            None => self.conn.execute(
+                "DELETE FROM clipboard_history WHERE pinned = 0",
+                [],
+            )?,
+        };
+        Ok(count as u64)
+    }
+
+    pub fn toggle_clipboard_pin(&self, item_id: &str) -> StorageResult<bool> {
+        self.conn.execute(
+            "UPDATE clipboard_history SET pinned = CASE WHEN pinned = 0 THEN 1 ELSE 0 END WHERE id = ?1",
+            params![item_id],
+        )?;
+
+        let pinned: i32 = self.conn.query_row(
+            "SELECT pinned FROM clipboard_history WHERE id = ?1",
+            params![item_id],
+            |row| row.get(0),
+        )?;
+        Ok(pinned != 0)
+    }
+
+    pub fn record_clipboard_usage(&self, item_id: &str) -> StorageResult<()> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| StorageError::Data(format!("system time error: {err}")))?
+            .as_secs() as i64;
+
+        self.conn.execute(
+            "UPDATE clipboard_history SET use_count = use_count + 1, last_used_at_unix_s = ?2 WHERE id = ?1",
+            params![item_id, now],
+        )?;
+        Ok(())
+    }
+
     fn migrate(&self) -> StorageResult<()> {
         self.conn.execute_batch(
             "PRAGMA foreign_keys = ON;
@@ -335,7 +472,23 @@ impl SqliteStore {
              CREATE TABLE IF NOT EXISTS index_state (
                  source TEXT PRIMARY KEY,
                  last_indexed_at_unix_s INTEGER NOT NULL
-             );",
+             );
+
+             CREATE TABLE IF NOT EXISTS clipboard_history (
+                 id TEXT PRIMARY KEY,
+                 content_type TEXT NOT NULL DEFAULT 'text',
+                 content TEXT NOT NULL,
+                 preview TEXT,
+                 source_app TEXT,
+                 created_at_unix_s INTEGER NOT NULL,
+                 last_used_at_unix_s INTEGER,
+                 use_count INTEGER NOT NULL DEFAULT 0,
+                 pinned INTEGER NOT NULL DEFAULT 0
+             );
+
+             CREATE INDEX IF NOT EXISTS idx_clipboard_created ON clipboard_history(created_at_unix_s DESC);
+             CREATE INDEX IF NOT EXISTS idx_clipboard_content_type ON clipboard_history(content_type);
+             CREATE INDEX IF NOT EXISTS idx_clipboard_pinned ON clipboard_history(pinned);",
         )?;
 
         Ok(())
@@ -362,6 +515,17 @@ fn kind_key(kind: &CandidateKind) -> &'static str {
         CandidateKind::App => "app",
         CandidateKind::File => "file",
         CandidateKind::Folder => "folder",
+    }
+}
+
+fn parse_clipboard_content_type(value: &str) -> StorageResult<ClipboardContentType> {
+    match value {
+        "text" => Ok(ClipboardContentType::Text),
+        "image" => Ok(ClipboardContentType::Image),
+        "file_list" => Ok(ClipboardContentType::FileList),
+        other => Err(StorageError::Data(format!(
+            "unknown clipboard content type: {other}"
+        ))),
     }
 }
 

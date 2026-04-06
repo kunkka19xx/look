@@ -26,6 +26,7 @@ enum AppConstants {
         static let commandHint = HintText.Launcher.command
         static let killHint = HintText.Launcher.kill
         static let sysHint = HintText.Launcher.sys
+        static let clipboardHint = HintText.Launcher.clipboard
         static let commandEmptyMessage = "Type expression and press Enter"
     }
 

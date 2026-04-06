@@ -1,5 +1,6 @@
 #![allow(unsafe_code)]
 
+mod clipboard_api;
 mod runtime_config;
 mod search_api;
 mod state;
@@ -47,6 +48,39 @@ pub extern "C" fn look_translate_json(
     target_lang: *const c_char,
 ) -> *mut c_char {
     translate_api::look_translate_json_impl(text, target_lang)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn look_clipboard_store(
+    content: *const c_char,
+    content_type: *const c_char,
+    source_app: *const c_char,
+) -> bool {
+    clipboard_api::look_clipboard_store_impl(content, content_type, source_app)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn look_clipboard_search(
+    query: *const c_char,
+    content_type: *const c_char,
+    limit: u32,
+) -> *mut c_char {
+    clipboard_api::look_clipboard_search_impl(query, content_type, limit)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn look_clipboard_delete(item_id: *const c_char) -> bool {
+    clipboard_api::look_clipboard_delete_impl(item_id)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn look_clipboard_clear(older_than_seconds: i64) -> u64 {
+    clipboard_api::look_clipboard_clear_impl(older_than_seconds)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn look_clipboard_toggle_pin(item_id: *const c_char) -> bool {
+    clipboard_api::look_clipboard_toggle_pin_impl(item_id)
 }
 
 #[cfg(test)]

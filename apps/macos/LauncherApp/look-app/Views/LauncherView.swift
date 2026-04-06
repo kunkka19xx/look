@@ -39,6 +39,11 @@ struct LauncherView: View {
     @State private var selectedKillSuggestionIndex: Int?
     @State private var pendingKillApp: (NSRunningApplication, Int)?
     @State private var focusRequestToken: UInt64 = 0
+    @State private var isClipboardMode = false
+    @State private var clipboardQuery = ""
+    @State private var clipboardEntries: [ClipboardEntry] = []
+    @State private var selectedClipboardID: String?
+    @State private var clipboardSearchTask: Task<Void, Never>?
     @FocusState private var isQueryFocused: Bool
 
     private let bridge = EngineBridge.shared
@@ -139,6 +144,11 @@ struct LauncherView: View {
 
     private func moveSelection(_ direction: MoveCommandDirection, shouldAutocompleteCommand: Bool = false) {
         guard !appUIState.showsThemeSettings else { return }
+
+        if isClipboardMode {
+            moveClipboardSelection(direction)
+            return
+        }
 
         if isCommandMode && activeCommandID == "kill" {
             let suggestions = killSuggestions.prefix(20)
@@ -477,6 +487,9 @@ struct LauncherView: View {
         if appUIState.showsThemeSettings {
             appUIState.showsThemeSettings = false
         }
+        if isClipboardMode {
+            exitClipboardMode()
+        }
         if isCommandMode {
             exitCommandMode()
         }
@@ -592,6 +605,106 @@ struct LauncherView: View {
         commandFeedback = "Selected /\(commandID)"
     }
 
+    private func enterClipboardMode() {
+        isClipboardMode = true
+        isCommandMode = false
+        clipboardQuery = ""
+        refreshClipboardResults()
+        DispatchQueue.main.async { isQueryFocused = true }
+    }
+
+    private func exitClipboardMode() {
+        guard isClipboardMode else { return }
+        isClipboardMode = false
+        clipboardQuery = ""
+        clipboardEntries = []
+        selectedClipboardID = nil
+        clipboardSearchTask?.cancel()
+        refreshSearchResults()
+        DispatchQueue.main.async { isQueryFocused = true }
+    }
+
+    private func refreshClipboardResults() {
+        guard isClipboardMode else { return }
+        let currentQuery = clipboardQuery
+        clipboardSearchTask?.cancel()
+        clipboardSearchTask = Task {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            guard !Task.isCancelled else { return }
+
+            let results = await Task.detached(priority: .userInitiated) {
+                bridge.searchClipboard(query: currentQuery, limit: 50)
+            }.value
+
+            await MainActor.run {
+                guard isClipboardMode, clipboardQuery == currentQuery else { return }
+                clipboardEntries = results
+                if selectedClipboardID == nil || !results.contains(where: { $0.id == selectedClipboardID }) {
+                    selectedClipboardID = results.first?.id
+                }
+            }
+        }
+    }
+
+    private func pasteClipboardItem(id: String) {
+        guard let entry = clipboardEntries.first(where: { $0.id == id }) else { return }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+
+        switch entry.contentType {
+        case .text:
+            pasteboard.setString(entry.content, forType: .string)
+        case .fileList:
+            let urls = entry.content.components(separatedBy: "\n")
+                .map { URL(fileURLWithPath: $0) as NSURL }
+            pasteboard.writeObjects(urls)
+        case .image:
+            if let data = Data(base64Encoded: entry.content) {
+                pasteboard.setData(data, forType: .png)
+            }
+        }
+
+        showBanner("Copied to clipboard", style: .success, duration: 1.2)
+        hideLauncherWindow()
+    }
+
+    private func deleteClipboardItem(id: String) {
+        _ = bridge.deleteClipboardItem(id: id)
+        refreshClipboardResults()
+    }
+
+    private func toggleClipboardPin(id: String) {
+        _ = bridge.toggleClipboardPin(id: id)
+        refreshClipboardResults()
+    }
+
+    private func moveClipboardSelection(_ direction: MoveCommandDirection) {
+        guard !clipboardEntries.isEmpty else {
+            selectedClipboardID = nil
+            return
+        }
+
+        guard let currentID = selectedClipboardID,
+              let currentIndex = clipboardEntries.firstIndex(where: { $0.id == currentID })
+        else {
+            selectedClipboardID = clipboardEntries.first?.id
+            return
+        }
+
+        let nextIndex: Int
+        switch direction {
+        case .down:
+            nextIndex = (currentIndex + 1) % clipboardEntries.count
+        case .up:
+            nextIndex = (currentIndex - 1 + clipboardEntries.count) % clipboardEntries.count
+        default:
+            return
+        }
+
+        selectedClipboardID = clipboardEntries[nextIndex].id
+    }
+
     var body: some View {
         ZStack {
             themedBackground
@@ -600,15 +713,29 @@ struct LauncherView: View {
                 if appUIState.showsThemeSettings {
                     ThemeSettingsView(settings: $themeStore.settings)
                 } else {
-                    SearchInputBar(
-                        text: isCommandMode ? $commandInput : $query,
-                        isCommandMode: $isCommandMode,
-                        isQueryFocused: $isQueryFocused,
-                        activeCommand: activeCommand,
-                        themeStore: themeStore,
-                        onSubmit: handleSubmit,
-                        onExitCommandMode: exitCommandMode
-                    )
+                    if isClipboardMode {
+                        ClipboardInputBar(
+                            text: $clipboardQuery,
+                            isQueryFocused: $isQueryFocused,
+                            themeStore: themeStore,
+                            onSubmit: {
+                                if let id = selectedClipboardID {
+                                    pasteClipboardItem(id: id)
+                                }
+                            },
+                            onExit: exitClipboardMode
+                        )
+                    } else {
+                        SearchInputBar(
+                            text: isCommandMode ? $commandInput : $query,
+                            isCommandMode: $isCommandMode,
+                            isQueryFocused: $isQueryFocused,
+                            activeCommand: activeCommand,
+                            themeStore: themeStore,
+                            onSubmit: handleSubmit,
+                            onExitCommandMode: exitCommandMode
+                        )
+                    }
 
                     if let bannerMessage {
                         HStack(spacing: 8) {
@@ -634,7 +761,17 @@ struct LauncherView: View {
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
-                    if isCommandMode {
+                    if isClipboardMode {
+                        ClipboardHistoryView(
+                            entries: clipboardEntries,
+                            selectedID: selectedClipboardID,
+                            themeStore: themeStore,
+                            onSelect: { selectedClipboardID = $0 },
+                            onPaste: { pasteClipboardItem(id: $0) },
+                            onDelete: { deleteClipboardItem(id: $0) },
+                            onTogglePin: { toggleClipboardPin(id: $0) }
+                        )
+                    } else if isCommandMode {
                         if activeCommandID == "kill" {
                             KillCommandView(
                                 suggestions: Array(killSuggestions),
@@ -700,7 +837,7 @@ struct LauncherView: View {
                         Spacer(minLength: 0)
                     }
 
-                    HintBar(isCommandMode: isCommandMode, activeCommandID: activeCommandID, themeStore: themeStore)
+                    HintBar(isCommandMode: isCommandMode, isClipboardMode: isClipboardMode, activeCommandID: activeCommandID, themeStore: themeStore)
                 }
             }
             .padding(14)
@@ -735,6 +872,7 @@ struct LauncherView: View {
         .onDisappear {
             searchTask?.cancel()
             bannerTask?.cancel()
+            clipboardSearchTask?.cancel()
             keyboardMonitor.stop()
         }
         .onChange(of: query) { _, _ in
@@ -745,6 +883,11 @@ struct LauncherView: View {
         .onChange(of: commandInput) { _, _ in
             if isCommandMode {
                 setInitialSelection()
+            }
+        }
+        .onChange(of: clipboardQuery) { _, _ in
+            if isClipboardMode {
+                refreshClipboardResults()
             }
         }
         .onChange(of: appUIState.showsThemeSettings) { _, showsSettings in
@@ -785,6 +928,13 @@ struct LauncherView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookToggleWindowRequested)) { _ in
             toggleWindowVisibility()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .lookToggleClipboardRequested)) { _ in
+            if isClipboardMode {
+                exitClipboardMode()
+            } else {
+                enterClipboardMode()
+            }
         }
     }
 
@@ -900,6 +1050,15 @@ struct LauncherView: View {
             },
             killConfirmationActive: { [self] in
                 pendingKillApp != nil
+            },
+            onEnterClipboardMode: { [self] in
+                enterClipboardMode()
+            },
+            onExitClipboardMode: { [self] in
+                exitClipboardMode()
+            },
+            inClipboardMode: { [self] in
+                isClipboardMode
             }
         )
     }

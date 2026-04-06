@@ -50,6 +50,46 @@ struct SearchInputBar: View {
     }
 }
 
+struct ClipboardInputBar: View {
+    @Binding var text: String
+    let isQueryFocused: FocusState<Bool>.Binding
+    let themeStore: ThemeStore
+    let onSubmit: () -> Void
+    let onExit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.on.clipboard")
+                .foregroundStyle(.blue)
+            TextField("Search clipboard history", text: $text)
+                .textFieldStyle(.plain)
+                .focused(isQueryFocused)
+                .onTapGesture {
+                    DispatchQueue.main.async {
+                        isQueryFocused.wrappedValue = true
+                    }
+                }
+                .onSubmit(onSubmit)
+
+            Text("Clipboard")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                .foregroundStyle(themeStore.fontColor())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(.blue.opacity(0.18), in: Capsule())
+
+            Button("Exit") { onExit() }
+                .keyboardShortcut(.escape, modifiers: [.shift])
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                .buttonStyle(.plain)
+                .foregroundStyle(themeStore.fontColor(opacityMultiplier: 0.72))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
 struct CommandFeedbackView: View {
     let message: String
     let themeStore: ThemeStore
@@ -144,10 +184,14 @@ struct ResultsListView: View {
 
 struct HintBar: View {
     let isCommandMode: Bool
+    var isClipboardMode: Bool = false
     let activeCommandID: String?
     let themeStore: ThemeStore
 
     var hint: String {
+        if isClipboardMode {
+            return AppConstants.Launcher.clipboardHint
+        }
         if isCommandMode && activeCommandID == "kill" {
             return AppConstants.Launcher.killHint
         }

@@ -17,13 +17,40 @@ final class KeyboardSelectionMonitor {
         onSelectCommandByIndex: @escaping (Int) -> Void,
         onConfirmKill: (() -> Void)? = nil,
         onCancelKill: (() -> Void)? = nil,
-        killConfirmationActive: @escaping () -> Bool = { false }
+        killConfirmationActive: @escaping () -> Bool = { false },
+        onEnterClipboardMode: @escaping () -> Void = {},
+        onExitClipboardMode: @escaping () -> Void = {},
+        inClipboardMode: @escaping () -> Bool = { false }
     ) {
         guard monitor == nil else { return }
         self.isKillConfirmationActive = killConfirmationActive
 
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+            if inClipboardMode() {
+                if event.keyCode == 53 {
+                    onExitClipboardMode()
+                    return nil
+                }
+                if event.keyCode == 48 {
+                    if event.modifierFlags.contains(.shift) {
+                        onPrevious()
+                    } else {
+                        onNext()
+                    }
+                    return nil
+                }
+                if event.keyCode == 126 {
+                    onPrevious()
+                    return nil
+                }
+                if event.keyCode == 125 {
+                    onNext()
+                    return nil
+                }
+                return event
+            }
 
             if flags.contains(.command)
                 && !flags.contains(.control)
