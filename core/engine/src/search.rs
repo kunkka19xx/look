@@ -1,10 +1,10 @@
-use crate::QueryEngine;
 use crate::config::*;
 use crate::query::ParsedQuery;
 use crate::scoring::{
-    ScoredMatch, contains_match_score, default_browse_score, finalize_top_k, kind_bias,
-    path_depth_penalty, path_match_score, push_top_k, query_kind_penalty,
+    contains_match_score, default_browse_score, finalize_top_k, kind_bias, path_depth_penalty,
+    path_match_score, push_top_k, query_kind_penalty, ScoredMatch,
 };
+use crate::QueryEngine;
 use look_indexing::Candidate;
 use look_matching::fuzzy_score;
 use look_ranking::rank_score;
@@ -43,6 +43,7 @@ impl QueryEngine {
             let Some(regex) = parsed_query.raw_query.as_ref().and_then(|pattern| {
                 RegexBuilder::new(pattern)
                     .case_insensitive(true)
+                    .size_limit(1024 * 1024)
                     .build()
                     .ok()
             }) else {

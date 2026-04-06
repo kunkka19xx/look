@@ -123,7 +123,7 @@ pub(crate) fn default_browse_score(candidate: &Candidate, now_unix_s: i64) -> i6
         CandidateKind::File => 0,
     };
 
-    let frequency = (candidate.use_count as i64) * 35;
+    let frequency = (candidate.use_count as i64).saturating_mul(35);
     let recency = candidate
         .last_used_at_unix_s
         .map(|last| {

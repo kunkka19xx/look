@@ -24,7 +24,8 @@ struct FfiErrorPayload {
 }
 
 pub(crate) fn look_search_count_impl(query_len: u32) -> FfiSearchResult {
-    let query = "x".repeat(query_len as usize);
+    let len = query_len.min(1000);
+    let query = "x".repeat(len as usize);
     let results = with_engine(|engine| engine.search(&query, 20));
     FfiSearchResult {
         count: results.len() as u32,
@@ -33,7 +34,11 @@ pub(crate) fn look_search_count_impl(query_len: u32) -> FfiSearchResult {
 
 pub(crate) fn look_search_json_impl(query: *const c_char, limit: u32) -> *mut c_char {
     let query = cstr_to_string(query);
-    let max = if limit == 0 { 20 } else { limit as usize };
+    let max = if limit == 0 {
+        20
+    } else {
+        limit.min(100) as usize
+    };
     let started_at = Instant::now();
 
     let results = with_engine(|engine| engine.search(&query, max));
