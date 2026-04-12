@@ -574,4 +574,34 @@ mod tests {
             Some("file.note")
         );
     }
+
+    #[test]
+    fn alias_brow_does_not_promote_archive_for_arc_term() {
+        let mut config = RuntimeConfig::default();
+        config
+            .search_aliases
+            .insert("brow".to_string(), vec!["arc".to_string()]);
+
+        let mut archive = Candidate::new(
+            "app.archive",
+            CandidateKind::App,
+            "Archive Utility",
+            "/System/Library/CoreServices/Applications/Archive Utility.app",
+        );
+        archive.use_count = 2_000;
+
+        let arc = Candidate::new(
+            "app.arc",
+            CandidateKind::App,
+            "Arc",
+            "/Applications/Arc.app",
+        );
+
+        let engine = QueryEngine::new_with_config(vec![archive, arc], &config);
+        let results = engine.search_scored("brow", 10);
+        assert_eq!(
+            results.first().map(|(candidate, _)| candidate.id.as_ref()),
+            Some("app.arc")
+        );
+    }
 }

@@ -27,6 +27,29 @@ fn top_limit(mut ranked: Vec<(Candidate, i64)>, limit: usize) -> Vec<(Candidate,
 }
 
 impl QueryEngine {
+    fn has_term_boundary_match(haystack: &str, term: &str) -> bool {
+        if term.is_empty() {
+            return false;
+        }
+
+        for (start, _) in haystack.match_indices(term) {
+            let end = start + term.len();
+            let left_ok = haystack[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|ch| !ch.is_alphanumeric());
+            let right_ok = haystack[end..]
+                .chars()
+                .next()
+                .is_none_or(|ch| !ch.is_alphanumeric());
+            if left_ok && right_ok {
+                return true;
+            }
+        }
+
+        false
+    }
+
     fn alias_terms_for_query<'a>(
         &'a self,
         normalized_query: &str,
@@ -52,11 +75,12 @@ impl QueryEngine {
     ) -> Option<i64> {
         let mut best = None;
         for term in alias_terms {
-            if title_search.contains(term) {
+            if Self::has_term_boundary_match(title_search, term) {
                 best = Some(best.unwrap_or(0).max(SCORE_ALIAS_TITLE_MATCH));
             }
 
-            if subtitle_search.is_some_and(|subtitle| subtitle.contains(term)) {
+            if subtitle_search.is_some_and(|subtitle| Self::has_term_boundary_match(subtitle, term))
+            {
                 best = Some(best.unwrap_or(0).max(SCORE_ALIAS_SUBTITLE_MATCH));
             }
         }
@@ -262,5 +286,24 @@ impl QueryEngine {
         }
 
         self.search_text_query(&parsed_query.normalized_query, kind_filter, limit)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::QueryEngine;
+
+    #[test]
+    fn term_boundary_match_rejects_inner_substring() {
+        assert!(!QueryEngine::has_term_boundary_match(
+            "archive utility",
+            "arc"
+        ));
+    }
+
+    #[test]
+    fn term_boundary_match_accepts_full_token() {
+        assert!(QueryEngine::has_term_boundary_match("arc browser", "arc"));
+        assert!(QueryEngine::has_term_boundary_match("arc-browser", "arc"));
     }
 }
