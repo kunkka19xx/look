@@ -284,7 +284,7 @@ ui_border_blue=1.0\n\
 ui_border_opacity=0.12\n\
 \n\
 # Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3\n\
-alias_note=Notion|Obsidian|Notes\n\
+alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq\n\
 alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed\n\
 alias_term=Terminal|iTerm|iTerm2|Ghostty|WezTerm|Alacritty|Kitty|Warp\n\
 alias_chat=Slack|Discord|Telegram|Messages\n\
@@ -655,7 +655,7 @@ mod tests {
     #[test]
     fn default_config_contents_include_alias_entries() {
         let contents = default_config_contents();
-        assert!(contents.contains("alias_note=Notion|Obsidian|Notes"));
+        assert!(contents.contains("alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq"));
         assert!(contents
             .contains("alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed"));
         assert!(

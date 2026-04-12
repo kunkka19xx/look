@@ -14,6 +14,7 @@ Highlights:
 - very fast local app and file search
 - clipboard history lookup with preview
 - built-in quick commands (calculator, shell, force quit, system info)
+- query aliases for apps + System Settings via `~/.look.config` (for example `alias_note`, `alias_code`)
 - lightweight native app with local-first behavior
 
 ## Quick navigation
@@ -50,6 +51,13 @@ If you want a minimal launcher that stays fast and predictable, `look` is built 
 
 User-level behavior can be configured with `~/.look.config` (indexing + UI theme/font; see [User Guide](docs/user-guide.md) for supported keys).
 
+Theme and alias notes:
+
+- current built-in themes: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Custom
+- built-in themes are available in `Settings > Appearance` and persisted in `~/.look.config`
+- search aliases are configured with `alias_<keyword>=Term1|Term2|...` in `~/.look.config` and apply to app + System Settings search
+- fresh config presets include `alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, and `alias_brow`
+
 Indexing config supports include roots plus exclude rules for both apps and files.
 
 ## Repository layout
@@ -74,7 +82,7 @@ Indexing config supports include roots plus exclude rules for both apps and file
 
 ## UI
 
-Customizable themes available (Settings > Appearance):
+Current built-in themes (Settings > Appearance):
 - Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Custom
 
 ![Look UI 1](assets/look-ui/1.png)
