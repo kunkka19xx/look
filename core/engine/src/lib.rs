@@ -13,6 +13,7 @@ use look_indexing::{Candidate, CandidateKind};
 use look_storage::{SearchSettings, SqliteStore, StorageError};
 use normalize::normalize_for_search;
 pub use result::{LaunchResult, LaunchResultAction};
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -33,13 +34,22 @@ struct IndexedCandidate {
 #[derive(Default)]
 pub struct QueryEngine {
     candidates: Vec<IndexedCandidate>,
+    search_aliases: HashMap<String, Vec<String>>,
 }
 
 impl QueryEngine {
     pub fn new(candidates: Vec<Candidate>) -> Self {
+        let runtime_config = RuntimeConfig::default();
+        Self::new_with_config(candidates, &runtime_config)
+    }
+
+    pub fn new_with_config(candidates: Vec<Candidate>, config: &RuntimeConfig) -> Self {
         // Build an in-memory search index up front (hot path reads only).
         let candidates = candidates.into_iter().map(IndexedCandidate::new).collect();
-        Self { candidates }
+        Self {
+            candidates,
+            search_aliases: config.search_aliases.clone(),
+        }
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Vec<LaunchResult> {
@@ -97,13 +107,17 @@ impl QueryEngine {
     }
 
     pub fn from_sqlite(path: impl AsRef<Path>) -> Result<Self, StorageError> {
+        let runtime_config = RuntimeConfig::load();
         let store = SqliteStore::open(path)?;
         let candidates = store.load_candidates(None)?;
         if candidates.is_empty() {
-            return Ok(Self::new(Self::demo_candidates()));
+            return Ok(Self::new_with_config(
+                Self::demo_candidates(),
+                &runtime_config,
+            ));
         }
 
-        Ok(Self::new(candidates))
+        Ok(Self::new_with_config(candidates, &runtime_config))
     }
 
     pub fn bootstrap_sqlite(path: impl AsRef<Path>) -> Result<(), StorageError> {
@@ -497,6 +511,97 @@ mod tests {
         assert_eq!(
             results.first().map(|(candidate, _)| candidate.id.as_ref()),
             Some("setting:general")
+        );
+    }
+
+    #[test]
+    fn alias_note_promotes_matching_app_results() {
+        let mut config = RuntimeConfig::default();
+        config
+            .search_aliases
+            .insert("note".to_string(), vec!["notion".to_string()]);
+
+        let app = Candidate::new(
+            "app.notion",
+            CandidateKind::App,
+            "Notion",
+            "/Applications/Notion.app",
+        );
+        let file = Candidate::new(
+            "file.note",
+            CandidateKind::File,
+            "notes.txt",
+            "/Users/test/Documents/notes.txt",
+        );
+
+        let engine = QueryEngine::new_with_config(vec![app, file], &config);
+        let results = engine.search_scored("note", 10);
+        assert_eq!(
+            results.first().map(|(candidate, _)| candidate.id.as_ref()),
+            Some("app.notion")
+        );
+    }
+
+    #[test]
+    fn alias_is_not_applied_for_file_scope_queries() {
+        let mut config = RuntimeConfig::default();
+        config
+            .search_aliases
+            .insert("note".to_string(), vec!["notion".to_string()]);
+
+        let app = Candidate::new(
+            "app.notion",
+            CandidateKind::App,
+            "Notion",
+            "/Applications/Notion.app",
+        );
+        let file = Candidate::new(
+            "file.note",
+            CandidateKind::File,
+            "notes.txt",
+            "/Users/test/Documents/notes.txt",
+        );
+
+        let engine = QueryEngine::new_with_config(vec![app, file], &config);
+        let results = engine.search_scored("f\"note", 10);
+        assert!(
+            results
+                .iter()
+                .all(|(candidate, _)| candidate.kind == CandidateKind::File)
+        );
+        assert_eq!(
+            results.first().map(|(candidate, _)| candidate.id.as_ref()),
+            Some("file.note")
+        );
+    }
+
+    #[test]
+    fn alias_brow_does_not_promote_archive_for_arc_term() {
+        let mut config = RuntimeConfig::default();
+        config
+            .search_aliases
+            .insert("brow".to_string(), vec!["arc".to_string()]);
+
+        let mut archive = Candidate::new(
+            "app.archive",
+            CandidateKind::App,
+            "Archive Utility",
+            "/System/Library/CoreServices/Applications/Archive Utility.app",
+        );
+        archive.use_count = 2_000;
+
+        let arc = Candidate::new(
+            "app.arc",
+            CandidateKind::App,
+            "Arc",
+            "/Applications/Arc.app",
+        );
+
+        let engine = QueryEngine::new_with_config(vec![archive, arc], &config);
+        let results = engine.search_scored("brow", 10);
+        assert_eq!(
+            results.first().map(|(candidate, _)| candidate.id.as_ref()),
+            Some("app.arc")
         );
     }
 }

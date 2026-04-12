@@ -18,6 +18,8 @@ const RERANK_POOL_MULTIPLIER: usize = 4;
 const RERANK_TOP_N: usize = 80;
 const RERANK_MIN_QUERY_CHARS: usize = 3;
 const REGEX_SIZE_LIMIT_BYTES: usize = 1024 * 1024;
+const SCORE_ALIAS_TITLE_MATCH: i64 = 1_520;
+const SCORE_ALIAS_SUBTITLE_MATCH: i64 = 1_260;
 
 fn top_limit(mut ranked: Vec<(Candidate, i64)>, limit: usize) -> Vec<(Candidate, i64)> {
     ranked.truncate(limit);
@@ -25,6 +27,66 @@ fn top_limit(mut ranked: Vec<(Candidate, i64)>, limit: usize) -> Vec<(Candidate,
 }
 
 impl QueryEngine {
+    fn has_term_boundary_match(haystack: &str, term: &str) -> bool {
+        if term.is_empty() {
+            return false;
+        }
+
+        for (start, _) in haystack.match_indices(term) {
+            let end = start + term.len();
+            let left_ok = haystack[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|ch| !ch.is_alphanumeric());
+            let right_ok = haystack[end..]
+                .chars()
+                .next()
+                .is_none_or(|ch| !ch.is_alphanumeric());
+            if left_ok && right_ok {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn alias_terms_for_query<'a>(
+        &'a self,
+        normalized_query: &str,
+        kind_filter: Option<&CandidateKind>,
+    ) -> Option<&'a Vec<String>> {
+        if normalized_query.is_empty() {
+            return None;
+        }
+
+        if let Some(kind) = kind_filter
+            && *kind != CandidateKind::App
+        {
+            return None;
+        }
+
+        self.search_aliases.get(normalized_query)
+    }
+
+    fn alias_match_score(
+        alias_terms: &[String],
+        title_search: &str,
+        subtitle_search: Option<&str>,
+    ) -> Option<i64> {
+        let mut best = None;
+        for term in alias_terms {
+            if Self::has_term_boundary_match(title_search, term) {
+                best = Some(best.unwrap_or(0).max(SCORE_ALIAS_TITLE_MATCH));
+            }
+
+            if subtitle_search.is_some_and(|subtitle| Self::has_term_boundary_match(subtitle, term))
+            {
+                best = Some(best.unwrap_or(0).max(SCORE_ALIAS_SUBTITLE_MATCH));
+            }
+        }
+        best
+    }
+
     fn kind_matches(
         candidate: &crate::IndexedCandidate,
         kind_filter: Option<&CandidateKind>,
@@ -125,6 +187,7 @@ impl QueryEngine {
         let has_path_hint = normalized_query.contains('/');
         let settings_query = looks_like_settings_query(normalized_query);
         let pool_limit = (limit.saturating_mul(RERANK_POOL_MULTIPLIER)).max(RERANK_TOP_N);
+        let alias_terms = self.alias_terms_for_query(normalized_query, kind_filter);
 
         for candidate in self
             .candidates
@@ -151,11 +214,23 @@ impl QueryEngine {
             } else {
                 None
             };
+            let alias_score = alias_terms.and_then(|terms| {
+                if candidate.candidate.kind != CandidateKind::App {
+                    return None;
+                }
+                Self::alias_match_score(terms, &candidate.title_search, subtitle_search)
+            });
 
-            let base = [title_score, subtitle_score, contains_score, path_score]
-                .into_iter()
-                .flatten()
-                .max();
+            let base = [
+                title_score,
+                subtitle_score,
+                contains_score,
+                path_score,
+                alias_score,
+            ]
+            .into_iter()
+            .flatten()
+            .max();
 
             let Some(base) = base else {
                 continue;
@@ -211,5 +286,24 @@ impl QueryEngine {
         }
 
         self.search_text_query(&parsed_query.normalized_query, kind_filter, limit)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::QueryEngine;
+
+    #[test]
+    fn term_boundary_match_rejects_inner_substring() {
+        assert!(!QueryEngine::has_term_boundary_match(
+            "archive utility",
+            "arc"
+        ));
+    }
+
+    #[test]
+    fn term_boundary_match_accepts_full_token() {
+        assert!(QueryEngine::has_term_boundary_match("arc browser", "arc"));
+        assert!(QueryEngine::has_term_boundary_match("arc-browser", "arc"));
     }
 }

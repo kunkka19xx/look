@@ -1,3 +1,5 @@
+use crate::normalize::normalize_for_search;
+use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -77,6 +79,7 @@ pub struct RuntimeConfig {
     pub file_exclude_paths: Vec<String>,
     pub skip_dir_names: Vec<String>,
     pub lazy_indexing_enabled: bool,
+    pub search_aliases: HashMap<String, Vec<String>>,
 }
 
 impl Default for RuntimeConfig {
@@ -107,6 +110,7 @@ impl Default for RuntimeConfig {
                 .map(|value| value.to_string())
                 .collect(),
             lazy_indexing_enabled: LAZY_INDEXING_ENABLED,
+            search_aliases: default_search_aliases(),
         }
     }
 }
@@ -212,6 +216,11 @@ impl RuntimeConfig {
                         self.lazy_indexing_enabled = parsed;
                     }
                 }
+                _ if key.strip_prefix("alias_").is_some() => {
+                    if let Some(alias_key) = key.strip_prefix("alias_") {
+                        apply_alias_override(alias_key, value, &mut self.search_aliases);
+                    }
+                }
                 _ => {}
             }
         }
@@ -272,7 +281,96 @@ ui_border_thickness=1.0\n\
 ui_border_red=1.0\n\
 ui_border_green=1.0\n\
 ui_border_blue=1.0\n\
-ui_border_opacity=0.12\n"
+ui_border_opacity=0.12\n\
+\n\
+# Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3\n\
+alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq\n\
+alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed\n\
+alias_term=Terminal|iTerm|iTerm2|Ghostty|WezTerm|Alacritty|Kitty|Warp\n\
+alias_chat=Slack|Discord|Telegram|Messages\n\
+alias_music=Spotify|Apple Music|Music\n\
+alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave\n"
+}
+
+fn default_search_aliases() -> HashMap<String, Vec<String>> {
+    let mut aliases = HashMap::new();
+    aliases.insert(
+        "note".to_string(),
+        vec![
+            "notion",
+            "obsidian",
+            "notes",
+            "apple notes",
+            "bear",
+            "logseq",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
+    );
+    aliases.insert(
+        "code".to_string(),
+        vec![
+            "visual studio code",
+            "vscode",
+            "cursor",
+            "windsurf",
+            "intellij idea",
+            "pycharm",
+            "webstorm",
+            "neovim",
+            "xcode",
+            "zed",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
+    );
+    aliases.insert(
+        "term".to_string(),
+        vec![
+            "terminal",
+            "iterm",
+            "iterm2",
+            "ghostty",
+            "wezterm",
+            "alacritty",
+            "kitty",
+            "warp",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
+    );
+    aliases.insert(
+        "chat".to_string(),
+        vec!["slack", "discord", "telegram", "messages"]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+    );
+    aliases.insert(
+        "music".to_string(),
+        vec!["spotify", "apple music", "music"]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+    );
+    aliases.insert(
+        "brow".to_string(),
+        vec![
+            "safari",
+            "arc",
+            "google chrome",
+            "chrome",
+            "firefox",
+            "brave",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
+    );
+    aliases
 }
 
 fn default_file_scan_roots() -> Vec<String> {
@@ -345,6 +443,32 @@ fn parse_bool(value: &str) -> Option<bool> {
         "0" | "false" | "no" | "off" => Some(false),
         _ => None,
     }
+}
+
+fn parse_alias_values(value: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    for raw in value.split('|') {
+        let normalized = normalize_for_search(raw.trim());
+        if !normalized.is_empty() && !values.iter().any(|entry| entry == &normalized) {
+            values.push(normalized);
+        }
+    }
+    values
+}
+
+fn apply_alias_override(alias_key: &str, value: &str, aliases: &mut HashMap<String, Vec<String>>) {
+    let normalized_key = normalize_for_search(alias_key.trim());
+    if normalized_key.is_empty() {
+        return;
+    }
+
+    let parsed = parse_alias_values(value);
+    if parsed.is_empty() {
+        aliases.remove(&normalized_key);
+        return;
+    }
+
+    aliases.insert(normalized_key, parsed);
 }
 
 fn expand_path(value: &str, home: Option<&str>) -> String {
@@ -468,5 +592,78 @@ mod tests {
     #[test]
     fn default_config_contents_include_lazy_indexing_enabled() {
         assert!(default_config_contents().contains("lazy_indexing_enabled=true"));
+    }
+
+    #[test]
+    fn alias_entries_are_loaded_from_config() {
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-aliases-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(
+            &tmp,
+            "alias_note=Notion| Obsidian | Notes\nalias_code=VSCode|IntelliJ IDEA\n",
+        )
+        .expect("should write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        config.apply_from_file(&tmp);
+
+        assert_eq!(
+            config.search_aliases.get("note"),
+            Some(&vec![
+                "notion".to_string(),
+                "obsidian".to_string(),
+                "notes".to_string()
+            ])
+        );
+        assert_eq!(
+            config.search_aliases.get("code"),
+            Some(&vec!["vscode".to_string(), "intellij idea".to_string()])
+        );
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn alias_entry_can_remove_default_alias() {
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-alias-remove-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(&tmp, "alias_note=\n").expect("should write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        assert!(config.search_aliases.contains_key("note"));
+
+        config.apply_from_file(&tmp);
+        assert!(!config.search_aliases.contains_key("note"));
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn default_config_contents_include_alias_entries() {
+        let contents = default_config_contents();
+        assert!(contents.contains("alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq"));
+        assert!(contents
+            .contains("alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed"));
+        assert!(
+            contents
+                .contains("alias_term=Terminal|iTerm|iTerm2|Ghostty|WezTerm|Alacritty|Kitty|Warp")
+        );
+        assert!(contents.contains("alias_chat=Slack|Discord|Telegram|Messages"));
+        assert!(contents.contains("alias_music=Spotify|Apple Music|Music"));
+        assert!(contents.contains("alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave"));
     }
 }
