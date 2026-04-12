@@ -166,7 +166,6 @@ Preset update behavior:
 
 - presets are written automatically only when `~/.look.config` is created for the first time
 - app updates do not rewrite an existing config file, so existing users should add new `alias_*` keys manually
-
 UI-related keys include the `ui_*` group (tint/blur/font/border values).
 
 Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not written to `~/.look.config`.

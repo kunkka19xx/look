@@ -574,7 +574,6 @@ mod tests {
             Some("file.note")
         );
     }
-
     #[test]
     fn alias_brow_does_not_promote_archive_for_arc_term() {
         let mut config = RuntimeConfig::default();

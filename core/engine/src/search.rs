@@ -49,7 +49,6 @@ impl QueryEngine {
 
         false
     }
-
     fn alias_terms_for_query<'a>(
         &'a self,
         normalized_query: &str,
