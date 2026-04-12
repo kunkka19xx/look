@@ -144,7 +144,14 @@ Backend-related keys:
 - `file_scan_roots`, `file_scan_depth`, `file_scan_limit`, `file_exclude_paths`
 - `lazy_indexing_enabled`
 - `skip_dir_names`
+- `alias_<keyword>` (for app + System Settings query aliases, for example `alias_note=Notion|Obsidian|Notes`)
 - `translate_allow_network`, `backend_log_level`, `launch_at_login`
+
+Alias note:
+
+- aliases do not create synthetic results; they only boost existing indexed app/System Settings entries
+- if an aliased app is not installed, there is no error and no result is added
+- keep alias lists short (around 5-10 targets per keyword) to avoid noisy ranking
 
 UI-related keys include the `ui_*` group (tint/blur/font/border values).
 
