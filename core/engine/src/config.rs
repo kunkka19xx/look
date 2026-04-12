@@ -601,16 +601,12 @@ mod tests {
 
     #[test]
     fn app_scan_roots_include_finder_embedded_apps() {
-        assert!(
-            APP_SCAN_ROOTS.iter().any(
-                |root| root == &"/System/Library/CoreServices/Finder.app/Contents/Applications"
-            )
-        );
-        assert!(
-            APP_SCAN_ROOTS
-                .iter()
-                .any(|root| root == &"/System/Library/CoreServices/Applications")
-        );
+        assert!(APP_SCAN_ROOTS
+            .iter()
+            .any(|root| root == &"/System/Library/CoreServices/Finder.app/Contents/Applications"));
+        assert!(APP_SCAN_ROOTS
+            .iter()
+            .any(|root| root == &"/System/Library/CoreServices/Applications"));
     }
 
     #[test]
@@ -629,12 +625,10 @@ mod tests {
         let mut config = RuntimeConfig::default();
         config.apply_from_file(&tmp);
 
-        assert!(
-            config
-                .skip_dir_names
-                .iter()
-                .any(|name| name == "node_modules")
-        );
+        assert!(config
+            .skip_dir_names
+            .iter()
+            .any(|name| name == "node_modules"));
         assert!(config.skip_dir_names.iter().any(|name| name == "vendor"));
 
         let _ = std::fs::remove_file(&tmp);
@@ -737,10 +731,8 @@ mod tests {
         assert!(contents.contains("alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq"));
         assert!(contents
             .contains("alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed"));
-        assert!(
-            contents
-                .contains("alias_term=Terminal|iTerm|iTerm2|Ghostty|WezTerm|Alacritty|Kitty|Warp")
-        );
+        assert!(contents
+            .contains("alias_term=Terminal|iTerm|iTerm2|Ghostty|WezTerm|Alacritty|Kitty|Warp"));
         assert!(contents.contains("alias_chat=Slack|Discord|Telegram|Messages"));
         assert!(contents.contains("alias_music=Spotify|Apple Music|Music"));
         assert!(contents.contains("alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave"));
