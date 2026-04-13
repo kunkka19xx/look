@@ -78,7 +78,6 @@ Runtime file: `~/.look.config` (or `LOOK_CONFIG_PATH`).
 - `app_scan_roots`, `app_scan_depth`, `app_exclude_paths`, `app_exclude_names`
 - `file_scan_roots`, `file_scan_depth` (default: 4, range: 1-12), `file_scan_limit` (default: 4000, range: 500-50000), `file_exclude_paths`
 - `skip_dir_names`
-- `translate_allow_network`
 - `backend_log_level`
 - `launch_at_login`
 

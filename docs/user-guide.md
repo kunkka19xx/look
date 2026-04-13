@@ -62,8 +62,7 @@ Clipboard mode (`c"`):
 Translation mode (`t"`/`tw"`):
 
 - supports EN/VI/JA result sections,
-- network translation is controlled by `translate_allow_network`,
-- when disabled, translation requests are blocked locally.
+- translation uses network requests.
 
 ## 5) Command mode
 
@@ -146,7 +145,7 @@ Backend-related keys:
 - `lazy_indexing_enabled`
 - `skip_dir_names`
 - `alias_<keyword>` (for app + System Settings query aliases, for example `alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq`)
-- `translate_allow_network`, `backend_log_level`, `launch_at_login`
+- `backend_log_level`, `launch_at_login`
 
 Alias note:
 
@@ -191,7 +190,6 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+C`: copy selected file/folder
 - `Cmd+Shift+,`: toggle settings panel
 - `Cmd+Shift+;`: reload config
-- `Y`: confirm the fresh-config popup action
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
 
 ## 8) Troubleshooting
@@ -208,7 +206,6 @@ If hotkey does not work:
 
 If translation does not return results:
 
-- confirm `translate_allow_network=true`
 - check connectivity and retry
 
 ## 9) Related docs

@@ -26,7 +26,6 @@ This document tracks what `look` supports today and what is planned next.
 - in-memory clipboard history (latest text clips)
 - quick translation with `t"...`
 - dictionary lookup panel with `tw"...`
-- translation network guarded by `translate_allow_network`
 
 ### Command mode
 
