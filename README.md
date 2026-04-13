@@ -128,7 +128,6 @@ Current built-in themes (Settings > Appearance):
 - `Cmd+Option+Q`: quit app
 - `Enter`: launch selected app, execute active command, run web translation (if `t"...`), refresh lookup translation (if `tw"...`), or confirm kill
 - `Y` / `N`: confirm/cancel in kill command confirmation
-- `Y`: confirm the Create Fresh Config popup action
 - `Cmd+Enter`: web search current query using Google
 - `Cmd+C`: copy selected file/folder to pasteboard
 - `Cmd+F`: reveal selected app/file/folder in Finder
