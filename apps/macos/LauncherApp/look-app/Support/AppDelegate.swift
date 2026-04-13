@@ -58,25 +58,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let currentPID = ProcessInfo.processInfo.processIdentifier
         let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
-        let otherInstances = runningApps.filter { app in
-            guard app.processIdentifier != currentPID else {
-                return false
-            }
-
-            let otherPath = app.bundleURL?.resolvingSymlinksInPath().path
-            return otherPath == currentBundlePath
-        }
+        let otherInstances = runningApps.filter { $0.processIdentifier != currentPID }
 
         // No other instances found
         guard !otherInstances.isEmpty else {
             return false
         }
 
-        // If we acquired the lock but still found other instances, activate the primary one
-        // If we failed to acquire lock, definitely activate the primary one
-        guard let primaryApp = otherInstances.min(by: { $0.processIdentifier < $1.processIdentifier }) else {
-            return false
+        // Prefer instance at same path (clean handoff for "Quit & Reopen")
+        // Fall back to any instance if same path not found (prevents concurrent instances from different paths)
+        let samePathInstance = otherInstances.first { app in
+            let otherPath = app.bundleURL?.resolvingSymlinksInPath().path
+            return otherPath == currentBundlePath
         }
+
+        let primaryApp = samePathInstance ?? otherInstances.min(by: { $0.processIdentifier < $1.processIdentifier })!
 
         primaryApp.activate(options: [.activateAllWindows])
         return true
