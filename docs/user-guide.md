@@ -190,6 +190,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+C`: copy selected file/folder
 - `Cmd+Shift+,`: toggle settings panel
 - `Cmd+Shift+;`: reload config
+- `Y`: confirm the fresh-config popup action
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
 
 ## 8) Troubleshooting
