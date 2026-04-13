@@ -320,7 +320,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Look;
 				INFOPLIST_KEY_CFBundleIconFile = AppIcon;
-				INFOPLIST_KEY_LSMultipleInstancesProhibited = YES;
+				INFOPLIST_KEY_LSMultipleInstancesProhibited = NO;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				OTHER_LDFLAGS = (
