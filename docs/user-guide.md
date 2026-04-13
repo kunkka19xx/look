@@ -19,10 +19,7 @@ If Spotlight and look both use `Cmd+Space`, disable or rebind Spotlight:
 
 - `System Settings` -> `Keyboard` -> `Keyboard Shortcuts...` -> `Spotlight`
 
-If the app is unsigned/not notarized, first launch may require:
-
-- right-click `Look.app` -> `Open` -> confirm, or
-- `System Settings` -> `Privacy & Security` -> `Open Anyway`
+Release builds are signed + notarized. Normal first launch should not require `Open Anyway`.
 
 ## 2) Core workflow
 

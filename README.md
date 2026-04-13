@@ -165,10 +165,7 @@ If look is fully quit and Spotlight shortcut is disabled, relaunch from Terminal
 open "/Applications/Look.app"
 ```
 
-**Unsigned release note:**
-
-- if the app is not Developer ID signed/notarized, macOS Gatekeeper may block first launch
-- first-run bypass: right-click `Look.app` -> `Open` -> confirm, or use `System Settings` -> `Privacy & Security` -> `Open Anyway`
+Release builds are Developer ID signed and notarized, so normal first launch should open without Gatekeeper bypass.
 
 Curl installer (after a GitHub release exists):
 
@@ -241,10 +238,11 @@ Prepare release artifacts/scripts (maintainers):
 ./scripts/generate-homebrew-cask.sh 1.0.0 <sha256> kunkka19xx/look
 ```
 
-Signing/notarization is optional in CI:
+Signing/notarization in release CI:
 
 - paid Apple Developer membership is required for Developer ID signing/notarization
-- without those secrets, release workflow still builds artifacts and Homebrew cask can still be published
+- strict release runs require signing/notary secrets
+- non-strict test runs can still build artifacts when secrets are missing
 
 ## Product scope
 
