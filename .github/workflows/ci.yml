@@ -35,7 +35,7 @@ jobs:
               - '.github/workflows/ci.yml'
 
   lint:
-    name: Lint
+    name: lint
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.rust == 'true'
@@ -63,7 +63,7 @@ jobs:
         run: cargo clippy --manifest-path bridge/ffi/Cargo.toml -- -D warnings
 
   security:
-    name: Rust Security
+    name: security
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.rust == 'true'
@@ -86,7 +86,7 @@ jobs:
         run: cargo audit --file bridge/ffi/Cargo.lock
 
   secrets-scan:
-    name: Secrets Scan
+    name: secrets-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,7 +99,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test:
-    name: Test
+    name: test
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.rust == 'true'
@@ -119,10 +119,14 @@ jobs:
         run: cargo test --manifest-path bridge/ffi/Cargo.toml
 
   build:
-    name: Build
+    name: build
     runs-on: ubuntu-latest
     needs: changes
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.rust == 'true'
+    if: |
+      needs.changes.outputs.rust == 'true' && (
+        (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')) ||
+        (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev'))
+      )
     steps:
       - uses: actions/checkout@v4
 

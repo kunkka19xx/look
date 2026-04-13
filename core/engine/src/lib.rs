@@ -627,4 +627,34 @@ mod tests {
             Some("app.arc")
         );
     }
+
+    #[test]
+    fn alias_can_match_system_settings_subtitle_terms() {
+        let mut config = RuntimeConfig::default();
+        config
+            .search_aliases
+            .insert("update".to_string(), vec!["software update".to_string()]);
+
+        let mut settings = Candidate::new(
+            "setting:update",
+            CandidateKind::App,
+            "General",
+            "x-apple.systempreferences:com.apple.preference.general",
+        );
+        settings.subtitle = Some("System Settings software update".into());
+
+        let app = Candidate::new(
+            "app.updates",
+            CandidateKind::App,
+            "General Helper",
+            "/Applications/General Helper.app",
+        );
+
+        let engine = QueryEngine::new_with_config(vec![app, settings], &config);
+        let results = engine.search_scored("update", 10);
+        assert_eq!(
+            results.first().map(|(candidate, _)| candidate.id.as_ref()),
+            Some("setting:update")
+        );
+    }
 }

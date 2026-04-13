@@ -239,7 +239,8 @@ jobs:
               fi
 
               echo "Notarization status '$NOTARY_STATUS' in non-strict mode; keeping signed artifact without stapling." >&2
-              echo "result=${NOTARY_STATUS,,}" >> "$GITHUB_OUTPUT"
+              NOTARY_STATUS_LOWER="$(printf '%s' "$NOTARY_STATUS" | tr '[:upper:]' '[:lower:]')"
+              echo "result=${NOTARY_STATUS_LOWER}" >> "$GITHUB_OUTPUT"
               exit 0
             fi
 
