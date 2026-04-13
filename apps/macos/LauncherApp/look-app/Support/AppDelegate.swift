@@ -3,8 +3,8 @@ import Darwin
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     // Grace period allows macOS "Quit & Reopen" handoff to release the previous process lock.
-    private static let relaunchGracePeriodSeconds: TimeInterval = 2.0
-    private static let lockPollIntervalMicros: useconds_t = 100_000
+    private static let relaunchGracePeriodSeconds: TimeInterval = 0.8
+    private static let lockPollIntervalMicros: useconds_t = 50_000
     private static var singletonLockFD: CInt = -1
 
     private static func singletonLockPath(for bundlePath: String) -> String {
