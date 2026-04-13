@@ -16,6 +16,7 @@ Next:
 - [x] finish open Milestone G reliability tasks (error model + user fallback messaging)
 - [x] config validation and reload feedback (Cmd+Shift+; shows warnings in orange banner)
 - [x] file_scan_depth/file_scan_limit validation (clamp 1-12 / 500-50000 in both Swift and Rust)
+- [x] add `/System/Library/CoreServices/Applications` to default app scan roots and add regression test for `Keychain Access` discoverability (`keychain` query)
 
 Recently completed (current optimization cycle):
 

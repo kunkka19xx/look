@@ -137,6 +137,7 @@ Runtime config file:
 - path: `~/.look.config`
 - optional override: `LOOK_CONFIG_PATH=/path/to/config`
 - reload after manual edits: `Cmd+Shift+;`
+- reset to fresh defaults from UI: `Settings -> Advanced -> Create Fresh Config` (confirmation popup)
 
 Backend-related keys:
 
@@ -166,6 +167,13 @@ Preset update behavior:
 
 - presets are written automatically only when `~/.look.config` is created for the first time
 - app updates do not rewrite an existing config file, so existing users should add new `alias_*` keys manually
+
+Fresh config reset behavior:
+
+- `Create Fresh Config` replaces the current config file with the latest default template
+- reset uses the active config path (`LOOK_CONFIG_PATH` when set, otherwise `~/.look.config`)
+- existing custom values are replaced during this reset flow (use manual edit + `Cmd+Shift+;` if you only want partial changes)
+
 UI-related keys include the `ui_*` group (tint/blur/font/border values).
 
 Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not written to `~/.look.config`.
@@ -183,6 +191,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+C`: copy selected file/folder
 - `Cmd+Shift+,`: toggle settings panel
 - `Cmd+Shift+;`: reload config
+- `Y`: confirm the fresh-config popup action
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
 
 ## 8) Troubleshooting

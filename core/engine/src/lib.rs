@@ -322,6 +322,30 @@ mod tests {
     }
 
     #[test]
+    fn keychain_query_matches_keychain_access_app() {
+        let engine = QueryEngine::new(vec![
+            Candidate::new(
+                "app:keychain",
+                CandidateKind::App,
+                "Keychain Access",
+                "/System/Library/CoreServices/Applications/Keychain Access.app",
+            ),
+            Candidate::new(
+                "app:archive",
+                CandidateKind::App,
+                "Archive Utility",
+                "/System/Library/CoreServices/Applications/Archive Utility.app",
+            ),
+        ]);
+
+        let results = engine.search_scored("keychain", 10);
+        assert_eq!(
+            results.first().map(|(candidate, _)| candidate.id.as_ref()),
+            Some("app:keychain")
+        );
+    }
+
+    #[test]
     fn empty_query_prioritizes_recent_and_frequent_apps() {
         let mut frequent_app = Candidate::new(
             "app.frequent",

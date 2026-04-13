@@ -1,12 +1,13 @@
 use crate::normalize::normalize_for_search;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
 
-pub const APP_SCAN_ROOTS: [&str; 4] = [
+pub const APP_SCAN_ROOTS: [&str; 5] = [
     "/Applications",
     "/System/Applications",
     "/System/Applications/Utilities",
+    "/System/Library/CoreServices/Applications",
     "/System/Library/CoreServices/Finder.app/Contents/Applications",
 ];
 
@@ -242,10 +243,58 @@ fn config_path() -> Option<PathBuf> {
 
 fn ensure_default_config_file(path: &Path) {
     if path.exists() {
+        append_missing_default_config_entries(path);
         return;
     }
 
     let _ = std::fs::write(path, default_config_contents());
+}
+
+fn append_missing_default_config_entries(path: &Path) {
+    let Ok(contents) = std::fs::read_to_string(path) else {
+        return;
+    };
+
+    let existing_keys = parse_config_keys(&contents);
+    let mut missing_entries = Vec::new();
+
+    for default_line in default_config_contents().lines() {
+        let line = strip_comments(default_line).trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let Some((key, _)) = line.split_once('=') else {
+            continue;
+        };
+
+        let key = key.trim();
+        if key.is_empty() || existing_keys.contains(key) {
+            continue;
+        }
+
+        missing_entries.push(line.to_string());
+    }
+
+    if missing_entries.is_empty() {
+        return;
+    }
+
+    let mut appended = String::new();
+    if !contents.ends_with('\n') {
+        appended.push('\n');
+    }
+    appended.push('\n');
+    appended.push_str("# Added by look update\n");
+    for entry in missing_entries {
+        appended.push_str(&entry);
+        appended.push('\n');
+    }
+
+    let _ = std::fs::OpenOptions::new()
+        .append(true)
+        .open(path)
+        .and_then(|mut file| std::io::Write::write_all(&mut file, appended.as_bytes()));
 }
 
 fn default_config_contents() -> &'static str {
@@ -253,7 +302,7 @@ fn default_config_contents() -> &'static str {
 # Generated on first launch. Edit values and press Cmd+Shift+; to reload.\n\
 \n\
 # Backend indexing (file_scan_depth: 1-12, file_scan_limit: 500-50000)\n\
-app_scan_roots=/Applications,/System/Applications,/System/Applications/Utilities,/System/Library/CoreServices/Finder.app/Contents/Applications\n\
+app_scan_roots=/Applications,/System/Applications,/System/Applications/Utilities,/System/Library/CoreServices/Applications,/System/Library/CoreServices/Finder.app/Contents/Applications\n\
 app_scan_depth=3\n\
 app_exclude_paths=\n\
 app_exclude_names=\n\
@@ -386,6 +435,26 @@ fn strip_comments(value: &str) -> &str {
         .split_once('#')
         .map(|(prefix, _)| prefix)
         .unwrap_or(value)
+}
+
+fn parse_config_keys(contents: &str) -> HashSet<String> {
+    let mut keys = HashSet::new();
+    for raw_line in contents.lines() {
+        let line = strip_comments(raw_line).trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let Some((key, _)) = line.split_once('=') else {
+            continue;
+        };
+
+        let key = key.trim();
+        if !key.is_empty() {
+            keys.insert(key.to_string());
+        }
+    }
+    keys
 }
 
 fn parse_csv(value: &str) -> Vec<String> {
@@ -535,6 +604,9 @@ mod tests {
         assert!(APP_SCAN_ROOTS
             .iter()
             .any(|root| root == &"/System/Library/CoreServices/Finder.app/Contents/Applications"));
+        assert!(APP_SCAN_ROOTS
+            .iter()
+            .any(|root| root == &"/System/Library/CoreServices/Applications"));
     }
 
     #[test]
@@ -588,6 +660,11 @@ mod tests {
     #[test]
     fn default_config_contents_include_lazy_indexing_enabled() {
         assert!(default_config_contents().contains("lazy_indexing_enabled=true"));
+    }
+
+    #[test]
+    fn default_config_contents_include_coreservices_applications_root() {
+        assert!(default_config_contents().contains("/System/Library/CoreServices/Applications"));
     }
 
     #[test]
@@ -659,5 +736,37 @@ mod tests {
         assert!(contents.contains("alias_chat=Slack|Discord|Telegram|Messages"));
         assert!(contents.contains("alias_music=Spotify|Apple Music|Music"));
         assert!(contents.contains("alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave"));
+    }
+
+    #[test]
+    fn ensure_default_config_file_appends_missing_keys_without_overwriting_existing() {
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-migrate-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(
+            &tmp,
+            "# existing user settings\napp_scan_depth=9\napp_scan_roots=/Applications\n",
+        )
+        .expect("should write temporary config");
+
+        ensure_default_config_file(&tmp);
+        let contents = std::fs::read_to_string(&tmp).expect("should read migrated config");
+
+        assert!(contents.contains("app_scan_depth=9"));
+        assert!(contents.contains("app_scan_roots=/Applications\n"));
+        assert!(contents.contains("alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq"));
+        assert_eq!(
+            contents.matches("app_scan_depth=").count(),
+            1,
+            "existing keys should not be duplicated"
+        );
+
+        let _ = std::fs::remove_file(&tmp);
     }
 }

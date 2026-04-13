@@ -19,6 +19,8 @@ struct ThemeSettingsView: View {
     @State private var fileScanLimitInput = ""
     @State private var fileScanDepthError: String?
     @State private var fileScanLimitError: String?
+    @State private var showFreshConfigConfirm = false
+    @State private var freshConfigMessage: String?
     @State private var localKeyMonitor: Any?
     @FocusState private var focusedField: Field?
 
@@ -90,6 +92,14 @@ struct ThemeSettingsView: View {
         }
         .onDisappear {
             removeLocalKeyMonitor()
+        }
+        .alert("Create fresh config file?", isPresented: $showFreshConfigConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Create Fresh Config", role: .destructive) {
+                runFreshConfigReset()
+            }
+        } message: {
+            Text("This will replace your current config file with default values.")
         }
     }
 
@@ -453,12 +463,15 @@ struct ThemeSettingsView: View {
                     }
 
                     Toggle(isOn: $settings.lazyIndexingEnabled) {
-                        VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 10) {
                             Text("Lazy indexing")
+                                .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
                                 .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
                             Text("Refresh index automatically when launcher opens after file/app changes")
                                 .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
                                 .foregroundStyle(themeStore.mutedTextColor())
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
 
@@ -546,14 +559,45 @@ struct ThemeSettingsView: View {
                         .foregroundStyle(themeStore.secondaryTextColor())
 
                     Toggle(isOn: $settings.launchAtLogin) {
-                        VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 10) {
                             Text("Launch at login")
+                                .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
                                 .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
                             Text("Start look automatically when you sign in")
                                 .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
                                 .foregroundStyle(themeStore.mutedTextColor())
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
+
+                    Divider()
+                        .overlay(.white.opacity(0.1))
+                        .padding(.vertical, 4)
+
+                    Text("Config file")
+                        .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
+                        .foregroundStyle(themeStore.secondaryTextColor())
+
+                    HStack(spacing: 10) {
+                        Button("Create Fresh Config") {
+                            showFreshConfigConfirm = true
+                            freshConfigMessage = nil
+                        }
+
+                        Text("Regenerate a fresh default config file. Your current file will be replaced.")
+                            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+                            .foregroundStyle(themeStore.mutedTextColor())
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if let freshConfigMessage {
+                            Text(freshConfigMessage)
+                                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+                                .foregroundStyle(themeStore.mutedTextColor())
+                        }
+                    }
+
                 }
             }
             .onAppear { syncIndexingInputsFromSettings() }
@@ -655,6 +699,14 @@ struct ThemeSettingsView: View {
                 return nil
             }
 
+            if showFreshConfigConfirm,
+               flags.isEmpty,
+               event.charactersIgnoringModifiers?.lowercased() == "y" {
+                showFreshConfigConfirm = false
+                runFreshConfigReset()
+                return nil
+            }
+
             if flags == [.command, .shift]
                 && (event.charactersIgnoringModifiers == "," || event.keyCode == 43)
             {
@@ -674,6 +726,19 @@ struct ThemeSettingsView: View {
 
     private var hasIndexingError: Bool {
         fileScanDepthError != nil || fileScanLimitError != nil
+    }
+
+    private func runFreshConfigReset() {
+        let ok = themeStore.regenerateFreshConfigFile()
+        syncIndexingInputsFromSettings()
+        freshConfigMessage = ok ? "Fresh config created" : "Failed to recreate config"
+        if ok {
+            NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            freshConfigMessage = nil
+        }
+        NotificationCenter.default.post(name: .lookFocusSettingsInputRequested, object: nil)
     }
 }
 

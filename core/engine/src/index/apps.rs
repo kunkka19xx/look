@@ -7,6 +7,15 @@ use std::sync::mpsc;
 
 const FINDER_EMBEDDED_APPS_ROOT: &str =
     "/System/Library/CoreServices/Finder.app/Contents/Applications";
+const CORE_SERVICES_APPS_ROOT: &str = "/System/Library/CoreServices/Applications";
+
+fn ensure_required_roots(roots: &mut Vec<String>) {
+    for required in [FINDER_EMBEDDED_APPS_ROOT, CORE_SERVICES_APPS_ROOT] {
+        if !roots.iter().any(|root| root == required) {
+            roots.push(required.to_string());
+        }
+    }
+}
 
 pub fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSender<Candidate>) {
     let mut roots = config.app_scan_roots.clone();
@@ -17,9 +26,7 @@ pub fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSender<Cand
         }
     }
 
-    if !roots.iter().any(|root| root == FINDER_EMBEDDED_APPS_ROOT) {
-        roots.push(FINDER_EMBEDDED_APPS_ROOT.to_string());
-    }
+    ensure_required_roots(&mut roots);
 
     for root in roots {
         walk_apps(
@@ -118,7 +125,7 @@ fn should_exclude_app_name(name: &str, app_exclude_names: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{should_exclude_app_name, should_exclude_path};
+    use super::{ensure_required_roots, should_exclude_app_name, should_exclude_path};
 
     #[test]
     fn excludes_app_paths_by_prefix() {
@@ -151,5 +158,27 @@ mod tests {
     fn path_prefix_is_boundary_aware() {
         let excludes = vec!["/Applications/Util".to_string()];
         assert!(!should_exclude_path("/Applications/Utilities", &excludes));
+    }
+
+    #[test]
+    fn required_roots_are_appended_once() {
+        let mut roots = vec!["/Applications".to_string()];
+        ensure_required_roots(&mut roots);
+        ensure_required_roots(&mut roots);
+
+        assert!(
+            roots
+                .iter()
+                .any(|root| root == "/System/Library/CoreServices/Applications")
+        );
+        assert!(roots
+            .iter()
+            .any(|root| root == "/System/Library/CoreServices/Finder.app/Contents/Applications"));
+
+        let core_services_count = roots
+            .iter()
+            .filter(|root| *root == "/System/Library/CoreServices/Applications")
+            .count();
+        assert_eq!(core_services_count, 1);
     }
 }

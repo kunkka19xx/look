@@ -5,6 +5,7 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   workflow_dispatch:
     inputs:
@@ -18,158 +19,10 @@ on:
 
 jobs:
   build-release:
-    name: Build macOS release artifact
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Resolve release version
-        id: version
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="${{ inputs.version }}"
-          else
-            VERSION="${GITHUB_REF_NAME#v}"
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Build release zip + manifest
-        run: ./scripts/build-release.sh "${{ steps.version.outputs.version }}"
-
-      - name: Configure macOS signing keychain (optional)
-        env:
-          APPLE_DEVELOPER_ID_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_BASE64 }}
-          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
-          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
-        run: |
-          if [[ -z "${APPLE_DEVELOPER_ID_CERT_BASE64}" ]]; then
-            echo "No Developer ID certificate secret configured; skipping signing setup."
-            exit 0
-          fi
-
-          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
-          CERT_PATH="$RUNNER_TEMP/developer-id.p12"
-
-          echo -n "$APPLE_DEVELOPER_ID_CERT_BASE64" | base64 --decode > "$CERT_PATH"
-          security create-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERT_PATH" -P "$APPLE_DEVELOPER_ID_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-      - name: Codesign app bundle (optional)
-        env:
-          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          APP_PATH=".build/release-macos/DerivedData/Build/Products/Release/Look.app"
-          ZIP_PATH="dist/Look-${VERSION}-macOS.zip"
-          MANIFEST_PATH="dist/Look-${VERSION}-manifest.txt"
-
-          if [[ -z "${APPLE_DEVELOPER_ID_APPLICATION}" ]]; then
-            echo "No Developer ID identity configured; skipping codesign."
-            exit 0
-          fi
-
-          if [[ ! -d "$APP_PATH" ]]; then
-            echo "App bundle missing at $APP_PATH" >&2
-            exit 1
-          fi
-
-          codesign --force --deep --options runtime --timestamp \
-            --sign "$APPLE_DEVELOPER_ID_APPLICATION" "$APP_PATH"
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-
-          rm -f "$ZIP_PATH"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
-          SHA256="$(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
-          cat > "$MANIFEST_PATH" <<EOF
-          version=${VERSION}
-          artifact=$(basename "$ZIP_PATH")
-          sha256=${SHA256}
-          EOF
-
-      - name: Notarize release zip (optional)
-        env:
-          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
-          APPLE_NOTARY_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_APP_PASSWORD }}
-          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          ZIP_PATH="dist/Look-${VERSION}-macOS.zip"
-          MANIFEST_PATH="dist/Look-${VERSION}-manifest.txt"
-
-          if [[ -z "${APPLE_NOTARY_APPLE_ID}" || -z "${APPLE_NOTARY_APP_PASSWORD}" || -z "${APPLE_NOTARY_TEAM_ID}" ]]; then
-            echo "Notary credentials not configured; skipping notarization."
-            exit 0
-          fi
-
-          xcrun notarytool submit "$ZIP_PATH" \
-            --apple-id "$APPLE_NOTARY_APPLE_ID" \
-            --password "$APPLE_NOTARY_APP_PASSWORD" \
-            --team-id "$APPLE_NOTARY_TEAM_ID" \
-            --wait
-
-          WORK_DIR="$RUNNER_TEMP/notary"
-          rm -rf "$WORK_DIR"
-          mkdir -p "$WORK_DIR"
-          ditto -x -k "$ZIP_PATH" "$WORK_DIR"
-          xcrun stapler staple "$WORK_DIR/Look.app"
-
-          rm -f "$ZIP_PATH"
-          ditto -c -k --sequesterRsrc --keepParent "$WORK_DIR/Look.app" "$ZIP_PATH"
-          SHA256="$(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
-          cat > "$MANIFEST_PATH" <<EOF
-          version=${VERSION}
-          artifact=$(basename "$ZIP_PATH")
-          sha256=${SHA256}
-          EOF
-
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: look-macos-${{ steps.version.outputs.version }}
-          path: |
-            dist/Look-${{ steps.version.outputs.version }}-macOS.zip
-            dist/Look-${{ steps.version.outputs.version }}-manifest.txt
-          retention-days: 14
-
-      - name: Attach assets to GitHub release (tag pushes only)
-        if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/Look-${{ steps.version.outputs.version }}-macOS.zip
-            dist/Look-${{ steps.version.outputs.version }}-manifest.txt
-
-      - name: Release security summary
-        if: always()
-        env:
-          APPLE_DEVELOPER_ID_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_BASE64 }}
-          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
-          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
-          APPLE_NOTARY_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_APP_PASSWORD }}
-          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
-        run: |
-          SIGNING_READY="false"
-          NOTARY_READY="false"
-
-          if [[ -n "${APPLE_DEVELOPER_ID_CERT_BASE64}" && -n "${APPLE_DEVELOPER_ID_APPLICATION}" ]]; then
-            SIGNING_READY="true"
-          fi
-
-          if [[ -n "${APPLE_NOTARY_APPLE_ID}" && -n "${APPLE_NOTARY_APP_PASSWORD}" && -n "${APPLE_NOTARY_TEAM_ID}" ]]; then
-            NOTARY_READY="true"
-          fi
-
-          {
-            echo "## Release Security Summary"
-            echo "- Codesign configured: ${SIGNING_READY}"
-            echo "- Notarization configured: ${NOTARY_READY}"
-            if [[ "${SIGNING_READY}" != "true" || "${NOTARY_READY}" != "true" ]]; then
-              echo "- This release is likely unsigned and/or not notarized."
-              echo "- Users may need first-run Gatekeeper bypass (Open Anyway / right-click Open)."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+    uses: ./.github/workflows/reusable-release-macos.yml
+    with:
+      release_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+      trigger_event: ${{ github.event_name }}
+      attach_release: ${{ github.event_name == 'push' }}
+      concurrency_ref: ${{ github.ref }}
+    secrets: inherit

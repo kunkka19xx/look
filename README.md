@@ -57,6 +57,7 @@ Theme and alias notes:
 - built-in themes are available in `Settings > Appearance` and persisted in `~/.look.config`
 - search aliases are configured with `alias_<keyword>=Term1|Term2|...` in `~/.look.config` and apply to app + System Settings search
 - fresh config presets include `alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, and `alias_brow`
+- `Settings > Advanced > Create Fresh Config` recreates the current config file from latest defaults (with confirmation popup)
 
 Indexing config supports include roots plus exclude rules for both apps and files.
 
@@ -108,6 +109,7 @@ Current built-in themes (Settings > Appearance):
 
 - Backend currently includes: SQLite-backed candidate storage, dynamic app/settings/file indexing, and usage event logging.
 - User guide: [docs/user-guide.md](docs/user-guide.md).
+- Apple release signing/notarization guide: [docs/apple-developer-release-guide.md](docs/apple-developer-release-guide.md).
 - Backend contributor guide (edit targets + verification): [docs/backend-guide.md](docs/backend-guide.md).
 - Feature status: [docs/features.md](docs/features.md).
 - Task breakdown: [docs/tasks.md](docs/tasks.md).
@@ -126,6 +128,7 @@ Current built-in themes (Settings > Appearance):
 - `Cmd+Option+Q`: quit app
 - `Enter`: launch selected app, execute active command, run web translation (if `t"...`), refresh lookup translation (if `tw"...`), or confirm kill
 - `Y` / `N`: confirm/cancel in kill command confirmation
+- `Y`: confirm the Create Fresh Config popup action
 - `Cmd+Enter`: web search current query using Google
 - `Cmd+C`: copy selected file/folder to pasteboard
 - `Cmd+F`: reveal selected app/file/folder in Finder

@@ -217,6 +217,27 @@ final class ThemeStore: ObservableObject {
         }
     }
 
+    func regenerateFreshConfigFile() -> Bool {
+        let path = Self.configPath()
+        if FileManager.default.fileExists(atPath: path.path) {
+            do {
+                try FileManager.default.removeItem(at: path)
+            } catch {
+                return false
+            }
+        }
+
+        Self.ensureDefaultConfigFileExists(at: path)
+        guard FileManager.default.fileExists(atPath: path.path) else {
+            return false
+        }
+
+        settings = .default
+        applyThemeOverridesFromConfigFile()
+        _ = applyLaunchAtLoginSetting()
+        return true
+    }
+
     func zoomIn() {
         uiScale = min(1.8, uiScale + 0.1)
     }
@@ -660,7 +681,7 @@ final class ThemeStore: ObservableObject {
 # Generated on first launch. Edit values and press Cmd+Shift+; to reload.
 
 # Backend indexing
-app_scan_roots=/Applications,/System/Applications,/System/Applications/Utilities
+app_scan_roots=/Applications,/System/Applications,/System/Applications/Utilities,/System/Library/CoreServices/Applications,/System/Library/CoreServices/Finder.app/Contents/Applications
 app_scan_depth=3
 app_exclude_paths=
 app_exclude_names=
@@ -691,6 +712,14 @@ ui_border_red=1.0
 ui_border_green=1.0
 ui_border_blue=1.0
 ui_border_opacity=0.12
+
+# Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3
+alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq
+alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed
+alias_term=Terminal|iTerm|iTerm2|Ghostty|WezTerm|Alacritty|Kitty|Warp
+alias_chat=Slack|Discord|Telegram|Messages
+alias_music=Spotify|Apple Music|Music
+alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
 """
 
     private static func loadThemeSettings(from data: Data?) -> ThemeSettings {
