@@ -42,10 +42,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let currentBundlePath = Bundle.main.bundleURL.resolvingSymlinksInPath().path
         let lockPath = Self.singletonLockPath(for: currentBundlePath)
 
-        if acquireSingletonLock(lockPath: lockPath, timeoutSeconds: Self.relaunchGracePeriodSeconds) {
-            return false
-        }
+        // Try to acquire singleton lock with grace period for "Quit & Reopen" handoff
+        let lockAcquired = acquireSingletonLock(lockPath: lockPath, timeoutSeconds: Self.relaunchGracePeriodSeconds)
 
+        // Always check for other running instances to handle:
+        // 1. Mixed-version scenarios (older builds not using lock protocol)
+        // 2. Lock acquisition failures (fallback to process-based detection)
+        return checkAndActivateDuplicateInstance(currentBundlePath: currentBundlePath, lockAcquired: lockAcquired)
+    }
+
+    private func checkAndActivateDuplicateInstance(currentBundlePath: String, lockAcquired: Bool) -> Bool {
         guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
             return false
         }
@@ -60,10 +66,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let otherPath = app.bundleURL?.resolvingSymlinksInPath().path
             return otherPath == currentBundlePath
         }
+
+        // No other instances found
         guard !otherInstances.isEmpty else {
             return false
         }
 
+        // If we acquired the lock but still found other instances, activate the primary one
+        // If we failed to acquire lock, definitely activate the primary one
         guard let primaryApp = otherInstances.min(by: { $0.processIdentifier < $1.processIdentifier }) else {
             return false
         }
@@ -78,8 +88,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let fd = open(lockPath, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        // If we can't create the lock file, return false to trigger fallback process detection
         guard fd >= 0 else {
-            return true
+            return false
         }
 
         let deadline = Date().addingTimeInterval(timeoutSeconds)
