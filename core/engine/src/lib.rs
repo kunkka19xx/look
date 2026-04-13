@@ -431,7 +431,11 @@ mod tests {
 
     #[test]
     fn empty_query_prefers_more_recent_app_when_usage_is_equal() {
-        let now = 1_775_462_400; // 2026-04-06 16:00:00 UTC
+        // Use actual current time so test works regardless of when it runs
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
 
         let mut display_setting = Candidate::new(
             "setting:com.apple.displays-settings.extension",
@@ -441,7 +445,7 @@ mod tests {
         );
         display_setting.subtitle = Some("System Settings display monitor".into());
         display_setting.use_count = 1;
-        display_setting.last_used_at_unix_s = Some(now - 60 * 60 * 12);
+        display_setting.last_used_at_unix_s = Some(now - 60 * 60 * 12); // 12 hours ago
 
         let mut newly_opened_app = Candidate::new(
             "app.new",
@@ -450,7 +454,7 @@ mod tests {
             "/Applications/Newly Opened.app",
         );
         newly_opened_app.use_count = 1;
-        newly_opened_app.last_used_at_unix_s = Some(now);
+        newly_opened_app.last_used_at_unix_s = Some(now); // Just now
 
         assert!(
             default_browse_score(&newly_opened_app, now)
