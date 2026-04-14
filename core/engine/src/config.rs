@@ -1,6 +1,6 @@
 use crate::normalize::normalize_for_search;
 use crate::platform;
-use crate::platform::paths::looks_like_absolute_path;
+use crate::platform::paths::expand_with_home;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -560,36 +560,7 @@ fn apply_alias_override(alias_key: &str, value: &str, aliases: &mut HashMap<Stri
 }
 
 fn expand_path(value: &str, home: Option<&str>) -> String {
-    if value.starts_with("~/") {
-        return home
-            .map(|prefix| join_path(prefix, value.trim_start_matches("~/")))
-            .unwrap_or_else(|| value.to_string());
-    }
-
-    if looks_like_absolute_path(value) {
-        return value.to_string();
-    }
-
-    home.map(|prefix| join_path(prefix, value))
-        .unwrap_or_else(|| value.to_string())
-}
-
-fn join_path(base: &str, child: &str) -> String {
-    let separator = if base.contains('\\') && !base.contains('/') {
-        '\\'
-    } else {
-        '/'
-    };
-
-    let trimmed_base = base.trim_end_matches(['/', '\\']);
-    let trimmed_child = child.trim_start_matches(['/', '\\']);
-    if trimmed_base.is_empty() {
-        return trimmed_child.to_string();
-    }
-    if trimmed_child.is_empty() {
-        return trimmed_base.to_string();
-    }
-    format!("{trimmed_base}{separator}{trimmed_child}")
+    expand_with_home(value, home)
 }
 
 fn normalize_app_name(value: &str) -> String {
