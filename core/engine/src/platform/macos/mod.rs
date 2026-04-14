@@ -10,6 +10,11 @@ pub(crate) const APP_SCAN_ROOTS: &[&str] = &[
     "/System/Library/CoreServices/Finder.app/Contents/Applications",
 ];
 
+pub(crate) const REQUIRED_APP_SCAN_ROOTS: &[&str] = &[
+    "/System/Library/CoreServices/Applications",
+    "/System/Library/CoreServices/Finder.app/Contents/Applications",
+];
+
 pub(crate) const FILE_SCAN_ROOT_SUFFIXES: &[&str] = &["Desktop", "Documents", "Downloads"];
 
 pub(crate) const SETTINGS_URL_SCHEME_PREFIX: &str = "x-apple.systempreferences:";

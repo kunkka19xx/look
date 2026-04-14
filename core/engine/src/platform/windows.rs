@@ -5,6 +5,8 @@ pub(crate) const APP_SCAN_ROOTS: &[&str] = &[
     "~/AppData/Roaming/Microsoft/Windows/Start Menu/Programs",
 ];
 
+pub(crate) const REQUIRED_APP_SCAN_ROOTS: &[&str] = &[];
+
 pub(crate) const FILE_SCAN_ROOT_SUFFIXES: &[&str] = &["Desktop", "Documents", "Downloads"];
 
 pub(crate) const SETTINGS_URL_SCHEME_PREFIX: &str = "ms-settings:";

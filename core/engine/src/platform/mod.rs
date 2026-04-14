@@ -25,6 +25,10 @@ pub(crate) fn additional_app_scan_roots() -> Vec<String> {
     platform_impl::additional_app_scan_roots()
 }
 
+pub(crate) fn required_app_scan_roots() -> &'static [&'static str] {
+    platform_impl::REQUIRED_APP_SCAN_ROOTS
+}
+
 pub(crate) fn file_scan_root_suffixes() -> &'static [&'static str] {
     platform_impl::FILE_SCAN_ROOT_SUFFIXES
 }

@@ -484,7 +484,7 @@ fn parse_csv(value: &str) -> Vec<String> {
     while let Some(ch) = chars.next() {
         if ch == '\\' {
             match chars.peek().copied() {
-                Some(',') | Some('\\') => {
+                Some(',') => {
                     if let Some(escaped) = chars.next() {
                         current.push(escaped);
                     }
@@ -590,6 +590,12 @@ mod tests {
             parsed,
             vec!["C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs"]
         );
+    }
+
+    #[test]
+    fn parse_csv_preserves_unc_prefixes() {
+        let parsed = parse_csv("\\\\server\\share\\apps,/Users/demo/Apps");
+        assert_eq!(parsed, vec!["\\\\server\\share\\apps", "/Users/demo/Apps"]);
     }
 
     #[test]

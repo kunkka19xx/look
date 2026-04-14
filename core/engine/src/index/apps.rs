@@ -11,6 +11,7 @@ pub fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSender<Cand
     for root in merged_app_scan_roots(
         &config.app_scan_roots,
         &platform::additional_app_scan_roots(),
+        platform::required_app_scan_roots(),
     ) {
         walk_apps(
             &root,
@@ -22,15 +23,29 @@ pub fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSender<Cand
     }
 }
 
-fn merged_app_scan_roots(config_roots: &[String], additional_roots: &[String]) -> Vec<String> {
-    let mut out = Vec::with_capacity(config_roots.len() + additional_roots.len());
-    let mut seen = HashSet::with_capacity(config_roots.len() + additional_roots.len());
+fn merged_app_scan_roots(
+    config_roots: &[String],
+    additional_roots: &[String],
+    required_roots: &[&str],
+) -> Vec<String> {
+    let mut out =
+        Vec::with_capacity(config_roots.len() + additional_roots.len() + required_roots.len());
+    let mut seen =
+        HashSet::with_capacity(config_roots.len() + additional_roots.len() + required_roots.len());
     for root in config_roots.iter().chain(additional_roots.iter()) {
         let normalized = candidate_id_path_component(root);
         if seen.insert(normalized) {
             out.push(root.clone());
         }
     }
+
+    for root in required_roots {
+        let normalized = candidate_id_path_component(root);
+        if seen.insert(normalized) {
+            out.push((*root).to_string());
+        }
+    }
+
     out
 }
 
@@ -173,12 +188,15 @@ mod tests {
             "/Applications/".to_string(),
         ];
 
-        let merged = merged_app_scan_roots(&roots, &additional);
+        let required = vec!["/System/Library/CoreServices/Applications", "/Applications"];
+
+        let merged = merged_app_scan_roots(&roots, &additional, &required);
         assert_eq!(
             merged,
             vec![
                 "/Applications".to_string(),
-                "/Users/demo/Applications".to_string()
+                "/Users/demo/Applications".to_string(),
+                "/System/Library/CoreServices/Applications".to_string()
             ]
         );
     }
