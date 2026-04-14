@@ -479,18 +479,22 @@ fn parse_config_keys(contents: &str) -> HashSet<String> {
 fn parse_csv(value: &str) -> Vec<String> {
     let mut values = Vec::new();
     let mut current = String::new();
-    let mut escaping = false;
+    let mut chars = value.chars().peekable();
 
-    for ch in value.chars() {
-        if escaping {
-            current.push(ch);
-            escaping = false;
-            continue;
-        }
-
+    while let Some(ch) = chars.next() {
         if ch == '\\' {
-            escaping = true;
-            continue;
+            match chars.peek().copied() {
+                Some(',') | Some('\\') => {
+                    if let Some(escaped) = chars.next() {
+                        current.push(escaped);
+                    }
+                    continue;
+                }
+                _ => {
+                    current.push(ch);
+                    continue;
+                }
+            }
         }
 
         if ch == ',' {
@@ -503,10 +507,6 @@ fn parse_csv(value: &str) -> Vec<String> {
         }
 
         current.push(ch);
-    }
-
-    if escaping {
-        current.push('\\');
     }
 
     let trimmed = current.trim();
@@ -562,12 +562,7 @@ fn apply_alias_override(alias_key: &str, value: &str, aliases: &mut HashMap<Stri
 fn expand_path(value: &str, home: Option<&str>) -> String {
     if value.starts_with("~/") {
         return home
-            .map(|prefix| {
-                PathBuf::from(prefix)
-                    .join(value.trim_start_matches("~/"))
-                    .to_string_lossy()
-                    .into_owned()
-            })
+            .map(|prefix| join_path(prefix, value.trim_start_matches("~/")))
             .unwrap_or_else(|| value.to_string());
     }
 
@@ -575,13 +570,26 @@ fn expand_path(value: &str, home: Option<&str>) -> String {
         return value.to_string();
     }
 
-    home.map(|prefix| {
-        PathBuf::from(prefix)
-            .join(value)
-            .to_string_lossy()
-            .into_owned()
-    })
-    .unwrap_or_else(|| value.to_string())
+    home.map(|prefix| join_path(prefix, value))
+        .unwrap_or_else(|| value.to_string())
+}
+
+fn join_path(base: &str, child: &str) -> String {
+    let separator = if base.contains('\\') && !base.contains('/') {
+        '\\'
+    } else {
+        '/'
+    };
+
+    let trimmed_base = base.trim_end_matches(['/', '\\']);
+    let trimmed_child = child.trim_start_matches(['/', '\\']);
+    if trimmed_base.is_empty() {
+        return trimmed_child.to_string();
+    }
+    if trimmed_child.is_empty() {
+        return trimmed_base.to_string();
+    }
+    format!("{trimmed_base}{separator}{trimmed_child}")
 }
 
 fn normalize_app_name(value: &str) -> String {
@@ -602,6 +610,15 @@ mod tests {
     fn parse_csv_supports_escaped_commas() {
         let parsed = parse_csv("/Users/demo/Foo\\,Bar,/Users/demo/Baz");
         assert_eq!(parsed, vec!["/Users/demo/Foo,Bar", "/Users/demo/Baz"]);
+    }
+
+    #[test]
+    fn parse_csv_preserves_windows_path_separators() {
+        let parsed = parse_csv("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs");
+        assert_eq!(
+            parsed,
+            vec!["C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs"]
+        );
     }
 
     #[test]
@@ -655,6 +672,13 @@ mod tests {
             expand_path("\\\\server\\share\\folder", home),
             "\\\\server\\share\\folder"
         );
+    }
+
+    #[test]
+    fn expand_path_uses_windows_separator_when_home_is_windows_style() {
+        let home = Some("C:\\Users\\demo");
+        assert_eq!(expand_path("~/Projects", home), "C:\\Users\\demo\\Projects");
+        assert_eq!(expand_path("Documents", home), "C:\\Users\\demo\\Documents");
     }
 
     #[test]

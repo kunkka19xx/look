@@ -1,20 +1,37 @@
 use crate::config::RuntimeConfig;
 use crate::index::APP_CANDIDATE_ID_PREFIX;
+use crate::platform;
 use crate::platform::paths::{candidate_id_path_component, path_is_same_or_child};
 use look_indexing::{Candidate, CandidateKind};
+use std::collections::HashSet;
 use std::fs;
 use std::sync::mpsc;
 
 pub fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSender<Candidate>) {
-    for root in &config.app_scan_roots {
+    for root in merged_app_scan_roots(
+        &config.app_scan_roots,
+        &platform::additional_app_scan_roots(),
+    ) {
         walk_apps(
-            root,
+            &root,
             config.app_scan_depth,
             &tx,
             &config.app_exclude_paths,
             &config.app_exclude_names,
         );
     }
+}
+
+fn merged_app_scan_roots(config_roots: &[String], additional_roots: &[String]) -> Vec<String> {
+    let mut out = Vec::with_capacity(config_roots.len() + additional_roots.len());
+    let mut seen = HashSet::with_capacity(config_roots.len() + additional_roots.len());
+    for root in config_roots.iter().chain(additional_roots.iter()) {
+        let normalized = candidate_id_path_component(root);
+        if seen.insert(normalized) {
+            out.push(root.clone());
+        }
+    }
+    out
 }
 
 fn walk_apps(
@@ -104,7 +121,7 @@ fn should_exclude_app_name(name: &str, app_exclude_names: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{should_exclude_app_name, should_exclude_path};
+    use super::{merged_app_scan_roots, should_exclude_app_name, should_exclude_path};
 
     #[test]
     fn excludes_app_paths_by_prefix() {
@@ -146,5 +163,23 @@ mod tests {
             "C:/Users/demo/Applications/Utility.app",
             &excludes
         ));
+    }
+
+    #[test]
+    fn merged_roots_preserve_order_and_deduplicate() {
+        let roots = vec!["/Applications".to_string()];
+        let additional = vec![
+            "/Users/demo/Applications".to_string(),
+            "/Applications/".to_string(),
+        ];
+
+        let merged = merged_app_scan_roots(&roots, &additional);
+        assert_eq!(
+            merged,
+            vec![
+                "/Applications".to_string(),
+                "/Users/demo/Applications".to_string()
+            ]
+        );
     }
 }

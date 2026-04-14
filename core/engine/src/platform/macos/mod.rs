@@ -1,5 +1,7 @@
 mod settings_catalog;
 
+use std::env;
+
 pub(crate) const APP_SCAN_ROOTS: &[&str] = &[
     "/Applications",
     "/System/Applications",
@@ -14,3 +16,11 @@ pub(crate) const SETTINGS_URL_SCHEME_PREFIX: &str = "x-apple.systempreferences:"
 pub(crate) const SETTINGS_SUBTITLE_PREFIX: &str = "System Settings ";
 
 pub(crate) use settings_catalog::SETTINGS_CATALOG;
+
+pub(crate) fn additional_app_scan_roots() -> Vec<String> {
+    env::var("HOME")
+        .ok()
+        .filter(|home| !home.trim().is_empty())
+        .map(|home| vec![format!("{home}/Applications")])
+        .unwrap_or_default()
+}

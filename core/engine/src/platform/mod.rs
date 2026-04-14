@@ -1,5 +1,6 @@
 pub(crate) mod paths;
 
+#[cfg(not(target_os = "windows"))]
 mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
@@ -18,6 +19,10 @@ pub(crate) struct SettingsCatalogEntry {
 
 pub(crate) fn app_scan_roots() -> &'static [&'static str] {
     platform_impl::APP_SCAN_ROOTS
+}
+
+pub(crate) fn additional_app_scan_roots() -> Vec<String> {
+    platform_impl::additional_app_scan_roots()
 }
 
 pub(crate) fn file_scan_root_suffixes() -> &'static [&'static str] {
