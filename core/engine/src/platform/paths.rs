@@ -6,34 +6,111 @@ enum PathStyle {
     Windows,
 }
 
+const WINDOWS_RESERVED_DEVICE_NAMES: &[&str] = &[
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct PathPolicy {
+pub(crate) struct PathPolicy {
     style: PathStyle,
     case_insensitive: bool,
 }
 
-fn runtime_policy() -> PathPolicy {
-    if cfg!(target_os = "windows") {
-        return PathPolicy {
-            style: PathStyle::Windows,
-            case_insensitive: true,
-        };
+impl PathPolicy {
+    pub(crate) fn current() -> Self {
+        if cfg!(target_os = "windows") {
+            return Self {
+                style: PathStyle::Windows,
+                case_insensitive: true,
+            };
+        }
+
+        Self {
+            style: PathStyle::Posix,
+            case_insensitive: false,
+        }
     }
 
-    PathPolicy {
-        style: PathStyle::Posix,
-        case_insensitive: false,
-    }
-}
+    pub(crate) fn for_base(base: &str) -> Self {
+        if base.starts_with('/') || base.contains('/') {
+            return Self {
+                style: PathStyle::Posix,
+                case_insensitive: false,
+            };
+        }
 
-fn policy_for_base(base: &str) -> PathPolicy {
-    if looks_like_windows_absolute_path(base) || (base.contains('\\') && !base.contains('/')) {
-        return PathPolicy {
-            style: PathStyle::Windows,
-            case_insensitive: true,
-        };
+        if looks_like_windows_absolute_path(base) || (base.contains('\\') && !base.contains('/')) {
+            return Self {
+                style: PathStyle::Windows,
+                case_insensitive: true,
+            };
+        }
+
+        Self::current()
     }
-    runtime_policy()
+
+    pub(crate) fn normalize_for_matching(&self, path: &str) -> String {
+        let mut normalized = path.trim().replace('\\', "/");
+        while normalized.len() > 1 && normalized.ends_with('/') {
+            normalized.pop();
+        }
+
+        if self.case_insensitive {
+            return normalized.to_lowercase();
+        }
+
+        normalized
+    }
+
+    pub(crate) fn is_same_or_child(&self, path: &str, parent: &str) -> bool {
+        let normalized_path = self.normalize_for_matching(path);
+        let normalized_parent = self.normalize_for_matching(parent);
+        if normalized_parent.is_empty() {
+            return false;
+        }
+
+        normalized_path == normalized_parent
+            || normalized_path.starts_with(&(normalized_parent + "/"))
+    }
+
+    pub(crate) fn join(&self, base: &str, child: &str) -> String {
+        let separator = separator_for_style(self.style);
+        let trimmed_base = base.trim_end_matches(['/', '\\']);
+        let normalized_base = if trimmed_base.is_empty() {
+            if base.starts_with('/') {
+                "/"
+            } else if base.starts_with('\\') {
+                "\\"
+            } else {
+                ""
+            }
+        } else {
+            trimmed_base
+        };
+        let trimmed_child = child.trim_start_matches(['/', '\\']);
+
+        if normalized_base.is_empty() {
+            return trimmed_child.to_string();
+        }
+        if trimmed_child.is_empty() {
+            return normalized_base.to_string();
+        }
+
+        if normalized_base == "/" || normalized_base == "\\" {
+            return format!("{normalized_base}{trimmed_child}");
+        }
+
+        format!("{normalized_base}{separator}{trimmed_child}")
+    }
+
+    pub(crate) fn is_valid_component(&self, name: &str) -> bool {
+        is_valid_filename_component_for_style(name, self.style)
+    }
+
+    pub(crate) fn id_component(&self, path: &str) -> String {
+        self.normalize_for_matching(path).to_lowercase()
+    }
 }
 
 fn separator_for_style(style: PathStyle) -> char {
@@ -43,52 +120,69 @@ fn separator_for_style(style: PathStyle) -> char {
     }
 }
 
-fn normalize_for_policy(path: &str, policy: PathPolicy) -> String {
-    let mut normalized = path.trim().replace('\\', "/");
-    while normalized.len() > 1 && normalized.ends_with('/') {
-        normalized.pop();
-    }
-
-    if policy.case_insensitive {
-        return normalized.to_ascii_lowercase();
-    }
-
-    normalized
-}
-
-pub(crate) fn normalize_for_path_matching(path: &str) -> String {
-    normalize_for_policy(path, runtime_policy())
-}
-
-pub(crate) fn path_is_same_or_child(path: &str, parent: &str) -> bool {
-    let policy = runtime_policy();
-    let normalized_path = normalize_for_policy(path, policy);
-    let normalized_parent = normalize_for_policy(parent, policy);
-    if normalized_parent.is_empty() {
+fn is_valid_filename_component_for_style(name: &str, style: PathStyle) -> bool {
+    if is_empty_or_relative_component(name) {
         return false;
     }
 
-    normalized_path == normalized_parent || normalized_path.starts_with(&(normalized_parent + "/"))
+    if name.contains('/') {
+        return false;
+    }
+
+    match style {
+        PathStyle::Posix => true,
+        PathStyle::Windows => {
+            if name.contains('\\') {
+                return false;
+            }
+
+            if name.ends_with(' ') || name.ends_with('.') {
+                return false;
+            }
+
+            if name
+                .chars()
+                .any(|ch| matches!(ch, '<' | '>' | ':' | '"' | '|' | '?' | '*'))
+            {
+                return false;
+            }
+
+            !is_windows_reserved_name(name)
+        }
+    }
+}
+
+fn is_empty_or_relative_component(name: &str) -> bool {
+    name.is_empty() || name == "." || name == ".."
+}
+
+fn is_windows_reserved_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
+    WINDOWS_RESERVED_DEVICE_NAMES
+        .iter()
+        .any(|reserved| reserved == &stem)
+}
+
+pub(crate) fn path_is_same_or_child(path: &str, parent: &str) -> bool {
+    PathPolicy::current().is_same_or_child(path, parent)
 }
 
 pub(crate) fn candidate_id_path_component(path: &str) -> String {
-    normalize_for_path_matching(path).to_ascii_lowercase()
+    PathPolicy::current().id_component(path)
 }
 
 pub(crate) fn join_path(base: &str, child: &str) -> String {
-    let policy = policy_for_base(base);
-    let separator = separator_for_style(policy.style);
-    let trimmed_base = base.trim_end_matches(['/', '\\']);
-    let trimmed_child = child.trim_start_matches(['/', '\\']);
+    PathPolicy::for_base(base).join(base, child)
+}
 
-    if trimmed_base.is_empty() {
-        return trimmed_child.to_string();
-    }
-    if trimmed_child.is_empty() {
-        return trimmed_base.to_string();
-    }
+#[allow(dead_code)]
+pub(crate) fn is_valid_filename_component(name: &str) -> bool {
+    PathPolicy::current().is_valid_component(name)
+}
 
-    format!("{trimmed_base}{separator}{trimmed_child}")
+#[allow(dead_code)]
+pub(crate) fn is_valid_directory_component(name: &str) -> bool {
+    is_valid_filename_component(name)
 }
 
 pub(crate) fn looks_like_absolute_path(path: &str) -> bool {
@@ -125,6 +219,7 @@ fn looks_like_windows_absolute_path(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::{PathStyle, is_valid_filename_component_for_style};
     use super::{expand_with_home, join_path, looks_like_absolute_path, path_is_same_or_child};
 
     #[test]
@@ -153,6 +248,7 @@ mod tests {
             join_path("C:\\Users\\demo", "Projects"),
             "C:\\Users\\demo\\Projects"
         );
+        assert_eq!(join_path("/", "Projects"), "/Projects");
     }
 
     #[test]
@@ -166,5 +262,49 @@ mod tests {
             "/Users/demo/Documents"
         );
         assert_eq!(expand_with_home("/tmp", Some("/Users/demo")), "/tmp");
+        assert_eq!(expand_with_home("~/Desktop", Some("/")), "/Desktop");
+    }
+
+    #[test]
+    fn filename_validation_is_platform_aware() {
+        assert!(is_valid_filename_component_for_style(
+            "report.md",
+            PathStyle::Posix
+        ));
+        assert!(is_valid_filename_component_for_style(
+            "name\\with-backslash",
+            PathStyle::Posix
+        ));
+        assert!(!is_valid_filename_component_for_style(
+            "name/with-slash",
+            PathStyle::Posix
+        ));
+
+        assert!(is_valid_filename_component_for_style(
+            "report.md",
+            PathStyle::Windows
+        ));
+        assert!(!is_valid_filename_component_for_style(
+            "name\\with-backslash",
+            PathStyle::Windows
+        ));
+        assert!(!is_valid_filename_component_for_style(
+            "name/with-slash",
+            PathStyle::Windows
+        ));
+        assert!(!is_valid_filename_component_for_style(
+            "CON",
+            PathStyle::Windows
+        ));
+        assert!(!is_valid_filename_component_for_style(
+            "file ",
+            PathStyle::Windows
+        ));
+    }
+
+    #[test]
+    fn directory_component_validation_matches_filename_rules() {
+        assert!(super::is_valid_directory_component("Desktop"));
+        assert!(!super::is_valid_directory_component("nested/name"));
     }
 }
