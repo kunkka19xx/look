@@ -101,7 +101,7 @@ Reference: `docs/windows-port-plan.md`
 
 - [x] draft Windows shell source structure in `docs/windows-port-plan.md`
 - [x] draft Rust platform refactor/change plan in `docs/windows-port-plan.md`
-- [ ] define Windows v1 parity checklist from current macOS behavior (`README.md`, `docs/user-guide.md`)
+- [x] define Windows v1 parity checklist from current macOS behavior (`README.md`, `docs/user-guide.md`) -> `docs/windows-v1-parity-checklist.md`
 - [ ] split engine indexing into platform adapters (macOS/Windows) without changing ranking/search core
 - [ ] implement Windows app discovery sources (Start Menu + install roots fallback)
 - [ ] implement curated Windows Settings catalog (`ms-settings:` targets)
@@ -116,6 +116,15 @@ Reference: `docs/windows-port-plan.md`
 - [ ] implement Windows launch-at-login integration
 - [ ] add Windows packaging/signing/release pipeline (`.msix`/`.msi`) and documentation
 - [ ] run closed beta and fix top reliability/performance parity regressions before GA
+
+Windows immediate execution queue (current):
+
+- [ ] PR-1: add Rust platform module scaffold (`core/engine/src/platform/{macos,windows}`) and dispatch from index modules
+- [ ] PR-1: refactor config defaults/path handling for platform-aware roots and separator/case-safe path matching
+- [ ] PR-1: keep macOS behavior stable with regression tests for IDs and excludes
+- [ ] PR-1: add CI Windows Rust build/test lane (`core` + `bridge/ffi`)
+- [ ] PR-2: implement Windows app discovery adapters (Start Menu + fallback roots) with dedupe
+- [ ] PR-2: implement curated Windows settings catalog (`ms-settings:`) while keeping `setting:*` ID contract
 
 ## Milestone G: Reliability (errors, tests, logs)
 

@@ -1,10 +1,10 @@
 use crate::config::*;
+use look_indexing::CandidateIdKind;
 use look_indexing::{Candidate, CandidateKind};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 const SETTINGS_SUBTITLE_PREFIX: &str = "System Settings";
-const SETTINGS_PATH_PREFIX: &str = "x-apple.systempreferences:";
 const BROWSE_USAGE_LOG_SCALE: f64 = 60.0;
 
 const RECENT_LAST_HOUR_BOOST: i64 = 140;
@@ -93,12 +93,7 @@ pub(crate) fn query_kind_penalty(query: &str, candidate: &Candidate) -> i64 {
     if looks_like_settings_query {
         match candidate.kind {
             CandidateKind::App => {
-                if candidate
-                    .subtitle
-                    .as_deref()
-                    .unwrap_or("")
-                    .contains(SETTINGS_SUBTITLE_PREFIX)
-                {
+                if is_system_settings_candidate(candidate) {
                     BIAS_SETTINGS_MATCH
                 } else {
                     BIAS_APP_ON_SETTINGS_QUERY
@@ -126,7 +121,7 @@ pub(crate) fn looks_like_settings_query(query: &str) -> bool {
 }
 
 pub(crate) fn is_system_settings_candidate(candidate: &Candidate) -> bool {
-    candidate.path.starts_with(SETTINGS_PATH_PREFIX)
+    candidate.id.starts_with(CandidateIdKind::PREFIX_SETTING)
         || candidate
             .subtitle
             .as_deref()

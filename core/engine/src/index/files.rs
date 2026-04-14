@@ -1,5 +1,6 @@
 use crate::config::RuntimeConfig;
 use crate::index::{FILE_CANDIDATE_ID_PREFIX, FOLDER_CANDIDATE_ID_PREFIX};
+use crate::platform::paths::{candidate_id_path_component, path_is_same_or_child};
 use ignore::WalkBuilder;
 use look_indexing::{Candidate, CandidateKind};
 use std::sync::mpsc;
@@ -88,7 +89,10 @@ fn walk_files(
             continue;
         };
         if path_buf.is_dir() {
-            let key = format!("{FOLDER_CANDIDATE_ID_PREFIX}{}", path_str.to_lowercase());
+            let key = format!(
+                "{FOLDER_CANDIDATE_ID_PREFIX}{}",
+                candidate_id_path_component(path_str)
+            );
             let mut candidate = Candidate::new(&key, CandidateKind::Folder, name, path_str);
             candidate.subtitle = Some(CandidateKind::Folder.as_str().into());
             let _ = tx.send(candidate);
@@ -97,7 +101,10 @@ fn walk_files(
 
         if path_buf.is_file() {
             *file_count += 1;
-            let key = format!("{FILE_CANDIDATE_ID_PREFIX}{}", path_str.to_lowercase());
+            let key = format!(
+                "{FILE_CANDIDATE_ID_PREFIX}{}",
+                candidate_id_path_component(path_str)
+            );
             let mut candidate = Candidate::new(&key, CandidateKind::File, name, path_str);
             candidate.subtitle = Some(CandidateKind::File.as_str().into());
             let _ = tx.send(candidate);
@@ -111,14 +118,12 @@ fn should_skip_dir(name: &str, skip_dir_names: &[String]) -> bool {
 }
 
 fn should_exclude_path(path: &str, file_exclude_paths: &[String]) -> bool {
-    let normalized_path = path.trim_end_matches('/');
     file_exclude_paths.iter().any(|entry| {
-        let normalized_exclude = entry.trim().trim_end_matches('/');
+        let normalized_exclude = entry.trim();
         if normalized_exclude.is_empty() {
             return false;
         }
-        normalized_path == normalized_exclude
-            || normalized_path.starts_with(&format!("{normalized_exclude}/"))
+        path_is_same_or_child(path, normalized_exclude)
     })
 }
 
@@ -163,5 +168,14 @@ mod tests {
     fn path_prefix_is_boundary_aware() {
         let excludes = vec!["/Users/demo/Down".to_string()];
         assert!(!should_exclude_path("/Users/demo/Downloads", &excludes));
+    }
+
+    #[test]
+    fn exclude_path_matching_supports_windows_style_separators() {
+        let excludes = vec!["C:\\Users\\demo\\Downloads".to_string()];
+        assert!(should_exclude_path(
+            "C:/Users/demo/Downloads/cache/a.txt",
+            &excludes
+        ));
     }
 }

@@ -13,6 +13,8 @@ Ship a Windows launcher with the same product behavior as macOS:
 - translation and dictionary flows where supported
 - local-first performance profile
 
+Windows v1 parity checklist reference: `docs/windows-v1-parity-checklist.md`
+
 ## Current architecture baseline
 
 Today the codebase is split as:
@@ -125,6 +127,11 @@ Exit criteria:
 
 - written parity checklist committed in docs
 - agreed v1 scope for Windows shell
+
+Current status:
+
+- parity checklist drafted in `docs/windows-v1-parity-checklist.md`
+- next action: convert checklist entries into automated tests as platform modules land
 
 ## Phase 1 - Platform abstraction in Rust engine
 

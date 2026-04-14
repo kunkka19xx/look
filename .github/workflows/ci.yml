@@ -118,6 +118,36 @@ jobs:
       - name: Run tests (ffi crate)
         run: cargo test --manifest-path bridge/ffi/Cargo.toml
 
+  rust-platform-check:
+    name: rust-platform-check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build (core workspace)
+        run: cargo build --workspace --manifest-path core/Cargo.toml
+
+      - name: Test (core workspace)
+        run: cargo test --workspace --manifest-path core/Cargo.toml
+
+      - name: Build (ffi crate)
+        run: cargo build --manifest-path bridge/ffi/Cargo.toml
+
+      - name: Test (ffi crate)
+        run: cargo test --manifest-path bridge/ffi/Cargo.toml
+
   build:
     name: build
     runs-on: ubuntu-latest
