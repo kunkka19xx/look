@@ -171,6 +171,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "windows")]
     fn exclude_path_matching_supports_windows_style_separators() {
         let excludes = vec!["C:\\Users\\demo\\Downloads".to_string()];
         assert!(should_exclude_path(

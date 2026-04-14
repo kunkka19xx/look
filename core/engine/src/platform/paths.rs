@@ -14,7 +14,6 @@ const WINDOWS_RESERVED_DEVICE_NAMES: &[&str] = &[
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PathPolicy {
     style: PathStyle,
-    case_insensitive: bool,
 }
 
 impl PathPolicy {
@@ -22,13 +21,11 @@ impl PathPolicy {
         if cfg!(target_os = "windows") {
             return Self {
                 style: PathStyle::Windows,
-                case_insensitive: true,
             };
         }
 
         Self {
             style: PathStyle::Posix,
-            case_insensitive: false,
         }
     }
 
@@ -36,14 +33,12 @@ impl PathPolicy {
         if base.starts_with('/') || base.contains('/') {
             return Self {
                 style: PathStyle::Posix,
-                case_insensitive: false,
             };
         }
 
         if looks_like_windows_absolute_path(base) || (base.contains('\\') && !base.contains('/')) {
             return Self {
                 style: PathStyle::Windows,
-                case_insensitive: true,
             };
         }
 
@@ -51,12 +46,15 @@ impl PathPolicy {
     }
 
     pub(crate) fn normalize_for_matching(&self, path: &str) -> String {
-        let mut normalized = path.trim().replace('\\', "/");
+        let mut normalized = match self.style {
+            PathStyle::Windows => path.replace('\\', "/"),
+            PathStyle::Posix => path.to_string(),
+        };
         while normalized.len() > 1 && normalized.ends_with('/') {
             normalized.pop();
         }
 
-        if self.case_insensitive {
+        if matches!(self.style, PathStyle::Windows) {
             return normalized.to_lowercase();
         }
 
@@ -219,8 +217,10 @@ fn looks_like_windows_absolute_path(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{PathStyle, is_valid_filename_component_for_style};
-    use super::{expand_with_home, join_path, looks_like_absolute_path, path_is_same_or_child};
+    #[cfg(target_os = "windows")]
+    use super::path_is_same_or_child;
+    use super::{PathPolicy, PathStyle, is_valid_filename_component_for_style};
+    use super::{expand_with_home, join_path, looks_like_absolute_path};
 
     #[test]
     fn absolute_path_check_supports_windows_drive_and_unc() {
@@ -230,6 +230,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "windows")]
     fn path_boundary_matching_is_separator_aware() {
         assert!(path_is_same_or_child(
             "C:/Users/demo/Downloads",
@@ -239,6 +240,15 @@ mod tests {
             "C:/Users/demo/Down",
             "C:/Users/demo/Downloads"
         ));
+    }
+
+    #[test]
+    fn posix_normalization_keeps_backslash_and_spaces() {
+        let policy = PathPolicy {
+            style: PathStyle::Posix,
+        };
+
+        assert_eq!(policy.normalize_for_matching("/tmp/a\\b "), "/tmp/a\\b ");
     }
 
     #[test]
