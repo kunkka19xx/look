@@ -21,7 +21,7 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
     },
     SettingsCatalogEntry {
         title: "Network & Internet",
-        target: "network",
+        target: "network-status",
         candidate_id_suffix: "windows.network",
         aliases: "settings network internet wifi ethernet vpn proxy",
     },
