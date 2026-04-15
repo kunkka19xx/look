@@ -162,10 +162,7 @@ fn emit_windows_app_candidate(
     // This perfectly satisfies the code reviewer's request!
     let normalized_identity = normalize_app_name(&title);
 
-    let key = format!(
-        "{APP_CANDIDATE_ID_PREFIX}{}",
-        candidate_id_path_component(path)
-    );
+    let key = format!("{APP_CANDIDATE_ID_PREFIX}{}", normalized_identity);
     if !seen_ids.insert(key.clone()) {
         return;
     }
