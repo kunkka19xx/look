@@ -87,7 +87,7 @@ fn walk_windows_app_entries(
             continue;
         }
 
-        emit_windows_app_candidate(path_str, tx, app_exclude_names, seen_ids);
+        emit_windows_app_candidate(path_str, tx, app_exclude_names, seen_ids, true);
     }
 }
 
@@ -138,7 +138,7 @@ fn walk_windows_fallback_roots(
 
         // IF IT IS A FILE: Check if it's an executable we want
         if file_type.is_file() && is_windows_fallback_executable(path_str) {
-            emit_windows_app_candidate(path_str, tx, app_exclude_names, seen_ids);
+            emit_windows_app_candidate(path_str, tx, app_exclude_names, seen_ids, false);
         }
     }
 }
@@ -148,6 +148,7 @@ fn emit_windows_app_candidate(
     tx: &mpsc::SyncSender<Candidate>,
     app_exclude_names: &[String],
     seen_ids: &mut HashSet<String>,
+    is_primary_source: bool,
 ) {
     let title = std::path::Path::new(path)
         .file_stem()
@@ -162,31 +163,28 @@ fn emit_windows_app_candidate(
     let normalized_identity = normalize_app_name(&title);
     let path_id = candidate_id_path_component(path);
 
-    let lower_path = path.to_ascii_lowercase();
-    let is_shortcut = lower_path.ends_with(".lnk") || lower_path.ends_with(".url");
-
-    if is_shortcut {
-        // Start Menu Shortcuts: Claim a "Title Lock" to block the fallback .exe later
+    if is_primary_source {
+        // Primary Source (Start Menu): Claim a "Title Lock" to block the fallback later.
+        // This now works for both .lnk AND .exe files found in the Start Menu!
         let title_lock = format!("title:{}", normalized_identity);
         if !seen_ids.insert(title_lock) {
-            return; // We already emitted a Start Menu shortcut for this app
+            return;
         }
     } else {
-        // Fallback Executables: Check if the Start Menu already provided a shortcut
+        // Fallback Source: Check if the Start Menu already provided an entry
         let title_lock = format!("title:{}", normalized_identity);
         if seen_ids.contains(&title_lock) {
-            return; // Cross-source deduplication achieved
+            return;
         }
 
-        // If no shortcut exists, claim a "Path Lock".
-        // This allows multiple fallback executables to share the same name safely
+        // Claim a "Path Lock" allowing identical vendor app names to coexist safely
         let path_lock = format!("path:{}", path_id);
         if !seen_ids.insert(path_lock) {
             return;
         }
     }
 
-    // Appending the path_id directly satisfies Reviewer 2's request for a "path-derived disambiguator"
+    // Globally unique candidate id
     let key = format!("{APP_CANDIDATE_ID_PREFIX}{normalized_identity}_{path_id}");
 
     let _ = tx.send(Candidate::new(&key, CandidateKind::App, &title, path));
@@ -315,6 +313,7 @@ mod tests {
             &tx,
             &excludes,
             &mut seen,
+            true,
         );
 
         // Source 2: Install root fallback
@@ -323,6 +322,7 @@ mod tests {
             &tx,
             &excludes,
             &mut seen,
+            false,
         );
 
         drop(tx);
