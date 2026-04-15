@@ -154,25 +154,59 @@ fn emit_windows_app_candidate(
         .and_then(|s| s.to_str())
         .unwrap_or("App")
         .to_string();
+
     if should_exclude_app_name(&title, app_exclude_names) {
         return;
     }
 
-    // Create a "source-agnostic" key (e.g. "myapp")
-    // This perfectly satisfies the code reviewer's request!
     let normalized_identity = normalize_app_name(&title);
+    let path_id = candidate_id_path_component(path);
 
-    let key = format!("{APP_CANDIDATE_ID_PREFIX}{}", normalized_identity);
-    if !seen_ids.insert(key.clone()) {
-        return;
+    let lower_path = path.to_ascii_lowercase();
+    let is_shortcut = lower_path.ends_with(".lnk") || lower_path.ends_with(".url");
+
+    if is_shortcut {
+        // Start Menu Shortcuts: Claim a "Title Lock" to block the fallback .exe later
+        let title_lock = format!("title:{}", normalized_identity);
+        if !seen_ids.insert(title_lock) {
+            return; // We already emitted a Start Menu shortcut for this app
+        }
+    } else {
+        // Fallback Executables: Check if the Start Menu already provided a shortcut
+        let title_lock = format!("title:{}", normalized_identity);
+        if seen_ids.contains(&title_lock) {
+            return; // Cross-source deduplication achieved
+        }
+
+        // If no shortcut exists, claim a "Path Lock".
+        // This allows multiple fallback executables to share the same name safely
+        let path_lock = format!("path:{}", path_id);
+        if !seen_ids.insert(path_lock) {
+            return;
+        }
     }
+
+    // Appending the path_id directly satisfies Reviewer 2's request for a "path-derived disambiguator"
+    let key = format!("{APP_CANDIDATE_ID_PREFIX}{normalized_identity}_{path_id}");
 
     let _ = tx.send(Candidate::new(&key, CandidateKind::App, &title, path));
 }
 
+fn is_windows_noise_executable(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.contains("uninstall")
+        || lower.contains("setup")
+        || lower.contains("updater")
+        || lower.contains("crashpad")
+}
+
 fn is_windows_start_menu_entry(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
-    lower.ends_with(".lnk") || lower.ends_with(".url") || lower.ends_with(".exe")
+    if !(lower.ends_with(".lnk") || lower.ends_with(".url") || lower.ends_with(".exe")) {
+        return false;
+    }
+    // Apply the noise filter here!
+    !is_windows_noise_executable(path)
 }
 
 fn is_windows_fallback_executable(path: &str) -> bool {
@@ -181,10 +215,7 @@ fn is_windows_fallback_executable(path: &str) -> bool {
         return false;
     }
 
-    !lower.contains("uninstall")
-        && !lower.contains("setup")
-        && !lower.contains("updater")
-        && !lower.contains("crashpad")
+    !is_windows_noise_executable(path)
 }
 
 fn should_exclude_path(path: &str, app_exclude_paths: &[String]) -> bool {
