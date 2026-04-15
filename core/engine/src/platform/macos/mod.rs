@@ -1,3 +1,4 @@
+mod apps;
 mod settings_catalog;
 
 use std::env;
@@ -20,6 +21,7 @@ pub(crate) const FILE_SCAN_ROOT_SUFFIXES: &[&str] = &["Desktop", "Documents", "D
 pub(crate) const SETTINGS_URL_SCHEME_PREFIX: &str = "x-apple.systempreferences:";
 pub(crate) const SETTINGS_SUBTITLE_PREFIX: &str = "System Settings ";
 
+pub(crate) use apps::discover_installed_apps;
 pub(crate) use settings_catalog::SETTINGS_CATALOG;
 
 pub(crate) fn additional_app_scan_roots() -> Vec<String> {

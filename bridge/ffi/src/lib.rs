@@ -80,6 +80,8 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::sync::{Mutex, OnceLock};
+    use std::thread;
+    use std::time::Duration;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     static TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
@@ -109,6 +111,7 @@ mod tests {
         unsafe {
             env::set_var("LOOK_DB_PATH", db_path.as_os_str());
         }
+        assert!(look_reload_config());
 
         let query = CString::new("smoke").expect("query cstring");
         let ptr = look_search_json(query.as_ptr(), 10);
@@ -219,11 +222,93 @@ mod tests {
         let _ = fs::remove_file(&db_path);
     }
 
+    #[test]
+    fn ffi_reload_refresh_and_translate_error_smoke() {
+        let lock = TEST_MUTEX.get_or_init(|| Mutex::new(()));
+        let _guard = lock.lock().expect("test lock poisoned");
+
+        let db_path = unique_test_db_path();
+        let config_path = unique_test_config_path();
+        let _ = fs::remove_file(&db_path);
+        let _ = fs::remove_file(&config_path);
+
+        fs::write(
+            &config_path,
+            "lazy_indexing_enabled=true\nfile_scan_roots=\napp_scan_roots=\n",
+        )
+        .expect("write test config");
+
+        unsafe {
+            env::set_var("LOOK_DB_PATH", db_path.as_os_str());
+            env::set_var("LOOK_CONFIG_PATH", config_path.as_os_str());
+        }
+
+        assert!(look_reload_config());
+
+        crate::state::mark_index_dirty();
+        let mut refresh_triggered = false;
+        for _ in 0..20 {
+            if look_request_index_refresh() {
+                refresh_triggered = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            refresh_triggered,
+            "expected refresh request to acquire slot at least once"
+        );
+
+        let text = CString::new("hello").expect("text cstring");
+        let bad_lang = CString::new("invalid_lang!").expect("bad lang cstring");
+        let bad_lang_ptr = look_translate_json(text.as_ptr(), bad_lang.as_ptr());
+        let bad_lang_payload = json_from_ptr(bad_lang_ptr);
+        assert_eq!(
+            bad_lang_payload
+                .get("error")
+                .and_then(|e| e.get("code"))
+                .and_then(|v| v.as_str()),
+            Some("invalid_target_lang")
+        );
+
+        let empty = CString::new("").expect("empty cstring");
+        let lang = CString::new("en").expect("lang cstring");
+        let empty_ptr = look_translate_json(empty.as_ptr(), lang.as_ptr());
+        let empty_payload = json_from_ptr(empty_ptr);
+        assert_eq!(
+            empty_payload
+                .get("error")
+                .and_then(|e| e.get("code"))
+                .and_then(|v| v.as_str()),
+            Some("empty_text")
+        );
+
+        let _ = fs::remove_file(&db_path);
+        let _ = fs::remove_file(&config_path);
+    }
+
+    fn json_from_ptr(ptr: *mut std::os::raw::c_char) -> serde_json::Value {
+        assert!(!ptr.is_null());
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        look_free_cstring(ptr);
+        serde_json::from_str(&raw).expect("valid json payload")
+    }
+
     fn unique_test_db_path() -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         env::temp_dir().join(format!("look-ffi-smoke-{nanos}.db"))
+    }
+
+    fn unique_test_config_path() -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        env::temp_dir().join(format!("look-ffi-config-smoke-{nanos}.config"))
     }
 }

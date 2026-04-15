@@ -32,12 +32,29 @@ pub(crate) fn default_db_path() -> PathBuf {
         return PathBuf::from(custom);
     }
 
+    #[cfg(target_os = "windows")]
+    if let Some(path) = windows_default_db_path() {
+        return path;
+    }
+
+    legacy_default_db_path()
+}
+
+fn legacy_default_db_path() -> PathBuf {
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(home)
         .join("Library")
         .join("Application Support")
         .join("look")
         .join("look.db")
+}
+
+#[cfg(target_os = "windows")]
+fn windows_default_db_path() -> Option<PathBuf> {
+    env::var("LOCALAPPDATA")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(|base| PathBuf::from(base).join("look").join("look.db"))
 }
 
 pub(crate) fn with_engine<T>(f: impl FnOnce(&QueryEngine) -> T) -> T {
@@ -368,7 +385,7 @@ mod tests {
     use super::should_mark_dirty_from_event;
     use super::{
         INDEX_CHANGE_VERSION, INDEX_REFRESH_IN_PROGRESS, IndexRefreshGuard, clear_index_dirty,
-        clear_index_dirty_if_unchanged, is_index_dirty, mark_index_dirty,
+        clear_index_dirty_if_unchanged, is_index_dirty, legacy_default_db_path, mark_index_dirty,
         refresh_allowed_by_dirty_mode, try_acquire_index_refresh_slot,
     };
     use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode};
@@ -478,5 +495,25 @@ mod tests {
         }
 
         INDEX_REFRESH_IN_PROGRESS.store(false, std::sync::atomic::Ordering::Release);
+    }
+
+    #[test]
+    fn legacy_path_points_to_macos_location_shape() {
+        let path = legacy_default_db_path();
+        let path_str = path.to_string_lossy();
+        assert!(path_str.contains("Library"));
+        assert!(path_str.contains("Application Support"));
+        assert!(path_str.ends_with("look.db"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_path_uses_localappdata_shape() {
+        let path = super::windows_default_db_path();
+        if let Some(path) = path {
+            let path_str = path.to_string_lossy().to_ascii_lowercase();
+            assert!(path_str.contains("look"));
+            assert!(path_str.ends_with("look.db"));
+        }
     }
 }

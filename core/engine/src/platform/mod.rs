@@ -21,12 +21,20 @@ pub(crate) fn app_scan_roots() -> &'static [&'static str] {
     platform_impl::APP_SCAN_ROOTS
 }
 
-pub(crate) fn additional_app_scan_roots() -> Vec<String> {
-    platform_impl::additional_app_scan_roots()
+#[cfg(target_os = "windows")]
+pub(crate) fn discover_windows_installed_apps(
+    config: &crate::config::RuntimeConfig,
+    tx: std::sync::mpsc::SyncSender<look_indexing::Candidate>,
+) {
+    windows::discover_installed_apps(config, tx)
 }
 
-pub(crate) fn required_app_scan_roots() -> &'static [&'static str] {
-    platform_impl::REQUIRED_APP_SCAN_ROOTS
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn discover_macos_installed_apps(
+    config: &crate::config::RuntimeConfig,
+    tx: std::sync::mpsc::SyncSender<look_indexing::Candidate>,
+) {
+    macos::discover_installed_apps(config, tx)
 }
 
 pub(crate) fn file_scan_root_suffixes() -> &'static [&'static str] {

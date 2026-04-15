@@ -1,5 +1,5 @@
 use look_engine::QueryEngine;
-use look_matching::fuzzy_score;
+use look_matching::{fuzzy_score, fuzzy_score_prepared, prepare_query};
 use look_storage::SqliteStore;
 use std::env;
 use std::hint::black_box;
@@ -17,6 +17,7 @@ struct QueryBenchStats {
 }
 
 struct FuzzyBenchStats {
+    mode: &'static str,
     scenario: &'static str,
     operations_per_iteration: usize,
     iterations: usize,
@@ -73,7 +74,7 @@ fn main() {
     }
 
     let fuzzy_stats = [
-        bench_fuzzy(
+        bench_fuzzy_raw(
             "launcher_like_short_queries",
             &["s", "sa", "saf", "vsc", "chr", "dock", "set", "blu", "priv"],
             &[
@@ -90,7 +91,39 @@ fn main() {
             ],
             400,
         ),
-        bench_fuzzy(
+        bench_fuzzy_raw(
+            "gap_and_boundary_patterns",
+            &["vsc", "gc", "sm", "net", "dwn"],
+            &[
+                "vs code",
+                "visual studio code",
+                "google chrome",
+                "screen mirror",
+                "network utility",
+                "my downloads folder",
+                "a x x x x c",
+                "ab x c",
+            ],
+            600,
+        ),
+        bench_fuzzy_prepared_queries(
+            "launcher_like_short_queries",
+            &["s", "sa", "saf", "vsc", "chr", "dock", "set", "blu", "priv"],
+            &[
+                "safari",
+                "visual studio code",
+                "google chrome",
+                "system settings",
+                "activity monitor",
+                "bluetooth file exchange",
+                "finder",
+                "notes",
+                "downloads",
+                "documents",
+            ],
+            400,
+        ),
+        bench_fuzzy_prepared_queries(
             "gap_and_boundary_patterns",
             &["vsc", "gc", "sm", "net", "dwn"],
             &[
@@ -130,11 +163,12 @@ fn main() {
     }
 
     println!(
-        "fuzzy_scenario,ops_per_iter,iterations,p50_ns,p95_ns,avg_ns,avg_per_op_ns,min_ns,max_ns"
+        "fuzzy_mode,fuzzy_scenario,ops_per_iter,iterations,p50_ns,p95_ns,avg_ns,avg_per_op_ns,min_ns,max_ns"
     );
     for stat in fuzzy_stats {
         println!(
-            "{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{}",
+            stat.mode,
             stat.scenario,
             stat.operations_per_iteration,
             stat.iterations,
@@ -185,7 +219,7 @@ fn bench_query(
     }
 }
 
-fn bench_fuzzy(
+fn bench_fuzzy_raw(
     scenario: &'static str,
     queries: &[&str],
     titles: &[&str],
@@ -226,6 +260,62 @@ fn bench_fuzzy(
     };
 
     FuzzyBenchStats {
+        mode: "raw",
+        scenario,
+        operations_per_iteration,
+        iterations,
+        p50_ns,
+        p95_ns,
+        avg_ns,
+        avg_per_op_ns,
+        min_ns,
+        max_ns,
+    }
+}
+
+fn bench_fuzzy_prepared_queries(
+    scenario: &'static str,
+    queries: &[&str],
+    titles: &[&str],
+    iterations: usize,
+) -> FuzzyBenchStats {
+    let prepared_queries: Vec<_> = queries.iter().map(|query| prepare_query(query)).collect();
+    let operations_per_iteration = prepared_queries.len() * titles.len();
+    let mut samples = Vec::with_capacity(iterations);
+
+    for _ in 0..iterations {
+        let started = Instant::now();
+        let mut hit_count = 0usize;
+        for query in &prepared_queries {
+            for title in titles {
+                if fuzzy_score_prepared(query, title).is_some() {
+                    hit_count += 1;
+                }
+            }
+        }
+        black_box(hit_count);
+        samples.push(started.elapsed().as_nanos());
+    }
+
+    samples.sort_unstable();
+    let p50_ns = percentile(&samples, 50);
+    let p95_ns = percentile(&samples, 95);
+    let min_ns = *samples.first().unwrap_or(&0);
+    let max_ns = *samples.last().unwrap_or(&0);
+    let total_ns: u128 = samples.iter().copied().sum();
+    let avg_ns = if samples.is_empty() {
+        0
+    } else {
+        total_ns / samples.len() as u128
+    };
+    let avg_per_op_ns = if operations_per_iteration == 0 {
+        0
+    } else {
+        avg_ns / operations_per_iteration as u128
+    };
+
+    FuzzyBenchStats {
+        mode: "prepared_query",
         scenario,
         operations_per_iteration,
         iterations,

@@ -102,11 +102,11 @@ Reference: `docs/windows-port-plan.md`
 - [x] draft Windows shell source structure in `docs/windows-port-plan.md`
 - [x] draft Rust platform refactor/change plan in `docs/windows-port-plan.md`
 - [x] define Windows v1 parity checklist from current macOS behavior (`README.md`, `docs/user-guide.md`) -> `docs/windows-v1-parity-checklist.md`
-- [ ] split engine indexing into platform adapters (macOS/Windows) without changing ranking/search core
-- [ ] implement Windows app discovery sources (Start Menu + install roots fallback)
-- [ ] implement curated Windows Settings catalog (`ms-settings:` targets)
+- [x] split engine indexing into platform adapters (macOS/Windows) without changing ranking/search core
+- [x] implement Windows app discovery sources (Start Menu + install roots fallback)
+- [x] implement curated Windows Settings catalog (`ms-settings:` targets)
 - [ ] add Windows path defaults/normalization for config bootstrap and exclude handling
-- [ ] verify FFI API stability for multi-shell use and add Windows smoke coverage in CI
+- [x] verify FFI API stability for multi-shell use and add Windows smoke coverage in CI
 - [ ] scaffold native Windows shell (`apps/windows/LauncherApp/`) with WinUI 3
 - [ ] wire FFI search + result rendering + keyboard navigation in Windows shell
 - [ ] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff)
@@ -119,12 +119,14 @@ Reference: `docs/windows-port-plan.md`
 
 Windows immediate execution queue (current):
 
-- [ ] PR-1: add Rust platform module scaffold (`core/engine/src/platform/{macos,windows}`) and dispatch from index modules
-- [ ] PR-1: refactor config defaults/path handling for platform-aware roots and separator/case-safe path matching
-- [ ] PR-1: keep macOS behavior stable with regression tests for IDs and excludes
-- [ ] PR-1: add CI Windows Rust build/test lane (`core` + `bridge/ffi`)
-- [ ] PR-2: implement Windows app discovery adapters (Start Menu + fallback roots) with dedupe
-- [ ] PR-2: implement curated Windows settings catalog (`ms-settings:`) while keeping `setting:*` ID contract
+- [x] PR-1: add Rust platform module scaffold (`core/engine/src/platform/{macos,windows}`) and dispatch from index modules
+- [x] PR-1: refactor config defaults/path handling for platform-aware roots and separator/case-safe path matching
+- [x] PR-1: keep macOS behavior stable with regression tests for IDs and excludes
+- [x] PR-1: add CI Windows Rust build/test lane (`core` + `bridge/ffi`)
+- [x] PR-2: implement Windows app discovery adapters (Start Menu + fallback roots) with dedupe
+- [x] PR-2: implement curated Windows settings catalog (`ms-settings:`) while keeping `setting:*` ID contract
+- [x] PR-2: move platform-specific app discovery into `platform/macos/apps.rs` and `platform/windows/apps.rs`; keep `index/apps.rs` as dispatch only
+- [x] PR-2: add Windows adapter unit tests (start-menu entry detection, fallback filtering, dedupe, merged roots, catalog integrity)
 
 ## Milestone G: Reliability (errors, tests, logs)
 

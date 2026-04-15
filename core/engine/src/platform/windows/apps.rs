@@ -1,0 +1,262 @@
+use crate::config::RuntimeConfig;
+use crate::index::APP_CANDIDATE_ID_PREFIX;
+use crate::platform::paths::{
+    candidate_id_path_component, expand_with_home, path_is_same_or_child,
+};
+use crate::platform::windows;
+use look_indexing::{Candidate, CandidateKind};
+use std::collections::HashSet;
+use std::fs;
+use std::sync::mpsc;
+
+pub(crate) fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSender<Candidate>) {
+    let roots = windows::merged_app_scan_roots(
+        &config.app_scan_roots,
+        &windows::additional_app_scan_roots(),
+        windows::REQUIRED_APP_SCAN_ROOTS,
+    );
+
+    let mut seen_ids = HashSet::new();
+    for root in roots {
+        walk_windows_app_entries(
+            &root,
+            config.app_scan_depth,
+            &tx,
+            &config.app_exclude_paths,
+            &config.app_exclude_names,
+            &mut seen_ids,
+        );
+    }
+
+    let home = windows::user_home_dir();
+    for fallback_root in windows::APP_FALLBACK_SCAN_ROOTS {
+        let expanded_root = expand_with_home(fallback_root, home.as_deref());
+        walk_windows_fallback_roots(
+            &expanded_root,
+            &tx,
+            &config.app_exclude_paths,
+            &config.app_exclude_names,
+            &mut seen_ids,
+        );
+    }
+}
+
+fn walk_windows_app_entries(
+    path: &str,
+    depth: usize,
+    tx: &mpsc::SyncSender<Candidate>,
+    app_exclude_paths: &[String],
+    app_exclude_names: &[String],
+    seen_ids: &mut HashSet<String>,
+) {
+    if should_exclude_path(path, app_exclude_paths) || depth == 0 {
+        return;
+    }
+
+    let Ok(entries) = fs::read_dir(path) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+
+        let path_buf = entry.path();
+        let Some(path_str) = path_buf.to_str() else {
+            continue;
+        };
+        if should_exclude_path(path_str, app_exclude_paths) {
+            continue;
+        }
+
+        if file_type.is_dir() {
+            walk_windows_app_entries(
+                path_str,
+                depth - 1,
+                tx,
+                app_exclude_paths,
+                app_exclude_names,
+                seen_ids,
+            );
+            continue;
+        }
+
+        if !is_windows_start_menu_entry(path_str) {
+            continue;
+        }
+
+        emit_windows_app_candidate(path_str, tx, app_exclude_names, seen_ids);
+    }
+}
+
+fn walk_windows_fallback_roots(
+    root: &str,
+    tx: &mpsc::SyncSender<Candidate>,
+    app_exclude_paths: &[String],
+    app_exclude_names: &[String],
+    seen_ids: &mut HashSet<String>,
+) {
+    if should_exclude_path(root, app_exclude_paths) {
+        return;
+    }
+
+    let Ok(vendors) = fs::read_dir(root) else {
+        return;
+    };
+
+    for vendor in vendors.flatten() {
+        let Ok(vendor_file_type) = vendor.file_type() else {
+            continue;
+        };
+        if !vendor_file_type.is_dir() {
+            continue;
+        }
+
+        let vendor_path = vendor.path();
+        let Some(vendor_path_str) = vendor_path.to_str() else {
+            continue;
+        };
+        if should_exclude_path(vendor_path_str, app_exclude_paths) {
+            continue;
+        }
+
+        let Ok(children) = fs::read_dir(&vendor_path) else {
+            continue;
+        };
+
+        for child in children.flatten() {
+            let Ok(child_type) = child.file_type() else {
+                continue;
+            };
+            let child_path = child.path();
+            let Some(child_path_str) = child_path.to_str() else {
+                continue;
+            };
+            if should_exclude_path(child_path_str, app_exclude_paths) {
+                continue;
+            }
+
+            if child_type.is_file() && is_windows_fallback_executable(child_path_str) {
+                emit_windows_app_candidate(child_path_str, tx, app_exclude_names, seen_ids);
+            }
+        }
+    }
+}
+
+fn emit_windows_app_candidate(
+    path: &str,
+    tx: &mpsc::SyncSender<Candidate>,
+    app_exclude_names: &[String],
+    seen_ids: &mut HashSet<String>,
+) {
+    let title = std::path::Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("App")
+        .to_string();
+    if should_exclude_app_name(&title, app_exclude_names) {
+        return;
+    }
+
+    let key = format!(
+        "{APP_CANDIDATE_ID_PREFIX}{}",
+        candidate_id_path_component(path)
+    );
+    if !seen_ids.insert(key.clone()) {
+        return;
+    }
+
+    let _ = tx.send(Candidate::new(&key, CandidateKind::App, &title, path));
+}
+
+fn is_windows_start_menu_entry(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".lnk") || lower.ends_with(".url") || lower.ends_with(".exe")
+}
+
+fn is_windows_fallback_executable(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    if !lower.ends_with(".exe") {
+        return false;
+    }
+
+    !lower.contains("uninstall")
+        && !lower.contains("setup")
+        && !lower.contains("updater")
+        && !lower.contains("crashpad")
+}
+
+fn should_exclude_path(path: &str, app_exclude_paths: &[String]) -> bool {
+    app_exclude_paths.iter().any(|entry| {
+        let normalized_exclude = entry.trim();
+        if normalized_exclude.is_empty() {
+            return false;
+        }
+        path_is_same_or_child(path, normalized_exclude)
+    })
+}
+
+fn should_exclude_app_name(name: &str, app_exclude_names: &[String]) -> bool {
+    let normalized_name = name.trim().trim_end_matches(".app").trim().to_lowercase();
+    app_exclude_names.iter().any(|entry| {
+        let normalized_exclude = entry.trim().trim_end_matches(".app").trim().to_lowercase();
+        !normalized_exclude.is_empty() && normalized_exclude == normalized_name
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn start_menu_entry_extensions_are_detected() {
+        assert!(is_windows_start_menu_entry("C:/Programs/App.lnk"));
+        assert!(is_windows_start_menu_entry("C:/Programs/App.url"));
+        assert!(is_windows_start_menu_entry("C:/Programs/App.EXE"));
+        assert!(!is_windows_start_menu_entry("C:/Programs/App.txt"));
+    }
+
+    #[test]
+    fn fallback_executable_filter_skips_noise_binaries() {
+        assert!(is_windows_fallback_executable(
+            "C:/Program Files/App/app.exe"
+        ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Program Files/App/uninstall.exe"
+        ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Program Files/App/setup.exe"
+        ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Program Files/App/updater.exe"
+        ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Program Files/App/crashpad_handler.exe"
+        ));
+    }
+
+    #[test]
+    fn exclude_path_matching_handles_windows_separators() {
+        let excludes = vec!["C:\\Users\\demo\\AppData\\Local\\Programs".to_string()];
+        assert!(should_exclude_path(
+            "C:/Users/demo/AppData/Local/Programs/MyApp/app.exe",
+            &excludes
+        ));
+    }
+
+    #[test]
+    fn emit_candidate_deduplicates_by_candidate_id() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let mut seen = HashSet::new();
+        let excludes = Vec::new();
+
+        emit_windows_app_candidate("C:/Programs/MyApp/MyApp.exe", &tx, &excludes, &mut seen);
+        emit_windows_app_candidate("C:/Programs/MyApp/MyApp.exe", &tx, &excludes, &mut seen);
+
+        drop(tx);
+        let emitted: Vec<Candidate> = rx.into_iter().collect();
+        assert_eq!(emitted.len(), 1);
+        assert_eq!(emitted[0].title.as_ref(), "MyApp");
+    }
+}
