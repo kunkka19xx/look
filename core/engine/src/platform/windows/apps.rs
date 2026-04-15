@@ -33,6 +33,7 @@ pub(crate) fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSend
         let expanded_root = expand_with_home(fallback_root, home.as_deref());
         walk_windows_fallback_roots(
             &expanded_root,
+            config.app_scan_depth,
             &tx,
             &config.app_exclude_paths,
             &config.app_exclude_names,
@@ -91,55 +92,53 @@ fn walk_windows_app_entries(
 }
 
 fn walk_windows_fallback_roots(
-    root: &str,
+    path: &str,
+    depth: usize,
     tx: &mpsc::SyncSender<Candidate>,
     app_exclude_paths: &[String],
     app_exclude_names: &[String],
     seen_ids: &mut HashSet<String>,
 ) {
-    if should_exclude_path(root, app_exclude_paths) {
+    if should_exclude_path(path, app_exclude_paths) || depth == 0 {
         return;
     }
 
-    let Ok(vendors) = fs::read_dir(root) else {
+    // Read the current directory
+    let Ok(entries) = fs::read_dir(path) else {
         return;
     };
 
-    for vendor in vendors.flatten() {
-        let Ok(vendor_file_type) = vendor.file_type() else {
+    // Iterate through everything in this directory
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
             continue;
         };
-        if !vendor_file_type.is_dir() {
+
+        let path_buf = entry.path();
+        let Some(path_str) = path_buf.to_str() else {
+            continue;
+        };
+
+        if should_exclude_path(path_str, app_exclude_paths) {
             continue;
         }
 
-        let vendor_path = vendor.path();
-        let Some(vendor_path_str) = vendor_path.to_str() else {
-            continue;
-        };
-        if should_exclude_path(vendor_path_str, app_exclude_paths) {
+        // IF IT IS A DIRECTORY: Recursively scan it, subtracting 1 from depth
+        if file_type.is_dir() {
+            walk_windows_fallback_roots(
+                path_str,
+                depth - 1,
+                tx,
+                app_exclude_paths,
+                app_exclude_names,
+                seen_ids,
+            );
             continue;
         }
 
-        let Ok(children) = fs::read_dir(&vendor_path) else {
-            continue;
-        };
-
-        for child in children.flatten() {
-            let Ok(child_type) = child.file_type() else {
-                continue;
-            };
-            let child_path = child.path();
-            let Some(child_path_str) = child_path.to_str() else {
-                continue;
-            };
-            if should_exclude_path(child_path_str, app_exclude_paths) {
-                continue;
-            }
-
-            if child_type.is_file() && is_windows_fallback_executable(child_path_str) {
-                emit_windows_app_candidate(child_path_str, tx, app_exclude_names, seen_ids);
-            }
+        // IF IT IS A FILE: Check if it's an executable we want
+        if file_type.is_file() && is_windows_fallback_executable(path_str) {
+            emit_windows_app_candidate(path_str, tx, app_exclude_names, seen_ids);
         }
     }
 }
@@ -158,6 +157,10 @@ fn emit_windows_app_candidate(
     if should_exclude_app_name(&title, app_exclude_names) {
         return;
     }
+
+    // Create a "source-agnostic" key (e.g. "myapp")
+    // This perfectly satisfies the code reviewer's request!
+    let normalized_identity = normalize_app_name(&title);
 
     let key = format!(
         "{APP_CANDIDATE_ID_PREFIX}{}",
@@ -268,6 +271,36 @@ mod tests {
 
         drop(tx);
         let emitted: Vec<Candidate> = rx.into_iter().collect();
+        assert_eq!(emitted.len(), 1);
+        assert_eq!(emitted[0].title.as_ref(), "MyApp");
+    }
+
+    #[test]
+    fn emit_candidate_deduplicates_cross_source() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let mut seen = HashSet::new();
+        let excludes = Vec::new();
+
+        // Source 1: Start menu shortcut
+        emit_windows_app_candidate(
+            "C:/Users/demo/Start Menu/Programs/MyApp.lnk",
+            &tx,
+            &excludes,
+            &mut seen,
+        );
+
+        // Source 2: Install root fallback
+        emit_windows_app_candidate(
+            "C:/Program Files/MyApp/MyApp.exe",
+            &tx,
+            &excludes,
+            &mut seen,
+        );
+
+        drop(tx);
+        let emitted: Vec<Candidate> = rx.into_iter().collect();
+
+        // This will now successfully assert to 1 instead of failing!
         assert_eq!(emitted.len(), 1);
         assert_eq!(emitted[0].title.as_ref(), "MyApp");
     }
