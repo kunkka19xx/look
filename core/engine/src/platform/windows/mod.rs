@@ -28,11 +28,11 @@ pub(crate) fn additional_app_scan_roots() -> Vec<String> {
 }
 
 pub(crate) fn user_home_dir() -> Option<String> {
-    std::env::var("HOME")
+    std::env::var("USERPROFILE")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .or_else(|| {
-            std::env::var("USERPROFILE")
+            std::env::var("HOME")
                 .ok()
                 .filter(|value| !value.trim().is_empty())
         })
@@ -70,7 +70,8 @@ pub(crate) fn merged_app_scan_roots(
 
 #[cfg(test)]
 mod tests {
-    use super::merged_app_scan_roots;
+    use super::{merged_app_scan_roots, user_home_dir};
+    use std::env;
 
     #[test]
     fn merged_roots_preserve_order_and_deduplicate() {
@@ -93,5 +94,17 @@ mod tests {
                 "C:/Users/demo/AppData/Roaming/Microsoft/Windows/Start Menu/Programs".to_string(),
             ]
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn user_home_dir_prefers_userprofile_over_home() {
+        unsafe {
+            env::set_var("HOME", "/c/Users/posix-home");
+            env::set_var("USERPROFILE", "C:/Users/win-home");
+        }
+
+        let resolved = user_home_dir();
+        assert_eq!(resolved.as_deref(), Some("C:/Users/win-home"));
     }
 }

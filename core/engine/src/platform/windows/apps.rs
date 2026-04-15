@@ -198,11 +198,23 @@ fn should_exclude_path(path: &str, app_exclude_paths: &[String]) -> bool {
 }
 
 fn should_exclude_app_name(name: &str, app_exclude_names: &[String]) -> bool {
-    let normalized_name = name.trim().trim_end_matches(".app").trim().to_lowercase();
+    let normalized_name = normalize_app_name(name);
     app_exclude_names.iter().any(|entry| {
-        let normalized_exclude = entry.trim().trim_end_matches(".app").trim().to_lowercase();
+        let normalized_exclude = normalize_app_name(entry);
         !normalized_exclude.is_empty() && normalized_exclude == normalized_name
     })
+}
+
+fn normalize_app_name(value: &str) -> String {
+    let normalized = value.trim().to_lowercase();
+    let mut stripped = normalized.as_str();
+    for suffix in [".app", ".exe", ".lnk", ".url"] {
+        if let Some(prefix) = stripped.strip_suffix(suffix) {
+            stripped = prefix;
+            break;
+        }
+    }
+    stripped.trim().to_string()
 }
 
 #[cfg(test)]
@@ -258,5 +270,13 @@ mod tests {
         let emitted: Vec<Candidate> = rx.into_iter().collect();
         assert_eq!(emitted.len(), 1);
         assert_eq!(emitted[0].title.as_ref(), "MyApp");
+    }
+
+    #[test]
+    fn exclude_name_matching_accepts_windows_suffixes() {
+        let excludes = vec!["MyApp.exe".to_string(), "Another.lnk".to_string()];
+        assert!(should_exclude_app_name("MyApp", &excludes));
+        assert!(should_exclude_app_name("Another.url", &excludes));
+        assert!(!should_exclude_app_name("Different", &excludes));
     }
 }
