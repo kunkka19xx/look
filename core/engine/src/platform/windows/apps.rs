@@ -292,8 +292,20 @@ mod tests {
         let mut seen = HashSet::new();
         let excludes = Vec::new();
 
-        emit_windows_app_candidate("C:/Programs/MyApp/MyApp.exe", &tx, &excludes, &mut seen);
-        emit_windows_app_candidate("C:/Programs/MyApp/MyApp.exe", &tx, &excludes, &mut seen);
+        emit_windows_app_candidate(
+            "C:/Programs/MyApp/MyApp.exe",
+            &tx,
+            &excludes,
+            &mut seen,
+            false,
+        );
+        emit_windows_app_candidate(
+            "C:/Programs/MyApp/MyApp.exe",
+            &tx,
+            &excludes,
+            &mut seen,
+            false,
+        );
 
         drop(tx);
         let emitted: Vec<Candidate> = rx.into_iter().collect();
