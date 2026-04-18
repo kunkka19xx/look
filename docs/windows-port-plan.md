@@ -33,62 +33,60 @@ The Windows port should keep this split:
 
 ```text
 apps/windows/LauncherApp/
-├── look-win.sln
-├── launcher-app/
-│   ├── launcher-app.csproj
-│   ├── App.xaml
-│   ├── App.xaml.cs
-│   ├── app.manifest
-│   ├── Assets/
-│   ├── Core/
-│   │   ├── LauncherState.cs
-│   │   ├── QueryParser.cs
-│   │   └── ResultSelectionState.cs
-│   ├── Bridge/
-│   │   ├── FfiBindings.cs
-│   │   ├── EngineBridge.cs
-│   │   └── BridgeModels.cs
-│   ├── Commands/
-│   │   ├── CalcCommand.cs
-│   │   ├── ShellCommand.cs
-│   │   ├── KillCommand.cs
-│   │   └── SysCommand.cs
-│   ├── Features/
-│   │   ├── Clipboard/
-│   │   │   ├── ClipboardHistoryStore.cs
-│   │   │   └── ClipboardQuery.cs
-│   │   ├── HotKey/
-│   │   │   ├── GlobalHotKeyManager.cs
-│   │   │   └── HotKeySettings.cs
-│   │   ├── Search/
-│   │   │   ├── LauncherSearchLogic.cs
-│   │   │   └── ResultDedupe.cs
-│   │   └── Window/
-│   │       ├── WindowLifecycle.cs
-│   │       └── FocusTracker.cs
-│   ├── Services/
-│   │   ├── ActionDispatcher.cs
-│   │   ├── ShellExecuteService.cs
-│   │   ├── ExplorerRevealService.cs
-│   │   ├── StartupRegistrationService.cs
-│   │   └── ProcessService.cs
-│   ├── Theme/
-│   │   ├── ThemeSettings.cs
-│   │   ├── ThemeStore.cs
-│   │   └── Typography.cs
-│   ├── Views/
-│   │   ├── LauncherWindow.xaml
-│   │   ├── LauncherWindow.xaml.cs
-│   │   ├── LauncherRowView.xaml
-│   │   ├── ResultPreviewView.xaml
-│   │   ├── CommandPanels/
-│   │   └── Settings/
-│   └── Tests/
-│       ├── LauncherSearchLogicTests.cs
-│       └── QueryParserTests.cs
-└── packaging/
-    ├── msix/
-    └── wix/
+├── LauncherApp.slnx
+├── LauncherApp.csproj
+├── App.xaml
+├── App.xaml.cs
+├── MainWindow.xaml
+├── MainWindow.xaml.cs
+├── app.manifest
+├── Assets/
+├── Core/
+│   ├── LauncherState.cs
+│   ├── QueryParser.cs
+│   └── ResultSelectionState.cs
+├── Bridge/
+│   ├── FfiBindings.cs
+│   ├── EngineBridge.cs
+│   └── BridgeModels.cs
+├── Commands/
+│   ├── CalcCommand.cs
+│   ├── ShellCommand.cs
+│   ├── KillCommand.cs
+│   └── SysCommand.cs
+├── Features/
+│   ├── Clipboard/
+│   │   ├── ClipboardHistoryStore.cs
+│   │   └── ClipboardQuery.cs
+│   ├── HotKey/
+│   │   ├── GlobalHotKeyManager.cs
+│   │   └── HotKeySettings.cs
+│   ├── Search/
+│   │   ├── LauncherSearchLogic.cs
+│   │   └── ResultDedupe.cs
+│   └── Window/
+│       ├── WindowLifecycle.cs
+│       └── FocusTracker.cs
+├── Services/
+│   ├── ActionDispatcher.cs
+│   ├── ShellExecuteService.cs
+│   ├── ExplorerRevealService.cs
+│   ├── StartupRegistrationService.cs
+│   └── ProcessService.cs
+├── Theme/
+│   ├── ThemeSettings.cs
+│   ├── ThemeStore.cs
+│   └── Typography.cs
+├── Views/
+│   ├── LauncherWindow.xaml
+│   ├── LauncherWindow.xaml.cs
+│   ├── LauncherRowView.xaml
+│   ├── ResultPreviewView.xaml
+│   ├── CommandPanels/
+│   └── Settings/
+├── Tests/
+│   ├── LauncherSearchLogicTests.cs
+│   └── QueryParserTests.cs
 ```
 
 Shell responsibilities:
@@ -270,7 +268,7 @@ Current status:
 ## Phase 4 - Windows native shell scaffold (WinUI 3)
 
 1. Create Windows app shell directory:
-   - `apps/windows/LauncherApp/` (proposed)
+   - `apps/windows/LauncherApp/` (WinUI 3 with WinExe)
 2. Build first runnable shell with:
    - launcher window
    - query input
@@ -278,6 +276,12 @@ Current status:
    - selected-row highlight and keyboard navigation
 3. Load data from FFI search endpoint and render candidate rows.
 4. Port theme primitives to preserve visual identity while following Windows conventions.
+
+Current status:
+
+- shell scaffold is in place at `apps/windows/LauncherApp/`
+- UI flow currently runs in mock-first mode for parity iteration speed
+- FFI provider wiring is retained behind a search-provider abstraction and can be re-enabled when backend validation starts
 
 Exit criteria:
 
@@ -314,6 +318,23 @@ Exit criteria:
    - preview/dictionary panel behavior
    - settings/theme controls that are platform-appropriate
 4. Run side-by-side parity QA using the checklist from Phase 0.
+
+Implementation checklist for UI system parity (mock-first first, backend-agnostic):
+
+- establish Windows design tokens that map to current macOS theme semantics (text, muted text, border, selection, background)
+- standardize launcher row visuals (icon, title, meta, selected/hover/focus state, separators)
+- define reusable button styles (`primary`, `secondary`, `ghost`, `danger`) with keyboard focus visuals
+- define message/banner components (`success`, `info`, `warning`, `error`) and optional copy-action affordance
+- declare mode-specific screens and states (search, command, clipboard, settings, help)
+- define empty/loading/error states per mode with aligned user-facing copy tone
+- define footer hint model and keymap presentation consistent with macOS launcher intent
+- document parity references with screenshots and accepted deviations for Windows-native conventions
+
+Current status:
+
+- Windows shell now has mock-first mode screens for search, command, clipboard, settings, and help
+- shared UI token/styles are defined in `App.xaml` (buttons, surfaces, banners)
+- keyboard hints and banner copy flow are wired for parity iteration before backend-final UX
 
 Exit criteria:
 

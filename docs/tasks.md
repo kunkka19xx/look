@@ -105,17 +105,34 @@ Reference: `docs/windows-port-plan.md`
 - [x] split engine indexing into platform adapters (macOS/Windows) without changing ranking/search core
 - [x] implement Windows app discovery sources (Start Menu + install roots fallback)
 - [x] implement curated Windows Settings catalog (`ms-settings:` targets)
-- [ ] add Windows path defaults/normalization for config bootstrap and exclude handling
+- [x] add Windows path defaults/normalization for config bootstrap and exclude handling
 - [x] verify FFI API stability for multi-shell use and add Windows smoke coverage in CI
-- [ ] scaffold native Windows shell (`apps/windows/LauncherApp/`) with WinUI 3
-- [ ] wire FFI search + result rendering + keyboard navigation in Windows shell
-- [ ] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff)
+- [x] scaffold native Windows shell (`apps/windows/LauncherApp/`) with WinUI 3
+- [x] wire FFI search + result rendering + keyboard navigation in Windows shell
+- [x] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff)
 - [ ] implement global hotkey + hide/show/focus lifecycle parity on Windows
 - [ ] implement Windows clipboard history mode (`c"`) with listener-first capture strategy
 - [ ] implement Windows command mode parity (`calc`, `shell`, `kill`, `sys`)
 - [ ] implement Windows launch-at-login integration
 - [ ] add Windows packaging/signing/release pipeline (`.msix`/`.msi`) and documentation
 - [ ] run closed beta and fix top reliability/performance parity regressions before GA
+
+Windows UI delivery note (mock-first):
+
+- [x] use mock search provider by default to unblock UI parity work
+- [x] keep FFI search provider wired behind provider abstraction for later backend re-enable
+
+Windows UI parity tasks (mock-first, match macOS behavior):
+
+- [x] define Windows design tokens (color, spacing, radius, typography) mapped from macOS theme semantics
+- [x] create shared row component styling (icon, title, meta, selection state, divider)
+- [x] define button variants (`primary`, `secondary`, `ghost`, `danger`) and interaction states
+- [x] define message/banner system (`success`, `info`, `warning`, `error`) with copy-action support
+- [x] declare launcher screens and states: search, command mode, clipboard mode, settings, help
+- [x] declare empty/loading/error states for each launcher mode with stable copywriting
+- [x] implement keyboard hint/footer style and per-mode hint mapping to match macOS intent
+- [ ] add preview/right-panel layout parity spec for dictionary/result preview behavior
+- [ ] add style documentation with screenshots for side-by-side macOS vs Windows parity QA
 
 Windows immediate execution queue (current):
 

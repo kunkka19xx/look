@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="LauncherApp.Views.Settings.SettingsTabsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    mc:Ignorable="d">
+
+    <Border
+        Padding="12"
+        Style="{StaticResource LauncherSurfaceBorderStyle}">
+        <controls:TabView>
+            <controls:TabViewItem Header="General">
+                <StackPanel Padding="10" Spacing="8">
+                    <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="Launch at login (planned)" />
+                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" Text="Hide on focus loss (planned)" />
+                </StackPanel>
+            </controls:TabViewItem>
+            <controls:TabViewItem Header="Theme">
+                <StackPanel Padding="10" Spacing="8">
+                    <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="Tokens and presets parity" />
+                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" Text="Match macOS theme semantics" />
+                </StackPanel>
+            </controls:TabViewItem>
+            <controls:TabViewItem Header="Hotkey">
+                <StackPanel Padding="10" Spacing="8">
+                    <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="Global hotkey config (planned)" />
+                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" Text="Conflict detection messaging" />
+                </StackPanel>
+            </controls:TabViewItem>
+            <controls:TabViewItem Header="About">
+                <StackPanel Padding="10" Spacing="8">
+                    <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="look Windows shell" />
+                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" Text="Mock-first UI parity phase" />
+                </StackPanel>
+            </controls:TabViewItem>
+        </controls:TabView>
+    </Border>
+</UserControl>
