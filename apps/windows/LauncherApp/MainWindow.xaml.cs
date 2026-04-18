@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -80,34 +81,21 @@ namespace LauncherApp
 
             if (this.AppWindow.Presenter is OverlappedPresenter presenter)
             {
-                presenter.SetBorderAndTitleBar(false, false);
+                presenter.SetBorderAndTitleBar(true, false);
             }
-
-            ApplyRoundedWindowRegion(cornerRadiusPx: 32);
+            ApplyRuntimeIcon();
         }
 
-        private void ApplyRoundedWindowRegion(int cornerRadiusPx)
+        private void ApplyRuntimeIcon()
         {
-            IntPtr hwnd = this.GetWindowHandle();
-            int width = this.AppWindow.Size.Width;
-            int height = this.AppWindow.Size.Height;
-            if (width <= 0 || height <= 0)
+            string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "look.ico");
+            if (File.Exists(iconPath))
             {
-                return;
-            }
-
-            IntPtr region = CreateRoundRectRgn(0, 0, width + 1, height + 1, cornerRadiusPx, cornerRadiusPx);
-            if (region == IntPtr.Zero)
-            {
-                return;
-            }
-
-            int result = SetWindowRgn(hwnd, region, true);
-            if (result == 0)
-            {
-                _ = DeleteObject(region);
+                this.SetIcon(iconPath);
             }
         }
+
+       
 
         [DllImport("gdi32.dll")]
         private static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int widthEllipse, int heightEllipse);
