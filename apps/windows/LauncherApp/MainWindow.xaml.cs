@@ -2,18 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using LauncherApp.Bridge;
 using LauncherApp.Core;
 using LauncherApp.Features.Search;
 using LauncherApp.Services;
-using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
-using WinRT.Interop;
+using WinUIEx;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.Graphics;
 using Windows.System;
 
 namespace LauncherApp
@@ -31,9 +30,7 @@ namespace LauncherApp
         public MainWindow()
         {
             InitializeComponent();
-            ExtendsContentIntoTitleBar = true;
-            TryRemoveTitleBar();
-            ConfigureWindowMetrics();
+            ConfigureLauncherWindow();
 
             bool mockFirst = true;
             ISearchProvider searchProvider = mockFirst
@@ -49,14 +46,6 @@ namespace LauncherApp
             ResultsList.ItemsSource = _results;
             SetMode(LauncherMode.Search);
             RefreshResults(QueryInput.Text?.Trim() ?? string.Empty);
-        }
-
-        private void ConfigureWindowMetrics()
-        {
-            IntPtr hwnd = WindowNative.GetWindowHandle(this);
-            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-            AppWindow appWindow = AppWindow.GetFromWindowId(windowId);
-            appWindow.Resize(new SizeInt32(960, 620));
         }
 
         private static List<LauncherResult> BuildCommandSeed()
@@ -80,18 +69,54 @@ namespace LauncherApp
             ];
         }
 
-        private void TryRemoveTitleBar()
+        private void ConfigureLauncherWindow()
         {
-            IntPtr hwnd = WindowNative.GetWindowHandle(this);
-            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-            AppWindow appWindow = AppWindow.GetFromWindowId(windowId);
+            this.SetWindowSize(960, 620);
+            this.CenterOnScreen();
+            this.SetWindowPresenter(AppWindowPresenterKind.Overlapped);
+            this.SetIsResizable(false);
+            this.SetIsMaximizable(false);
+            this.SetIsMinimizable(false);
 
-            if (appWindow.Presenter is OverlappedPresenter presenter)
+            if (this.AppWindow.Presenter is OverlappedPresenter presenter)
             {
                 presenter.SetBorderAndTitleBar(false, false);
-                presenter.IsResizable = false;
+            }
+
+            ApplyRoundedWindowRegion(cornerRadiusPx: 32);
+        }
+
+        private void ApplyRoundedWindowRegion(int cornerRadiusPx)
+        {
+            IntPtr hwnd = this.GetWindowHandle();
+            int width = this.AppWindow.Size.Width;
+            int height = this.AppWindow.Size.Height;
+            if (width <= 0 || height <= 0)
+            {
+                return;
+            }
+
+            IntPtr region = CreateRoundRectRgn(0, 0, width + 1, height + 1, cornerRadiusPx, cornerRadiusPx);
+            if (region == IntPtr.Zero)
+            {
+                return;
+            }
+
+            int result = SetWindowRgn(hwnd, region, true);
+            if (result == 0)
+            {
+                _ = DeleteObject(region);
             }
         }
+
+        [DllImport("gdi32.dll")]
+        private static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int widthEllipse, int heightEllipse);
+
+        [DllImport("user32.dll")]
+        private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool redraw);
+
+        [DllImport("gdi32.dll")]
+        private static extern bool DeleteObject(IntPtr hObject);
 
         private static (LauncherMode mode, string normalizedQuery) ResolveMode(string rawQuery)
         {

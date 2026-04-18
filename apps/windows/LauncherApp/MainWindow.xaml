@@ -11,17 +11,11 @@
     mc:Ignorable="d"
     Title="look Launcher">
 
-    <Window.SystemBackdrop>
-        <MicaBackdrop />
-    </Window.SystemBackdrop>
-
     <Border
         Margin="0"
         Padding="14"
         CornerRadius="16"
-        Background="#29000000"
-        BorderBrush="{StaticResource LauncherBorderBrush}"
-        BorderThickness="1">
+        Background="{StaticResource LauncherPanelBrush}">
         <Grid RowSpacing="10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
