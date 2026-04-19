@@ -254,6 +254,40 @@ namespace LauncherApp
             RefreshResults(query);
         }
 
+        private void QueryInput_OnLoaded(object sender, RoutedEventArgs e)
+        {
+            if (_results.Count > 0 && ResultsList.SelectedIndex < 0)
+            {
+                ResultsList.SelectedIndex = 0;
+            }
+
+            QueryInput.Focus(FocusState.Programmatic);
+        }
+
+        private void QueryInput_OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            if (e.Key != VirtualKey.Tab || _results.Count == 0)
+            {
+                return;
+            }
+
+            int selected = ResultsList.SelectedIndex;
+            if (selected < 0)
+            {
+                ResultsList.SelectedIndex = IsShiftPressed() ? _results.Count - 1 : 0;
+            }
+            else if (IsShiftPressed())
+            {
+                ResultsList.SelectedIndex = selected > 0 ? selected - 1 : _results.Count - 1;
+            }
+            else
+            {
+                ResultsList.SelectedIndex = selected < _results.Count - 1 ? selected + 1 : 0;
+            }
+
+            e.Handled = true;
+        }
+
         private void QueryInput_OnKeyDown(object sender, KeyRoutedEventArgs e)
         {
             if (e.Key == VirtualKey.Escape)
@@ -267,8 +301,14 @@ namespace LauncherApp
 
             if (e.Key == VirtualKey.Down && _results.Count > 0)
             {
-                ResultsList.Focus(FocusState.Programmatic);
                 ResultsList.SelectedIndex = 0;
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == VirtualKey.Up && _results.Count > 0)
+            {
+                ResultsList.SelectedIndex = _results.Count - 1;
                 e.Handled = true;
                 return;
             }
@@ -285,9 +325,30 @@ namespace LauncherApp
 
         private void ResultsList_OnKeyDown(object sender, KeyRoutedEventArgs e)
         {
+            if (e.Key == VirtualKey.Tab)
+            {
+                if (IsShiftPressed())
+                {
+                    if (ResultsList.SelectedIndex > 0)
+                        ResultsList.SelectedIndex--;
+                    else if (_results.Count > 0)
+                        ResultsList.SelectedIndex = _results.Count - 1;
+                }
+                else
+                {
+                    if (ResultsList.SelectedIndex < _results.Count - 1)
+                        ResultsList.SelectedIndex++;
+                    else if (_results.Count > 0)
+                        ResultsList.SelectedIndex = 0;
+                }
+                ResultsList.UpdateLayout();
+                e.Handled = true;
+                return;
+            }
+
             if (e.Key == VirtualKey.Up && ResultsList.SelectedIndex <= 0)
             {
-                QueryInput.Focus(FocusState.Programmatic);
+                ResultsList.SelectedIndex = _results.Count - 1;
                 e.Handled = true;
                 return;
             }
@@ -396,6 +457,13 @@ namespace LauncherApp
         {
             Windows.UI.Core.CoreVirtualKeyStates state = Microsoft.UI.Input.InputKeyboardSource
                 .GetKeyStateForCurrentThread(VirtualKey.Control);
+            return (state & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
+        }
+
+        private static bool IsShiftPressed()
+        {
+            Windows.UI.Core.CoreVirtualKeyStates state = Microsoft.UI.Input.InputKeyboardSource
+                .GetKeyStateForCurrentThread(VirtualKey.Shift);
             return (state & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
         }
     }

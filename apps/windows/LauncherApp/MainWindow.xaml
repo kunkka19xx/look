@@ -32,7 +32,9 @@
                     Padding="34,10,12,10"
                     FontSize="14"
                     PlaceholderText="Search apps"
+                    Loaded="QueryInput_OnLoaded"
                     TextChanged="QueryInput_OnTextChanged"
+                    PreviewKeyDown="QueryInput_OnPreviewKeyDown"
                     KeyDown="QueryInput_OnKeyDown" />
                     <TextBlock
                     Margin="12,0,0,0"
