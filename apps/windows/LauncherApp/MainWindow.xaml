@@ -77,41 +77,7 @@
                         </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Spacing="0">
-                                    <Grid Padding="10,8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="24" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Border Grid.Column="0" Width="22" Height="22" VerticalAlignment="Top">
-                                            <TextBlock
-                                        FontFamily="Segoe MDL2 Assets"
-                                        FontSize="15"
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        Foreground="{StaticResource LauncherMutedTextBrush}"
-                                        Text="{Binding IconGlyph}" />
-                                        </Border>
-                                        <StackPanel Grid.Column="1" Spacing="2">
-                                            <TextBlock
-                                        FontSize="14"
-                                        FontWeight="SemiBold"
-                                        Foreground="{StaticResource LauncherTextBrush}"
-                                        Text="{Binding Title}"
-                                        TextTrimming="CharacterEllipsis" />
-                                            <TextBlock
-                                        Foreground="{StaticResource LauncherMutedTextBrush}"
-                                        FontSize="11"
-                                        Text="{Binding MetaLabel}"
-                                        TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                    </Grid>
-                                    <Rectangle
-                                Height="1"
-                                Fill="{StaticResource LauncherBorderBrush}"
-                                Opacity="0.75"
-                                Margin="6,0,6,0" />
-                                </StackPanel>
+                                <views:LauncherResultRowView />
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>

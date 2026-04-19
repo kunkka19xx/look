@@ -15,16 +15,17 @@
 
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="52" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <Border
                     Width="48"
                     Height="48"
+                    Margin="0,0,10,0"
                     CornerRadius="10"
                     Background="#223044"
-                    VerticalAlignment="Top">
+                    VerticalAlignment="Center">
                     <Grid>
                         <TextBlock
                             x:Name="GlyphBlock"
