@@ -8,13 +8,27 @@
     xmlns:tabs="using:LauncherApp.Views.Settings.Tabs"
     mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <Style x:Key="SettingsSegmentButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="#F1F6FF" />
+            <Setter Property="BorderBrush" Value="{StaticResource LauncherBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Background" Value="#233246" />
+        </Style>
+    </UserControl.Resources>
+
     <Grid Padding="6,0,6,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid Margin="0,0,0,4">
+        <Grid Margin="0,0,0,2">
             <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -38,8 +52,8 @@
                 Text="Esc or Ctrl+Shift+, to close" />
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Button MinWidth="110" Height="30" Content="Save Config" />
-                <Button MinWidth="140" Height="30" Content="Back to Launcher" Click="BackToLauncherButton_OnClick" />
+                <Button MinWidth="110" Height="28" Content="Save Config" />
+                <Button MinWidth="140" Height="28" Content="Back to Launcher" Click="BackToLauncherButton_OnClick" />
             </StackPanel>
             </Grid>
         </Grid>
@@ -57,13 +71,13 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Button x:Name="AppearanceTabButton" Grid.Column="0" Height="34" Content="Appearance" Click="AppearanceTabButton_OnClick" />
-                    <Button x:Name="AdvancedTabButton" Grid.Column="1" Height="34" Content="Advanced" Click="AdvancedTabButton_OnClick" />
-                    <Button x:Name="ShortcutsTabButton" Grid.Column="2" Height="34" Content="Shortcuts" Click="ShortcutsTabButton_OnClick" />
+                    <Button x:Name="AppearanceTabButton" Grid.Column="0" Style="{StaticResource SettingsSegmentButtonStyle}" Content="Appearance" Click="AppearanceTabButton_OnClick" />
+                    <Button x:Name="AdvancedTabButton" Grid.Column="1" Style="{StaticResource SettingsSegmentButtonStyle}" Content="Advanced" Click="AdvancedTabButton_OnClick" />
+                    <Button x:Name="ShortcutsTabButton" Grid.Column="2" Style="{StaticResource SettingsSegmentButtonStyle}" Content="Shortcuts" Click="ShortcutsTabButton_OnClick" />
                 </Grid>
             </Border>
 
-            <Border Grid.Row="1" Margin="0,4,0,0" Background="Transparent" CornerRadius="0" Padding="0">
+            <Border Grid.Row="1" Margin="0,2,0,0" Background="Transparent" CornerRadius="0" Padding="0">
                 <Grid>
                     <tabs:AppearanceSettingsTabView x:Name="AppearanceTabContent" />
                     <tabs:AdvancedSettingsTabView x:Name="AdvancedTabContent" Visibility="Collapsed" />

@@ -10,10 +10,12 @@ using LauncherApp.Core;
 using LauncherApp.Features.Search;
 using LauncherApp.Services;
 using LauncherApp.Views.Settings;
+using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using WinUIEx;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
@@ -105,7 +107,30 @@ namespace LauncherApp
             {
                 presenter.SetBorderAndTitleBar(true, false);
             }
+
+            if (Content is FrameworkElement root)
+            {
+                root.RequestedTheme = ElementTheme.Dark;
+            }
+
             ApplyRuntimeIcon();
+        }
+
+        public void SetBackdropMode(string mode)
+        {
+            if (mode.Equals("Acrylic", StringComparison.OrdinalIgnoreCase))
+            {
+                SystemBackdrop = new DesktopAcrylicBackdrop();
+                return;
+            }
+
+            if (mode.Equals("Solid", StringComparison.OrdinalIgnoreCase))
+            {
+                SystemBackdrop = null;
+                return;
+            }
+
+            SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
         }
 
         private void ApplyRuntimeIcon()

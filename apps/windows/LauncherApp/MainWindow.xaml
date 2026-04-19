@@ -18,6 +18,8 @@
             Margin="0"
             Padding="12"
             CornerRadius="0"
+            BorderBrush="{StaticResource LauncherBorderBrush}"
+            BorderThickness="{StaticResource LauncherBorderThickness}"
             Background="{StaticResource LauncherPanelBrush}">
             <Grid RowSpacing="10">
                 <Grid.RowDefinitions>

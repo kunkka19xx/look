@@ -8,8 +8,8 @@ namespace LauncherApp.Views.Settings;
 
 public sealed partial class SettingsTabsView : UserControl
 {
-    private readonly SolidColorBrush _selectedTabBrush = new(Color.FromArgb(255, 44, 64, 88));
-    private readonly SolidColorBrush _idleTabBrush = new(Colors.Transparent);
+    private readonly SolidColorBrush _selectedTabBrush = new(Color.FromArgb(255, 86, 126, 173));
+    private readonly SolidColorBrush _idleTabBrush = new(Color.FromArgb(255, 35, 50, 69));
 
     public event EventHandler? CloseRequested;
 

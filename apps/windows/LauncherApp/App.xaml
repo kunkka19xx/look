@@ -37,6 +37,7 @@
             <x:Double x:Key="LauncherRadiusSm">8</x:Double>
             <x:Double x:Key="LauncherRadiusMd">12</x:Double>
             <x:Double x:Key="LauncherRadiusLg">16</x:Double>
+            <Thickness x:Key="LauncherBorderThickness">1.5</Thickness>
 
             <Style x:Key="LauncherBodyTextStyle" TargetType="TextBlock">
                 <Setter Property="Foreground" Value="{StaticResource LauncherTextBrush}" />
@@ -79,7 +80,7 @@
             <Style x:Key="LauncherSurfaceBorderStyle" TargetType="Border">
                 <Setter Property="Background" Value="{StaticResource LauncherPanelBrush}" />
                 <Setter Property="BorderBrush" Value="{StaticResource LauncherBorderBrush}" />
-                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderThickness" Value="{StaticResource LauncherBorderThickness}" />
                 <Setter Property="CornerRadius" Value="12" />
             </Style>
 

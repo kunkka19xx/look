@@ -9,13 +9,9 @@
 
     <UserControl.Resources>
         <Style TargetType="Slider">
-            <Setter Property="Height" Value="16" />
-            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
-            <Setter Property="RenderTransform">
-                <Setter.Value>
-                    <ScaleTransform ScaleX="1" ScaleY="0.68" />
-                </Setter.Value>
-            </Setter>
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Foreground" Value="#9FC0F8" />
+            <Setter Property="Background" Value="#263243" />
         </Style>
     </UserControl.Resources>
 
@@ -36,6 +32,21 @@
                     <ComboBoxItem Content="Night Studio" />
                 </ComboBox>
                 <TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Builtin" />
+            </Grid>
+
+            <Grid ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="64" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Backdrop" />
+                <ComboBox x:Name="BackdropModeCombo" Grid.Column="1" SelectedIndex="0" SelectionChanged="BackdropModeCombo_OnSelectionChanged">
+                    <ComboBoxItem Content="Mica" />
+                    <ComboBoxItem Content="Acrylic" />
+                    <ComboBoxItem Content="Solid" />
+                </ComboBox>
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Window" />
             </Grid>
 
             <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Tint Color" />
