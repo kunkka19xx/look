@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="LauncherApp.Views.Settings.Tabs.AppearanceSettingsTabView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <Style TargetType="Slider">
+            <Setter Property="Height" Value="16" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <ScaleTransform ScaleX="1" ScaleY="0.68" />
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer Padding="8,4,8,8" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="10">
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Theme" />
+            <Grid ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="64" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Preset" />
+                <ComboBox Grid.Column="1" SelectedIndex="0">
+                    <ComboBoxItem Content="Graphite" />
+                    <ComboBoxItem Content="Glass Ocean" />
+                    <ComboBoxItem Content="Warm Paper" />
+                    <ComboBoxItem Content="Night Studio" />
+                </ComboBox>
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Builtin" />
+            </Grid>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Tint Color" />
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Red" /><Slider x:Name="TintRedSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TintRedSlider, Path=Value}" /></Grid>
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Green" /><Slider x:Name="TintGreenSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TintGreenSlider, Path=Value}" /></Grid>
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Blue" /><Slider x:Name="TintBlueSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TintBlueSlider, Path=Value}" /></Grid>
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Tint Opacity" /><Slider x:Name="TintOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TintOpacitySlider, Path=Value}" /></Grid>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Blur" />
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Blur Opacity" /><Slider x:Name="BlurOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BlurOpacitySlider, Path=Value}" /></Grid>
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Settings Blur" /><Slider x:Name="SettingsBlurSlider" Grid.Column="1" Minimum="40" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=SettingsBlurSlider, Path=Value}" /></Grid>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Font" />
+            <Grid ColumnSpacing="10">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Font Name" />
+                <AutoSuggestBox x:Name="FontNameInput" Grid.Column="1" PlaceholderText="Type a font name" TextChanged="FontNameInput_OnTextChanged" QuerySubmitted="FontNameInput_OnQuerySubmitted" />
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Installed" />
+            </Grid>
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Font Size" /><Slider x:Name="FontSizeSlider" Grid.Column="1" Minimum="10" Maximum="28" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=FontSizeSlider, Path=Value}" /></Grid>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Font Color" />
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Text Red" /><Slider x:Name="TextRedSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TextRedSlider, Path=Value}" /></Grid>
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Text Green" /><Slider x:Name="TextGreenSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TextGreenSlider, Path=Value}" /></Grid>
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Text Blue" /><Slider x:Name="TextBlueSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TextBlueSlider, Path=Value}" /></Grid>
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Text Opacity" /><Slider x:Name="TextOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TextOpacitySlider, Path=Value}" /></Grid>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Border" />
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Border Thick" /><Slider x:Name="BorderThicknessSlider" Grid.Column="1" Minimum="0" Maximum="60" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BorderThicknessSlider, Path=Value}" /></Grid>
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Border Red" /><Slider x:Name="BorderRedSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BorderRedSlider, Path=Value}" /></Grid>
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Border Green" /><Slider x:Name="BorderGreenSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BorderGreenSlider, Path=Value}" /></Grid>
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Border Blue" /><Slider x:Name="BorderBlueSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BorderBlueSlider, Path=Value}" /></Grid>
+            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Border Opacity" /><Slider x:Name="BorderOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BorderOpacitySlider, Path=Value}" /></Grid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

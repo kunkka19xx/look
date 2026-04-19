@@ -5,37 +5,71 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:tabs="using:LauncherApp.Views.Settings.Tabs"
     mc:Ignorable="d">
 
-    <Border
-        Padding="12"
-        Style="{StaticResource LauncherSurfaceBorderStyle}">
-        <controls:TabView>
-            <controls:TabViewItem Header="General">
-                <StackPanel Padding="10" Spacing="8">
-                    <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="Launch at login (planned)" />
-                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" Text="Hide on focus loss (planned)" />
-                </StackPanel>
-            </controls:TabViewItem>
-            <controls:TabViewItem Header="Theme">
-                <StackPanel Padding="10" Spacing="8">
-                    <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="Tokens and presets parity" />
-                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" Text="Match macOS theme semantics" />
-                </StackPanel>
-            </controls:TabViewItem>
-            <controls:TabViewItem Header="Hotkey">
-                <StackPanel Padding="10" Spacing="8">
-                    <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="Global hotkey config (planned)" />
-                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" Text="Conflict detection messaging" />
-                </StackPanel>
-            </controls:TabViewItem>
-            <controls:TabViewItem Header="About">
-                <StackPanel Padding="10" Spacing="8">
-                    <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="look Windows shell" />
-                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" Text="Mock-first UI parity phase" />
-                </StackPanel>
-            </controls:TabViewItem>
-        </controls:TabView>
-    </Border>
+    <Grid Padding="6,0,6,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Margin="0,0,0,4">
+            <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                VerticalAlignment="Center"
+                FontSize="15"
+                FontWeight="SemiBold"
+                Foreground="{StaticResource LauncherTextBrush}"
+                Text="Settings" />
+
+            <TextBlock
+                Grid.Column="1"
+                Margin="10,0,0,0"
+                VerticalAlignment="Center"
+                FontSize="11"
+                Foreground="{StaticResource LauncherMutedTextBrush}"
+                Text="Esc or Ctrl+Shift+, to close" />
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button MinWidth="110" Height="30" Content="Save Config" />
+                <Button MinWidth="140" Height="30" Content="Back to Launcher" Click="BackToLauncherButton_OnClick" />
+            </StackPanel>
+            </Grid>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Padding="0" Background="Transparent" CornerRadius="0">
+                <Grid ColumnSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="AppearanceTabButton" Grid.Column="0" Height="34" Content="Appearance" Click="AppearanceTabButton_OnClick" />
+                    <Button x:Name="AdvancedTabButton" Grid.Column="1" Height="34" Content="Advanced" Click="AdvancedTabButton_OnClick" />
+                    <Button x:Name="ShortcutsTabButton" Grid.Column="2" Height="34" Content="Shortcuts" Click="ShortcutsTabButton_OnClick" />
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="1" Margin="0,4,0,0" Background="Transparent" CornerRadius="0" Padding="0">
+                <Grid>
+                    <tabs:AppearanceSettingsTabView x:Name="AppearanceTabContent" />
+                    <tabs:AdvancedSettingsTabView x:Name="AdvancedTabContent" Visibility="Collapsed" />
+                    <tabs:ShortcutsSettingsTabView x:Name="ShortcutsTabContent" Visibility="Collapsed" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
 </UserControl>

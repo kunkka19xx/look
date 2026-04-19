@@ -9,8 +9,10 @@ using LauncherApp.Bridge;
 using LauncherApp.Core;
 using LauncherApp.Features.Search;
 using LauncherApp.Services;
+using LauncherApp.Views.Settings;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using WinUIEx;
 using Windows.ApplicationModel.DataTransfer;
@@ -25,6 +27,7 @@ namespace LauncherApp
         private readonly ObservableCollection<LauncherRowItem> _results;
         private readonly List<LauncherResult> _commandSeed;
         private readonly List<LauncherResult> _clipboardSeed;
+        private SettingsTabsView? _settingsTabsView;
         private LauncherMode _mode = LauncherMode.Search;
         private int _searchVersion;
 
@@ -32,6 +35,11 @@ namespace LauncherApp
         {
             InitializeComponent();
             ConfigureLauncherWindow();
+
+            if (Content is UIElement root)
+            {
+                root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GlobalKeyDown), true);
+            }
 
             bool mockFirst = true;
             ISearchProvider searchProvider = mockFirst
@@ -47,6 +55,20 @@ namespace LauncherApp
             ResultsList.ItemsSource = _results;
             SetMode(LauncherMode.Search);
             RefreshResults(QueryInput.Text?.Trim() ?? string.Empty);
+        }
+
+        private SettingsTabsView EnsureSettingsView()
+        {
+            if (_settingsTabsView != null)
+            {
+                return _settingsTabsView;
+            }
+
+            _settingsTabsView = new SettingsTabsView();
+            _settingsTabsView.CloseRequested += SettingsTabsPanel_OnCloseRequested;
+            SettingsHost.Children.Clear();
+            SettingsHost.Children.Add(_settingsTabsView);
+            return _settingsTabsView;
         }
 
         private static List<LauncherResult> BuildCommandSeed()
@@ -136,10 +158,14 @@ namespace LauncherApp
         {
             _mode = mode;
 
+            SearchBarHost.Visibility = Visibility.Visible;
+            ResultsHost.Visibility = Visibility.Visible;
+            HintBarHost.Visibility = Visibility.Visible;
+            SettingsHost.Visibility = Visibility.Collapsed;
+
             ResultPreviewPanel.Visibility = Visibility.Collapsed;
             PreviewDivider.Visibility = Visibility.Collapsed;
             CommandPanelsPanel.Visibility = Visibility.Collapsed;
-            SettingsTabsPanel.Visibility = Visibility.Collapsed;
 
             switch (mode)
             {
@@ -158,10 +184,11 @@ namespace LauncherApp
                     HintText.Text = "Enter copy  •  Up/Down select  •  Esc clear";
                     break;
                 case LauncherMode.Settings:
-                    QueryInput.PlaceholderText = "Use , to view settings notes";
-                    HintText.Text = "Mock UI only  •  Theme and style parity in progress";
-                    ResultPreviewPanel.Visibility = Visibility.Collapsed;
-                    SettingsTabsPanel.Visibility = Visibility.Visible;
+                    EnsureSettingsView();
+                    SearchBarHost.Visibility = Visibility.Collapsed;
+                    ResultsHost.Visibility = Visibility.Collapsed;
+                    HintBarHost.Visibility = Visibility.Collapsed;
+                    SettingsHost.Visibility = Visibility.Visible;
                     break;
                 case LauncherMode.Help:
                     QueryInput.PlaceholderText = "Use ? to view help";
@@ -183,7 +210,7 @@ namespace LauncherApp
                 LauncherMode.Search => _searchLogic.Search(query, 40),
                 LauncherMode.Command => FilterRows(_commandSeed, query),
                 LauncherMode.Clipboard => FilterRows(_clipboardSeed, query),
-                LauncherMode.Settings => FilterRows(BuildSettingsRows(), query),
+                LauncherMode.Settings => [],
                 LauncherMode.Help => FilterRows(BuildHelpRows(), query),
                 _ => [],
             };
@@ -220,16 +247,6 @@ namespace LauncherApp
                 .ToList();
         }
 
-        private static IReadOnlyList<LauncherResult> BuildSettingsRows()
-        {
-            return
-            [
-                new LauncherResult { Id = "settings:theme", Kind = "app", Title = "Theme style tokens", Subtitle = "primary / secondary / ghost / danger", Path = "settings://theme", Score = 1000 },
-                new LauncherResult { Id = "settings:message", Kind = "app", Title = "Message and banner style", Subtitle = "success / info / warning / error", Path = "settings://messages", Score = 990 },
-                new LauncherResult { Id = "settings:screens", Kind = "app", Title = "Screen states", Subtitle = "search / command / clipboard / settings / help", Path = "settings://screens", Score = 980 },
-            ];
-        }
-
         private static IReadOnlyList<LauncherResult> BuildHelpRows()
         {
             return
@@ -262,6 +279,52 @@ namespace LauncherApp
             }
 
             QueryInput.Focus(FocusState.Programmatic);
+        }
+
+        private bool IsSettingsToggleShortcut(VirtualKey key)
+        {
+            return key == (VirtualKey)188 && IsCtrlPressed() && IsShiftPressed();
+        }
+
+        private void GlobalKeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            if (e.Key == VirtualKey.Escape && _mode == LauncherMode.Settings)
+            {
+                ToggleSettingsMode();
+                e.Handled = true;
+                return;
+            }
+
+            if (!IsSettingsToggleShortcut(e.Key))
+            {
+                return;
+            }
+
+            ToggleSettingsMode();
+            e.Handled = true;
+        }
+
+        private void ToggleSettingsMode()
+        {
+            if (_mode == LauncherMode.Settings)
+            {
+                QueryInput.Text = string.Empty;
+                SetMode(LauncherMode.Search);
+                RefreshResults(string.Empty);
+                QueryInput.Focus(FocusState.Programmatic);
+                QueryInput.SelectionStart = QueryInput.Text.Length;
+                return;
+            }
+
+            SetMode(LauncherMode.Settings);
+        }
+
+        private void SettingsTabsPanel_OnCloseRequested(object? sender, EventArgs e)
+        {
+            if (_mode == LauncherMode.Settings)
+            {
+                ToggleSettingsMode();
+            }
         }
 
         private void QueryInput_OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)

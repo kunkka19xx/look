@@ -26,7 +26,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Grid Grid.Row="0">
+                <Grid x:Name="SearchBarHost" Grid.Row="0">
                     <TextBox
                     x:Name="QueryInput"
                     Padding="34,10,12,10"
@@ -46,7 +46,7 @@
                     IsHitTestVisible="False" />
                 </Grid>
 
-                <Grid Grid.Row="1" ColumnSpacing="12">
+                <Grid x:Name="ResultsHost" Grid.Row="1" ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -98,14 +98,16 @@
                 x:Name="CommandPanelsPanel"
                 Grid.Column="2"
                 Visibility="Collapsed" />
-
-                    <settingsViews:SettingsTabsView
-                x:Name="SettingsTabsPanel"
-                Grid.Column="2"
-                Visibility="Collapsed" />
                 </Grid>
 
-                <StackPanel Grid.Row="2" Orientation="Vertical" Spacing="3">
+                <Grid
+                    x:Name="SettingsHost"
+                    Grid.Row="0"
+                    Grid.RowSpan="3"
+                    Visibility="Collapsed">
+                </Grid>
+
+                <StackPanel x:Name="HintBarHost" Grid.Row="2" Orientation="Vertical" Spacing="3">
                     <TextBlock
                     x:Name="HintText"
                     FontSize="11"
