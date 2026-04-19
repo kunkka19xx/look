@@ -41,7 +41,7 @@
                     <ColumnDefinition Width="64" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Backdrop" />
-                <ComboBox x:Name="BackdropModeCombo" Grid.Column="1" SelectedIndex="0" SelectionChanged="BackdropModeCombo_OnSelectionChanged">
+                <ComboBox x:Name="BackdropModeCombo" Grid.Column="1" SelectedIndex="1" SelectionChanged="BackdropModeCombo_OnSelectionChanged">
                     <ComboBoxItem Content="Mica" />
                     <ComboBoxItem Content="Acrylic" />
                     <ComboBoxItem Content="Solid" />

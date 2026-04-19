@@ -14,16 +14,18 @@ public sealed partial class AppearanceSettingsTabView : UserControl
 {
     private List<string> _allFonts = [];
     private bool _isInitializing;
+    private string _appliedBackdropMode = string.Empty;
+    private string _appliedFontName = string.Empty;
+    private double _appliedFontSize = -1;
 
     public AppearanceSettingsTabView()
     {
         _isInitializing = true;
         InitializeComponent();
-        InitializeDefaults();
         LoadInstalledFonts();
+        InitializeFromCurrentTheme();
         HookLiveEvents();
         _isInitializing = false;
-        ApplyThemePreview();
     }
 
     private void HookLiveEvents()
@@ -51,9 +53,9 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         TintRedSlider.Value = 16;
         TintGreenSlider.Value = 24;
         TintBlueSlider.Value = 42;
-        TintOpacitySlider.Value = 42;
+        TintOpacitySlider.Value = 28;
 
-        BlurOpacitySlider.Value = 55;
+        BlurOpacitySlider.Value = 42;
         SettingsBlurSlider.Value = 90;
 
         FontSizeSlider.Value = 14;
@@ -67,7 +69,78 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         BorderRedSlider.Value = 38;
         BorderGreenSlider.Value = 43;
         BorderBlueSlider.Value = 58;
-        BorderOpacitySlider.Value = 62;
+        BorderOpacitySlider.Value = 45;
+    }
+
+    private void InitializeFromCurrentTheme()
+    {
+        InitializeDefaults();
+
+        if (Application.Current?.Resources is not ResourceDictionary resources)
+        {
+            BackdropModeCombo.SelectedIndex = 1;
+            return;
+        }
+
+        if (resources.ContainsKey("LauncherColorPanel") && resources["LauncherColorPanel"] is Color panelColor)
+        {
+            SetColorSliders(panelColor, TintRedSlider, TintGreenSlider, TintBlueSlider, TintOpacitySlider);
+        }
+
+        if (resources.ContainsKey("LauncherColorPanelAlt") && resources["LauncherColorPanelAlt"] is Color panelAltColor)
+        {
+            BlurOpacitySlider.Value = ToPercent(panelAltColor.A);
+        }
+
+        if (resources.ContainsKey("LauncherColorText") && resources["LauncherColorText"] is Color textColor)
+        {
+            SetColorSliders(textColor, TextRedSlider, TextGreenSlider, TextBlueSlider, TextOpacitySlider);
+        }
+
+        if (resources.ContainsKey("LauncherColorBorder") && resources["LauncherColorBorder"] is Color borderColor)
+        {
+            SetColorSliders(borderColor, BorderRedSlider, BorderGreenSlider, BorderBlueSlider, BorderOpacitySlider);
+        }
+
+        if (resources.ContainsKey("LauncherBorderThickness") && resources["LauncherBorderThickness"] is Thickness thickness)
+        {
+            BorderThicknessSlider.Value = thickness.Left * 10d;
+        }
+
+        if (resources.ContainsKey("ContentControlThemeFontSize") && resources["ContentControlThemeFontSize"] is double fontSize)
+        {
+            FontSizeSlider.Value = fontSize;
+        }
+
+        if (resources.ContainsKey("ContentControlThemeFontFamily") && resources["ContentControlThemeFontFamily"] is FontFamily family)
+        {
+            FontNameInput.Text = family.Source;
+        }
+
+        string mode = "Acrylic";
+        if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
+        {
+            mode = window.CurrentBackdropMode;
+        }
+
+        BackdropModeCombo.SelectedIndex = mode.Equals("Solid", System.StringComparison.OrdinalIgnoreCase)
+            ? 2
+            : mode.Equals("Mica", System.StringComparison.OrdinalIgnoreCase)
+                ? 0
+                : 1;
+    }
+
+    private static void SetColorSliders(Color color, Slider red, Slider green, Slider blue, Slider alpha)
+    {
+        red.Value = ToPercent(color.R);
+        green.Value = ToPercent(color.G);
+        blue.Value = ToPercent(color.B);
+        alpha.Value = ToPercent(color.A);
+    }
+
+    private static double ToPercent(byte value)
+    {
+        return System.Math.Round(value / 255d * 100d);
     }
 
     private void LoadInstalledFonts()
@@ -97,6 +170,11 @@ public sealed partial class AppearanceSettingsTabView : UserControl
 
     private void FontNameInput_OnTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
         if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
         {
             return;
@@ -118,10 +196,16 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         {
             ApplyThemePreview();
         }
+
     }
 
     private void FontNameInput_OnQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
         if (args.ChosenSuggestion is string selected)
         {
             sender.Text = selected;
@@ -131,11 +215,22 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         {
             ApplyThemePreview();
         }
+
     }
 
     private void BackdropModeCombo_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_isInitializing)
+        if (_isInitializing || !IsLoaded)
+        {
+            return;
+        }
+
+        ApplyBackdropMode();
+    }
+
+    private void Slider_OnValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_isInitializing || !IsLoaded)
         {
             return;
         }
@@ -143,14 +238,15 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         ApplyThemePreview();
     }
 
-    private void Slider_OnValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    public void ApplyCurrentSettings()
     {
-        if (_isInitializing)
+        if (_isInitializing || !IsLoaded)
         {
             return;
         }
 
         ApplyThemePreview();
+        ApplyBackdropMode();
     }
 
     private void ApplyThemePreview()
@@ -160,33 +256,75 @@ public sealed partial class AppearanceSettingsTabView : UserControl
             return;
         }
 
-        UpdateBrush(resources, "LauncherPanelBrush", ToColor(TintRedSlider.Value, TintGreenSlider.Value, TintBlueSlider.Value, TintOpacitySlider.Value));
-        UpdateBrush(resources, "LauncherPanelAltBrush", ToColor(TintRedSlider.Value + 8, TintGreenSlider.Value + 8, TintBlueSlider.Value + 8, BlurOpacitySlider.Value));
+        Color panelColor = ToColor(TintRedSlider.Value, TintGreenSlider.Value, TintBlueSlider.Value, TintOpacitySlider.Value);
+        Color panelAltColor = ToColor(TintRedSlider.Value + 8, TintGreenSlider.Value + 8, TintBlueSlider.Value + 8, BlurOpacitySlider.Value);
+
+        UpdateBrush(resources, "LauncherPanelBrush", panelColor);
+        UpdateBrush(resources, "LauncherPanelAltBrush", panelAltColor);
         UpdateBrush(resources, "LauncherTextBrush", ToColor(TextRedSlider.Value, TextGreenSlider.Value, TextBlueSlider.Value, TextOpacitySlider.Value));
         UpdateBrush(resources, "LauncherMutedTextBrush", ToColor(TextRedSlider.Value - 24, TextGreenSlider.Value - 24, TextBlueSlider.Value - 24, TextOpacitySlider.Value - 26));
         UpdateBrush(resources, "LauncherBorderBrush", ToColor(BorderRedSlider.Value, BorderGreenSlider.Value, BorderBlueSlider.Value, BorderOpacitySlider.Value));
         UpdateBrush(resources, "LauncherAccentBrush", ToColor(TintRedSlider.Value + 40, TintGreenSlider.Value + 45, TintBlueSlider.Value + 65, 100));
 
-        UpdateColor(resources, "LauncherColorPanel", ToColor(TintRedSlider.Value, TintGreenSlider.Value, TintBlueSlider.Value, TintOpacitySlider.Value));
-        UpdateColor(resources, "LauncherColorPanelAlt", ToColor(TintRedSlider.Value + 8, TintGreenSlider.Value + 8, TintBlueSlider.Value + 8, BlurOpacitySlider.Value));
+        UpdateColor(resources, "LauncherColorPanel", panelColor);
+        UpdateColor(resources, "LauncherColorPanelAlt", panelAltColor);
         UpdateColor(resources, "LauncherColorText", ToColor(TextRedSlider.Value, TextGreenSlider.Value, TextBlueSlider.Value, TextOpacitySlider.Value));
         UpdateColor(resources, "LauncherColorMuted", ToColor(TextRedSlider.Value - 24, TextGreenSlider.Value - 24, TextBlueSlider.Value - 24, TextOpacitySlider.Value - 26));
         UpdateColor(resources, "LauncherColorBorder", ToColor(BorderRedSlider.Value, BorderGreenSlider.Value, BorderBlueSlider.Value, BorderOpacitySlider.Value));
         UpdateThickness(resources, "LauncherBorderThickness", BorderThicknessSlider.Value / 10d);
 
+        if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
+        {
+            window.UpdateAcrylicOpacity(BlurOpacitySlider.Value);
+        }
+
+        ApplyTypographyPreview(resources);
+    }
+
+    private void ApplyBackdropMode()
+    {
+        string mode = (BackdropModeCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Acrylic";
+        if (mode.Equals(_appliedBackdropMode, System.StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
+        {
+            window.SetBackdropMode(mode);
+            _appliedBackdropMode = mode;
+        }
+    }
+
+    private void ApplyTypographyPreview(ResourceDictionary resources)
+    {
         string fontName = FontNameInput.Text?.Trim() ?? string.Empty;
-        if (!string.IsNullOrWhiteSpace(fontName))
+        bool hasFontName = !string.IsNullOrWhiteSpace(fontName);
+        bool fontChanged = hasFontName && !fontName.Equals(_appliedFontName, System.StringComparison.OrdinalIgnoreCase);
+
+        double fontSize = FontSizeSlider.Value;
+        bool sizeChanged = System.Math.Abs(fontSize - _appliedFontSize) > 0.1;
+
+        if (!fontChanged && !sizeChanged)
+        {
+            return;
+        }
+
+        if (fontChanged)
         {
             var family = new FontFamily(fontName);
             resources["ContentControlThemeFontFamily"] = family;
             resources["TextControlThemeFontFamily"] = family;
             ApplyFontFamilyToVisualTree(XamlRoot?.Content, family);
+            _appliedFontName = fontName;
         }
 
-        string mode = (BackdropModeCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Mica";
-        if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
+        if (sizeChanged)
         {
-            window.SetBackdropMode(mode);
+            resources["ContentControlThemeFontSize"] = fontSize;
+            resources["ControlContentThemeFontSize"] = fontSize;
+            ApplyFontSizeToVisualTree(XamlRoot?.Content, fontSize);
+            _appliedFontSize = fontSize;
         }
     }
 
@@ -234,6 +372,29 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         for (int i = 0; i < count; i++)
         {
             ApplyFontFamilyToVisualTree(VisualTreeHelper.GetChild(root, i), family);
+        }
+    }
+
+    private static void ApplyFontSizeToVisualTree(DependencyObject? root, double size)
+    {
+        if (root is null)
+        {
+            return;
+        }
+
+        if (root is Control control)
+        {
+            control.FontSize = size;
+        }
+        else if (root is TextBlock text)
+        {
+            text.FontSize = size;
+        }
+
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            ApplyFontSizeToVisualTree(VisualTreeHelper.GetChild(root, i), size);
         }
     }
 

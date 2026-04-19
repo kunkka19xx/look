@@ -1,27 +1,45 @@
 using System;
-using Microsoft.UI;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using Windows.UI;
 
 namespace LauncherApp.Views.Settings;
 
 public sealed partial class SettingsTabsView : UserControl
 {
-    private readonly SolidColorBrush _selectedTabBrush = new(Color.FromArgb(255, 86, 126, 173));
-    private readonly SolidColorBrush _idleTabBrush = new(Color.FromArgb(255, 35, 50, 69));
+    private readonly Brush _selectedTabBrush;
+    private readonly Brush _idleTabBrush;
 
     public event EventHandler? CloseRequested;
 
     public SettingsTabsView()
     {
         this.InitializeComponent();
+        _selectedTabBrush = ResolveBrush("LauncherAccentBrush", Windows.UI.Color.FromArgb(170, 86, 126, 173));
+        _idleTabBrush = ResolveBrush("LauncherPanelAltBrush", Windows.UI.Color.FromArgb(120, 35, 50, 69));
         SelectTab("appearance");
+    }
+
+    private static Brush ResolveBrush(string key, Windows.UI.Color fallback)
+    {
+        if (Application.Current?.Resources is not null
+            && Application.Current.Resources.ContainsKey(key)
+            && Application.Current.Resources[key] is Brush brush)
+        {
+            return brush;
+        }
+
+        return new SolidColorBrush(fallback);
     }
 
     private void BackToLauncherButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         CloseRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void SaveConfigButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        AppearanceTabContent.ApplyCurrentSettings();
     }
 
     private void AppearanceTabButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

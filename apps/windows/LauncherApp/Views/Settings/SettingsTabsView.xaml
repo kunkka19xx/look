@@ -18,7 +18,7 @@
             <Setter Property="Padding" Value="10,0" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Background" Value="#233246" />
+            <Setter Property="Background" Value="{StaticResource LauncherPanelAltBrush}" />
         </Style>
     </UserControl.Resources>
 
@@ -52,7 +52,7 @@
                 Text="Esc or Ctrl+Shift+, to close" />
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Button MinWidth="110" Height="28" Content="Save Config" />
+                <Button MinWidth="110" Height="28" Content="Save Config" Click="SaveConfigButton_OnClick" />
                 <Button MinWidth="140" Height="28" Content="Back to Launcher" Click="BackToLauncherButton_OnClick" />
             </StackPanel>
             </Grid>

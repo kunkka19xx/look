@@ -15,11 +15,13 @@
     </Window.SystemBackdrop>
     <Grid Background="Transparent">
         <Border
+            x:Name="LauncherSurface"
             Margin="0"
             Padding="12"
             CornerRadius="0"
             BorderBrush="{StaticResource LauncherBorderBrush}"
             BorderThickness="{StaticResource LauncherBorderThickness}"
+            PointerPressed="LauncherSurface_OnPointerPressed"
             Background="{StaticResource LauncherPanelBrush}">
             <Grid RowSpacing="10">
                 <Grid.RowDefinitions>

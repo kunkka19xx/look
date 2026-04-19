@@ -11,11 +11,11 @@
             </ResourceDictionary.MergedDictionaries>
 
             <Color x:Key="LauncherColorBg">#0E1218</Color>
-            <Color x:Key="LauncherColorPanel">#151C26</Color>
-            <Color x:Key="LauncherColorPanelAlt">#1A2330</Color>
+            <Color x:Key="LauncherColorPanel">#2D151C26</Color>
+            <Color x:Key="LauncherColorPanelAlt">#451A2330</Color>
             <Color x:Key="LauncherColorText">#E8EDF7</Color>
             <Color x:Key="LauncherColorMuted">#A2AEBD</Color>
-            <Color x:Key="LauncherColorBorder">#273446</Color>
+            <Color x:Key="LauncherColorBorder">#66273446</Color>
             <Color x:Key="LauncherColorAccent">#7AA2F7</Color>
             <Color x:Key="LauncherColorSuccess">#1F8B4C</Color>
             <Color x:Key="LauncherColorInfo">#2E5EA8</Color>
@@ -23,12 +23,14 @@
             <Color x:Key="LauncherColorError">#A03333</Color>
 
             <SolidColorBrush x:Key="LauncherBgBrush" Color="{StaticResource LauncherColorBg}" />
+            <SolidColorBrush x:Key="LauncherTransparentBrush" Color="Transparent" />
             <SolidColorBrush x:Key="LauncherPanelBrush" Color="{StaticResource LauncherColorPanel}" />
             <SolidColorBrush x:Key="LauncherPanelAltBrush" Color="{StaticResource LauncherColorPanelAlt}" />
             <SolidColorBrush x:Key="LauncherTextBrush" Color="{StaticResource LauncherColorText}" />
             <SolidColorBrush x:Key="LauncherMutedTextBrush" Color="{StaticResource LauncherColorMuted}" />
             <SolidColorBrush x:Key="LauncherBorderBrush" Color="{StaticResource LauncherColorBorder}" />
             <SolidColorBrush x:Key="LauncherAccentBrush" Color="{StaticResource LauncherColorAccent}" />
+            <SolidColorBrush x:Key="ApplicationPageBackgroundThemeBrush" Color="Transparent" />
             <SolidColorBrush x:Key="LauncherBannerSuccessBrush" Color="{StaticResource LauncherColorSuccess}" />
             <SolidColorBrush x:Key="LauncherBannerInfoBrush" Color="{StaticResource LauncherColorInfo}" />
             <SolidColorBrush x:Key="LauncherBannerWarningBrush" Color="{StaticResource LauncherColorWarning}" />

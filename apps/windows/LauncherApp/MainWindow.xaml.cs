@@ -14,8 +14,10 @@ using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using WinRT.Interop;
 using WinUIEx;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
@@ -32,10 +34,17 @@ namespace LauncherApp
         private SettingsTabsView? _settingsTabsView;
         private LauncherMode _mode = LauncherMode.Search;
         private int _searchVersion;
+        private string _backdropMode = "Acrylic";
+        private string _appliedBackdropMode = string.Empty;
+        private Windows.UI.Color _acrylicTint = Windows.UI.Color.FromArgb(45, 21, 28, 38);
+        private readonly TransparentTintBackdrop _transparentBackdrop;
+
+        public string CurrentBackdropMode => _backdropMode;
 
         public MainWindow()
         {
             InitializeComponent();
+            _transparentBackdrop = new TransparentTintBackdrop(_acrylicTint);
             ConfigureLauncherWindow();
 
             if (Content is UIElement root)
@@ -108,29 +117,48 @@ namespace LauncherApp
                 presenter.SetBorderAndTitleBar(true, false);
             }
 
+            ExtendsContentIntoTitleBar = true;
+
             if (Content is FrameworkElement root)
             {
                 root.RequestedTheme = ElementTheme.Dark;
             }
+
+            SetBackdropMode("Acrylic");
 
             ApplyRuntimeIcon();
         }
 
         public void SetBackdropMode(string mode)
         {
+            _backdropMode = mode;
+
+            if (mode.Equals(_appliedBackdropMode, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             if (mode.Equals("Acrylic", StringComparison.OrdinalIgnoreCase))
             {
-                SystemBackdrop = new DesktopAcrylicBackdrop();
+                SystemBackdrop = _transparentBackdrop;
+                ApplyFrameStyle(removeRoundedCorners: true, removeBorder: true);
+                _appliedBackdropMode = mode;
                 return;
             }
 
             if (mode.Equals("Solid", StringComparison.OrdinalIgnoreCase))
             {
                 SystemBackdrop = null;
+                DisableAcrylicFallback();
+                ApplyFrameStyle(removeRoundedCorners: false, removeBorder: false);
+                _appliedBackdropMode = mode;
                 return;
             }
 
+            DisableAcrylicFallback();
             SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
+            ApplyFrameStyle(removeRoundedCorners: false, removeBorder: false);
+            _appliedBackdropMode = mode;
         }
 
         private void ApplyRuntimeIcon()
@@ -142,16 +170,163 @@ namespace LauncherApp
             }
         }
 
-       
+        public void UpdateAcrylicOpacity(double opacityPercent)
+        {
+            byte alpha = (byte)System.Math.Clamp((int)System.Math.Round(opacityPercent / 100d * 255d), 10, 120);
+            _acrylicTint = Windows.UI.Color.FromArgb(alpha, 21, 28, 38);
+            _transparentBackdrop.TintColor = _acrylicTint;
+            if (!_backdropMode.Equals("Acrylic", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
 
-        [DllImport("gdi32.dll")]
-        private static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int widthEllipse, int heightEllipse);
+        private void EnableAcrylicFallback(Windows.UI.Color tint)
+        {
+            IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            var accent = new AccentPolicy
+            {
+                AccentState = AccentState.AccentEnableAcrylicBlurBehind,
+                AccentFlags = 0,
+                GradientColor = BuildAccentColor(tint.A, tint.R, tint.G, tint.B),
+                AnimationId = 0
+            };
+
+            SetAccentPolicy(hwnd, accent);
+        }
+
+        private void DisableAcrylicFallback()
+        {
+            IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            var accent = new AccentPolicy
+            {
+                AccentState = AccentState.AccentDisabled,
+                AccentFlags = 0,
+                GradientColor = 0,
+                AnimationId = 0
+            };
+
+            SetAccentPolicy(hwnd, accent);
+        }
+
+        private static int BuildAccentColor(byte alpha, byte red, byte green, byte blue)
+        {
+            return (alpha << 24) | (blue << 16) | (green << 8) | red;
+        }
+
+        private static void SetAccentPolicy(IntPtr hwnd, AccentPolicy accent)
+        {
+            int size = Marshal.SizeOf<AccentPolicy>();
+            IntPtr accentPtr = Marshal.AllocHGlobal(size);
+
+            try
+            {
+                Marshal.StructureToPtr(accent, accentPtr, false);
+                var data = new WindowCompositionAttributeData
+                {
+                    Attribute = WindowCompositionAttribute.WcaAccentPolicy,
+                    Data = accentPtr,
+                    SizeOfData = size
+                };
+
+                SetWindowCompositionAttribute(hwnd, ref data);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(accentPtr);
+            }
+        }
 
         [DllImport("user32.dll")]
-        private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool redraw);
+        private static extern int SetWindowCompositionAttribute(IntPtr hwnd, ref WindowCompositionAttributeData data);
 
-        [DllImport("gdi32.dll")]
-        private static extern bool DeleteObject(IntPtr hObject);
+        [DllImport("user32.dll")]
+        private static extern bool ReleaseCapture();
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hwnd, int msg, int wParam, int lParam);
+
+        private const int WmNclButtonDown = 0x00A1;
+        private const int HtCaption = 0x0002;
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+
+        private void ApplyFrameStyle(bool removeRoundedCorners, bool removeBorder)
+        {
+            IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            int cornerPreference = removeRoundedCorners
+                ? (int)DwmWindowCornerPreference.DoNotRound
+                : (int)DwmWindowCornerPreference.Default;
+
+            _ = DwmSetWindowAttribute(
+                hwnd,
+                (int)DwmWindowAttribute.WindowCornerPreference,
+                ref cornerPreference,
+                Marshal.SizeOf<int>());
+
+            int borderColor = removeBorder ? unchecked((int)0xFFFFFFFE) : unchecked((int)0xFFFFFFFF);
+            _ = DwmSetWindowAttribute(
+                hwnd,
+                (int)DwmWindowAttribute.BorderColor,
+                ref borderColor,
+                Marshal.SizeOf<int>());
+        }
+
+        private enum AccentState
+        {
+            AccentDisabled = 0,
+            AccentEnableAcrylicBlurBehind = 4,
+        }
+
+        private enum WindowCompositionAttribute
+        {
+            WcaAccentPolicy = 19,
+        }
+
+        private enum DwmWindowAttribute
+        {
+            WindowCornerPreference = 33,
+            BorderColor = 34,
+        }
+
+        private enum DwmWindowCornerPreference
+        {
+            Default = 0,
+            DoNotRound = 1,
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct AccentPolicy
+        {
+            public AccentState AccentState;
+            public int AccentFlags;
+            public int GradientColor;
+            public int AnimationId;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct WindowCompositionAttributeData
+        {
+            public WindowCompositionAttribute Attribute;
+            public IntPtr Data;
+            public int SizeOfData;
+        }
 
         private static (LauncherMode mode, string normalizedQuery) ResolveMode(string rawQuery)
         {
@@ -195,20 +370,24 @@ namespace LauncherApp
             switch (mode)
             {
                 case LauncherMode.Search:
+                    ApplyConfiguredSurface();
                     QueryInput.PlaceholderText = "Search apps";
                     HintText.Text = "Enter open  •  Ctrl+R reveal  •  Ctrl+C copy  •  Ctrl+Enter web";
                     break;
                 case LauncherMode.Command:
+                    ApplyConfiguredSurface();
                     QueryInput.PlaceholderText = "Use /calc, /shell, /kill, /sys";
                     HintText.Text = "Enter run  •  Up/Down select  •  Esc clear";
                     ResultPreviewPanel.Visibility = Visibility.Collapsed;
                     CommandPanelsPanel.Visibility = Visibility.Visible;
                     break;
                 case LauncherMode.Clipboard:
+                    ApplyConfiguredSurface();
                     QueryInput.PlaceholderText = "Use c\" to search clipboard";
                     HintText.Text = "Enter copy  •  Up/Down select  •  Esc clear";
                     break;
                 case LauncherMode.Settings:
+                    ApplyConfiguredSurface();
                     EnsureSettingsView();
                     SearchBarHost.Visibility = Visibility.Collapsed;
                     ResultsHost.Visibility = Visibility.Collapsed;
@@ -216,10 +395,17 @@ namespace LauncherApp
                     SettingsHost.Visibility = Visibility.Visible;
                     break;
                 case LauncherMode.Help:
+                    ApplyConfiguredSurface();
                     QueryInput.PlaceholderText = "Use ? to view help";
                     HintText.Text = "Prefixes: / command  •  c\" clipboard  •  , settings  •  ? help";
                     break;
             }
+        }
+
+        private void ApplyConfiguredSurface()
+        {
+            SetBackdropMode(_backdropMode);
+            LauncherSurface.Background = (Brush)Application.Current.Resources["LauncherPanelBrush"];
         }
 
         private void RefreshResults(string rawQuery)
@@ -304,6 +490,59 @@ namespace LauncherApp
             }
 
             QueryInput.Focus(FocusState.Programmatic);
+        }
+
+        private void LauncherSurface_OnPointerPressed(object sender, PointerRoutedEventArgs e)
+        {
+            if (!e.GetCurrentPoint(LauncherSurface).Properties.IsLeftButtonPressed)
+            {
+                return;
+            }
+
+            if (IsInteractiveElement(e.OriginalSource as DependencyObject))
+            {
+                return;
+            }
+
+            StartWindowDrag();
+            e.Handled = true;
+        }
+
+        private static bool IsInteractiveElement(DependencyObject? node)
+        {
+            while (node is not null)
+            {
+                if (node is ButtonBase
+                    || node is TextBox
+                    || node is AutoSuggestBox
+                    || node is ComboBox
+                    || node is Slider
+                    || node is ListView
+                    || node is ListViewItem
+                    || node is ScrollViewer
+                    || node is ToggleSwitch
+                    || node is CheckBox
+                    || node is HyperlinkButton)
+                {
+                    return true;
+                }
+
+                node = VisualTreeHelper.GetParent(node);
+            }
+
+            return false;
+        }
+
+        private void StartWindowDrag()
+        {
+            IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            ReleaseCapture();
+            _ = SendMessage(hwnd, WmNclButtonDown, HtCaption, 0);
         }
 
         private bool IsSettingsToggleShortcut(VirtualKey key)
