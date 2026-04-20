@@ -277,11 +277,18 @@ Current status:
 3. Load data from FFI search endpoint and render candidate rows.
 4. Port theme primitives to preserve visual identity while following Windows conventions.
 
-Current status:
+Current status (UI/UX mock-first, not yet connected to FFI backend):
 
-- shell scaffold is in place at `apps/windows/LauncherApp/`
+- shell scaffold in place at `apps/windows/LauncherApp/`
 - UI flow currently runs in mock-first mode for parity iteration speed
 - FFI provider wiring is retained behind a search-provider abstraction and can be re-enabled when backend validation starts
+- Completed UI components:
+  - Launcher window with transparent/acrylic effects
+  - Search results list (mock data)
+  - Command mode with 2-column card layout (calc, shell, kill, sys) - UI only, no execution
+  - Settings screens: Appearance, Advanced, Shortcuts (UI only, config persistence works)
+  - Help screen
+  - Keyboard navigation and shortcuts (UI binding, no real action execution)
 
 Exit criteria:
 
@@ -302,9 +309,16 @@ Exit criteria:
    - `sys`
 5. Implement startup behavior (launch at login) for Windows.
 
-Exit criteria:
+Exit criteria (NOTE: currently UI/mock-first, real execution not yet implemented):
 
 - all v1 parity-required actions work from keyboard-only flow
+
+**Phase 5 implementation status**:
+- Global hotkey toggle: NOT implemented (UI placeholder only)
+- Result actions (open, reveal, copy): NOT implemented (UI placeholder only)
+- Clipboard history mode (`c"`): UI placeholder only, real capture NOT implemented
+- Command mode (`calc`, `shell`, `kill`, `sys`): UI matching macOS, but commands DON'T execute (mock responses)
+- Launch at login: NOT implemented (Advanced settings toggle present, but non-functional)
 
 ## Phase 6 - UX parity polish
 

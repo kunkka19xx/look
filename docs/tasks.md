@@ -99,6 +99,7 @@ Recently completed (current optimization cycle):
 
 Reference: `docs/windows-port-plan.md`
 
+**Rust backend work (DONE):**
 - [x] draft Windows shell source structure in `docs/windows-port-plan.md`
 - [x] draft Rust platform refactor/change plan in `docs/windows-port-plan.md`
 - [x] define Windows v1 parity checklist from current macOS behavior (`README.md`, `docs/user-guide.md`) -> `docs/windows-v1-parity-checklist.md`
@@ -107,14 +108,20 @@ Reference: `docs/windows-port-plan.md`
 - [x] implement curated Windows Settings catalog (`ms-settings:` targets)
 - [x] add Windows path defaults/normalization for config bootstrap and exclude handling
 - [x] verify FFI API stability for multi-shell use and add Windows smoke coverage in CI
+
+**Windows shell UI (DONE - UI mock-first):**
 - [x] scaffold native Windows shell (`apps/windows/LauncherApp/`) with WinUI 3
-- [x] wire FFI search + result rendering + keyboard navigation in Windows shell
-- [x] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff)
+- [x] wire FFI search + result rendering + keyboard navigation in Windows shell (mock-first)
+- [x] implement Windows launcher UI screens (search, command mode with 2-column cards, clipboard placeholder, settings, help)
+- [x] implement keyboard navigation and shortcuts UI bindings
+
+**Windows real functionality (NOT yet implemented - requires backend + OS integration):**
+- [ ] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff)
 - [ ] implement global hotkey + hide/show/focus lifecycle parity on Windows
 - [ ] implement Windows clipboard history mode (`c"`) with listener-first capture strategy
-- [ ] implement Windows command mode parity (`calc`, `shell`, `kill`, `sys`)
+- [ ] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`)
 - [ ] implement Windows launch-at-login integration
-- [ ] add Windows packaging/signing/release pipeline (`.msix`/`.msi`) and documentation
+- [ ] implement Windows packaging/signing/release pipeline (`.msix`/`.msi`) and documentation
 - [ ] run closed beta and fix top reliability/performance parity regressions before GA
 
 Windows UI delivery note (mock-first):
@@ -122,7 +129,7 @@ Windows UI delivery note (mock-first):
 - [x] use mock search provider by default to unblock UI parity work
 - [x] keep FFI search provider wired behind provider abstraction for later backend re-enable
 
-Windows UI parity tasks (mock-first, match macOS behavior):
+**Windows UI parity tasks (mock-first, match macOS behavior - UI only, NO real execution):**
 
 - [x] define Windows design tokens (color, spacing, radius, typography) mapped from macOS theme semantics
 - [x] create shared row component styling (icon, title, meta, selection state, divider)
@@ -131,8 +138,26 @@ Windows UI parity tasks (mock-first, match macOS behavior):
 - [x] declare launcher screens and states: search, command mode, clipboard mode, settings, help
 - [x] declare empty/loading/error states for each launcher mode with stable copywriting
 - [x] implement keyboard hint/footer style and per-mode hint mapping to match macOS intent
+- [x] implement Advanced Settings screen with real .look.config persistence (background image, scan depth/limit, lazy indexing, log level, launch at login)
+- [x] implement Shortcuts reference screen (Ctrl+ shortcuts)
+- [x] implement Command mode 2-column card layout (calc, shell, kill, sys) with default calc selection
+- [x] implement Command mode keyboard shortcuts (Ctrl+/ enter, Up/Down switch, Enter run, Ctrl+1/2/3 quick-select)
 - [ ] add preview/right-panel layout parity spec for dictionary/result preview behavior
 - [ ] add style documentation with screenshots for side-by-side macOS vs Windows parity QA
+
+---
+
+**Windows REAL functionality tasks (NOT yet implemented):**
+
+These tasks require FFI backend connection + real OS integration - NOT UI work:
+
+- [ ] implement global hotkey + hide/show/focus lifecycle parity on Windows
+- [ ] implement Windows clipboard history mode (`c"`) with listener-first capture strategy
+- [ ] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`) - UI is done, execution NOT implemented
+- [ ] implement Windows launch-at-login integration
+- [ ] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff) - UI placeholder done, execution NOT implemented
+
+---
 
 Windows immediate execution queue (current):
 
