@@ -306,7 +306,7 @@ namespace LauncherApp
         }
 
         private enum DwmWindowCornerPreference
-        {
+        { 
             Default = 0,
             DoNotRound = 1,
         }
