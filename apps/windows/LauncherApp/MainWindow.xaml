@@ -17,7 +17,7 @@
         <Border
             x:Name="LauncherSurface"
             Margin="0"
-            Padding="12"
+            Padding="6"
             CornerRadius="0"
             BorderBrush="{StaticResource LauncherBorderBrush}"
             BorderThickness="{StaticResource LauncherBorderThickness}"
