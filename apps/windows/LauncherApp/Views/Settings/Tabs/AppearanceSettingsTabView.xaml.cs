@@ -262,7 +262,12 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         UpdateBrush(resources, "LauncherPanelBrush", panelColor);
         UpdateBrush(resources, "LauncherPanelAltBrush", panelAltColor);
         UpdateBrush(resources, "LauncherTextBrush", ToColor(TextRedSlider.Value, TextGreenSlider.Value, TextBlueSlider.Value, TextOpacitySlider.Value));
-        UpdateBrush(resources, "LauncherMutedTextBrush", ToColor(TextRedSlider.Value - 24, TextGreenSlider.Value - 24, TextBlueSlider.Value - 24, TextOpacitySlider.Value - 26));
+        double mutedOpacity = System.Math.Max(TextOpacitySlider.Value - 26, 20);
+        UpdateBrush(resources, "LauncherMutedTextBrush", ToColor(
+            System.Math.Max(TextRedSlider.Value - 24, 20),
+            System.Math.Max(TextGreenSlider.Value - 24, 20),
+            System.Math.Max(TextBlueSlider.Value - 24, 20),
+            mutedOpacity));
         UpdateBrush(resources, "LauncherBorderBrush", ToColor(BorderRedSlider.Value, BorderGreenSlider.Value, BorderBlueSlider.Value, BorderOpacitySlider.Value));
         UpdateBrush(resources, "LauncherAccentBrush", ToColor(TintRedSlider.Value + 40, TintGreenSlider.Value + 45, TintBlueSlider.Value + 65, 100));
 
@@ -352,6 +357,8 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         }
     }
 
+    private static readonly string[] IconFontFamilies = ["Segoe MDL2 Assets", "Segoe Fluent Icons", "Segoe UI Symbol"];
+
     private static void ApplyFontFamilyToVisualTree(DependencyObject? root, FontFamily family)
     {
         if (root is null)
@@ -365,7 +372,12 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         }
         else if (root is TextBlock text)
         {
-            text.FontFamily = family;
+            string? currentFont = text.FontFamily?.Source;
+            if (string.IsNullOrEmpty(currentFont) || !IconFontFamilies.Any(iconFont =>
+                currentFont.Contains(iconFont, System.StringComparison.OrdinalIgnoreCase)))
+            {
+                text.FontFamily = family;
+            }
         }
 
         int count = VisualTreeHelper.GetChildrenCount(root);
@@ -388,7 +400,12 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         }
         else if (root is TextBlock text)
         {
-            text.FontSize = size;
+            string? currentFont = text.FontFamily?.Source;
+            if (string.IsNullOrEmpty(currentFont) || !IconFontFamilies.Any(iconFont =>
+                currentFont.Contains(iconFont, System.StringComparison.OrdinalIgnoreCase)))
+            {
+                text.FontSize = size;
+            }
         }
 
         int count = VisualTreeHelper.GetChildrenCount(root);
