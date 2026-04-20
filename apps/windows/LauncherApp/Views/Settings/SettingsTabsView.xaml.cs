@@ -40,6 +40,7 @@ public sealed partial class SettingsTabsView : UserControl
     private void SaveConfigButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         AppearanceTabContent.ApplyCurrentSettings();
+        AdvancedTabContent.SaveToConfig();
     }
 
     private void AppearanceTabButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

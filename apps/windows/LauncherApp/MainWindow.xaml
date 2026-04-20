@@ -21,7 +21,6 @@
             CornerRadius="0"
             BorderBrush="{StaticResource LauncherBorderBrush}"
             BorderThickness="{StaticResource LauncherBorderThickness}"
-            PointerPressed="LauncherSurface_OnPointerPressed"
             Background="{StaticResource LauncherPanelBrush}">
             <Grid RowSpacing="10">
                 <Grid.RowDefinitions>

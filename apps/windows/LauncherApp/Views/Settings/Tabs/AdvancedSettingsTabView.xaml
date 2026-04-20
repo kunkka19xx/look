@@ -7,10 +7,154 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid Padding="16">
-        <TextBlock
-            Foreground="{StaticResource LauncherMutedTextBrush}"
-            Text="Advanced controls are temporarily consolidated into the Appearance tab for macOS parity pass."
-            TextWrapping="Wrap" />
-    </Grid>
+    <ScrollViewer Padding="8,4,8,8" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12">
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Background" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Style="{StaticResource LauncherSecondaryButtonStyle}" Content="Choose Background Image" Click="ChooseBackgroundImageButton_OnClick" />
+                        <Button Style="{StaticResource LauncherSecondaryButtonStyle}" Content="Clear" Click="ClearBackgroundImageButton_OnClick" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="BackgroundImagePathText" Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="No image selected" TextWrapping="NoWrap" />
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Image Layout" />
+                        <ComboBox x:Name="BackgroundImageModeCombo" Grid.Column="1" SelectedIndex="1">
+                            <ComboBoxItem Content="Center" Tag="fit" />
+                            <ComboBoxItem Content="Fill" Tag="fill" />
+                            <ComboBoxItem Content="Stretch" Tag="stretch" />
+                            <ComboBoxItem Content="Duplicate" Tag="tile" />
+                        </ComboBox>
+                        <TextBlock Grid.Column="2" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="How image is placed in launcher background." />
+                    </Grid>
+
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Image Opacity" />
+                        <Slider x:Name="BackgroundImageOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" Value="35" />
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BackgroundImageOpacitySlider, Path=Value}" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Image Blur" />
+                        <Slider x:Name="BackgroundImageBlurSlider" Grid.Column="1" Minimum="0" Maximum="30" StepFrequency="1" Value="8" />
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BackgroundImageBlurSlider, Path=Value}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Indexing" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="File Scan Depth" />
+                        <NumberBox x:Name="FileScanDepthBox" Grid.Column="1" Value="4" Minimum="1" Maximum="12" SpinButtonPlacementMode="Inline" />
+                        <TextBlock Grid.Column="2" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="How many directory levels to index." />
+                    </Grid>
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="File Scan Limit" />
+                        <NumberBox x:Name="FileScanLimitBox" Grid.Column="1" Value="8000" Minimum="500" Maximum="50000" SpinButtonPlacementMode="Inline" />
+                        <TextBlock Grid.Column="2" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Max files indexed per refresh." />
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="2">
+                            <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="Lazy indexing" />
+                            <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Refresh index automatically when launcher opens after file/app changes." />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="LazyIndexingToggle" Grid.Column="1" IsOn="True" OnContent="On" OffContent="Off" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Top" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Skip Folders" />
+                        <StackPanel Grid.Column="1" Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Style="{StaticResource LauncherSecondaryButtonStyle}" Width="120" HorizontalAlignment="Left" Content="Add Folder" Click="AddExcludedFolderButton_OnClick" />
+                                <Button Style="{StaticResource LauncherSecondaryButtonStyle}" Width="120" HorizontalAlignment="Left" Content="Remove Selected" Click="RemoveExcludedFolderButton_OnClick" />
+                            </StackPanel>
+                            <ListView x:Name="ExcludedFoldersList" Height="108" Background="Transparent" SelectionMode="Single" />
+                            <TextBlock x:Name="ExcludedFoldersEmptyText" Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="No excluded folder paths yet" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Privacy &amp; Logs" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150" />
+                        <ColumnDefinition Width="220" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Backend Log Level" />
+                    <ComboBox x:Name="BackendLogLevelCombo" Grid.Column="1" SelectedIndex="0">
+                        <ComboBoxItem Content="Error" Tag="error" />
+                        <ComboBoxItem Content="Info" Tag="info" />
+                        <ComboBoxItem Content="Debug" Tag="debug" />
+                    </ComboBox>
+                    <TextBlock Grid.Column="2" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Error only by default; use Info/Debug for troubleshooting." />
+                </Grid>
+            </Border>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Startup" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="2">
+                        <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="Launch at login" />
+                        <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Start look automatically when you sign in." />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="LaunchAtLoginToggle" Grid.Column="1" IsOn="True" OnContent="On" OffContent="Off" />
+                </Grid>
+            </Border>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Config file" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="8">
+                    <Button Style="{StaticResource LauncherDangerButtonStyle}" Width="170" HorizontalAlignment="Left" Content="Create Fresh Config" Click="CreateFreshConfigButton_OnClick" />
+                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" TextWrapping="Wrap" Text="Regenerate a fresh default config file. Your current file will be replaced." />
+                    <TextBlock x:Name="FreshConfigStatusText" Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>

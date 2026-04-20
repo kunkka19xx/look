@@ -117,7 +117,7 @@ namespace LauncherApp
                 presenter.SetBorderAndTitleBar(true, false);
             }
 
-            ExtendsContentIntoTitleBar = true;
+            ExtendsContentIntoTitleBar = false;
 
             if (Content is FrameworkElement root)
             {
@@ -249,15 +249,6 @@ namespace LauncherApp
 
         [DllImport("user32.dll")]
         private static extern int SetWindowCompositionAttribute(IntPtr hwnd, ref WindowCompositionAttributeData data);
-
-        [DllImport("user32.dll")]
-        private static extern bool ReleaseCapture();
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr SendMessage(IntPtr hwnd, int msg, int wParam, int lParam);
-
-        private const int WmNclButtonDown = 0x00A1;
-        private const int HtCaption = 0x0002;
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
@@ -490,59 +481,6 @@ namespace LauncherApp
             }
 
             QueryInput.Focus(FocusState.Programmatic);
-        }
-
-        private void LauncherSurface_OnPointerPressed(object sender, PointerRoutedEventArgs e)
-        {
-            if (!e.GetCurrentPoint(LauncherSurface).Properties.IsLeftButtonPressed)
-            {
-                return;
-            }
-
-            if (IsInteractiveElement(e.OriginalSource as DependencyObject))
-            {
-                return;
-            }
-
-            StartWindowDrag();
-            e.Handled = true;
-        }
-
-        private static bool IsInteractiveElement(DependencyObject? node)
-        {
-            while (node is not null)
-            {
-                if (node is ButtonBase
-                    || node is TextBox
-                    || node is AutoSuggestBox
-                    || node is ComboBox
-                    || node is Slider
-                    || node is ListView
-                    || node is ListViewItem
-                    || node is ScrollViewer
-                    || node is ToggleSwitch
-                    || node is CheckBox
-                    || node is HyperlinkButton)
-                {
-                    return true;
-                }
-
-                node = VisualTreeHelper.GetParent(node);
-            }
-
-            return false;
-        }
-
-        private void StartWindowDrag()
-        {
-            IntPtr hwnd = WindowNative.GetWindowHandle(this);
-            if (hwnd == IntPtr.Zero)
-            {
-                return;
-            }
-
-            ReleaseCapture();
-            _ = SendMessage(hwnd, WmNclButtonDown, HtCaption, 0);
         }
 
         private bool IsSettingsToggleShortcut(VirtualKey key)
