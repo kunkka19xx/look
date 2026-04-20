@@ -357,6 +357,7 @@ namespace LauncherApp
             ResultPreviewPanel.Visibility = Visibility.Collapsed;
             PreviewDivider.Visibility = Visibility.Collapsed;
             CommandPanelsPanel.Visibility = Visibility.Collapsed;
+            ResultsList.Visibility = Visibility.Visible;
 
             switch (mode)
             {
@@ -368,14 +369,18 @@ namespace LauncherApp
                 case LauncherMode.Command:
                     ApplyConfiguredSurface();
                     QueryInput.PlaceholderText = "Use /calc, /shell, /kill, /sys";
-                    HintText.Text = "Enter run  •  Up/Down select  •  Esc clear";
+                    HintText.Text = "Enter run  •  Up/Down switch  •  Esc clear";
+                    ResultsList.Visibility = Visibility.Collapsed;
                     ResultPreviewPanel.Visibility = Visibility.Collapsed;
                     CommandPanelsPanel.Visibility = Visibility.Visible;
+                    CommandPanelsPanel.ApplyFilter(string.Empty);
+                    CommandPanelsPanel.SelectPanel("command:calc");
                     break;
                 case LauncherMode.Clipboard:
                     ApplyConfiguredSurface();
                     QueryInput.PlaceholderText = "Use c\" to search clipboard";
                     HintText.Text = "Enter copy  •  Up/Down select  •  Esc clear";
+                    ResultsList.Visibility = Visibility.Visible;
                     break;
                 case LauncherMode.Settings:
                     ApplyConfiguredSurface();
@@ -389,6 +394,7 @@ namespace LauncherApp
                     ApplyConfiguredSurface();
                     QueryInput.PlaceholderText = "Use ? to view help";
                     HintText.Text = "Prefixes: / command  •  c\" clipboard  •  , settings  •  ? help";
+                    ResultsList.Visibility = Visibility.Visible;
                     break;
             }
         }
@@ -423,9 +429,21 @@ namespace LauncherApp
                 _results.Add(new LauncherRowItem(item));
             }
 
+            if (_mode == LauncherMode.Command)
+            {
+                CommandPanelsPanel.ApplyFilter(query);
+                if (_results.Count > 0)
+                {
+                    CommandPanelsPanel.SelectPanel(_results[0].Result.Id);
+                }
+            }
+
             if (_results.Count > 0)
             {
-                ResultsList.SelectedIndex = 0;
+                if (_mode != LauncherMode.Command)
+                {
+                    ResultsList.SelectedIndex = 0;
+                }
                 return;
             }
 
@@ -488,11 +506,66 @@ namespace LauncherApp
             return key == (VirtualKey)188 && IsCtrlPressed() && IsShiftPressed();
         }
 
+        private bool IsCommandModeShortcut(KeyRoutedEventArgs e)
+        {
+            if (!IsCtrlPressed())
+            {
+                return false;
+            }
+
+            return e.Key == VirtualKey.Divide
+                || e.Key == (VirtualKey)191
+                || e.KeyStatus.ScanCode == 53;
+        }
+
+        private bool TryHandleCommandQuickSelect(VirtualKey key)
+        {
+            if (_mode != LauncherMode.Command || !IsCtrlPressed())
+            {
+                return false;
+            }
+
+            string? commandId = key switch
+            {
+                VirtualKey.Number1 => "command:shell",
+                VirtualKey.Number2 => "command:calc",
+                VirtualKey.Number3 => "command:kill",
+                _ => null,
+            };
+
+            if (commandId is null)
+            {
+                return false;
+            }
+
+            CommandPanelsPanel.SelectPanel(commandId);
+            return true;
+        }
+
         private void GlobalKeyDown(object sender, KeyRoutedEventArgs e)
         {
+            if (IsCommandModeShortcut(e))
+            {
+                EnterCommandScreen();
+                e.Handled = true;
+                return;
+            }
+
+            if (TryHandleCommandQuickSelect(e.Key))
+            {
+                e.Handled = true;
+                return;
+            }
+
             if (e.Key == VirtualKey.Escape && _mode == LauncherMode.Settings)
             {
                 ToggleSettingsMode();
+                e.Handled = true;
+                return;
+            }
+
+            if (TryHandleCommandQuickSelect(e.Key))
+            {
                 e.Handled = true;
                 return;
             }
@@ -529,6 +602,17 @@ namespace LauncherApp
             }
         }
 
+        private void EnterCommandScreen()
+        {
+            QueryInput.Text = "/";
+            SetMode(LauncherMode.Command);
+            RefreshResults(QueryInput.Text);
+            CommandPanelsPanel.SelectPanel("command:calc");
+
+            QueryInput.Focus(FocusState.Programmatic);
+            QueryInput.SelectionStart = QueryInput.Text.Length;
+        }
+
         private void QueryInput_OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
         {
             if (e.Key != VirtualKey.Tab || _results.Count == 0)
@@ -555,6 +639,37 @@ namespace LauncherApp
 
         private void QueryInput_OnKeyDown(object sender, KeyRoutedEventArgs e)
         {
+            if (IsCommandModeShortcut(e))
+            {
+                EnterCommandScreen();
+                e.Handled = true;
+                return;
+            }
+
+            if (_mode == LauncherMode.Command)
+            {
+                if (e.Key == VirtualKey.Down)
+                {
+                    CommandPanelsPanel.MoveSelection(1);
+                    e.Handled = true;
+                    return;
+                }
+
+                if (e.Key == VirtualKey.Up)
+                {
+                    CommandPanelsPanel.MoveSelection(-1);
+                    e.Handled = true;
+                    return;
+                }
+
+                if (e.Key == VirtualKey.Enter)
+                {
+                    RunCommand(CommandPanelsPanel.ActiveCommandId);
+                    e.Handled = true;
+                    return;
+                }
+            }
+
             if (e.Key == VirtualKey.Escape)
             {
                 QueryInput.Text = string.Empty;

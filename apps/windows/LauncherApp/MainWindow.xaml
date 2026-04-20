@@ -99,7 +99,8 @@
 
                     <commandPanels:CommandPanelsView
                 x:Name="CommandPanelsPanel"
-                Grid.Column="2"
+                Grid.Column="0"
+                Grid.ColumnSpan="3"
                 Visibility="Collapsed" />
                 </Grid>
 

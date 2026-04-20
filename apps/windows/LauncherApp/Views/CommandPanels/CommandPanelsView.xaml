@@ -5,37 +5,62 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     mc:Ignorable="d">
 
-    <Border
-        Padding="12"
-        Style="{StaticResource LauncherSurfaceBorderStyle}">
-        <controls:TabView x:Name="CommandTabs">
-            <controls:TabViewItem Header="calc">
-                <StackPanel Padding="10" Spacing="8">
-                    <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="Calculator command" />
-                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" Text="Type expression after /calc" />
+    <Grid RowSpacing="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="1" ColumnSpacing="4" RowSpacing="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40" />
+                <RowDefinition Height="40" />
+            </Grid.RowDefinitions>
+
+            <ToggleButton x:Name="CalcCard" Grid.Row="0" Grid.Column="0" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
+                <StackPanel Spacing="2">
+                    <TextBlock FontWeight="SemiBold" Text="/calc (Ctrl+2)" />
+                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Evaluate math expression" />
                 </StackPanel>
-            </controls:TabViewItem>
-            <controls:TabViewItem Header="shell">
-                <StackPanel Padding="10" Spacing="8">
-                    <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="Shell command" />
-                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" Text="Run shell with safety checks" />
+            </ToggleButton>
+
+            <ToggleButton x:Name="ShellCard" Grid.Row="0" Grid.Column="1" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
+                <StackPanel Spacing="2">
+                    <TextBlock FontWeight="SemiBold" Text="/shell (Ctrl+1)" />
+                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Run shell command" />
                 </StackPanel>
-            </controls:TabViewItem>
-            <controls:TabViewItem Header="kill">
-                <StackPanel Padding="10" Spacing="8">
-                    <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="Kill command" />
-                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" Text="Requires confirm flow" />
+            </ToggleButton>
+
+            <ToggleButton x:Name="KillCard" Grid.Row="1" Grid.Column="0" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
+                <StackPanel Spacing="2">
+                    <TextBlock FontWeight="SemiBold" Text="/kill (Ctrl+3)" />
+                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Force kill running app" />
                 </StackPanel>
-            </controls:TabViewItem>
-            <controls:TabViewItem Header="sys">
-                <StackPanel Padding="10" Spacing="8">
-                    <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="System info command" />
-                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" Text="Hardware/runtime summary panel" />
+            </ToggleButton>
+
+            <ToggleButton x:Name="SysCard" Grid.Row="1" Grid.Column="1" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
+                <StackPanel Spacing="2">
+                    <TextBlock FontWeight="SemiBold" Text="/sys" />
+                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Show system information" />
                 </StackPanel>
-            </controls:TabViewItem>
-        </controls:TabView>
-    </Border>
+            </ToggleButton>
+        </Grid>
+
+        <Border Grid.Row="2" Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+            <StackPanel Spacing="6">
+                <TextBlock x:Name="CommandTitleText" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="/calc" />
+                <TextBlock x:Name="CommandDetailText" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Evaluate math expression" />
+                <Border Background="#1B2431" CornerRadius="8" Padding="8">
+                    <TextBlock x:Name="CommandExampleText" FontFamily="Consolas" Foreground="{StaticResource LauncherTextBrush}" Text="/calc 12 * 7 + 5" />
+                </Border>
+            </StackPanel>
+        </Border>
+    </Grid>
 </UserControl>
