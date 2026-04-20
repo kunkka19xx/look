@@ -102,6 +102,12 @@
                 Grid.Column="0"
                 Grid.ColumnSpan="3"
                 Visibility="Collapsed" />
+
+                    <views:HelpScreenView
+                x:Name="HelpScreenPanel"
+                Grid.Column="0"
+                Grid.ColumnSpan="3"
+                Visibility="Collapsed" />
                 </Grid>
 
                 <Grid

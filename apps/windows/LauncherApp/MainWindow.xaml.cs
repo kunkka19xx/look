@@ -357,6 +357,7 @@ namespace LauncherApp
             ResultPreviewPanel.Visibility = Visibility.Collapsed;
             PreviewDivider.Visibility = Visibility.Collapsed;
             CommandPanelsPanel.Visibility = Visibility.Collapsed;
+            HelpScreenPanel.Visibility = Visibility.Collapsed;
             ResultsList.Visibility = Visibility.Visible;
 
             switch (mode)
@@ -365,6 +366,7 @@ namespace LauncherApp
                     ApplyConfiguredSurface();
                     QueryInput.PlaceholderText = "Search apps";
                     HintText.Text = "Enter open  •  Ctrl+R reveal  •  Ctrl+C copy  •  Ctrl+Enter web";
+                    ResultsHost.Visibility = Visibility.Visible;
                     break;
                 case LauncherMode.Command:
                     ApplyConfiguredSurface();
@@ -392,9 +394,10 @@ namespace LauncherApp
                     break;
                 case LauncherMode.Help:
                     ApplyConfiguredSurface();
-                    QueryInput.PlaceholderText = "Use ? to view help";
-                    HintText.Text = "Prefixes: / command  •  c\" clipboard  •  , settings  •  ? help";
-                    ResultsList.Visibility = Visibility.Visible;
+                    QueryInput.PlaceholderText = "Use ? or Ctrl+H to view help";
+                    HintText.Text = "Ctrl+H close  •  Esc hide  •  Ctrl+/ command mode";
+                    ResultsList.Visibility = Visibility.Collapsed;
+                    HelpScreenPanel.Visibility = Visibility.Visible;
                     break;
             }
         }
@@ -544,6 +547,13 @@ namespace LauncherApp
 
         private void GlobalKeyDown(object sender, KeyRoutedEventArgs e)
         {
+            if (e.Key == VirtualKey.H && IsCtrlPressed())
+            {
+                EnterHelpScreen();
+                e.Handled = true;
+                return;
+            }
+
             if (IsCommandModeShortcut(e))
             {
                 EnterCommandScreen();
@@ -611,6 +621,22 @@ namespace LauncherApp
 
             QueryInput.Focus(FocusState.Programmatic);
             QueryInput.SelectionStart = QueryInput.Text.Length;
+        }
+
+        private void EnterHelpScreen()
+        {
+            if (_mode == LauncherMode.Help)
+            {
+                QueryInput.Text = string.Empty;
+                SetMode(LauncherMode.Search);
+                RefreshResults(string.Empty);
+                QueryInput.Focus(FocusState.Programmatic);
+                return;
+            }
+
+            QueryInput.Text = string.Empty;
+            SetMode(LauncherMode.Help);
+            QueryInput.Focus(FocusState.Programmatic);
         }
 
         private void QueryInput_OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
