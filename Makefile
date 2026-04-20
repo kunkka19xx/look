@@ -20,15 +20,17 @@ REAL_DB_PATH := $(HOME)/Library/Application Support/look/look.db
 DEV_CONFIG_PATH ?= $(HOME)/.look.dev.config
 DEV_OPEN_ENV = env -u LOOK_DB_PATH LOOK_CONFIG_PATH="$(DEV_CONFIG_PATH)" LOOK_DEV_HINT=1
 
-.PHONY: help core-check ffi-check app-build app-ensure-bundle app-stop app-run app-open app-install-dev app-run-dev app-uninstall-dev symbols db-path db-status db-shell db-reset db-refresh
+.PHONY: help core-check ffi-check ffi-build ffi-build-release app-build app-ensure-bundle app-stop app-run app-open app-install-dev app-run-dev app-uninstall-dev symbols db-path db-status db-shell db-reset db-refresh ffi-run
 
 help:
 	@printf "look developer tasks\n\n"
 	@printf "build/check\n"
-	@printf "  make core-check   - cargo check core workspace\n"
-	@printf "  make ffi-check    - cargo check ffi crate\n"
-	@printf "  make app-build    - xcodebuild app (includes rust ffi build/link)\n"
-	@printf "  make symbols      - verify ffi symbols in app binary\n\n"
+	@printf "  make core-check          - cargo check core workspace\n"
+	@printf "  make ffi-check          - cargo check ffi crate\n"
+	@printf "  make ffi-build          - build Rust FFI dll (debug) - Windows\n"
+	@printf "  make ffi-build-release  - build Rust FFI dll (release)\n"
+	@printf "  make app-build          - xcodebuild app (macOS, includes rust ffi build/link)\n"
+	@printf "  make symbols            - verify ffi symbols in app binary\n\n"
 	@printf "run app\n"
 	@printf "  make app-stop     - stop running Look app process\n"
 	@printf "  make app-run      - stop running app, then open local app with dev config\n"
@@ -49,6 +51,12 @@ core-check:
 
 ffi-check:
 	cargo check --manifest-path bridge/ffi/Cargo.toml
+
+ffi-build:
+	cargo build --manifest-path bridge/ffi/Cargo.toml
+
+ffi-build-release:
+	cargo build --manifest-path bridge/ffi/Cargo.toml --release
 
 app-build:
 	xcodebuild -project "$(XCODE_PROJECT)" -scheme "$(XCODE_SCHEME)" -configuration "$(XCODE_CONFIG)" -derivedDataPath "$(XCODE_DERIVED_DATA)" build

@@ -277,18 +277,20 @@ Current status:
 3. Load data from FFI search endpoint and render candidate rows.
 4. Port theme primitives to preserve visual identity while following Windows conventions.
 
-Current status (UI/UX mock-first, not yet connected to FFI backend):
+Current status (FFI connected, icons IN PROGRESS):
 
 - shell scaffold in place at `apps/windows/LauncherApp/`
-- UI flow currently runs in mock-first mode for parity iteration speed
-- FFI provider wiring is retained behind a search-provider abstraction and can be re-enabled when backend validation starts
+- FFI search IS connected and working (Rust backend returns real results)
 - Completed UI components:
   - Launcher window with transparent/acrylic effects
-  - Search results list (mock data)
+  - Search results list with FFI-backed results
+  - Icon display: IconService created using SHGetFileInfo, conversion to SoftwareBitmapSource implemented
   - Command mode with 2-column card layout (calc, shell, kill, sys) - UI only, no execution
   - Settings screens: Appearance, Advanced, Shortcuts (UI only, config persistence works)
   - Help screen
   - Keyboard navigation and shortcuts (UI binding, no real action execution)
+
+**Icon display issue**: Icons are being fetched via SHGetFileInfo but not rendering in WinUI 3. HICON → SoftwareBitmapSource conversion needs debugging.
 
 Exit criteria:
 

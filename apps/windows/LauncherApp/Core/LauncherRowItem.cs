@@ -1,9 +1,15 @@
+using System;
 using LauncherApp.Bridge;
+using LauncherApp.Services;
+using Microsoft.UI.Xaml.Media;
 
 namespace LauncherApp.Core;
 
 public sealed class LauncherRowItem
 {
+    private ImageSource? _icon;
+    private bool _iconLoaded;
+
     public LauncherResult Result { get; }
 
     public string Title => Result.Title;
@@ -22,14 +28,10 @@ public sealed class LauncherRowItem
         get
         {
             if (Result.Kind == "clipboard")
-            {
                 return Result.Subtitle ?? KindLabel;
-            }
 
             if (Result.Kind == "app")
-            {
                 return Result.Subtitle ?? KindLabel;
-            }
 
             return $"{KindLabel}  •  {PathInfo()}";
         }
@@ -44,6 +46,21 @@ public sealed class LauncherRowItem
         _ => "\uE8A5",
     };
 
+    public ImageSource? Icon
+    {
+        get
+        {
+            if (!_iconLoaded && !string.IsNullOrEmpty(Result.Path))
+            {
+                _iconLoaded = true;
+                _icon = IconService.GetIcon(Result.Path);
+            }
+            return _icon;
+        }
+    }
+
+    public bool HasIcon => Icon != null;
+
     public LauncherRowItem(LauncherResult result)
     {
         Result = result;
@@ -56,9 +73,7 @@ public sealed class LauncherRowItem
         string[] parts = normalized.Split('\\', System.StringSplitOptions.RemoveEmptyEntries);
 
         if (parts.Length == 0)
-        {
             return "\\";
-        }
 
         int take = System.Math.Min(3, parts.Length);
         string tail = string.Join("\\", parts[^take..]);

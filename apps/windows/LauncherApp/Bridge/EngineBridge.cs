@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Diagnostics;
 
 namespace LauncherApp.Bridge;
 
@@ -19,14 +20,17 @@ public sealed class EngineBridge
 
         try
         {
+            Debug.WriteLine($"[EngineBridge] Searching: '{query}' limit={limit}");
             queryPtr = Marshal.StringToCoTaskMemUTF8(query);
             resultPtr = FfiBindings.look_search_json_compact(queryPtr, (uint)limit);
             if (resultPtr == IntPtr.Zero)
             {
+                Debug.WriteLine("[EngineBridge] FFI returned null");
                 return [];
             }
 
             string raw = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
+            Debug.WriteLine($"[EngineBridge] Raw result: {raw.Substring(0, Math.Min(200, raw.Length))}");
             if (string.IsNullOrWhiteSpace(raw))
             {
                 return [];

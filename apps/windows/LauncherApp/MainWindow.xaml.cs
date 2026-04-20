@@ -52,10 +52,10 @@ namespace LauncherApp
                 root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GlobalKeyDown), true);
             }
 
-            bool mockFirst = true;
-            ISearchProvider searchProvider = mockFirst
-                ? new MockSearchProvider()
-                : new FfiSearchProvider(new EngineBridge());
+            bool useRealSearch = true;
+            ISearchProvider searchProvider = useRealSearch
+                ? new FfiSearchProvider(new EngineBridge())
+                : new MockSearchProvider();
 
             _searchLogic = new LauncherSearchLogic(searchProvider);
             _actionDispatcher = new ActionDispatcher(new ShellExecuteService(), new ExplorerRevealService());

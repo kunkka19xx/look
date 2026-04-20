@@ -60,6 +60,9 @@ bld/
 .vscode/
 *.code-workspace
 
+## Windows build scripts
+build-ffi.bat
+
 ## Files built by Visual Studio
 *.sln.iml
 *.trx

@@ -147,10 +147,11 @@ Windows UI delivery note (mock-first):
 
 ---
 
-**Windows REAL functionality tasks (NOT yet implemented):**
+**Windows REAL functionality tasks (IN PROGRESS):**
 
-These tasks require FFI backend connection + real OS integration - NOT UI work:
-
+- [x] implement FFI search connection (Rust backend working, search returns real results)
+- [x] implement IconService for Windows icon extraction (SHGetFileInfo API)
+- [ ] fix icon display in WinUI 3 (HICON → SoftwareBitmapSource conversion not rendering)
 - [ ] implement global hotkey + hide/show/focus lifecycle parity on Windows
 - [ ] implement Windows clipboard history mode (`c"`) with listener-first capture strategy
 - [ ] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`) - UI is done, execution NOT implemented
