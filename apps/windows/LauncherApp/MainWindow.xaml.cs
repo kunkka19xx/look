@@ -681,14 +681,30 @@ namespace LauncherApp
 
             if (e.Key == VirtualKey.Down && _results.Count > 0)
             {
-                ResultsList.SelectedIndex = 0;
+                int selected = ResultsList.SelectedIndex;
+                if (selected < 0)
+                {
+                    ResultsList.SelectedIndex = 0;
+                }
+                else
+                {
+                    ResultsList.SelectedIndex = selected < _results.Count - 1 ? selected + 1 : 0;
+                }
                 e.Handled = true;
                 return;
             }
 
             if (e.Key == VirtualKey.Up && _results.Count > 0)
             {
-                ResultsList.SelectedIndex = _results.Count - 1;
+                int selected = ResultsList.SelectedIndex;
+                if (selected <= 0)
+                {
+                    ResultsList.SelectedIndex = _results.Count - 1;
+                }
+                else
+                {
+                    ResultsList.SelectedIndex = selected - 1;
+                }
                 e.Handled = true;
                 return;
             }
