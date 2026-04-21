@@ -22,11 +22,21 @@ public sealed class ShellIconProvider
     private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "look-icon-debug.log");
     private static readonly string IconCacheDir = Path.Combine(Path.GetTempPath(), "look-icon-cache");
     private static readonly bool DebugLoggingEnabled = Environment.GetEnvironmentVariable("LOOK_ICON_DEBUG") == "1";
+    private const string IconCacheVersion = "v2";
 
     public async Task<ImageSource?> GetIconAsync(string path, bool smallIcon = true)
     {
         if (string.IsNullOrWhiteSpace(path))
             return null;
+
+        if (path.StartsWith("ms-settings:", PathComparison))
+        {
+            var settingsIconPath = ResolveWindowsSettingsIconPath();
+            if (string.IsNullOrEmpty(settingsIconPath))
+                return null;
+
+            path = settingsIconPath;
+        }
 
         if (path.StartsWith("ms-", PathComparison))
             return null;
@@ -142,7 +152,7 @@ public sealed class ShellIconProvider
             catch { }
         }
 
-        if (hIcon == IntPtr.Zero && File.Exists(path))
+        if (hIcon == IntPtr.Zero && File.Exists(path) && CanExtractIconDirectly(path))
         {
             try
             {
@@ -167,6 +177,19 @@ public sealed class ShellIconProvider
         }
 
         return hIcon;
+    }
+
+    private static bool CanExtractIconDirectly(string path)
+    {
+        var ext = Path.GetExtension(path);
+        if (string.IsNullOrWhiteSpace(ext))
+            return false;
+
+        return ext.Equals(".exe", PathComparison)
+            || ext.Equals(".dll", PathComparison)
+            || ext.Equals(".ico", PathComparison)
+            || ext.Equals(".icl", PathComparison)
+            || ext.Equals(".mun", PathComparison);
     }
 
     private static IntPtr ExtractSpecificIcon(string path, int iconIndex, bool smallIcon)
@@ -236,13 +259,34 @@ public sealed class ShellIconProvider
         return normalized;
     }
 
+    private static string? ResolveWindowsSettingsIconPath()
+    {
+        var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        if (string.IsNullOrWhiteSpace(windowsDir))
+            return null;
+
+        var candidates = new[]
+        {
+            Path.Combine(windowsDir, "ImmersiveControlPanel", "SystemSettings.exe"),
+            Path.Combine(windowsDir, "System32", "control.exe"),
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (File.Exists(candidate))
+                return candidate;
+        }
+
+        return null;
+    }
+
     private static ImageSource? TryCreateCachedBitmapImage(IntPtr hIcon, string sourcePath, bool smallIcon)
     {
         try
         {
             Directory.CreateDirectory(IconCacheDir);
 
-            var cacheKey = ComputeHash(sourcePath + "|" + (smallIcon ? "s" : "l"));
+            var cacheKey = ComputeHash(IconCacheVersion + "|" + sourcePath + "|" + (smallIcon ? "s" : "l"));
             var cachePath = Path.Combine(IconCacheDir, cacheKey + ".png");
 
             if (!File.Exists(cachePath) || new FileInfo(cachePath).Length == 0)

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -38,6 +40,7 @@ namespace LauncherApp
         private string _appliedBackdropMode = string.Empty;
         private Windows.UI.Color _acrylicTint = Windows.UI.Color.FromArgb(45, 21, 28, 38);
         private readonly TransparentTintBackdrop _transparentBackdrop;
+        private static readonly ConcurrentDictionary<string, bool> ExeVersionInfoCache = new(StringComparer.OrdinalIgnoreCase);
         private static readonly string[] NoisyExecutableNameTokens =
         [
             "appinstallerprotocolshim",
@@ -433,7 +436,7 @@ namespace LauncherApp
 
             IReadOnlyList<LauncherResult> source = _mode switch
             {
-                LauncherMode.Search => FilterSearchNoise(_searchLogic.Search(query, 120), 40),
+                LauncherMode.Search => FilterSearchNoise(DeduplicatePairedAppEntries(_searchLogic.Search(query, 120)), 40),
                 LauncherMode.Command => FilterRows(_commandSeed, query),
                 LauncherMode.Clipboard => FilterRows(_clipboardSeed, query),
                 LauncherMode.Settings => [],
@@ -493,6 +496,138 @@ namespace LauncherApp
                 .ToList();
         }
 
+        private static IReadOnlyList<LauncherResult> DeduplicatePairedAppEntries(IReadOnlyList<LauncherResult> source)
+        {
+            var output = new List<LauncherResult>(source.Count);
+            var representativeIndexByKey = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in source)
+            {
+                var category = GetAppPathCategory(item);
+                if (category == AppPathCategory.Other)
+                {
+                    output.Add(item);
+                    continue;
+                }
+
+                string key = NormalizeAppIdentity(item.Title);
+                if (string.IsNullOrEmpty(key))
+                {
+                    output.Add(item);
+                    continue;
+                }
+
+                if (!representativeIndexByKey.TryGetValue(key, out int existingIndex))
+                {
+                    representativeIndexByKey[key] = output.Count;
+                    output.Add(item);
+                    continue;
+                }
+
+                var existing = output[existingIndex];
+                var existingCategory = GetAppPathCategory(existing);
+
+                if (!ArePairedDuplicateCategories(existingCategory, category))
+                {
+                    output.Add(item);
+                    continue;
+                }
+
+                if (IsPreferredAppEntry(item, existing))
+                    output[existingIndex] = item;
+            }
+
+            return output;
+        }
+
+        private static bool ArePairedDuplicateCategories(AppPathCategory a, AppPathCategory b)
+        {
+            return (a == AppPathCategory.StartMenuShortcut && b == AppPathCategory.InstallExecutable)
+                || (a == AppPathCategory.InstallExecutable && b == AppPathCategory.StartMenuShortcut);
+        }
+
+        private static bool IsPreferredAppEntry(LauncherResult candidate, LauncherResult existing)
+        {
+            int candidateRank = GetAppEntryRank(candidate);
+            int existingRank = GetAppEntryRank(existing);
+            if (candidateRank != existingRank)
+                return candidateRank > existingRank;
+
+            return candidate.Score > existing.Score;
+        }
+
+        private static int GetAppEntryRank(LauncherResult item)
+        {
+            if (GetAppPathCategory(item) == AppPathCategory.InstallExecutable)
+                return HasVersionMetadata(item.Path) ? 3 : 2;
+
+            if (GetAppPathCategory(item) == AppPathCategory.StartMenuShortcut)
+                return 1;
+
+            return 0;
+        }
+
+        private static bool HasVersionMetadata(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            string normalized = path.Replace('/', '\\');
+            return ExeVersionInfoCache.GetOrAdd(normalized, p =>
+            {
+                try
+                {
+                    if (!File.Exists(p))
+                        return false;
+
+                    var info = FileVersionInfo.GetVersionInfo(p);
+                    return !string.IsNullOrWhiteSpace(info.FileVersion)
+                        || !string.IsNullOrWhiteSpace(info.ProductVersion);
+                }
+                catch
+                {
+                    return false;
+                }
+            });
+        }
+
+        private static AppPathCategory GetAppPathCategory(LauncherResult item)
+        {
+            if (!item.Kind.Equals("app", StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(item.Path))
+            {
+                return AppPathCategory.Other;
+            }
+
+            string path = item.Path.Replace('/', '\\');
+            if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)
+                && path.Contains("\\Start Menu\\Programs\\", StringComparison.OrdinalIgnoreCase))
+            {
+                return AppPathCategory.StartMenuShortcut;
+            }
+
+            if (path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                && (path.Contains("\\Program Files\\", StringComparison.OrdinalIgnoreCase)
+                    || path.Contains("\\Program Files (x86)\\", StringComparison.OrdinalIgnoreCase)
+                    || path.Contains("\\AppData\\Local\\Programs\\", StringComparison.OrdinalIgnoreCase)))
+            {
+                return AppPathCategory.InstallExecutable;
+            }
+
+            return AppPathCategory.Other;
+        }
+
+        private static string NormalizeAppIdentity(string title)
+        {
+            if (string.IsNullOrWhiteSpace(title))
+                return string.Empty;
+
+            return new string(title
+                .ToLowerInvariant()
+                .Where(char.IsLetterOrDigit)
+                .ToArray());
+        }
+
         private static bool ShouldHideSearchResult(LauncherResult item)
         {
             if (!item.Kind.Equals("app", StringComparison.OrdinalIgnoreCase)
@@ -508,18 +643,19 @@ namespace LauncherApp
             if (!path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                 return false;
 
-            if (item.Kind.Equals("file", StringComparison.OrdinalIgnoreCase)
-                && path.Contains("\\WindowsApps\\", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
             string fileName = Path.GetFileNameWithoutExtension(path);
             if (string.IsNullOrWhiteSpace(fileName))
                 return false;
 
             string normalizedName = fileName.ToLowerInvariant();
             return NoisyExecutableNameTokens.Any(token => normalizedName.Contains(token, StringComparison.Ordinal));
+        }
+
+        private enum AppPathCategory
+        {
+            Other,
+            StartMenuShortcut,
+            InstallExecutable,
         }
 
         private static IReadOnlyList<LauncherResult> BuildHelpRows()

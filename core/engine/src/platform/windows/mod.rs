@@ -8,6 +8,7 @@ pub(crate) const APP_SCAN_ROOTS: &[&str] = &[
 
 pub(crate) const REQUIRED_APP_SCAN_ROOTS: &[&str] = &[];
 pub(crate) const APP_FALLBACK_SCAN_ROOTS: &[&str] = &[
+    "C:/Windows/System32",
     "C:/Program Files",
     "C:/Program Files (x86)",
     "~/AppData/Local/Programs",

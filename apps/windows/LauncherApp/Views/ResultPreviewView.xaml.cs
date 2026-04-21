@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using LauncherApp.Core;
+using LauncherApp.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -50,7 +51,7 @@ public sealed partial class ResultPreviewView : UserControl
         HeaderSizeText.Text = FormatSize(GetSizeBytes(row.Result.Path));
         ModifiedText.Text = GetModifiedLabel(row.Result.Path);
 
-        string? version = GetVersion(row.Result.Path, row.Result.Kind);
+        string? version = GetVersion(row.Result.Path, row.Kind);
         VersionText.Text = string.IsNullOrWhiteSpace(version) ? "-" : version;
 
         if (TryBuildFileUri(row.Result.Path, out Uri? fileUri) && IsImageFile(row.Result.Path))
@@ -114,9 +115,9 @@ public sealed partial class ResultPreviewView : UserControl
         SubtitleBlock.Visibility = Visibility.Collapsed;
     }
 
-    private static string? GetVersion(string path, string kind)
+    private static string? GetVersion(string path, SearchItemKind kind)
     {
-        if (kind != "app")
+        if (kind != SearchItemKind.App)
         {
             return null;
         }

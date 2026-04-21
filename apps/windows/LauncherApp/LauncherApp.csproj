@@ -73,6 +73,19 @@
     <RustFfiBuildScript>$(RepoRoot)scripts\windows\build-ffi.ps1</RustFfiBuildScript>
   </PropertyGroup>
 
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <UpToDateCheckInput Include="$(RepoRoot)bridge\ffi\Cargo.toml" />
+    <UpToDateCheckInput Include="$(RepoRoot)bridge\ffi\Cargo.lock" />
+    <UpToDateCheckInput Include="$(RepoRoot)scripts\windows\build-ffi.ps1" />
+    <UpToDateCheckInput Include="$(RepoRoot)bridge\ffi\src\**\*.rs" />
+    <UpToDateCheckInput Include="$(RepoRoot)core\engine\src\**\*.rs" />
+    <UpToDateCheckInput Include="$(RepoRoot)core\indexing\src\**\*.rs" />
+    <UpToDateCheckInput Include="$(RepoRoot)core\matching\src\**\*.rs" />
+    <UpToDateCheckInput Include="$(RepoRoot)core\ranking\src\**\*.rs" />
+    <UpToDateCheckInput Include="$(RepoRoot)core\storage\src\**\*.rs" />
+    <UpToDateCheckBuilt Include="$(TargetDir)look_ffi.dll" />
+  </ItemGroup>
+
   <Target Name="BuildRustFfi" BeforeTargets="Build" Condition="'$(OS)' == 'Windows_NT' and Exists('$(RustFfiManifest)') and Exists('$(RustFfiBuildScript)')">
     <Message Importance="high" Text="Building Rust FFI backend" />
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(RustFfiBuildScript)&quot; -ManifestPath &quot;$(RustFfiManifest)&quot; $(RustFfiReleaseFlag)" />
@@ -81,5 +94,6 @@
   <Target Name="CopyRustFfiDll" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT' and Exists('$(RustFfiDll)')">
     <Message Importance="high" Text="Copying look_ffi.dll to launcher output" />
     <Copy SourceFiles="$(RustFfiDll)" DestinationFiles="$(TargetDir)look_ffi.dll" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(RustFfiDll)" DestinationFiles="$(TargetDir)AppX\look_ffi.dll" SkipUnchangedFiles="true" ContinueOnError="WarnAndContinue" Condition="Exists('$(TargetDir)AppX')" />
   </Target>
 </Project>

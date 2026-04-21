@@ -9,6 +9,7 @@ public enum SearchItemKind
 {
     Unknown,
     App,
+    Setting,
     File,
     Folder,
     Command,

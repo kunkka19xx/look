@@ -19,19 +19,25 @@ public sealed class LauncherRowItem
 
     public SearchItemKind Kind => Result.Kind switch
     {
+        "setting" => SearchItemKind.Setting,
         "app" => SearchItemKind.App,
         "file" => SearchItemKind.File,
         "folder" => SearchItemKind.Folder,
         "clipboard" => SearchItemKind.Unknown,
         _ => SearchItemKind.Unknown,
+    } switch
+    {
+        SearchItemKind.App when IsSettingsResult() => SearchItemKind.Setting,
+        var kind => kind,
     };
 
-    public string KindLabel => Result.Kind switch
+    public string KindLabel => Kind switch
     {
-        "app" => "App",
-        "file" => "File",
-        "folder" => "Folder",
-        "clipboard" => "Clipboard",
+        SearchItemKind.App => "App",
+        SearchItemKind.Setting => "Setting",
+        SearchItemKind.File => "File",
+        SearchItemKind.Folder => "Folder",
+        _ when Result.Kind == "clipboard" => "Clipboard",
         _ => Result.Kind,
     };
 
@@ -42,19 +48,20 @@ public sealed class LauncherRowItem
             if (Result.Kind == "clipboard")
                 return Result.Subtitle ?? KindLabel;
 
-            if (Result.Kind == "app")
+            if (Kind == SearchItemKind.App || Kind == SearchItemKind.Setting)
                 return Result.Subtitle ?? KindLabel;
 
             return KindLabel + "  •  " + PathInfo();
         }
     }
 
-    public string IconGlyph => Result.Kind switch
+    public string IconGlyph => Kind switch
     {
-        "app" => "\uE71D",
-        "file" => "\uE8A5",
-        "folder" => "\uE8B7",
-        "clipboard" => "\uE8C8",
+        SearchItemKind.App => "\uE71D",
+        SearchItemKind.Setting => "\uE713",
+        SearchItemKind.File => "\uE8A5",
+        SearchItemKind.Folder => "\uE8B7",
+        _ when Result.Kind == "clipboard" => "\uE8C8",
         _ => "\uE8A5",
     };
 
@@ -96,5 +103,11 @@ public sealed class LauncherRowItem
         int take = System.Math.Min(3, parts.Length);
         string tail = string.Join("\\", parts[^take..]);
         return parts.Length > 3 ? "...\\" + tail : "\\" + tail;
+    }
+
+    private bool IsSettingsResult()
+    {
+        return Result.Id.StartsWith("setting:", StringComparison.OrdinalIgnoreCase)
+            || Result.Path.StartsWith("ms-settings:", StringComparison.OrdinalIgnoreCase);
     }
 }
