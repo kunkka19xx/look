@@ -1,5 +1,3 @@
-using System;
-using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using LauncherApp.Core;
@@ -8,7 +6,7 @@ namespace LauncherApp.Views;
 
 public sealed partial class LauncherResultRowView : UserControl
 {
-    private bool _iconLoaded;
+    private int _iconLoadVersion;
 
     public LauncherResultRowView()
     {
@@ -16,25 +14,28 @@ public sealed partial class LauncherResultRowView : UserControl
         DataContextChanged += OnDataContextChanged;
     }
 
-    private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    private async void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
         if (DataContext is not LauncherRowItem item)
             return;
 
-        if (_iconLoaded)
-            return;
+        int loadVersion = ++_iconLoadVersion;
 
-        _iconLoaded = true;
+        IconImage.Source = null;
+        IconImage.Visibility = Visibility.Collapsed;
+        IconGlyph.Visibility = Visibility.Visible;
+        IconGlyph.Text = item.IconGlyph;
+
+        await item.LoadIconAsync();
+
+        if (loadVersion != _iconLoadVersion)
+            return;
 
         if (item.Icon is { } iconImage)
         {
             IconImage.Source = iconImage;
             IconImage.Visibility = Visibility.Visible;
             IconGlyph.Visibility = Visibility.Collapsed;
-        }
-        else
-        {
-            IconGlyph.Text = item.IconGlyph;
         }
     }
 }

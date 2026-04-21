@@ -191,11 +191,38 @@ fn emit_windows_app_candidate(
 }
 
 fn is_windows_noise_executable(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    lower.contains("uninstall")
-        || lower.contains("setup")
-        || lower.contains("updater")
-        || lower.contains("crashpad")
+    let lower_path = path.to_ascii_lowercase();
+    let file_name = std::path::Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if ["uninstall", "setup", "updater", "crashpad"]
+        .iter()
+        .any(|token| file_name.contains(token))
+    {
+        return true;
+    }
+
+    if lower_path.contains("\\windowsapps\\") || lower_path.contains("/windowsapps/") {
+        return [
+            "protocolshim",
+            "pythonredirector",
+            "deploymentagent",
+            "dynamicdependency.datastore",
+            "backgroundtask",
+            "longrunningtask",
+            "startuptask",
+            "ftserver",
+            "elevate-shim",
+            "gameassist",
+        ]
+        .iter()
+        .any(|token| file_name.contains(token));
+    }
+
+    false
 }
 
 fn is_windows_start_menu_entry(path: &str) -> bool {
@@ -274,6 +301,18 @@ mod tests {
         ));
         assert!(!is_windows_fallback_executable(
             "C:/Program Files/App/crashpad_handler.exe"
+        ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Program Files/WindowsApps/Microsoft.WindowsAppRuntime_1.8/DeploymentAgent.exe"
+        ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Program Files/WindowsApps/Microsoft.XboxGamingOverlay_7.326/GameBarFTServer.exe"
+        ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Program Files/WindowsApps/Microsoft.Edge.GameAssist_1.0/EdgeGameAssist.exe"
+        ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Program Files/WindowsApps/Microsoft.Outlook_1.0/olkPushNotificationBackgroundTask.exe"
         ));
     }
 

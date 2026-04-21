@@ -38,6 +38,21 @@ namespace LauncherApp
         private string _appliedBackdropMode = string.Empty;
         private Windows.UI.Color _acrylicTint = Windows.UI.Color.FromArgb(45, 21, 28, 38);
         private readonly TransparentTintBackdrop _transparentBackdrop;
+        private static readonly string[] NoisyExecutableNameTokens =
+        [
+            "appinstallerprotocolshim",
+            "appinstallerpythonredirector",
+            "deploymentagent",
+            "dynamicdependency.datastore",
+            "pushnotificationslongrunningtask",
+            "pushnotificationbackgroundtask",
+            "backgroundtask",
+            "ftserver",
+            "elevate-shim",
+            "protocolshim",
+            "redirector",
+            "crashpad",
+        ];
 
         public string CurrentBackdropMode => _backdropMode;
 
@@ -418,7 +433,7 @@ namespace LauncherApp
 
             IReadOnlyList<LauncherResult> source = _mode switch
             {
-                LauncherMode.Search => _searchLogic.Search(query, 40),
+                LauncherMode.Search => FilterSearchNoise(_searchLogic.Search(query, 120), 40),
                 LauncherMode.Command => FilterRows(_commandSeed, query),
                 LauncherMode.Clipboard => FilterRows(_clipboardSeed, query),
                 LauncherMode.Settings => [],
@@ -468,6 +483,43 @@ namespace LauncherApp
                     || (item.Subtitle?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
                 .OrderByDescending(item => item.Score)
                 .ToList();
+        }
+
+        private static IReadOnlyList<LauncherResult> FilterSearchNoise(IReadOnlyList<LauncherResult> source, int limit)
+        {
+            return source
+                .Where(item => !ShouldHideSearchResult(item))
+                .Take(limit)
+                .ToList();
+        }
+
+        private static bool ShouldHideSearchResult(LauncherResult item)
+        {
+            if (!item.Kind.Equals("app", StringComparison.OrdinalIgnoreCase)
+                && !item.Kind.Equals("file", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(item.Path))
+                return false;
+
+            string path = item.Path.Replace('/', '\\');
+            if (!path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (item.Kind.Equals("file", StringComparison.OrdinalIgnoreCase)
+                && path.Contains("\\WindowsApps\\", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            string fileName = Path.GetFileNameWithoutExtension(path);
+            if (string.IsNullOrWhiteSpace(fileName))
+                return false;
+
+            string normalizedName = fileName.ToLowerInvariant();
+            return NoisyExecutableNameTokens.Any(token => normalizedName.Contains(token, StringComparison.Ordinal));
         }
 
         private static IReadOnlyList<LauncherResult> BuildHelpRows()
