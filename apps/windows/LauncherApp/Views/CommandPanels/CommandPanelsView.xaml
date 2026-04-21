@@ -24,41 +24,43 @@
                 <RowDefinition Height="40" />
             </Grid.RowDefinitions>
 
-            <ToggleButton x:Name="CalcCard" Grid.Row="0" Grid.Column="0" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
+            <ToggleButton x:Name="ShellCard" Grid.Row="0" Grid.Column="0" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
                 <StackPanel Spacing="2">
-                    <TextBlock FontWeight="SemiBold" Text="/calc (Ctrl+2)" />
-                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Evaluate math expression" />
+                    <TextBlock FontWeight="SemiBold" Text="shell (Ctrl+1)" />
                 </StackPanel>
             </ToggleButton>
 
-            <ToggleButton x:Name="ShellCard" Grid.Row="0" Grid.Column="1" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
+            <ToggleButton x:Name="CalcCard" Grid.Row="0" Grid.Column="1" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
                 <StackPanel Spacing="2">
-                    <TextBlock FontWeight="SemiBold" Text="/shell (Ctrl+1)" />
-                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Run shell command" />
+                    <TextBlock FontWeight="SemiBold" Text="calc (Ctrl+2)" />
                 </StackPanel>
             </ToggleButton>
 
             <ToggleButton x:Name="KillCard" Grid.Row="1" Grid.Column="0" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
                 <StackPanel Spacing="2">
-                    <TextBlock FontWeight="SemiBold" Text="/kill (Ctrl+3)" />
-                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Force kill running app" />
+                    <TextBlock FontWeight="SemiBold" Text="kill (Ctrl+3)" />
                 </StackPanel>
             </ToggleButton>
 
             <ToggleButton x:Name="SysCard" Grid.Row="1" Grid.Column="1" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
                 <StackPanel Spacing="2">
-                    <TextBlock FontWeight="SemiBold" Text="/sys" />
-                    <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Show system information" />
+                    <TextBlock FontWeight="SemiBold" Text="sys (Ctrl+4)" />
                 </StackPanel>
             </ToggleButton>
         </Grid>
 
         <Border Grid.Row="2" Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
             <StackPanel Spacing="6">
-                <TextBlock x:Name="CommandTitleText" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="/calc" />
-                <TextBlock x:Name="CommandDetailText" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Evaluate math expression" />
-                <Border Background="#1B2431" CornerRadius="8" Padding="8">
-                    <TextBlock x:Name="CommandExampleText" FontFamily="Consolas" Foreground="{StaticResource LauncherTextBrush}" Text="/calc 12 * 7 + 5" />
+                <TextBlock x:Name="CommandTitleText" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="calc" />
+                <Border Background="#151D28" CornerRadius="8" Padding="8">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MinHeight="220" MaxHeight="320">
+                        <TextBlock
+                            x:Name="CommandOutputText"
+                            FontFamily="Consolas"
+                            Foreground="{StaticResource LauncherMutedTextBrush}"
+                            Text=""
+                            TextWrapping="Wrap" />
+                    </ScrollViewer>
                 </Border>
             </StackPanel>
         </Border>

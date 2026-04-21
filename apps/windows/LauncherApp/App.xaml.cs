@@ -36,6 +36,7 @@ namespace LauncherApp
         public App()
         {
             InitializeComponent();
+            UnhandledException += OnUnhandledException;
         }
 
         /// <summary>
@@ -47,6 +48,21 @@ namespace LauncherApp
             MainAppWindow = new MainWindow();
             _window = MainAppWindow;
             _window.Activate();
+        }
+
+        private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+        {
+            try
+            {
+                string logPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "look-crash.log");
+                string message = $"[{DateTime.Now:O}] {e.Exception?.GetType().Name}: {e.Message}{Environment.NewLine}{e.Exception}{Environment.NewLine}";
+                File.AppendAllText(logPath, message);
+            }
+            catch
+            {
+            }
+
+            e.Handled = true;
         }
     }
 }

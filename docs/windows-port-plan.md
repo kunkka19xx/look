@@ -15,6 +15,23 @@ Ship a Windows launcher with the same product behavior as macOS:
 
 Windows v1 parity checklist reference: `docs/windows-v1-parity-checklist.md`
 
+## Recent implementation snapshot (2026-04)
+
+- Windows search now uses real Rust FFI results in the WinUI shell.
+- Windows app discovery noise filtering and dedupe were tightened:
+  - Start Menu + fallback root scanning with helper executable filtering
+  - overlap dedupe across Start Menu/WindowsApps/System32 where safe
+- Icon pipeline was stabilized for WinUI rendering:
+  - shell extraction path for `.exe`/`.lnk`/folder/file
+  - cached bitmap fallback for reliable row rendering
+  - settings icon mapping for `ms-settings:` entries
+- Windows Settings catalog was expanded with broader `ms-settings:` coverage.
+- Action dispatch now performs real typed open behavior for app/file/folder/setting/url,
+  with reveal/copy/web handoff wired in the shell.
+- Command mode now executes real handlers on Windows for `calc`, `shell`, `kill`, and `sys`,
+  with command output rendered inside the command panel.
+- Windows app project now auto-builds Rust FFI and copies `look_ffi.dll` during build.
+
 ## Current architecture baseline
 
 Today the codebase is split as:

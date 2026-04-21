@@ -151,12 +151,12 @@ Windows UI delivery note (mock-first):
 
 - [x] implement FFI search connection (Rust backend working, search returns real results)
 - [x] implement IconService for Windows icon extraction (SHGetFileInfo API)
-- [ ] fix icon display in WinUI 3 (HICON → SoftwareBitmapSource conversion not rendering)
+- [x] fix icon display in WinUI 3 (stable icon rendering with shell extraction + cache fallback)
 - [ ] implement global hotkey + hide/show/focus lifecycle parity on Windows
 - [ ] implement Windows clipboard history mode (`c"`) with listener-first capture strategy
-- [ ] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`) - UI is done, execution NOT implemented
+- [x] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`) with in-panel output and keyboard run flow
 - [ ] implement Windows launch-at-login integration
-- [ ] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff) - UI placeholder done, execution NOT implemented
+- [x] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff) with type-aware open handling (app/file/folder/setting/url)
 
 ---
 
@@ -170,6 +170,9 @@ Windows immediate execution queue (current):
 - [x] PR-2: implement curated Windows settings catalog (`ms-settings:`) while keeping `setting:*` ID contract
 - [x] PR-2: move platform-specific app discovery into `platform/macos/apps.rs` and `platform/windows/apps.rs`; keep `index/apps.rs` as dispatch only
 - [x] PR-2: add Windows adapter unit tests (start-menu entry detection, fallback filtering, dedupe, merged roots, catalog integrity)
+- [x] PR-3: reduce Windows app noise (helper executables, System32 guardrails, WindowsApps depth handling)
+- [x] PR-3: add Windows fallback dedupe rules for Start Menu/WindowsApps/System32 overlap and keep real app preference
+- [x] PR-3: expand Windows Settings catalog coverage and render settings with dedicated UI kind/icon
 
 ## Milestone G: Reliability (errors, tests, logs)
 

@@ -4,6 +4,7 @@ using System.Linq;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 
 namespace LauncherApp.Views.CommandPanels;
 
@@ -14,11 +15,10 @@ public sealed partial class CommandPanelsView : UserControl
         public required string Id { get; init; }
         public required ToggleButton Card { get; init; }
         public required string Title { get; init; }
-        public required string Detail { get; init; }
-        public required string Example { get; init; }
     }
 
     private List<CommandMeta>? _commands;
+    private string _activeCommandId = "command:calc";
 
     public CommandPanelsView()
     {
@@ -40,8 +40,7 @@ public sealed partial class CommandPanelsView : UserControl
         {
             bool isVisible = string.IsNullOrWhiteSpace(normalized)
                 || cmd.Id.Contains(normalized)
-                || cmd.Title.Contains(normalized, StringComparison.OrdinalIgnoreCase)
-                || cmd.Detail.Contains(normalized, StringComparison.OrdinalIgnoreCase);
+                || cmd.Title.Contains(normalized, StringComparison.OrdinalIgnoreCase);
 
             cmd.Card.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
             anyVisible |= isVisible;
@@ -74,6 +73,9 @@ public sealed partial class CommandPanelsView : UserControl
             _ => "command:calc",
         };
 
+        bool changed = !string.Equals(_activeCommandId, id, StringComparison.Ordinal);
+        _activeCommandId = id;
+
         foreach (var cmd in _commands!)
         {
             cmd.Card.IsChecked = cmd.Id == id;
@@ -81,8 +83,34 @@ public sealed partial class CommandPanelsView : UserControl
 
         var selected = _commands!.First(x => x.Id == id);
         CommandTitleText.Text = selected.Title;
-        CommandDetailText.Text = selected.Detail;
-        CommandExampleText.Text = selected.Example;
+        if (changed)
+        {
+            CommandOutputText.Text = string.Empty;
+            CommandOutputText.Foreground = ResolveBrush("LauncherMutedTextBrush");
+        }
+    }
+
+    public void SetExecutionFeedback(string message, bool isError = false)
+    {
+        CommandOutputText.Text = message ?? string.Empty;
+        string key = isError ? "LauncherBannerErrorBrush" : "LauncherMutedTextBrush";
+        CommandOutputText.Foreground = ResolveBrush(key);
+    }
+
+    private static Brush ResolveBrush(string key)
+    {
+        if (Application.Current.Resources.TryGetValue(key, out object value) && value is Brush brush)
+        {
+            return brush;
+        }
+
+        if (Application.Current.Resources.TryGetValue("LauncherMutedTextBrush", out object fallbackValue)
+            && fallbackValue is Brush fallbackBrush)
+        {
+            return fallbackBrush;
+        }
+
+        return new SolidColorBrush(Windows.UI.Color.FromArgb(255, 189, 198, 211));
     }
 
     public void MoveSelection(int direction)
@@ -138,33 +166,25 @@ public sealed partial class CommandPanelsView : UserControl
             {
                 Id = "command:calc",
                 Card = CalcCard,
-                Title = "/calc",
-                Detail = "Evaluate math expression",
-                Example = "/calc 12 * 7 + 5"
+                Title = "calc"
             },
             new CommandMeta
             {
                 Id = "command:shell",
                 Card = ShellCard,
-                Title = "/shell",
-                Detail = "Run shell command",
-                Example = "/shell winget upgrade --all"
+                Title = "shell"
             },
             new CommandMeta
             {
                 Id = "command:kill",
                 Card = KillCard,
-                Title = "/kill",
-                Detail = "Force kill a running app",
-                Example = "/kill notepad"
+                Title = "kill"
             },
             new CommandMeta
             {
                 Id = "command:sys",
                 Card = SysCard,
-                Title = "/sys",
-                Detail = "Show system information",
-                Example = "/sys"
+                Title = "sys"
             },
         ];
     }
