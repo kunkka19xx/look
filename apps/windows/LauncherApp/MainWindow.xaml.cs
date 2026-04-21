@@ -930,6 +930,21 @@ namespace LauncherApp
                     ? "Opened browser search  •  Enter open  •  Ctrl+R reveal  •  Ctrl+C copy"
                     : "Web handoff failed  •  Enter open  •  Ctrl+R reveal  •  Ctrl+C copy";
                 e.Handled = true;
+                return;
+            }
+
+            if (e.Key == VirtualKey.Enter && ResultsList.SelectedItem is LauncherRowItem enterSelected)
+            {
+                HandlePrimaryAction(enterSelected);
+                e.Handled = true;
+            }
+        }
+
+        private void ResultsList_OnItemClick(object sender, ItemClickEventArgs e)
+        {
+            if (e.ClickedItem is LauncherRowItem clickedRow)
+            {
+                HandlePrimaryAction(clickedRow);
             }
         }
 

@@ -60,7 +60,8 @@
                 x:Name="ResultsList"
                 Background="Transparent"
                 BorderThickness="0"
-                IsItemClickEnabled="False"
+                IsItemClickEnabled="True"
+                ItemClick="ResultsList_OnItemClick"
                 KeyDown="ResultsList_OnKeyDown"
                 SelectionChanged="ResultsList_OnSelectionChanged"
                 SelectionMode="Single">
