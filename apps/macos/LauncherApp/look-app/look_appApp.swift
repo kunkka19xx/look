@@ -148,33 +148,39 @@ struct look_appApp: App {
 
             CommandGroup(after: .appSettings) {
                 Button("Theme Settings") {
-                    appUIState.showsThemeSettings.toggle()
+                    DispatchQueue.main.async {
+                        appUIState.showsThemeSettings.toggle()
+                    }
                 }
                 .keyboardShortcut(",", modifiers: [.command, .shift])
 
                 Button("Reload Config") {
-                    NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
-                    NotificationCenter.default.post(name: .lookRefocusInputRequested, object: nil)
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
+                    }
                 }
                 .keyboardShortcut(";", modifiers: [.command, .shift])
 
                 Divider()
 
                 Button("Zoom In") {
-                    themeStore.zoomIn()
-                    NotificationCenter.default.post(name: .lookRefocusInputRequested, object: nil)
+                    DispatchQueue.main.async {
+                        themeStore.zoomIn()
+                    }
                 }
                 .keyboardShortcut("=", modifiers: [.command])
 
                 Button("Zoom Out") {
-                    themeStore.zoomOut()
-                    NotificationCenter.default.post(name: .lookRefocusInputRequested, object: nil)
+                    DispatchQueue.main.async {
+                        themeStore.zoomOut()
+                    }
                 }
                 .keyboardShortcut("-", modifiers: [.command])
 
                 Button("Actual Size") {
-                    themeStore.resetZoom()
-                    NotificationCenter.default.post(name: .lookRefocusInputRequested, object: nil)
+                    DispatchQueue.main.async {
+                        themeStore.resetZoom()
+                    }
                 }
                 .keyboardShortcut("0", modifiers: [.command])
             }
