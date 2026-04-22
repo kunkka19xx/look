@@ -1,5 +1,6 @@
 import AppKit
 import CoreServices
+import OSLog
 import SwiftUI
 
 struct LauncherView: View {
@@ -86,6 +87,19 @@ struct LauncherView: View {
 
         return false
     }()
+
+    private static let debugEventLoggingEnabled: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        let raw = env["LOOK_UI_DEBUG_EVENTS"] ?? env["LOOK_DEV_HINT"] ?? ""
+        return ["1", "true", "yes", "on"].contains(raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }()
+
+    private static let logger = Logger(subsystem: "noah-code.Look", category: "ui")
+
+    private func logUIEvent(_ message: String) {
+        guard Self.debugEventLoggingEnabled else { return }
+        Self.logger.notice("\(message, privacy: .public)")
+    }
 
     private static let clipboardSubtitleDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -296,6 +310,12 @@ struct LauncherView: View {
         return activeCommandID != AppConstants.Launcher.Command.sys
     }
 
+    private var isKillConfirmationVisible: Bool {
+        isCommandMode
+            && activeCommandID == AppConstants.Launcher.Command.kill
+            && pendingKillCandidate != nil
+    }
+
     private var liveCommandPreview: String? {
         guard isCommandMode else { return nil }
 
@@ -482,12 +502,15 @@ struct LauncherView: View {
     }
 
     private func handleSubmit() {
+        logUIEvent("submit isCommand=\(isCommandMode) active=\(activeCommandID ?? "nil") selectedKill=\(selectedKillSuggestionIndex.map(String.init) ?? "nil") pendingKill=\(pendingKillCandidate?.displayName ?? "nil") input='\(commandArgsPart)'")
         if isCommandMode {
             if activeCommandID == AppConstants.Launcher.Command.kill, let selectedNum = selectedKillSuggestionIndex {
                 if let candidate = killSuggestions.first(where: { $0.number == selectedNum }) {
                     pendingKillCandidate = candidate
+                    logUIEvent("kill submit -> pending from selected index num=\(selectedNum) candidate=\(candidate.displayName) pid=\(candidate.pid)")
                 } else {
                     selectedKillSuggestionIndex = nil
+                    logUIEvent("kill submit -> stale selection num=\(selectedNum), fallback action")
                     runCommandModeAction()
                 }
             } else {
@@ -574,6 +597,7 @@ struct LauncherView: View {
         case AppConstants.Launcher.Command.kill:
             let searchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines)
             let matched = KillCommand.suggestions(searchTerm: searchTerm)
+            logUIEvent("kill action search='\(searchTerm)' matches=\(matched.count)")
 
             if matched.isEmpty {
                 if searchTerm.hasPrefix(":") || searchTerm.lowercased().hasPrefix("port ") {
@@ -593,6 +617,7 @@ struct LauncherView: View {
                 let candidate = matched[0]
                 selectedKillSuggestionIndex = candidate.number
                 pendingKillCandidate = candidate
+                logUIEvent("kill action -> pending single candidate=\(candidate.displayName) pid=\(candidate.pid)")
             }
         case AppConstants.Launcher.Command.sys:
             commandFeedback = ""
@@ -607,8 +632,10 @@ struct LauncherView: View {
     }
 
     private func runKillCommand(candidate: KillCommand.Candidate) {
+        logUIEvent("kill execute candidate=\(candidate.displayName) pid=\(candidate.pid)")
         KillCommand.kill(pid: candidate.pid, name: candidate.displayName) { [self] message in
             commandFeedback = message
+            logUIEvent("kill completion message='\(message)'")
         }
     }
 
@@ -885,9 +912,17 @@ struct LauncherView: View {
         if appUIState.showsThemeSettings {
             appUIState.showsThemeSettings = false
         }
+
         if isCommandMode {
-            exitCommandMode()
+            pendingKillCandidate = nil
+            if activeCommandAcceptsInput {
+                focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
+            } else {
+                isQueryFocused = false
+            }
+            return
         }
+
         focusActiveInput()
     }
 
@@ -1425,7 +1460,9 @@ struct LauncherView: View {
                         Spacer(minLength: 0)
                     }
 
-                    HintBar(hint: currentHint, themeStore: themeStore)
+                    if !isKillConfirmationVisible {
+                        HintBar(hint: currentHint, themeStore: themeStore)
+                    }
                 }
             }
             .padding(14)
@@ -1486,7 +1523,7 @@ struct LauncherView: View {
                     }
                 )
                 .padding(.horizontal, 14)
-                .padding(.bottom, 12)
+                .padding(.bottom, 24)
             }
         }
         .ignoresSafeArea()
@@ -1522,6 +1559,9 @@ struct LauncherView: View {
         .onChange(of: commandInput) { _, _ in
             if isCommandMode {
                 if activeCommandID == AppConstants.Launcher.Command.kill {
+                    if selectedKillSuggestionIndex != nil || pendingKillCandidate != nil {
+                        logUIEvent("kill input changed -> clear pending/select input='\(commandArgsPart)'")
+                    }
                     pendingKillCandidate = nil
                     selectedKillSuggestionIndex = nil
                 }
@@ -1556,7 +1596,9 @@ struct LauncherView: View {
             reloadConfig()
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookRefocusInputRequested)) { _ in
-            focusActiveInput()
+            DispatchQueue.main.async {
+                focusActiveInput(recoveryDelays: [0.0], activateApp: false)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookActivateLauncherRequested)) { _ in
             activateLauncherModeAndFocus()
@@ -1700,7 +1742,9 @@ struct LauncherView: View {
                 activeCommandID = command.id
                 selectedCommandID = command.id
                 if activeCommandAcceptsInput {
-                    focusActiveInput(recoveryDelays: [0.0], activateApp: false)
+                    DispatchQueue.main.async {
+                        isQueryFocused = true
+                    }
                 }
             },
             onConfirmKill: { [self] in

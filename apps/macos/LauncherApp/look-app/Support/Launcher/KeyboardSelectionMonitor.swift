@@ -1,9 +1,21 @@
 import AppKit
 import Foundation
+import OSLog
 
 final class KeyboardSelectionMonitor {
     private var monitor: Any?
     private var isKillConfirmationActive: () -> Bool = { false }
+    private static let logger = Logger(subsystem: "noah-code.Look", category: "ui-key")
+    private static let debugKeyLoggingEnabled: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        let raw = env["LOOK_UI_DEBUG_EVENTS"] ?? env["LOOK_DEV_HINT"] ?? ""
+        return ["1", "true", "yes", "on"].contains(raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }()
+
+    private static func logKey(_ message: String) {
+        guard Self.debugKeyLoggingEnabled else { return }
+        Self.logger.notice("\(message, privacy: .public)")
+    }
 
     func start(
         onNext: @escaping () -> Void,
@@ -29,6 +41,7 @@ final class KeyboardSelectionMonitor {
 
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            Self.logKey("down keyCode=\(event.keyCode) chars=\(event.charactersIgnoringModifiers ?? "") flagsRaw=\(flags.rawValue) inCommand=\(inCommandMode())")
 
             if flags.contains(.command)
                 && !flags.contains(.control)
@@ -37,7 +50,9 @@ final class KeyboardSelectionMonitor {
                     || event.charactersIgnoringModifiers == "/"
                     || event.charactersIgnoringModifiers == "?")
             {
-                onEnterCommandMode()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                    onEnterCommandMode()
+                }
                 return nil
             }
 
@@ -72,7 +87,9 @@ final class KeyboardSelectionMonitor {
             }
 
             if (event.keyCode == 36 || event.keyCode == 76) && flags == [.command, .shift] {
-                onSelectCommandByIndex(1)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                    onSelectCommandByIndex(1)
+                }
                 return nil
             }
 
@@ -80,7 +97,9 @@ final class KeyboardSelectionMonitor {
                 let keyNumber = Int(event.keyCode)
                 if keyNumber >= 18 && keyNumber <= 21 {
                     let index = keyNumber - 17
-                    onSelectCommandByIndex(index)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                        onSelectCommandByIndex(index)
+                    }
                     return nil
                 }
             }
@@ -89,6 +108,7 @@ final class KeyboardSelectionMonitor {
                 || event.modifierFlags.contains(.option)
                 || event.modifierFlags.contains(.control)
             {
+                Self.logKey("passthrough keyCode=\(event.keyCode) (modifier key combo)")
                 return event
             }
 

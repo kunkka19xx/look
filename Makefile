@@ -15,12 +15,13 @@ LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/Launc
 DEV_APP_NAME ?= Look Dev
 DEV_APP_ID ?= noah-code.Look.Dev
 DEV_APP_INSTALL_BUNDLE := /Applications/$(DEV_APP_NAME).app
+LOG_PREDICATE ?= subsystem == "noah-code.Look"
 
 REAL_DB_PATH := $(HOME)/Library/Application Support/look/look.db
 DEV_CONFIG_PATH ?= $(HOME)/.look.dev.config
-DEV_OPEN_ENV = env -u LOOK_DB_PATH LOOK_CONFIG_PATH="$(DEV_CONFIG_PATH)" LOOK_DEV_HINT=1
+DEV_OPEN_ENV = env -u LOOK_DB_PATH LOOK_CONFIG_PATH="$(DEV_CONFIG_PATH)" LOOK_DEV_HINT=1 LOOK_LOG_LEVEL=debug LOOK_UI_DEBUG_EVENTS=1
 
-.PHONY: help core-check ffi-check app-build app-ensure-bundle app-stop app-run app-open app-install-dev app-run-dev app-uninstall-dev symbols db-path db-status db-shell db-reset db-refresh
+.PHONY: help core-check ffi-check app-build app-ensure-bundle app-stop app-run app-open app-install-dev app-run-dev app-uninstall-dev app-logs app-logs-all symbols db-path db-status db-shell db-reset db-refresh
 
 help:
 	@printf "look developer tasks\n\n"
@@ -36,6 +37,8 @@ help:
 	@printf "  make app-install-dev - install side-by-side /Applications/$(DEV_APP_NAME).app\n"
 	@printf "  make app-run-dev  - install+open side-by-side dev app with dev config\n"
 	@printf "  make app-uninstall-dev - remove side-by-side dev app from /Applications\n"
+	@printf "  make app-logs     - stream app logs (predicate: $(LOG_PREDICATE))\n"
+	@printf "  make app-logs-all - stream all logs for process Look\n"
 	@printf "  (override config) make app-run DEV_CONFIG_PATH=\"$$HOME/.look.dev.config\"\n\n"
 	@printf "database\n"
 	@printf "  make db-path      - print real db path\n"
@@ -88,6 +91,14 @@ app-uninstall-dev:
 	@echo "Removing side-by-side dev app: $(DEV_APP_INSTALL_BUNDLE)"
 	@osascript -e 'tell application id "$(DEV_APP_ID)" to quit' >/dev/null 2>&1 || true
 	@rm -rf "$(DEV_APP_INSTALL_BUNDLE)"
+
+app-logs:
+	@echo "Streaming logs with predicate: $(LOG_PREDICATE)"
+	@log stream --style compact --level debug --predicate '$(LOG_PREDICATE)'
+
+app-logs-all:
+	@echo "Streaming all logs for Look process"
+	@log stream --style compact --level debug --predicate 'process == "Look"'
 
 symbols: app-build
 	@nm -gU "$(APP_DEBUG_DYLIB)" | rg "_look_search_json|_look_record_usage|_look_free_cstring"
