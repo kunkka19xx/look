@@ -28,6 +28,10 @@ pub(crate) fn reload_runtime_config() {
     }
 }
 
+pub(crate) fn is_debug_enabled() -> bool {
+    current_log_level() >= LogLevel::Debug
+}
+
 pub(crate) fn log_debug(message: &str) {
     if current_log_level() >= LogLevel::Debug {
         eprintln!("[look][debug] {message}");

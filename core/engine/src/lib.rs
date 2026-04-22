@@ -193,7 +193,6 @@ impl IndexedCandidate {
             .as_ref()
             .map(|subtitle| normalize_for_search(subtitle));
         let path_search = normalize_for_search(&candidate.path);
-
         Self {
             candidate,
             title_search,

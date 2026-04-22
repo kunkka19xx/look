@@ -74,9 +74,10 @@ pub(crate) fn with_engine_mut<T>(f: impl FnOnce(&mut QueryEngine) -> T) -> T {
 pub(crate) fn refresh_engine_cache() {
     if let Some(lock) = ENGINE_CACHE.get() {
         let path = default_db_path();
-        if let Ok(engine) = QueryEngine::from_sqlite(path)
-            && let Ok(mut guard) = lock.write()
-        {
+        if let Ok(engine) = QueryEngine::from_sqlite(path) {
+            let mut guard = lock
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             *guard = engine;
         }
     }
@@ -99,6 +100,11 @@ pub(crate) fn clear_index_dirty_if_unchanged(snapshot_version: u64) {
 pub(crate) fn clear_index_dirty() {
     let current = INDEX_CHANGE_VERSION.load(Ordering::Acquire);
     INDEX_CLEARED_VERSION.store(current, Ordering::Release);
+}
+
+#[cfg(test)]
+pub(crate) fn stop_index_watchers_for_test() {
+    stop_index_watchers();
 }
 
 pub(crate) fn restart_index_watchers() {
@@ -127,7 +133,10 @@ pub(crate) fn restart_index_watchers() {
 
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
     let control = INDEX_WATCHER_CONTROL.get_or_init(|| Mutex::new(None));
-    if let Ok(mut guard) = control.lock() {
+    {
+        let mut guard = control
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         *guard = Some(stop_tx);
     }
 
@@ -277,10 +286,6 @@ pub(crate) fn store_json_allocation(cstring: CString) -> *mut c_char {
 
     let lock = JSON_ALLOCS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut allocations = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-
-    if allocations.contains_key(&ptr) {
-        allocations.remove(&ptr);
-    }
     allocations.insert(ptr, cstring);
 
     ptr as *mut c_char
@@ -291,9 +296,8 @@ pub(crate) fn free_json_allocation(ptr: *mut c_char) {
         return;
     }
 
-    if let Some(lock) = JSON_ALLOCS.get()
-        && let Ok(mut allocations) = lock.lock()
-    {
+    if let Some(lock) = JSON_ALLOCS.get() {
+        let mut allocations = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         allocations.remove(&(ptr as usize));
     }
 }
@@ -354,11 +358,13 @@ fn start_index_watcher_bootstrap() {
 }
 
 fn stop_index_watchers() {
-    if let Some(control) = INDEX_WATCHER_CONTROL.get()
-        && let Ok(mut guard) = control.lock()
-        && let Some(tx) = guard.take()
-    {
-        let _ = tx.send(());
+    if let Some(control) = INDEX_WATCHER_CONTROL.get() {
+        let mut guard = control
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(tx) = guard.take() {
+            let _ = tx.send(());
+        }
     }
 }
 

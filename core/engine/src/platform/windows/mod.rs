@@ -1,8 +1,6 @@
 mod apps;
 mod settings_catalog;
 
-use super::SettingsCatalogEntry;
-
 pub(crate) const APP_SCAN_ROOTS: &[&str] = &[
     "C:/ProgramData/Microsoft/Windows/Start Menu/Programs",
     "~/AppData/Roaming/Microsoft/Windows/Start Menu/Programs",

@@ -23,7 +23,7 @@ impl ParsedQuery {
         if let Some(rest) = strip_prefixed_query(trimmed, PREFIX_FOLDERS) {
             return Self {
                 normalized_query: normalize_for_search(rest),
-                raw_query: Some(rest.to_string()),
+                raw_query: None,
                 kind_filter: Some(CandidateKind::Folder),
                 is_regex: false,
             };
@@ -32,7 +32,7 @@ impl ParsedQuery {
         if let Some(rest) = strip_prefixed_query(trimmed, PREFIX_FILES) {
             return Self {
                 normalized_query: normalize_for_search(rest),
-                raw_query: Some(rest.to_string()),
+                raw_query: None,
                 kind_filter: Some(CandidateKind::File),
                 is_regex: false,
             };
@@ -41,7 +41,7 @@ impl ParsedQuery {
         if let Some(rest) = strip_prefixed_query(trimmed, PREFIX_APPS) {
             return Self {
                 normalized_query: normalize_for_search(rest),
-                raw_query: Some(rest.to_string()),
+                raw_query: None,
                 kind_filter: Some(CandidateKind::App),
                 is_regex: false,
             };
@@ -58,11 +58,7 @@ impl ParsedQuery {
 
         Self {
             normalized_query: normalize_for_search(trimmed),
-            raw_query: if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            },
+            raw_query: None,
             kind_filter: None,
             is_regex: false,
         }

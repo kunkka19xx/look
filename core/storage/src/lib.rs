@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const SEARCH_ENGINE_DUCKDUCKGO: &str = "duckduckgo";
 const SEARCH_ENGINE_GOOGLE: &str = "google";
 const SEARCH_ENGINE_BING: &str = "bing";
+const MAX_CANDIDATE_PREALLOC: usize = 10_000;
 
 const SETTINGS_KEY_WEB_SEARCH_ENABLED: &str = "web_search_enabled";
 const SETTINGS_KEY_WEB_SEARCH_ENGINE: &str = "web_search_engine";
@@ -182,7 +183,10 @@ impl SqliteStore {
             None => stmt.query([])?,
         };
 
-        let mut out = Vec::new();
+        let mut out = match limit {
+            Some(max) => Vec::with_capacity(max.min(MAX_CANDIDATE_PREALLOC)),
+            None => Vec::new(),
+        };
         while let Some(row) = rows.next()? {
             let kind_raw: String = row.get(1)?;
             let use_count_raw: i64 = row.get(5)?;
@@ -326,15 +330,16 @@ impl SqliteStore {
             .map_err(|err| StorageError::Data(format!("system time error: {err}")))?
             .as_secs() as i64;
 
-        self.conn.execute(
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "INSERT INTO usage_events(candidate_id, action, used_at_unix_s) VALUES (?1, ?2, ?3)",
             params![candidate_id, action, now],
         )?;
-
-        self.conn.execute(
+        tx.execute(
             "UPDATE candidates SET use_count = use_count + 1, last_used_at_unix_s = ?2 WHERE id = ?1",
             params![candidate_id, now],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -474,14 +479,17 @@ fn from_use_count(value: u64) -> StorageResult<i64> {
 
 /// RFC 3986 percent-encoding: unreserved characters are passed through,
 /// everything else (including spaces) is encoded as `%XX`.
+const HEX_CHARS: &[u8; 16] = b"0123456789ABCDEF";
+
 pub fn percent_encode(value: &str) -> String {
-    let mut out = String::new();
+    let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
             out.push(byte as char);
         } else {
             out.push('%');
-            out.push_str(&format!("{byte:02X}"));
+            out.push(HEX_CHARS[(byte >> 4) as usize] as char);
+            out.push(HEX_CHARS[(byte & 0x0F) as usize] as char);
         }
     }
     out
@@ -490,7 +498,7 @@ pub fn percent_encode(value: &str) -> String {
 /// Form-style encoding for search query parameters: same as [`percent_encode`]
 /// but encodes spaces as `+` instead of `%20`.
 fn form_encode_query(value: &str) -> String {
-    let mut out = String::new();
+    let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
             out.push(byte as char);
@@ -498,7 +506,8 @@ fn form_encode_query(value: &str) -> String {
             out.push('+');
         } else {
             out.push('%');
-            out.push_str(&format!("{byte:02X}"));
+            out.push(HEX_CHARS[(byte >> 4) as usize] as char);
+            out.push(HEX_CHARS[(byte & 0x0F) as usize] as char);
         }
     }
     out

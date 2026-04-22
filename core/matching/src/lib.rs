@@ -16,15 +16,16 @@ impl PreparedQuery<'_> {
         self.raw
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.chars.len()
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.chars.is_empty()
     }
 }
 
+#[inline]
 pub fn prepare_query(query: &str) -> PreparedQuery<'_> {
     PreparedQuery {
         raw: query,
@@ -37,6 +38,7 @@ pub fn fuzzy_score(query: &str, title: &str) -> Option<i64> {
     fuzzy_score_prepared(&prepared, title)
 }
 
+#[inline]
 pub fn fuzzy_score_prepared(query: &PreparedQuery<'_>, title: &str) -> Option<i64> {
     let q = query.raw();
     let t = title;
@@ -148,6 +150,7 @@ fn fuzzy_score_dp_prepared(query: &PreparedQuery<'_>, title: &str) -> Option<i64
     dp[q_len - 1].map(|state| state.score.max(0))
 }
 
+#[inline]
 pub fn fuzzy_quality_bonus_prepared(query: &PreparedQuery<'_>, title: &str) -> i64 {
     if query.is_empty() || title == query.raw() || title.starts_with(query.raw()) {
         return 0;

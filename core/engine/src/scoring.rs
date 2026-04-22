@@ -29,15 +29,13 @@ pub(crate) fn contains_match_score(
         return Some(SCORE_SUBTITLE_CONTAINS);
     }
 
-    let terms: Vec<&str> = query.split_whitespace().collect();
-    if terms.is_empty() {
-        return None;
-    }
+    let mut has_terms = false;
+    let all_match = query.split_whitespace().all(|t| {
+        has_terms = true;
+        title.contains(t) || subtitle.is_some_and(|sub| sub.contains(t))
+    });
 
-    if terms
-        .iter()
-        .all(|t| title.contains(t) || subtitle.is_some_and(|sub| sub.contains(t)))
-    {
+    if has_terms && all_match {
         return Some(SCORE_TOKEN_ALL_MATCH);
     }
 
