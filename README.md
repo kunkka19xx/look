@@ -36,6 +36,7 @@ Highlights:
 - reveal selected app/file/folder in Finder with `Cmd+F`
 - command mode with `Cmd+/` (`calc`, `shell`, `kill`, `sys`)
 - force-quit flow in command mode (`kill`, including process-by-port search like `:3000`)
+- calc supports `^`, `!`, constants (`pi`, `e`), functions (`sqrt`, `abs`, `round`, `floor`, `ceil`), and `%` shorthand (`50%`, `200*15%`)
 
 ## Positioning
 
