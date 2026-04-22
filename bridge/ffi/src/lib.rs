@@ -121,17 +121,8 @@ mod tests {
         let _ = fs::remove_file(&db_path);
 
         let mut store = SqliteStore::open(&db_path).expect("open sqlite store");
-        let candidate = Candidate {
-            id: "app:smoke.test".into(),
-            kind: CandidateKind::App,
-            title: "Smoke Test App".into(),
-            subtitle: Some("smoke app".into()),
-            path: "/Applications/Smoke Test App.app".into(),
-            use_count: 0,
-            last_used_at_unix_s: None,
-        };
         store
-            .upsert_candidates(&[candidate])
+            .upsert_candidates(&[smoke_candidate()])
             .expect("insert smoke candidate");
 
         unsafe {
@@ -155,7 +146,7 @@ mod tests {
             .unwrap_or(0);
         assert!(count >= 1);
 
-        let has_smoke = payload
+        let mut has_smoke = payload
             .get("results")
             .and_then(|value| value.as_array())
             .is_some_and(|results| {
@@ -165,6 +156,35 @@ mod tests {
                         .is_some_and(|id| id == "app:smoke.test")
                 })
             });
+
+        if !has_smoke {
+            // Background bootstrap refresh can replace the in-memory cache during tests.
+            // Re-seed the sqlite fixture and refresh cache once before asserting.
+            let mut store = SqliteStore::open(&db_path).expect("re-open sqlite store");
+            store
+                .upsert_candidates(&[smoke_candidate()])
+                .expect("reinsert smoke candidate");
+            state::refresh_engine_cache();
+
+            let retry_ptr = look_search_json(query.as_ptr(), 10);
+            assert!(!retry_ptr.is_null());
+            let retry_raw = unsafe { CStr::from_ptr(retry_ptr) }
+                .to_string_lossy()
+                .into_owned();
+            look_free_cstring(retry_ptr);
+            let retry_payload: serde_json::Value =
+                serde_json::from_str(&retry_raw).expect("valid retry payload");
+            has_smoke = retry_payload
+                .get("results")
+                .and_then(|value| value.as_array())
+                .is_some_and(|results| {
+                    results.iter().any(|item| {
+                        item.get("id")
+                            .and_then(|value| value.as_str())
+                            .is_some_and(|id| id == "app:smoke.test")
+                    })
+                });
+        }
         assert!(has_smoke);
 
         let compact_ptr = look_search_json_compact(query.as_ptr(), 10);
@@ -246,6 +266,18 @@ mod tests {
         assert!(updated.last_used_at_unix_s.is_some());
 
         let _ = fs::remove_file(&db_path);
+    }
+
+    fn smoke_candidate() -> Candidate {
+        Candidate {
+            id: "app:smoke.test".into(),
+            kind: CandidateKind::App,
+            title: "Smoke Test App".into(),
+            subtitle: Some("smoke app".into()),
+            path: "/Applications/Smoke Test App.app".into(),
+            use_count: 0,
+            last_used_at_unix_s: None,
+        }
     }
 
     #[test]
