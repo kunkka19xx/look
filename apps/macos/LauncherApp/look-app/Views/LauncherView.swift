@@ -487,6 +487,7 @@ struct LauncherView: View {
                 if let candidate = killSuggestions.first(where: { $0.number == selectedNum }) {
                     pendingKillCandidate = candidate
                 } else {
+                    selectedKillSuggestionIndex = nil
                     runCommandModeAction()
                 }
             } else {
@@ -589,7 +590,9 @@ struct LauncherView: View {
                 let list = matched.map { candidate in "\(candidate.number). \(candidate.displayName)" }
                 commandFeedback = "Multiple matches:\n" + list.joined(separator: "\n") + "\n\nBe more specific."
             } else {
-                runKillCommand(candidate: matched[0])
+                let candidate = matched[0]
+                selectedKillSuggestionIndex = candidate.number
+                pendingKillCandidate = candidate
             }
         case AppConstants.Launcher.Command.sys:
             commandFeedback = ""
@@ -1518,6 +1521,10 @@ struct LauncherView: View {
         }
         .onChange(of: commandInput) { _, _ in
             if isCommandMode {
+                if activeCommandID == AppConstants.Launcher.Command.kill {
+                    pendingKillCandidate = nil
+                    selectedKillSuggestionIndex = nil
+                }
                 setInitialSelection()
             }
         }
