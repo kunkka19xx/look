@@ -260,7 +260,7 @@ mod tests {
 
         fs::write(
             &config_path,
-            "lazy_indexing_enabled=true\nfile_scan_roots=\napp_scan_roots=\n",
+            "lazy_indexing_enabled=true\nfile_scan_roots=\nfile_scan_extra_roots=\napp_scan_roots=\n",
         )
         .expect("write test config");
 

@@ -68,6 +68,7 @@ pub struct RuntimeConfig {
     pub app_exclude_paths: Vec<String>,
     pub app_exclude_names: Vec<String>,
     pub file_scan_roots: Vec<String>,
+    pub file_scan_extra_roots: Vec<String>,
     pub file_scan_depth: usize,
     pub file_scan_limit: usize,
     pub file_exclude_paths: Vec<String>,
@@ -90,6 +91,7 @@ impl Default for RuntimeConfig {
                 .map(|value| value.to_string())
                 .collect(),
             file_scan_roots: default_file_scan_roots(),
+            file_scan_extra_roots: Vec::new(),
             file_scan_depth: FILE_SCAN_DEPTH,
             file_scan_limit: FILE_SCAN_LIMIT,
             file_exclude_paths: FILE_EXCLUDE_PATHS
@@ -169,6 +171,12 @@ impl RuntimeConfig {
                     if !parsed.is_empty() {
                         self.file_scan_roots = parsed;
                     }
+                }
+                "file_scan_extra_roots" => {
+                    self.file_scan_extra_roots = parse_csv(value)
+                        .into_iter()
+                        .map(|entry| expand_path(&entry, home.as_deref()))
+                        .collect::<Vec<_>>();
                 }
                 "file_scan_depth" => {
                     if let Some(parsed) = parse_positive_usize(value) {
@@ -302,6 +310,7 @@ app_scan_depth=3\n\
 app_exclude_paths=\n\
 app_exclude_names=\n\
 file_scan_roots={file_roots}\n\
+file_scan_extra_roots=\n\
 file_scan_depth=4\n\
 file_scan_limit=8000\n\
 file_exclude_paths=\n\

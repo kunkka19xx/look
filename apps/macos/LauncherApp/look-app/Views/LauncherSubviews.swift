@@ -69,16 +69,12 @@ struct CommandListView: View {
     let themeStore: ThemeStore
     let onSelect: (String) -> Void
 
-    private var columns: [GridItem] {
-        [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
-    }
-
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 4) {
+            LazyVStack(spacing: 4) {
                 ForEach(commands) { command in
                     HStack(spacing: 8) {
-                        Image(systemName: "terminal")
+                        Image(systemName: command.symbolName)
                             .frame(width: 18, height: 18)
                             .foregroundStyle(themeStore.accentColor())
                         VStack(alignment: .leading, spacing: 1) {
@@ -91,6 +87,7 @@ struct CommandListView: View {
                         }
                         Spacer(minLength: 0)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .background(
@@ -103,7 +100,68 @@ struct CommandListView: View {
             }
             .padding(2)
         }
-        .frame(maxHeight: AppConstants.Launcher.commandListMaxHeight, alignment: .top)
+        .padding(6)
+        .background(themeStore.panelFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+}
+
+struct CommandInputBar: View {
+    @Binding var text: String
+    let command: AppCommand
+    let isQueryFocused: FocusState<Bool>.Binding
+    let themeStore: ThemeStore
+    let onSubmit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: command.symbolName)
+                .foregroundStyle(themeStore.accentColor())
+
+            TextField(command.placeholder, text: $text)
+                .textFieldStyle(.plain)
+                .focused(isQueryFocused)
+                .onSubmit(onSubmit)
+
+            Text("/\(command.id)")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                .foregroundStyle(themeStore.fontColor())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(themeStore.selectionFillColor(), in: Capsule())
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+struct CommandHeaderBar: View {
+    let command: AppCommand
+    let themeStore: ThemeStore
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: command.symbolName)
+                .foregroundStyle(themeStore.accentColor())
+
+            Text(subtitle)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .regular))
+                .foregroundStyle(themeStore.secondaryTextColor())
+
+            Spacer(minLength: 0)
+
+            Text("/\(command.id)")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                .foregroundStyle(themeStore.fontColor())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(themeStore.selectionFillColor(), in: Capsule())
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -242,6 +300,8 @@ private enum LauncherHelpContent {
         ("Cmd+F", "Reveal selected app/file/folder in Finder"),
         ("Cmd+Enter", "Search current query on Google"),
         ("Cmd+/", "Enter command mode"),
+        ("Cmd+Shift+,", "Open/close settings panel"),
+        ("Cmd+Shift+;", "Reload .look.config"),
         ("Cmd+H", "Toggle this help screen"),
         ("Esc", "Close help / back / hide launcher"),
     ]
@@ -257,8 +317,10 @@ private enum LauncherHelpContent {
     ]
 
     static let commandMode: [(String, String)] = [
-        ("Cmd+1 / Cmd+2 / Cmd+3", "Switch command"),
-        ("Cmd+Esc", "Back to command list (calc)"),
+        ("Tab / Shift+Tab", "Switch command"),
+        ("Cmd+1 / Cmd+2 / Cmd+3 / Cmd+4", "Switch command"),
+        (":3000", "Find process listening on port"),
+        ("Up / Down", "Select app in kill results"),
         ("Y / N", "Confirm/cancel kill action"),
     ]
 }

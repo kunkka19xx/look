@@ -50,7 +50,7 @@ struct LauncherView: View {
     @State private var bannerTask: Task<Void, Never>?
     @State private var lookupPreviewTask: Task<Void, Never>?
     @State private var selectedKillSuggestionIndex: Int?
-    @State private var pendingKillApp: (NSRunningApplication, Int)?
+    @State private var pendingKillCandidate: KillCommand.Candidate?
     @State private var showsHelpScreen = false
     @State private var focusRequestToken: UInt64 = 0
     @State private var lookupDefinition: LookupDefinition?
@@ -241,12 +241,12 @@ struct LauncherView: View {
 
         if isCommandMode {
             if activeCommandID == AppConstants.Launcher.Command.kill {
-                return ["Y confirm", "N cancel", "Cmd+H help", "Cmd+/ command mode"]
+                return ["Y confirm", "N cancel", "Tab/Cmd+1-4 switch", "Esc back"]
             }
             if activeCommandID == AppConstants.Launcher.Command.sys {
-                return ["Esc back", "Cmd+Esc command list", "Cmd+H help", "Cmd+/ command mode"]
+                return ["Esc back", "Tab/Cmd+1-4 switch", "Cmd+/ command mode", "Cmd+Shift+, settings"]
             }
-            return ["Enter run", "Tab select", "Cmd+H help", "Cmd+/ command mode"]
+            return ["Enter run", "Tab select", "Cmd+1-4 switch", "Esc back"]
         }
 
         if let command = extractTranslationQuery(from: query.trimmingCharacters(in: .whitespacesAndNewlines)) {
@@ -291,6 +291,11 @@ struct LauncherView: View {
         return commandCatalog.first(where: { $0.id == activeCommandID })
     }
 
+    private var activeCommandAcceptsInput: Bool {
+        guard let activeCommandID else { return false }
+        return activeCommandID != AppConstants.Launcher.Command.sys
+    }
+
     private var liveCommandPreview: String? {
         guard isCommandMode else { return nil }
 
@@ -327,10 +332,9 @@ struct LauncherView: View {
         return commandCatalog.filter { $0.id.hasPrefix(prefix) }
     }
 
-    private var killSuggestions: [(NSRunningApplication, Int)] {
-        let apps = KillCommand.getRunningApps()
+    private var killSuggestions: [KillCommand.Candidate] {
         let searchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines)
-        return KillCommand.filterApps(searchTerm: searchTerm, from: apps)
+        return KillCommand.suggestions(searchTerm: searchTerm)
     }
 
     private func setInitialSelection() {
@@ -345,15 +349,22 @@ struct LauncherView: View {
         }
     }
 
-    private func moveSelection(_ direction: MoveCommandDirection, shouldAutocompleteCommand: Bool = false) {
+    private func moveSelection(
+        _ direction: MoveCommandDirection,
+        shouldAutocompleteCommand: Bool = false,
+        preferCommandListInCommandMode: Bool = false
+    ) {
         guard !appUIState.showsThemeSettings else { return }
 
-        if isCommandMode && activeCommandID == AppConstants.Launcher.Command.kill {
+        if isCommandMode
+            && activeCommandID == AppConstants.Launcher.Command.kill
+            && !preferCommandListInCommandMode
+        {
             let suggestions = killSuggestions.prefix(20)
             guard !suggestions.isEmpty else { return }
 
             let currentNum = selectedKillSuggestionIndex
-            let currentIndex = suggestions.firstIndex { $0.1 == currentNum }
+            let currentIndex = suggestions.firstIndex { $0.number == currentNum }
 
             let nextIndex: Int
             switch direction {
@@ -373,7 +384,7 @@ struct LauncherView: View {
                 return
             }
 
-            selectedKillSuggestionIndex = suggestions[nextIndex].1
+            selectedKillSuggestionIndex = suggestions[nextIndex].number
             return
         }
 
@@ -443,6 +454,10 @@ struct LauncherView: View {
 
         activeCommandID = commandID
         commandFeedback = "Selected /\(commandID)"
+
+        if activeCommandAcceptsInput {
+            focusActiveInput(recoveryDelays: [0.0], activateApp: false)
+        }
     }
 
     private func enterCommandMode() {
@@ -452,9 +467,7 @@ struct LauncherView: View {
         commandFeedback = ""
         activeCommandID = AppConstants.Launcher.Command.calc
         selectedCommandID = AppConstants.Launcher.Command.calc
-        DispatchQueue.main.async {
-            isQueryFocused = true
-        }
+        focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
     }
 
     private func exitCommandMode() {
@@ -465,16 +478,16 @@ struct LauncherView: View {
         activeCommandID = nil
         selectedCommandID = nil
         refreshSearchResults()
-        DispatchQueue.main.async {
-            isQueryFocused = true
-        }
+        focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
     }
 
     private func handleSubmit() {
         if isCommandMode {
             if activeCommandID == AppConstants.Launcher.Command.kill, let selectedNum = selectedKillSuggestionIndex {
-                if let (app, _) = killSuggestions.first(where: { $0.1 == selectedNum }) {
-                    pendingKillApp = (app, selectedNum)
+                if let candidate = killSuggestions.first(where: { $0.number == selectedNum }) {
+                    pendingKillCandidate = candidate
+                } else {
+                    runCommandModeAction()
                 }
             } else {
                 runCommandModeAction()
@@ -558,27 +571,25 @@ struct LauncherView: View {
                 setCommandError(message)
             }
         case AppConstants.Launcher.Command.kill:
-            let apps = KillCommand.getRunningApps()
-            let searchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let matched = KillCommand.filterApps(searchTerm: searchTerm, from: apps)
+            let searchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines)
+            let matched = KillCommand.suggestions(searchTerm: searchTerm)
 
-            if apps.isEmpty {
-                commandFeedback = "No apps running"
+            if matched.isEmpty {
+                if searchTerm.hasPrefix(":") || searchTerm.lowercased().hasPrefix("port ") {
+                    commandFeedback = "No process listening on this port"
+                } else {
+                    commandFeedback = "No matching apps. /kill to list all. Use :3000 to search by port."
+                }
             } else if searchTerm.isEmpty {
-                let appList = apps.enumerated().map { idx, app in
-                    "\(idx + 1). \(app.localizedName ?? "Unknown") (PID: \(app.processIdentifier))"
+                let appList = matched.map { candidate in
+                    "\(candidate.number). \(candidate.displayName) (PID: \(candidate.pid))"
                 }
                 commandFeedback = "Running apps:\n" + appList.joined(separator: "\n") + "\n\n/kill <name or number>"
-            } else if matched.isEmpty {
-                commandFeedback = "No matching apps. /kill to list all."
             } else if matched.count > 1 {
-                let list = matched.map { app, num in "\(num). \(app.localizedName ?? "Unknown")" }
+                let list = matched.map { candidate in "\(candidate.number). \(candidate.displayName)" }
                 commandFeedback = "Multiple matches:\n" + list.joined(separator: "\n") + "\n\nBe more specific."
             } else {
-                let (app, _) = matched[0]
-                KillCommand.kill(pid: app.processIdentifier, name: app.localizedName ?? "Unknown") { [self] message in
-                    commandFeedback = message
-                }
+                runKillCommand(candidate: matched[0])
             }
         case AppConstants.Launcher.Command.sys:
             commandFeedback = ""
@@ -592,14 +603,8 @@ struct LauncherView: View {
         showBanner(message)
     }
 
-    private func runKillCommand(num: Int) {
-        let apps = KillCommand.getRunningApps()
-        guard num > 0 && num <= apps.count else {
-            commandFeedback = "Invalid app number"
-            return
-        }
-        let app = apps[num - 1]
-        KillCommand.kill(pid: app.processIdentifier, name: app.localizedName ?? "Unknown") { [self] message in
+    private func runKillCommand(candidate: KillCommand.Candidate) {
+        KillCommand.kill(pid: candidate.pid, name: candidate.displayName) { [self] message in
             commandFeedback = message
         }
     }
@@ -855,7 +860,10 @@ struct LauncherView: View {
         focusActiveInput()
     }
 
-    private func focusActiveInput() {
+    private func focusActiveInput(
+        recoveryDelays: [Double] = [0.0, 0.04, 0.10],
+        activateApp: Bool = true
+    ) {
         if appUIState.showsThemeSettings {
             NotificationCenter.default.post(name: .lookFocusSettingsInputRequested, object: nil)
             return
@@ -864,8 +872,10 @@ struct LauncherView: View {
         focusRequestToken &+= 1
         let token = focusRequestToken
 
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        scheduleFocusRecovery(delays: [0.0, 0.04, 0.10], token: token)
+        if activateApp {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+        scheduleFocusRecovery(delays: recoveryDelays, token: token)
     }
 
     private func activateLauncherModeAndFocus() {
@@ -1217,9 +1227,107 @@ struct LauncherView: View {
     }
 
     private func selectCommand(_ commandID: String) {
+        pendingKillCandidate = nil
+        selectedKillSuggestionIndex = nil
         activeCommandID = commandID
         selectedCommandID = commandID
+        commandInput = ""
         commandFeedback = "Selected /\(commandID)"
+        if activeCommandAcceptsInput {
+            focusActiveInput(recoveryDelays: [0.0], activateApp: false)
+        }
+    }
+
+    @ViewBuilder
+    private var commandModeView: some View {
+        GeometryReader { proxy in
+            let splitSpacing: CGFloat = 12
+            let dividerWidth: CGFloat = 1
+            let usableWidth = max(0, proxy.size.width - splitSpacing - dividerWidth)
+            let leftWidth = max(170, usableWidth * 0.25)
+
+            HStack(spacing: splitSpacing) {
+                CommandListView(
+                    commands: commandCatalog,
+                    selectedID: selectedCommandID,
+                    activeID: activeCommandID,
+                    themeStore: themeStore,
+                    onSelect: selectCommand
+                )
+                .frame(width: leftWidth)
+                .frame(maxHeight: .infinity, alignment: .topLeading)
+
+                Rectangle()
+                    .fill(themeStore.dividerColor())
+                    .frame(width: dividerWidth)
+                    .padding(.vertical, 2)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    if let activeCommand {
+                        if activeCommandAcceptsInput {
+                            CommandInputBar(
+                                text: $commandInput,
+                                command: activeCommand,
+                                isQueryFocused: $isQueryFocused,
+                                themeStore: themeStore,
+                                onSubmit: handleSubmit
+                            )
+                        } else {
+                            CommandHeaderBar(
+                                command: activeCommand,
+                                themeStore: themeStore,
+                                subtitle: "Read-only command"
+                            )
+                        }
+                    }
+
+                    ZStack(alignment: .topLeading) {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(themeStore.panelFillColor())
+
+                    if activeCommandID == AppConstants.Launcher.Command.kill {
+                        let killSearchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let portQuery = killSearchTerm.hasPrefix(":") || killSearchTerm.lowercased().hasPrefix("port ")
+                        let defaultKillEmptyMessage = portQuery
+                            ? "No process listening on this port"
+                            : "No matches. Type an app name or use :3000"
+
+                        KillCommandView(
+                            suggestions: Array(killSuggestions),
+                            selectedIndex: selectedKillSuggestionIndex,
+                            emptyMessage: commandFeedback.isEmpty ? defaultKillEmptyMessage : commandFeedback,
+                            themeStore: themeStore,
+                            onSelect: { candidate in
+                                pendingKillCandidate = candidate
+                                selectedKillSuggestionIndex = candidate.number
+                            }
+                        )
+                            .onAppear {
+                                if selectedKillSuggestionIndex == nil {
+                                    selectedKillSuggestionIndex = killSuggestions.first?.number
+                                }
+                            }
+                            .padding(8)
+                        } else if activeCommandID == AppConstants.Launcher.Command.sys {
+                            SystemInfoView(items: SystemInfoCommand.getSystemInfoItems(), themeStore: themeStore)
+                                .padding(8)
+                        } else {
+                            VStack(alignment: .leading, spacing: 0) {
+                                CommandFeedbackView(
+                                    message: liveCommandPreview ?? (commandFeedback.isEmpty ? AppConstants.Launcher.commandEmptyMessage : commandFeedback),
+                                    themeStore: themeStore
+                                )
+                                Spacer(minLength: 0)
+                            }
+                            .padding(10)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
     }
 
     var body: some View {
@@ -1232,15 +1340,17 @@ struct LauncherView: View {
                 if appUIState.showsThemeSettings {
                     ThemeSettingsView(settings: $themeStore.settings)
                 } else {
-                    SearchInputBar(
-                        text: isCommandMode ? $commandInput : $query,
-                        isCommandMode: $isCommandMode,
-                        isQueryFocused: $isQueryFocused,
-                        activeCommand: activeCommand,
-                        themeStore: themeStore,
-                        onSubmit: handleSubmit,
-                        onExitCommandMode: exitCommandMode
-                    )
+                    if !isCommandMode {
+                        SearchInputBar(
+                            text: $query,
+                            isCommandMode: $isCommandMode,
+                            isQueryFocused: $isQueryFocused,
+                            activeCommand: activeCommand,
+                            themeStore: themeStore,
+                            onSubmit: handleSubmit,
+                            onExitCommandMode: exitCommandMode
+                        )
+                    }
 
                     if let bannerMessage {
                         HStack(spacing: 8) {
@@ -1267,45 +1377,7 @@ struct LauncherView: View {
                     }
 
                     if isCommandMode {
-                        if activeCommandID == AppConstants.Launcher.Command.kill {
-                            KillCommandView(
-                                suggestions: Array(killSuggestions),
-                                selectedIndex: selectedKillSuggestionIndex,
-                                pendingApp: pendingKillApp,
-                                themeStore: themeStore,
-                                onSelect: { app, num in
-                                    pendingKillApp = (app, num)
-                                    selectedKillSuggestionIndex = num
-                                },
-                                onConfirm: { pid in
-                                    runKillCommand(num: pid)
-                                    pendingKillApp = nil
-                                },
-                                onCancel: { pendingKillApp = nil }
-                            )
-                            .onAppear {
-                                if selectedKillSuggestionIndex == nil {
-                                    selectedKillSuggestionIndex = killSuggestions.first?.1
-                                }
-                            }
-                        } else if activeCommandID == AppConstants.Launcher.Command.sys {
-                            SystemInfoView(items: SystemInfoCommand.getSystemInfoItems(), themeStore: themeStore)
-                        } else {
-                            CommandListView(
-                                commands: filteredCommands,
-                                selectedID: selectedCommandID,
-                                activeID: activeCommandID,
-                                themeStore: themeStore,
-                                onSelect: selectCommand
-                            )
-                        }
-
-                        if activeCommandID != AppConstants.Launcher.Command.sys {
-                            CommandFeedbackView(
-                                message: liveCommandPreview ?? (commandFeedback.isEmpty ? AppConstants.Launcher.commandEmptyMessage : commandFeedback),
-                                themeStore: themeStore
-                            )
-                        }
+                        commandModeView
                     } else if isTranslationQuery {
                         LookupDefinitionPanelView(
                             definition: lookupDefinition,
@@ -1393,6 +1465,26 @@ struct LauncherView: View {
                 .foregroundStyle(themeStore.fontColor(opacityMultiplier: 0.50))
                 .padding(.trailing, 10)
                 .padding(.bottom, 8)
+        }
+        .overlay(alignment: .bottom) {
+            if isCommandMode,
+               activeCommandID == AppConstants.Launcher.Command.kill,
+               let pendingKillCandidate
+            {
+                KillConfirmationBar(
+                    candidate: pendingKillCandidate,
+                    themeStore: themeStore,
+                    onConfirm: {
+                        runKillCommand(candidate: pendingKillCandidate)
+                        self.pendingKillCandidate = nil
+                    },
+                    onCancel: {
+                        self.pendingKillCandidate = nil
+                    }
+                )
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
+            }
         }
         .ignoresSafeArea()
         .onAppear {
@@ -1544,8 +1636,30 @@ struct LauncherView: View {
     private func startKeyboardNavigationIfNeeded() {
         guard !appUIState.showsThemeSettings else { return }
         keyboardMonitor.start(
-            onNext: { moveSelection(.down, shouldAutocompleteCommand: true) },
-            onPrevious: { moveSelection(.up, shouldAutocompleteCommand: true) },
+            onNext: {
+                moveSelection(.down, shouldAutocompleteCommand: true, preferCommandListInCommandMode: true)
+            },
+            onPrevious: {
+                moveSelection(.up, shouldAutocompleteCommand: true, preferCommandListInCommandMode: true)
+            },
+            onArrowDown: {
+                if isCommandMode {
+                    if activeCommandID == AppConstants.Launcher.Command.kill {
+                        moveSelection(.down)
+                    }
+                } else {
+                    moveSelection(.down)
+                }
+            },
+            onArrowUp: {
+                if isCommandMode {
+                    if activeCommandID == AppConstants.Launcher.Command.kill {
+                        moveSelection(.up)
+                    }
+                } else {
+                    moveSelection(.up)
+                }
+            },
             onEnterCommandMode: {
                 if !isCommandMode {
                     enterCommandMode()
@@ -1558,14 +1672,6 @@ struct LauncherView: View {
                 hideLauncherWindow()
             },
             inCommandMode: { isCommandMode },
-            onBackToCommandList: { [self] in
-                pendingKillApp = nil
-                selectedKillSuggestionIndex = nil
-                commandInput = ""
-                commandFeedback = ""
-                activeCommandID = AppConstants.Launcher.Command.calc
-                selectedCommandID = AppConstants.Launcher.Command.calc
-            },
             onWebSearch: {
                 performWebSearchFromQuery()
             },
@@ -1586,18 +1692,21 @@ struct LauncherView: View {
                 let command = commandCatalog[index - 1]
                 activeCommandID = command.id
                 selectedCommandID = command.id
+                if activeCommandAcceptsInput {
+                    focusActiveInput(recoveryDelays: [0.0], activateApp: false)
+                }
             },
             onConfirmKill: { [self] in
-                if let (_, num) = pendingKillApp {
-                    runKillCommand(num: num)
-                    pendingKillApp = nil
+                if let pendingKillCandidate {
+                    runKillCommand(candidate: pendingKillCandidate)
+                    self.pendingKillCandidate = nil
                 }
             },
             onCancelKill: { [self] in
-                pendingKillApp = nil
+                pendingKillCandidate = nil
             },
             killConfirmationActive: { [self] in
-                pendingKillApp != nil
+                pendingKillCandidate != nil
             }
         )
     }

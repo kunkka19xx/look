@@ -69,13 +69,16 @@ Built-in commands:
 
 - `calc`: evaluate expressions
 - `shell`: run shell command text
-- `kill`: force-kill a running app (with confirmation)
+- `kill`: force-kill a running app/process (with confirmation), supports port queries like `:3000` or `port 3000`
 - `sys`: show system information
 
 Behavior:
 
 - `Escape`: leave command mode
 - `Shift+Escape`: hide launcher
+- `Tab` / `Shift+Tab`: switch commands while staying in command mode
+- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4`: jump to specific command (`shell`, `calc`, `kill`, `sys`)
+- `Up` / `Down`: in `kill`, navigate process/app results
 - shell text containing `sudo` shows an orange warning cue
 
 ## 6) Settings and config
@@ -114,6 +117,11 @@ Default values:
 - **File Scan Limit**: 4000 (range: 500-50000)
 - **Lazy indexing**: On
 
+Advanced controls:
+
+- **Extra Scan Dirs**: add user-specific directories to index on top of default roots
+- overlap and risky-root validation is enforced for extra scan dirs
+
 These control how deeply and how many files are indexed for search.
 
 Lazy indexing behavior:
@@ -138,7 +146,7 @@ Runtime config file:
 Backend-related keys:
 
 - `app_scan_roots`, `app_scan_depth`, `app_exclude_paths`, `app_exclude_names`
-- `file_scan_roots`, `file_scan_depth`, `file_scan_limit`, `file_exclude_paths`
+- `file_scan_roots`, `file_scan_extra_roots`, `file_scan_depth`, `file_scan_limit`, `file_exclude_paths`
 - `lazy_indexing_enabled`
 - `skip_dir_names`
 - `alias_<keyword>` (for app + System Settings query aliases, for example `alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq`)
@@ -177,9 +185,10 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 ## 7) Keyboard shortcuts (quick reference)
 
 - `Enter`: open selected result / run command
-- `Tab` / `Shift+Tab`: next/previous result or command
-- `Up` / `Down`: move selection
+- `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
+- `Up` / `Down`: move selection (and in `kill`, move process selection)
 - `Cmd+/`: command mode
+- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4`: direct command switch
 - `Escape`: back/close (context dependent)
 - `Shift+Escape`: hide launcher
 - `Cmd+Enter`: web search

@@ -8,11 +8,12 @@ final class KeyboardSelectionMonitor {
     func start(
         onNext: @escaping () -> Void,
         onPrevious: @escaping () -> Void,
+        onArrowDown: (() -> Void)? = nil,
+        onArrowUp: (() -> Void)? = nil,
         onEnterCommandMode: @escaping () -> Void,
         onExitCommandMode: @escaping () -> Void,
         onHideLauncher: @escaping () -> Void,
         inCommandMode: @escaping () -> Bool,
-        onBackToCommandList: @escaping () -> Void,
         onWebSearch: @escaping () -> Void,
         onRevealInFinder: @escaping () -> Void,
         onCopySelection: @escaping () -> Bool,
@@ -64,17 +65,14 @@ final class KeyboardSelectionMonitor {
             if (event.keyCode == 4 || event.charactersIgnoringModifiers?.lowercased() == "h")
                 && flags == [.command]
             {
-                onToggleHelp()
+                if !inCommandMode() {
+                    onToggleHelp()
+                }
                 return nil
             }
 
             if (event.keyCode == 36 || event.keyCode == 76) && flags == [.command, .shift] {
                 onSelectCommandByIndex(1)
-                return nil
-            }
-
-            if event.keyCode == 53 && event.modifierFlags.contains(.command) {
-                onBackToCommandList()
                 return nil
             }
 
@@ -138,12 +136,20 @@ final class KeyboardSelectionMonitor {
             }
 
             if event.keyCode == 126 {
-                onPrevious()
+                if let onArrowUp {
+                    onArrowUp()
+                } else {
+                    onPrevious()
+                }
                 return nil
             }
 
             if event.keyCode == 125 {
-                onNext()
+                if let onArrowDown {
+                    onArrowDown()
+                } else {
+                    onNext()
+                }
                 return nil
             }
 

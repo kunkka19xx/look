@@ -118,6 +118,7 @@ pub(crate) fn restart_index_watchers() {
 
     let mut roots = config.app_scan_roots;
     roots.extend(config.file_scan_roots);
+    roots.extend(config.file_scan_extra_roots);
     roots.sort();
     roots.dedup();
 

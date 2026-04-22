@@ -6,10 +6,13 @@ use look_indexing::{Candidate, CandidateKind};
 use std::sync::mpsc;
 
 pub fn discover_local_files_and_folders(config: &RuntimeConfig, tx: mpsc::SyncSender<Candidate>) {
-    let roots = &config.file_scan_roots;
+    let mut roots = config.file_scan_roots.clone();
+    roots.extend(config.file_scan_extra_roots.iter().cloned());
+    roots.sort();
+    roots.dedup();
 
     let mut file_count = 0usize;
-    for root in roots {
+    for root in &roots {
         walk_files(root, config, &tx, &mut file_count);
         if file_count >= config.file_scan_limit {
             break;
