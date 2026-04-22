@@ -12,22 +12,34 @@ use std::os::raw::c_char;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn look_search_count(query_len: u32) -> FfiSearchResult {
-    search_api::look_search_count_impl(query_len)
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        search_api::look_search_count_impl(query_len)
+    }))
+    .unwrap_or(FfiSearchResult { count: 0 })
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn look_search_json(query: *const c_char, limit: u32) -> *mut c_char {
-    search_api::look_search_json_impl(query, limit)
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        search_api::look_search_json_impl(query, limit)
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn look_search_json_compact(query: *const c_char, limit: u32) -> *mut c_char {
-    search_api::look_search_json_compact_impl(query, limit)
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        search_api::look_search_json_compact_impl(query, limit)
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn look_record_usage(candidate_id: *const c_char, action: *const c_char) -> bool {
-    usage_api::look_record_usage_impl(candidate_id, action)
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        usage_api::look_record_usage_impl(candidate_id, action)
+    }))
+    .unwrap_or(false)
 }
 
 #[unsafe(no_mangle)]
@@ -35,31 +47,42 @@ pub extern "C" fn look_record_usage_json(
     candidate_id: *const c_char,
     action: *const c_char,
 ) -> *mut c_char {
-    usage_api::look_record_usage_json_impl(candidate_id, action)
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        usage_api::look_record_usage_json_impl(candidate_id, action)
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn look_reload_config() -> bool {
-    runtime_config::reload_runtime_config();
-    state::restart_index_watchers();
-    let path = state::default_db_path();
-    if QueryEngine::bootstrap_sqlite(&path).is_err() {
-        state::mark_index_dirty();
-        return false;
-    }
-    state::refresh_engine_cache();
-    state::clear_index_dirty();
-    true
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runtime_config::reload_runtime_config();
+        state::restart_index_watchers();
+        let path = state::default_db_path();
+        if QueryEngine::bootstrap_sqlite(&path).is_err() {
+            state::mark_index_dirty();
+            return false;
+        }
+        state::refresh_engine_cache();
+        state::clear_index_dirty();
+        true
+    }))
+    .unwrap_or(false)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn look_request_index_refresh() -> bool {
-    state::request_background_index_refresh()
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        state::request_background_index_refresh()
+    }))
+    .unwrap_or(false)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn look_free_cstring(ptr: *mut c_char) {
-    state::free_json_allocation(ptr)
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        state::free_json_allocation(ptr)
+    }));
 }
 
 #[unsafe(no_mangle)]
@@ -67,7 +90,10 @@ pub extern "C" fn look_translate_json(
     text: *const c_char,
     target_lang: *const c_char,
 ) -> *mut c_char {
-    translate_api::look_translate_json_impl(text, target_lang)
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        translate_api::look_translate_json_impl(text, target_lang)
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 #[cfg(test)]
@@ -95,17 +121,8 @@ mod tests {
         let _ = fs::remove_file(&db_path);
 
         let mut store = SqliteStore::open(&db_path).expect("open sqlite store");
-        let candidate = Candidate {
-            id: "app:smoke.test".into(),
-            kind: CandidateKind::App,
-            title: "Smoke Test App".into(),
-            subtitle: Some("smoke app".into()),
-            path: "/Applications/Smoke Test App.app".into(),
-            use_count: 0,
-            last_used_at_unix_s: None,
-        };
         store
-            .upsert_candidates(&[candidate])
+            .upsert_candidates(&[smoke_candidate()])
             .expect("insert smoke candidate");
 
         unsafe {
@@ -129,7 +146,7 @@ mod tests {
             .unwrap_or(0);
         assert!(count >= 1);
 
-        let has_smoke = payload
+        let mut has_smoke = payload
             .get("results")
             .and_then(|value| value.as_array())
             .is_some_and(|results| {
@@ -139,6 +156,35 @@ mod tests {
                         .is_some_and(|id| id == "app:smoke.test")
                 })
             });
+
+        if !has_smoke {
+            // Background bootstrap refresh can replace the in-memory cache during tests.
+            // Re-seed the sqlite fixture and refresh cache once before asserting.
+            let mut store = SqliteStore::open(&db_path).expect("re-open sqlite store");
+            store
+                .upsert_candidates(&[smoke_candidate()])
+                .expect("reinsert smoke candidate");
+            state::refresh_engine_cache();
+
+            let retry_ptr = look_search_json(query.as_ptr(), 10);
+            assert!(!retry_ptr.is_null());
+            let retry_raw = unsafe { CStr::from_ptr(retry_ptr) }
+                .to_string_lossy()
+                .into_owned();
+            look_free_cstring(retry_ptr);
+            let retry_payload: serde_json::Value =
+                serde_json::from_str(&retry_raw).expect("valid retry payload");
+            has_smoke = retry_payload
+                .get("results")
+                .and_then(|value| value.as_array())
+                .is_some_and(|results| {
+                    results.iter().any(|item| {
+                        item.get("id")
+                            .and_then(|value| value.as_str())
+                            .is_some_and(|id| id == "app:smoke.test")
+                    })
+                });
+        }
         assert!(has_smoke);
 
         let compact_ptr = look_search_json_compact(query.as_ptr(), 10);
@@ -222,6 +268,18 @@ mod tests {
         let _ = fs::remove_file(&db_path);
     }
 
+    fn smoke_candidate() -> Candidate {
+        Candidate {
+            id: "app:smoke.test".into(),
+            kind: CandidateKind::App,
+            title: "Smoke Test App".into(),
+            subtitle: Some("smoke app".into()),
+            path: "/Applications/Smoke Test App.app".into(),
+            use_count: 0,
+            last_used_at_unix_s: None,
+        }
+    }
+
     #[test]
     fn ffi_reload_refresh_and_translate_error_smoke() {
         let lock = TEST_MUTEX.get_or_init(|| Mutex::new(()));
@@ -234,7 +292,7 @@ mod tests {
 
         fs::write(
             &config_path,
-            "lazy_indexing_enabled=true\nfile_scan_roots=\napp_scan_roots=\n",
+            "lazy_indexing_enabled=true\nfile_scan_roots=\nfile_scan_extra_roots=\napp_scan_roots=\n",
         )
         .expect("write test config");
 
@@ -244,6 +302,9 @@ mod tests {
         }
 
         assert!(look_reload_config());
+
+        crate::state::stop_index_watchers_for_test();
+        thread::sleep(Duration::from_millis(50));
 
         crate::state::mark_index_dirty();
         let mut refresh_triggered = false;
@@ -258,6 +319,8 @@ mod tests {
             refresh_triggered,
             "expected refresh request to acquire slot at least once"
         );
+
+        thread::sleep(Duration::from_millis(100));
 
         let text = CString::new("hello").expect("text cstring");
         let bad_lang = CString::new("invalid_lang!").expect("bad lang cstring");
@@ -283,6 +346,7 @@ mod tests {
             Some("empty_text")
         );
 
+        crate::state::stop_index_watchers_for_test();
         let _ = fs::remove_file(&db_path);
         let _ = fs::remove_file(&config_path);
     }

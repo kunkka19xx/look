@@ -21,6 +21,28 @@ final class ThemeStore: ObservableObject {
     }
 
     @Published private(set) var excludedFolderPaths: [String] = []
+    @Published private(set) var fileScanRoots: [String] = []
+    @Published private(set) var extraFileScanRoots: [String] = []
+
+    enum AddExtraScanRootError: Error {
+        case notDirectory
+        case alreadyIncluded
+        case overlapsExistingRoot(String)
+        case riskySystemRoot
+
+        var message: String {
+            switch self {
+            case .notDirectory:
+                return "Please select a directory"
+            case .alreadyIncluded:
+                return "Directory is already covered by scan roots"
+            case let .overlapsExistingRoot(path):
+                return "Overlaps with existing root: \(path)"
+            case .riskySystemRoot:
+                return "Refusing risky system root (/, /System, /Library, /private)"
+            }
+        }
+    }
 
     private let defaultsKey = "look.theme.settings"
     private let cachedFontFamilies: [String] = NSFontManager.shared.availableFontFamilies.sorted {
@@ -188,6 +210,11 @@ final class ThemeStore: ObservableObject {
             key: "file_exclude_paths",
             value: excludedFolderPaths.map(escapeCSVToken).joined(separator: ",")
         )
+        upsertConfigLine(
+            &lines,
+            key: "file_scan_extra_roots",
+            value: extraFileScanRoots.map(escapeCSVToken).joined(separator: ",")
+        )
         upsertConfigLine(&lines, key: "backend_log_level", value: settings.backendLogLevel.rawValue)
         upsertConfigLine(&lines, key: "launch_at_login", value: settings.launchAtLogin ? "true" : "false")
 
@@ -309,6 +336,40 @@ final class ThemeStore: ObservableObject {
         excludedFolderPaths.removeAll { $0 == normalizedPath }
     }
 
+    @discardableResult
+    func addExtraFileScanRoot(url: URL) -> AddExtraScanRootError? {
+        let normalizedPath = normalizeFileScanRootPath(url.path)
+        guard !normalizedPath.isEmpty else {
+            return .notDirectory
+        }
+
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: normalizedPath, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return .notDirectory
+        }
+
+        if isRiskyRoot(normalizedPath) {
+            return .riskySystemRoot
+        }
+
+        if fileScanRoots.contains(where: { pathContains($0, normalizedPath) || pathContains(normalizedPath, $0) }) {
+            return .alreadyIncluded
+        }
+
+        if let overlap = extraFileScanRoots.first(where: { pathContains($0, normalizedPath) || pathContains(normalizedPath, $0) }) {
+            return .overlapsExistingRoot(overlap)
+        }
+
+        extraFileScanRoots.append(normalizedPath)
+        extraFileScanRoots.sort { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        return nil
+    }
+
+    func removeExtraFileScanRoot(_ path: String) {
+        let normalizedPath = normalizeFileScanRootPath(path)
+        extraFileScanRoots.removeAll { $0 == normalizedPath }
+    }
+
     deinit {
         scopedBackgroundURL?.stopAccessingSecurityScopedResource()
     }
@@ -328,6 +389,8 @@ final class ThemeStore: ObservableObject {
         // This ensures the app remains functional even with corrupted config.
 
         excludedFolderPaths = []
+        fileScanRoots = defaultFileScanRoots()
+        extraFileScanRoots = []
 
         for line in raw.split(whereSeparator: \ .isNewline) {
             let stripped = stripComment(String(line)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -427,6 +490,13 @@ final class ThemeStore: ObservableObject {
                 }
             case "file_exclude_paths":
                 excludedFolderPaths = parseExcludedFolderPaths(value)
+            case "file_scan_roots":
+                let parsed = parseFileScanRootPaths(value)
+                if !parsed.isEmpty {
+                    fileScanRoots = parsed
+                }
+            case "file_scan_extra_roots":
+                extraFileScanRoots = parseFileScanRootPaths(value)
             case "backend_log_level":
                 if let parsed = parseBackendLogLevel(value) {
                     settings.backendLogLevel = parsed
@@ -574,6 +644,50 @@ final class ThemeStore: ObservableObject {
         return URL(fileURLWithPath: expanded).standardizedFileURL.path
     }
 
+    private func parseFileScanRootPaths(_ value: String) -> [String] {
+        var seen = Set<String>()
+        var paths: [String] = []
+        for token in parseCSVTokens(value) {
+            let normalized = normalizeFileScanRootPath(token)
+            if normalized.isEmpty || seen.contains(normalized) {
+                continue
+            }
+            seen.insert(normalized)
+            paths.append(normalized)
+        }
+        return paths.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    private func normalizeFileScanRootPath(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return ""
+        }
+        let expanded = expandConfigLikePath(trimmed)
+        return URL(fileURLWithPath: expanded).standardizedFileURL.path
+    }
+
+    private func defaultFileScanRoots() -> [String] {
+        let home = NSHomeDirectory()
+        let defaults = ["Desktop", "Documents", "Downloads"]
+        return defaults.map { URL(fileURLWithPath: home).appendingPathComponent($0).standardizedFileURL.path }
+    }
+
+    private func isRiskyRoot(_ path: String) -> Bool {
+        let riskyRoots = ["/", "/System", "/Library", "/private"]
+        return riskyRoots.contains(where: { $0 == path })
+    }
+
+    private func pathContains(_ candidateRoot: String, _ path: String) -> Bool {
+        let root = URL(fileURLWithPath: candidateRoot).standardizedFileURL.path
+        let target = URL(fileURLWithPath: path).standardizedFileURL.path
+        if root == target {
+            return true
+        }
+        let normalizedRoot = root.hasSuffix("/") ? root : root + "/"
+        return target.hasPrefix(normalizedRoot)
+    }
+
     private func escapeCSVToken(_ value: String) -> String {
         value
             .replacingOccurrences(of: "\\", with: "\\\\")
@@ -678,6 +792,7 @@ app_scan_depth=3
 app_exclude_paths=
 app_exclude_names=
 file_scan_roots=Desktop,Documents,Downloads
+file_scan_extra_roots=
 file_scan_depth=4
 file_scan_limit=8000
 lazy_indexing_enabled=true

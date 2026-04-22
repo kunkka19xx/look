@@ -8,7 +8,6 @@ pub fn discover_installed_apps(
     #[cfg(target_os = "windows")]
     {
         crate::platform::discover_windows_installed_apps(config, tx);
-        return;
     }
 
     #[cfg(not(target_os = "windows"))]

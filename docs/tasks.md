@@ -64,7 +64,7 @@ Recently completed (current optimization cycle):
 - [x] wire action execution path (open app/path/web, run command)
 - [x] translate text via FFI (network-gated)
 - [x] command mode with `calc`, `shell`, `kill` commands
-- [x] command keyboard shortcuts (Cmd+/, Cmd+1/2/3, Tab, Esc hide, Cmd+Esc)
+- [x] command keyboard shortcuts (Cmd+/, Cmd+1/2/3/4, Tab/Shift+Tab, Esc hide)
 - [x] keep settings persistence file-based via `.look.config` (user-portable, copyable config)
 - [x] add structured error mapping for UI feedback
 

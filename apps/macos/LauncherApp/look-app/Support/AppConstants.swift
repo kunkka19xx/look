@@ -6,6 +6,21 @@ struct AppCommand: Identifiable {
     let title: String
     let detail: String
     let placeholder: String
+
+    var symbolName: String {
+        switch id {
+        case AppConstants.Launcher.Command.shell:
+            return "terminal"
+        case AppConstants.Launcher.Command.calc:
+            return "function"
+        case AppConstants.Launcher.Command.kill:
+            return "xmark.circle"
+        case AppConstants.Launcher.Command.sys:
+            return "info.circle"
+        default:
+            return "terminal"
+        }
+    }
 }
 
 struct QuickFolderDefinition {
@@ -83,8 +98,8 @@ enum AppConstants {
         static let commandCatalog: [AppCommand] = [
             AppCommand(id: Command.shell, title: "shell (⌘1)", detail: "Run a shell command", placeholder: "Type shell command"),
             AppCommand(id: Command.calc, title: "calc (⌘2)", detail: "Evaluate math expression", placeholder: "Type math expression"),
-            AppCommand(id: Command.kill, title: "kill (⌘3)", detail: "Force kill a running app", placeholder: "Type app name to kill"),
-            AppCommand(id: Command.sys, title: "sys", detail: "Show system information", placeholder: "View system info"),
+            AppCommand(id: Command.kill, title: "kill (⌘3)", detail: "Force kill app or process by port", placeholder: "Type app name, or :3000"),
+            AppCommand(id: Command.sys, title: "sys (⌘4)", detail: "Show system information", placeholder: "View system info"),
         ]
 
         static let normalHint = HintText.Launcher.normal

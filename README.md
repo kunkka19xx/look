@@ -35,7 +35,7 @@ Highlights:
 - web search handoff with `Cmd+Enter` (Google)
 - reveal selected app/file/folder in Finder with `Cmd+F`
 - command mode with `Cmd+/` (`calc`, `shell`, `kill`, `sys`)
-- force-quit flow in command mode (`kill`)
+- force-quit flow in command mode (`kill`, including process-by-port search like `:3000`)
 
 ## Positioning
 
@@ -59,7 +59,7 @@ Theme and alias notes:
 - fresh config presets include `alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, and `alias_brow`
 - `Settings > Advanced > Create Fresh Config` recreates the current config file from latest defaults (with confirmation popup)
 
-Indexing config supports include roots plus exclude rules for both apps and files.
+Indexing config supports include roots plus exclude rules for both apps and files, including optional `file_scan_extra_roots` for user-specific directories.
 
 ## Repository layout
 
@@ -117,13 +117,12 @@ Current built-in themes (Settings > Appearance):
 
 ## Current keyboard UX
 
-- `Tab`: next result or next command
-- `Up` / `Down`: navigate app list (in kill command)
+- `Tab` / `Shift+Tab`: next/previous result (app list) or next/previous command (command mode)
+- `Up` / `Down`: navigate app list; in command mode, used for `kill` result navigation
 - `Cmd+/`: enter command mode (defaults to `calc`)
 - `Escape`: back to app list (when in command mode), otherwise hide launcher
 - `Shift+Escape`: hide launcher
-- `Cmd+1` / `Cmd+2` / `Cmd+3`: switch command directly
-- `Cmd+Esc`: back to command list (`calc`) while staying in command mode
+- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4`: switch command directly
 - `Cmd+Q`: hide launcher (Spotlight-style safety)
 - `Cmd+Option+Q`: quit app
 - `Enter`: launch selected app, execute active command, run web translation (if `t"...`), refresh lookup translation (if `tw"...`), or confirm kill

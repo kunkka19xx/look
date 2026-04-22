@@ -19,6 +19,7 @@ struct ThemeSettingsView: View {
     @State private var fileScanLimitInput = ""
     @State private var fileScanDepthError: String?
     @State private var fileScanLimitError: String?
+    @State private var extraScanDirectoryMessage: String?
     @State private var showFreshConfigConfirm = false
     @State private var freshConfigMessage: String?
     @State private var localKeyMonitor: Any?
@@ -476,6 +477,58 @@ struct ThemeSettingsView: View {
                     }
 
                     HStack(alignment: .top, spacing: 10) {
+                        Text("Extra Scan Dirs")
+                            .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
+                            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+                            .foregroundStyle(themeStore.secondaryTextColor())
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Button("Add Directory") {
+                                selectExtraScanDirectory()
+                            }
+
+                            if themeStore.extraFileScanRoots.isEmpty {
+                                Text("No extra scan directories")
+                                    .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+                                    .foregroundStyle(themeStore.mutedTextColor())
+                            } else {
+                                ScrollView(.horizontal) {
+                                    HStack(spacing: 8) {
+                                        ForEach(themeStore.extraFileScanRoots, id: \.self) { path in
+                                            HStack(spacing: 6) {
+                                                Text(path)
+                                                    .lineLimit(1)
+                                                Button {
+                                                    themeStore.removeExtraFileScanRoot(path)
+                                                    extraScanDirectoryMessage = nil
+                                                } label: {
+                                                    Image(systemName: "xmark")
+                                                        .font(.system(size: 10, weight: .semibold))
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+                                            .foregroundStyle(themeStore.secondaryTextColor())
+                                            .padding(.horizontal, 9)
+                                            .padding(.vertical, 5)
+                                            .background(.white.opacity(0.12), in: Capsule())
+                                        }
+                                    }
+                                }
+                                .scrollIndicators(.hidden)
+                            }
+
+                            if let extraScanDirectoryMessage {
+                                Text(extraScanDirectoryMessage)
+                                    .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
+                                    .foregroundStyle(themeStore.dangerColor())
+                            }
+
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    HStack(alignment: .top, spacing: 10) {
                         Text("Skip Folders")
                             .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
                             .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
@@ -656,6 +709,20 @@ struct ThemeSettingsView: View {
         }
     }
 
+    private func selectExtraScanDirectory() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        if panel.runModal() == .OK, let url = panel.url {
+            if let error = themeStore.addExtraFileScanRoot(url: url) {
+                extraScanDirectoryMessage = error.message
+            } else {
+                extraScanDirectoryMessage = nil
+            }
+        }
+    }
+
     private func syncIndexingInputsFromSettings() {
         fileScanDepthInput = String(settings.fileScanDepth)
         fileScanLimitInput = String(settings.fileScanLimit)
@@ -766,6 +833,8 @@ private enum ShortcutDocs {
                 ShortcutItem(keys: "Cmd+F", action: "Reveal selected app/file/folder in Finder"),
                 ShortcutItem(keys: "Cmd+Enter", action: "Search query on Google"),
                 ShortcutItem(keys: "Cmd+/", action: "Enter command mode"),
+                ShortcutItem(keys: "Cmd+Shift+,", action: "Open/close settings panel"),
+                ShortcutItem(keys: "Cmd+Shift+;", action: "Reload .look.config"),
                 ShortcutItem(keys: "Cmd+H", action: "Toggle in-window keyboard help screen"),
                 ShortcutItem(keys: "Esc", action: "Back to app list (in command mode)"),
                 ShortcutItem(keys: "Shift+Esc", action: "Hide launcher"),

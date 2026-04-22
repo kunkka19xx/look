@@ -1,4 +1,4 @@
-use crate::runtime_config::log_debug;
+use crate::runtime_config::{is_debug_enabled, log_debug};
 use crate::state::{cstr_to_string, store_json_allocation, with_engine};
 use look_engine::LaunchResult;
 use serde::Serialize;
@@ -84,13 +84,15 @@ pub(crate) fn look_search_json_impl(query: *const c_char, limit: u32) -> *mut c_
     let results = with_engine(|engine| engine.search(&query, max as usize));
     let result_count = results.len();
     let cstring = serialize_full_payload(&query, results);
-    log_debug(&format!(
-        "search query_len={} limit={} count={} elapsed_ms={}",
-        query.len(),
-        max,
-        result_count,
-        started_at.elapsed().as_millis()
-    ));
+    if is_debug_enabled() {
+        log_debug(&format!(
+            "search query_len={} limit={} count={} elapsed_ms={}",
+            query.len(),
+            max,
+            result_count,
+            started_at.elapsed().as_millis()
+        ));
+    }
     store_json_allocation(cstring)
 }
 
@@ -99,10 +101,19 @@ pub(crate) fn look_search_json_compact_impl(query: *const c_char, limit: u32) ->
     let max = normalized_limit(limit);
     let started_at = Instant::now();
 
-    let results = with_engine(|engine| engine.search(&query, max as usize));
-    let result_count = results.len();
-    let compact_results: Vec<FfiCompactLaunchResult<'_>> =
-        results.iter().map(FfiCompactLaunchResult::from).collect();
+    let scored = with_engine(|engine| engine.search_scored(&query, max as usize));
+    let result_count = scored.len();
+    let compact_results: Vec<FfiCompactLaunchResult<'_>> = scored
+        .iter()
+        .map(|(candidate, score)| FfiCompactLaunchResult {
+            id: &candidate.id,
+            kind: candidate.kind.as_str(),
+            title: &candidate.title,
+            subtitle: candidate.subtitle.as_deref(),
+            path: &candidate.path,
+            score: *score,
+        })
+        .collect();
     let payload = FfiCompactSearchPayload {
         count: result_count,
         results: compact_results,
@@ -117,13 +128,15 @@ pub(crate) fn look_search_json_compact_impl(query: *const c_char, limit: u32) ->
         )
             .expect("valid static json")
     });
-    log_debug(&format!(
-        "search_compact query_len={} limit={} count={} elapsed_ms={}",
-        query.len(),
-        max,
-        result_count,
-        started_at.elapsed().as_millis()
-    ));
+    if is_debug_enabled() {
+        log_debug(&format!(
+            "search_compact query_len={} limit={} count={} elapsed_ms={}",
+            query.len(),
+            max,
+            result_count,
+            started_at.elapsed().as_millis()
+        ));
+    }
     store_json_allocation(cstring)
 }
 

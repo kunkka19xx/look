@@ -7,7 +7,7 @@ final class LauncherCommandService: ObservableObject {
     private let commandCatalog: [AppCommand]
 
     @Published var commandFeedback: String = ""
-    @Published var pendingKillApp: (NSRunningApplication, Int)?
+    @Published var pendingKillCandidate: KillCommand.Candidate?
 
     init(bridge: EngineBridge = .shared, commandCatalog: [AppCommand] = AppConstants.Launcher.commandCatalog) {
         self.bridge = bridge
@@ -58,29 +58,29 @@ final class LauncherCommandService: ObservableObject {
             }
 
         case AppConstants.Launcher.Command.kill:
-            let apps = KillCommand.getRunningApps()
-            let searchTerm = args.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let matched = KillCommand.filterApps(searchTerm: searchTerm, from: apps)
+            let searchTerm = args.trimmingCharacters(in: .whitespacesAndNewlines)
+            let matched = KillCommand.suggestions(searchTerm: searchTerm)
 
-            if apps.isEmpty {
-                commandFeedback = "No apps running"
-                onComplete("No apps running")
+            if matched.isEmpty {
+                if searchTerm.hasPrefix(":") || searchTerm.lowercased().hasPrefix("port ") {
+                    commandFeedback = "No process listening on this port"
+                } else {
+                    commandFeedback = "No matching apps. /kill to list all. Use :3000 to search by port."
+                }
+                onComplete(commandFeedback)
             } else if searchTerm.isEmpty {
-                let appList = apps.enumerated().map { idx, app in
-                    "\(idx + 1). \(app.localizedName ?? "Unknown") (PID: \(app.processIdentifier))"
+                let appList = matched.map { candidate in
+                    "\(candidate.number). \(candidate.displayName) (PID: \(candidate.pid))"
                 }
                 commandFeedback = "Running apps:\n" + appList.joined(separator: "\n") + "\n\n/kill <name or number>"
                 onComplete(commandFeedback)
-            } else if matched.isEmpty {
-                commandFeedback = "No matching apps. /kill to list all."
-                onComplete(commandFeedback)
             } else if matched.count > 1 {
-                let list = matched.map { app, num in "\(num). \(app.localizedName ?? "Unknown")" }
+                let list = matched.map { candidate in "\(candidate.number). \(candidate.displayName)" }
                 commandFeedback = "Multiple matches:\n" + list.joined(separator: "\n") + "\n\nBe more specific."
                 onComplete(commandFeedback)
             } else {
-                let (app, _) = matched[0]
-                KillCommand.kill(pid: app.processIdentifier, name: app.localizedName ?? "Unknown") { [weak self] message in
+                let candidate = matched[0]
+                KillCommand.kill(pid: candidate.pid, name: candidate.displayName) { [weak self] message in
                     self?.commandFeedback = message
                     onComplete(message)
                 }
@@ -96,13 +96,13 @@ final class LauncherCommandService: ObservableObject {
     }
 
     func runKillCommand(num: Int, onComplete: @escaping (String) -> Void) {
-        let apps = KillCommand.getRunningApps()
-        guard num > 0 && num <= apps.count else {
+        let candidates = KillCommand.suggestions(searchTerm: "")
+        guard num > 0 && num <= candidates.count else {
             onComplete("Invalid app number")
             return
         }
-        let app = apps[num - 1]
-        KillCommand.kill(pid: app.processIdentifier, name: app.localizedName ?? "Unknown") { [weak self] message in
+        let candidate = candidates[num - 1]
+        KillCommand.kill(pid: candidate.pid, name: candidate.displayName) { [weak self] message in
             self?.commandFeedback = message
             onComplete(message)
         }

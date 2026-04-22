@@ -31,7 +31,7 @@ This document tracks what `look` supports today and what is planned next.
 
 - `Cmd+/` command mode entry
 - built-in commands: `calc`, `shell`, `kill`, `sys`
-- kill flow with explicit confirmation
+- kill flow with explicit confirmation and process-by-port lookup (`:3000` / `port 3000`)
 - warning cue when shell input contains `sudo`
 
 ### Settings and runtime config
@@ -45,6 +45,7 @@ This document tracks what `look` supports today and what is planned next.
 - semantic color system with auto-derived text colors in Custom mode
 - indexing, UI, privacy/logging, launch-at-login controls
 - immediate validation feedback for invalid settings input
+- advanced extra scan directory controls (`file_scan_extra_roots`) with overlap/risky-root validation
 
 ### Backend and persistence
 
