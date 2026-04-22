@@ -71,9 +71,9 @@ struct CommandListView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 4) {
+            LazyVStack(spacing: 3) {
                 ForEach(commands) { command in
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         Image(systemName: command.symbolName)
                             .frame(width: 18, height: 18)
                             .foregroundStyle(themeStore.accentColor())
@@ -88,8 +88,8 @@ struct CommandListView: View {
                         Spacer(minLength: 0)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 5)
                     .background(
                         (selectedID == command.id || activeID == command.id)
                             ? themeStore.selectionFillColor() : themeStore.controlFillColor().opacity(0.75),
@@ -100,7 +100,7 @@ struct CommandListView: View {
             }
             .padding(2)
         }
-        .padding(6)
+        .padding(5)
         .background(themeStore.panelFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .frame(maxHeight: .infinity, alignment: .top)
     }

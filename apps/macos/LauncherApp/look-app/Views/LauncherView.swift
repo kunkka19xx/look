@@ -52,6 +52,8 @@ struct LauncherView: View {
     @State private var lookupPreviewTask: Task<Void, Never>?
     @State private var selectedKillSuggestionIndex: Int?
     @State private var pendingKillCandidate: KillCommand.Candidate?
+    @State private var killListRefreshTick: Int = 0
+    @State private var recentlyKilledPIDs: Set<Int32> = []
     @State private var showsHelpScreen = false
     @State private var focusRequestToken: UInt64 = 0
     @State private var lookupDefinition: LookupDefinition?
@@ -353,8 +355,26 @@ struct LauncherView: View {
     }
 
     private var killSuggestions: [KillCommand.Candidate] {
+        _ = killListRefreshTick
         let searchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines)
         return KillCommand.suggestions(searchTerm: searchTerm)
+            .filter { !recentlyKilledPIDs.contains($0.pid) }
+    }
+
+    private func scheduleKillListRefresh() {
+        killListRefreshTick &+= 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            killListRefreshTick &+= 1
+            if activeCommandID == AppConstants.Launcher.Command.kill {
+                selectedKillSuggestionIndex = killSuggestions.first?.number
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            killListRefreshTick &+= 1
+            if activeCommandID == AppConstants.Launcher.Command.kill {
+                selectedKillSuggestionIndex = killSuggestions.first?.number
+            }
+        }
     }
 
     private func setInitialSelection() {
@@ -475,7 +495,17 @@ struct LauncherView: View {
         activeCommandID = commandID
         commandFeedback = "Selected /\(commandID)"
 
-        if activeCommandAcceptsInput {
+        requestCommandInputFocusIfNeeded()
+    }
+
+    private func requestCommandInputFocusIfNeeded() {
+        guard isCommandMode else { return }
+        guard activeCommandAcceptsInput else {
+            isQueryFocused = false
+            return
+        }
+        DispatchQueue.main.async {
+            guard isCommandMode, activeCommandAcceptsInput else { return }
             focusActiveInput(recoveryDelays: [0.0], activateApp: false)
         }
     }
@@ -636,6 +666,16 @@ struct LauncherView: View {
         KillCommand.kill(pid: candidate.pid, name: candidate.displayName) { [self] message in
             commandFeedback = message
             logUIEvent("kill completion message='\(message)'")
+            pendingKillCandidate = nil
+            selectedKillSuggestionIndex = nil
+
+            if message.hasPrefix("Killed:") {
+                recentlyKilledPIDs.insert(candidate.pid)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
+                    recentlyKilledPIDs.remove(candidate.pid)
+                }
+            }
+            scheduleKillListRefresh()
         }
     }
 
@@ -1267,19 +1307,20 @@ struct LauncherView: View {
     private func selectCommand(_ commandID: String) {
         pendingKillCandidate = nil
         selectedKillSuggestionIndex = nil
+        if commandID != AppConstants.Launcher.Command.kill {
+            recentlyKilledPIDs.removeAll()
+        }
         activeCommandID = commandID
         selectedCommandID = commandID
         commandInput = ""
         commandFeedback = "Selected /\(commandID)"
-        if activeCommandAcceptsInput {
-            focusActiveInput(recoveryDelays: [0.0], activateApp: false)
-        }
+        requestCommandInputFocusIfNeeded()
     }
 
     @ViewBuilder
     private var commandModeView: some View {
         GeometryReader { proxy in
-            let splitSpacing: CGFloat = 12
+            let splitSpacing: CGFloat = 8
             let dividerWidth: CGFloat = 1
             let usableWidth = max(0, proxy.size.width - splitSpacing - dividerWidth)
             let leftWidth = max(170, usableWidth * 0.25)
@@ -1300,7 +1341,7 @@ struct LauncherView: View {
                     .frame(width: dividerWidth)
                     .padding(.vertical, 2)
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
                     if let activeCommand {
                         if activeCommandAcceptsInput {
                             CommandInputBar(
@@ -1370,11 +1411,13 @@ struct LauncherView: View {
 
     var body: some View {
         let windowCornerRadius = AppConstants.Launcher.windowCornerRadius
+        let contentSpacing: CGFloat = isCommandMode ? 8 : 12
+        let contentPadding: CGFloat = isCommandMode ? 10 : 14
 
         ZStack {
             themedBackground
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: contentSpacing) {
                 if appUIState.showsThemeSettings {
                     ThemeSettingsView(settings: $themeStore.settings)
                 } else {
@@ -1465,7 +1508,7 @@ struct LauncherView: View {
                     }
                 }
             }
-            .padding(14)
+            .padding(contentPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .font(themeStore.uiFont())
             .foregroundStyle(themeStore.fontColor())
@@ -1558,6 +1601,9 @@ struct LauncherView: View {
         }
         .onChange(of: commandInput) { _, _ in
             if isCommandMode {
+                if commandArgsPart.isEmpty, activeCommandID != AppConstants.Launcher.Command.sys {
+                    commandFeedback = ""
+                }
                 if activeCommandID == AppConstants.Launcher.Command.kill {
                     if selectedKillSuggestionIndex != nil || pendingKillCandidate != nil {
                         logUIEvent("kill input changed -> clear pending/select input='\(commandArgsPart)'")
@@ -1739,13 +1785,12 @@ struct LauncherView: View {
             onSelectCommandByIndex: { [self] index in
                 guard index > 0 && index <= commandCatalog.count else { return }
                 let command = commandCatalog[index - 1]
+                pendingKillCandidate = nil
+                selectedKillSuggestionIndex = nil
                 activeCommandID = command.id
                 selectedCommandID = command.id
-                if activeCommandAcceptsInput {
-                    DispatchQueue.main.async {
-                        isQueryFocused = true
-                    }
-                }
+                commandFeedback = "Selected /\(command.id)"
+                requestCommandInputFocusIfNeeded()
             },
             onConfirmKill: { [self] in
                 if let pendingKillCandidate {

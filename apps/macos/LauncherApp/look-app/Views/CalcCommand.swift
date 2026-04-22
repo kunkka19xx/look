@@ -43,11 +43,11 @@ struct CalcCommand {
         }
         if balance != 0 { return false }
 
-        if let last = trimmed.last, "+-*/%.(".contains(last) {
+        if let last = trimmed.last, "+-*/%^.(".contains(last) {
             return false
         }
 
-        let allowedPattern = "^[0-9A-Za-z_+\\-*/%().:xXvV\\s]+$"
+        let allowedPattern = "^[0-9A-Za-z_+\\-*/%^().:xXvV\\s]+$"
         guard let regex = try? NSRegularExpression(pattern: allowedPattern) else { return false }
         let full = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
         guard let match = regex.firstMatch(in: trimmed, range: full), match.range == full else {
@@ -154,19 +154,19 @@ private struct Parser {
     }
 
     private mutating func parseTerm() throws -> Double {
-        var value = try parseFactor()
+        var value = try parsePower()
         while true {
             skipWhitespace()
             if consume("*") {
-                value *= try parseFactor()
+                value *= try parsePower()
             } else if consume("/") {
-                let divisor = try parseFactor()
+                let divisor = try parsePower()
                 if divisor == 0 {
                     throw ParserError.divisionByZero
                 }
                 value /= divisor
             } else if consume("%") {
-                let divisor = try parseFactor()
+                let divisor = try parsePower()
                 if divisor == 0 {
                     throw ParserError.divisionByZero
                 }
@@ -177,24 +177,43 @@ private struct Parser {
         }
     }
 
-    private mutating func parseFactor() throws -> Double {
+    private mutating func parsePower() throws -> Double {
+        var value = try parseUnary()
+        skipWhitespace()
+        if consume("^") {
+            let exponent = try parsePower()
+            value = Foundation.pow(value, exponent)
+            if value.isNaN || value.isInfinite {
+                throw ParserError.invalidExpression
+            }
+        }
+        return value
+    }
+
+    private mutating func parseUnary() throws -> Double {
         skipWhitespace()
 
         if consume("+") {
-            return try parseFactor()
+            return try parseUnary()
         }
         if consume("-") {
-            return -(try parseFactor())
+            return -(try parseUnary())
         }
 
         if matchKeyword("sqrt") {
             _ = consumeKeyword("sqrt")
-            let inner = try parseFactor()
+            let inner = try parseUnary()
             if inner < 0 {
                 throw ParserError.invalidExpression
             }
             return Foundation.sqrt(inner)
         }
+
+        return try parsePrimary()
+    }
+
+    private mutating func parsePrimary() throws -> Double {
+        skipWhitespace()
 
         if consume("(") {
             let value = try parseExpression()
