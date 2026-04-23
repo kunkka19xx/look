@@ -74,3 +74,16 @@ Notes:
 - validate result action behavior from keyboard-only flow
 - verify duplicate-candidate suppression across app discovery sources
 - verify no FFI ABI breaks for `look_search_json_compact`, `look_record_usage_json`, `look_reload_config`, `look_translate_json`, `look_free_cstring`
+
+### Command mode calc parity smoke cases
+
+- `/calc 2+3*4` -> `Result: 14.0000`
+- `/calc (2+3)*4` -> `Result: 20.0000`
+- `/calc 10%3` -> `Result: 1.0000`
+- `/calc v9` -> `Result: 3.0000`
+- `/calc sqrt(16+9)` -> `Result: 5.0000`
+- `/calc 10:4` -> `Result: 2.5000`
+- `/calc 12x3` -> `Result: 36.0000`
+- `/calc 1/0` -> `Error: division by zero`
+- `/calc (2+3` -> `Invalid expression`
+- `/calc 9999999999999*9` -> `Error: result out of range (+/-1,000,000,000,000)`

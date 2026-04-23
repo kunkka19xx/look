@@ -84,6 +84,12 @@ namespace LauncherApp
             _clipboardSeed = BuildClipboardSeed();
 
             ResultsList.ItemsSource = _results;
+            CommandPanelsPanel.CommandTextChanged += CommandPanelsPanel_OnCommandTextChanged;
+            CommandPanelsPanel.ActiveCommandChanged += CommandPanelsPanel_OnActiveCommandChanged;
+            CommandPanelsPanel.KillSelectionChanged += CommandPanelsPanel_OnKillSelectionChanged;
+            CommandPanelsPanel.KillCandidateInvoked += CommandPanelsPanel_OnKillCandidateInvoked;
+            CommandPanelsPanel.KillConfirmAccepted += CommandPanelsPanel_OnKillConfirmAccepted;
+            CommandPanelsPanel.KillConfirmCancelled += CommandPanelsPanel_OnKillConfirmCancelled;
             SetMode(LauncherMode.Search);
             RefreshResults(QueryInput.Text?.Trim() ?? string.Empty);
         }
@@ -374,6 +380,12 @@ namespace LauncherApp
         {
             _mode = mode;
 
+            if (mode != LauncherMode.Command)
+            {
+                _pendingKillTarget = null;
+                CommandPanelsPanel.HideKillConfirmation();
+            }
+
             SearchBarHost.Visibility = Visibility.Visible;
             ResultsHost.Visibility = Visibility.Visible;
             HintBarHost.Visibility = Visibility.Visible;
@@ -395,13 +407,14 @@ namespace LauncherApp
                     break;
                 case LauncherMode.Command:
                     ApplyConfiguredSurface();
-                    QueryInput.PlaceholderText = "Type calc, shell, kill, or sys";
+                    SearchBarHost.Visibility = Visibility.Collapsed;
                     HintText.Text = "Enter run  •  Ctrl+1..4 switch  •  Y/N confirm kill";
                     ResultsList.Visibility = Visibility.Collapsed;
                     ResultPreviewPanel.Visibility = Visibility.Collapsed;
                     CommandPanelsPanel.Visibility = Visibility.Visible;
                     CommandPanelsPanel.ApplyFilter(string.Empty);
                     CommandPanelsPanel.SelectPanel("command:calc");
+                    CommandPanelsPanel.CommandInputText = string.Empty;
                     break;
                 case LauncherMode.Clipboard:
                     ApplyConfiguredSurface();
@@ -441,6 +454,11 @@ namespace LauncherApp
                 SetMode(resolvedMode);
             }
 
+            if (_mode == LauncherMode.Command)
+            {
+                query = CommandPanelsPanel.CommandInputText.Trim();
+            }
+
             IReadOnlyList<LauncherResult> source = _mode switch
             {
                 LauncherMode.Search => FilterSearchNoise(DeduplicatePairedAppEntries(_searchLogic.Search(query, 120)), 40),
@@ -461,7 +479,7 @@ namespace LauncherApp
             {
                 try
                 {
-                    CommandPanelsPanel.ApplyFilter(query);
+                    CommandPanelsPanel.ApplyFilter(string.Empty);
                     CommandPanelsPanel.SelectPanel(ResolveCommandId(CommandPanelsPanel.ActiveCommandId));
                 }
                 catch
@@ -753,10 +771,105 @@ namespace LauncherApp
                 return false;
             }
 
-            QueryInput.Text = string.Empty;
             CommandPanelsPanel.SelectPanel(commandId);
             UpdateCommandPreview();
+            CommandPanelsPanel.FocusCommandInput();
             return true;
+        }
+
+        private bool TryHandleCommandModeKey(VirtualKey key)
+        {
+            if (_mode != LauncherMode.Command)
+            {
+                return false;
+            }
+
+            bool inKillCommand = CommandPanelsPanel.ActiveCommandId == "command:kill";
+
+            if (key == VirtualKey.Tab)
+            {
+                int direction = IsShiftPressed() ? -1 : 1;
+                CommandPanelsPanel.MoveSelection(direction);
+                UpdateCommandPreview();
+                CommandPanelsPanel.FocusCommandInput();
+                return true;
+            }
+
+            if (inKillCommand && _pendingKillTarget is not null)
+            {
+                if (key == VirtualKey.Y)
+                {
+                    ConfirmPendingKill();
+                    return true;
+                }
+
+                if (key == VirtualKey.N)
+                {
+                    CancelPendingKill();
+                    return true;
+                }
+            }
+
+            if (key == VirtualKey.Down)
+            {
+                if (inKillCommand)
+                {
+                    CommandPanelsPanel.MoveKillSelection(1);
+                }
+                else
+                {
+                    CommandPanelsPanel.MoveSelection(1);
+                }
+
+                UpdateCommandPreview();
+                CommandPanelsPanel.FocusCommandInput();
+                return true;
+            }
+
+            if (key == VirtualKey.Up)
+            {
+                if (inKillCommand)
+                {
+                    CommandPanelsPanel.MoveKillSelection(-1);
+                }
+                else
+                {
+                    CommandPanelsPanel.MoveSelection(-1);
+                }
+
+                UpdateCommandPreview();
+                CommandPanelsPanel.FocusCommandInput();
+                return true;
+            }
+
+            if (key == VirtualKey.Enter)
+            {
+                if (inKillCommand && _pendingKillTarget is not null)
+                {
+                    ConfirmPendingKill();
+                    return true;
+                }
+
+                _ = RunCommandAsync(CommandPanelsPanel.ActiveCommandId);
+                return true;
+            }
+
+            if (key == VirtualKey.Escape)
+            {
+                if (inKillCommand && _pendingKillTarget is not null)
+                {
+                    CancelPendingKill();
+                    return true;
+                }
+
+                CommandPanelsPanel.CommandInputText = string.Empty;
+                SetMode(LauncherMode.Search);
+                RefreshResults(string.Empty);
+                QueryInput.Focus(FocusState.Programmatic);
+                return true;
+            }
+
+            return false;
         }
 
         private void GlobalKeyDown(object sender, KeyRoutedEventArgs e)
@@ -776,6 +889,12 @@ namespace LauncherApp
             }
 
             if (TryHandleCommandQuickSelect(e.Key))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (TryHandleCommandModeKey(e.Key))
             {
                 e.Handled = true;
                 return;
@@ -822,13 +941,88 @@ namespace LauncherApp
 
         private void EnterCommandScreen()
         {
-            QueryInput.Text = string.Empty;
+            CommandPanelsPanel.CommandInputText = string.Empty;
             SetMode(LauncherMode.Command);
-            RefreshResults(QueryInput.Text);
+            RefreshResults(string.Empty);
             CommandPanelsPanel.SelectPanel("command:calc");
+            UpdateCommandPreview();
+            CommandPanelsPanel.FocusCommandInput();
+        }
 
-            QueryInput.Focus(FocusState.Programmatic);
-            QueryInput.SelectionStart = QueryInput.Text.Length;
+        private void CommandPanelsPanel_OnCommandTextChanged(object? sender, EventArgs e)
+        {
+            if (_mode != LauncherMode.Command)
+            {
+                return;
+            }
+
+            RefreshResults(CommandPanelsPanel.CommandInputText);
+            UpdateCommandPreview();
+        }
+
+        private void CommandPanelsPanel_OnActiveCommandChanged(object? sender, EventArgs e)
+        {
+            if (_mode != LauncherMode.Command)
+            {
+                return;
+            }
+
+            UpdateCommandPreview();
+            CommandPanelsPanel.FocusCommandInput();
+        }
+
+        private void CommandPanelsPanel_OnKillSelectionChanged(object? sender, EventArgs e)
+        {
+            if (_mode != LauncherMode.Command || CommandPanelsPanel.ActiveCommandId != "command:kill")
+            {
+                return;
+            }
+
+            var selected = CommandPanelsPanel.GetSelectedKillCandidate();
+            if (selected is null)
+            {
+                _pendingKillTarget = null;
+                CommandPanelsPanel.HideKillConfirmation();
+                return;
+            }
+
+            _pendingKillTarget = selected.App;
+            CommandPanelsPanel.ShowKillConfirmation(selected);
+            HintText.Text = "Press Y to confirm kill, N to cancel";
+        }
+
+        private void CommandPanelsPanel_OnKillCandidateInvoked(object? sender, EventArgs e)
+        {
+            if (_mode != LauncherMode.Command || CommandPanelsPanel.ActiveCommandId != "command:kill")
+            {
+                return;
+            }
+
+            var selected = CommandPanelsPanel.GetSelectedKillCandidate();
+            if (selected is null)
+            {
+                return;
+            }
+
+            _pendingKillTarget = selected.App;
+            CommandPanelsPanel.ShowKillConfirmation(selected);
+            HintText.Text = "Press Y to confirm kill, N to cancel";
+        }
+
+        private void CommandPanelsPanel_OnKillConfirmAccepted(object? sender, EventArgs e)
+        {
+            if (_mode == LauncherMode.Command && CommandPanelsPanel.ActiveCommandId == "command:kill")
+            {
+                ConfirmPendingKill();
+            }
+        }
+
+        private void CommandPanelsPanel_OnKillConfirmCancelled(object? sender, EventArgs e)
+        {
+            if (_mode == LauncherMode.Command && CommandPanelsPanel.ActiveCommandId == "command:kill")
+            {
+                CancelPendingKill();
+            }
         }
 
         private void EnterHelpScreen()
@@ -1093,6 +1287,124 @@ namespace LauncherApp
                 : "Open action failed  •  Enter open  •  Ctrl+R reveal  •  Ctrl+C copy";
         }
 
+        private void ConfirmPendingKill()
+        {
+            if (_pendingKillTarget is null)
+            {
+                CommandPanelsPanel.SetExecutionFeedback("Select a running app first", isError: true);
+                return;
+            }
+
+            var target = _pendingKillTarget;
+            var killResult = KillCommand.ConfirmKill(target);
+            _pendingKillTarget = null;
+            string args = ResolveCommandArgs("command:kill");
+            string refreshQuery = args;
+            if (killResult.ok && !string.IsNullOrWhiteSpace(args))
+            {
+                CommandPanelsPanel.CommandInputText = string.Empty;
+                refreshQuery = string.Empty;
+            }
+
+            RefreshKillCandidates(refreshQuery, preserveFeedback: true);
+            CommandPanelsPanel.HideKillConfirmation();
+            CommandPanelsPanel.SetExecutionFeedback(killResult.message, isError: !killResult.ok);
+            HintText.Text = killResult.ok ? "kill executed" : "kill failed";
+            CommandPanelsPanel.FocusCommandInput();
+
+            if (killResult.ok)
+            {
+                _ = RefreshKillCandidatesAfterDelayAsync(refreshQuery, 260);
+            }
+        }
+
+        private void CancelPendingKill()
+        {
+            _pendingKillTarget = null;
+            CommandPanelsPanel.HideKillConfirmation();
+            CommandPanelsPanel.SetExecutionFeedback("Kill canceled");
+            HintText.Text = "kill canceled";
+        }
+
+        private async Task RefreshKillCandidatesAfterDelayAsync(string query, int delayMs)
+        {
+            await Task.Delay(delayMs);
+            if (_mode != LauncherMode.Command || CommandPanelsPanel.ActiveCommandId != "command:kill")
+            {
+                return;
+            }
+
+            DispatcherQueue.TryEnqueue(() => RefreshKillCandidates(query, preserveFeedback: true));
+        }
+
+        private void RefreshKillCandidates(string query, bool preserveFeedback = false)
+        {
+            var selectedCandidate = CommandPanelsPanel.GetSelectedKillCandidate();
+            int? selectedPid = selectedCandidate?.App.Pid;
+            bool isPortQuery = query.TrimStart().StartsWith(":", StringComparison.Ordinal)
+                || query.TrimStart().StartsWith("port ", StringComparison.OrdinalIgnoreCase);
+
+            var apps = KillCommand.ListRunningApps(query).Take(20).ToList();
+            var items = apps.Select(app => new KillCandidateItem(app)).ToList();
+
+            int? selectedNumber = selectedPid is int pid
+                ? items.FirstOrDefault(x => x.App.Pid == pid)?.Number
+                : null;
+
+            CommandPanelsPanel.SetKillCandidates(items, selectedNumber);
+
+            foreach (var item in items.Take(12))
+            {
+                _ = item.LoadIconAsync();
+            }
+
+            if (items.Count == 0)
+            {
+                _pendingKillTarget = null;
+                CommandPanelsPanel.HideKillConfirmation();
+                CommandPanelsPanel.SetKillEmptyMessage(
+                    isPortQuery
+                        ? "No process listening on this port"
+                        : "No matching apps. Type app name or use :3000");
+                if (!preserveFeedback)
+                {
+                    CommandPanelsPanel.SetExecutionFeedback(
+                        isPortQuery ? "No process listening on this port" : "No matching apps. Type app name or use :3000",
+                        isError: true);
+                    HintText.Text = "No running match";
+                }
+                return;
+            }
+
+            CommandPanelsPanel.SetKillEmptyMessage(null);
+
+            if (_pendingKillTarget is not null)
+            {
+                var pending = items.FirstOrDefault(x => x.App.Pid == _pendingKillTarget.Pid);
+                if (pending is null)
+                {
+                    _pendingKillTarget = null;
+                    CommandPanelsPanel.HideKillConfirmation();
+                }
+                else
+                {
+                    CommandPanelsPanel.ShowKillConfirmation(pending);
+                }
+            }
+
+            if (!preserveFeedback)
+            {
+                if (string.IsNullOrWhiteSpace(query))
+                {
+                    CommandPanelsPanel.SetExecutionFeedback("Running apps. Use Up/Down or mouse to select, then confirm.");
+                }
+                else
+                {
+                    CommandPanelsPanel.SetExecutionFeedback("Filtered running apps. Select one and confirm kill.");
+                }
+            }
+        }
+
         private async Task RunCommandAsync(string id)
         {
             string resolvedCommandId = ResolveCommandId(id);
@@ -1100,7 +1412,10 @@ namespace LauncherApp
             CommandPanelsPanel.SelectPanel(resolvedCommandId);
 
             if (resolvedCommandId != "command:kill")
+            {
                 _pendingKillTarget = null;
+                CommandPanelsPanel.HideKillConfirmation();
+            }
 
             switch (resolvedCommandId)
             {
@@ -1123,14 +1438,17 @@ namespace LauncherApp
                     HintText.Text = shellResult.ok ? "shell executed" : "shell failed";
                     break;
                 case "command:kill":
-                    var killResolution = KillCommand.Resolve(args);
-                    _pendingKillTarget = killResolution.target;
-                    CommandPanelsPanel.SetExecutionFeedback(
-                        killResolution.message,
-                        isError: !killResolution.ok && !killResolution.needsConfirmation);
-                    HintText.Text = killResolution.needsConfirmation
-                        ? "Press Y to confirm kill, N to cancel"
-                        : killResolution.ok ? "kill ready" : "kill command";
+                    RefreshKillCandidates(args);
+                    var selected = CommandPanelsPanel.GetSelectedKillCandidate();
+                    if (selected is null)
+                    {
+                        HintText.Text = "kill command";
+                        break;
+                    }
+
+                    _pendingKillTarget = selected.App;
+                    CommandPanelsPanel.ShowKillConfirmation(selected);
+                    HintText.Text = "Press Y to confirm kill, N to cancel";
                     break;
                 case "command:sys":
                     string sysSummary = SystemInfoCommand.BuildSummary();
@@ -1160,6 +1478,7 @@ namespace LauncherApp
                 if (resolvedCommandId != "command:kill")
                 {
                     _pendingKillTarget = null;
+                    CommandPanelsPanel.HideKillConfirmation();
                 }
 
                 switch (resolvedCommandId)
@@ -1187,14 +1506,14 @@ namespace LauncherApp
                                 : $"Ready to run: {args}");
                         return;
                     case "command:kill":
-                        var killResolution = KillCommand.Resolve(args);
-                        _pendingKillTarget = killResolution.target;
-                        CommandPanelsPanel.SetExecutionFeedback(
-                            killResolution.message,
-                            isError: !killResolution.ok && !killResolution.needsConfirmation);
-                        if (killResolution.needsConfirmation)
+                        RefreshKillCandidates(args);
+                        if (_pendingKillTarget is not null)
                         {
                             HintText.Text = "Press Y to confirm kill, N to cancel";
+                        }
+                        else
+                        {
+                            HintText.Text = "Select app, then confirm kill";
                         }
                         return;
                     case "command:sys":
@@ -1214,7 +1533,7 @@ namespace LauncherApp
 
         private string ResolveCommandId(string fallbackId)
         {
-            string body = QueryInput.Text?.Trim() ?? string.Empty;
+            string body = GetCommandInputBody();
             if (body.StartsWith('/'))
                 body = body[1..].Trim();
 
@@ -1234,7 +1553,7 @@ namespace LauncherApp
 
         private string ResolveCommandArgs(string commandId)
         {
-            string body = QueryInput.Text?.Trim() ?? string.Empty;
+            string body = GetCommandInputBody();
             if (body.StartsWith('/'))
                 body = body[1..].Trim();
 
@@ -1267,6 +1586,16 @@ namespace LauncherApp
             }
 
             return body;
+        }
+
+        private string GetCommandInputBody()
+        {
+            if (_mode == LauncherMode.Command)
+            {
+                return CommandPanelsPanel.CommandInputText.Trim();
+            }
+
+            return QueryInput.Text?.Trim() ?? string.Empty;
         }
 
         private static void CopyText(string value)

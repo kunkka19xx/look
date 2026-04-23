@@ -7,62 +7,216 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid RowSpacing="10">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+    <Grid ColumnSpacing="8">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="3*" />
+        </Grid.ColumnDefinitions>
 
-        <Grid Grid.Row="1" ColumnSpacing="4" RowSpacing="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="40" />
-                <RowDefinition Height="40" />
-            </Grid.RowDefinitions>
+        <Border Grid.Column="0" Style="{StaticResource LauncherSurfaceBorderStyle}" BorderThickness="0" BorderBrush="Transparent" Padding="8">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="4">
+                    <ToggleButton x:Name="ShellCard" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
+                        <StackPanel Spacing="1">
+                            <TextBlock FontWeight="SemiBold" Text="/shell" />
+                            <TextBlock FontSize="12" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Run shell command  (Ctrl+1)" />
+                        </StackPanel>
+                    </ToggleButton>
 
-            <ToggleButton x:Name="ShellCard" Grid.Row="0" Grid.Column="0" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
-                <StackPanel Spacing="2">
-                    <TextBlock FontWeight="SemiBold" Text="shell (Ctrl+1)" />
+                    <ToggleButton x:Name="CalcCard" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
+                        <StackPanel Spacing="1">
+                            <TextBlock FontWeight="SemiBold" Text="/calc" />
+                            <TextBlock FontSize="12" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Evaluate expression  (Ctrl+2)" />
+                        </StackPanel>
+                    </ToggleButton>
+
+                    <ToggleButton x:Name="KillCard" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
+                        <StackPanel Spacing="1">
+                            <TextBlock FontWeight="SemiBold" Text="/kill" />
+                            <TextBlock FontSize="12" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Terminate process  (Ctrl+3)" />
+                        </StackPanel>
+                    </ToggleButton>
+
+                    <ToggleButton x:Name="SysCard" MinHeight="44" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
+                        <StackPanel Spacing="1">
+                            <TextBlock FontWeight="SemiBold" Text="/sys" />
+                            <TextBlock FontSize="12" Foreground="{StaticResource LauncherMutedTextBrush}" Text="System info panel  (Ctrl+4)" />
+                        </StackPanel>
+                    </ToggleButton>
                 </StackPanel>
-            </ToggleButton>
+            </ScrollViewer>
+        </Border>
 
-            <ToggleButton x:Name="CalcCard" Grid.Row="0" Grid.Column="1" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
-                <StackPanel Spacing="2">
-                    <TextBlock FontWeight="SemiBold" Text="calc (Ctrl+2)" />
-                </StackPanel>
-            </ToggleButton>
+        <Border Grid.Column="1" Style="{StaticResource LauncherSurfaceBorderStyle}" BorderThickness="0" BorderBrush="Transparent" Padding="10">
+            <Grid RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-            <ToggleButton x:Name="KillCard" Grid.Row="1" Grid.Column="0" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
-                <StackPanel Spacing="2">
-                    <TextBlock FontWeight="SemiBold" Text="kill (Ctrl+3)" />
-                </StackPanel>
-            </ToggleButton>
+                <Grid x:Name="CommandInputHost">
+                    <TextBox
+                        x:Name="CommandInputBox"
+                        Padding="34,10,12,10"
+                        FontSize="14"
+                        PlaceholderText="Type command arguments"
+                        PreviewKeyDown="CommandInputBox_OnPreviewKeyDown"
+                        TextChanged="CommandInputBox_OnTextChanged" />
+                    <TextBlock
+                        Margin="12,0,0,0"
+                        FontFamily="Segoe MDL2 Assets"
+                        FontSize="13"
+                        VerticalAlignment="Center"
+                        Foreground="{StaticResource LauncherMutedTextBrush}"
+                        Text="&#xE70F;"
+                        IsHitTestVisible="False" />
+                </Grid>
 
-            <ToggleButton x:Name="SysCard" Grid.Row="1" Grid.Column="1" MinHeight="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="CommandCard_OnClick">
-                <StackPanel Spacing="2">
-                    <TextBlock FontWeight="SemiBold" Text="sys (Ctrl+4)" />
-                </StackPanel>
-            </ToggleButton>
-        </Grid>
+                <Border Grid.Row="1" Background="#151D28" CornerRadius="8" Padding="8">
+                    <Grid RowSpacing="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
-        <Border Grid.Row="2" Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
-            <StackPanel Spacing="6">
-                <TextBlock x:Name="CommandTitleText" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="calc" />
-                <Border Background="#151D28" CornerRadius="8" Padding="8">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MinHeight="220" MaxHeight="320">
-                        <TextBlock
-                            x:Name="CommandOutputText"
-                            FontFamily="Consolas"
-                            Foreground="{StaticResource LauncherMutedTextBrush}"
-                            Text=""
-                            TextWrapping="Wrap" />
-                    </ScrollViewer>
+                        <Grid Grid.Row="0">
+                            <ScrollViewer x:Name="CommandOutputHost" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MinHeight="280">
+                                <StackPanel Spacing="6">
+                                    <TextBlock x:Name="CommandTitleText" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="calc" />
+                                    <TextBlock
+                                        x:Name="CommandOutputText"
+                                        FontFamily="Consolas"
+                                        Foreground="{StaticResource LauncherMutedTextBrush}"
+                                        Text=""
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </ScrollViewer>
+
+                            <ListView
+                                x:Name="KillCandidatesList"
+                                Visibility="Collapsed"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                SelectionMode="Single"
+                                IsItemClickEnabled="True"
+                                ItemClick="KillCandidatesList_OnItemClick"
+                                SelectionChanged="KillCandidatesList_OnSelectionChanged">
+                                <ListView.Resources>
+                                    <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#26364C" />
+                                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#2A3C55" />
+                                    <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#1D2A3A" />
+                                    <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#2A3C55" />
+                                </ListView.Resources>
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="Padding" Value="0" />
+                                        <Setter Property="Margin" Value="0,0,0,4" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="MinHeight" Value="0" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Padding="8,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Grid.Column="0" Width="24" Height="24" Margin="0,0,10,0">
+                                                <Grid>
+                                                    <TextBlock
+                                                        FontFamily="Segoe MDL2 Assets"
+                                                        FontSize="15"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        Foreground="{StaticResource LauncherMutedTextBrush}"
+                                                        Text="{Binding IconGlyph}" />
+                                                    <Image Width="24" Height="24" Source="{Binding Icon}" />
+                                                </Grid>
+                                            </Border>
+
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock
+                                                    FontSize="13"
+                                                    FontWeight="SemiBold"
+                                                    Foreground="{StaticResource LauncherTextBrush}"
+                                                    Text="{Binding DisplayName}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Foreground="{StaticResource LauncherMutedTextBrush}"
+                                                    Text="{Binding Detail}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+
+                                            <TextBlock
+                                                Grid.Column="2"
+                                                FontSize="11"
+                                                VerticalAlignment="Center"
+                                                Foreground="{StaticResource LauncherMutedTextBrush}"
+                                                Text="Enter" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+
+                            <TextBlock
+                                x:Name="KillEmptyText"
+                                Visibility="Collapsed"
+                                Margin="8,6,8,0"
+                                VerticalAlignment="Top"
+                                FontSize="12"
+                                Foreground="{StaticResource LauncherMutedTextBrush}"
+                                Text="No running apps"
+                                TextWrapping="Wrap" />
+                        </Grid>
+
+                        <Border
+                            x:Name="KillConfirmBar"
+                            Grid.Row="1"
+                            Visibility="Collapsed"
+                            Background="#2B1B24"
+                            BorderBrush="#71414D"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="10,8">
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border Grid.Column="0" Width="24" Height="24" VerticalAlignment="Center">
+                                    <Grid>
+                                        <TextBlock
+                                            x:Name="KillConfirmGlyph"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            FontSize="15"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Foreground="{StaticResource LauncherMutedTextBrush}"
+                                            Text="&#xE71D;" />
+                                        <Image x:Name="KillConfirmIcon" Width="24" Height="24" />
+                                    </Grid>
+                                </Border>
+
+                                <StackPanel Grid.Column="1" Spacing="1">
+                                    <TextBlock x:Name="KillConfirmTitleText" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Kill app?" />
+                                    <TextBlock x:Name="KillConfirmDetailText" FontSize="11" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Press Y to confirm, N to cancel" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <Button Content="Y / Yes" Click="KillConfirmYes_OnClick" Style="{StaticResource LauncherDangerButtonStyle}" />
+                                    <Button Content="N / No" Click="KillConfirmNo_OnClick" Style="{StaticResource LauncherSecondaryButtonStyle}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
                 </Border>
-            </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>
