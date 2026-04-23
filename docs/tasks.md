@@ -115,11 +115,11 @@ Reference: `docs/windows-port-plan.md`
 - [x] implement Windows launcher UI screens (search, command mode with 2-column cards, clipboard placeholder, settings, help)
 - [x] implement keyboard navigation and shortcuts UI bindings
 
-**Windows real functionality (NOT yet implemented - requires backend + OS integration):**
-- [ ] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff)
+**Windows real functionality (remaining items):**
+- [x] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff)
 - [ ] implement global hotkey + hide/show/focus lifecycle parity on Windows
 - [ ] implement Windows clipboard history mode (`c"`) with listener-first capture strategy
-- [ ] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`)
+- [x] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`)
 - [ ] implement Windows launch-at-login integration
 - [ ] implement Windows packaging/signing/release pipeline (`.msix`/`.msi`) and documentation
 - [ ] run closed beta and fix top reliability/performance parity regressions before GA
@@ -173,6 +173,16 @@ Windows immediate execution queue (current):
 - [x] PR-3: reduce Windows app noise (helper executables, System32 guardrails, WindowsApps depth handling)
 - [x] PR-3: add Windows fallback dedupe rules for Start Menu/WindowsApps/System32 overlap and keep real app preference
 - [x] PR-3: expand Windows Settings catalog coverage and render settings with dedicated UI kind/icon
+
+Windows command-mode parity updates (recent):
+
+- [x] make command screen match macOS split layout (left command list + right content panel)
+- [x] implement kill command running-app list parity with selection + confirmation flow
+- [x] add kill-by-port query parity (`:3000`, `port 3000`) with empty-state messaging
+- [x] improve kill process naming and system-noise filtering for Windows-specific background processes
+- [x] align calc parser with macOS advanced features (`^`, `!`, `%`, `pi`, `e`, `sqrt/abs/round/floor/ceil`, aliases)
+- [x] add finance-style percent semantics for add/subtract (`200 + 10%`, `200 - 10%`)
+- [x] expand and group sys output sections (overview/performance/hardware/network)
 
 ## Milestone G: Reliability (errors, tests, logs)
 

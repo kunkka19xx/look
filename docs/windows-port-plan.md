@@ -32,6 +32,20 @@ Windows v1 parity checklist reference: `docs/windows-v1-parity-checklist.md`
   with command output rendered inside the command panel.
 - Windows app project now auto-builds Rust FFI and copies `look_ffi.dll` during build.
 
+### Calc parity notes (Windows -> macOS follow-up)
+
+Windows `calc` currently includes the following behavior that should be mirrored on macOS:
+
+- numeric guardrail: result magnitude limit is `±1,000,000,000,000` (`1e12`)
+- operators: `+`, `-`, `*`, `/`, `%`, `^`, unary `+/-`
+- postfix operators: factorial (`!`), percent (`50% -> 0.5`)
+- constants: `pi`, `e`
+- functions: `sqrt`, `abs`, `round`, `floor`, `ceil`
+- aliases: `x`/`X` as `*`, `:` as `/`, `v`/`V` prefix as `sqrt`
+- percent semantics:
+  - multiplication/division: `20 * 5% == 1`
+  - finance style add/subtract: `200 + 10% == 220`, `200 - 10% == 180`
+
 ## Current architecture baseline
 
 Today the codebase is split as:
@@ -294,20 +308,18 @@ Current status:
 3. Load data from FFI search endpoint and render candidate rows.
 4. Port theme primitives to preserve visual identity while following Windows conventions.
 
-Current status (FFI connected, icons IN PROGRESS):
+Current status (FFI connected, command mode/action parity in progress):
 
 - shell scaffold in place at `apps/windows/LauncherApp/`
 - FFI search IS connected and working (Rust backend returns real results)
 - Completed UI components:
   - Launcher window with transparent/acrylic effects
   - Search results list with FFI-backed results
-  - Icon display: IconService created using SHGetFileInfo, conversion to SoftwareBitmapSource implemented
-  - Command mode with 2-column card layout (calc, shell, kill, sys) - UI only, no execution
+  - Icon display: IconService + shell extraction/cache fallback is working in WinUI
+  - Command mode with 2-column card layout (calc, shell, kill, sys)
   - Settings screens: Appearance, Advanced, Shortcuts (UI only, config persistence works)
   - Help screen
-  - Keyboard navigation and shortcuts (UI binding, no real action execution)
-
-**Icon display issue**: Icons are being fetched via SHGetFileInfo but not rendering in WinUI 3. HICON → SoftwareBitmapSource conversion needs debugging.
+  - Keyboard navigation and shortcuts wired for real command interactions
 
 Exit criteria:
 
@@ -328,15 +340,18 @@ Exit criteria:
    - `sys`
 5. Implement startup behavior (launch at login) for Windows.
 
-Exit criteria (NOTE: currently UI/mock-first, real execution not yet implemented):
+Exit criteria:
 
 - all v1 parity-required actions work from keyboard-only flow
 
 **Phase 5 implementation status**:
-- Global hotkey toggle: NOT implemented (UI placeholder only)
-- Result actions (open, reveal, copy): NOT implemented (UI placeholder only)
+- Global hotkey toggle: NOT implemented yet
+- Result actions (open, reveal, copy, web handoff): implemented
 - Clipboard history mode (`c"`): UI placeholder only, real capture NOT implemented
-- Command mode (`calc`, `shell`, `kill`, `sys`): UI matching macOS, but commands DON'T execute (mock responses)
+- Command mode (`calc`, `shell`, `kill`, `sys`): implemented with in-panel execution and preview
+  - `kill` parity: running-app list, keyboard/mouse selection, confirm bar, `:port` lookup (`:3000`, `port 3000`)
+  - `calc` parity: advanced parser (`^`, `!`, `%`, constants/functions) plus finance-style percent for add/subtract
+  - `sys`: grouped sections and live CPU/memory/network/battery/GPU/top-memory summary
 - Launch at login: NOT implemented (Advanced settings toggle present, but non-functional)
 
 ## Phase 6 - UX parity polish

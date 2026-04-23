@@ -80,8 +80,18 @@ Notes:
 - `/calc 2+3*4` -> `Result: 14.0000`
 - `/calc (2+3)*4` -> `Result: 20.0000`
 - `/calc 10%3` -> `Result: 1.0000`
+- `/calc 2^8` -> `Result: 256.0000`
+- `/calc 3!` -> `Result: 6.0000`
+- `/calc 50%` -> `Result: 0.5000`
+- `/calc 200+10%` -> `Result: 220.0000`
+- `/calc 200-10%` -> `Result: 180.0000`
 - `/calc v9` -> `Result: 3.0000`
 - `/calc sqrt(16+9)` -> `Result: 5.0000`
+- `/calc abs(-5.2)` -> `Result: 5.2000`
+- `/calc floor(3.9)` -> `Result: 3.0000`
+- `/calc ceil(3.1)` -> `Result: 4.0000`
+- `/calc round(2.6)` -> `Result: 3.0000`
+- `/calc pi*2` -> `Result: 6.2832`
 - `/calc 10:4` -> `Result: 2.5000`
 - `/calc 12x3` -> `Result: 36.0000`
 - `/calc 1/0` -> `Error: division by zero`

@@ -77,7 +77,7 @@ public static class CalcCommand
         }
 
         char last = trimmed[^1];
-        if ("+-*/%.(".IndexOf(last) >= 0)
+        if ("+-*/%^.(".IndexOf(last) >= 0)
         {
             return false;
         }
@@ -94,6 +94,8 @@ public static class CalcCommand
             || ch == '*'
             || ch == '/'
             || ch == '%'
+            || ch == '^'
+            || ch == '!'
             || ch == '('
             || ch == ')'
             || ch == '.'
@@ -156,40 +158,61 @@ public static class CalcCommand
 
     private sealed class Parser
     {
+        private readonly struct ValueNode
+        {
+            public double Value { get; }
+            public bool IsStandalonePercent { get; }
+            public double PercentFraction { get; }
+
+            public ValueNode(double value, bool isStandalonePercent = false, double percentFraction = 0)
+            {
+                Value = value;
+                IsStandalonePercent = isStandalonePercent;
+                PercentFraction = percentFraction;
+            }
+        }
+
         private readonly char[] _chars;
         private int _index;
 
         public Parser(string input)
         {
             _chars = input.ToCharArray();
-            _index = 0;
         }
 
         public double Parse()
         {
-            double value = ParseExpression();
+            ValueNode value = ParseExpression();
             SkipWhitespace();
             if (_index != _chars.Length)
             {
                 throw new InvalidOperationException("Invalid expression");
             }
 
-            return value;
+            return value.Value;
         }
 
-        private double ParseExpression()
+        private ValueNode ParseExpression()
         {
-            double value = ParseTerm();
+            ValueNode value = ParseTerm();
             while (true)
             {
                 SkipWhitespace();
                 if (Consume('+'))
                 {
-                    value += ParseTerm();
+                    ValueNode rhs = ParseTerm();
+                    double combined = rhs.IsStandalonePercent
+                        ? value.Value + (value.Value * rhs.PercentFraction)
+                        : value.Value + rhs.Value;
+                    value = new ValueNode(combined);
                 }
                 else if (Consume('-'))
                 {
-                    value -= ParseTerm();
+                    ValueNode rhs = ParseTerm();
+                    double combined = rhs.IsStandalonePercent
+                        ? value.Value - (value.Value * rhs.PercentFraction)
+                        : value.Value - rhs.Value;
+                    value = new ValueNode(combined);
                 }
                 else
                 {
@@ -198,35 +221,38 @@ public static class CalcCommand
             }
         }
 
-        private double ParseTerm()
+        private ValueNode ParseTerm()
         {
-            double value = ParseFactor();
+            ValueNode value = ParseUnary();
             while (true)
             {
                 SkipWhitespace();
                 if (Consume('*'))
                 {
-                    value *= ParseFactor();
+                    ValueNode rhs = ParseUnary();
+                    value = new ValueNode(value.Value * rhs.Value);
                 }
                 else if (Consume('/'))
                 {
-                    double divisor = ParseFactor();
+                    ValueNode rhs = ParseUnary();
+                    double divisor = rhs.Value;
                     if (divisor == 0)
                     {
                         throw new DivideByZeroException();
                     }
 
-                    value /= divisor;
+                    value = new ValueNode(value.Value / divisor);
                 }
                 else if (Consume('%'))
                 {
-                    double divisor = ParseFactor();
+                    ValueNode rhs = ParseUnary();
+                    double divisor = rhs.Value;
                     if (divisor == 0)
                     {
                         throw new DivideByZeroException();
                     }
 
-                    value %= divisor;
+                    value = new ValueNode(value.Value % divisor);
                 }
                 else
                 {
@@ -235,44 +261,225 @@ public static class CalcCommand
             }
         }
 
-        private double ParseFactor()
+        private ValueNode ParsePower()
+        {
+            ValueNode value = ParsePrimary();
+            SkipWhitespace();
+            if (Consume('^'))
+            {
+                ValueNode exponent = ParseUnary();
+                double powered = Math.Pow(value.Value, exponent.Value);
+                if (double.IsNaN(powered) || double.IsInfinity(powered))
+                {
+                    throw new InvalidOperationException("Invalid expression");
+                }
+
+                value = new ValueNode(powered);
+            }
+
+            return value;
+        }
+
+        private ValueNode ParseUnary()
         {
             SkipWhitespace();
 
             if (Consume('+'))
             {
-                return ParseFactor();
+                return ParseUnary();
             }
 
             if (Consume('-'))
             {
-                return -ParseFactor();
+                ValueNode negated = ParseUnary();
+                return new ValueNode(-negated.Value);
             }
 
-            if (ConsumeKeyword("sqrt"))
+            if (MatchKeyword("sqrt"))
             {
-                double inner = ParseFactor();
-                if (inner < 0)
-                {
-                    throw new InvalidOperationException("Invalid expression");
-                }
-
-                return Math.Sqrt(inner);
+                ConsumeKeyword("sqrt");
+                return new ValueNode(ApplyFunction("sqrt", ParseFunctionArgument()));
             }
+
+            if (MatchKeyword("abs"))
+            {
+                ConsumeKeyword("abs");
+                return new ValueNode(ApplyFunction("abs", ParseFunctionArgument()));
+            }
+
+            if (MatchKeyword("round"))
+            {
+                ConsumeKeyword("round");
+                return new ValueNode(ApplyFunction("round", ParseFunctionArgument()));
+            }
+
+            if (MatchKeyword("floor"))
+            {
+                ConsumeKeyword("floor");
+                return new ValueNode(ApplyFunction("floor", ParseFunctionArgument()));
+            }
+
+            if (MatchKeyword("ceil"))
+            {
+                ConsumeKeyword("ceil");
+                return new ValueNode(ApplyFunction("ceil", ParseFunctionArgument()));
+            }
+
+            return ParsePower();
+        }
+
+        private ValueNode ParsePrimary()
+        {
+            SkipWhitespace();
 
             if (Consume('('))
             {
-                double value = ParseExpression();
+                ValueNode value = ParseExpression();
                 SkipWhitespace();
                 if (!Consume(')'))
                 {
                     throw new InvalidOperationException("Invalid expression");
                 }
 
-                return value;
+                return ApplyPostfixOperators(value.Value);
             }
 
-            return ParseNumber();
+            if (_index < _chars.Length && char.IsLetter(_chars[_index]))
+            {
+                string ident = ParseIdentifier();
+                double constant = ident.ToLowerInvariant() switch
+                {
+                    "pi" => Math.PI,
+                    "e" => Math.E,
+                    _ => throw new InvalidOperationException("Invalid expression"),
+                };
+
+                return ApplyPostfixOperators(constant);
+            }
+
+            double number = ParseNumber();
+            return ApplyPostfixOperators(number);
+        }
+
+        private ValueNode ApplyPostfixOperators(double seed)
+        {
+            var node = new ValueNode(seed);
+            while (true)
+            {
+                SkipWhitespace();
+                if (Consume('!'))
+                {
+                    node = new ValueNode(Factorial(node.Value));
+                    continue;
+                }
+
+                if (ShouldConsumePostfixPercent())
+                {
+                    Consume('%');
+                    double fraction = node.Value / 100d;
+                    node = new ValueNode(fraction, isStandalonePercent: true, percentFraction: fraction);
+                    continue;
+                }
+
+                return node;
+            }
+        }
+
+        private bool ShouldConsumePostfixPercent()
+        {
+            if (_index >= _chars.Length || _chars[_index] != '%')
+            {
+                return false;
+            }
+
+            int lookahead = _index + 1;
+            while (lookahead < _chars.Length && char.IsWhiteSpace(_chars[lookahead]))
+            {
+                lookahead++;
+            }
+
+            if (lookahead >= _chars.Length)
+            {
+                return true;
+            }
+
+            char next = _chars[lookahead];
+            if (char.IsDigit(next) || next == '.' || next == '(' || char.IsLetter(next))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private double ParseFunctionArgument()
+        {
+            SkipWhitespace();
+            if (Consume('('))
+            {
+                ValueNode value = ParseExpression();
+                SkipWhitespace();
+                if (!Consume(')'))
+                {
+                    throw new InvalidOperationException("Invalid expression");
+                }
+
+                return value.Value;
+            }
+
+            return ParseUnary().Value;
+        }
+
+        private static double ApplyFunction(string name, double value)
+        {
+            return name switch
+            {
+                "sqrt" when value < 0 => throw new InvalidOperationException("Invalid expression"),
+                "sqrt" => Math.Sqrt(value),
+                "abs" => Math.Abs(value),
+                "round" => Math.Round(value),
+                "floor" => Math.Floor(value),
+                "ceil" => Math.Ceiling(value),
+                _ => throw new InvalidOperationException("Invalid expression"),
+            };
+        }
+
+        private static double Factorial(double value)
+        {
+            if (value < 0 || Math.Round(value) != value)
+            {
+                throw new InvalidOperationException("Invalid expression");
+            }
+
+            int n = (int)value;
+            if (n > 170)
+            {
+                throw new InvalidOperationException("Invalid expression");
+            }
+
+            if (n <= 1)
+            {
+                return 1;
+            }
+
+            double result = 1;
+            for (int i = 2; i <= n; i++)
+            {
+                result *= i;
+            }
+
+            return result;
+        }
+
+        private string ParseIdentifier()
+        {
+            int start = _index;
+            while (_index < _chars.Length && (char.IsLetter(_chars[_index]) || _chars[_index] == '_'))
+            {
+                _index++;
+            }
+
+            return new string(_chars[start.._index]);
         }
 
         private double ParseNumber()
@@ -334,9 +541,10 @@ public static class CalcCommand
             return true;
         }
 
-        private bool ConsumeKeyword(string keyword)
+        private bool MatchKeyword(string keyword)
         {
-            if (_index + keyword.Length > _chars.Length)
+            int end = _index + keyword.Length;
+            if (end > _chars.Length)
             {
                 return false;
             }
@@ -347,6 +555,16 @@ public static class CalcCommand
                 {
                     return false;
                 }
+            }
+
+            return true;
+        }
+
+        private bool ConsumeKeyword(string keyword)
+        {
+            if (!MatchKeyword(keyword))
+            {
+                return false;
             }
 
             _index += keyword.Length;
