@@ -8,7 +8,7 @@ A keyboard-first, local-first macOS launcher. Open apps, files, folders, clipboa
 
 ![Look demo](assets/look.gif)
 
-> Watch the full demo on [YouTube](https://www.youtube.com/watch?v=4Twb4We3PIs).
+> 📘 **Docs:** [noah-code.com/docs/look](https://noah-code.com/docs/look) · 🎬 [Demo on YouTube](https://www.youtube.com/watch?v=4Twb4We3PIs)
 
 ## Install
 
@@ -75,7 +75,8 @@ Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, plus C
 
 ## Documentation
 
-- [User guide](docs/user-guide.md) — full feature reference, shortcuts, configuration, permissions, troubleshooting
+- 📘 [Docs site](https://noah-code.com/docs/look) — hosted, searchable user guide and reference
+- [User guide (in-repo)](docs/user-guide.md) — full feature reference, shortcuts, configuration, permissions, troubleshooting
 - [Architecture](docs/architecture.md) — how the Swift app + Rust core fit together
 - [Features](docs/features.md) — what's shipped, what's planned
 - [Contributing](CONTRIBUTING.md) — how to contribute
@@ -83,10 +84,18 @@ Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, plus C
 
 ## Installation details
 
-Update via Homebrew:
+Homebrew (install and update):
 
 ```bash
+# install
+brew tap kunkka19xx/tap
+brew install --cask look
+
+# update
 brew upgrade --cask kunkka19xx/tap/look
+
+# uninstall
+brew uninstall --cask look
 ```
 
 Curl installer:
@@ -109,7 +118,7 @@ curl -fsSL https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/instal
 
 CLI naming note: macOS ships `/usr/bin/look`, so terminal command examples use `lookapp`.
 
-If Look is fully quit and Spotlight is still unbound, relaunch via:
+If Look is fully quit and Spotlight is still unbound, relaunch from Launchpad, or via:
 
 ```bash
 open "/Applications/Look.app"
