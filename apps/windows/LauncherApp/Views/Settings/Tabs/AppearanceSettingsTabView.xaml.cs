@@ -17,6 +17,8 @@ public sealed partial class AppearanceSettingsTabView : UserControl
     private string _appliedBackdropMode = string.Empty;
     private string _appliedFontName = string.Empty;
     private double _appliedFontSize = -1;
+    private (double R, double G, double B)? _textSecondaryOverride;
+    private (double R, double G, double B)? _textMutedOverride;
 
     public AppearanceSettingsTabView()
     {
@@ -146,6 +148,7 @@ public sealed partial class AppearanceSettingsTabView : UserControl
             double borderThickness = BorderThicknessSlider.Value / 10d;
             mainWindow.UpdateFrameBorder(appliedBorderColor, borderThickness);
             mainWindow.UpdateTopEdgeMask(appliedPanelColor, appliedBorderColor);
+            mainWindow.UpdateSettingsBlur(SettingsBlurSlider.Value);
         }
     }
 
@@ -247,6 +250,68 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         ApplyBackdropMode();
     }
 
+    private readonly record struct ThemePreset(
+        double TintR, double TintG, double TintB, double TintOpacity,
+        double TextR, double TextG, double TextB, double TextOpacity,
+        double BorderR, double BorderG, double BorderB, double BorderOpacity,
+        double BlurOpacity,
+        double TextSecondaryR, double TextSecondaryG, double TextSecondaryB,
+        double TextMutedR, double TextMutedG, double TextMutedB);
+
+    private static readonly Dictionary<string, ThemePreset> ThemePresets = new()
+    {
+        ["Catppuccin"]  = new(11,  11, 18, 58, 95, 94, 98, 97, 80, 75, 93, 20, 94, 80, 84, 96, 67, 70, 78),
+        ["Tokyo Night"] = new( 5,   8, 16, 58, 84, 87, 96, 98, 45, 54, 86, 24, 95, 74, 80, 90, 56, 64, 78),
+        ["Rose Pine"]   = new(12,  10, 16, 57, 95, 93, 91, 98, 68, 63, 76, 22, 94, 88, 84, 81, 74, 70, 66),
+        ["Gruvbox"]     = new(13,  10,  7, 60, 93, 89, 79, 98, 84, 54, 26, 24, 95, 87, 80, 64, 72, 64, 48),
+        ["Dracula"]     = new( 9,   8, 15, 58, 97, 97, 98, 98, 74, 55, 89, 24, 94, 92, 87, 98, 77, 74, 85),
+        ["Kanagawa"]    = new( 9,  10, 12, 58, 87, 86, 79, 98, 58, 52, 42, 22, 95, 80, 78, 66, 66, 63, 50),
+    };
+
+    private void PresetCombo_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isInitializing || !IsLoaded)
+        {
+            return;
+        }
+
+        string name = (PresetCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? string.Empty;
+        if (!ThemePresets.TryGetValue(name, out ThemePreset preset))
+        {
+            return;
+        }
+
+        _isInitializing = true;
+        try
+        {
+            TintRedSlider.Value = preset.TintR;
+            TintGreenSlider.Value = preset.TintG;
+            TintBlueSlider.Value = preset.TintB;
+            TintOpacitySlider.Value = preset.TintOpacity;
+
+            TextRedSlider.Value = preset.TextR;
+            TextGreenSlider.Value = preset.TextG;
+            TextBlueSlider.Value = preset.TextB;
+            TextOpacitySlider.Value = preset.TextOpacity;
+
+            BorderRedSlider.Value = preset.BorderR;
+            BorderGreenSlider.Value = preset.BorderG;
+            BorderBlueSlider.Value = preset.BorderB;
+            BorderOpacitySlider.Value = preset.BorderOpacity;
+
+            BlurOpacitySlider.Value = preset.BlurOpacity;
+
+            _textSecondaryOverride = (preset.TextSecondaryR, preset.TextSecondaryG, preset.TextSecondaryB);
+            _textMutedOverride = (preset.TextMutedR, preset.TextMutedG, preset.TextMutedB);
+        }
+        finally
+        {
+            _isInitializing = false;
+        }
+
+        ApplyThemePreview();
+    }
+
     private void Slider_OnValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (_isInitializing || !IsLoaded)
@@ -280,21 +345,27 @@ public sealed partial class AppearanceSettingsTabView : UserControl
 
         UpdateBrush(resources, "LauncherPanelBrush", panelColor);
         UpdateBrush(resources, "LauncherPanelAltBrush", panelAltColor);
-        UpdateBrush(resources, "LauncherTextBrush", ToColor(TextRedSlider.Value, TextGreenSlider.Value, TextBlueSlider.Value, TextOpacitySlider.Value));
-        double mutedOpacity = System.Math.Max(TextOpacitySlider.Value - 26, 20);
-        UpdateBrush(resources, "LauncherMutedTextBrush", ToColor(
-            System.Math.Max(TextRedSlider.Value - 24, 20),
-            System.Math.Max(TextGreenSlider.Value - 24, 20),
-            System.Math.Max(TextBlueSlider.Value - 24, 20),
-            mutedOpacity));
+
+        Color textColor = ToColor(TextRedSlider.Value, TextGreenSlider.Value, TextBlueSlider.Value, TextOpacitySlider.Value);
+        Color secondaryColor = _textSecondaryOverride is { } sec
+            ? ToColor(sec.R, sec.G, sec.B, TextOpacitySlider.Value)
+            : DimmableColor(0.82, TextOpacitySlider.Value);
+        Color mutedColor = _textMutedOverride is { } muted
+            ? ToColor(muted.R, muted.G, muted.B, TextOpacitySlider.Value * 0.78)
+            : DimmableColor(0.64, TextOpacitySlider.Value);
+
+        UpdateBrush(resources, "LauncherTextBrush", textColor);
+        UpdateBrush(resources, "LauncherSecondaryTextBrush", secondaryColor);
+        UpdateBrush(resources, "LauncherMutedTextBrush", mutedColor);
         Color borderColor = ToColor(BorderRedSlider.Value, BorderGreenSlider.Value, BorderBlueSlider.Value, BorderOpacitySlider.Value);
         UpdateBrush(resources, "LauncherBorderBrush", borderColor);
         UpdateBrush(resources, "LauncherAccentBrush", ToColor(TintRedSlider.Value + 40, TintGreenSlider.Value + 45, TintBlueSlider.Value + 65, 100));
 
         UpdateColor(resources, "LauncherColorPanel", panelColor);
         UpdateColor(resources, "LauncherColorPanelAlt", panelAltColor);
-        UpdateColor(resources, "LauncherColorText", ToColor(TextRedSlider.Value, TextGreenSlider.Value, TextBlueSlider.Value, TextOpacitySlider.Value));
-        UpdateColor(resources, "LauncherColorMuted", ToColor(TextRedSlider.Value - 24, TextGreenSlider.Value - 24, TextBlueSlider.Value - 24, TextOpacitySlider.Value - 26));
+        UpdateColor(resources, "LauncherColorText", textColor);
+        UpdateColor(resources, "LauncherColorSecondary", secondaryColor);
+        UpdateColor(resources, "LauncherColorMuted", mutedColor);
         UpdateColor(resources, "LauncherColorBorder", borderColor);
         double borderThicknessValue = BorderThicknessSlider.Value / 10d;
         UpdateThickness(resources, "LauncherBorderThickness", borderThicknessValue);
@@ -302,6 +373,7 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
         {
             window.UpdateAcrylicOpacity(BlurOpacitySlider.Value);
+            window.UpdateSettingsBlur(SettingsBlurSlider.Value);
             window.UpdateFrameBorder(borderColor, borderThicknessValue);
             window.UpdateTopEdgeMask(panelColor, borderColor);
             window.UpdateFrameCaptionColor(panelColor);
@@ -446,6 +518,31 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         byte blue = ClampToByte(b / 100d * 255d);
         byte alpha = ClampToByte(a / 100d * 255d);
         return Color.FromArgb(alpha, red, green, blue);
+    }
+
+    private Color DimmableColor(double factor, double opacityPercent)
+    {
+        double r = TextRedSlider.Value / 100d;
+        double g = TextGreenSlider.Value / 100d;
+        double b = TextBlueSlider.Value / 100d;
+        double luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+        double outR, outG, outB;
+        if (luminance > 0.5)
+        {
+            outR = r * factor;
+            outG = g * factor;
+            outB = b * factor;
+        }
+        else
+        {
+            double invFactor = 1.0 - factor;
+            outR = r + (1.0 - r) * invFactor;
+            outG = g + (1.0 - g) * invFactor;
+            outB = b + (1.0 - b) * invFactor;
+        }
+
+        return ToColor(outR * 100d, outG * 100d, outB * 100d, opacityPercent);
     }
 
     private static byte ClampToByte(double value)

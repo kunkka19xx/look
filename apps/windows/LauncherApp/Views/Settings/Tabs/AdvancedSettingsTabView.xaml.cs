@@ -12,6 +12,7 @@ namespace LauncherApp.Views.Settings.Tabs;
 public sealed partial class AdvancedSettingsTabView : UserControl
 {
     private readonly ObservableCollection<string> _excludedFolders = [];
+    private readonly ObservableCollection<string> _scanRoots = [];
     private string? _backgroundImagePath;
 
     private const string DefaultConfigContents = "# look configuration\n"
@@ -52,8 +53,49 @@ public sealed partial class AdvancedSettingsTabView : UserControl
     {
         InitializeComponent();
         ExcludedFoldersList.ItemsSource = _excludedFolders;
+        ScanRootsList.ItemsSource = _scanRoots;
         LoadFromConfig();
         RefreshExcludedFoldersState();
+        RefreshScanRootsState();
+        HookBackgroundLiveEvents();
+        ApplyBackgroundImageLive();
+    }
+
+    private void HookBackgroundLiveEvents()
+    {
+        BackgroundImageOpacitySlider.ValueChanged += BackgroundSlider_OnValueChanged;
+        BackgroundImageBlurSlider.ValueChanged += BackgroundSlider_OnValueChanged;
+        BackgroundImageModeCombo.SelectionChanged += BackgroundMode_OnSelectionChanged;
+    }
+
+    private void BackgroundSlider_OnValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+        ApplyBackgroundImageLive();
+    }
+
+    private void BackgroundMode_OnSelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+        ApplyBackgroundImageLive();
+    }
+
+    private void ApplyBackgroundImageLive()
+    {
+        if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
+        {
+            window.ApplyBackgroundImage(
+                _backgroundImagePath,
+                SelectedTag(BackgroundImageModeCombo, "fill"),
+                BackgroundImageOpacitySlider.Value,
+                BackgroundImageBlurSlider.Value);
+        }
     }
 
     public void SaveToConfig()
@@ -66,6 +108,7 @@ public sealed partial class AdvancedSettingsTabView : UserControl
         UpsertConfigLine(lines, "file_scan_depth", ((int)Math.Round(FileScanDepthBox.Value)).ToString());
         UpsertConfigLine(lines, "file_scan_limit", ((int)Math.Round(FileScanLimitBox.Value)).ToString());
         UpsertConfigLine(lines, "lazy_indexing_enabled", LazyIndexingToggle.IsOn ? "true" : "false");
+        UpsertConfigLine(lines, "file_scan_roots", string.Join(",", _scanRoots.Select(EscapeCsvToken)));
         UpsertConfigLine(lines, "file_exclude_paths", string.Join(",", _excludedFolders.Select(EscapeCsvToken)));
         UpsertConfigLine(lines, "backend_log_level", SelectedTag(BackendLogLevelCombo, "error"));
         UpsertConfigLine(lines, "launch_at_login", LaunchAtLoginToggle.IsOn ? "true" : "false");
@@ -140,6 +183,15 @@ public sealed partial class AdvancedSettingsTabView : UserControl
                 _excludedFolders.Add(pathValue);
             }
         }
+
+        _scanRoots.Clear();
+        foreach (string pathValue in ParseCsvTokens(values.GetValueOrDefault("file_scan_roots")))
+        {
+            if (!_scanRoots.Contains(pathValue))
+            {
+                _scanRoots.Add(pathValue);
+            }
+        }
     }
 
     private void CreateFreshConfigButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
@@ -155,6 +207,7 @@ public sealed partial class AdvancedSettingsTabView : UserControl
             EnsureDefaultConfigFileExists(path);
             LoadFromConfig();
             RefreshExcludedFoldersState();
+            RefreshScanRootsState();
             FreshConfigStatusText.Text = "Fresh config created.";
         }
         catch
@@ -186,12 +239,14 @@ public sealed partial class AdvancedSettingsTabView : UserControl
 
         _backgroundImagePath = file.Path;
         BackgroundImagePathText.Text = _backgroundImagePath;
+        ApplyBackgroundImageLive();
     }
 
     private void ClearBackgroundImageButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         _backgroundImagePath = null;
         BackgroundImagePathText.Text = "No image selected";
+        ApplyBackgroundImageLive();
     }
 
     private async void AddExcludedFolderButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
@@ -218,15 +273,13 @@ public sealed partial class AdvancedSettingsTabView : UserControl
         }
     }
 
-    private void RemoveExcludedFolderButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    private void ExcludedFolderRemove_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
-        if (ExcludedFoldersList.SelectedItem is not string value)
+        if (sender is Button { Tag: string path })
         {
-            return;
+            _excludedFolders.Remove(path);
+            RefreshExcludedFoldersState();
         }
-
-        _excludedFolders.Remove(value);
-        RefreshExcludedFoldersState();
     }
 
     private void RefreshExcludedFoldersState()
@@ -234,6 +287,116 @@ public sealed partial class AdvancedSettingsTabView : UserControl
         ExcludedFoldersEmptyText.Visibility = _excludedFolders.Count == 0
             ? Microsoft.UI.Xaml.Visibility.Visible
             : Microsoft.UI.Xaml.Visibility.Collapsed;
+    }
+
+    private async void AddScanRootButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        var picker = new FolderPicker();
+        picker.FileTypeFilter.Add("*");
+
+        IntPtr hwnd = WindowNative.GetWindowHandle(global::LauncherApp.App.MainAppWindow);
+        if (hwnd != IntPtr.Zero)
+        {
+            InitializeWithWindow.Initialize(picker, hwnd);
+        }
+
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is null)
+        {
+            return;
+        }
+
+        if (_scanRoots.Contains(folder.Path))
+        {
+            ShowScanRootsNotice($"\"{folder.Path}\" is already in the list.");
+            return;
+        }
+
+        string? coveringEntry = FindCoveringScanRoot(folder.Path);
+        if (coveringEntry is not null)
+        {
+            ShowScanRootsNotice($"\"{folder.Path}\" is already covered by \"{coveringEntry}\" — entry not added.");
+            return;
+        }
+
+        _scanRoots.Add(folder.Path);
+        ClearScanRootsNotice();
+        RefreshScanRootsState();
+    }
+
+    private void ScanRootRemove_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string path })
+        {
+            _scanRoots.Remove(path);
+            ClearScanRootsNotice();
+            RefreshScanRootsState();
+        }
+    }
+
+    private void RefreshScanRootsState()
+    {
+        ScanRootsEmptyText.Visibility = _scanRoots.Count == 0
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+    }
+
+    private void ShowScanRootsNotice(string message)
+    {
+        ScanRootsNoticeText.Text = message;
+        ScanRootsNoticeText.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+    }
+
+    private void ClearScanRootsNotice()
+    {
+        ScanRootsNoticeText.Text = string.Empty;
+        ScanRootsNoticeText.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+    }
+
+    private string? FindCoveringScanRoot(string candidate)
+    {
+        string candidateResolved = ResolveHomeRelativePath(candidate);
+        if (string.IsNullOrEmpty(candidateResolved))
+        {
+            return null;
+        }
+
+        foreach (string existing in _scanRoots)
+        {
+            string existingResolved = ResolveHomeRelativePath(existing);
+            if (string.IsNullOrEmpty(existingResolved))
+            {
+                continue;
+            }
+
+            if (string.Equals(existingResolved, candidateResolved, StringComparison.OrdinalIgnoreCase))
+            {
+                return existing;
+            }
+
+            string prefix = existingResolved + Path.DirectorySeparatorChar;
+            if (candidateResolved.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return existing;
+            }
+        }
+
+        return null;
+    }
+
+    private static string ResolveHomeRelativePath(string entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry))
+        {
+            return string.Empty;
+        }
+
+        string trimmed = entry.Trim();
+        string resolved = Path.IsPathFullyQualified(trimmed)
+            ? trimmed
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), trimmed);
+
+        return resolved.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     private static string ResolveConfigPath()

@@ -101,13 +101,76 @@
                             <ColumnDefinition Width="150" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Top" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Extra Scan Dirs" />
+                        <StackPanel Grid.Column="1" Spacing="6">
+                            <Button Style="{StaticResource LauncherSecondaryButtonStyle}" Width="120" HorizontalAlignment="Left" Content="Add Folder" Click="AddScanRootButton_OnClick" />
+                            <TextBlock x:Name="ScanRootsNoticeText" Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Visibility="Collapsed" TextWrapping="Wrap" />
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollBarVisibility="Disabled" VerticalScrollMode="Disabled">
+                                <ItemsControl x:Name="ScanRootsList">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="6" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <Grid Padding="10,5" Background="{StaticResource LauncherPanelAltBrush}" CornerRadius="12" ColumnSpacing="6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{x:Bind}" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource LauncherTextBrush}" />
+                                                <Button Grid.Column="1"
+                                                        Click="ScanRootRemove_OnClick"
+                                                        Tag="{x:Bind}"
+                                                        Width="22" Height="22" Padding="0"
+                                                        Background="Transparent" BorderThickness="0">
+                                                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11" Text="&#xE894;" Foreground="{StaticResource LauncherMutedTextBrush}" />
+                                                </Button>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            <TextBlock x:Name="ScanRootsEmptyText" Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="No extra scan directories yet" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" VerticalAlignment="Top" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Skip Folders" />
-                        <StackPanel Grid.Column="1" Spacing="8">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Style="{StaticResource LauncherSecondaryButtonStyle}" Width="120" HorizontalAlignment="Left" Content="Add Folder" Click="AddExcludedFolderButton_OnClick" />
-                                <Button Style="{StaticResource LauncherSecondaryButtonStyle}" Width="120" HorizontalAlignment="Left" Content="Remove Selected" Click="RemoveExcludedFolderButton_OnClick" />
-                            </StackPanel>
-                            <ListView x:Name="ExcludedFoldersList" Height="108" Background="Transparent" SelectionMode="Single" />
+                        <StackPanel Grid.Column="1" Spacing="6">
+                            <Button Style="{StaticResource LauncherSecondaryButtonStyle}" Width="120" HorizontalAlignment="Left" Content="Add Folder" Click="AddExcludedFolderButton_OnClick" />
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollBarVisibility="Disabled" VerticalScrollMode="Disabled">
+                                <ItemsControl x:Name="ExcludedFoldersList">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="6" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <Grid Padding="10,5" Background="{StaticResource LauncherPanelAltBrush}" CornerRadius="12" ColumnSpacing="6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{x:Bind}" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource LauncherTextBrush}" />
+                                                <Button Grid.Column="1"
+                                                        Click="ExcludedFolderRemove_OnClick"
+                                                        Tag="{x:Bind}"
+                                                        Width="22" Height="22" Padding="0"
+                                                        Background="Transparent" BorderThickness="0">
+                                                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11" Text="&#xE894;" Foreground="{StaticResource LauncherMutedTextBrush}" />
+                                                </Button>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
                             <TextBlock x:Name="ExcludedFoldersEmptyText" Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="No excluded folder paths yet" />
                         </StackPanel>
                     </Grid>

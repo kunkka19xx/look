@@ -15,6 +15,14 @@
     </Window.SystemBackdrop>
     <Grid Background="Transparent">
 
+        <Image
+            x:Name="BackgroundImage"
+            Stretch="UniformToFill"
+            Opacity="0"
+            IsHitTestVisible="False" />
+
+        <Grid x:Name="BlurLayer" IsHitTestVisible="False" />
+
         <Border
             x:Name="LauncherSurface"
             Margin="0"
@@ -36,10 +44,37 @@
                     Padding="34,10,12,10"
                     FontSize="14"
                     PlaceholderText="Search apps"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Foreground="{StaticResource LauncherTextBrush}"
+                    SelectionHighlightColor="{StaticResource LauncherAccentBrush}"
                     Loaded="QueryInput_OnLoaded"
                     TextChanged="QueryInput_OnTextChanged"
                     PreviewKeyDown="QueryInput_OnPreviewKeyDown"
-                    KeyDown="QueryInput_OnKeyDown" />
+                    KeyDown="QueryInput_OnKeyDown">
+                        <TextBox.Resources>
+                            <StaticResource x:Key="TextControlForeground" ResourceKey="LauncherTextBrush" />
+                            <StaticResource x:Key="TextControlForegroundPointerOver" ResourceKey="LauncherTextBrush" />
+                            <StaticResource x:Key="TextControlForegroundFocused" ResourceKey="LauncherTextBrush" />
+                            <StaticResource x:Key="TextControlPlaceholderForeground" ResourceKey="LauncherMutedTextBrush" />
+                            <StaticResource x:Key="TextControlPlaceholderForegroundPointerOver" ResourceKey="LauncherMutedTextBrush" />
+                            <StaticResource x:Key="TextControlPlaceholderForegroundFocused" ResourceKey="LauncherMutedTextBrush" />
+                            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent" />
+                            <StaticResource x:Key="TextControlButtonForeground" ResourceKey="LauncherMutedTextBrush" />
+                            <StaticResource x:Key="TextControlButtonForegroundPointerOver" ResourceKey="LauncherTextBrush" />
+                            <StaticResource x:Key="TextControlButtonForegroundPressed" ResourceKey="LauncherTextBrush" />
+                            <SolidColorBrush x:Key="TextControlButtonBackground" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlButtonBackgroundPointerOver" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlButtonBackgroundPressed" Color="Transparent" />
+                        </TextBox.Resources>
+                    </TextBox>
                     <TextBlock
                     Margin="12,0,0,0"
                     FontFamily="Segoe MDL2 Assets"

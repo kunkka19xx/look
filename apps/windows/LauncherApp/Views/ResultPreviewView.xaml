@@ -33,7 +33,7 @@
                             FontSize="22"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Foreground="#B7C2D6"
+                            Foreground="{StaticResource LauncherSecondaryTextBrush}"
                             Text="&#xE8A5;" />
                         <Image
                             x:Name="HeaderImage"

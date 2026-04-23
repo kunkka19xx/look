@@ -14,6 +14,7 @@
             <Color x:Key="LauncherColorPanel">#2D151C26</Color>
             <Color x:Key="LauncherColorPanelAlt">#451A2330</Color>
             <Color x:Key="LauncherColorText">#E8EDF7</Color>
+            <Color x:Key="LauncherColorSecondary">#BEC3CB</Color>
             <Color x:Key="LauncherColorMuted">#A2AEBD</Color>
             <Color x:Key="LauncherColorBorder">#66273446</Color>
             <Color x:Key="LauncherColorAccent">#7AA2F7</Color>
@@ -27,6 +28,7 @@
             <SolidColorBrush x:Key="LauncherPanelBrush" Color="{StaticResource LauncherColorPanel}" />
             <SolidColorBrush x:Key="LauncherPanelAltBrush" Color="{StaticResource LauncherColorPanelAlt}" />
             <SolidColorBrush x:Key="LauncherTextBrush" Color="{StaticResource LauncherColorText}" />
+            <SolidColorBrush x:Key="LauncherSecondaryTextBrush" Color="{StaticResource LauncherColorSecondary}" />
             <SolidColorBrush x:Key="LauncherMutedTextBrush" Color="{StaticResource LauncherColorMuted}" />
             <SolidColorBrush x:Key="LauncherBorderBrush" Color="{StaticResource LauncherColorBorder}" />
             <SolidColorBrush x:Key="LauncherAccentBrush" Color="{StaticResource LauncherColorAccent}" />
@@ -44,6 +46,11 @@
             <Style x:Key="LauncherBodyTextStyle" TargetType="TextBlock">
                 <Setter Property="Foreground" Value="{StaticResource LauncherTextBrush}" />
                 <Setter Property="FontSize" Value="14" />
+            </Style>
+
+            <Style x:Key="LauncherSubtitleTextStyle" TargetType="TextBlock" BasedOn="{StaticResource LauncherBodyTextStyle}">
+                <Setter Property="Foreground" Value="{StaticResource LauncherSecondaryTextBrush}" />
+                <Setter Property="FontSize" Value="13" />
             </Style>
 
             <Style x:Key="LauncherCaptionTextStyle" TargetType="TextBlock" BasedOn="{StaticResource LauncherBodyTextStyle}">

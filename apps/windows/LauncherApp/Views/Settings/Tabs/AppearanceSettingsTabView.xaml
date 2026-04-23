@@ -34,16 +34,6 @@
 
     <ScrollViewer Padding="8,4,8,8" VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="12">
-            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
-                <StackPanel Spacing="4">
-                    <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Appearance" />
-                    <TextBlock
-                        FontSize="11"
-                        Foreground="{StaticResource LauncherMutedTextBrush}"
-                        Text="Styled to mirror macOS Settings layout while keeping live theme controls."
-                        TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
 
             <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Theme" />
             <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
@@ -55,11 +45,13 @@
                             <ColumnDefinition Width="90" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Preset" />
-                        <ComboBox Grid.Column="1" SelectedIndex="0">
-                            <ComboBoxItem Content="Graphite" />
-                            <ComboBoxItem Content="Glass Ocean" />
-                            <ComboBoxItem Content="Warm Paper" />
-                            <ComboBoxItem Content="Night Studio" />
+                        <ComboBox x:Name="PresetCombo" Grid.Column="1" SelectedIndex="0" SelectionChanged="PresetCombo_OnSelectionChanged">
+                            <ComboBoxItem Content="Catppuccin" />
+                            <ComboBoxItem Content="Tokyo Night" />
+                            <ComboBoxItem Content="Rose Pine" />
+                            <ComboBoxItem Content="Gruvbox" />
+                            <ComboBoxItem Content="Dracula" />
+                            <ComboBoxItem Content="Kanagawa" />
                         </ComboBox>
                         <TextBlock Grid.Column="2" HorizontalAlignment="Right" Style="{StaticResource AppearanceLabelStyle}" Text="Built-in" />
                     </Grid>
@@ -277,76 +269,6 @@
                         <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Border Opacity" />
                         <Slider x:Name="BorderOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
                         <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=BorderOpacitySlider, Path=Value}" />
-                    </Grid>
-                </StackPanel>
-            </Border>
-
-            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="macOS appearance settings not on Windows yet" />
-            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
-                <StackPanel Spacing="8">
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Appearance mode" />
-                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Light, Dark, Auto schedule" TextWrapping="Wrap" />
-                    </Grid>
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Accent color" />
-                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Multicolor and fixed accent choices" TextWrapping="Wrap" />
-                    </Grid>
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Highlight color" />
-                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Independent text selection highlight" TextWrapping="Wrap" />
-                    </Grid>
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Sidebar icon size" />
-                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Small, Medium, Large" TextWrapping="Wrap" />
-                    </Grid>
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Wallpaper tinting" />
-                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Allow wallpaper tinting in windows" TextWrapping="Wrap" />
-                    </Grid>
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Show scroll bars" />
-                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Automatic, When scrolling, Always" TextWrapping="Wrap" />
-                    </Grid>
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Scroll bar click behavior" />
-                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Jump to next page or jump to clicked spot" TextWrapping="Wrap" />
-                    </Grid>
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Document and tab defaults" />
-                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Prefer tabs and close behavior defaults for apps" TextWrapping="Wrap" />
                     </Grid>
                 </StackPanel>
             </Border>
