@@ -82,7 +82,7 @@
             <Style x:Key="LauncherSurfaceBorderStyle" TargetType="Border">
                 <Setter Property="Background" Value="{StaticResource LauncherPanelBrush}" />
                 <Setter Property="BorderBrush" Value="{StaticResource LauncherBorderBrush}" />
-                <Setter Property="BorderThickness" Value="{StaticResource LauncherBorderThickness}" />
+                <Setter Property="BorderThickness" Value="{ThemeResource LauncherBorderThickness}" />
                 <Setter Property="CornerRadius" Value="12" />
             </Style>
 

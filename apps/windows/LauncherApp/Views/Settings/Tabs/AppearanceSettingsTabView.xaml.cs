@@ -82,9 +82,14 @@ public sealed partial class AppearanceSettingsTabView : UserControl
             return;
         }
 
+        Color? initialPanelColor = null;
+        Color? initialBorderColor = null;
+        var mainWindow = global::LauncherApp.App.MainAppWindow as global::LauncherApp.MainWindow;
+
         if (resources.ContainsKey("LauncherColorPanel") && resources["LauncherColorPanel"] is Color panelColor)
         {
             SetColorSliders(panelColor, TintRedSlider, TintGreenSlider, TintBlueSlider, TintOpacitySlider);
+            initialPanelColor = panelColor;
         }
 
         if (resources.ContainsKey("LauncherColorPanelAlt") && resources["LauncherColorPanelAlt"] is Color panelAltColor)
@@ -100,6 +105,7 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         if (resources.ContainsKey("LauncherColorBorder") && resources["LauncherColorBorder"] is Color borderColor)
         {
             SetColorSliders(borderColor, BorderRedSlider, BorderGreenSlider, BorderBlueSlider, BorderOpacitySlider);
+            initialBorderColor = borderColor;
         }
 
         if (resources.ContainsKey("LauncherBorderThickness") && resources["LauncherBorderThickness"] is Thickness thickness)
@@ -117,17 +123,30 @@ public sealed partial class AppearanceSettingsTabView : UserControl
             FontNameInput.Text = family.Source;
         }
 
-        string mode = "Acrylic";
-        if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
-        {
-            mode = window.CurrentBackdropMode;
-        }
+        string mode = mainWindow?.CurrentBackdropMode ?? "Acrylic";
 
         BackdropModeCombo.SelectedIndex = mode.Equals("Solid", System.StringComparison.OrdinalIgnoreCase)
             ? 2
             : mode.Equals("Mica", System.StringComparison.OrdinalIgnoreCase)
                 ? 0
                 : 1;
+
+        if (mainWindow is not null)
+        {
+            Color appliedPanelColor = initialPanelColor ?? ToColor(
+                TintRedSlider.Value,
+                TintGreenSlider.Value,
+                TintBlueSlider.Value,
+                TintOpacitySlider.Value);
+            Color appliedBorderColor = initialBorderColor ?? ToColor(
+                BorderRedSlider.Value,
+                BorderGreenSlider.Value,
+                BorderBlueSlider.Value,
+                BorderOpacitySlider.Value);
+            double borderThickness = BorderThicknessSlider.Value / 10d;
+            mainWindow.UpdateFrameBorder(appliedBorderColor, borderThickness);
+            mainWindow.UpdateTopEdgeMask(appliedPanelColor, appliedBorderColor);
+        }
     }
 
     private static void SetColorSliders(Color color, Slider red, Slider green, Slider blue, Slider alpha)
@@ -268,19 +287,24 @@ public sealed partial class AppearanceSettingsTabView : UserControl
             System.Math.Max(TextGreenSlider.Value - 24, 20),
             System.Math.Max(TextBlueSlider.Value - 24, 20),
             mutedOpacity));
-        UpdateBrush(resources, "LauncherBorderBrush", ToColor(BorderRedSlider.Value, BorderGreenSlider.Value, BorderBlueSlider.Value, BorderOpacitySlider.Value));
+        Color borderColor = ToColor(BorderRedSlider.Value, BorderGreenSlider.Value, BorderBlueSlider.Value, BorderOpacitySlider.Value);
+        UpdateBrush(resources, "LauncherBorderBrush", borderColor);
         UpdateBrush(resources, "LauncherAccentBrush", ToColor(TintRedSlider.Value + 40, TintGreenSlider.Value + 45, TintBlueSlider.Value + 65, 100));
 
         UpdateColor(resources, "LauncherColorPanel", panelColor);
         UpdateColor(resources, "LauncherColorPanelAlt", panelAltColor);
         UpdateColor(resources, "LauncherColorText", ToColor(TextRedSlider.Value, TextGreenSlider.Value, TextBlueSlider.Value, TextOpacitySlider.Value));
         UpdateColor(resources, "LauncherColorMuted", ToColor(TextRedSlider.Value - 24, TextGreenSlider.Value - 24, TextBlueSlider.Value - 24, TextOpacitySlider.Value - 26));
-        UpdateColor(resources, "LauncherColorBorder", ToColor(BorderRedSlider.Value, BorderGreenSlider.Value, BorderBlueSlider.Value, BorderOpacitySlider.Value));
-        UpdateThickness(resources, "LauncherBorderThickness", BorderThicknessSlider.Value / 10d);
+        UpdateColor(resources, "LauncherColorBorder", borderColor);
+        double borderThicknessValue = BorderThicknessSlider.Value / 10d;
+        UpdateThickness(resources, "LauncherBorderThickness", borderThicknessValue);
 
         if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
         {
             window.UpdateAcrylicOpacity(BlurOpacitySlider.Value);
+            window.UpdateFrameBorder(borderColor, borderThicknessValue);
+            window.UpdateTopEdgeMask(panelColor, borderColor);
+            window.UpdateFrameCaptionColor(panelColor);
         }
 
         ApplyTypographyPreview(resources);

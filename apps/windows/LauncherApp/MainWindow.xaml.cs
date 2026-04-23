@@ -42,6 +42,9 @@ namespace LauncherApp
         private string _appliedBackdropMode = string.Empty;
         private Windows.UI.Color _acrylicTint = Windows.UI.Color.FromArgb(45, 21, 28, 38);
         private readonly TransparentTintBackdrop _transparentBackdrop;
+        private Windows.UI.Color _frameBorderColor = Windows.UI.Color.FromArgb(0x66, 0x27, 0x34, 0x46);
+        private double _frameBorderThickness = 0.15;
+        private bool _frameBorderHidden;
         private static readonly ConcurrentDictionary<string, bool> ExeVersionInfoCache = new(StringComparer.OrdinalIgnoreCase);
         private static readonly string[] NoisyExecutableNameTokens =
         [
@@ -66,6 +69,7 @@ namespace LauncherApp
             InitializeComponent();
             _transparentBackdrop = new TransparentTintBackdrop(_acrylicTint);
             ConfigureLauncherWindow();
+            InitializeFrameBorderState();
 
             if (Content is UIElement root)
             {
@@ -143,7 +147,8 @@ namespace LauncherApp
                 presenter.SetBorderAndTitleBar(true, false);
             }
 
-            ExtendsContentIntoTitleBar = false;
+            ExtendsContentIntoTitleBar = true;
+            SetTitleBar(null);
 
             if (Content is FrameworkElement root)
             {
@@ -205,6 +210,60 @@ namespace LauncherApp
             {
                 return;
             }
+        }
+
+        private void ApplyImmersiveDarkModeFrame()
+        {
+            IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            int enabled = 1;
+            _ = DwmSetWindowAttribute(
+                hwnd,
+                (int)DwmWindowAttribute.UseImmersiveDarkMode,
+                ref enabled,
+                Marshal.SizeOf<int>());
+        }
+
+        public void UpdateFrameBorder(Windows.UI.Color color, double thickness)
+        {
+            _frameBorderColor = color;
+            _frameBorderThickness = thickness;
+
+            if (LauncherSurface is not null)
+            {
+                LauncherSurface.BorderThickness = new Thickness(thickness);
+            }
+
+            ApplyDwmBorderColor();
+        }
+
+        public void UpdateTopEdgeMask(Windows.UI.Color panelColor, Windows.UI.Color borderColor)
+        {
+            if (TopEdgeMask is null)
+            {
+                return;
+            }
+
+            Windows.UI.Color maskColor = borderColor.A >= 80
+                ? borderColor
+                : Windows.UI.Color.FromArgb(220, panelColor.R, panelColor.G, panelColor.B);
+
+            TopEdgeMask.Fill = new SolidColorBrush(maskColor);
+            ApplyDwmCaptionColor(panelColor);
+        }
+
+        public void UpdateFrameCaptionColor(Windows.UI.Color panelColor)
+        {
+            ApplyDwmCaptionColor(panelColor);
+        }
+
+        public void UpdateBorderThickness(Thickness thickness)
+        {
+            UpdateFrameBorder(_frameBorderColor, thickness.Left);
         }
 
         private void EnableAcrylicFallback(Windows.UI.Color tint)
@@ -297,12 +356,83 @@ namespace LauncherApp
                 ref cornerPreference,
                 Marshal.SizeOf<int>());
 
-            int borderColor = removeBorder ? unchecked((int)0xFFFFFFFE) : unchecked((int)0xFFFFFFFF);
+            _frameBorderHidden = removeBorder;
+            ApplyDwmBorderColor();
+        }
+
+        private void ApplyDwmBorderColor()
+        {
+            IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            int borderColor = unchecked((int)0xFFFFFFFE);
+
             _ = DwmSetWindowAttribute(
                 hwnd,
                 (int)DwmWindowAttribute.BorderColor,
                 ref borderColor,
                 Marshal.SizeOf<int>());
+        }
+
+        private void ApplyDwmCaptionColor(Windows.UI.Color panelColor)
+        {
+            IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            int captionColor = BuildColorRef(panelColor.R, panelColor.G, panelColor.B);
+            _ = DwmSetWindowAttribute(
+                hwnd,
+                (int)DwmWindowAttribute.CaptionColor,
+                ref captionColor,
+                Marshal.SizeOf<int>());
+
+            int textColor = BuildColorRef(0xE8, 0xED, 0xF7);
+            _ = DwmSetWindowAttribute(
+                hwnd,
+                (int)DwmWindowAttribute.TextColor,
+                ref textColor,
+                Marshal.SizeOf<int>());
+        }
+
+        private static int BuildColorRef(byte red, byte green, byte blue)
+        {
+            return red | (green << 8) | (blue << 16);
+        }
+
+        private void InitializeFrameBorderState()
+        {
+            if (Application.Current?.Resources is not ResourceDictionary resources)
+            {
+                ApplyDwmBorderColor();
+                return;
+            }
+
+            Windows.UI.Color panelColor = Windows.UI.Color.FromArgb(45, 21, 28, 38);
+
+            if (resources.ContainsKey("LauncherColorBorder") && resources["LauncherColorBorder"] is Windows.UI.Color color)
+            {
+                _frameBorderColor = color;
+            }
+
+            if (resources.ContainsKey("LauncherColorPanel") && resources["LauncherColorPanel"] is Windows.UI.Color panel)
+            {
+                panelColor = panel;
+            }
+
+            if (resources.ContainsKey("LauncherBorderThickness") && resources["LauncherBorderThickness"] is Thickness thickness)
+            {
+                _frameBorderThickness = thickness.Left;
+            }
+
+            UpdateFrameBorder(_frameBorderColor, _frameBorderThickness);
+            UpdateTopEdgeMask(panelColor, _frameBorderColor);
+            UpdateFrameCaptionColor(panelColor);
         }
 
         private enum AccentState
@@ -318,8 +448,11 @@ namespace LauncherApp
 
         private enum DwmWindowAttribute
         {
+            UseImmersiveDarkMode = 20,
             WindowCornerPreference = 33,
             BorderColor = 34,
+            CaptionColor = 35,
+            TextColor = 36,
         }
 
         private enum DwmWindowCornerPreference

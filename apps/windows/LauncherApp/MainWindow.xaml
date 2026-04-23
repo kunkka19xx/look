@@ -20,7 +20,7 @@
             Padding="6"
             CornerRadius="0"
             BorderBrush="{StaticResource LauncherBorderBrush}"
-            BorderThickness="{StaticResource LauncherBorderThickness}"
+            BorderThickness="{ThemeResource LauncherBorderThickness}"
             Background="{StaticResource LauncherPanelBrush}">
             <Grid RowSpacing="10">
                 <Grid.RowDefinitions>
@@ -127,5 +127,12 @@
                 </StackPanel>
             </Grid>
         </Border>
+
+        <Rectangle
+            x:Name="TopEdgeMask"
+            Height="2"
+            VerticalAlignment="Top"
+            Fill="{ThemeResource LauncherBorderBrush}"
+            IsHitTestVisible="False" />
     </Grid>
 </Window>

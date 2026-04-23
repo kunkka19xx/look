@@ -12,62 +12,244 @@
             <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Core launcher" />
             <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
                 <StackPanel Spacing="8">
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Tab" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Select next result" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Shift+Tab" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Select previous result" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Up / Down" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Move selection" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+C" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Copy selected file/folder to clipboard" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+R" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Reveal selected app/file/folder in Explorer" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+Enter" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Search query on Google" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+/" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Enter command mode" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+H" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Toggle in-window keyboard help screen" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Esc" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Back to app list (in command mode)" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Shift+Esc" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Hide launcher" /></Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Tab" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Select next result" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Shift+Tab" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Select previous result" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Up / Down" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Move selection" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+C" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Copy selected file/folder to clipboard" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+R" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Reveal selected app/file/folder in Explorer" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+Enter" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Search query on Google" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+/" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Enter command mode" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+H" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Toggle in-window keyboard help screen" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Esc" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Back to app list (in command mode)" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Shift+Esc" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Hide launcher" />
+                    </Grid>
                 </StackPanel>
             </Border>
 
             <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Search prefixes" />
             <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
                 <StackPanel Spacing="8">
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="a&quot;" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Apps-only query" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="f&quot;" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Files-only query" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="d&quot;" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Folders-only query" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="r&quot;" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Regex query" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="c&quot;" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Clipboard history query" /></Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="a&quot;" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Apps-only query" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="f&quot;" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Files-only query" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="d&quot;" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Folders-only query" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="r&quot;" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Regex query" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="c&quot;" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Clipboard history query" />
+                    </Grid>
                 </StackPanel>
             </Border>
 
             <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Clipboard history" />
             <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
                 <StackPanel Spacing="8">
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Enter" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Copy selected history item back to clipboard" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Delete button" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Remove selected clipboard item from look history" /></Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Enter" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Copy selected history item back to clipboard" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Delete button" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Remove selected clipboard item from look history" />
+                    </Grid>
                 </StackPanel>
             </Border>
 
             <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Panels" />
             <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
                 <StackPanel Spacing="8">
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+Shift+," /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Open/close theme and docs panel" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+Shift+;" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Reload .look.config" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Save Config" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Write current UI settings to .look.config" /></Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+Shift+," />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Open/close theme and docs panel" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+Shift+;" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Reload .look.config" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Save Config" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Write current UI settings to .look.config" />
+                    </Grid>
                 </StackPanel>
             </Border>
 
             <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Zoom" />
             <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
                 <StackPanel Spacing="8">
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+-" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Zoom out UI scale" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+=" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Zoom in UI scale" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+0" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Reset UI scale" /></Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+-" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Zoom out UI scale" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+=" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Zoom in UI scale" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Ctrl+0" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Reset UI scale" />
+                    </Grid>
                 </StackPanel>
             </Border>
 
             <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Theme controls" />
             <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
                 <StackPanel Spacing="8">
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Appearance tab" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Tint, blur material, blur opacity" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Advanced tab" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Background, indexing, privacy, logging controls" /></Grid>
-                    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Shortcuts tab" /><TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="In-app keyboard documentation" /></Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Appearance tab" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Tint, blur material, blur opacity" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Advanced tab" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Background, indexing, privacy, logging controls" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Shortcuts tab" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="In-app keyboard documentation" />
+                    </Grid>
                 </StackPanel>
             </Border>
         </StackPanel>

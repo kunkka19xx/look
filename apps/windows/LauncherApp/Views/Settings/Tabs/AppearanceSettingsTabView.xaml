@@ -13,73 +13,343 @@
             <Setter Property="Foreground" Value="#9FC0F8" />
             <Setter Property="Background" Value="#263243" />
         </Style>
+
+        <Style x:Key="AppearanceSectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource LauncherTextBrush}" />
+        </Style>
+
+        <Style x:Key="AppearanceLabelStyle" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{StaticResource LauncherMutedTextBrush}" />
+        </Style>
+
+        <Style x:Key="AppearanceValueStyle" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="Foreground" Value="{StaticResource LauncherTextBrush}" />
+        </Style>
     </UserControl.Resources>
 
     <ScrollViewer Padding="8,4,8,8" VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="10">
-            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Theme" />
-            <Grid ColumnSpacing="10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="150" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="64" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Preset" />
-                <ComboBox Grid.Column="1" SelectedIndex="0">
-                    <ComboBoxItem Content="Graphite" />
-                    <ComboBoxItem Content="Glass Ocean" />
-                    <ComboBoxItem Content="Warm Paper" />
-                    <ComboBoxItem Content="Night Studio" />
-                </ComboBox>
-                <TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Builtin" />
-            </Grid>
+        <StackPanel Spacing="12">
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="4">
+                    <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Appearance" />
+                    <TextBlock
+                        FontSize="11"
+                        Foreground="{StaticResource LauncherMutedTextBrush}"
+                        Text="Styled to mirror macOS Settings layout while keeping live theme controls."
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
 
-            <Grid ColumnSpacing="10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="150" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="64" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Backdrop" />
-                <ComboBox x:Name="BackdropModeCombo" Grid.Column="1" SelectedIndex="1" SelectionChanged="BackdropModeCombo_OnSelectionChanged">
-                    <ComboBoxItem Content="Mica" />
-                    <ComboBoxItem Content="Acrylic" />
-                    <ComboBoxItem Content="Solid" />
-                </ComboBox>
-                <TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Window" />
-            </Grid>
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Theme" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="90" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Preset" />
+                        <ComboBox Grid.Column="1" SelectedIndex="0">
+                            <ComboBoxItem Content="Graphite" />
+                            <ComboBoxItem Content="Glass Ocean" />
+                            <ComboBoxItem Content="Warm Paper" />
+                            <ComboBoxItem Content="Night Studio" />
+                        </ComboBox>
+                        <TextBlock Grid.Column="2" HorizontalAlignment="Right" Style="{StaticResource AppearanceLabelStyle}" Text="Built-in" />
+                    </Grid>
 
-            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Tint Color" />
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Red" /><Slider x:Name="TintRedSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TintRedSlider, Path=Value}" /></Grid>
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Green" /><Slider x:Name="TintGreenSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TintGreenSlider, Path=Value}" /></Grid>
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Blue" /><Slider x:Name="TintBlueSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TintBlueSlider, Path=Value}" /></Grid>
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Tint Opacity" /><Slider x:Name="TintOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TintOpacitySlider, Path=Value}" /></Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="90" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Backdrop" />
+                        <ComboBox x:Name="BackdropModeCombo" Grid.Column="1" SelectedIndex="1" SelectionChanged="BackdropModeCombo_OnSelectionChanged">
+                            <ComboBoxItem Content="Mica" />
+                            <ComboBoxItem Content="Acrylic" />
+                            <ComboBoxItem Content="Solid" />
+                        </ComboBox>
+                        <TextBlock Grid.Column="2" HorizontalAlignment="Right" Style="{StaticResource AppearanceLabelStyle}" Text="Window" />
+                    </Grid>
+                </StackPanel>
+            </Border>
 
-            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Blur" />
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Blur Opacity" /><Slider x:Name="BlurOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BlurOpacitySlider, Path=Value}" /></Grid>
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Settings Blur" /><Slider x:Name="SettingsBlurSlider" Grid.Column="1" Minimum="40" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=SettingsBlurSlider, Path=Value}" /></Grid>
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Tint Color" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Red" />
+                        <Slider x:Name="TintRedSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=TintRedSlider, Path=Value}" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Green" />
+                        <Slider x:Name="TintGreenSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=TintGreenSlider, Path=Value}" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Blue" />
+                        <Slider x:Name="TintBlueSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=TintBlueSlider, Path=Value}" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Tint Opacity" />
+                        <Slider x:Name="TintOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=TintOpacitySlider, Path=Value}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
 
-            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Font" />
-            <Grid ColumnSpacing="10">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Font Name" />
-                <AutoSuggestBox x:Name="FontNameInput" Grid.Column="1" PlaceholderText="Type a font name" TextChanged="FontNameInput_OnTextChanged" QuerySubmitted="FontNameInput_OnQuerySubmitted" />
-                <TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Installed" />
-            </Grid>
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Font Size" /><Slider x:Name="FontSizeSlider" Grid.Column="1" Minimum="10" Maximum="28" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=FontSizeSlider, Path=Value}" /></Grid>
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Blur" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Blur Opacity" />
+                        <Slider x:Name="BlurOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=BlurOpacitySlider, Path=Value}" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Settings Blur" />
+                        <Slider x:Name="SettingsBlurSlider" Grid.Column="1" Minimum="40" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=SettingsBlurSlider, Path=Value}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
 
-            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Font Color" />
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Text Red" /><Slider x:Name="TextRedSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TextRedSlider, Path=Value}" /></Grid>
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Text Green" /><Slider x:Name="TextGreenSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TextGreenSlider, Path=Value}" /></Grid>
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Text Blue" /><Slider x:Name="TextBlueSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TextBlueSlider, Path=Value}" /></Grid>
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Text Opacity" /><Slider x:Name="TextOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=TextOpacitySlider, Path=Value}" /></Grid>
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Font" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="90" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Font Name" />
+                        <AutoSuggestBox x:Name="FontNameInput" Grid.Column="1" PlaceholderText="Type a font name" TextChanged="FontNameInput_OnTextChanged" QuerySubmitted="FontNameInput_OnQuerySubmitted" />
+                        <TextBlock Grid.Column="2" HorizontalAlignment="Right" Style="{StaticResource AppearanceLabelStyle}" Text="Installed" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Font Size" />
+                        <Slider x:Name="FontSizeSlider" Grid.Column="1" Minimum="10" Maximum="28" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=FontSizeSlider, Path=Value}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
 
-            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Border" />
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Border Thick" /><Slider x:Name="BorderThicknessSlider" Grid.Column="1" Minimum="0" Maximum="60" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BorderThicknessSlider, Path=Value}" /></Grid>
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Border Red" /><Slider x:Name="BorderRedSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BorderRedSlider, Path=Value}" /></Grid>
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Border Green" /><Slider x:Name="BorderGreenSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BorderGreenSlider, Path=Value}" /></Grid>
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Border Blue" /><Slider x:Name="BorderBlueSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BorderBlueSlider, Path=Value}" /></Grid>
-            <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions><TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Border Opacity" /><Slider x:Name="BorderOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" /><TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource LauncherTextBrush}" Text="{Binding ElementName=BorderOpacitySlider, Path=Value}" /></Grid>
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Font Color" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Text Red" />
+                        <Slider x:Name="TextRedSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=TextRedSlider, Path=Value}" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Text Green" />
+                        <Slider x:Name="TextGreenSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=TextGreenSlider, Path=Value}" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Text Blue" />
+                        <Slider x:Name="TextBlueSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=TextBlueSlider, Path=Value}" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Text Opacity" />
+                        <Slider x:Name="TextOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=TextOpacitySlider, Path=Value}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Border" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Border Thick" />
+                        <Slider x:Name="BorderThicknessSlider" Grid.Column="1" Minimum="0" Maximum="60" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=BorderThicknessSlider, Path=Value}" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Border Red" />
+                        <Slider x:Name="BorderRedSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=BorderRedSlider, Path=Value}" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Border Green" />
+                        <Slider x:Name="BorderGreenSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=BorderGreenSlider, Path=Value}" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Border Blue" />
+                        <Slider x:Name="BorderBlueSlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=BorderBlueSlider, Path=Value}" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="64" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Border Opacity" />
+                        <Slider x:Name="BorderOpacitySlider" Grid.Column="1" Minimum="0" Maximum="100" StepFrequency="1" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource AppearanceValueStyle}" Text="{Binding ElementName=BorderOpacitySlider, Path=Value}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="macOS appearance settings not on Windows yet" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="8">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Appearance mode" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Light, Dark, Auto schedule" TextWrapping="Wrap" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Accent color" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Multicolor and fixed accent choices" TextWrapping="Wrap" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Highlight color" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Independent text selection highlight" TextWrapping="Wrap" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Sidebar icon size" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Small, Medium, Large" TextWrapping="Wrap" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Wallpaper tinting" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Allow wallpaper tinting in windows" TextWrapping="Wrap" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Show scroll bars" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Automatic, When scrolling, Always" TextWrapping="Wrap" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Scroll bar click behavior" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Jump to next page or jump to clicked spot" TextWrapping="Wrap" />
+                    </Grid>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Foreground="{StaticResource LauncherTextBrush}" Text="Document and tab defaults" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Prefer tabs and close behavior defaults for apps" TextWrapping="Wrap" />
+                    </Grid>
+                </StackPanel>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>
