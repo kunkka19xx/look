@@ -22,7 +22,8 @@ public sealed class ShellExecuteService
             string resolvedTarget = normalizedTarget;
             string resolvedArguments = arguments ?? string.Empty;
 
-            if (resolvedTarget.StartsWith("ms-settings:", StringComparison.OrdinalIgnoreCase))
+            if (resolvedTarget.StartsWith("ms-settings:", StringComparison.OrdinalIgnoreCase)
+                || resolvedTarget.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
             {
                 resolvedArguments = resolvedTarget;
                 resolvedTarget = "explorer.exe";
@@ -52,6 +53,7 @@ public sealed class ShellExecuteService
         if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             || trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
             || trimmed.StartsWith("ms-settings:", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("shell:", StringComparison.OrdinalIgnoreCase)
             || trimmed.StartsWith("command://", StringComparison.OrdinalIgnoreCase)
             || trimmed.StartsWith("help://", StringComparison.OrdinalIgnoreCase))
         {

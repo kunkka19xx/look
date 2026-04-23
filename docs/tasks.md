@@ -117,7 +117,7 @@ Reference: `docs/windows-port-plan.md`
 
 **Windows real functionality (remaining items):**
 - [x] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff)
-- [ ] implement global hotkey + hide/show/focus lifecycle parity on Windows
+- [x] implement global hotkey + hide/show/focus lifecycle parity on Windows (Alt+Space toggle, Alt+Shift+Q quit; hide-on-focus-loss still pending)
 - [ ] implement Windows clipboard history mode (`c"`) with listener-first capture strategy
 - [x] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`)
 - [ ] implement Windows launch-at-login integration
@@ -152,7 +152,7 @@ Windows UI delivery note (mock-first):
 - [x] implement FFI search connection (Rust backend working, search returns real results)
 - [x] implement IconService for Windows icon extraction (SHGetFileInfo API)
 - [x] fix icon display in WinUI 3 (stable icon rendering with shell extraction + cache fallback)
-- [ ] implement global hotkey + hide/show/focus lifecycle parity on Windows
+- [x] implement global hotkey + hide/show/focus lifecycle parity on Windows (Alt+Space toggle, Alt+Shift+Q quit; hide-on-focus-loss still pending)
 - [ ] implement Windows clipboard history mode (`c"`) with listener-first capture strategy
 - [x] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`) with in-panel output and keyboard run flow
 - [ ] implement Windows launch-at-login integration
@@ -183,6 +183,56 @@ Windows command-mode parity updates (recent):
 - [x] align calc parser with macOS advanced features (`^`, `!`, `%`, `pi`, `e`, `sqrt/abs/round/floor/ceil`, aliases)
 - [x] add finance-style percent semantics for add/subtract (`200 + 10%`, `200 - 10%`)
 - [x] expand and group sys output sections (overview/performance/hardware/network)
+
+Windows launcher polish (2026-Q2):
+
+Search pipeline:
+
+- [x] async search via `Task.Run` with version-based cancellation; debounce bumped 8 -> 16 ms
+- [x] drop `FileVersionInfo.GetVersionInfo` from dedup hot path; Score breaks InstallExecutable ties
+- [x] junk-path filter: `$RECYCLE.BIN`, `System Volume Information`, `$WINDOWS.~BT/~WS`, `Config.Msi`, `PerfLogs`, `Recovery`, `$GetCurrent`, `$SysReset`, `$INPLACE.~TR`, `\WindowsApps\`
+
+Icon pipeline:
+
+- [x] `IShellItemImageFactory` primary path for `shell:` URIs and `.lnk` stubs so UWP targets resolve to real tile logos
+- [x] HBITMAP -> managed `Bitmap` with alpha preservation (manual DIB copy + un-premultiplication, topdown/bottomup handling, bounds checks)
+- [x] `.url` internet shortcut parsing (`IconFile` / `IconIndex`)
+- [x] relocate icon cache to `%LOCALAPPDATA%\look\icon-cache` so it survives reboots
+- [x] log every previously-silent catch via `Debug.WriteLine` with context
+
+UWP discovery + routing:
+
+- [x] `Services/UwpAppService.cs` enumerates `shell:AppsFolder` via Shell.Application COM, filters to AUMID entries, fuzzy-merges with Rust results
+- [x] dedup extended with `AppPathCategory.UwpAppsFolder` (rank 3); pairing generalized so UWP beats Start Menu `.lnk` and Program-Files exe on matching title
+- [x] `ShellExecuteService` routes `shell:AppsFolder\<AUMID>` through `explorer.exe` so UWP entries launch cleanly
+
+Appearance parity (Windows <- macOS):
+
+- [x] port six macOS presets to Windows: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa
+- [x] add three-tier text system (primary / secondary / muted) with `dimmableColor` (0.82 / 0.64) fallback and per-preset secondary/muted overrides
+- [x] align search input theming: local `TextBox.Resources` aliases to `LauncherTextBrush` / `LauncherMutedTextBrush` / `LauncherAccentBrush` so it follows preset changes
+
+Background + backdrop rendering:
+
+- [x] Win2D pipeline for bg image: `CanvasBitmap` + `CanvasImageSource` with `GaussianBlurEffect`; live preview on slider drags; startup re-apply from config
+- [x] composition `SpriteVisual` with `CompositionBackdropBrush` + `GaussianBlurEffect` gives Appearance blur sliders a real pixel-radius instead of only tint alpha
+
+Advanced settings:
+
+- [x] add Extra Scan Dirs UI (`file_scan_roots`) as macOS-style horizontal pill strip with inline `x` remove
+- [x] redundancy check on add (home-relative path resolution + covering-entry detection, notice below Add button)
+- [x] Skip Folders migrated to matching pill strip
+
+Window + reliability:
+
+- [x] borderless window chrome (`SetBorderAndTitleBar(false, false)` + `DWMWA_COLOR_NONE`)
+- [x] `ResultsList_OnSelectionChanged` calls `ScrollIntoView` so Tab/Up/Down navigate off-viewport correctly
+- [x] global hotkeys: Alt+Space toggle, Alt+Shift+Q quit, via `RegisterHotKey` + `SetWindowSubclass`
+- [x] crash log moved to `%LOCALAPPDATA%\look\look-crash.log`; added `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException` handlers alongside the XAML one; each entry tagged with origin
+- [ ] hide-on-focus-loss auto-dismiss (Spotlight-style; remaining Phase 5 lifecycle item)
+- [ ] UWP app launcher-at-login integration (Advanced toggle present, non-functional)
+- [ ] Windows clipboard history mode (`c"`) real capture
+- [ ] Windows packaging / signing / release pipeline (`.msix` or `.msi`)
 
 ## Milestone G: Reliability (errors, tests, logs)
 

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -33,6 +32,7 @@ namespace LauncherApp
     {
         private readonly LauncherSearchLogic _searchLogic;
         private readonly ActionDispatcher _actionDispatcher;
+        private readonly UwpAppService _uwpAppService;
         private readonly ObservableCollection<LauncherRowItem> _results;
         private readonly List<LauncherResult> _commandSeed;
         private readonly List<LauncherResult> _clipboardSeed;
@@ -53,7 +53,10 @@ namespace LauncherApp
         private Microsoft.Graphics.Canvas.CanvasBitmap? _bgCachedBitmap;
         private string? _bgCachedBitmapPath;
         private CompositionEffectBrush? _backdropBlurBrush;
-        private static readonly ConcurrentDictionary<string, bool> ExeVersionInfoCache = new(StringComparer.OrdinalIgnoreCase);
+        private SubclassProc? _hotkeySubclassProc;
+        private IntPtr _hotkeyHwnd = IntPtr.Zero;
+        private const int HotkeyIdToggle = 0xB001;
+        private const int HotkeyIdQuit = 0xB002;
         private static readonly string[] NoisyExecutableNameTokens =
         [
             "appinstallerprotocolshim",
@@ -68,6 +71,22 @@ namespace LauncherApp
             "protocolshim",
             "redirector",
             "crashpad",
+        ];
+
+        private static readonly string[] JunkPathSegments =
+        [
+            "\\$RECYCLE.BIN\\",
+            "\\System Volume Information\\",
+            "\\$WINDOWS.~BT\\",
+            "\\$WINDOWS.~WS\\",
+            "\\Config.Msi\\",
+            "\\PerfLogs\\",
+            "\\Recovery\\",
+            "\\$GetCurrent\\",
+            "\\$SysReset\\",
+            "\\$INPLACE.~TR\\",
+            // Direct UWP package exes — inaccessible to user, duplicates AppsFolder entries.
+            "\\WindowsApps\\",
         ];
 
         public string CurrentBackdropMode => _backdropMode;
@@ -91,6 +110,8 @@ namespace LauncherApp
 
             _searchLogic = new LauncherSearchLogic(searchProvider);
             _actionDispatcher = new ActionDispatcher(new ShellExecuteService(), new ExplorerRevealService());
+            _uwpAppService = new UwpAppService();
+            _uwpAppService.BeginInitialize();
             _results = new ObservableCollection<LauncherRowItem>();
             _commandSeed = BuildCommandSeed();
             _clipboardSeed = BuildClipboardSeed();
@@ -106,6 +127,112 @@ namespace LauncherApp
             RefreshResults(QueryInput.Text?.Trim() ?? string.Empty);
             InitializeBlurLayer();
             LoadBackgroundImageFromConfig();
+            InitializeGlobalHotkeys();
+            this.Closed += OnWindowClosed;
+        }
+
+        private void OnWindowClosed(object sender, WindowEventArgs args)
+        {
+            UnregisterGlobalHotkeys();
+        }
+
+        private void InitializeGlobalHotkeys()
+        {
+            IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+            _hotkeyHwnd = hwnd;
+
+            _hotkeySubclassProc = HotkeySubclassProc;
+            if (!SetWindowSubclass(hwnd, _hotkeySubclassProc, (UIntPtr)1, IntPtr.Zero))
+            {
+                Debug.WriteLine("[MainWindow] SetWindowSubclass failed");
+                return;
+            }
+
+            if (!RegisterHotKey(hwnd, HotkeyIdToggle, MOD_ALT | MOD_NOREPEAT, VK_SPACE))
+            {
+                Debug.WriteLine("[MainWindow] RegisterHotKey Alt+Space failed (already in use?)");
+            }
+
+            if (!RegisterHotKey(hwnd, HotkeyIdQuit, MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, VK_Q))
+            {
+                Debug.WriteLine("[MainWindow] RegisterHotKey Alt+Shift+Q failed");
+            }
+        }
+
+        private void UnregisterGlobalHotkeys()
+        {
+            if (_hotkeyHwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            UnregisterHotKey(_hotkeyHwnd, HotkeyIdToggle);
+            UnregisterHotKey(_hotkeyHwnd, HotkeyIdQuit);
+            if (_hotkeySubclassProc is not null)
+            {
+                RemoveWindowSubclass(_hotkeyHwnd, _hotkeySubclassProc, (UIntPtr)1);
+            }
+            _hotkeyHwnd = IntPtr.Zero;
+        }
+
+        private IntPtr HotkeySubclassProc(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam, UIntPtr uIdSubclass, IntPtr dwRefData)
+        {
+            if (uMsg == WM_HOTKEY)
+            {
+                int id = wParam.ToInt32();
+                if (id == HotkeyIdToggle)
+                {
+                    ToggleLauncherVisibility();
+                    return IntPtr.Zero;
+                }
+                if (id == HotkeyIdQuit)
+                {
+                    ForceQuit();
+                    return IntPtr.Zero;
+                }
+            }
+
+            return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+        }
+
+        private void ToggleLauncherVisibility()
+        {
+            AppWindow appWindow = this.AppWindow;
+            if (appWindow is null)
+            {
+                return;
+            }
+
+            if (appWindow.IsVisible)
+            {
+                appWindow.Hide();
+                return;
+            }
+
+            appWindow.Show();
+            IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            if (hwnd != IntPtr.Zero)
+            {
+                SetForegroundWindow(hwnd);
+            }
+            QueryInput.Focus(FocusState.Programmatic);
+            QueryInput.SelectAll();
+        }
+
+        private static void ForceQuit()
+        {
+            try
+            {
+                Microsoft.UI.Xaml.Application.Current.Exit();
+            }
+            catch
+            {
+                Environment.Exit(0);
+            }
         }
 
         private SettingsTabsView EnsureSettingsView()
@@ -564,6 +691,38 @@ namespace LauncherApp
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("comctl32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetWindowSubclass(IntPtr hWnd, SubclassProc pfnSubclass, UIntPtr uIdSubclass, IntPtr dwRefData);
+
+        [DllImport("comctl32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool RemoveWindowSubclass(IntPtr hWnd, SubclassProc pfnSubclass, UIntPtr uIdSubclass);
+
+        [DllImport("comctl32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr DefSubclassProc(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam);
+
+        private delegate IntPtr SubclassProc(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam, UIntPtr uIdSubclass, IntPtr dwRefData);
+
+        private const uint WM_HOTKEY = 0x0312;
+        private const uint MOD_ALT = 0x0001;
+        private const uint MOD_SHIFT = 0x0004;
+        private const uint MOD_NOREPEAT = 0x4000;
+        private const uint VK_SPACE = 0x20;
+        private const uint VK_Q = 0x51;
+
         private void ApplyFrameStyle(bool removeRoundedCorners, bool removeBorder)
         {
             IntPtr hwnd = WindowNative.GetWindowHandle(this);
@@ -805,7 +964,7 @@ namespace LauncherApp
             LauncherSurface.Background = (Brush)Application.Current.Resources["LauncherPanelBrush"];
         }
 
-        private void RefreshResults(string rawQuery)
+        private void RefreshResults(string rawQuery, IReadOnlyList<LauncherResult>? prefetchedBackendResults = null)
         {
             var (resolvedMode, query) = ResolveMode(rawQuery);
             if (resolvedMode != _mode)
@@ -820,7 +979,8 @@ namespace LauncherApp
 
             IReadOnlyList<LauncherResult> source = _mode switch
             {
-                LauncherMode.Search => FilterSearchNoise(DeduplicatePairedAppEntries(_searchLogic.Search(query, 120)), 40),
+                LauncherMode.Search => FilterSearchNoise(
+                    DeduplicatePairedAppEntries(prefetchedBackendResults ?? _searchLogic.Search(query, 120)), 40),
                 LauncherMode.Command => FilterRows(_commandSeed, query),
                 LauncherMode.Clipboard => FilterRows(_clipboardSeed, query),
                 LauncherMode.Settings => [],
@@ -884,6 +1044,22 @@ namespace LauncherApp
                 .ToList();
         }
 
+        private static IReadOnlyList<LauncherResult> MergeBackendAndUwpResults(
+            IReadOnlyList<LauncherResult> rust,
+            IReadOnlyList<LauncherResult> uwp)
+        {
+            if (uwp.Count == 0)
+            {
+                return rust;
+            }
+
+            var merged = new List<LauncherResult>(rust.Count + uwp.Count);
+            merged.AddRange(uwp);
+            merged.AddRange(rust);
+            merged.Sort((a, b) => b.Score.CompareTo(a.Score));
+            return merged;
+        }
+
         private static IReadOnlyList<LauncherResult> DeduplicatePairedAppEntries(IReadOnlyList<LauncherResult> source)
         {
             var output = new List<LauncherResult>(source.Count);
@@ -930,8 +1106,11 @@ namespace LauncherApp
 
         private static bool ArePairedDuplicateCategories(AppPathCategory a, AppPathCategory b)
         {
-            return (a == AppPathCategory.StartMenuShortcut && b == AppPathCategory.InstallExecutable)
-                || (a == AppPathCategory.InstallExecutable && b == AppPathCategory.StartMenuShortcut);
+            if (a == AppPathCategory.Other || b == AppPathCategory.Other)
+            {
+                return false;
+            }
+            return a != b;
         }
 
         private static bool IsPreferredAppEntry(LauncherResult candidate, LauncherResult existing)
@@ -946,37 +1125,13 @@ namespace LauncherApp
 
         private static int GetAppEntryRank(LauncherResult item)
         {
-            if (GetAppPathCategory(item) == AppPathCategory.InstallExecutable)
-                return HasVersionMetadata(item.Path) ? 3 : 2;
-
-            if (GetAppPathCategory(item) == AppPathCategory.StartMenuShortcut)
-                return 1;
-
-            return 0;
-        }
-
-        private static bool HasVersionMetadata(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-                return false;
-
-            string normalized = path.Replace('/', '\\');
-            return ExeVersionInfoCache.GetOrAdd(normalized, p =>
+            return GetAppPathCategory(item) switch
             {
-                try
-                {
-                    if (!File.Exists(p))
-                        return false;
-
-                    var info = FileVersionInfo.GetVersionInfo(p);
-                    return !string.IsNullOrWhiteSpace(info.FileVersion)
-                        || !string.IsNullOrWhiteSpace(info.ProductVersion);
-                }
-                catch
-                {
-                    return false;
-                }
-            });
+                AppPathCategory.UwpAppsFolder => 3,
+                AppPathCategory.InstallExecutable => 2,
+                AppPathCategory.StartMenuShortcut => 1,
+                _ => 0,
+            };
         }
 
         private static AppPathCategory GetAppPathCategory(LauncherResult item)
@@ -985,6 +1140,11 @@ namespace LauncherApp
                 || string.IsNullOrWhiteSpace(item.Path))
             {
                 return AppPathCategory.Other;
+            }
+
+            if (item.Path.StartsWith("shell:AppsFolder\\", StringComparison.OrdinalIgnoreCase))
+            {
+                return AppPathCategory.UwpAppsFolder;
             }
 
             string path = item.Path.Replace('/', '\\');
@@ -1028,6 +1188,13 @@ namespace LauncherApp
                 return false;
 
             string path = item.Path.Replace('/', '\\');
+
+            foreach (string segment in JunkPathSegments)
+            {
+                if (path.Contains(segment, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
             if (!path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                 return false;
 
@@ -1044,6 +1211,7 @@ namespace LauncherApp
             Other,
             StartMenuShortcut,
             InstallExecutable,
+            UwpAppsFolder,
         }
 
         private static IReadOnlyList<LauncherResult> BuildHelpRows()
@@ -1059,17 +1227,43 @@ namespace LauncherApp
         private async void QueryInput_OnTextChanged(object sender, Microsoft.UI.Xaml.Controls.TextChangedEventArgs e)
         {
             int currentVersion = ++_searchVersion;
-            string query = QueryInput.Text?.Trim() ?? string.Empty;
+            string rawQuery = QueryInput.Text?.Trim() ?? string.Empty;
 
-            await Task.Delay(8);
+            await Task.Delay(16);
             if (currentVersion != _searchVersion)
             {
                 return;
             }
 
+            var (resolvedMode, resolvedQuery) = ResolveMode(rawQuery);
+            IReadOnlyList<LauncherResult>? backendResults = null;
+
+            if (resolvedMode == LauncherMode.Search)
+            {
+                try
+                {
+                    string searchQuery = resolvedQuery;
+                    backendResults = await Task.Run(() =>
+                    {
+                        var rust = _searchLogic.Search(searchQuery, 120);
+                        var uwp = _uwpAppService.Search(searchQuery, 30);
+                        return MergeBackendAndUwpResults(rust, uwp);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[MainWindow] backend search failed: {ex.Message}");
+                }
+
+                if (currentVersion != _searchVersion)
+                {
+                    return;
+                }
+            }
+
             try
             {
-                RefreshResults(query);
+                RefreshResults(rawQuery, backendResults);
                 UpdateCommandPreview();
             }
             catch (Exception ex)
@@ -1606,6 +1800,7 @@ namespace LauncherApp
         {
             if (ResultsList.SelectedItem is LauncherRowItem selected)
             {
+                ResultsList.ScrollIntoView(selected);
                 ResultPreviewPanel.SetRow(selected);
                 if (_mode == LauncherMode.Search || _mode == LauncherMode.Clipboard || _mode == LauncherMode.Help)
                 {

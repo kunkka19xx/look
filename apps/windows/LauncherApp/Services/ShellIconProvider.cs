@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
@@ -19,10 +20,29 @@ public sealed class ShellIconProvider
     private const StringComparison PathComparison = StringComparison.OrdinalIgnoreCase;
     private const int ShellPathBufferSize = 32768;
 
-    private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "look-icon-debug.log");
-    private static readonly string IconCacheDir = Path.Combine(Path.GetTempPath(), "look-icon-cache");
+    private static readonly string LookCacheRoot = ResolveLookCacheRoot();
+    private static readonly string LogPath = Path.Combine(LookCacheRoot, "icon-debug.log");
+    private static readonly string IconCacheDir = Path.Combine(LookCacheRoot, "icon-cache");
     private static readonly bool DebugLoggingEnabled = Environment.GetEnvironmentVariable("LOOK_ICON_DEBUG") == "1";
     private const string IconCacheVersion = "v2";
+
+    private static string ResolveLookCacheRoot()
+    {
+        try
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrWhiteSpace(localAppData))
+            {
+                return Path.Combine(localAppData, "look");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ShellIconProvider] LocalAppData lookup failed: {ex.Message}");
+        }
+
+        return Path.Combine(Path.GetTempPath(), "look");
+    }
 
     public async Task<ImageSource?> GetIconAsync(string path, bool smallIcon = true)
     {
@@ -51,12 +71,37 @@ public sealed class ShellIconProvider
             var normalizedPath = NormalizePath(path);
             var isDirectory = Directory.Exists(normalizedPath);
 
+            int shellSizePx = smallIcon ? 32 : 64;
+
+            // Factory path only for inputs the HICON pipeline handles poorly — UWP shell items
+            // and .lnk stubs that point at packaged apps. Plain .exe / .url / files keep using
+            // the proven ExtractIconExW / SHGetFileInfoW path to avoid native regressions.
+            bool useShellFactoryFirst = normalizedPath.StartsWith("shell:", PathComparison)
+                                         || normalizedPath.EndsWith(".lnk", PathComparison);
+            if (useShellFactoryFirst)
+            {
+                var shellImage = TryCreateImageViaShellItemImageFactory(normalizedPath, shellSizePx, smallIcon);
+                if (shellImage != null)
+                {
+                    Log("shell item image", normalizedPath, IntPtr.Zero);
+                    return shellImage;
+                }
+            }
+
             if (normalizedPath.EndsWith(".lnk", PathComparison))
             {
                 hIcon = GetIconFromShortcut(normalizedPath, smallIcon);
                 if (hIcon != IntPtr.Zero)
                 {
                     Log("shortcut icon", normalizedPath, hIcon);
+                }
+            }
+            else if (normalizedPath.EndsWith(".url", PathComparison))
+            {
+                hIcon = GetIconFromUrlFile(normalizedPath, smallIcon);
+                if (hIcon != IntPtr.Zero)
+                {
+                    Log("url icon", normalizedPath, hIcon);
                 }
             }
 
@@ -81,8 +126,9 @@ public sealed class ShellIconProvider
 
             return await IconHandleToImageConverter.ConvertAsync(hIcon);
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[ShellIconProvider] GetIconAsync failed for '{path}': {ex.Message}");
             return null;
         }
         finally
@@ -118,11 +164,61 @@ public sealed class ShellIconProvider
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[ShellIconProvider] shortcut resolve failed for '{shortcutPath}': {ex.Message}");
         }
 
         return GetIconFromFile(shortcutPath, isDir: false, smallIcon);
+    }
+
+    private static IntPtr GetIconFromUrlFile(string urlPath, bool smallIcon)
+    {
+        if (!File.Exists(urlPath))
+            return IntPtr.Zero;
+
+        try
+        {
+            string? iconFile = null;
+            int iconIndex = 0;
+
+            foreach (string rawLine in File.ReadAllLines(urlPath))
+            {
+                string line = rawLine.Trim();
+                if (line.Length == 0 || line.StartsWith("[", PathComparison))
+                    continue;
+
+                int eq = line.IndexOf('=');
+                if (eq <= 0)
+                    continue;
+
+                string key = line[..eq].Trim();
+                string value = line[(eq + 1)..].Trim();
+
+                if (key.Equals("IconFile", PathComparison))
+                {
+                    iconFile = value;
+                }
+                else if (key.Equals("IconIndex", PathComparison))
+                {
+                    int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out iconIndex);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(iconFile))
+            {
+                string resolved = Environment.ExpandEnvironmentVariables(iconFile);
+                var extracted = ExtractSpecificIcon(resolved, iconIndex, smallIcon);
+                if (extracted != IntPtr.Zero)
+                    return extracted;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ShellIconProvider] .url parse failed for '{urlPath}': {ex.Message}");
+        }
+
+        return IntPtr.Zero;
     }
 
     private static IntPtr GetIconFromFile(string path, bool isDir, bool smallIcon)
@@ -149,7 +245,7 @@ public sealed class ShellIconProvider
                         DestroyIcon(smallIconOut);
                 }
             }
-            catch { }
+            catch (Exception ex) { Debug.WriteLine($"[ShellIconProvider] icon extract failed for '{path}': {ex.Message}"); }
         }
 
         if (hIcon == IntPtr.Zero && File.Exists(path) && CanExtractIconDirectly(path))
@@ -160,7 +256,7 @@ public sealed class ShellIconProvider
                 if (direct != IntPtr.Zero)
                     hIcon = direct;
             }
-            catch { }
+            catch (Exception ex) { Debug.WriteLine($"[ShellIconProvider] icon extract failed for '{path}': {ex.Message}"); }
         }
 
         if (hIcon == IntPtr.Zero)
@@ -236,8 +332,9 @@ public sealed class ShellIconProvider
 
             return !string.IsNullOrWhiteSpace(targetPath) || !string.IsNullOrWhiteSpace(iconPath);
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[ShellIconProvider] IShellLinkW load failed for '{shortcutPath}': {ex.Message}");
             return false;
         }
         finally
@@ -313,8 +410,9 @@ public sealed class ShellIconProvider
             Log("bitmap uri", cachePath, hIcon);
             return bitmapImage;
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine($"[ShellIconProvider] cache write failed for '{sourcePath}': {ex.Message}");
             return null;
         }
     }
@@ -326,6 +424,148 @@ public sealed class ShellIconProvider
         foreach (var b in bytes)
             sb.Append(b.ToString("x2", CultureInfo.InvariantCulture));
         return sb.ToString();
+    }
+
+    private static ImageSource? TryCreateImageViaShellItemImageFactory(string path, int sizePx, bool smallIcon)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+
+        if (!File.Exists(path) && !Directory.Exists(path) && !path.StartsWith("shell:", PathComparison))
+            return null;
+
+        IntPtr hBitmap = IntPtr.Zero;
+        object? ppv = null;
+        IShellItemImageFactory? factory = null;
+        try
+        {
+            Guid iidImageFactory = new Guid("BCC18B79-BA16-442F-80C4-8A59C30C463B");
+            SHCreateItemFromParsingName(path, IntPtr.Zero, ref iidImageFactory, out ppv);
+            factory = ppv as IShellItemImageFactory;
+            if (factory is null)
+            {
+                return null;
+            }
+
+            int hr = factory.GetImage(new SIZE(sizePx, sizePx), SIIGBF.ResizeToFit | SIIGBF.IconOnly, out hBitmap);
+            if (hr != 0 || hBitmap == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            Directory.CreateDirectory(IconCacheDir);
+            string cacheKey = ComputeHash(IconCacheVersion + "|shell|" + path + "|" + sizePx + "|" + (smallIcon ? "s" : "l"));
+            string cachePath = Path.Combine(IconCacheDir, cacheKey + ".png");
+
+            if (!File.Exists(cachePath) || new FileInfo(cachePath).Length == 0)
+            {
+                using var bitmap = HbitmapToBitmapPreservingAlpha(hBitmap);
+                if (bitmap is null)
+                {
+                    return null;
+                }
+                bitmap.Save(cachePath, ImageFormat.Png);
+            }
+
+            return new BitmapImage(new Uri(cachePath, UriKind.Absolute));
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ShellIconProvider] IShellItemImageFactory failed for '{path}': {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            if (hBitmap != IntPtr.Zero)
+                DeleteObject(hBitmap);
+            if (factory is not null)
+            {
+                try { Marshal.ReleaseComObject(factory); } catch { }
+            }
+            else if (ppv is not null)
+            {
+                try { Marshal.ReleaseComObject(ppv); } catch { }
+            }
+        }
+    }
+
+    private static unsafe Bitmap? HbitmapToBitmapPreservingAlpha(IntPtr hBitmap)
+    {
+        if (hBitmap == IntPtr.Zero)
+            return null;
+
+        BITMAP bm = default;
+        if (GetObject(hBitmap, Marshal.SizeOf<BITMAP>(), ref bm) == 0 || bm.bmBits == IntPtr.Zero)
+            return null;
+
+        if (bm.bmBitsPixel != 32)
+            return null;
+
+        int width = bm.bmWidth;
+        int height = Math.Abs(bm.bmHeight);
+        int stride = bm.bmWidthBytes;
+        bool topDown = bm.bmHeight < 0;
+
+        // Reject degenerate or absurd sizes before allocating or doing pointer math.
+        if (width <= 0 || height <= 0 || width > 4096 || height > 4096)
+        {
+            Debug.WriteLine($"[ShellIconProvider] HBITMAP rejected: w={width} h={height}");
+            return null;
+        }
+
+        // Stride must be at least width*4 for 32-bpp; a smaller stride means reading garbage bytes.
+        if (stride < width * 4)
+        {
+            Debug.WriteLine($"[ShellIconProvider] HBITMAP stride too small: stride={stride} width*4={width * 4}");
+            return null;
+        }
+
+        var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+        var rect = new Rectangle(0, 0, width, height);
+        var data = bitmap.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+
+        try
+        {
+            byte* srcBase = (byte*)bm.bmBits;
+            byte* dstBase = (byte*)data.Scan0;
+            int copyBytes = Math.Min(stride, data.Stride);
+
+            for (int y = 0; y < height; y++)
+            {
+                int srcRow = topDown ? y : (height - 1 - y);
+                byte* src = srcBase + srcRow * stride;
+                byte* dst = dstBase + y * data.Stride;
+
+                for (int x = 0; x < width; x++)
+                {
+                    byte b = src[0];
+                    byte g = src[1];
+                    byte r = src[2];
+                    byte a = src[3];
+
+                    if (a != 0 && a != 255)
+                    {
+                        b = (byte)System.Math.Min(255, b * 255 / a);
+                        g = (byte)System.Math.Min(255, g * 255 / a);
+                        r = (byte)System.Math.Min(255, r * 255 / a);
+                    }
+
+                    dst[0] = b;
+                    dst[1] = g;
+                    dst[2] = r;
+                    dst[3] = a;
+
+                    src += 4;
+                    dst += 4;
+                }
+            }
+        }
+        finally
+        {
+            bitmap.UnlockBits(data);
+        }
+
+        return bitmap;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -374,6 +614,61 @@ public sealed class ShellIconProvider
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr CopyIcon(IntPtr hIcon);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, PreserveSig = false)]
+    private static extern void SHCreateItemFromParsingName(
+        [MarshalAs(UnmanagedType.LPWStr)] string pszPath,
+        IntPtr pbc,
+        [In] ref Guid riid,
+        [MarshalAs(UnmanagedType.Interface)] out object? ppv);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeleteObject(IntPtr hObject);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern int GetObject(IntPtr hObject, int nCount, ref BITMAP lpObject);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAP
+    {
+        public int bmType;
+        public int bmWidth;
+        public int bmHeight;
+        public int bmWidthBytes;
+        public ushort bmPlanes;
+        public ushort bmBitsPixel;
+        public IntPtr bmBits;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SIZE
+    {
+        public int cx;
+        public int cy;
+        public SIZE(int x, int y) { cx = x; cy = y; }
+    }
+
+    [Flags]
+    private enum SIIGBF : uint
+    {
+        ResizeToFit = 0x00,
+        BiggerSizeOk = 0x01,
+        MemoryOnly = 0x02,
+        IconOnly = 0x04,
+        ThumbnailOnly = 0x08,
+        InCacheOnly = 0x10,
+        ScaleUp = 0x100,
+    }
+
+    [ComImport]
+    [Guid("BCC18B79-BA16-442F-80C4-8A59C30C463B")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellItemImageFactory
+    {
+        [PreserveSig]
+        int GetImage(SIZE size, SIIGBF flags, out IntPtr phbm);
+    }
 
     [ComImport]
     [Guid("00021401-0000-0000-C000-000000000046")]

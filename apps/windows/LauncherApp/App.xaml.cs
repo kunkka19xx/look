@@ -37,6 +37,35 @@ namespace LauncherApp
         {
             InitializeComponent();
             UnhandledException += OnUnhandledException;
+            AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
+            System.Threading.Tasks.TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+        }
+
+        private static void OnDomainUnhandledException(object sender, System.UnhandledExceptionEventArgs e)
+        {
+            WriteCrashLog("AppDomain", e.ExceptionObject as Exception);
+        }
+
+        private static void OnUnobservedTaskException(object? sender, System.Threading.Tasks.UnobservedTaskExceptionEventArgs e)
+        {
+            WriteCrashLog("TaskScheduler", e.Exception);
+            e.SetObserved();
+        }
+
+        private static void WriteCrashLog(string origin, Exception? ex)
+        {
+            try
+            {
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string logDir = string.IsNullOrWhiteSpace(localAppData) ? System.IO.Path.GetTempPath() : System.IO.Path.Combine(localAppData, "look");
+                Directory.CreateDirectory(logDir);
+                string logPath = System.IO.Path.Combine(logDir, "look-crash.log");
+                string message = $"[{DateTime.Now:O}] [{origin}] {ex?.GetType().Name}: {ex?.Message}{Environment.NewLine}{ex}{Environment.NewLine}";
+                File.AppendAllText(logPath, message);
+            }
+            catch
+            {
+            }
         }
 
         /// <summary>
@@ -52,16 +81,7 @@ namespace LauncherApp
 
         private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
         {
-            try
-            {
-                string logPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "look-crash.log");
-                string message = $"[{DateTime.Now:O}] {e.Exception?.GetType().Name}: {e.Message}{Environment.NewLine}{e.Exception}{Environment.NewLine}";
-                File.AppendAllText(logPath, message);
-            }
-            catch
-            {
-            }
-
+            WriteCrashLog("UI", e.Exception);
             e.Handled = true;
         }
     }
