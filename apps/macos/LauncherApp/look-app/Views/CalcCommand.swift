@@ -43,11 +43,11 @@ struct CalcCommand {
         }
         if balance != 0 { return false }
 
-        if let last = trimmed.last, "+-*/%.(".contains(last) {
+        if let last = trimmed.last, "+-*/^.(".contains(last) {
             return false
         }
 
-        let allowedPattern = "^[0-9A-Za-z_+\\-*/%().:xXvV\\s]+$"
+        let allowedPattern = "^[0-9A-Za-z_+\\-*/%^!().:xXvV\\s]+$"
         guard let regex = try? NSRegularExpression(pattern: allowedPattern) else { return false }
         let full = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
         guard let match = regex.firstMatch(in: trimmed, range: full), match.range == full else {
@@ -154,19 +154,19 @@ private struct Parser {
     }
 
     private mutating func parseTerm() throws -> Double {
-        var value = try parseFactor()
+        var value = try parseUnary()
         while true {
             skipWhitespace()
             if consume("*") {
-                value *= try parseFactor()
+                value *= try parseUnary()
             } else if consume("/") {
-                let divisor = try parseFactor()
+                let divisor = try parseUnary()
                 if divisor == 0 {
                     throw ParserError.divisionByZero
                 }
                 value /= divisor
             } else if consume("%") {
-                let divisor = try parseFactor()
+                let divisor = try parseUnary()
                 if divisor == 0 {
                     throw ParserError.divisionByZero
                 }
@@ -177,24 +177,59 @@ private struct Parser {
         }
     }
 
-    private mutating func parseFactor() throws -> Double {
+    private mutating func parsePower() throws -> Double {
+        var value = try parsePrimary()
+        skipWhitespace()
+        if consume("^") {
+            let exponent = try parseUnary()
+            value = Foundation.pow(value, exponent)
+            if value.isNaN || value.isInfinite {
+                throw ParserError.invalidExpression
+            }
+        }
+        return value
+    }
+
+    private mutating func parseUnary() throws -> Double {
         skipWhitespace()
 
         if consume("+") {
-            return try parseFactor()
+            return try parseUnary()
         }
         if consume("-") {
-            return -(try parseFactor())
+            return -(try parseUnary())
         }
 
         if matchKeyword("sqrt") {
             _ = consumeKeyword("sqrt")
-            let inner = try parseFactor()
-            if inner < 0 {
-                throw ParserError.invalidExpression
-            }
-            return Foundation.sqrt(inner)
+            return try applyFunction("sqrt", to: try parseFunctionArgument())
         }
+
+        if matchKeyword("abs") {
+            _ = consumeKeyword("abs")
+            return try applyFunction("abs", to: try parseFunctionArgument())
+        }
+
+        if matchKeyword("round") {
+            _ = consumeKeyword("round")
+            return try applyFunction("round", to: try parseFunctionArgument())
+        }
+
+        if matchKeyword("floor") {
+            _ = consumeKeyword("floor")
+            return try applyFunction("floor", to: try parseFunctionArgument())
+        }
+
+        if matchKeyword("ceil") {
+            _ = consumeKeyword("ceil")
+            return try applyFunction("ceil", to: try parseFunctionArgument())
+        }
+
+        return try parsePower()
+    }
+
+    private mutating func parsePrimary() throws -> Double {
+        skipWhitespace()
 
         if consume("(") {
             let value = try parseExpression()
@@ -202,10 +237,103 @@ private struct Parser {
             guard consume(")") else {
                 throw ParserError.invalidExpression
             }
-            return value
+            return try applyPostfixOperators(to: value)
         }
 
-        return try parseNumber()
+        if index < chars.count, chars[index].isLetter {
+            let ident = parseIdentifier()
+            switch ident.lowercased() {
+            case "pi":
+                return try applyPostfixOperators(to: .pi)
+            case "e":
+                return try applyPostfixOperators(to: M_E)
+            default:
+                throw ParserError.invalidExpression
+            }
+        }
+
+        let number = try parseNumber()
+        return try applyPostfixOperators(to: number)
+    }
+
+    private mutating func applyPostfixOperators(to seed: Double) throws -> Double {
+        var value = seed
+        while true {
+            skipWhitespace()
+            if consume("!") {
+                value = try factorial(value)
+                continue
+            }
+            if shouldConsumePostfixPercent() {
+                _ = consume("%")
+                value /= 100
+                continue
+            }
+            return value
+        }
+    }
+
+    private mutating func shouldConsumePostfixPercent() -> Bool {
+        guard index < chars.count, chars[index] == "%" else { return false }
+        var lookahead = index + 1
+        while lookahead < chars.count && chars[lookahead].isWhitespace {
+            lookahead += 1
+        }
+        guard lookahead < chars.count else { return true }
+        let next = chars[lookahead]
+        if next.isNumber || next == "." || next == "(" || next.isLetter {
+            return false
+        }
+        return true
+    }
+
+    private mutating func parseFunctionArgument() throws -> Double {
+        skipWhitespace()
+        if consume("(") {
+            let value = try parseExpression()
+            skipWhitespace()
+            guard consume(")") else { throw ParserError.invalidExpression }
+            return value
+        }
+        return try parseUnary()
+    }
+
+    private func applyFunction(_ name: String, to value: Double) throws -> Double {
+        switch name {
+        case "sqrt":
+            guard value >= 0 else { throw ParserError.invalidExpression }
+            return Foundation.sqrt(value)
+        case "abs":
+            return Swift.abs(value)
+        case "round":
+            return Foundation.round(value)
+        case "floor":
+            return Foundation.floor(value)
+        case "ceil":
+            return Foundation.ceil(value)
+        default:
+            throw ParserError.invalidExpression
+        }
+    }
+
+    private func factorial(_ value: Double) throws -> Double {
+        guard value >= 0, value.rounded() == value else {
+            throw ParserError.invalidExpression
+        }
+        let n = Int(value)
+        guard n <= 170 else {
+            throw ParserError.invalidExpression
+        }
+        if n <= 1 { return 1 }
+        return (2...n).reduce(1.0) { $0 * Double($1) }
+    }
+
+    private mutating func parseIdentifier() -> String {
+        let start = index
+        while index < chars.count, chars[index].isLetter || chars[index] == "_" {
+            index += 1
+        }
+        return String(chars[start..<index])
     }
 
     private mutating func parseNumber() throws -> Double {

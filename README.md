@@ -36,6 +36,7 @@ Highlights:
 - reveal selected app/file/folder in Finder with `Cmd+F`
 - command mode with `Cmd+/` (`calc`, `shell`, `kill`, `sys`)
 - force-quit flow in command mode (`kill`, including process-by-port search like `:3000`)
+- calc supports `^`, `!`, constants (`pi`, `e`), functions (`sqrt`, `abs`, `round`, `floor`, `ceil`), and `%` shorthand (`50%`, `200*15%`)
 
 ## Positioning
 
@@ -84,6 +85,7 @@ Indexing config supports include roots plus exclude rules for both apps and file
 ## UI
 
 Current built-in themes (Settings > Appearance):
+
 - Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Custom
 
 ![Look UI 1](assets/look-ui/1.png)
@@ -303,6 +305,10 @@ Out of scope for v1:
 MIT
 
 ## Community
+
+**Thanks to everyone who has contributed to Look.**
+See the full contributor graph:
+[Contributors](https://github.com/kunkka19xx/look/graphs/contributors)
 
 - Contribution flow:
   - branch from `dev` and open PRs into `dev`

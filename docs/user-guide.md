@@ -67,10 +67,19 @@ Enter command mode with `Cmd+/`.
 
 Built-in commands:
 
-- `calc`: evaluate expressions
+- `calc`: evaluate expressions (supports `^`, `!`, constants `pi`/`e`, functions `sqrt`/`abs`/`round`/`floor`/`ceil`, plus `%` shorthand)
 - `shell`: run shell command text
 - `kill`: force-kill a running app/process (with confirmation), supports port queries like `:3000` or `port 3000`
 - `sys`: show system information
+
+`calc` quick examples:
+
+- `2^3` -> `8`
+- `-2^2` -> `-4`
+- `4!` -> `24`
+- `2*pi` -> `6.2832`
+- `200*15%` -> `30`
+- `10%3` -> `1` (`%` remains modulo when used between operands)
 
 Behavior:
 
