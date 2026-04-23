@@ -1,6 +1,5 @@
 use crate::QueryEngine;
 use crate::config::*;
-use crate::normalize::normalize_for_search;
 use crate::query::ParsedQuery;
 use crate::scoring::{
     ScoredMatch, contains_match_score, default_browse_score, finalize_top_k,
@@ -21,7 +20,7 @@ const REGEX_SIZE_LIMIT_BYTES: usize = 1024 * 1024;
 const SCORE_ALIAS_TITLE_MATCH: i64 = 1_520;
 const SCORE_ALIAS_SUBTITLE_MATCH: i64 = 1_260;
 
-fn top_limit(mut ranked: Vec<(Candidate, i64)>, limit: usize) -> Vec<(Candidate, i64)> {
+fn top_limit(mut ranked: Vec<(u32, i64)>, limit: usize) -> Vec<(u32, i64)> {
     ranked.truncate(limit);
     ranked
 }
@@ -97,7 +96,7 @@ impl QueryEngine {
         &self,
         kind_filter: Option<&CandidateKind>,
         limit: usize,
-    ) -> Vec<(Candidate, i64)> {
+    ) -> Vec<(u32, i64)> {
         // Empty-query mode is a browse ranking pass: usage + recency, no text matching.
         let now_unix_s = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -105,14 +104,14 @@ impl QueryEngine {
             .unwrap_or(0);
 
         let mut top = BinaryHeap::new();
-        for candidate in &self.candidates {
+        for (idx, candidate) in self.candidates.iter().enumerate() {
             if !Self::kind_matches(candidate, kind_filter) {
                 continue;
             }
             let score = default_browse_score(&candidate.candidate, now_unix_s);
             push_top_k(
                 &mut top,
-                ScoredMatch::new(candidate.candidate.clone(), score),
+                ScoredMatch::new(idx as u32, score, &candidate.candidate.title),
                 limit,
             );
         }
@@ -125,7 +124,7 @@ impl QueryEngine {
         raw_query: Option<&String>,
         kind_filter: Option<&CandidateKind>,
         limit: usize,
-    ) -> Vec<(Candidate, i64)> {
+    ) -> Vec<(u32, i64)> {
         // Invalid or oversized regex patterns fail closed to an empty result set.
         let Some(regex) = raw_query.and_then(|pattern| {
             RegexBuilder::new(pattern)
@@ -138,7 +137,7 @@ impl QueryEngine {
         };
 
         let mut top = BinaryHeap::new();
-        for candidate in &self.candidates {
+        for (idx, candidate) in self.candidates.iter().enumerate() {
             if !Self::kind_matches(candidate, kind_filter) {
                 continue;
             }
@@ -167,7 +166,7 @@ impl QueryEngine {
                 + path_depth_penalty(&candidate.candidate);
             push_top_k(
                 &mut top,
-                ScoredMatch::new(candidate.candidate.clone(), final_score),
+                ScoredMatch::new(idx as u32, final_score, &candidate.candidate.title),
                 limit,
             );
         }
@@ -180,7 +179,7 @@ impl QueryEngine {
         normalized_query: &str,
         kind_filter: Option<&CandidateKind>,
         limit: usize,
-    ) -> Vec<(Candidate, i64)> {
+    ) -> Vec<(u32, i64)> {
         // Stage 1: fast retrieval over all candidates into a bounded top-K pool.
         let prepared_query = prepare_query(normalized_query);
         let mut top = BinaryHeap::new();
@@ -190,7 +189,7 @@ impl QueryEngine {
         let pool_limit = (limit.saturating_mul(RERANK_POOL_MULTIPLIER)).max(RERANK_TOP_N);
         let alias_terms = self.alias_terms_for_query(normalized_query, kind_filter);
 
-        for candidate in &self.candidates {
+        for (idx, candidate) in self.candidates.iter().enumerate() {
             if !Self::kind_matches(candidate, kind_filter) {
                 continue;
             }
@@ -253,7 +252,7 @@ impl QueryEngine {
                 + path_depth_penalty(&candidate.candidate);
             push_top_k(
                 &mut top,
-                ScoredMatch::new(candidate.candidate.clone(), final_score),
+                ScoredMatch::new(idx as u32, final_score, &candidate.candidate.title),
                 pool_limit,
             );
         }
@@ -270,11 +269,19 @@ impl QueryEngine {
         // 2) quality rerank only on top-N candidates to keep latency predictable
         let rerank_count = ranked.len().min(RERANK_TOP_N);
         for entry in ranked.iter_mut().take(rerank_count) {
-            let rerank_title = normalize_for_search(&entry.0.title);
-            entry.1 += fuzzy_quality_bonus_prepared(&prepared_query, &rerank_title);
+            // Reuse the precomputed normalized title from IndexedCandidate rather
+            // than re-normalizing here on every rerank.
+            let title_search = &self.candidates[entry.0 as usize].title_search;
+            entry.1 += fuzzy_quality_bonus_prepared(&prepared_query, title_search);
         }
 
-        ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.title.cmp(&b.0.title)));
+        ranked.sort_by(|a, b| {
+            b.1.cmp(&a.1).then_with(|| {
+                let title_a = &self.candidates[a.0 as usize].candidate.title;
+                let title_b = &self.candidates[b.0 as usize].candidate.title;
+                title_a.cmp(title_b)
+            })
+        });
         top_limit(ranked, limit)
     }
 
@@ -285,15 +292,20 @@ impl QueryEngine {
 
         let parsed_query = ParsedQuery::from_input(query);
         let kind_filter = parsed_query.kind_filter.as_ref();
-        if parsed_query.normalized_query.is_empty() && !parsed_query.is_regex {
-            return self.search_empty_query(kind_filter, limit);
-        }
+        let indices = if parsed_query.normalized_query.is_empty() && !parsed_query.is_regex {
+            self.search_empty_query(kind_filter, limit)
+        } else if parsed_query.is_regex {
+            self.search_regex_query(parsed_query.raw_query.as_ref(), kind_filter, limit)
+        } else {
+            self.search_text_query(&parsed_query.normalized_query, kind_filter, limit)
+        };
 
-        if parsed_query.is_regex {
-            return self.search_regex_query(parsed_query.raw_query.as_ref(), kind_filter, limit);
-        }
-
-        self.search_text_query(&parsed_query.normalized_query, kind_filter, limit)
+        // Materialize Candidates only for the final top-K — the hot scoring loop
+        // kept everything as (index, score) pairs to avoid per-push clones.
+        indices
+            .into_iter()
+            .map(|(idx, score)| (self.candidates[idx as usize].candidate.clone(), score))
+            .collect()
     }
 }
 

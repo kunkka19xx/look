@@ -2,26 +2,31 @@
 
 `look` is a keyboard-first launcher for macOS focused on fast local actions.
 
-## 1) Install and first run
+## First run
 
-Compatibility:
-
-- macOS 15.0+
-
-Homebrew:
+Install with Homebrew (see [README](../README.md#install) for alternatives):
 
 ```bash
 brew tap kunkka19xx/tap
 brew install --cask look
 ```
 
-If Spotlight and look both use `Cmd+Space`, disable or rebind Spotlight:
+On first launch, Look will index your apps, files, and folders in the background. You can start using it immediately — results appear as indexing completes.
 
-- `System Settings` -> `Keyboard` -> `Keyboard Shortcuts...` -> `Spotlight`
+To bind `Cmd+Space` to Look, disable Spotlight's default shortcut: `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`.
 
-Release builds are signed + notarized. Normal first launch should not require `Open Anyway`.
+## Permissions
 
-## 2) Core workflow
+Look is designed to need as few macOS permissions as possible:
+
+- **No Accessibility permission** is required.
+- **No Full Disk Access** is required. Look indexes standard user directories (`~`, `/Applications`, `~/Documents`, `~/Downloads`, etc.). To index a directory outside those defaults, add it via `file_scan_extra_roots` in `~/.look.config`.
+- **No Screen Recording** is required.
+- **Network access** is used only for explicit actions: `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search. The local search and indexing paths make no network calls.
+
+If macOS prompts for permission during an action you didn't trigger, that's a bug — please [file an issue](https://github.com/kunkka19xx/look/issues).
+
+## Core workflow
 
 In the main input, type to search and press `Enter` to open.
 
@@ -37,7 +42,7 @@ Useful actions:
 - `Cmd+C`: copy selected file/folder
 - `Cmd+Enter`: web search current query (Google)
 
-## 3) Query prefixes
+## Query prefixes
 
 - `a"term` -> apps only
 - `f"term` -> files only
@@ -49,7 +54,7 @@ Useful actions:
 
 Path-like queries (for example `git/project/readme`) are also supported and bias path matches.
 
-## 4) Clipboard and translation
+## Clipboard and translation
 
 Clipboard mode (`c"`):
 
@@ -61,7 +66,7 @@ Translation mode (`t"`/`tw"`):
 - supports EN/VI/JA result sections,
 - translation uses network requests.
 
-## 5) Command mode
+## Command mode
 
 Enter command mode with `Cmd+/`.
 
@@ -90,7 +95,7 @@ Behavior:
 - `Up` / `Down`: in `kill`, navigate process/app results
 - shell text containing `sudo` shows an orange warning cue
 
-## 6) Settings and config
+## Settings and config
 
 Open settings with `Cmd+Shift+,`.
 
@@ -191,7 +196,7 @@ UI-related keys include the `ui_*` group (tint/blur/font/border values).
 
 Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not written to `~/.look.config`.
 
-## 7) Keyboard shortcuts (quick reference)
+## Keyboard shortcuts (quick reference)
 
 - `Enter`: open selected result / run command
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
@@ -207,23 +212,68 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+Shift+;`: reload config
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
 
-## 8) Troubleshooting
+## Troubleshooting
 
-If results seem stale:
+**Results seem stale or a newly installed app is missing.**
 
 - reload config with `Cmd+Shift+;`
-- check scan roots/depth/limits in `~/.look.config`
+- if lazy indexing is Off, Look reindexes on every launcher open; if On, it reindexes only when filesystem changes are detected
+- check scan roots, depth, and limits in `~/.look.config`
+- add user-specific directories via `file_scan_extra_roots`
 
-If hotkey does not work:
+**`Cmd+Space` does not open Look.**
 
-- verify Spotlight shortcut conflict
-- relaunch the app and test again
+- confirm Spotlight's `Cmd+Space` is disabled or rebound (`System Settings > Keyboard > Keyboard Shortcuts > Spotlight`)
+- relaunch Look (`open "/Applications/Look.app"`) after changing the Spotlight binding
+- if you previously ran a dev/side-by-side build, make sure only one Look instance is running
 
-If translation does not return results:
+**The launcher opens behind another window.**
 
-- check connectivity and retry
+- this is usually a focus-handoff timing issue; hide the launcher (`Escape`) and open it again
+- if it reproduces consistently, please file an issue with your macOS version
 
-## 9) Related docs
+**High CPU or slow first launch.**
+
+- the initial index scan is a one-time cost on first run; subsequent launches use the cached SQLite index
+- you can lower `file_scan_depth` and `file_scan_limit` in `~/.look.config` if you have very large user directories
+
+**A config change was ignored.**
+
+- Look reads `~/.look.config` at launch. After editing manually, reload with `Cmd+Shift+;` or restart Look.
+- confirm you edited the active config path (`LOOK_CONFIG_PATH` overrides `~/.look.config` when set)
+
+**Translation (`t"` / `tw"`) returns no results.**
+
+- translation requires network; check connectivity and retry
+- corporate proxies and VPNs can block the translation endpoint
+
+**I want to reset everything to defaults.**
+
+- `Settings > Advanced > Create Fresh Config` rewrites `~/.look.config` from the latest defaults (with a confirmation prompt)
+
+## Uninstall
+
+Homebrew:
+
+```bash
+brew uninstall --cask look
+brew untap kunkka19xx/tap   # optional
+```
+
+Manual install:
+
+```bash
+rm -rf "/Applications/Look.app"
+```
+
+Remove local state (optional — includes config, index, and usage history):
+
+```bash
+rm -f "$HOME/.look.config"
+rm -rf "$HOME/Library/Application Support/look"
+```
+
+## Related docs
 
 - Architecture guide: `docs/architecture.md`
 - Feature status: `docs/features.md`
