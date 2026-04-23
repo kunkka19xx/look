@@ -307,11 +307,8 @@ MIT
 ## Community
 
 **Thanks to everyone who has contributed to Look.**
-
-<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
-<!-- ALL-CONTRIBUTORS-LIST:END -->
-
-See the full contributor graph in GitHub Insights.
+See the full contributor graph:
+[Contributors](https://github.com/kunkka19xx/look/graphs/contributors)
 
 - Contribution flow:
   - branch from `dev` and open PRs into `dev`
