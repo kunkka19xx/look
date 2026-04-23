@@ -14,10 +14,11 @@
         <MicaBackdrop Kind="BaseAlt" />
     </Window.SystemBackdrop>
     <Grid Background="Transparent">
+
         <Border
             x:Name="LauncherSurface"
             Margin="0"
-            Padding="6"
+            Padding="2"
             CornerRadius="0"
             BorderBrush="{StaticResource LauncherBorderBrush}"
             BorderThickness="{ThemeResource LauncherBorderThickness}"
@@ -128,11 +129,5 @@
             </Grid>
         </Border>
 
-        <Rectangle
-            x:Name="TopEdgeMask"
-            Height="2"
-            VerticalAlignment="Top"
-            Fill="{ThemeResource LauncherBorderBrush}"
-            IsHitTestVisible="False" />
     </Grid>
 </Window>

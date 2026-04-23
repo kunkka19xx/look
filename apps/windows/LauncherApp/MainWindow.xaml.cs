@@ -147,8 +147,13 @@ namespace LauncherApp
                 presenter.SetBorderAndTitleBar(true, false);
             }
 
+            HwndExtensions.ToggleWindowStyle(
+                WindowNative.GetWindowHandle(this),
+                false,
+                WindowStyle.TiledWindow);
+
             ExtendsContentIntoTitleBar = true;
-            SetTitleBar(null);
+            SetTitleBar(SearchBarHost);
 
             if (Content is FrameworkElement root)
             {
@@ -243,17 +248,9 @@ namespace LauncherApp
 
         public void UpdateTopEdgeMask(Windows.UI.Color panelColor, Windows.UI.Color borderColor)
         {
-            if (TopEdgeMask is null)
-            {
-                return;
-            }
-
-            Windows.UI.Color maskColor = borderColor.A >= 80
-                ? borderColor
-                : Windows.UI.Color.FromArgb(220, panelColor.R, panelColor.G, panelColor.B);
-
-            TopEdgeMask.Fill = new SolidColorBrush(maskColor);
+            Windows.UI.Color maskColor = Windows.UI.Color.FromArgb(255, panelColor.R, panelColor.G, panelColor.B);
             ApplyDwmCaptionColor(panelColor);
+            ApplyDwmBorderColor();
         }
 
         public void UpdateFrameCaptionColor(Windows.UI.Color panelColor)
@@ -456,7 +453,7 @@ namespace LauncherApp
         }
 
         private enum DwmWindowCornerPreference
-        { 
+        {
             Default = 0,
             DoNotRound = 1,
         }
