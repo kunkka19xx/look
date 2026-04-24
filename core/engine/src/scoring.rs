@@ -181,43 +181,50 @@ fn browse_recency_boost(age_hours: i64) -> i64 {
     }
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct ScoredMatch {
-    candidate: Candidate,
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ScoredMatch<'a> {
+    idx: u32,
     score: i64,
+    // Borrowed title powers the BinaryHeap tiebreak without cloning the Candidate.
+    // Lifetime is scoped to the candidate slice, which outlives the heap.
+    title: &'a str,
 }
 
-impl PartialEq for ScoredMatch {
+impl PartialEq for ScoredMatch<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.score == other.score && self.candidate.title == other.candidate.title
+        self.score == other.score && self.title == other.title
     }
 }
 
-impl Eq for ScoredMatch {}
+impl Eq for ScoredMatch<'_> {}
 
-impl ScoredMatch {
-    pub(crate) fn new(candidate: Candidate, score: i64) -> Self {
-        Self { candidate, score }
+impl<'a> ScoredMatch<'a> {
+    pub(crate) fn new(idx: u32, score: i64, title: &'a str) -> Self {
+        Self { idx, score, title }
     }
 }
 
-impl Ord for ScoredMatch {
+impl Ord for ScoredMatch<'_> {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.score.cmp(&other.score) {
             Ordering::Less => Ordering::Greater,
             Ordering::Greater => Ordering::Less,
-            Ordering::Equal => self.candidate.title.cmp(&other.candidate.title),
+            Ordering::Equal => self.title.cmp(other.title),
         }
     }
 }
 
-impl PartialOrd for ScoredMatch {
+impl PartialOrd for ScoredMatch<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-pub(crate) fn push_top_k(heap: &mut BinaryHeap<ScoredMatch>, item: ScoredMatch, limit: usize) {
+pub(crate) fn push_top_k<'a>(
+    heap: &mut BinaryHeap<ScoredMatch<'a>>,
+    item: ScoredMatch<'a>,
+    limit: usize,
+) {
     if heap.len() < limit {
         heap.push(item);
         return;
@@ -231,13 +238,18 @@ pub(crate) fn push_top_k(heap: &mut BinaryHeap<ScoredMatch>, item: ScoredMatch, 
     }
 }
 
-pub(crate) fn finalize_top_k(heap: BinaryHeap<ScoredMatch>) -> Vec<(Candidate, i64)> {
-    let mut out: Vec<(Candidate, i64)> = heap
+pub(crate) fn finalize_top_k(heap: BinaryHeap<ScoredMatch<'_>>) -> Vec<(u32, i64)> {
+    // Returns (candidate_index, score) pairs sorted best-first. Callers materialize
+    // Candidates by indexing into their candidate slice, so only the final top-K
+    // are cloned — the heap itself never held a Candidate.
+    let mut out: Vec<(u32, i64, &str)> = heap
         .into_iter()
-        .map(|entry| (entry.candidate, entry.score))
+        .map(|entry| (entry.idx, entry.score, entry.title))
         .collect();
-    out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.title.cmp(&b.0.title)));
-    out
+    out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.2.cmp(b.2)));
+    out.into_iter()
+        .map(|(idx, score, _)| (idx, score))
+        .collect()
 }
 
 #[cfg(test)]
@@ -352,10 +364,14 @@ mod tests {
 
     #[test]
     fn push_top_k_respects_limit() {
+        let titles: Vec<String> = (0..10).map(|i| format!("App{i}")).collect();
         let mut heap = BinaryHeap::new();
-        for i in 0..10 {
-            let c = app(&format!("App{i}"), "/test");
-            push_top_k(&mut heap, ScoredMatch::new(c, i * 100), 3);
+        for (i, title) in titles.iter().enumerate() {
+            push_top_k(
+                &mut heap,
+                ScoredMatch::new(i as u32, (i as i64) * 100, title.as_str()),
+                3,
+            );
         }
         assert_eq!(heap.len(), 3);
 

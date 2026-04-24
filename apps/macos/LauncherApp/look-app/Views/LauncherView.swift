@@ -57,6 +57,10 @@ struct LauncherView: View {
     @State private var showsHelpScreen = false
     @State private var focusRequestToken: UInt64 = 0
     @State private var lookupDefinition: LookupDefinition?
+    @State private var pidToRestoreOnHide: pid_t?
+
+    private static let postHideActivationDelay: TimeInterval = 0.01
+    private static let postOpenActivationDelay: TimeInterval = 0.05
     @FocusState private var isQueryFocused: Bool
 
     private let bridge = EngineBridge.shared
@@ -687,17 +691,18 @@ struct LauncherView: View {
         switch selected.kind {
         case .app:
             if openTarget(selected.path) {
+                bringOpenedAppToFront(appBundlePath: selected.path)
                 if let error = bridge.recordUsage(candidateID: selected.id, action: "open_app") {
                     showBanner(error.userFacingMessage, style: .info, duration: 1.4)
                 }
-                hideLauncherWindow()
+                hideLauncherWindow(restorePreviousApp: false)
             }
         case .file:
             if openTarget(selected.path) {
                 if let error = bridge.recordUsage(candidateID: selected.id, action: "open_file") {
                     showBanner(error.userFacingMessage, style: .info, duration: 1.4)
                 }
-                hideLauncherWindow()
+                hideLauncherWindow(restorePreviousApp: false)
             }
         case .folder:
             if openTarget(selected.path) {
@@ -706,7 +711,7 @@ struct LauncherView: View {
                 {
                     showBanner(error.userFacingMessage, style: .info, duration: 1.4)
                 }
-                hideLauncherWindow()
+                hideLauncherWindow(restorePreviousApp: false)
             }
         case .clipboard:
             guard let content = selected.clipboardContent, !content.isEmpty else { return }
@@ -1027,6 +1032,7 @@ struct LauncherView: View {
             return
         }
 
+        captureFrontmostAppForRestoreIfNeeded()
         _ = bridge.requestIndexRefresh()
         NSApplication.shared.unhide(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -1045,10 +1051,66 @@ struct LauncherView: View {
         }
     }
 
-    private func hideLauncherWindow() {
+    private func hideLauncherWindow(restorePreviousApp: Bool = true) {
         guard let window = launcherWindow() else { return }
+        focusRequestToken &+= 1
+        isQueryFocused = false
         window.orderOut(nil)
+        if restorePreviousApp {
+            reactivatePreviouslyFocusedAppIfNeeded()
+        } else {
+            pidToRestoreOnHide = nil
+        }
         refreshClipboardMonitoringMode()
+    }
+
+    private func bringOpenedAppToFront(appBundlePath: String) {
+        let appURL = URL(fileURLWithPath: appBundlePath)
+        guard let bundle = Bundle(url: appURL),
+              let bundleID = bundle.bundleIdentifier
+        else {
+            return
+        }
+
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.postOpenActivationDelay) {
+            // Skip if the user has since switched to a different app — don't steal focus back.
+            if let frontmost = NSWorkspace.shared.frontmostApplication,
+               frontmost.processIdentifier != ownPID,
+               frontmost.bundleIdentifier != bundleID {
+                return
+            }
+            let candidates = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            if let app = candidates.first(where: { !$0.isTerminated }) ?? candidates.first {
+                _ = app.activate()
+            }
+        }
+    }
+
+    private func captureFrontmostAppForRestoreIfNeeded() {
+        guard let frontmost = NSWorkspace.shared.frontmostApplication else {
+            pidToRestoreOnHide = nil
+            return
+        }
+
+        if frontmost.processIdentifier == ProcessInfo.processInfo.processIdentifier {
+            pidToRestoreOnHide = nil
+            return
+        }
+
+        pidToRestoreOnHide = frontmost.processIdentifier
+    }
+
+    private func reactivatePreviouslyFocusedAppIfNeeded() {
+        guard let pid = pidToRestoreOnHide else { return }
+        pidToRestoreOnHide = nil
+        guard pid != ProcessInfo.processInfo.processIdentifier else { return }
+        guard let app = NSRunningApplication(processIdentifier: pid) else { return }
+        guard !app.isTerminated else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.postHideActivationDelay) {
+            _ = app.activate()
+        }
     }
 
     private func refreshClipboardMonitoringMode() {

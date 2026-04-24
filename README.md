@@ -2,323 +2,150 @@
 
 <img src="assets/icon.png" alt="look icon" width="96" />
 
-`look` is a minimal, rofi-inspired macOS launcher focused on fast local actions,
-built to feel instant: type, move, and launch without leaving the keyboard.
+A keyboard-first, local-first macOS launcher. Open apps, files, folders, clipboard history, and quick commands without leaving the keyboard.
 
-**Demo:** (Watch the demo video on **[youtube-video](https://www.youtube.com/watch?v=4Twb4We3PIs)** for better experience)
+[![CI](https://github.com/kunkka19xx/look/actions/workflows/ci.yml/badge.svg)](https://github.com/kunkka19xx/look/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-lightgrey) [![Homebrew](https://img.shields.io/badge/homebrew-cask-orange)](#install) [![Stars](https://img.shields.io/github/stars/kunkka19xx/look?style=flat&logo=github)](https://github.com/kunkka19xx/look/stargazers)
 
-![Look demo (placeholder)](assets/look.gif)
+![Look demo](assets/look.gif)
 
-Highlights:
+> 📘 **Docs:** [noah-code.com/docs/look](https://noah-code.com/docs/look) · 🎬 [Demo on YouTube](https://www.youtube.com/watch?v=4Twb4We3PIs)
 
-- very fast local app and file search
-- clipboard history lookup with preview
-- built-in quick commands (calculator, shell, force quit, system info)
-- query aliases for apps + System Settings via `~/.look.config` (for example `alias_note`, `alias_code`)
-- lightweight native app with local-first behavior
-
-## Quick navigation
-
-- [Installation](#installation)
-- [Themes](#ui)
-- [Current keyboard UX](#current-keyboard-ux)
-- [Quick start](#quick-start)
-- [Product scope](#product-scope)
-- [Documentation](#documentation)
-
-## Core workflow
-
-- launch top result with `Enter`
-- clipboard history query with `c"<word>`
-- translate text with `t"word` (network, 3 results: VI/EN/JA)
-- open dictionary lookup panel with `tw"word` (live as you type; `Enter` still works)
-- web search handoff with `Cmd+Enter` (Google)
-- reveal selected app/file/folder in Finder with `Cmd+F`
-- command mode with `Cmd+/` (`calc`, `shell`, `kill`, `sys`)
-- force-quit flow in command mode (`kill`, including process-by-port search like `:3000`)
-- calc supports `^`, `!`, constants (`pi`, `e`), functions (`sqrt`, `abs`, `round`, `floor`, `ceil`), and `%` shorthand (`50%`, `200*15%`)
-
-## Positioning
-
-Compared with larger launcher ecosystems (for example Raycast, Alfred, and similar tools), `look` is intentionally focused:
-
-- simple core workflow: app/file/folder search + a few built-in commands
-- lightweight and local-first behavior
-- fully open source
-- free to use
-- no plugin marketplace complexity in the default experience
-
-If you want a minimal launcher that stays fast and predictable, `look` is built for that.
-
-User-level behavior can be configured with `~/.look.config` (indexing + UI theme/font; see [User Guide](docs/user-guide.md) for supported keys).
-
-Theme and alias notes:
-
-- current built-in themes: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Custom
-- built-in themes are available in `Settings > Appearance` and persisted in `~/.look.config`
-- search aliases are configured with `alias_<keyword>=Term1|Term2|...` in `~/.look.config` and apply to app + System Settings search
-- fresh config presets include `alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, and `alias_brow`
-- `Settings > Advanced > Create Fresh Config` recreates the current config file from latest defaults (with confirmation popup)
-
-Indexing config supports include roots plus exclude rules for both apps and files, including optional `file_scan_extra_roots` for user-specific directories.
-
-## Repository layout
-
-```text
-.
-├── apps/
-│   └── macos/
-│       └── LauncherApp/
-├── core/
-│   ├── engine/
-│   ├── indexing/
-│   ├── matching/
-│   ├── ranking/
-│   └── storage/
-├── bridge/
-│   └── ffi/
-├── docs/
-├── scripts/
-└── assets/
-```
-
-## UI
-
-Current built-in themes (Settings > Appearance):
-
-- Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Custom
-
-![Look UI 1](assets/look-ui/1.png)
-
-![Look UI 2](assets/look-ui/2.png)
-
-![Look UI 3](assets/look-ui/3.png)
-
-![Look UI 4](assets/look-ui/4.png)
-
-![Look UI 5](assets/look-ui/5.png)
-
-![Look UI 6](assets/look-ui/6.png)
-
-## Project status
-
-- Swift macOS app scaffold is located at `apps/macos/LauncherApp/look-app/` with project file `apps/macos/LauncherApp/look-app.xcodeproj`.
-- Rust core workspace is initialized under `core/`.
-- FFI bridge crate is initialized under `bridge/ffi/`.
-- Benchmark example lives at `core/engine/examples/perf_bench.rs`.
-- Architecture, roadmap, and initial design decisions are documented under `docs/`.
-- UI includes: Spotlight-style launcher window (hidden from `Cmd+Tab`), theme/settings panel, command mode, and keyboard-first navigation.
-
-- Backend currently includes: SQLite-backed candidate storage, dynamic app/settings/file indexing, and usage event logging.
-- User guide: [docs/user-guide.md](docs/user-guide.md).
-- Apple release signing/notarization guide: [docs/apple-developer-release-guide.md](docs/apple-developer-release-guide.md).
-- Backend contributor guide (edit targets + verification): [docs/backend-guide.md](docs/backend-guide.md).
-- Feature status: [docs/features.md](docs/features.md).
-- Task breakdown: [docs/tasks.md](docs/tasks.md).
-- Architecture guide (canonical): [docs/architecture.md](docs/architecture.md).
-
-## Current keyboard UX
-
-- `Tab` / `Shift+Tab`: next/previous result (app list) or next/previous command (command mode)
-- `Up` / `Down`: navigate app list; in command mode, used for `kill` result navigation
-- `Cmd+/`: enter command mode (defaults to `calc`)
-- `Escape`: back to app list (when in command mode), otherwise hide launcher
-- `Shift+Escape`: hide launcher
-- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4`: switch command directly
-- `Cmd+Q`: hide launcher (Spotlight-style safety)
-- `Cmd+Option+Q`: quit app
-- `Enter`: launch selected app, execute active command, run web translation (if `t"...`), refresh lookup translation (if `tw"...`), or confirm kill
-- `Y` / `N`: confirm/cancel in kill command confirmation
-- `Cmd+Enter`: web search current query using Google
-- `Cmd+C`: copy selected file/folder to pasteboard
-- `Cmd+F`: reveal selected app/file/folder in Finder
-- `a"` / `f"` / `d"` / `r"`: apps/files/folders/regex scoped query prefix
-- `c"`: clipboard history scoped query prefix
-- `Cmd+Shift+,`: open/close settings panel
-- `Cmd+Shift+;`: reload `.look.config` after manual file edits
-- `Escape` (while settings open): close settings panel
-- `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
-
-## Installation
-
-Homebrew tap (recommended once release is published):
+## Install
 
 ```bash
 brew tap kunkka19xx/tap
 brew install --cask look
 ```
 
-Update:
+Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`). Release builds are signed and notarized — no Gatekeeper bypass needed.
+
+Other install options and manual setup: see [Installation details](#installation-details).
+
+## What you can do
+
+- **Find and open anything** — apps, files, folders indexed locally. Type, Enter, done.
+- **Calc inline** — type `2^10`, `4!`, `200*15%`, `sqrt(2)`, `2*pi`. No command mode needed.
+- **Kill a process by port** — `Cmd+/` then `kill :3000`. Confirms before killing.
+- **Search clipboard history** — `c"meeting` finds the snippet you copied an hour ago.
+- **Translate or look up a word** — `t"hello` for quick translation, `tw"word` for a definition panel.
+- **Regex, path, and kind-scoped search** — `r"^Visual.*`, `git/project/readme`, `a"safari`, `f"note`, `d"documents`.
+
+All local. No account. No telemetry. No plugin marketplace to manage.
+
+## Why look
+
+- **Fast** — typical search under 1 ms on a 2000-item index; empty-query browse under 30 µs.
+- **Small** — single native macOS app, no Electron, no background daemons.
+- **Local-first** — candidates indexed in a local SQLite file; the only network calls are explicit (`t"`, `tw"`, `Cmd+Enter` web search).
+- **Zero-config by default** — presets cover common apps (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`). Configure more via `~/.look.config` when you want to.
+- **Keyboard-first** — every action has a key; mouse never required.
+
+If you want a launcher that stays out of your way and does exactly what you asked, that's the pitch.
+
+## Essential shortcuts
+
+| Key | Action |
+|---|---|
+| `Cmd+Space` | Toggle launcher |
+| `Enter` | Open / run |
+| `Cmd+Enter` | Web search |
+| `Cmd+F` | Reveal in Finder |
+| `Cmd+/` | Command mode (`calc`, `shell`, `kill`, `sys`) |
+| `Cmd+Shift+,` | Settings |
+| `Escape` | Back / hide |
+
+Full reference: [docs/user-guide.md](docs/user-guide.md).
+
+## Themes
+
+Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, plus Custom. Switch in `Settings > Appearance`.
+
+<p align="center">
+  <img src="assets/look-ui/1.png" width="45%" />
+  <img src="assets/look-ui/2.png" width="45%" />
+</p>
+<p align="center">
+  <img src="assets/look-ui/3.png" width="45%" />
+  <img src="assets/look-ui/4.png" width="45%" />
+</p>
+<p align="center">
+  <img src="assets/look-ui/5.png" width="45%" />
+  <img src="assets/look-ui/6.png" width="45%" />
+</p>
+
+## Documentation
+
+- 📘 [Docs site](https://noah-code.com/docs/look) — hosted, searchable user guide and reference
+- [User guide (in-repo)](docs/user-guide.md) — full feature reference, shortcuts, configuration, permissions, troubleshooting
+- [Architecture](docs/architecture.md) — how the Swift app + Rust core fit together
+- [Features](docs/features.md) — what's shipped, what's planned
+- [Contributing](CONTRIBUTING.md) — how to contribute
+- [Development](DEVELOPMENT.md) — building locally, repo layout, release process
+
+## Installation details
+
+Homebrew (install and update):
 
 ```bash
+# install
+brew tap kunkka19xx/tap
+brew install --cask look
+
+# update
 brew upgrade --cask kunkka19xx/tap/look
+
+# uninstall
+brew uninstall --cask look
 ```
 
-Enable `Cmd+Space` for look (recommended):
-
-- open `System Settings` -> `Keyboard` -> `Keyboard Shortcuts...` -> `Spotlight`
-- disable `Show Spotlight search` or rebind it to another shortcut
-- open look once, then use `Cmd+Space` as launcher toggle
-
-If look is fully quit and Spotlight shortcut is disabled, relaunch from Terminal:
-
-```bash
-open "/Applications/Look.app"
-```
-
-Release builds are Developer ID signed and notarized, so normal first launch should open without Gatekeeper bypass.
-
-Curl installer (after a GitHub release exists):
+Curl installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/install-look.sh | bash
-which lookapp
 ```
 
-CLI naming note:
-
-- macOS already ships `/usr/bin/look`, so this project uses `lookapp` for terminal command examples
-
-Manual installer options:
+Pin a specific version or repo fork:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/install-look.sh | bash -s -- --version <version> --repo kunkka19xx/look
 ```
 
-or direct URL:
+Direct URL:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/install-look.sh | bash -s -- --url "https://github.com/kunkka19xx/look/releases/download/v<version>/Look-<version>-macOS.zip"
 ```
 
-## Quick start
+CLI naming note: macOS ships `/usr/bin/look`, so terminal command examples use `lookapp`.
 
-Prerequisites:
-
-- macOS 15.0+
-- Xcode (for app shell)
-- Rust stable toolchain (for core engine)
-
-Rust workspace checks:
+If Look is fully quit and Spotlight is still unbound, relaunch from Launchpad, or via:
 
 ```bash
-cd core
-cargo check --workspace
+open "/Applications/Look.app"
 ```
 
-FFI bridge checks:
+## Scope
 
-```bash
-cd bridge/ffi
-cargo check
-```
+In scope:
 
-Run local dev app (from repository root):
-
-```bash
-make app-run
-```
-
-Install/open a side-by-side Launchpad test build (`Look Dev`) without replacing Homebrew `Look`:
-
-```bash
-make app-run-dev
-```
-
-`make app-run` behavior:
-
-- builds local app bundle with Xcode (`Debug`)
-- stops any running `Look` process first (including Homebrew-installed app instance)
-- launches local app with `LOOK_CONFIG_PATH=$HOME/.look.dev.config`
-- enables a red `TEST APP` badge in the window so local/dev run is visually distinct
-
-`make app-run-dev` behavior:
-
-- builds local app bundle with Xcode (`Debug`)
-- installs `/Applications/Look Dev.app` with bundle id `noah-code.Look.Dev`
-- keeps Homebrew-installed `/Applications/Look.app` untouched
-- launches `Look Dev` with `LOOK_CONFIG_PATH=$HOME/.look.dev.config`
-
-Override dev config path when needed:
-
-```bash
-make app-run DEV_CONFIG_PATH="$HOME/.look.qa.config"
-make app-run-dev DEV_CONFIG_PATH="$HOME/.look.qa.config"
-```
-
-Prepare release artifacts/scripts (maintainers):
-
-```bash
-./scripts/build-release.sh 1.0.0
-./scripts/generate-homebrew-cask.sh 1.0.0 <sha256> kunkka19xx/look
-```
-
-Signing/notarization in release CI:
-
-- paid Apple Developer membership is required for Developer ID signing/notarization
-- strict release runs require signing/notary secrets
-- non-strict test runs can still build artifacts when secrets are missing
-
-## Product scope
-
-Platform direction:
-
-- current primary target is macOS
-- planned: Windows version (after macOS release quality is stable)
-- Linux version is not a near-term priority because tools like `rofi` already cover much of this workflow well
-
-Future direction:
-
-- we will keep adding useful built-in features when they stay aligned with the simple/fast philosophy
-- community ideas are welcome; strong ideas with clear user value can be prioritized into the roadmap
-- near-future exploration includes a plugin/extension injection model for developer customization
-
-In scope for first milestone:
-
-- global hotkey opens launcher
-- query app index and launch with Enter
-- query file/folder name index and open/reveal
-- query clipboard history (`c"`) and copy selected history item back to clipboard
-- web search handoff with Google
-- translate text with `t"...` (network, returns VI/EN/JA)
-- dictionary lookup panel with `tw"...` (definitions/examples from installed dictionaries)
-- command mode with `calc`, `shell`, `kill`, and `sys`
-- predictable, local-first behavior
+- apps, files, folders, clipboard, command mode, translation, regex/path search
+- local-first behavior, zero telemetry
+- near-term plugin/extension exploration
 
 Out of scope for v1:
 
-- plugins
 - online-first behavior
 - semantic/vector search
-- content indexing
+- full content indexing (names and metadata only)
 
-## Documentation
-
-- User guide: [docs/user-guide.md](docs/user-guide.md)
-- Architecture guide (canonical): [docs/architecture.md](docs/architecture.md)
-- Feature status: [docs/features.md](docs/features.md)
-- Backend guide (contributors): [docs/backend-guide.md](docs/backend-guide.md)
-- Task tracking: [docs/tasks.md](docs/tasks.md)
+Platform direction: macOS now, Windows next. Linux is not a near-term priority because `rofi` already covers the workflow well.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
 
-## Community
+## Contributors
 
-**Thanks to everyone who has contributed to Look.**
-See the full contributor graph:
-[Contributors](https://github.com/kunkka19xx/look/graphs/contributors)
+Thanks to everyone who has contributed — see the [contributor graph](https://github.com/kunkka19xx/look/graphs/contributors).
 
-- Contribution flow:
-  - branch from `dev` and open PRs into `dev`
-  - use PRs to `main` only for maintainer-coordinated hotfix/release work
-  - run local checks before PR: `cargo test --workspace --manifest-path core/Cargo.toml` and `cargo test --manifest-path bridge/ffi/Cargo.toml`
-  - update docs when user-visible behavior changes
-
-- Contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Issue templates: [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/)
-
-## Author
-
-- Kunkka
+Contribution flow: branch from `dev`, open PRs into `dev`. See [CONTRIBUTING.md](CONTRIBUTING.md) and [DEVELOPMENT.md](DEVELOPMENT.md).
