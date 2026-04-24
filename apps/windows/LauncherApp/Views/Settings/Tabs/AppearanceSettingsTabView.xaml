@@ -62,13 +62,14 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="90" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Backdrop" />
-                        <ComboBox x:Name="BackdropModeCombo" Grid.Column="1" SelectedIndex="1" SelectionChanged="BackdropModeCombo_OnSelectionChanged">
-                            <ComboBoxItem Content="Mica" />
-                            <ComboBoxItem Content="Acrylic" />
-                            <ComboBoxItem Content="Solid" />
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Blur Style" />
+                        <ComboBox x:Name="BlurStyleCombo" Grid.Column="1" SelectedIndex="2" SelectionChanged="BlurStyleCombo_OnSelectionChanged">
+                            <ComboBoxItem Content="High Contrast" />
+                            <ComboBoxItem Content="Soft" />
+                            <ComboBoxItem Content="Balanced" />
+                            <ComboBoxItem Content="Subtle" />
                         </ComboBox>
-                        <TextBlock Grid.Column="2" HorizontalAlignment="Right" Style="{StaticResource AppearanceLabelStyle}" Text="Window" />
+                        <TextBlock Grid.Column="2" HorizontalAlignment="Right" Style="{StaticResource AppearanceLabelStyle}" Text="Material" />
                     </Grid>
                 </StackPanel>
             </Border>

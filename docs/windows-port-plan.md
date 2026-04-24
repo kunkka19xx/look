@@ -443,15 +443,16 @@ Exit criteria:
     subclass; `MOD_NOREPEAT` prevents repeat fire on held keys
   - Alt+Shift+Q force-quits via `Application.Current.Exit` (with `Environment.Exit(0)`
     fallback)
-  - hide-on-focus-loss (Spotlight-style auto-dismiss) NOT yet implemented
+  - hide-on-focus-loss auto-dismiss: implemented via `Window.Activated` -> `AppWindow.Hide`; file/folder pickers wrap work in `MainWindow.SuppressAutoHide()` (refcounted `IDisposable` scope) so the launcher doesn't disappear while a picker is open
+  - hidden from taskbar and Alt-Tab via `WS_EX_TOOLWINDOW` (and cleared `WS_EX_APPWINDOW`) applied in `ConfigureLauncherWindow` before first `Activate`
 - Result actions (open, reveal, copy, web handoff): implemented
 - `shell:` URIs routed through `explorer.exe` so UWP `AppsFolder` targets launch cleanly
-- Clipboard history mode (`c"`): UI placeholder only, real capture NOT implemented
+- Clipboard history mode (`c"`): implemented via `AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE` subclass; entries deduped move-to-front, bounded (50 entries × 8K chars), persisted to `%LOCALAPPDATA%\look\clipboard-history.json`; `Services/ClipboardHistoryService.cs` owns the listener and surfaces change events to `MainWindow` which rebuilds `LauncherMode.Clipboard` rows
 - Command mode (`calc`, `shell`, `kill`, `sys`): implemented with in-panel execution and preview
   - `kill` parity: running-app list, keyboard/mouse selection, confirm bar, `:port` lookup (`:3000`, `port 3000`)
   - `calc` parity: advanced parser (`^`, `!`, `%`, constants/functions) plus finance-style percent for add/subtract
   - `sys`: grouped sections and live CPU/memory/network/battery/GPU/top-memory summary
-- Launch at login: NOT implemented (Advanced settings toggle present, but non-functional)
+- Launch at login: implemented via `Services/StartupRegistration.cs`, writing the `LookLauncher` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` with `"<exe>"`; synced at `App.OnLaunched` from the `launch_at_login` config key and again from `AdvancedSettingsTabView.SaveToConfig` when the toggle is changed. MSIX `StartupTask` is a follow-up once packaging lands.
 
 ## Phase 6 - UX parity polish
 

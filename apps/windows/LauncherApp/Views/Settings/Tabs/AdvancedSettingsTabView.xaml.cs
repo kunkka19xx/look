@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using LauncherApp.Services;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
@@ -35,7 +36,7 @@ public sealed partial class AdvancedSettingsTabView : UserControl
         + "ui_tint_green=0.10\n"
         + "ui_tint_blue=0.12\n"
         + "ui_tint_opacity=0.55\n"
-        + "ui_blur_material=hudWindow\n"
+        + "ui_blur_material=balanced\n"
         + "ui_blur_opacity=0.95\n"
         + "ui_font_name=SF Pro Text\n"
         + "ui_font_size=14\n"
@@ -129,6 +130,8 @@ public sealed partial class AdvancedSettingsTabView : UserControl
         }
 
         File.WriteAllText(path, string.Join("\n", lines) + "\n");
+
+        StartupRegistration.Sync(LaunchAtLoginToggle.IsOn);
     }
 
     private void LoadFromConfig()
@@ -231,15 +234,18 @@ public sealed partial class AdvancedSettingsTabView : UserControl
             InitializeWithWindow.Initialize(picker, hwnd);
         }
 
-        var file = await picker.PickSingleFileAsync();
-        if (file is null)
+        using (global::LauncherApp.App.MainAppWindow?.SuppressAutoHide())
         {
-            return;
-        }
+            var file = await picker.PickSingleFileAsync();
+            if (file is null)
+            {
+                return;
+            }
 
-        _backgroundImagePath = file.Path;
-        BackgroundImagePathText.Text = _backgroundImagePath;
-        ApplyBackgroundImageLive();
+            _backgroundImagePath = file.Path;
+            BackgroundImagePathText.Text = _backgroundImagePath;
+            ApplyBackgroundImageLive();
+        }
     }
 
     private void ClearBackgroundImageButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
@@ -260,16 +266,19 @@ public sealed partial class AdvancedSettingsTabView : UserControl
             InitializeWithWindow.Initialize(picker, hwnd);
         }
 
-        var folder = await picker.PickSingleFolderAsync();
-        if (folder is null)
+        using (global::LauncherApp.App.MainAppWindow?.SuppressAutoHide())
         {
-            return;
-        }
+            var folder = await picker.PickSingleFolderAsync();
+            if (folder is null)
+            {
+                return;
+            }
 
-        if (!_excludedFolders.Contains(folder.Path))
-        {
-            _excludedFolders.Add(folder.Path);
-            RefreshExcludedFoldersState();
+            if (!_excludedFolders.Contains(folder.Path))
+            {
+                _excludedFolders.Add(folder.Path);
+                RefreshExcludedFoldersState();
+            }
         }
     }
 
@@ -300,28 +309,31 @@ public sealed partial class AdvancedSettingsTabView : UserControl
             InitializeWithWindow.Initialize(picker, hwnd);
         }
 
-        var folder = await picker.PickSingleFolderAsync();
-        if (folder is null)
+        using (global::LauncherApp.App.MainAppWindow?.SuppressAutoHide())
         {
-            return;
-        }
+            var folder = await picker.PickSingleFolderAsync();
+            if (folder is null)
+            {
+                return;
+            }
 
-        if (_scanRoots.Contains(folder.Path))
-        {
-            ShowScanRootsNotice($"\"{folder.Path}\" is already in the list.");
-            return;
-        }
+            if (_scanRoots.Contains(folder.Path))
+            {
+                ShowScanRootsNotice($"\"{folder.Path}\" is already in the list.");
+                return;
+            }
 
-        string? coveringEntry = FindCoveringScanRoot(folder.Path);
-        if (coveringEntry is not null)
-        {
-            ShowScanRootsNotice($"\"{folder.Path}\" is already covered by \"{coveringEntry}\" — entry not added.");
-            return;
-        }
+            string? coveringEntry = FindCoveringScanRoot(folder.Path);
+            if (coveringEntry is not null)
+            {
+                ShowScanRootsNotice($"\"{folder.Path}\" is already covered by \"{coveringEntry}\" — entry not added.");
+                return;
+            }
 
-        _scanRoots.Add(folder.Path);
-        ClearScanRootsNotice();
-        RefreshScanRootsState();
+            _scanRoots.Add(folder.Path);
+            ClearScanRootsNotice();
+            RefreshScanRootsState();
+        }
     }
 
     private void ScanRootRemove_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

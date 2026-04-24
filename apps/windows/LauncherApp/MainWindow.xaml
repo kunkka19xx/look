@@ -24,6 +24,25 @@
         <Grid x:Name="BlurLayer" IsHitTestVisible="False" />
 
         <Border
+            x:Name="BannerHost"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Margin="0,0,0,48"
+            Padding="14,7"
+            CornerRadius="14"
+            Background="#6B2ECC71"
+            Visibility="Collapsed"
+            Canvas.ZIndex="10"
+            IsHitTestVisible="False">
+            <TextBlock
+                x:Name="BannerText"
+                FontSize="12"
+                FontWeight="SemiBold"
+                Foreground="White"
+                Text="Copied clipboard item" />
+        </Border>
+
+        <Border
             x:Name="LauncherSurface"
             Margin="0"
             Padding="2"

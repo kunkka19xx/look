@@ -4,7 +4,9 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using LauncherApp.Bridge;
 using LauncherApp.Commands;
@@ -35,17 +37,20 @@ namespace LauncherApp
         private readonly UwpAppService _uwpAppService;
         private readonly ObservableCollection<LauncherRowItem> _results;
         private readonly List<LauncherResult> _commandSeed;
-        private readonly List<LauncherResult> _clipboardSeed;
+        private ClipboardHistoryService? _clipboardHistory;
+        private CancellationTokenSource? _bannerCts;
+        private bool _bannerTranslationPrepared;
         private KillCommand.RunningApp? _pendingKillTarget;
         private SettingsTabsView? _settingsTabsView;
         private LauncherMode _mode = LauncherMode.Search;
         private int _searchVersion;
-        private string _backdropMode = "Acrylic";
-        private string _appliedBackdropMode = string.Empty;
+        private string _blurStyle = "balanced";
+        private double _blurTintScale = 1.0;
+        private double _blurRadiusScale = 1.0;
         private double _blurOpacityPercent = 42;
         private double _settingsBlurPercent = 90;
         private Windows.UI.Color _acrylicTint = Windows.UI.Color.FromArgb(45, 21, 28, 38);
-        private readonly TransparentTintBackdrop _transparentBackdrop;
+        private TransparentTintBackdrop _transparentBackdrop;
         private Windows.UI.Color _frameBorderColor = Windows.UI.Color.FromArgb(0x66, 0x27, 0x34, 0x46);
         private double _frameBorderThickness = 0.15;
         private bool _frameBorderHidden;
@@ -57,6 +62,7 @@ namespace LauncherApp
         private IntPtr _hotkeyHwnd = IntPtr.Zero;
         private const int HotkeyIdToggle = 0xB001;
         private const int HotkeyIdQuit = 0xB002;
+        private int _suppressAutoHideDepth;
         private static readonly string[] NoisyExecutableNameTokens =
         [
             "appinstallerprotocolshim",
@@ -89,7 +95,7 @@ namespace LauncherApp
             "\\WindowsApps\\",
         ];
 
-        public string CurrentBackdropMode => _backdropMode;
+        public string CurrentBlurStyle => _blurStyle;
 
         public MainWindow()
         {
@@ -114,7 +120,6 @@ namespace LauncherApp
             _uwpAppService.BeginInitialize();
             _results = new ObservableCollection<LauncherRowItem>();
             _commandSeed = BuildCommandSeed();
-            _clipboardSeed = BuildClipboardSeed();
 
             ResultsList.ItemsSource = _results;
             CommandPanelsPanel.CommandTextChanged += CommandPanelsPanel_OnCommandTextChanged;
@@ -127,13 +132,120 @@ namespace LauncherApp
             RefreshResults(QueryInput.Text?.Trim() ?? string.Empty);
             InitializeBlurLayer();
             LoadBackgroundImageFromConfig();
+            SetBlurStyle(LookConfig.Get("ui_blur_material") ?? "balanced");
             InitializeGlobalHotkeys();
+            InitializeClipboardHistory();
+            this.Activated += OnWindowActivated;
             this.Closed += OnWindowClosed;
+        }
+
+        private void InitializeClipboardHistory()
+        {
+            IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            _clipboardHistory = new ClipboardHistoryService(hwnd, DispatcherQueue);
+            _clipboardHistory.Changed += OnClipboardHistoryChanged;
+        }
+
+        private void OnClipboardHistoryChanged(object? sender, EventArgs e)
+        {
+            if (_mode != LauncherMode.Clipboard)
+            {
+                return;
+            }
+            RefreshResults(QueryInput.Text?.Trim() ?? string.Empty);
         }
 
         private void OnWindowClosed(object sender, WindowEventArgs args)
         {
+            this.Activated -= OnWindowActivated;
             UnregisterGlobalHotkeys();
+            _bannerCts?.Cancel();
+            _bannerCts = null;
+            if (_clipboardHistory is not null)
+            {
+                _clipboardHistory.Changed -= OnClipboardHistoryChanged;
+                _clipboardHistory.Dispose();
+                _clipboardHistory = null;
+            }
+        }
+
+        private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
+        {
+            if (args.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                return;
+            }
+            if (_suppressAutoHideDepth > 0)
+            {
+                return;
+            }
+            if (this.AppWindow is not AppWindow appWindow || !appWindow.IsVisible)
+            {
+                return;
+            }
+            appWindow.Hide();
+        }
+
+        public IDisposable SuppressAutoHide()
+        {
+            _suppressAutoHideDepth++;
+            return new SuppressAutoHideToken(this);
+        }
+
+        private sealed class SuppressAutoHideToken : IDisposable
+        {
+            private MainWindow? _owner;
+
+            public SuppressAutoHideToken(MainWindow owner)
+            {
+                _owner = owner;
+            }
+
+            public void Dispose()
+            {
+                MainWindow? owner = _owner;
+                if (owner is null)
+                {
+                    return;
+                }
+                _owner = null;
+                owner._suppressAutoHideDepth = Math.Max(0, owner._suppressAutoHideDepth - 1);
+            }
+        }
+
+        private void HideFromTaskbarAndAltTab()
+        {
+            IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            long exStyle = GetWindowLongPtrCompat(hwnd, GWL_EXSTYLE).ToInt64();
+            long updated = (exStyle | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW;
+            if (updated == exStyle)
+            {
+                return;
+            }
+            SetWindowLongPtrCompat(hwnd, GWL_EXSTYLE, new IntPtr(updated));
+        }
+
+        private static IntPtr GetWindowLongPtrCompat(IntPtr hWnd, int nIndex)
+        {
+            if (IntPtr.Size == 8)
+            {
+                return GetWindowLongPtr64(hWnd, nIndex);
+            }
+            return new IntPtr(GetWindowLong32(hWnd, nIndex));
+        }
+
+        private static IntPtr SetWindowLongPtrCompat(IntPtr hWnd, int nIndex, IntPtr dwNewLong)
+        {
+            if (IntPtr.Size == 8)
+            {
+                return SetWindowLongPtr64(hWnd, nIndex, dwNewLong);
+            }
+            return new IntPtr(SetWindowLong32(hWnd, nIndex, dwNewLong.ToInt32()));
         }
 
         private void InitializeGlobalHotkeys()
@@ -260,14 +372,175 @@ namespace LauncherApp
             ];
         }
 
-        private static List<LauncherResult> BuildClipboardSeed()
+        private List<LauncherResult> BuildClipboardRows()
         {
-            return
-            [
-                new LauncherResult { Id = "clip:1", Kind = "clipboard", Title = "cargo test -p look-engine", Subtitle = "Copied 3m ago", Path = "cargo test -p look-engine", Score = 1000 },
-                new LauncherResult { Id = "clip:2", Kind = "clipboard", Title = "https://docs.rs/serde", Subtitle = "Copied 11m ago", Path = "https://docs.rs/serde", Score = 990 },
-                new LauncherResult { Id = "clip:3", Kind = "clipboard", Title = "C:\\Users\\haong\\Documents\\git\\look", Subtitle = "Copied 19m ago", Path = "C:\\Users\\haong\\Documents\\git\\look", Score = 980 },
-            ];
+            if (_clipboardHistory is null)
+            {
+                return [];
+            }
+
+            IReadOnlyList<ClipboardHistoryEntry> entries = _clipboardHistory.Snapshot();
+            var rows = new List<LauncherResult>(entries.Count);
+            int score = 1000;
+            foreach (ClipboardHistoryEntry entry in entries)
+            {
+                rows.Add(new LauncherResult
+                {
+                    Id = "clip:" + entry.Id,
+                    Kind = "clipboard",
+                    Title = BuildClipboardPreview(entry.Content),
+                    Subtitle = BuildClipboardSubtitle(entry),
+                    Path = entry.Content,
+                    Score = score,
+                });
+                score -= 1;
+            }
+            return rows;
+        }
+
+        private static string BuildClipboardPreview(string content)
+        {
+            string collapsed = content.Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ').Trim();
+            if (collapsed.Length <= 120)
+            {
+                return collapsed;
+            }
+            return collapsed[..120] + "…";
+        }
+
+        private static string BuildClipboardSubtitle(ClipboardHistoryEntry entry)
+        {
+            string age = HumanAgoLabel(entry.CapturedAt);
+            int chars = entry.Content.Length;
+            int lines = CountLines(entry.Content);
+            string metrics = lines > 1 ? $"{chars} chars · {lines} lines" : $"{chars} chars";
+            return $"{age} · {metrics}";
+        }
+
+        private static string HumanAgoLabel(DateTimeOffset capturedAt)
+        {
+            TimeSpan delta = DateTimeOffset.Now - capturedAt;
+            if (delta.TotalSeconds < 60) return "Copied just now";
+            if (delta.TotalMinutes < 60) return $"Copied {(int)delta.TotalMinutes}m ago";
+            if (delta.TotalHours < 24) return $"Copied {(int)delta.TotalHours}h ago";
+            return $"Copied {(int)delta.TotalDays}d ago";
+        }
+
+        private static int CountLines(string content)
+        {
+            if (string.IsNullOrEmpty(content))
+            {
+                return 0;
+            }
+            int count = 1;
+            foreach (char ch in content)
+            {
+                if (ch == '\n') count++;
+            }
+            return count;
+        }
+
+        private enum BannerStyle
+        {
+            Success,
+            Info,
+            Warning,
+            Error,
+        }
+
+        private async void ShowBanner(string message, BannerStyle style = BannerStyle.Success, double durationSeconds = 1.2)
+        {
+            _bannerCts?.Cancel();
+            CancellationTokenSource cts = new();
+            _bannerCts = cts;
+            CancellationToken token = cts.Token;
+
+            BannerText.Text = message;
+            BannerHost.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(ResolveBannerColor(style));
+            BannerHost.Visibility = Visibility.Visible;
+
+            AnimateBannerIn();
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(Math.Max(0.6, durationSeconds)), token);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            AnimateBannerOut();
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(170), token);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            BannerHost.Visibility = Visibility.Collapsed;
+        }
+
+        private void AnimateBannerIn()
+        {
+            Microsoft.UI.Composition.Visual visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(BannerHost);
+            Microsoft.UI.Composition.Compositor compositor = visual.Compositor;
+
+            if (!_bannerTranslationPrepared)
+            {
+                Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(BannerHost, true);
+                _bannerTranslationPrepared = true;
+            }
+
+            Microsoft.UI.Composition.ScalarKeyFrameAnimation fade = compositor.CreateScalarKeyFrameAnimation();
+            fade.Duration = TimeSpan.FromMilliseconds(150);
+            fade.InsertKeyFrame(0f, 0f);
+            fade.InsertKeyFrame(1f, 1f);
+            visual.StartAnimation("Opacity", fade);
+
+            Microsoft.UI.Composition.Vector3KeyFrameAnimation slide = compositor.CreateVector3KeyFrameAnimation();
+            slide.Duration = TimeSpan.FromMilliseconds(180);
+            slide.InsertKeyFrame(0f, new Vector3(0, 14, 0));
+            slide.InsertKeyFrame(1f, Vector3.Zero);
+            visual.Properties.StartAnimation("Translation", slide);
+        }
+
+        private void AnimateBannerOut()
+        {
+            Microsoft.UI.Composition.Visual visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(BannerHost);
+            Microsoft.UI.Composition.Compositor compositor = visual.Compositor;
+
+            Microsoft.UI.Composition.ScalarKeyFrameAnimation fade = compositor.CreateScalarKeyFrameAnimation();
+            fade.Duration = TimeSpan.FromMilliseconds(150);
+            fade.InsertKeyFrame(0f, 1f);
+            fade.InsertKeyFrame(1f, 0f);
+            visual.StartAnimation("Opacity", fade);
+        }
+
+        private static Windows.UI.Color ResolveBannerColor(BannerStyle style)
+        {
+            // Alpha around 0.42 to mirror the macOS .opacity(0.42) banner treatment.
+            return style switch
+            {
+                BannerStyle.Success => Windows.UI.Color.FromArgb(0x6B, 0x2E, 0xCC, 0x71),
+                BannerStyle.Info => Windows.UI.Color.FromArgb(0x66, 0x33, 0xA1, 0xE8),
+                BannerStyle.Warning => Windows.UI.Color.FromArgb(0x73, 0xF3, 0x9C, 0x12),
+                BannerStyle.Error => Windows.UI.Color.FromArgb(0x73, 0xE7, 0x4C, 0x3C),
+                _ => Windows.UI.Color.FromArgb(0x6B, 0x2E, 0xCC, 0x71),
+            };
         }
 
         private void ConfigureLauncherWindow()
@@ -289,6 +562,8 @@ namespace LauncherApp
                 false,
                 WindowStyle.TiledWindow);
 
+            HideFromTaskbarAndAltTab();
+
             ExtendsContentIntoTitleBar = true;
             SetTitleBar(SearchBarHost);
 
@@ -297,41 +572,52 @@ namespace LauncherApp
                 root.RequestedTheme = ElementTheme.Dark;
             }
 
-            SetBackdropMode("Acrylic");
+            ApplyAcrylicBackdrop();
 
             ApplyRuntimeIcon();
         }
 
-        public void SetBackdropMode(string mode)
+        private void ApplyAcrylicBackdrop()
         {
-            _backdropMode = mode;
+            SystemBackdrop = _transparentBackdrop;
+            ApplyFrameStyle(removeRoundedCorners: true, removeBorder: true);
+        }
 
-            if (mode.Equals(_appliedBackdropMode, StringComparison.OrdinalIgnoreCase))
+        public void SetBlurStyle(string rawId)
+        {
+            string id = NormalizeBlurStyle(rawId);
+            _blurStyle = id;
+            (double tintScale, double radiusScale) = ResolveBlurStyleScales(id);
+            _blurTintScale = tintScale;
+            _blurRadiusScale = radiusScale;
+            ApplyBlurTint();
+        }
+
+        private static string NormalizeBlurStyle(string raw)
+        {
+            string v = (raw ?? string.Empty).Trim().ToLowerInvariant().Replace('-', '_').Replace(' ', '_');
+            return v switch
             {
-                return;
-            }
+                "high_contrast" or "highcontrast" or "hudwindow" or "hud_window" => "high_contrast",
+                "soft" or "sidebar" => "soft",
+                "balanced" or "balance" or "menu" => "balanced",
+                "subtle" or "underwindowbackground" or "under_window_background" => "subtle",
+                _ => "balanced",
+            };
+        }
 
-            if (mode.Equals("Acrylic", StringComparison.OrdinalIgnoreCase))
+        private static (double TintScale, double RadiusScale) ResolveBlurStyleScales(string id)
+        {
+            // Scales mirror the macOS LauncherBlurMaterial multipliers so visual intent stays
+            // aligned across platforms: high-contrast darkens/intensifies, subtle thins toward
+            // fully transparent, soft lightens, balanced is neutral.
+            return id switch
             {
-                SystemBackdrop = _transparentBackdrop;
-                ApplyFrameStyle(removeRoundedCorners: true, removeBorder: true);
-                _appliedBackdropMode = mode;
-                return;
-            }
-
-            if (mode.Equals("Solid", StringComparison.OrdinalIgnoreCase))
-            {
-                SystemBackdrop = null;
-                DisableAcrylicFallback();
-                ApplyFrameStyle(removeRoundedCorners: false, removeBorder: false);
-                _appliedBackdropMode = mode;
-                return;
-            }
-
-            DisableAcrylicFallback();
-            SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
-            ApplyFrameStyle(removeRoundedCorners: false, removeBorder: false);
-            _appliedBackdropMode = mode;
+                "high_contrast" => (1.16, 1.12),
+                "soft" => (0.84, 0.86),
+                "subtle" => (0.68, 0.72),
+                _ => (1.0, 1.0),
+            };
         }
 
         private void ApplyRuntimeIcon()
@@ -359,11 +645,11 @@ namespace LauncherApp
         {
             // Blur Opacity: how much the tint blocks what's behind (low = more transparent = more blur visible)
             // Settings Blur: additional opacity boost (high = more opaque = less background visible)
-            // Combined: alpha 5..200 range so you always see real blur effect
+            // _blurTintScale comes from the user's Blur Style preset and multiplies the final alpha.
             double blurFactor = _blurOpacityPercent / 100d;
             double settingsFactor = (_settingsBlurPercent - 40d) / 60d;
-            double combined = blurFactor * 0.65 + settingsFactor * 0.35;
-            byte alpha = (byte)System.Math.Clamp((int)System.Math.Round(combined * 200d), 5, 200);
+            double combined = (blurFactor * 0.65 + settingsFactor * 0.35) * _blurTintScale;
+            byte alpha = (byte)System.Math.Clamp((int)System.Math.Round(combined * 200d), 5, 230);
             _acrylicTint = Windows.UI.Color.FromArgb(alpha, _acrylicTint.R, _acrylicTint.G, _acrylicTint.B);
             _transparentBackdrop.TintColor = _acrylicTint;
             UpdateBlurRadius();
@@ -417,7 +703,7 @@ namespace LauncherApp
 
             double primary = System.Math.Clamp(_blurOpacityPercent, 0, 100) / 100d * 40d;
             double secondary = System.Math.Clamp(_settingsBlurPercent - 40d, 0, 60d) / 60d * 20d;
-            float amount = (float)System.Math.Max(0, primary + secondary);
+            float amount = (float)System.Math.Max(0, (primary + secondary) * _blurRadiusScale);
             _backdropBlurBrush.Properties.InsertScalar("Blur.BlurAmount", amount);
         }
 
@@ -619,75 +905,6 @@ namespace LauncherApp
             return Path.Combine(profile, ".look.config");
         }
 
-        private void EnableAcrylicFallback(Windows.UI.Color tint)
-        {
-            IntPtr hwnd = WindowNative.GetWindowHandle(this);
-            if (hwnd == IntPtr.Zero)
-            {
-                return;
-            }
-
-            var accent = new AccentPolicy
-            {
-                AccentState = AccentState.AccentEnableAcrylicBlurBehind,
-                AccentFlags = 0,
-                GradientColor = BuildAccentColor(tint.A, tint.R, tint.G, tint.B),
-                AnimationId = 0
-            };
-
-            SetAccentPolicy(hwnd, accent);
-        }
-
-        private void DisableAcrylicFallback()
-        {
-            IntPtr hwnd = WindowNative.GetWindowHandle(this);
-            if (hwnd == IntPtr.Zero)
-            {
-                return;
-            }
-
-            var accent = new AccentPolicy
-            {
-                AccentState = AccentState.AccentDisabled,
-                AccentFlags = 0,
-                GradientColor = 0,
-                AnimationId = 0
-            };
-
-            SetAccentPolicy(hwnd, accent);
-        }
-
-        private static int BuildAccentColor(byte alpha, byte red, byte green, byte blue)
-        {
-            return (alpha << 24) | (blue << 16) | (green << 8) | red;
-        }
-
-        private static void SetAccentPolicy(IntPtr hwnd, AccentPolicy accent)
-        {
-            int size = Marshal.SizeOf<AccentPolicy>();
-            IntPtr accentPtr = Marshal.AllocHGlobal(size);
-
-            try
-            {
-                Marshal.StructureToPtr(accent, accentPtr, false);
-                var data = new WindowCompositionAttributeData
-                {
-                    Attribute = WindowCompositionAttribute.WcaAccentPolicy,
-                    Data = accentPtr,
-                    SizeOfData = size
-                };
-
-                SetWindowCompositionAttribute(hwnd, ref data);
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(accentPtr);
-            }
-        }
-
-        [DllImport("user32.dll")]
-        private static extern int SetWindowCompositionAttribute(IntPtr hwnd, ref WindowCompositionAttributeData data);
-
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
@@ -702,6 +919,18 @@ namespace LauncherApp
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+        private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+        private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+        private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+        private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
 
         [DllImport("comctl32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -722,6 +951,10 @@ namespace LauncherApp
         private const uint MOD_NOREPEAT = 0x4000;
         private const uint VK_SPACE = 0x20;
         private const uint VK_Q = 0x51;
+
+        private const int GWL_EXSTYLE = -20;
+        private const long WS_EX_TOOLWINDOW = 0x00000080L;
+        private const long WS_EX_APPWINDOW = 0x00040000L;
 
         private void ApplyFrameStyle(bool removeRoundedCorners, bool removeBorder)
         {
@@ -820,17 +1053,6 @@ namespace LauncherApp
             UpdateFrameCaptionColor(panelColor);
         }
 
-        private enum AccentState
-        {
-            AccentDisabled = 0,
-            AccentEnableAcrylicBlurBehind = 4,
-        }
-
-        private enum WindowCompositionAttribute
-        {
-            WcaAccentPolicy = 19,
-        }
-
         private enum DwmWindowAttribute
         {
             UseImmersiveDarkMode = 20,
@@ -844,23 +1066,6 @@ namespace LauncherApp
         {
             Default = 0,
             DoNotRound = 1,
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct AccentPolicy
-        {
-            public AccentState AccentState;
-            public int AccentFlags;
-            public int GradientColor;
-            public int AnimationId;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct WindowCompositionAttributeData
-        {
-            public WindowCompositionAttribute Attribute;
-            public IntPtr Data;
-            public int SizeOfData;
         }
 
         private (LauncherMode mode, string normalizedQuery) ResolveMode(string rawQuery)
@@ -960,7 +1165,6 @@ namespace LauncherApp
 
         private void ApplyConfiguredSurface()
         {
-            SetBackdropMode(_backdropMode);
             LauncherSurface.Background = (Brush)Application.Current.Resources["LauncherPanelBrush"];
         }
 
@@ -982,7 +1186,7 @@ namespace LauncherApp
                 LauncherMode.Search => FilterSearchNoise(
                     DeduplicatePairedAppEntries(prefetchedBackendResults ?? _searchLogic.Search(query, 120)), 40),
                 LauncherMode.Command => FilterRows(_commandSeed, query),
-                LauncherMode.Clipboard => FilterRows(_clipboardSeed, query),
+                LauncherMode.Clipboard => FilterRows(BuildClipboardRows(), query),
                 LauncherMode.Settings => [],
                 LauncherMode.Help => FilterRows(BuildHelpRows(), query),
                 _ => [],
@@ -1130,7 +1334,8 @@ namespace LauncherApp
                 AppPathCategory.UwpAppsFolder => 3,
                 AppPathCategory.InstallExecutable => 2,
                 AppPathCategory.StartMenuShortcut => 1,
-                _ => 0,
+                AppPathCategory.SystemExecutable => 0,
+                _ => -1,
             };
         }
 
@@ -1162,7 +1367,23 @@ namespace LauncherApp
                 return AppPathCategory.InstallExecutable;
             }
 
+            if (path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                && IsWindowsSystemPath(path))
+            {
+                return AppPathCategory.SystemExecutable;
+            }
+
             return AppPathCategory.Other;
+        }
+
+        private static bool IsWindowsSystemPath(string path)
+        {
+            // Match any of the well-known OS executable roots so they participate in dedup with
+            // Start Menu / UWP entries of the same name (e.g., Windows\System32\notepad.exe vs
+            // AppsFolder\Notepad). Case-insensitive; tolerates drive letters via Contains.
+            return path.Contains("\\Windows\\System32\\", StringComparison.OrdinalIgnoreCase)
+                || path.Contains("\\Windows\\SysWOW64\\", StringComparison.OrdinalIgnoreCase)
+                || path.Contains("\\Windows\\SysNative\\", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string NormalizeAppIdentity(string title)
@@ -1209,6 +1430,7 @@ namespace LauncherApp
         private enum AppPathCategory
         {
             Other,
+            SystemExecutable,
             StartMenuShortcut,
             InstallExecutable,
             UwpAppsFolder,
@@ -1779,9 +2001,14 @@ namespace LauncherApp
             if (e.Key == VirtualKey.C && IsCtrlPressed() && ResultsList.SelectedItem is LauncherRowItem copySelected)
             {
                 bool ok = _actionDispatcher.CopyResultPath(copySelected.Result);
-                HintText.Text = ok
-                    ? "Copied path/content  •  Enter open  •  Ctrl+R reveal  •  Ctrl+C copy"
-                    : "Copy action failed  •  Enter open  •  Ctrl+R reveal  •  Ctrl+C copy";
+                if (ok)
+                {
+                    ShowBanner("Copied path to clipboard");
+                }
+                else
+                {
+                    ShowBanner("Copy action failed", BannerStyle.Error);
+                }
                 e.Handled = true;
                 return;
             }
@@ -1789,9 +2016,14 @@ namespace LauncherApp
             if (e.Key == VirtualKey.R && IsCtrlPressed() && ResultsList.SelectedItem is LauncherRowItem revealSelected)
             {
                 bool ok = _actionDispatcher.RevealResult(revealSelected.Result);
-                HintText.Text = ok
-                    ? "Revealed in Explorer  •  Enter open  •  Ctrl+R reveal  •  Ctrl+C copy"
-                    : "Reveal action failed  •  Enter open  •  Ctrl+R reveal  •  Ctrl+C copy";
+                if (ok)
+                {
+                    ShowBanner("Revealed in Explorer", BannerStyle.Info);
+                }
+                else
+                {
+                    ShowBanner("Reveal action failed", BannerStyle.Error);
+                }
                 e.Handled = true;
             }
         }
@@ -1830,8 +2062,9 @@ namespace LauncherApp
 
             if (_mode == LauncherMode.Clipboard)
             {
+                _clipboardHistory?.SuppressNextCapture();
                 CopyText(selected.Result.Path);
-                HintText.Text = "Copied clipboard item  •  Enter copy  •  Up/Down select  •  Esc clear";
+                ShowBanner("Copied clipboard item");
                 return;
             }
 

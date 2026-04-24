@@ -117,10 +117,10 @@ Reference: `docs/windows-port-plan.md`
 
 **Windows real functionality (remaining items):**
 - [x] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff)
-- [x] implement global hotkey + hide/show/focus lifecycle parity on Windows (Alt+Space toggle, Alt+Shift+Q quit; hide-on-focus-loss still pending)
-- [ ] implement Windows clipboard history mode (`c"`) with listener-first capture strategy
+- [x] implement global hotkey + hide/show/focus lifecycle parity on Windows (Alt+Space toggle, Alt+Shift+Q quit, hide-on-focus-loss auto-dismiss, WS_EX_TOOLWINDOW hides from taskbar + Alt-Tab)
+- [x] implement Windows clipboard history mode (`c"`) with listener-first capture strategy (`AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE`, bounded history, persisted to `%LOCALAPPDATA%\look\clipboard-history.json`)
 - [x] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`)
-- [ ] implement Windows launch-at-login integration
+- [x] implement Windows launch-at-login integration (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; synced on app start + on Advanced Settings save)
 - [ ] implement Windows packaging/signing/release pipeline (`.msix`/`.msi`) and documentation
 - [ ] run closed beta and fix top reliability/performance parity regressions before GA
 
@@ -152,10 +152,10 @@ Windows UI delivery note (mock-first):
 - [x] implement FFI search connection (Rust backend working, search returns real results)
 - [x] implement IconService for Windows icon extraction (SHGetFileInfo API)
 - [x] fix icon display in WinUI 3 (stable icon rendering with shell extraction + cache fallback)
-- [x] implement global hotkey + hide/show/focus lifecycle parity on Windows (Alt+Space toggle, Alt+Shift+Q quit; hide-on-focus-loss still pending)
-- [ ] implement Windows clipboard history mode (`c"`) with listener-first capture strategy
+- [x] implement global hotkey + hide/show/focus lifecycle parity on Windows (Alt+Space toggle, Alt+Shift+Q quit, hide-on-focus-loss auto-dismiss, WS_EX_TOOLWINDOW hides from taskbar + Alt-Tab)
+- [x] implement Windows clipboard history mode (`c"`) with listener-first capture strategy (`AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE`, bounded history, persisted to `%LOCALAPPDATA%\look\clipboard-history.json`)
 - [x] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`) with in-panel output and keyboard run flow
-- [ ] implement Windows launch-at-login integration
+- [x] implement Windows launch-at-login integration (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; synced on app start + on Advanced Settings save)
 - [x] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff) with type-aware open handling (app/file/folder/setting/url)
 
 ---
@@ -229,9 +229,8 @@ Window + reliability:
 - [x] `ResultsList_OnSelectionChanged` calls `ScrollIntoView` so Tab/Up/Down navigate off-viewport correctly
 - [x] global hotkeys: Alt+Space toggle, Alt+Shift+Q quit, via `RegisterHotKey` + `SetWindowSubclass`
 - [x] crash log moved to `%LOCALAPPDATA%\look\look-crash.log`; added `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException` handlers alongside the XAML one; each entry tagged with origin
-- [ ] hide-on-focus-loss auto-dismiss (Spotlight-style; remaining Phase 5 lifecycle item)
-- [ ] UWP app launcher-at-login integration (Advanced toggle present, non-functional)
-- [ ] Windows clipboard history mode (`c"`) real capture
+- [x] hide-on-focus-loss auto-dismiss (Spotlight-style; `Window.Activated` -> `AppWindow.Hide` with `SuppressAutoHide()` scope for file/folder pickers)
+- [x] hide launcher from taskbar and Alt-Tab (`WS_EX_TOOLWINDOW` + cleared `WS_EX_APPWINDOW`)
 - [ ] Windows packaging / signing / release pipeline (`.msix` or `.msi`)
 
 ## Milestone G: Reliability (errors, tests, logs)

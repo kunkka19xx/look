@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using LauncherApp.Services;
 using Microsoft.Win32;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -14,7 +15,7 @@ public sealed partial class AppearanceSettingsTabView : UserControl
 {
     private List<string> _allFonts = [];
     private bool _isInitializing;
-    private string _appliedBackdropMode = string.Empty;
+    private string _appliedBlurStyle = string.Empty;
     private string _appliedFontName = string.Empty;
     private double _appliedFontSize = -1;
     private (double R, double G, double B)? _textSecondaryOverride;
@@ -80,7 +81,7 @@ public sealed partial class AppearanceSettingsTabView : UserControl
 
         if (Application.Current?.Resources is not ResourceDictionary resources)
         {
-            BackdropModeCombo.SelectedIndex = 1;
+            BlurStyleCombo.SelectedIndex = 2;
             return;
         }
 
@@ -125,13 +126,9 @@ public sealed partial class AppearanceSettingsTabView : UserControl
             FontNameInput.Text = family.Source;
         }
 
-        string mode = mainWindow?.CurrentBackdropMode ?? "Acrylic";
-
-        BackdropModeCombo.SelectedIndex = mode.Equals("Solid", System.StringComparison.OrdinalIgnoreCase)
-            ? 2
-            : mode.Equals("Mica", System.StringComparison.OrdinalIgnoreCase)
-                ? 0
-                : 1;
+        string style = mainWindow?.CurrentBlurStyle ?? "balanced";
+        BlurStyleCombo.SelectedIndex = BlurStyleIndexFromId(style);
+        _appliedBlurStyle = style;
 
         if (mainWindow is not null)
         {
@@ -240,14 +237,50 @@ public sealed partial class AppearanceSettingsTabView : UserControl
 
     }
 
-    private void BackdropModeCombo_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void BlurStyleCombo_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_isInitializing || !IsLoaded)
         {
             return;
         }
 
-        ApplyBackdropMode();
+        ApplyBlurStyle();
+    }
+
+    private static readonly string[] BlurStyleIds = ["high_contrast", "soft", "balanced", "subtle"];
+
+    private static int BlurStyleIndexFromId(string id)
+    {
+        string lowered = (id ?? string.Empty).Trim().ToLowerInvariant().Replace('-', '_').Replace(' ', '_');
+        return lowered switch
+        {
+            "high_contrast" or "hudwindow" or "hud_window" => 0,
+            "soft" or "sidebar" => 1,
+            "subtle" or "underwindowbackground" or "under_window_background" => 3,
+            _ => 2,
+        };
+    }
+
+    private void ApplyBlurStyle()
+    {
+        int index = BlurStyleCombo.SelectedIndex;
+        if (index < 0 || index >= BlurStyleIds.Length)
+        {
+            return;
+        }
+        string id = BlurStyleIds[index];
+
+        if (id.Equals(_appliedBlurStyle, System.StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
+        {
+            window.SetBlurStyle(id);
+            _appliedBlurStyle = id;
+            LookConfig.Upsert("ui_blur_material", id);
+        }
     }
 
     private readonly record struct ThemePreset(
@@ -330,7 +363,7 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         }
 
         ApplyThemePreview();
-        ApplyBackdropMode();
+        ApplyBlurStyle();
     }
 
     private void ApplyThemePreview()
@@ -380,21 +413,6 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         }
 
         ApplyTypographyPreview(resources);
-    }
-
-    private void ApplyBackdropMode()
-    {
-        string mode = (BackdropModeCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Acrylic";
-        if (mode.Equals(_appliedBackdropMode, System.StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
-        {
-            window.SetBackdropMode(mode);
-            _appliedBackdropMode = mode;
-        }
     }
 
     private void ApplyTypographyPreview(ResourceDictionary resources)

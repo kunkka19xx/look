@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -144,58 +145,102 @@ public sealed class ActionDispatcher
 
         string resolved = ResolveExecutablePath(path);
         string normalizedPath = NormalizePath(resolved);
-        if (!normalizedPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-            return false;
+        bool hasExePath = normalizedPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
 
-        string processName = Path.GetFileNameWithoutExtension(normalizedPath);
-        if (string.IsNullOrWhiteSpace(processName))
-            return false;
-
-        Process[] candidates;
-        try
+        // For UWP entries (shell:AppsFolder\<AUMID>) and anything else without a resolved .exe,
+        // fall back to the result's display title as the process-name probe. Notepad's AUMID
+        // doesn't end in .exe, but the running process is "Notepad" so the fallback matches.
+        foreach (string processName in EnumerateProcessNameCandidates(hasExePath ? normalizedPath : null, title))
         {
-            candidates = Process.GetProcessesByName(processName);
-        }
-        catch
-        {
-            return false;
-        }
-
-        IntPtr fallbackWindow = IntPtr.Zero;
-
-        foreach (var process in candidates)
-        {
+            Process[] candidates;
             try
             {
-                IntPtr hwnd = process.MainWindowHandle;
-                if (hwnd == IntPtr.Zero)
-                    continue;
-
-                if (fallbackWindow == IntPtr.Zero)
-                    fallbackWindow = hwnd;
-
-                string? processPath = process.MainModule?.FileName;
-                if (string.IsNullOrWhiteSpace(processPath))
-                    continue;
-
-                if (!NormalizePath(processPath).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                ShowWindowAsync(hwnd, SW_RESTORE);
-                return SetForegroundWindow(hwnd);
+                candidates = Process.GetProcessesByName(processName);
             }
             catch
             {
+                continue;
+            }
+
+            IntPtr fallbackWindow = IntPtr.Zero;
+
+            foreach (var process in candidates)
+            {
+                try
+                {
+                    IntPtr hwnd = process.MainWindowHandle;
+                    if (hwnd == IntPtr.Zero)
+                        continue;
+
+                    if (fallbackWindow == IntPtr.Zero)
+                        fallbackWindow = hwnd;
+
+                    if (!hasExePath)
+                    {
+                        // No exe path to match against - accept the first visible window for this
+                        // process name. Safe because UWP apps expose one activation target.
+                        ActivateWindow(hwnd);
+                        return true;
+                    }
+
+                    string? processPath = process.MainModule?.FileName;
+                    if (string.IsNullOrWhiteSpace(processPath))
+                        continue;
+
+                    if (!NormalizePath(processPath).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    ActivateWindow(hwnd);
+                    return true;
+                }
+                catch
+                {
+                }
+            }
+
+            if (fallbackWindow != IntPtr.Zero && IsLikelySingleAppAlias(path, normalizedPath, title))
+            {
+                ActivateWindow(fallbackWindow);
+                return true;
             }
         }
 
-        if (fallbackWindow != IntPtr.Zero && IsLikelySingleAppAlias(path, normalizedPath, title))
+        return false;
+    }
+
+    private static IEnumerable<string> EnumerateProcessNameCandidates(string? normalizedExePath, string? title)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(normalizedExePath))
         {
-            ShowWindowAsync(fallbackWindow, SW_RESTORE);
-            return SetForegroundWindow(fallbackWindow);
+            string fromPath = Path.GetFileNameWithoutExtension(normalizedExePath);
+            if (!string.IsNullOrWhiteSpace(fromPath) && seen.Add(fromPath))
+                yield return fromPath;
         }
 
-        return false;
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            string trimmed = title.Trim();
+            if (seen.Add(trimmed))
+                yield return trimmed;
+
+            string noSpaces = trimmed.Replace(" ", string.Empty);
+            if (noSpaces.Length > 0 && seen.Add(noSpaces))
+                yield return noSpaces;
+        }
+    }
+
+    private static void ActivateWindow(IntPtr hwnd)
+    {
+        // Only restore minimized windows. Calling SW_RESTORE on a maximized or fullscreen window
+        // un-maximizes it (Edge losing F11/fullscreen when launched from search). SetForegroundWindow
+        // alone is enough to pull a non-minimized window to the front.
+        if (IsIconic(hwnd))
+        {
+            ShowWindowAsync(hwnd, SW_RESTORE);
+        }
+        SetForegroundWindow(hwnd);
     }
 
     private static string ResolveExecutablePath(string path)
@@ -281,4 +326,8 @@ public sealed class ActionDispatcher
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsIconic(IntPtr hWnd);
 }
