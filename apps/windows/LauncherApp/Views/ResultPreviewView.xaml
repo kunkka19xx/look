@@ -68,14 +68,14 @@
                         <TextBlock
                             x:Name="HeaderSizeText"
                             FontSize="11"
-                            Foreground="{StaticResource LauncherMutedTextBrush}"
+                            Foreground="{StaticResource LauncherSecondaryTextBrush}"
                             VerticalAlignment="Center"
                             Text="Size" />
                     </StackPanel>
                     <TextBlock
                         x:Name="SubtitleBlock"
                         FontSize="11"
-                        Foreground="{StaticResource LauncherMutedTextBrush}"
+                        Foreground="{StaticResource LauncherSecondaryTextBrush}"
                         Text="Select a result to view details"
                         TextTrimming="CharacterEllipsis" />
                 </StackPanel>

@@ -57,51 +57,63 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Grid x:Name="SearchBarHost" Grid.Row="0">
-                    <TextBox
-                    x:Name="QueryInput"
-                    Padding="34,10,12,10"
-                    FontSize="14"
-                    PlaceholderText="Search apps"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Foreground="{StaticResource LauncherTextBrush}"
-                    SelectionHighlightColor="{StaticResource LauncherAccentBrush}"
-                    Loaded="QueryInput_OnLoaded"
-                    TextChanged="QueryInput_OnTextChanged"
-                    PreviewKeyDown="QueryInput_OnPreviewKeyDown"
-                    KeyDown="QueryInput_OnKeyDown">
-                        <TextBox.Resources>
-                            <StaticResource x:Key="TextControlForeground" ResourceKey="LauncherTextBrush" />
-                            <StaticResource x:Key="TextControlForegroundPointerOver" ResourceKey="LauncherTextBrush" />
-                            <StaticResource x:Key="TextControlForegroundFocused" ResourceKey="LauncherTextBrush" />
-                            <StaticResource x:Key="TextControlPlaceholderForeground" ResourceKey="LauncherMutedTextBrush" />
-                            <StaticResource x:Key="TextControlPlaceholderForegroundPointerOver" ResourceKey="LauncherMutedTextBrush" />
-                            <StaticResource x:Key="TextControlPlaceholderForegroundFocused" ResourceKey="LauncherMutedTextBrush" />
-                            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent" />
-                            <StaticResource x:Key="TextControlButtonForeground" ResourceKey="LauncherMutedTextBrush" />
-                            <StaticResource x:Key="TextControlButtonForegroundPointerOver" ResourceKey="LauncherTextBrush" />
-                            <StaticResource x:Key="TextControlButtonForegroundPressed" ResourceKey="LauncherTextBrush" />
-                            <SolidColorBrush x:Key="TextControlButtonBackground" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlButtonBackgroundPointerOver" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlButtonBackgroundPressed" Color="Transparent" />
-                        </TextBox.Resources>
-                    </TextBox>
-                    <TextBlock
-                    Margin="12,0,0,0"
-                    FontFamily="Segoe MDL2 Assets"
-                    FontSize="13"
-                    VerticalAlignment="Center"
-                    Foreground="{StaticResource LauncherMutedTextBrush}"
-                    Text="&#xE721;"
-                    IsHitTestVisible="False" />
+                <Grid x:Name="SearchBarHost" Grid.Row="0" Margin="4,4,4,0">
+                    <!-- macOS-style capsule: rounded tint fill so the command line reads as a
+                         distinct "input pill" rather than a bare text field. Subtle panel-alt
+                         fill plus border picks up the current theme automatically. -->
+                    <Border
+                        CornerRadius="10"
+                        Background="{StaticResource LauncherPanelAltBrush}"
+                        BorderBrush="{StaticResource LauncherBorderBrush}"
+                        BorderThickness="1">
+                        <Grid>
+                            <TextBox
+                                x:Name="QueryInput"
+                                Padding="38,10,12,10"
+                                FontSize="14"
+                                PlaceholderText="Search apps"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="{StaticResource LauncherTextBrush}"
+                                SelectionHighlightColor="{StaticResource LauncherAccentBrush}"
+                                Loaded="QueryInput_OnLoaded"
+                                TextChanged="QueryInput_OnTextChanged"
+                                PreviewKeyDown="QueryInput_OnPreviewKeyDown"
+                                KeyDown="QueryInput_OnKeyDown">
+                                <TextBox.Resources>
+                                    <StaticResource x:Key="TextControlForeground" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlForegroundPointerOver" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlForegroundFocused" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlPlaceholderForeground" ResourceKey="LauncherMutedTextBrush" />
+                                    <StaticResource x:Key="TextControlPlaceholderForegroundPointerOver" ResourceKey="LauncherMutedTextBrush" />
+                                    <StaticResource x:Key="TextControlPlaceholderForegroundFocused" ResourceKey="LauncherMutedTextBrush" />
+                                    <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent" />
+                                    <StaticResource x:Key="TextControlButtonForeground" ResourceKey="LauncherMutedTextBrush" />
+                                    <StaticResource x:Key="TextControlButtonForegroundPointerOver" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlButtonForegroundPressed" ResourceKey="LauncherTextBrush" />
+                                    <SolidColorBrush x:Key="TextControlButtonBackground" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlButtonBackgroundPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlButtonBackgroundPressed" Color="Transparent" />
+                                </TextBox.Resources>
+                            </TextBox>
+                            <TextBlock
+                                Margin="14,0,0,0"
+                                FontFamily="Segoe MDL2 Assets"
+                                FontSize="14"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Foreground="{StaticResource LauncherAccentBrush}"
+                                Text="&#xE721;"
+                                IsHitTestVisible="False" />
+                        </Grid>
+                    </Border>
                 </Grid>
 
                 <Grid x:Name="ResultsHost" Grid.Row="1" ColumnSpacing="12">

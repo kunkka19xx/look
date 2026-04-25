@@ -76,6 +76,13 @@ namespace LauncherApp
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
             StartupRegistration.Sync(LookConfig.GetBool("launch_at_login", fallback: false));
+
+            // Apply the persisted appearance (tint / text / border / font / blur-opacity)
+            // to Application.Resources before the main window loads. Without this, the app
+            // always boots from App.xaml defaults and user-saved theme values only survive
+            // within a single session.
+            ThemeBootstrap.ApplyFromConfig();
+
             MainAppWindow = new MainWindow();
             _window = MainAppWindow;
             _window.Activate();

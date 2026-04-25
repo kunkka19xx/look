@@ -24,6 +24,7 @@ public sealed partial class AdvancedSettingsTabView : UserControl
         + "app_exclude_paths=\n"
         + "app_exclude_names=\n"
         + "file_scan_roots=Desktop,Documents,Downloads\n"
+        + "file_scan_extra_roots=\n"
         + "file_scan_depth=4\n"
         + "file_scan_limit=8000\n"
         + "file_exclude_paths=\n"
@@ -101,37 +102,47 @@ public sealed partial class AdvancedSettingsTabView : UserControl
 
     public void SaveToConfig()
     {
-        string path = ResolveConfigPath();
-        EnsureDefaultConfigFileExists(path);
+        EnsureDefaultConfigFileExists(ResolveConfigPath());
 
-        List<string> lines = LoadLines(path);
-
-        UpsertConfigLine(lines, "file_scan_depth", ((int)Math.Round(FileScanDepthBox.Value)).ToString());
-        UpsertConfigLine(lines, "file_scan_limit", ((int)Math.Round(FileScanLimitBox.Value)).ToString());
-        UpsertConfigLine(lines, "lazy_indexing_enabled", LazyIndexingToggle.IsOn ? "true" : "false");
-        UpsertConfigLine(lines, "file_scan_roots", string.Join(",", _scanRoots.Select(EscapeCsvToken)));
-        UpsertConfigLine(lines, "file_exclude_paths", string.Join(",", _excludedFolders.Select(EscapeCsvToken)));
-        UpsertConfigLine(lines, "backend_log_level", SelectedTag(BackendLogLevelCombo, "error"));
-        UpsertConfigLine(lines, "launch_at_login", LaunchAtLoginToggle.IsOn ? "true" : "false");
-
-        if (string.IsNullOrWhiteSpace(_backgroundImagePath))
+        var dto = new AdvancedSettingsDto
         {
-            RemoveConfigLine(lines, "ui_background_image");
-            RemoveConfigLine(lines, "ui_background_image_mode");
-            RemoveConfigLine(lines, "ui_background_image_opacity");
-            RemoveConfigLine(lines, "ui_background_image_blur");
-        }
-        else
-        {
-            UpsertConfigLine(lines, "ui_background_image", _backgroundImagePath!);
-            UpsertConfigLine(lines, "ui_background_image_mode", SelectedTag(BackgroundImageModeCombo, "fill"));
-            UpsertConfigLine(lines, "ui_background_image_opacity", (BackgroundImageOpacitySlider.Value / 100d).ToString("0.00"));
-            UpsertConfigLine(lines, "ui_background_image_blur", BackgroundImageBlurSlider.Value.ToString("0.0"));
-        }
+            // NumberBox.Value only commits on Enter/focus-loss; reading .Text first picks up
+            // the user's most recent typing even if they click Save while the field is
+            // still focused (which was silently discarding `file_scan_depth` changes).
+            FileScanDepth = ReadNumberBoxInt(FileScanDepthBox, fallback: 4, min: 1, max: 12),
+            FileScanLimit = ReadNumberBoxInt(FileScanLimitBox, fallback: 8000, min: 500, max: 50000),
+            LazyIndexingEnabled = LazyIndexingToggle.IsOn,
+            ExtraScanRoots = _scanRoots.ToList(),
+            ExcludedPaths = _excludedFolders.ToList(),
+            BackendLogLevel = SelectedTag(BackendLogLevelCombo, "error"),
+            LaunchAtLogin = LaunchAtLoginToggle.IsOn,
+            BackgroundImagePath = string.IsNullOrWhiteSpace(_backgroundImagePath) ? null : _backgroundImagePath,
+            BackgroundImageMode = SelectedTag(BackgroundImageModeCombo, "fill"),
+            BackgroundImageOpacityFraction = BackgroundImageOpacitySlider.Value / 100d,
+            BackgroundImageBlur = BackgroundImageBlurSlider.Value,
+        };
 
-        File.WriteAllText(path, string.Join("\n", lines) + "\n");
+        (var updates, var removals) = AdvancedSettingsSaveLogic.BuildSavePayload(dto);
+        LookConfig.UpsertMany(updates, removals);
 
         StartupRegistration.Sync(LaunchAtLoginToggle.IsOn);
+    }
+
+    private static int ReadNumberBoxInt(NumberBox box, int fallback, int min, int max)
+    {
+        string text = box.Text?.Trim() ?? string.Empty;
+        if (int.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int parsed))
+        {
+            return Math.Clamp(parsed, min, max);
+        }
+
+        double value = box.Value;
+        if (!double.IsNaN(value))
+        {
+            return (int)Math.Clamp(Math.Round(value), min, max);
+        }
+
+        return fallback;
     }
 
     private void LoadFromConfig()
@@ -187,8 +198,12 @@ public sealed partial class AdvancedSettingsTabView : UserControl
             }
         }
 
+        // The "Extra Scan Dirs" pills are user-added only. The baseline roots (Desktop /
+        // Documents / Downloads) are Rust-managed via `file_scan_roots` and must not appear
+        // here - otherwise the UI would surface built-ins as pills and Save would clobber
+        // the base list. We persist user additions under `file_scan_extra_roots`.
         _scanRoots.Clear();
-        foreach (string pathValue in ParseCsvTokens(values.GetValueOrDefault("file_scan_roots")))
+        foreach (string pathValue in ParseCsvTokens(values.GetValueOrDefault("file_scan_extra_roots")))
         {
             if (!_scanRoots.Contains(pathValue))
             {
@@ -211,6 +226,14 @@ public sealed partial class AdvancedSettingsTabView : UserControl
             LoadFromConfig();
             RefreshExcludedFoldersState();
             RefreshScanRootsState();
+            try
+            {
+                global::LauncherApp.Bridge.FfiBindings.look_reload_config();
+            }
+            catch
+            {
+                // swallow - UI message below is enough
+            }
             FreshConfigStatusText.Text = "Fresh config created.";
         }
         catch

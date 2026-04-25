@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+using LauncherApp.Bridge;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -39,8 +41,37 @@ public sealed partial class SettingsTabsView : UserControl
 
     private void SaveConfigButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
-        AppearanceTabContent.ApplyCurrentSettings();
-        AdvancedTabContent.SaveToConfig();
+        bool ok = true;
+        try
+        {
+            AppearanceTabContent.ApplyCurrentSettings();
+            AppearanceTabContent.SaveToConfig();
+            AdvancedTabContent.SaveToConfig();
+        }
+        catch (Exception ex)
+        {
+            ok = false;
+            Debug.WriteLine($"[SettingsTabsView] save failed: {ex.Message}");
+        }
+
+        // macOS posts `lookReloadConfigRequested` after save so the Rust engine re-reads the
+        // config without requiring an app restart. Mirror that here so scan-root / depth /
+        // exclude / theme changes take effect immediately instead of waiting until next launch.
+        try
+        {
+            FfiBindings.look_reload_config();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SettingsTabsView] look_reload_config failed: {ex.Message}");
+        }
+
+        if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
+        {
+            window.ShowBanner(
+                ok ? "Settings saved" : "Save failed",
+                ok ? global::LauncherApp.MainWindow.BannerStyle.Success : global::LauncherApp.MainWindow.BannerStyle.Error);
+        }
     }
 
     private void AppearanceTabButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

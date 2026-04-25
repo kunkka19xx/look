@@ -76,25 +76,63 @@ public static class LookConfig
             ? File.ReadAllLines(path).ToList()
             : [];
 
+        ApplyUpsert(lines, key, value);
+        File.WriteAllText(path, string.Join("\n", lines) + "\n");
+    }
+
+    public static void UpsertMany(
+        IReadOnlyDictionary<string, string> updates,
+        IEnumerable<string>? removals = null)
+    {
+        string path = ResolvePath();
+        string? dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        List<string> lines = File.Exists(path)
+            ? File.ReadAllLines(path).ToList()
+            : [];
+
+        foreach (KeyValuePair<string, string> kv in updates)
+        {
+            ApplyUpsert(lines, kv.Key, kv.Value);
+        }
+
+        if (removals is not null)
+        {
+            foreach (string key in removals)
+            {
+                ApplyRemove(lines, key);
+            }
+        }
+
+        File.WriteAllText(path, string.Join("\n", lines) + "\n");
+    }
+
+    // Pure mutator exposed so tests can verify the upsert algorithm without touching disk.
+    public static void ApplyUpsert(List<string> lines, string key, string value)
+    {
         string wanted = key + "=";
-        bool replaced = false;
         for (int i = 0; i < lines.Count; i++)
         {
             string trimmed = StripComment(lines[i]).Trim();
             if (trimmed.StartsWith(wanted, StringComparison.OrdinalIgnoreCase))
             {
                 lines[i] = key + "=" + value;
-                replaced = true;
-                break;
+                return;
             }
         }
 
-        if (!replaced)
-        {
-            lines.Add(key + "=" + value);
-        }
+        lines.Add(key + "=" + value);
+    }
 
-        File.WriteAllText(path, string.Join("\n", lines) + "\n");
+    public static void ApplyRemove(List<string> lines, string key)
+    {
+        string wanted = key + "=";
+        lines.RemoveAll(line =>
+            StripComment(line).Trim().StartsWith(wanted, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string StripComment(string line)

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <!-- Compile just the config helper from the main app. We avoid referencing the full WinUI
+       project because it pulls in UI toolkits that won't load in a plain net10.0 test host. -->
+  <ItemGroup>
+    <Compile Include="..\LauncherApp\Services\LookConfig.cs" Link="Services\LookConfig.cs" />
+    <Compile Include="..\LauncherApp\Services\AdvancedSettingsSaveLogic.cs" Link="Services\AdvancedSettingsSaveLogic.cs" />
+    <Compile Include="..\LauncherApp\Services\AppearanceSettingsSaveLogic.cs" Link="Services\AppearanceSettingsSaveLogic.cs" />
+  </ItemGroup>
+</Project>

@@ -55,6 +55,27 @@ public sealed class LauncherRowItem
         }
     }
 
+    // Kind-only chip for the row meta line (secondary text color).
+    public string MetaKind => Result.Kind == "clipboard" ? KindLabel : KindLabel;
+
+    // Path or subtitle (muted text color). Intentionally empty for clipboard + app/setting rows
+    // so the row renders only the kind chip without a stray dot.
+    public string MetaPath
+    {
+        get
+        {
+            if (Result.Kind == "clipboard")
+                return Result.Subtitle ?? string.Empty;
+
+            if (Kind == SearchItemKind.App || Kind == SearchItemKind.Setting)
+                return Result.Subtitle ?? string.Empty;
+
+            return PathInfo();
+        }
+    }
+
+    public bool HasMetaPath => !string.IsNullOrEmpty(MetaPath) && MetaPath != MetaKind;
+
     public string IconGlyph => Kind switch
     {
         SearchItemKind.App => "\uE71D",

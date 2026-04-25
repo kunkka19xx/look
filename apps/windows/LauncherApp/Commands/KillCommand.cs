@@ -104,20 +104,23 @@ public static class KillCommand
                     executablePath = TryGetProcessPath(process.Id);
                 }
 
-                string currentTitle = visibleWindows.TryGetValue(process.Id, out string? titleValue)
-                    ? titleValue
-                    : string.Empty;
+                bool hasVisibleWindow = visibleWindows.TryGetValue(process.Id, out string? title);
+                string currentTitle = hasVisibleWindow ? title! : string.Empty;
 
-                if (ShouldHideProcess(name, executablePath))
+                // Apply heavy system-helper filters only when the process is windowless.
+                // UWP apps like the new Notepad / Windows Terminal live under \WindowsApps\
+                // but ARE user-facing when they have a top-level window — skipping them there
+                // hid them from the kill screen.
+                if (ShouldHideProcess(name, executablePath, hasVisibleWindow))
                 {
                     continue;
                 }
 
                 string displayName = ResolveDisplayName(name, executablePath, currentTitle);
 
-                if (visibleWindows.TryGetValue(process.Id, out string? title))
+                if (hasVisibleWindow)
                 {
-                    windowedApps.Add((process.Id, displayName, title, executablePath));
+                    windowedApps.Add((process.Id, displayName, currentTitle, executablePath));
                 }
                 else if (!IsSystemNoise(name))
                 {
@@ -190,11 +193,10 @@ public static class KillCommand
                     executablePath = TryGetProcessPath(pid);
                 }
 
-                string currentTitle = visibleWindows.TryGetValue(pid, out string? titleValue)
-                    ? titleValue
-                    : string.Empty;
+                bool hasVisibleWindow = visibleWindows.TryGetValue(pid, out string? titleValue);
+                string currentTitle = hasVisibleWindow ? titleValue! : string.Empty;
 
-                if (ShouldHideProcess(name, executablePath))
+                if (ShouldHideProcess(name, executablePath, hasVisibleWindow))
                 {
                     continue;
                 }
@@ -407,11 +409,19 @@ public static class KillCommand
         return (bytes[0] << 8) + bytes[1];
     }
 
-    private static bool ShouldHideProcess(string processName, string executablePath)
+    private static bool ShouldHideProcess(string processName, string executablePath, bool hasVisibleWindow)
     {
         if (IsSystemNoise(processName))
         {
             return true;
+        }
+
+        // Processes with a visible top-level window are always user-facing apps (Notepad UWP,
+        // Windows Terminal, etc.). Skip the SystemApps / WindowsApps / Windows-Operating-System
+        // filters so the user can still kill them.
+        if (hasVisibleWindow)
+        {
+            return false;
         }
 
         string normalizedPath = NormalizePath(executablePath);

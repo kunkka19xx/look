@@ -72,7 +72,7 @@
                         IsHitTestVisible="False" />
                 </Grid>
 
-                <Border Grid.Row="1" Background="#151D28" CornerRadius="8" Padding="8">
+                <Border Grid.Row="1" Background="Transparent" CornerRadius="8" Padding="8">
                     <Grid RowSpacing="8">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*" />

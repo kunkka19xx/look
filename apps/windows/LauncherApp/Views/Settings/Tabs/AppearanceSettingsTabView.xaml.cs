@@ -126,6 +126,15 @@ public sealed partial class AppearanceSettingsTabView : UserControl
             FontNameInput.Text = family.Source;
         }
 
+        // SettingsBlur (0..100) isn't encoded in a XAML resource, read directly from config
+        // so the slider matches what MainWindow's _settingsBlurPercent is using.
+        var cfg = LookConfig.Read();
+        if (cfg.TryGetValue("ui_settings_blur", out string? settingsBlurRaw)
+            && double.TryParse(settingsBlurRaw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double settingsBlurFraction))
+        {
+            SettingsBlurSlider.Value = System.Math.Clamp(settingsBlurFraction * 100d, 40, 100);
+        }
+
         string style = mainWindow?.CurrentBlurStyle ?? "balanced";
         BlurStyleCombo.SelectedIndex = BlurStyleIndexFromId(style);
         _appliedBlurStyle = style;
@@ -366,6 +375,44 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         ApplyBlurStyle();
     }
 
+    // Writes all appearance/theme keys to ~/.look.config. Mirrors macOS's ThemeStore save path
+    // so custom tints, fonts, borders, and blur opacity survive restarts. Called by the Save
+    // Config button in SettingsTabsView.
+    public void SaveToConfig()
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        var dto = new AppearanceSettingsDto
+        {
+            TintRedPercent = TintRedSlider.Value,
+            TintGreenPercent = TintGreenSlider.Value,
+            TintBluePercent = TintBlueSlider.Value,
+            TintOpacityPercent = TintOpacitySlider.Value,
+
+            BlurOpacityPercent = BlurOpacitySlider.Value,
+            SettingsBlurPercent = SettingsBlurSlider.Value,
+            BlurMaterial = BlurStyleIds[System.Math.Clamp(BlurStyleCombo.SelectedIndex, 0, BlurStyleIds.Length - 1)],
+
+            FontSize = FontSizeSlider.Value,
+            FontName = FontNameInput.Text ?? string.Empty,
+            FontRedPercent = TextRedSlider.Value,
+            FontGreenPercent = TextGreenSlider.Value,
+            FontBluePercent = TextBlueSlider.Value,
+            FontOpacityPercent = TextOpacitySlider.Value,
+
+            BorderThicknessTenths = BorderThicknessSlider.Value,
+            BorderRedPercent = BorderRedSlider.Value,
+            BorderGreenPercent = BorderGreenSlider.Value,
+            BorderBluePercent = BorderBlueSlider.Value,
+            BorderOpacityPercent = BorderOpacitySlider.Value,
+        };
+
+        LookConfig.UpsertMany(AppearanceSettingsSaveLogic.BuildSavePayload(dto));
+    }
+
     private void ApplyThemePreview()
     {
         if (Application.Current?.Resources is not ResourceDictionary resources)
@@ -380,12 +427,14 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         UpdateBrush(resources, "LauncherPanelAltBrush", panelAltColor);
 
         Color textColor = ToColor(TextRedSlider.Value, TextGreenSlider.Value, TextBlueSlider.Value, TextOpacitySlider.Value);
+        // Secondary and muted step alpha down so the tier break stays visible on light-font
+        // themes where dimming RGB alone isn't enough separation. Matches ThemeBootstrap.
         Color secondaryColor = _textSecondaryOverride is { } sec
-            ? ToColor(sec.R, sec.G, sec.B, TextOpacitySlider.Value)
-            : DimmableColor(0.82, TextOpacitySlider.Value);
+            ? ToColor(sec.R, sec.G, sec.B, TextOpacitySlider.Value * 0.90)
+            : DimmableColor(0.82, TextOpacitySlider.Value * 0.90);
         Color mutedColor = _textMutedOverride is { } muted
             ? ToColor(muted.R, muted.G, muted.B, TextOpacitySlider.Value * 0.78)
-            : DimmableColor(0.64, TextOpacitySlider.Value);
+            : DimmableColor(0.64, TextOpacitySlider.Value * 0.78);
 
         UpdateBrush(resources, "LauncherTextBrush", textColor);
         UpdateBrush(resources, "LauncherSecondaryTextBrush", secondaryColor);
