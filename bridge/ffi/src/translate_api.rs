@@ -3,6 +3,13 @@ use look_storage::percent_encode;
 use std::ffi::CString;
 use std::os::raw::c_char;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+// Suppress the console window when curl spawns from a GUI shell.
+// See https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 const TRANSLATE_URL_PREFIX: &str =
     "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=";
 const TRANSLATE_URL_MIDDLE: &str = "&dt=t&q=";
@@ -92,10 +99,11 @@ pub(crate) fn look_translate_json_impl(
     url.push_str(TRANSLATE_URL_MIDDLE);
     url.push_str(&encoded_text);
 
-    let output = std::process::Command::new(CURL_BIN)
-        .args(CURL_ARGS_PREFIX)
-        .arg(&url)
-        .output();
+    let mut command = std::process::Command::new(CURL_BIN);
+    command.args(CURL_ARGS_PREFIX).arg(&url);
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let output = command.output();
 
     let body = match output {
         Ok(out) => {

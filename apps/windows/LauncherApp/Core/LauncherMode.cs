@@ -7,4 +7,5 @@ public enum LauncherMode
     Clipboard,
     Settings,
     Help,
+    Translate,
 }

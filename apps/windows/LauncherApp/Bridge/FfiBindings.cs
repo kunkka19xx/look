@@ -20,4 +20,7 @@ public static class FfiBindings
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     [return: MarshalAs(UnmanagedType.I1)]
     public static extern bool look_reload_config();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr look_translate_json(IntPtr text, IntPtr targetLang);
 }

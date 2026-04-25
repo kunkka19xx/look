@@ -54,3 +54,15 @@ public sealed class LauncherResult
     public string Path { get; init; } = string.Empty;
     public int Score { get; init; }
 }
+
+public sealed class TranslatePayload
+{
+    [JsonPropertyName("original")]
+    public string Original { get; set; } = string.Empty;
+
+    [JsonPropertyName("translated")]
+    public string Translated { get; set; } = string.Empty;
+
+    [JsonPropertyName("error")]
+    public BridgeError? Error { get; set; }
+}

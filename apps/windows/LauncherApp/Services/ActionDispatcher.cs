@@ -83,6 +83,15 @@ public sealed class ActionDispatcher
         return _shellExecute.Open(url);
     }
 
+    public bool OpenUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+        return _shellExecute.Open(url);
+    }
+
     private static LauncherActionKind ResolveResultKind(LauncherResult result)
     {
         if (result.Path.StartsWith("ms-settings:", StringComparison.OrdinalIgnoreCase)

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using LauncherApp.Services;
+using LauncherApp.Views;
 using Microsoft.Win32;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -158,7 +159,7 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         }
     }
 
-    private static void SetColorSliders(Color color, Slider red, Slider green, Slider blue, Slider alpha)
+    private static void SetColorSliders(Color color, LabeledSliderView red, LabeledSliderView green, LabeledSliderView blue, LabeledSliderView alpha)
     {
         red.Value = ToPercent(color.R);
         green.Value = ToPercent(color.G);

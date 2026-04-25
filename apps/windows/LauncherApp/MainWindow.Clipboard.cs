@@ -28,6 +28,35 @@ public sealed partial class MainWindow
         RefreshResults(QueryInput.Text?.Trim() ?? string.Empty);
     }
 
+    private void OnClipboardDeleteRequested(object? sender, string resultId)
+    {
+        DeleteClipboardEntryByResultId(resultId);
+    }
+
+    private bool DeleteClipboardEntryByResultId(string resultId)
+    {
+        if (_clipboardHistory is null || string.IsNullOrEmpty(resultId))
+        {
+            return false;
+        }
+
+        // LauncherResult.Id for clipboard rows is "clip:<entryId>" — strip the prefix to
+        // recover the persistent entry id used by ClipboardHistoryService.
+        const string Prefix = "clip:";
+        if (!resultId.StartsWith(Prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+        string entryId = resultId.Substring(Prefix.Length);
+
+        bool removed = _clipboardHistory.RemoveEntry(entryId);
+        if (removed)
+        {
+            ShowBanner("Removed from clipboard history", BannerStyle.Info);
+        }
+        return removed;
+    }
+
     private List<LauncherResult> BuildClipboardRows()
     {
         if (_clipboardHistory is null)

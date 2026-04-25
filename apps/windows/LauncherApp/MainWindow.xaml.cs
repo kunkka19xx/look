@@ -35,8 +35,10 @@ namespace LauncherApp
         private readonly LauncherSearchLogic _searchLogic;
         private readonly ActionDispatcher _actionDispatcher;
         private readonly UwpAppService _uwpAppService;
+        private readonly TranslationService _translationService;
         private readonly ObservableCollection<LauncherRowItem> _results;
         private readonly List<LauncherResult> _commandSeed;
+        private CancellationTokenSource? _translateCts;
         private ClipboardHistoryService? _clipboardHistory;
         private KillCommand.RunningApp? _pendingKillTarget;
         private SettingsTabsView? _settingsTabsView;
@@ -87,13 +89,15 @@ namespace LauncherApp
             }
 
             bool useRealSearch = true;
+            EngineBridge engineBridge = new EngineBridge();
             ISearchProvider searchProvider = useRealSearch
-                ? new FfiSearchProvider(new EngineBridge())
+                ? new FfiSearchProvider(engineBridge)
                 : new MockSearchProvider();
 
             _searchLogic = new LauncherSearchLogic(searchProvider);
             _actionDispatcher = new ActionDispatcher(new ShellExecuteService(), new ExplorerRevealService());
             _uwpAppService = new UwpAppService();
+            _translationService = new TranslationService(engineBridge);
             _uwpAppService.BeginInitialize();
             _results = new ObservableCollection<LauncherRowItem>();
             _commandSeed = BuildCommandSeed();
@@ -105,6 +109,9 @@ namespace LauncherApp
             CommandPanelsPanel.KillCandidateInvoked += CommandPanelsPanel_OnKillCandidateInvoked;
             CommandPanelsPanel.KillConfirmAccepted += CommandPanelsPanel_OnKillConfirmAccepted;
             CommandPanelsPanel.KillConfirmCancelled += CommandPanelsPanel_OnKillConfirmCancelled;
+            TranslatePanel.OpenInBrowserRequested += TranslatePanel_OnOpenInBrowserRequested;
+            TranslatePanel.CopyTranslatedRequested += TranslatePanel_OnCopyTranslatedRequested;
+            ResultPreviewPanel.ClipboardDeleteRequested += OnClipboardDeleteRequested;
             SetMode(LauncherMode.Search);
             RefreshResults(QueryInput.Text?.Trim() ?? string.Empty);
             InitializeBlurLayer();
@@ -196,6 +203,7 @@ namespace LauncherApp
             PreviewDivider.Visibility = Visibility.Collapsed;
             CommandPanelsPanel.Visibility = Visibility.Collapsed;
             HelpScreenPanel.Visibility = Visibility.Collapsed;
+            TranslatePanel.Visibility = Visibility.Collapsed;
             ResultsList.Visibility = Visibility.Visible;
 
             switch (mode)
@@ -203,7 +211,7 @@ namespace LauncherApp
                 case LauncherMode.Search:
                     ApplyConfiguredSurface();
                     QueryInput.PlaceholderText = "Search apps";
-                    HintText.Text = "Enter open  •  Ctrl+R reveal  •  Ctrl+C copy  •  Ctrl+Enter web";
+                    HintText.Text = "Enter open  •  Ctrl+F reveal  •  Ctrl+C copy  •  Ctrl+Enter web";
                     ResultsHost.Visibility = Visibility.Visible;
                     break;
                 case LauncherMode.Command:
@@ -237,6 +245,13 @@ namespace LauncherApp
                     HintText.Text = "Ctrl+H close  •  Esc hide  •  Ctrl+/ command mode";
                     ResultsList.Visibility = Visibility.Collapsed;
                     HelpScreenPanel.Visibility = Visibility.Visible;
+                    break;
+                case LauncherMode.Translate:
+                    ApplyConfiguredSurface();
+                    QueryInput.PlaceholderText = "Use t\" to translate text";
+                    HintText.Text = "Press Enter to translate  •  Browser button opens Google Translate  •  Esc clear";
+                    ResultsList.Visibility = Visibility.Collapsed;
+                    TranslatePanel.Visibility = Visibility.Visible;
                     break;
             }
         }

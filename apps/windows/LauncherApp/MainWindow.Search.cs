@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using LauncherApp.Bridge;
 using LauncherApp.Core;
+using LauncherApp.Services;
 
 namespace LauncherApp;
 
@@ -21,6 +23,11 @@ public sealed partial class MainWindow
         if (query.StartsWith("c\"", StringComparison.OrdinalIgnoreCase))
         {
             return (LauncherMode.Clipboard, query.Substring(2).Trim());
+        }
+
+        if (query.StartsWith("t\"", StringComparison.OrdinalIgnoreCase))
+        {
+            return (LauncherMode.Translate, query.Substring(2).Trim());
         }
 
         if (_mode == LauncherMode.Command)
@@ -49,6 +56,16 @@ public sealed partial class MainWindow
     {
         int currentVersion = ++_searchVersion;
         string rawQuery = QueryInput.Text?.Trim() ?? string.Empty;
+
+        if (rawQuery.StartsWith("t\"", StringComparison.OrdinalIgnoreCase))
+        {
+            HandleTranslateInputChanged(rawQuery);
+            return;
+        }
+
+        // Cancel any in-flight translate when leaving translate mode.
+        _translateCts?.Cancel();
+        _translateCts = null;
 
         await Task.Delay(16);
         if (currentVersion != _searchVersion)
@@ -100,6 +117,106 @@ public sealed partial class MainWindow
                 CommandPanelsPanel.SetExecutionFeedback($"Input update failed: {ex.Message}", isError: true);
             }
         }
+    }
+
+    // macOS parity: typing only updates the panel header/hint. Translation fires on Enter only,
+    // because each call shells out to curl over the network.
+    private void HandleTranslateInputChanged(string rawQuery)
+    {
+        if (_mode != LauncherMode.Translate)
+        {
+            SetMode(LauncherMode.Translate);
+        }
+
+        // Discard any in-flight translate from the prior query — its results are stale now.
+        _translateCts?.Cancel();
+        _translateCts = null;
+
+        string text = rawQuery.Substring(2).Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            TranslatePanel.ShowEmptyPrompt();
+        }
+        else
+        {
+            TranslatePanel.ShowReadyPrompt(text);
+        }
+    }
+
+    private void TranslatePanel_OnOpenInBrowserRequested(object? sender, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        string encoded = Uri.EscapeDataString(text);
+        string url = $"https://translate.google.com/?sl=auto&tl=en&text={encoded}&op=translate";
+        _actionDispatcher.OpenUrl(url);
+    }
+
+    private void TranslatePanel_OnCopyTranslatedRequested(object? sender, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        try
+        {
+            Windows.ApplicationModel.DataTransfer.DataPackage package = new();
+            package.SetText(text);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            ShowBanner("Copied translation");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MainWindow] copy translation failed: {ex.Message}");
+        }
+    }
+
+    public async Task TriggerTranslateFromEnterAsync()
+    {
+        string rawQuery = QueryInput.Text?.Trim() ?? string.Empty;
+        if (!rawQuery.StartsWith("t\"", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        string text = rawQuery.Substring(2).Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        _translateCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _translateCts = cts;
+        int currentVersion = _searchVersion;
+
+        TranslatePanel.ShowLoading(text);
+
+        TranslationResultSet results;
+        try
+        {
+            results = await _translationService.TranslateAsync(text, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MainWindow] translate failed: {ex.Message}");
+            return;
+        }
+
+        if (currentVersion != _searchVersion || cts.Token.IsCancellationRequested || _mode != LauncherMode.Translate)
+        {
+            return;
+        }
+
+        TranslatePanel.ShowResults(results);
     }
 
     private void RefreshResults(string rawQuery, IReadOnlyList<LauncherResult>? prefetchedBackendResults = null)

@@ -83,4 +83,59 @@ public sealed class EngineBridge
             }
         }
     }
+
+    public TranslatePayload? Translate(string text, string targetLang)
+    {
+        IntPtr textPtr = IntPtr.Zero;
+        IntPtr langPtr = IntPtr.Zero;
+        IntPtr resultPtr = IntPtr.Zero;
+
+        try
+        {
+            textPtr = Marshal.StringToCoTaskMemUTF8(text);
+            langPtr = Marshal.StringToCoTaskMemUTF8(targetLang);
+            resultPtr = FfiBindings.look_translate_json(textPtr, langPtr);
+            if (resultPtr == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            string raw = Marshal.PtrToStringUTF8(resultPtr) ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return null;
+            }
+
+            return JsonSerializer.Deserialize<TranslatePayload>(raw, JsonOptions);
+        }
+        catch (DllNotFoundException)
+        {
+            return null;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        finally
+        {
+            if (resultPtr != IntPtr.Zero)
+            {
+                FfiBindings.look_free_cstring(resultPtr);
+            }
+
+            if (langPtr != IntPtr.Zero)
+            {
+                Marshal.FreeCoTaskMem(langPtr);
+            }
+
+            if (textPtr != IntPtr.Zero)
+            {
+                Marshal.FreeCoTaskMem(textPtr);
+            }
+        }
+    }
 }

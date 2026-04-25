@@ -121,6 +121,13 @@ Reference: `docs/windows-port-plan.md`
 - [x] implement Windows clipboard history mode (`c"`) with listener-first capture strategy (`AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE`, bounded history, persisted to `%LOCALAPPDATA%\look\clipboard-history.json`)
 - [x] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`)
 - [x] implement Windows launch-at-login integration (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; synced on app start + on Advanced Settings save)
+- [x] implement Windows web translate mode (`t"`) with parallel VI/EN/JA fan-out, Enter-to-translate (matches macOS), per-section copy button, and "Open in Google Translate" handoff. `tw"` (Apple Dictionary lookup) deferred — no Windows equivalent of `DCSCopyTextDefinition`.
+- [x] suppress console-window flashes on translate calls (`bridge/ffi/src/translate_api.rs` adds `CREATE_NO_WINDOW` 0x08000000 flag on the curl `Command` under `cfg(target_os = "windows")`)
+- [x] align reveal shortcut with macOS: rebound `Ctrl+R` → `Ctrl+F` to match `Cmd+F`; moved `Ctrl+F` and `Ctrl+C` handlers to `GlobalKeyDown` so they fire while the search box has focus (previously only worked from the list view)
+- [x] extract reusable XAML primitives for duplicated layouts: `KeyChordRowView` (Help + Shortcuts tabs), `LabeledSliderView` (Appearance + Advanced tabs), `CommandCardView` (CommandPanels), `TranslateLanguageSectionView` (TranslatePanel) — net –200+ XAML lines, single source of truth for visual tweaks
+- [ ] **copy as real file object on Windows** (parity with macOS `pasteboard.writeObjects([targetURL as NSURL, result.path as NSString])` at `LauncherCommandService.swift:214`). Today `ActionDispatcher.CopyResultPath` only writes a text path via `package.SetText`. Should call `package.SetStorageItems([StorageFile/StorageFolder])` so Ctrl+V in Explorer pastes an actual file/folder, not a path string. Keep text fallback so apps that only accept text still work.
+- [ ] **multi-pick result rows on Windows** (parity with macOS commit `74b619c`). Switch `ResultsList.SelectionMode` to `Multiple` (or `Extended`), wire Shift+Up/Down and Shift+Tab range selection, and update Ctrl+C/Ctrl+F/Enter handlers to operate on `ResultsList.SelectedItems` (list of `LauncherRowItem`) when count > 1 — copy multiple as a single `StorageItems` payload, reveal opens Explorer with the parent + multi-select, Enter opens each. Mirror selection-affordance UI (shaded + count badge) from macOS `LauncherSubviews.swift`.
+- [ ] **filter file/non-text clipboard entries from history on Windows** (parity with macOS `ClipboardHistoryStore.swift:136 pasteboardCarriesFileReference`). Today `ClipboardHistoryService.cs:103` only checks `Contains(StandardDataFormats.Text)`, but a file copy in Explorer ALSO carries a synthesized text path, so file copies pollute history with raw paths. Add `view.Contains(StandardDataFormats.StorageItems)` short-circuit before the text capture path. Optional follow-up: store file-reference entries as a separate kind so they can be re-pasted as actual files (otherwise just skip them).
 - [ ] implement Windows packaging/signing/release pipeline (`.msix`/`.msi`) and documentation
 - [ ] run closed beta and fix top reliability/performance parity regressions before GA
 
@@ -157,6 +164,7 @@ Windows UI delivery note (mock-first):
 - [x] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`) with in-panel output and keyboard run flow
 - [x] implement Windows launch-at-login integration (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; synced on app start + on Advanced Settings save)
 - [x] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff) with type-aware open handling (app/file/folder/setting/url)
+- [x] implement Windows web translate mode (`t"`) — `look_translate_json` FFI binding, `TranslationService` with parallel vi/en/ja fan-out, `TranslatePanelView` with per-section copy + Open-in-Google-Translate handoff, Enter-to-translate (matches macOS); `CREATE_NO_WINDOW` on the curl Command suppresses console flashes
 
 ---
 

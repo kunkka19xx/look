@@ -12,6 +12,10 @@ namespace LauncherApp.Views;
 
 public sealed partial class ResultPreviewView : UserControl
 {
+    private LauncherRowItem? _currentClipboardRow;
+
+    public event EventHandler<string>? ClipboardDeleteRequested;
+
     public ResultPreviewView()
     {
         this.InitializeComponent();
@@ -32,11 +36,23 @@ public sealed partial class ResultPreviewView : UserControl
 
         if (row.Result.Kind == "clipboard")
         {
+            _currentClipboardRow = row;
             RenderClipboardPreview(row);
             return;
         }
 
+        _currentClipboardRow = null;
         RenderStandardPreview(row);
+    }
+
+    private void ClipboardDeleteButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        string? id = _currentClipboardRow?.Result.Id;
+        if (string.IsNullOrEmpty(id))
+        {
+            return;
+        }
+        ClipboardDeleteRequested?.Invoke(this, id);
     }
 
     private void RenderStandardPreview(LauncherRowItem row)
@@ -97,6 +113,7 @@ public sealed partial class ResultPreviewView : UserControl
 
     private void SetEmpty()
     {
+        _currentClipboardRow = null;
         TitleBlock.Text = "Preview";
         SubtitleBlock.Text = "Select a result to view details";
         GlyphBlock.Text = "\uE8A5";

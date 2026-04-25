@@ -176,6 +176,12 @@
                 Grid.Column="0"
                 Grid.ColumnSpan="3"
                 Visibility="Collapsed" />
+
+                    <views:TranslatePanelView
+                x:Name="TranslatePanel"
+                Grid.Column="0"
+                Grid.ColumnSpan="3"
+                Visibility="Collapsed" />
                 </Grid>
 
                 <Grid
@@ -190,7 +196,7 @@
                     x:Name="HintText"
                     FontSize="11"
                     Foreground="{StaticResource LauncherMutedTextBrush}"
-                    Text="Enter open  •  Ctrl+R reveal  •  Ctrl+C copy  •  Ctrl+Enter web" />
+                    Text="Enter open  •  Ctrl+F reveal  •  Ctrl+C copy  •  Ctrl+Enter web" />
                 </StackPanel>
             </Grid>
         </Border>

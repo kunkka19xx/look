@@ -18,8 +18,12 @@ public sealed record ClipboardHistoryEntry(
 
 public sealed class ClipboardHistoryService : IDisposable
 {
-    private const int MaxEntries = 50;
-    private const int MaxContentChars = 8192;
+    // Parity with macOS AppConstants.Launcher.Clipboard — caps history at 10 entries to
+    // keep the picker scannable and limit how much sensitive captured text sits on disk.
+    // Reducing MaxEntries naturally truncates an existing larger history on next load
+    // because LoadPersisted applies Take(MaxEntries).
+    private const int MaxEntries = 10;
+    private const int MaxContentChars = 30_000;
     private const uint WM_CLIPBOARDUPDATE = 0x031D;
     private const int ClipboardSubclassId = 2;
 
@@ -73,6 +77,33 @@ public sealed class ClipboardHistoryService : IDisposable
         }
     }
 
+    public bool RemoveEntry(string id)
+    {
+        if (string.IsNullOrEmpty(id))
+        {
+            return false;
+        }
+
+        bool removed;
+        lock (_entriesLock)
+        {
+            int index = _entries.FindIndex(e => string.Equals(e.Id, id, StringComparison.Ordinal));
+            if (index < 0)
+            {
+                return false;
+            }
+            _entries.RemoveAt(index);
+            removed = true;
+        }
+
+        if (removed)
+        {
+            Persist();
+            _dispatcher.TryEnqueue(() => Changed?.Invoke(this, EventArgs.Empty));
+        }
+        return removed;
+    }
+
     public void SuppressNextCapture()
     {
         _suppressNextCapture = true;
@@ -101,6 +132,15 @@ public sealed class ClipboardHistoryService : IDisposable
         {
             DataPackageView view = Clipboard.GetContent();
             if (view is null || !view.Contains(StandardDataFormats.Text))
+            {
+                return;
+            }
+
+            // Skip clipboard payloads that carry a file/folder reference. Explorer's "Copy"
+            // puts StorageItems on the clipboard AND synthesizes a text path; without this
+            // guard, every file copy pollutes history with the raw path string. Mirrors
+            // macOS pasteboardCarriesFileReference (ClipboardHistoryStore.swift:136).
+            if (view.Contains(StandardDataFormats.StorageItems))
             {
                 return;
             }

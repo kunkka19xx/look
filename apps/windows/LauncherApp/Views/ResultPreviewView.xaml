@@ -133,11 +133,45 @@
                     </StackPanel>
 
                     <StackPanel x:Name="ClipboardPanel" Spacing="10" Visibility="Collapsed">
-                        <TextBlock
-                            x:Name="ClipboardCapturedText"
-                            FontSize="11"
-                            Foreground="{StaticResource LauncherMutedTextBrush}"
-                            Text="Captured" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                x:Name="ClipboardCapturedText"
+                                FontSize="11"
+                                VerticalAlignment="Center"
+                                Foreground="{StaticResource LauncherMutedTextBrush}"
+                                Text="Captured" />
+                            <Button
+                                x:Name="ClipboardDeleteButton"
+                                Grid.Column="1"
+                                Padding="10,5"
+                                MinWidth="0"
+                                MinHeight="0"
+                                Background="#2A1117"
+                                BorderBrush="#71414D"
+                                BorderThickness="1"
+                                CornerRadius="14"
+                                Click="ClipboardDeleteButton_OnClick"
+                                ToolTipService.ToolTip="Delete this clipboard entry">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock
+                                        FontFamily="Segoe MDL2 Assets"
+                                        FontSize="12"
+                                        Foreground="#FF8AA3"
+                                        VerticalAlignment="Center"
+                                        Text="&#xE74D;" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        FontWeight="SemiBold"
+                                        Foreground="#FF8AA3"
+                                        VerticalAlignment="Center"
+                                        Text="Delete" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
 
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <TextBlock

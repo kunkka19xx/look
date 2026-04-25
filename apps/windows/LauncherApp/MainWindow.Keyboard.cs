@@ -174,6 +174,39 @@ public sealed partial class MainWindow
             return;
         }
 
+        if (_mode == LauncherMode.Search
+            && e.Key == VirtualKey.F
+            && IsCtrlPressed()
+            && ResultsList.SelectedItem is LauncherRowItem revealSelected)
+        {
+            bool ok = _actionDispatcher.RevealResult(revealSelected.Result);
+            ShowBanner(ok ? "Revealed in Explorer" : "Reveal action failed",
+                ok ? BannerStyle.Info : BannerStyle.Error);
+            e.Handled = true;
+            return;
+        }
+
+        if (_mode == LauncherMode.Search
+            && e.Key == VirtualKey.C
+            && IsCtrlPressed()
+            && ResultsList.SelectedItem is LauncherRowItem copySelected)
+        {
+            bool ok = _actionDispatcher.CopyResultPath(copySelected.Result);
+            ShowBanner(ok ? "Copied path to clipboard" : "Copy action failed",
+                ok ? BannerStyle.Success : BannerStyle.Error);
+            e.Handled = true;
+            return;
+        }
+
+        if (_mode == LauncherMode.Clipboard
+            && e.Key == VirtualKey.Delete
+            && ResultsList.SelectedItem is LauncherRowItem clipDeleteSelected)
+        {
+            DeleteClipboardEntryByResultId(clipDeleteSelected.Result.Id);
+            e.Handled = true;
+            return;
+        }
+
         if (IsCommandModeShortcut(e))
         {
             EnterCommandScreen();
@@ -238,6 +271,13 @@ public sealed partial class MainWindow
         if (IsCommandModeShortcut(e))
         {
             EnterCommandScreen();
+            e.Handled = true;
+            return;
+        }
+
+        if (_mode == LauncherMode.Translate && e.Key == VirtualKey.Enter && !IsCtrlPressed())
+        {
+            _ = TriggerTranslateFromEnterAsync();
             e.Handled = true;
             return;
         }
@@ -333,8 +373,8 @@ public sealed partial class MainWindow
         {
             bool ok = _actionDispatcher.WebHandoff(QueryInput.Text ?? string.Empty);
             HintText.Text = ok
-                ? "Opened browser search  •  Enter open  •  Ctrl+R reveal  •  Ctrl+C copy"
-                : "Web handoff failed  •  Enter open  •  Ctrl+R reveal  •  Ctrl+C copy";
+                ? "Opened browser search  •  Enter open  •  Ctrl+F reveal  •  Ctrl+C copy"
+                : "Web handoff failed  •  Enter open  •  Ctrl+F reveal  •  Ctrl+C copy";
             e.Handled = true;
             return;
         }
@@ -406,7 +446,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        if (e.Key == VirtualKey.R && IsCtrlPressed() && ResultsList.SelectedItem is LauncherRowItem revealSelected)
+        if (e.Key == VirtualKey.F && IsCtrlPressed() && ResultsList.SelectedItem is LauncherRowItem revealSelected)
         {
             bool ok = _actionDispatcher.RevealResult(revealSelected.Result);
             if (ok)
@@ -463,8 +503,8 @@ public sealed partial class MainWindow
 
         bool ok = _actionDispatcher.OpenResult(selected.Result, forceNewWindow);
         HintText.Text = ok
-            ? "Opened selected item  •  Enter open  •  Ctrl+R reveal  •  Ctrl+C copy"
-            : "Open action failed  •  Enter open  •  Ctrl+R reveal  •  Ctrl+C copy";
+            ? "Opened selected item  •  Enter open  •  Ctrl+F reveal  •  Ctrl+C copy"
+            : "Open action failed  •  Enter open  •  Ctrl+F reveal  •  Ctrl+C copy";
     }
 
     private static void CopyText(string value)

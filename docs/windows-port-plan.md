@@ -32,6 +32,28 @@ Windows v1 parity checklist reference: `docs/windows-v1-parity-checklist.md`
   with command output rendered inside the command panel.
 - Windows app project now auto-builds Rust FFI and copies `look_ffi.dll` during build.
 
+## Translate + reusable UI primitives snapshot (2026-04)
+
+Web translate mode (`t"`) shipped — matches macOS Cmd-driven flow:
+
+- `Bridge/FfiBindings.cs`: `look_translate_json(text, targetLang)` P/Invoke and `EngineBridge.Translate(text, lang)` UTF-8 marshal wrapper that frees the cstring symmetrically.
+- `Services/TranslationService.cs`: parallel `Task.Run` fan-out across `vi`/`en`/`ja` with `CancellationToken` propagation, mirrors macOS `LauncherTranslationService.fetchNetworkTranslations`.
+- `MainWindow.Search.cs`: new `LauncherMode.Translate` branch in `ResolveMode`. Typing only updates the panel header ("Press Enter to translate"); translation fires only on Enter — matches macOS hint "Press Enter after finishing input to translate on web". Version-token + per-fan-out CTS cancellation prevents stale paint after the user backs out of translate mode.
+- `Views/TranslatePanelView.xaml`: three `TranslateLanguageSectionView` instances (Tiếng Việt / English / 日本語) plus a footer "Open in Google Translate" button that opens `https://translate.google.com/?sl=auto&tl=en&text=<query>&op=translate` via `ActionDispatcher.OpenUrl`. Each section has a per-language copy affordance that bubbles `CopyTranslatedRequested` up to MainWindow which writes to clipboard and shows the standard banner.
+- `bridge/ffi/src/translate_api.rs`: added `CREATE_NO_WINDOW` (0x08000000) creation flag on the `curl` `Command` under `#[cfg(target_os = "windows")]`, so the GUI shell doesn't flash a console window for each translate fan-out call.
+- `tw"` (Apple Dictionary lookup) is intentionally not implemented — Windows has no `DCSCopyTextDefinition` equivalent; the parity checklist now classifies it as deferred.
+
+Reusable XAML primitives (extraction pass on duplicated layouts):
+
+- `Views/KeyChordRowView.xaml(.cs)`: `KeyText` + `Description` + `KeyColumnWidth` + `IsPill`. Replaced ~30 inline rows in `HelpScreenView.xaml` (–161 lines) and `Settings/Tabs/ShortcutsSettingsTabView.xaml` (–181 lines).
+- `Views/LabeledSliderView.xaml(.cs)`: wraps a `Slider` with `Label` + `LabelColumnWidth` + `Minimum/Maximum/StepFrequency` + pass-through `Value` and a `RangeBaseValueChangedEventHandler ValueChanged` event. Replaced 15 inline grid blocks in `AppearanceSettingsTabView.xaml` (–155 lines) and 2 in `AdvancedSettingsTabView.xaml` (–18 lines). `SetColorSliders` signature updated from `Slider` → `LabeledSliderView`; everything else compiles unchanged because `Value` and `ValueChanged` are pass-throughs.
+- `Views/CommandPanels/CommandCardView.cs`: subclasses `ToggleButton` so existing `card == ShellCard`, `Card.IsChecked`, `sender is ToggleButton` keep working; adds `Title` + `Subtitle` DPs. Four card declarations in `CommandPanelsView.xaml` collapsed from 7 lines each to 1 line.
+- `Views/TranslateLanguageSectionView.xaml(.cs)`: extracted from `TranslatePanelView` so the three language blocks aren't duplicated.
+
+Shortcut alignment with macOS:
+
+- Reveal-in-Explorer rebound from `Ctrl+R` to `Ctrl+F` to match macOS `Cmd+F`. Handler moved to `GlobalKeyDown` (was on `ResultsList_OnKeyDown`) so it fires while typing in the search box, not just when the list view has focus. Same fix applied to `Ctrl+C` copy. Hint text, help screen, and shortcuts settings all updated.
+
 ## Launcher polish + UWP parity snapshot (2026-Q2)
 
 Search pipeline:
@@ -447,12 +469,14 @@ Exit criteria:
   - hidden from taskbar and Alt-Tab via `WS_EX_TOOLWINDOW` (and cleared `WS_EX_APPWINDOW`) applied in `ConfigureLauncherWindow` before first `Activate`
 - Result actions (open, reveal, copy, web handoff): implemented
 - `shell:` URIs routed through `explorer.exe` so UWP `AppsFolder` targets launch cleanly
-- Clipboard history mode (`c"`): implemented via `AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE` subclass; entries deduped move-to-front, bounded (50 entries × 8K chars), persisted to `%LOCALAPPDATA%\look\clipboard-history.json`; `Services/ClipboardHistoryService.cs` owns the listener and surfaces change events to `MainWindow` which rebuilds `LauncherMode.Clipboard` rows
+- Clipboard history mode (`c"`): implemented via `AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE` subclass; entries deduped move-to-front, bounded (10 entries × 30K chars, matches macOS `maxEntries` / `maxStoredCharacters`), persisted to `%LOCALAPPDATA%\look\clipboard-history.json`; `Services/ClipboardHistoryService.cs` owns the listener and surfaces change events to `MainWindow` which rebuilds `LauncherMode.Clipboard` rows
 - Command mode (`calc`, `shell`, `kill`, `sys`): implemented with in-panel execution and preview
   - `kill` parity: running-app list, keyboard/mouse selection, confirm bar, `:port` lookup (`:3000`, `port 3000`)
   - `calc` parity: advanced parser (`^`, `!`, `%`, constants/functions) plus finance-style percent for add/subtract
   - `sys`: grouped sections and live CPU/memory/network/battery/GPU/top-memory summary
 - Launch at login: implemented via `Services/StartupRegistration.cs`, writing the `LookLauncher` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` with `"<exe>"`; synced at `App.OnLaunched` from the `launch_at_login` config key and again from `AdvancedSettingsTabView.SaveToConfig` when the toggle is changed. MSIX `StartupTask` is a follow-up once packaging lands.
+- Web translate mode (`t"`): implemented via `Services/TranslationService.cs` (parallel `Task.Run` fan-out for vi/en/ja with `CancellationToken`) + `Views/TranslatePanelView.xaml` (three-section panel + footer "Open in Google Translate" button) + `Views/TranslateLanguageSectionView.xaml(.cs)` (per-language section with copy button). Translation fires only on Enter (matches macOS), `bridge/ffi/src/translate_api.rs` adds `CREATE_NO_WINDOW` flag on the `curl` `Command` under `cfg(target_os = "windows")` to suppress console flashes. `tw"` (Apple Dictionary lookup) is deferred — no Windows equivalent of `DCSCopyTextDefinition`.
+- Reveal-in-Explorer shortcut rebound from `Ctrl+R` to `Ctrl+F` to match macOS `Cmd+F`. `Ctrl+F` and `Ctrl+C` reveal/copy handlers moved to `GlobalKeyDown` so they fire while typing (previously only worked when `ResultsList` had focus).
 
 ## Phase 6 - UX parity polish
 
