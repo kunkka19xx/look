@@ -285,7 +285,10 @@ fn should_apply_windows_fallback_title_dedupe(path: &str) -> bool {
 }
 
 fn is_windowsapps_directory(path: &str) -> bool {
-    let normalized = path.replace('\\', "/").trim_end_matches('/').to_ascii_lowercase();
+    let normalized = path
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_ascii_lowercase();
     normalized.ends_with("/windowsapps")
 }
 
@@ -372,13 +375,17 @@ mod tests {
     fn windowsapps_directory_detection_handles_separators() {
         assert!(is_windowsapps_directory("C:/Program Files/WindowsApps"));
         assert!(is_windowsapps_directory("C:\\Program Files\\WindowsApps\\"));
-        assert!(!is_windowsapps_directory("C:/Program Files/WindowsApps/Microsoft.WindowsNotepad"));
+        assert!(!is_windowsapps_directory(
+            "C:/Program Files/WindowsApps/Microsoft.WindowsNotepad"
+        ));
     }
 
     #[test]
     fn system32_path_detection_handles_separators() {
         assert!(is_windows_system32_path("C:/Windows/System32/notepad.exe"));
-        assert!(is_windows_system32_path("C:\\Windows\\System32\\notepad.exe"));
+        assert!(is_windows_system32_path(
+            "C:\\Windows\\System32\\notepad.exe"
+        ));
         assert!(!is_windows_system32_path("C:/Program Files/notepad.exe"));
     }
 
@@ -484,9 +491,7 @@ mod tests {
             true
         );
         assert_eq!(
-            should_apply_windows_fallback_title_dedupe(
-                "C:/Program Files/Notepad++/notepad++.exe"
-            ),
+            should_apply_windows_fallback_title_dedupe("C:/Program Files/Notepad++/notepad++.exe"),
             false
         );
     }
