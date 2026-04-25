@@ -168,7 +168,7 @@ struct CommandHeaderBar: View {
 struct ResultsListView: View {
     let results: [LauncherResult]
     let selectedID: String?
-    let pickedIDs: Set<String>
+    let pickedKeys: Set<String>
     let themeStore: ThemeStore
     let onSelect: (String) -> Void
     let onOpen: (String) -> Void
@@ -181,7 +181,7 @@ struct ResultsListView: View {
                         LauncherRowView(
                             result: result,
                             isSelected: selectedID == result.id,
-                            isPicked: pickedIDs.contains(result.id),
+                            isPicked: pickedKeys.contains("\(result.kind.rawValue)|\(result.path)"),
                             onOpen: {
                                 onSelect(result.id)
                                 onOpen(result.id)
@@ -203,8 +203,8 @@ struct ResultsListView: View {
 }
 
 struct PickedItemsPanel: View {
-    let pickedIDs: [String]
-    let pickedByID: [String: LauncherResult]
+    let pickedKeys: [String]
+    let pickedByKey: [String: LauncherResult]
     let themeStore: ThemeStore
     let onRemove: (String) -> Void
     let onClearAll: () -> Void
@@ -212,7 +212,7 @@ struct PickedItemsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Picked (\(pickedIDs.count))")
+                Text("Picked (\(pickedKeys.count))")
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
                     .foregroundStyle(themeStore.fontColor())
                 Spacer()
@@ -228,8 +228,8 @@ struct PickedItemsPanel: View {
 
             ScrollView {
                 LazyVStack(spacing: 4) {
-                    ForEach(pickedIDs, id: \.self) { id in
-                        if let r = pickedByID[id] {
+                    ForEach(pickedKeys, id: \.self) { key in
+                        if let r = pickedByKey[key] {
                             HStack(spacing: 8) {
                                 Image(nsImage: NSWorkspace.shared.icon(forFile: r.path))
                                     .resizable()
@@ -246,7 +246,7 @@ struct PickedItemsPanel: View {
                                         .truncationMode(.middle)
                                 }
                                 Spacer(minLength: 0)
-                                Button(action: { onRemove(id) }) {
+                                Button(action: { onRemove(key) }) {
                                     Image(systemName: "xmark.circle.fill")
                                         .foregroundStyle(themeStore.mutedTextColor())
                                 }

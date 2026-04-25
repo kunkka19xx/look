@@ -39,8 +39,12 @@ struct LauncherView: View {
     @State private var isCommandMode = false
     @State private var backendResults: [LauncherResult] = []
     @State private var selectedResultID: String?
-    @State private var pickedResultIDs: [String] = []
-    @State private var pickedResultsByID: [String: LauncherResult] = [:]
+    @State private var pickedKeys: [String] = []
+    @State private var pickedResultsByKey: [String: LauncherResult] = [:]
+
+    private static func pickedKey(for result: LauncherResult) -> String {
+        "\(result.kind.rawValue)|\(result.path)"
+    }
     @State private var selectedCommandID: String?
     @State private var activeCommandID: String?
     @State private var commandFeedback = ""
@@ -788,27 +792,28 @@ struct LauncherView: View {
             showBanner("Only files or folders can be picked", style: .info, duration: 1.0)
             return
         }
-        if let idx = pickedResultIDs.firstIndex(of: selectedID) {
-            pickedResultIDs.remove(at: idx)
-            pickedResultsByID.removeValue(forKey: selectedID)
+        let key = Self.pickedKey(for: selected)
+        if let idx = pickedKeys.firstIndex(of: key) {
+            pickedKeys.remove(at: idx)
+            pickedResultsByKey.removeValue(forKey: key)
         } else {
-            pickedResultIDs.append(selectedID)
-            pickedResultsByID[selectedID] = selected
+            pickedKeys.append(key)
+            pickedResultsByKey[key] = selected
         }
         writePickedToPasteboard()
     }
 
-    private func removePicked(id: String) {
-        guard let idx = pickedResultIDs.firstIndex(of: id) else { return }
-        pickedResultIDs.remove(at: idx)
-        pickedResultsByID.removeValue(forKey: id)
+    private func removePicked(key: String) {
+        guard let idx = pickedKeys.firstIndex(of: key) else { return }
+        pickedKeys.remove(at: idx)
+        pickedResultsByKey.removeValue(forKey: key)
         writePickedToPasteboard()
     }
 
     private func clearAllPicked() {
-        guard !pickedResultIDs.isEmpty else { return }
-        pickedResultIDs.removeAll()
-        pickedResultsByID.removeAll()
+        guard !pickedKeys.isEmpty else { return }
+        pickedKeys.removeAll()
+        pickedResultsByKey.removeAll()
         NSPasteboard.general.clearContents()
         showBanner("Cleared picked items", style: .info, duration: 1.0)
     }
@@ -816,16 +821,16 @@ struct LauncherView: View {
     private func writePickedToPasteboard() {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        guard !pickedResultIDs.isEmpty else { return }
+        guard !pickedKeys.isEmpty else { return }
         var objects: [NSPasteboardWriting] = []
-        for id in pickedResultIDs {
-            guard let r = pickedResultsByID[id], r.kind == .file || r.kind == .folder else { continue }
+        for key in pickedKeys {
+            guard let r = pickedResultsByKey[key], r.kind == .file || r.kind == .folder else { continue }
             objects.append(URL(fileURLWithPath: r.path) as NSURL)
             objects.append(r.path as NSString)
         }
         let didWrite = pasteboard.writeObjects(objects)
         if didWrite {
-            showBanner("Picked \(pickedResultIDs.count) item(s)", style: .success, duration: 1.0)
+            showBanner("Picked \(pickedKeys.count) item(s)", style: .success, duration: 1.0)
         } else {
             showBanner("Pick failed", style: .error, duration: 1.0)
         }
@@ -1592,23 +1597,23 @@ struct LauncherView: View {
                                 ResultsListView(
                                     results: displayedResults,
                                     selectedID: selectedResultID,
-                                    pickedIDs: Set(pickedResultIDs),
+                                    pickedKeys: Set(pickedKeys),
                                     themeStore: themeStore,
                                     onSelect: { selectedResultID = $0 },
                                     onOpen: { _ in openSelectedApp() }
                                 )
 
-                                if !pickedResultIDs.isEmpty {
+                                if !pickedKeys.isEmpty {
                                     Rectangle()
                                         .fill(.white.opacity(0.08))
                                         .frame(width: 1)
                                         .padding(.vertical, 4)
 
                                     PickedItemsPanel(
-                                        pickedIDs: pickedResultIDs,
-                                        pickedByID: pickedResultsByID,
+                                        pickedKeys: pickedKeys,
+                                        pickedByKey: pickedResultsByKey,
                                         themeStore: themeStore,
-                                        onRemove: { removePicked(id: $0) },
+                                        onRemove: { removePicked(key: $0) },
                                         onClearAll: { clearAllPicked() }
                                     )
                                 } else if let selectedID = selectedResultID,

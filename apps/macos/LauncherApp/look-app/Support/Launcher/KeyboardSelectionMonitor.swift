@@ -88,14 +88,18 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
-            if event.keyCode == 35 && flags == [.command] {
+            if (event.keyCode == 35 || event.charactersIgnoringModifiers?.lowercased() == "p")
+                && flags == [.command]
+            {
                 if !inCommandMode() {
                     onTogglePick()
                 }
                 return nil
             }
 
-            if event.keyCode == 35 && flags == [.command, .shift] {
+            if (event.keyCode == 35 || event.charactersIgnoringModifiers?.lowercased() == "p")
+                && flags == [.command, .shift]
+            {
                 if !inCommandMode() {
                     onClearPicked()
                 }
