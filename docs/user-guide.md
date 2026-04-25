@@ -40,7 +40,11 @@ Useful actions:
 
 - `Cmd+F`: reveal selected app/file/folder in Finder
 - `Cmd+C`: copy selected file/folder
+- `Cmd+P`: toggle pick on the selected file/folder (multi-select); the picked set is written to the system pasteboard so you can paste them anywhere in Finder
+- `Cmd+Shift+P`: clear all picked items
 - `Cmd+Enter`: web search current query (Google)
+
+When at least one item is picked, the right panel switches to the **Picked** list — each row has an `X` to remove a single item, plus a **Clear all** button. File/folder copies (both `Cmd+C` and `Cmd+P`) are excluded from clipboard history.
 
 ## Query prefixes
 
@@ -111,15 +115,15 @@ The Appearance tab controls:
 
 Built-in theme presets are available:
 
-| Theme | Description |
-|-------|-------------|
-| Catppuccin | Warm pastels (Mocha variant) |
-| Tokyo Night | Dark with vibrant accents |
-| Rose Pine | Soft pink-tinted dark theme |
-| Gruvbox | Retro warm tones |
-| Dracula | Classic purple-accented dark |
-| Kanagawa | Japanese-inspired dark theme |
-| Custom | Your own colors derived from tint |
+| Theme       | Description                       |
+| ----------- | --------------------------------- |
+| Catppuccin  | Warm pastels (Mocha variant)      |
+| Tokyo Night | Dark with vibrant accents         |
+| Rose Pine   | Soft pink-tinted dark theme       |
+| Gruvbox     | Retro warm tones                  |
+| Dracula     | Classic purple-accented dark      |
+| Kanagawa    | Japanese-inspired dark theme      |
+| Custom      | Your own colors derived from tint |
 
 Theme is saved as `ui_theme=<name>` in config.
 
@@ -208,6 +212,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+Enter`: web search
 - `Cmd+F`: reveal in Finder
 - `Cmd+C`: copy selected file/folder
+- `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
 - `Cmd+Shift+,`: toggle settings panel
 - `Cmd+Shift+;`: reload config
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset

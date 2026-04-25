@@ -29,6 +29,8 @@ final class KeyboardSelectionMonitor {
         onWebSearch: @escaping () -> Void,
         onRevealInFinder: @escaping () -> Void,
         onCopySelection: @escaping () -> Bool,
+        onTogglePick: @escaping () -> Void,
+        onClearPicked: @escaping () -> Void,
         onToggleHelp: @escaping () -> Void,
         onDismissHelpIfVisible: @escaping () -> Bool,
         onSelectCommandByIndex: @escaping (Int) -> Void,
@@ -82,6 +84,24 @@ final class KeyboardSelectionMonitor {
             {
                 if !inCommandMode() {
                     onToggleHelp()
+                }
+                return nil
+            }
+
+            if (event.keyCode == 35 || event.charactersIgnoringModifiers?.lowercased() == "p")
+                && flags == [.command]
+            {
+                if !inCommandMode() {
+                    onTogglePick()
+                }
+                return nil
+            }
+
+            if (event.keyCode == 35 || event.charactersIgnoringModifiers?.lowercased() == "p")
+                && flags == [.command, .shift]
+            {
+                if !inCommandMode() {
+                    onClearPicked()
                 }
                 return nil
             }

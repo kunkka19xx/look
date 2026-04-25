@@ -19,11 +19,12 @@ This document tracks what `look` supports today and what is planned next.
 - path-fragment friendly matching (slash-biased queries)
 - open with `Enter`, reveal in Finder with `Cmd+F`
 - copy selected file/folder path/content handle with `Cmd+C`
+- multi-pick files/folders with `Cmd+P` (toggle); picked set is mirrored to the system pasteboard for paste anywhere. `Cmd+Shift+P` clears the set
 
 ### Clipboard and translation
 
 - clipboard history mode with `c"` prefix
-- in-memory clipboard history (latest text clips)
+- in-memory clipboard history (latest text clips); file/folder copies are excluded
 - quick translation with `t"...`
 - dictionary lookup panel with `tw"...`
 

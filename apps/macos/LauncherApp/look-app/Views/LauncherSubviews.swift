@@ -168,6 +168,7 @@ struct CommandHeaderBar: View {
 struct ResultsListView: View {
     let results: [LauncherResult]
     let selectedID: String?
+    let pickedKeys: Set<String>
     let themeStore: ThemeStore
     let onSelect: (String) -> Void
     let onOpen: (String) -> Void
@@ -180,6 +181,7 @@ struct ResultsListView: View {
                         LauncherRowView(
                             result: result,
                             isSelected: selectedID == result.id,
+                            isPicked: pickedKeys.contains("\(result.kind.rawValue)|\(result.path)"),
                             onOpen: {
                                 onSelect(result.id)
                                 onOpen(result.id)
@@ -197,6 +199,70 @@ struct ResultsListView: View {
                 }
             }
         }
+    }
+}
+
+struct PickedItemsPanel: View {
+    let pickedKeys: [String]
+    let pickedByKey: [String: LauncherResult]
+    let themeStore: ThemeStore
+    let onRemove: (String) -> Void
+    let onClearAll: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Picked (\(pickedKeys.count))")
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
+                    .foregroundStyle(themeStore.fontColor())
+                Spacer()
+                Button(action: onClearAll) {
+                    Text("Clear all")
+                        .font(themeStore.uiFont(size: CGFloat(max(10, themeStore.settings.fontSize - 3)), weight: .regular))
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(themeStore.secondaryTextColor())
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+
+            ScrollView {
+                LazyVStack(spacing: 4) {
+                    ForEach(pickedKeys, id: \.self) { key in
+                        if let r = pickedByKey[key] {
+                            HStack(spacing: 8) {
+                                Image(nsImage: NSWorkspace.shared.icon(forFile: r.path))
+                                    .resizable()
+                                    .frame(width: 18, height: 18)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(r.title)
+                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
+                                        .foregroundStyle(themeStore.fontColor())
+                                        .lineLimit(1)
+                                    Text(r.path)
+                                        .font(themeStore.uiFont(size: CGFloat(max(10, themeStore.settings.fontSize - 4)), weight: .regular))
+                                        .foregroundStyle(themeStore.mutedTextColor())
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
+                                Spacer(minLength: 0)
+                                Button(action: { onRemove(key) }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(themeStore.mutedTextColor())
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        }
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.bottom, 8)
+            }
+        }
+        .frame(minWidth: 220)
     }
 }
 
@@ -295,6 +361,8 @@ private enum LauncherHelpContent {
     static let mainShortcuts: [(String, String)] = [
         ("Enter", "Open selected app/file/folder or copy selected clipboard item"),
         ("Cmd+C", "Copy selected file/folder to pasteboard"),
+        ("Cmd+P", "Toggle pick on selected file/folder (multi-select copy)"),
+        ("Cmd+Shift+P", "Clear all picked items"),
         ("Tab / Shift+Tab", "Move selection"),
         ("Up / Down", "Move selection"),
         ("Cmd+F", "Reveal selected app/file/folder in Finder"),

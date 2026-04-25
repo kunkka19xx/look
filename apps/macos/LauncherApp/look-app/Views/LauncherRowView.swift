@@ -7,6 +7,7 @@ struct LauncherRowView: View {
 
     let result: LauncherResult
     let isSelected: Bool
+    let isPicked: Bool
     let onOpen: () -> Void
 
     private var rowIcon: NSImage {
@@ -69,6 +70,11 @@ struct LauncherRowView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
+                if isPicked {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(themeStore.selectionFillColor())
+                        .frame(width: 14)
+                }
                 Image(nsImage: rowIcon)
                     .resizable()
                     .frame(width: 22, height: 22)
