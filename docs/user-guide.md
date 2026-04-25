@@ -115,15 +115,15 @@ The Appearance tab controls:
 
 Built-in theme presets are available:
 
-| Theme | Description |
-|-------|-------------|
-| Catppuccin | Warm pastels (Mocha variant) |
-| Tokyo Night | Dark with vibrant accents |
-| Rose Pine | Soft pink-tinted dark theme |
-| Gruvbox | Retro warm tones |
-| Dracula | Classic purple-accented dark |
-| Kanagawa | Japanese-inspired dark theme |
-| Custom | Your own colors derived from tint |
+| Theme       | Description                       |
+| ----------- | --------------------------------- |
+| Catppuccin  | Warm pastels (Mocha variant)      |
+| Tokyo Night | Dark with vibrant accents         |
+| Rose Pine   | Soft pink-tinted dark theme       |
+| Gruvbox     | Retro warm tones                  |
+| Dracula     | Classic purple-accented dark      |
+| Kanagawa    | Japanese-inspired dark theme      |
+| Custom      | Your own colors derived from tint |
 
 Theme is saved as `ui_theme=<name>` in config.
 
