@@ -39,6 +39,8 @@ struct LauncherView: View {
     @State private var isCommandMode = false
     @State private var backendResults: [LauncherResult] = []
     @State private var selectedResultID: String?
+    @State private var pickedResultIDs: [String] = []
+    @State private var pickedResultsByID: [String: LauncherResult] = [:]
     @State private var selectedCommandID: String?
     @State private var activeCommandID: String?
     @State private var commandFeedback = ""
@@ -774,6 +776,58 @@ struct LauncherView: View {
                 style: .info,
                 duration: AppConstants.Launcher.Clipboard.infoBannerDuration
             )
+        }
+    }
+
+    private func togglePickForSelectedResult() {
+        guard !isCommandMode,
+              let selectedID = selectedResultID,
+              let selected = displayedResults.first(where: { $0.id == selectedID })
+        else { return }
+        guard selected.kind == .file || selected.kind == .folder else {
+            showBanner("Only files or folders can be picked", style: .info, duration: 1.0)
+            return
+        }
+        if let idx = pickedResultIDs.firstIndex(of: selectedID) {
+            pickedResultIDs.remove(at: idx)
+            pickedResultsByID.removeValue(forKey: selectedID)
+        } else {
+            pickedResultIDs.append(selectedID)
+            pickedResultsByID[selectedID] = selected
+        }
+        writePickedToPasteboard()
+    }
+
+    private func removePicked(id: String) {
+        guard let idx = pickedResultIDs.firstIndex(of: id) else { return }
+        pickedResultIDs.remove(at: idx)
+        pickedResultsByID.removeValue(forKey: id)
+        writePickedToPasteboard()
+    }
+
+    private func clearAllPicked() {
+        guard !pickedResultIDs.isEmpty else { return }
+        pickedResultIDs.removeAll()
+        pickedResultsByID.removeAll()
+        NSPasteboard.general.clearContents()
+        showBanner("Cleared picked items", style: .info, duration: 1.0)
+    }
+
+    private func writePickedToPasteboard() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        guard !pickedResultIDs.isEmpty else { return }
+        var objects: [NSPasteboardWriting] = []
+        for id in pickedResultIDs {
+            guard let r = pickedResultsByID[id], r.kind == .file || r.kind == .folder else { continue }
+            objects.append(URL(fileURLWithPath: r.path) as NSURL)
+            objects.append(r.path as NSString)
+        }
+        let didWrite = pasteboard.writeObjects(objects)
+        if didWrite {
+            showBanner("Picked \(pickedResultIDs.count) item(s)", style: .success, duration: 1.0)
+        } else {
+            showBanner("Pick failed", style: .error, duration: 1.0)
         }
     }
 
@@ -1538,12 +1592,26 @@ struct LauncherView: View {
                                 ResultsListView(
                                     results: displayedResults,
                                     selectedID: selectedResultID,
+                                    pickedIDs: Set(pickedResultIDs),
                                     themeStore: themeStore,
                                     onSelect: { selectedResultID = $0 },
                                     onOpen: { _ in openSelectedApp() }
                                 )
 
-                                if let selectedID = selectedResultID,
+                                if !pickedResultIDs.isEmpty {
+                                    Rectangle()
+                                        .fill(.white.opacity(0.08))
+                                        .frame(width: 1)
+                                        .padding(.vertical, 4)
+
+                                    PickedItemsPanel(
+                                        pickedIDs: pickedResultIDs,
+                                        pickedByID: pickedResultsByID,
+                                        themeStore: themeStore,
+                                        onRemove: { removePicked(id: $0) },
+                                        onClearAll: { clearAllPicked() }
+                                    )
+                                } else if let selectedID = selectedResultID,
                                    let selectedResult = displayedResults.first(where: { $0.id == selectedID }) {
                                     Rectangle()
                                         .fill(.white.opacity(0.08))
@@ -1837,6 +1905,12 @@ struct LauncherView: View {
             },
             onCopySelection: {
                 copySelectedResultToPasteboard()
+            },
+            onTogglePick: {
+                togglePickForSelectedResult()
+            },
+            onClearPicked: {
+                clearAllPicked()
             },
             onToggleHelp: {
                 toggleHelpScreen()

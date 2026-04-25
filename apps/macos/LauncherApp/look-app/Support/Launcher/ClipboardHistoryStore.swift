@@ -107,6 +107,8 @@ final class ClipboardHistoryStore: ObservableObject {
 
         startBurstCaptureWindow()
 
+        if pasteboardCarriesFileReference(pasteboard) { return }
+
         guard var text = pasteboard.string(forType: .string) else { return }
         if text.count > maxStoredCharacters {
             let originalCount = text.count
@@ -129,6 +131,17 @@ final class ClipboardHistoryStore: ObservableObject {
         if entries.count > maxEntries {
             entries.removeLast(entries.count - maxEntries)
         }
+    }
+
+    private func pasteboardCarriesFileReference(_ pasteboard: NSPasteboard) -> Bool {
+        let types = pasteboard.types ?? []
+        if types.contains(.fileURL) { return true }
+        if types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType")) { return true }
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+           !urls.isEmpty {
+            return true
+        }
+        return false
     }
 
     private func startBurstCaptureWindow() {
