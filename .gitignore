@@ -28,3 +28,6 @@ apps/macos/LauncherApp/RustBuild/
 docs/release-private.local.md
 docs/release-secrets.md
 docs/tmp-issue-tracker.md
+
+# internal feature specs — maintainer-only design notes; user docs live in docs/
+specs/

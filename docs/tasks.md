@@ -154,6 +154,9 @@ Windows immediate execution queue (current):
 - [x] **Add preset: Kanagawa** ([#54](https://github.com/kunkka19xx/look/issues/54))
 - [x] **Config validation**: validate config file on reload (Cmd+Shift+;), show warnings for invalid values with orange banner + copy button; clamp file_scan_depth (1-12) and file_scan_limit (500-50000) in both Swift and Rust
 - [ ] **Theme codegen pipeline (future)**: define a shared theme token source and generate typed platform code at build time
+- [ ] **Quick Look file previews** *(pending perf validation, ships off by default)*: replace icon-only preview pane with macOS Quick Look rendering (PDF, text, code, audio/video poster, archives, office docs, etc.); requires debounced two-tier rendering, falls back to icon + metadata for unsupported/unreadable. Internal spec: `specs/quicklook-file-preview.md` (maintainer-only, gitignored)
+- [ ] **Pomodoro command** (`/pomo`): focus timer in command mode with start/pause/stop, completion notification, and active-session indicator. Internal spec: `specs/pomodoro.md` (maintainer-only, gitignored)
+- [ ] **Browser bookmark + history suggestions**: index the user's default browser (Safari/Chrome/Arc/Brave/Edge/Firefox) and surface bookmarks + recent pages as ranked launcher results. Internal spec: `specs/browser-suggestions.md` (maintainer-only, gitignored)
 - [ ] **Homebrew release**: Package app for homebrew installation
 - [x] **Build script**: Create release build and curl installer script
 

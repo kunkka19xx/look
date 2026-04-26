@@ -40,6 +40,37 @@ extension LauncherView {
         focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
     }
 
+    func enterCommandMode(commandID: String, prefilledInput: String) {
+        showsHelpScreen = false
+        query = ""
+        isCommandMode = true
+        commandFeedback = ""
+        activeCommandID = commandID
+        selectedCommandID = commandID
+        commandInput = prefilledInput
+        focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
+    }
+
+    // Detects `:cmdid<space>...` (live trigger) and bare `:cmdid` (submit-only
+    // trigger). Returns nil if `input` doesn't begin with `:` or the id after
+    // `:` (up to the first whitespace) isn't an exact match for a command in
+    // the catalog. `hasSpace` distinguishes the two trigger paths.
+    func extractInlineCommand(from input: String) -> (id: String, args: String, hasSpace: Bool)? {
+        guard input.hasPrefix(":") else { return nil }
+        let body = input.dropFirst()
+
+        if let spaceIdx = body.firstIndex(where: { $0.isWhitespace }) {
+            let id = String(body[..<spaceIdx]).lowercased()
+            guard !id.isEmpty, commandCatalog.contains(where: { $0.id == id }) else { return nil }
+            let args = String(body[body.index(after: spaceIdx)...])
+            return (id, args, true)
+        }
+
+        let id = String(body).lowercased()
+        guard !id.isEmpty, commandCatalog.contains(where: { $0.id == id }) else { return nil }
+        return (id, "", false)
+    }
+
     func exitCommandMode() {
         guard isCommandMode else { return }
         isCommandMode = false
@@ -68,7 +99,9 @@ extension LauncherView {
             }
         } else {
             let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let translationCommand = extractTranslationQuery(from: trimmed) {
+            if let cmd = extractInlineCommand(from: trimmed), !cmd.hasSpace {
+                enterCommandMode(commandID: cmd.id, prefilledInput: "")
+            } else if let translationCommand = extractTranslationQuery(from: trimmed) {
                 handleTranslation(command: translationCommand)
                 isQueryFocused = true
             } else {
@@ -255,7 +288,7 @@ extension LauncherView {
                             }
                             .padding(8)
                         } else if activeCommandID == AppConstants.Launcher.Command.sys {
-                            SystemInfoView(items: SystemInfoCommand.getSystemInfoItems(), themeStore: themeStore)
+                            SystemInfoView(themeStore: themeStore)
                                 .padding(8)
                         } else {
                             VStack(alignment: .leading, spacing: 0) {

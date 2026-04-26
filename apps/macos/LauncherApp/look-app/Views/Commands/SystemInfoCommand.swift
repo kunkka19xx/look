@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import IOKit
+import IOKit.ps
 import SwiftUI
 
 struct SystemInfoItem: Identifiable {
@@ -11,8 +12,9 @@ struct SystemInfoItem: Identifiable {
 }
 
 struct SystemInfoView: View {
-    let items: [SystemInfoItem]
     let themeStore: ThemeStore
+    @State private var items: [SystemInfoItem] = SystemInfoCommand.snapshot()
+    @State private var refreshTask: Task<Void, Never>?
 
     var body: some View {
         ScrollView {
@@ -43,11 +45,30 @@ struct SystemInfoView: View {
             .padding(4)
         }
         .frame(maxHeight: .infinity, alignment: .top)
+        .onAppear {
+            startRefreshing()
+        }
+        .onDisappear {
+            refreshTask?.cancel()
+            refreshTask = nil
+        }
     }
 
-    static func buildItems() -> [SystemInfoItem] {
-        var items: [SystemInfoItem] = []
+    private func startRefreshing() {
+        refreshTask?.cancel()
+        refreshTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if Task.isCancelled { break }
+                items = SystemInfoCommand.snapshot()
+            }
+        }
+    }
+}
 
+enum SystemInfoCommand {
+    static func snapshot() -> [SystemInfoItem] {
+        var items: [SystemInfoItem] = []
         items.append(SystemInfoItem(label: "", value: "System Info", isHeader: true))
         items.append(contentsOf: getSystemOverviewItems())
         items.append(contentsOf: getMemoryItems())
@@ -57,8 +78,26 @@ struct SystemInfoView: View {
         }
         items.append(contentsOf: getUptimeItems())
         items.append(contentsOf: getDiskItems())
-
         return items
+    }
+
+    static func getSystemInfo() -> String {
+        let items = snapshot()
+        var lines: [String] = []
+        for item in items {
+            if item.isHeader {
+                lines.append(item.value)
+            } else if item.label.isEmpty {
+                lines.append(item.value)
+            } else {
+                lines.append("\(item.label): \(item.value)")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    static func getSystemInfoItems() -> [SystemInfoItem] {
+        snapshot()
     }
 
     private static func getSystemOverviewItems() -> [SystemInfoItem] {
@@ -163,85 +202,78 @@ struct SystemInfoView: View {
         ]
     }
 
-    private static func getCPUUsage() -> String {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/top")
-        task.arguments = ["-l", "1", "-n", "0"]
+    // host_cpu_load_info gives cumulative ticks since boot; usage % needs the
+    // delta between two samples. First call after launch has no prior sample
+    // and returns "—".
+    private static var lastCPULoad: host_cpu_load_info?
 
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8) else {
-                return "N/A"
+    private static func sampleCPULoad() -> host_cpu_load_info? {
+        var load = host_cpu_load_info()
+        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
+        let result = withUnsafeMutablePointer(to: &load) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &count)
             }
-
-            guard let cpuLine = output
-                .components(separatedBy: "\n")
-                .first(where: { $0.lowercased().contains("cpu usage") })
-            else {
-                return "N/A"
-            }
-
-            let pattern = "([0-9]+(?:\\.[0-9]+)?)% user,\\s*([0-9]+(?:\\.[0-9]+)?)% sys"
-            guard let regex = try? NSRegularExpression(pattern: pattern) else {
-                return "N/A"
-            }
-            let range = NSRange(cpuLine.startIndex..<cpuLine.endIndex, in: cpuLine)
-            guard let match = regex.firstMatch(in: cpuLine, range: range),
-                  let userRange = Range(match.range(at: 1), in: cpuLine),
-                  let sysRange = Range(match.range(at: 2), in: cpuLine),
-                  let user = Double(cpuLine[userRange]),
-                  let sys = Double(cpuLine[sysRange]) else {
-                return "N/A"
-            }
-
-            return String(format: "%.1f", user + sys)
-        } catch {
-            return "N/A"
         }
+        return result == KERN_SUCCESS ? load : nil
+    }
+
+    private static func getCPUUsage() -> String {
+        guard let current = sampleCPULoad() else { return "N/A" }
+        defer { lastCPULoad = current }
+        guard let last = lastCPULoad else { return "—" }
+
+        let userDelta = Double(current.cpu_ticks.0 &- last.cpu_ticks.0)
+        let systemDelta = Double(current.cpu_ticks.1 &- last.cpu_ticks.1)
+        let idleDelta = Double(current.cpu_ticks.2 &- last.cpu_ticks.2)
+        let niceDelta = Double(current.cpu_ticks.3 &- last.cpu_ticks.3)
+
+        let total = userDelta + systemDelta + idleDelta + niceDelta
+        guard total > 0 else { return "0.0" }
+        let usage = (userDelta + systemDelta + niceDelta) / total * 100
+        return String(format: "%.1f", usage)
     }
 
     private static func getBatteryItems() -> [SystemInfoItem]? {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
-        task.arguments = ["-g", "batt"]
-
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                let lines = output.components(separatedBy: "\n")
-                var items: [SystemInfoItem] = [SystemInfoItem(label: "", value: "Battery", isHeader: true)]
-
-                for line in lines {
-                    let trimmed = line.trimmingCharacters(in: .whitespaces)
-                    if trimmed.contains("%") && !trimmed.hasPrefix("Now") {
-                        let parts = trimmed.components(separatedBy: " ").filter { !$0.isEmpty }
-                        for part in parts {
-                            if part.contains("%") {
-                                items.append(SystemInfoItem(label: "Charge", value: part, isHeader: false))
-                            } else if part == "charging" || part == "discharging" || part == "charged" {
-                                items.append(SystemInfoItem(label: "Status", value: part.capitalized, isHeader: false))
-                            }
-                        }
-                    }
-                }
-
-                return items.isEmpty ? nil : items
-            }
-        } catch {
+        guard let snapshotRef = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
             return nil
+        }
+        guard let sources = IOPSCopyPowerSourcesList(snapshotRef)?.takeRetainedValue() as? [CFTypeRef] else {
+            return nil
+        }
+
+        for source in sources {
+            guard let desc = IOPSGetPowerSourceDescription(snapshotRef, source)?.takeUnretainedValue() as? [String: Any] else {
+                continue
+            }
+            guard let type = desc[kIOPSTypeKey as String] as? String,
+                  type == kIOPSInternalBatteryType as String
+            else { continue }
+
+            var items: [SystemInfoItem] = [SystemInfoItem(label: "", value: "Battery", isHeader: true)]
+
+            if let current = desc[kIOPSCurrentCapacityKey as String] as? Int,
+               let maxCap = desc[kIOPSMaxCapacityKey as String] as? Int, maxCap > 0 {
+                let pct = Int(Double(current) / Double(maxCap) * 100)
+                items.append(SystemInfoItem(label: "Charge", value: "\(pct)%", isHeader: false))
+            }
+
+            let status: String
+            let isCharging = desc[kIOPSIsChargingKey as String] as? Bool ?? false
+            let isCharged = desc[kIOPSIsChargedKey as String] as? Bool ?? false
+            let powerState = desc[kIOPSPowerSourceStateKey as String] as? String ?? ""
+            if isCharged {
+                status = "Charged"
+            } else if isCharging {
+                status = "Charging"
+            } else if powerState == kIOPSACPowerValue as String {
+                status = "AC"
+            } else {
+                status = "Discharging"
+            }
+            items.append(SystemInfoItem(label: "Status", value: status, isHeader: false))
+
+            return items
         }
 
         return nil
@@ -296,26 +328,5 @@ struct SystemInfoView: View {
         }
 
         return items
-    }
-}
-
-struct SystemInfoCommand {
-    static func getSystemInfo() -> String {
-        let items = SystemInfoView.buildItems()
-        var lines: [String] = []
-        for item in items {
-            if item.isHeader {
-                lines.append(item.value)
-            } else if item.label.isEmpty {
-                lines.append(item.value)
-            } else {
-                lines.append("\(item.label): \(item.value)")
-            }
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    static func getSystemInfoItems() -> [SystemInfoItem] {
-        return SystemInfoView.buildItems()
     }
 }

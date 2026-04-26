@@ -72,7 +72,13 @@ Translation mode (`t"`/`tw"`):
 
 ## Command mode
 
-Enter command mode with `Cmd+/`.
+Enter command mode with `Cmd+/`, or jump straight to a specific command from the home screen with the `:` prefix:
+
+- `:calc` then `Enter` — open `/calc` with empty input
+- `:calc 2+2` — opens `/calc` with `2+2` already typed (the space after the command id is the trigger; you can keep typing without pressing Enter)
+- Same pattern for `:shell`, `:kill`, `:sys`
+
+The `:` prefix only triggers when the word right after it is a known command id (`calc`, `shell`, `kill`, `sys`); anything else (`:foo`, `:Users/me/...`) stays in normal search.
 
 Built-in commands:
 
@@ -206,6 +212,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
 - `Up` / `Down`: move selection (and in `kill`, move process selection)
 - `Cmd+/`: command mode
+- `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`): jump to a command directly from the home screen
 - `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4`: direct command switch
 - `Escape`: back/close (context dependent)
 - `Shift+Escape`: hide launcher

@@ -45,6 +45,7 @@ enum ShortcutDocs {
                 ShortcutItem(keys: "Cmd+F", action: "Reveal selected app/file/folder in Finder"),
                 ShortcutItem(keys: "Cmd+Enter", action: "Search query on Google"),
                 ShortcutItem(keys: "Cmd+/", action: "Enter command mode"),
+                ShortcutItem(keys: ":cmd", action: "Jump to a command from home (e.g. :calc 2+2, :kill chrome, :sys)"),
                 ShortcutItem(keys: "Cmd+Shift+,", action: "Open/close settings panel"),
                 ShortcutItem(keys: "Cmd+Shift+;", action: "Reload .look.config"),
                 ShortcutItem(keys: "Cmd+H", action: "Toggle in-window keyboard help screen"),

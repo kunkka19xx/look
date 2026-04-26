@@ -560,6 +560,10 @@ struct LauncherView: View {
             clipboardStore.setMonitoringMode(.background)
         }
         .onChange(of: query) { _, _ in
+            if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
+                enterCommandMode(commandID: cmd.id, prefilledInput: cmd.args)
+                return
+            }
             previewLookupDefinition(for: query)
             if !isCommandMode {
                 if showsHelpScreen {
