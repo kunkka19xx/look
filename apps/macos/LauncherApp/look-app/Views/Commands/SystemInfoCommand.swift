@@ -13,7 +13,8 @@ struct SystemInfoItem: Identifiable {
 
 struct SystemInfoView: View {
     let themeStore: ThemeStore
-    @State private var items: [SystemInfoItem] = SystemInfoCommand.snapshot()
+    @State private var items: [SystemInfoItem] = []
+    @State private var lastCPULoad: host_cpu_load_info?
     @State private var refreshTask: Task<Void, Never>?
 
     var body: some View {
@@ -57,32 +58,54 @@ struct SystemInfoView: View {
     private func startRefreshing() {
         refreshTask?.cancel()
         refreshTask = Task { @MainActor in
+            // first paint immediately so the panel never shows empty
+            await refreshOnce()
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if Task.isCancelled { break }
-                items = SystemInfoCommand.snapshot()
+                await refreshOnce()
             }
         }
+    }
+
+    @MainActor
+    private func refreshOnce() async {
+        let previous = lastCPULoad
+        let snapshot = await Task.detached(priority: .utility) {
+            SystemInfoCommand.snapshot(previousCPULoad: previous)
+        }.value
+        items = snapshot.items
+        lastCPULoad = snapshot.cpuLoad
     }
 }
 
 enum SystemInfoCommand {
-    static func snapshot() -> [SystemInfoItem] {
+    struct Snapshot {
+        let items: [SystemInfoItem]
+        let cpuLoad: host_cpu_load_info?
+    }
+
+    // Pure function — safe to call off the main actor. The caller owns the
+    // previous CPU sample so we don't need shared mutable state.
+    static func snapshot(previousCPULoad: host_cpu_load_info?) -> Snapshot {
         var items: [SystemInfoItem] = []
         items.append(SystemInfoItem(label: "", value: "System Info", isHeader: true))
         items.append(contentsOf: getSystemOverviewItems())
         items.append(contentsOf: getMemoryItems())
-        items.append(contentsOf: getCPUItems())
+
+        let currentLoad = sampleCPULoad()
+        items.append(contentsOf: getCPUItems(currentLoad: currentLoad, previousLoad: previousCPULoad))
+
         if let batteryItems = getBatteryItems() {
             items.append(contentsOf: batteryItems)
         }
         items.append(contentsOf: getUptimeItems())
         items.append(contentsOf: getDiskItems())
-        return items
+        return Snapshot(items: items, cpuLoad: currentLoad)
     }
 
     static func getSystemInfo() -> String {
-        let items = snapshot()
+        let items = snapshot(previousCPULoad: nil).items
         var lines: [String] = []
         for item in items {
             if item.isHeader {
@@ -97,7 +120,7 @@ enum SystemInfoCommand {
     }
 
     static func getSystemInfoItems() -> [SystemInfoItem] {
-        snapshot()
+        snapshot(previousCPULoad: nil).items
     }
 
     private static func getSystemOverviewItems() -> [SystemInfoItem] {
@@ -171,7 +194,7 @@ enum SystemInfoCommand {
         ]
     }
 
-    private static func getCPUItems() -> [SystemInfoItem] {
+    private static func getCPUItems(currentLoad: host_cpu_load_info?, previousLoad: host_cpu_load_info?) -> [SystemInfoItem] {
         var cpuBrand = "Unknown"
         let cpuCount = ProcessInfo.processInfo.processorCount
         let cpuCores = ProcessInfo.processInfo.activeProcessorCount
@@ -192,7 +215,7 @@ enum SystemInfoCommand {
             cpuBrand = String(cString: machine)
         }
 
-        let usage = getCPUUsage()
+        let usage = formatCPUUsage(current: currentLoad, previous: previousLoad)
 
         return [
             SystemInfoItem(label: "", value: "CPU", isHeader: true),
@@ -202,12 +225,7 @@ enum SystemInfoCommand {
         ]
     }
 
-    // host_cpu_load_info gives cumulative ticks since boot; usage % needs the
-    // delta between two samples. First call after launch has no prior sample
-    // and returns "—".
-    private static var lastCPULoad: host_cpu_load_info?
-
-    private static func sampleCPULoad() -> host_cpu_load_info? {
+    static func sampleCPULoad() -> host_cpu_load_info? {
         var load = host_cpu_load_info()
         var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
         let result = withUnsafeMutablePointer(to: &load) {
@@ -218,15 +236,17 @@ enum SystemInfoCommand {
         return result == KERN_SUCCESS ? load : nil
     }
 
-    private static func getCPUUsage() -> String {
-        guard let current = sampleCPULoad() else { return "N/A" }
-        defer { lastCPULoad = current }
-        guard let last = lastCPULoad else { return "—" }
+    // host_cpu_load_info gives cumulative ticks since boot; usage % needs the
+    // delta between two samples. The first refresh after the panel opens has
+    // no prior sample and shows "—".
+    private static func formatCPUUsage(current: host_cpu_load_info?, previous: host_cpu_load_info?) -> String {
+        guard let current else { return "N/A" }
+        guard let previous else { return "—" }
 
-        let userDelta = Double(current.cpu_ticks.0 &- last.cpu_ticks.0)
-        let systemDelta = Double(current.cpu_ticks.1 &- last.cpu_ticks.1)
-        let idleDelta = Double(current.cpu_ticks.2 &- last.cpu_ticks.2)
-        let niceDelta = Double(current.cpu_ticks.3 &- last.cpu_ticks.3)
+        let userDelta = Double(current.cpu_ticks.0 &- previous.cpu_ticks.0)
+        let systemDelta = Double(current.cpu_ticks.1 &- previous.cpu_ticks.1)
+        let idleDelta = Double(current.cpu_ticks.2 &- previous.cpu_ticks.2)
+        let niceDelta = Double(current.cpu_ticks.3 &- previous.cpu_ticks.3)
 
         let total = userDelta + systemDelta + idleDelta + niceDelta
         guard total > 0 else { return "0.0" }
