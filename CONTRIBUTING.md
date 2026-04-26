@@ -38,6 +38,8 @@ Please include:
 - alternatives considered
 - impact/risk (perf, UX, safety)
 
+User-facing feature documentation lives in `docs/` (`features.md`, `user-guide.md`) and is enough for end users and most contributors. Maintainers may also keep internal design specs under `specs/` (purpose, behavior, edge cases, non-goals); that directory is `.gitignore`d and not required reading.
+
 ## Development setup
 
 Prerequisites:

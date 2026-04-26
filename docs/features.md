@@ -30,7 +30,7 @@ This document tracks what `look` supports today and what is planned next.
 
 ### Command mode
 
-- `Cmd+/` command mode entry
+- `Cmd+/` command mode entry, or inline `:cmdid` shortcut from the home screen (e.g. `:calc 2+2`, `:kill chrome`); space after a known command id triggers a live switch with args pre-filled
 - built-in commands: `calc`, `shell`, `kill`, `sys`
 - calc parser supports exponent (`^`), factorial (`!`), constants (`pi`, `e`), math functions (`sqrt`, `abs`, `round`, `floor`, `ceil`), and `%` shorthand while keeping modulo
 - kill flow with explicit confirmation and process-by-port lookup (`:3000` / `port 3000`)
