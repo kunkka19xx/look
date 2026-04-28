@@ -25,6 +25,78 @@ public sealed partial class MainWindow
         CommandPanelsPanel.FocusCommandInput();
     }
 
+    // Inline `:cmdid` quick-access from the home screen. Mirrors macOS
+    // enterCommandMode(commandID:prefilledInput:) in LauncherView+CommandMode.swift.
+    // Order matters: SetMode flips _mode to Command before we touch CommandInputText so the
+    // CommandTextChanged handler routes through the Command branch (and so that clearing
+    // QueryInput.Text below doesn't re-enter the inline trigger which is gated on _mode).
+    private void EnterCommandScreen(string commandId, string prefilledInput)
+    {
+        SetMode(LauncherMode.Command);
+        CommandPanelsPanel.SelectPanel(commandId);
+        CommandPanelsPanel.CommandInputText = prefilledInput ?? string.Empty;
+        QueryInput.Text = string.Empty;
+        UpdateCommandPreview();
+        CommandPanelsPanel.FocusCommandInput();
+    }
+
+    // Detects `:cmdid<space>...` (live trigger) and bare `:cmdid` (submit-only trigger).
+    // Returns false unless the token between `:` and the first whitespace is an exact match
+    // for a built-in command id (calc / shell / kill / sys). Mirrors macOS
+    // extractInlineCommand in LauncherView+CommandMode.swift.
+    internal static bool TryExtractInlineCommand(
+        string input,
+        out string commandId,
+        out string args,
+        out bool hasSpace)
+    {
+        commandId = string.Empty;
+        args = string.Empty;
+        hasSpace = false;
+
+        if (string.IsNullOrEmpty(input) || input[0] != ':')
+        {
+            return false;
+        }
+
+        string body = input.Substring(1);
+        int spaceIdx = -1;
+        for (int i = 0; i < body.Length; i++)
+        {
+            if (char.IsWhiteSpace(body[i]))
+            {
+                spaceIdx = i;
+                break;
+            }
+        }
+
+        string id;
+        if (spaceIdx >= 0)
+        {
+            id = body.Substring(0, spaceIdx).ToLowerInvariant();
+            args = body.Substring(spaceIdx + 1);
+            hasSpace = true;
+        }
+        else
+        {
+            id = body.ToLowerInvariant();
+            args = string.Empty;
+            hasSpace = false;
+        }
+
+        switch (id)
+        {
+            case "calc":
+            case "shell":
+            case "kill":
+            case "sys":
+                commandId = "command:" + id;
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private void CommandPanelsPanel_OnCommandTextChanged(object? sender, EventArgs e)
     {
         if (_mode != LauncherMode.Command)

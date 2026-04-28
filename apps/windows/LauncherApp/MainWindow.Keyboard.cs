@@ -191,9 +191,27 @@ public sealed partial class MainWindow
             && IsCtrlPressed()
             && ResultsList.SelectedItem is LauncherRowItem copySelected)
         {
-            bool ok = _actionDispatcher.CopyResultPath(copySelected.Result);
-            ShowBanner(ok ? "Copied path to clipboard" : "Copy action failed",
-                ok ? BannerStyle.Success : BannerStyle.Error);
+            _ = HandleCopyResultAsync(copySelected.Result);
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+Shift+P clears picks. Must precede the Ctrl+P branch since both match VK_P.
+        if (_mode == LauncherMode.Search
+            && e.Key == VirtualKey.P
+            && IsCtrlPressed()
+            && IsShiftPressed())
+        {
+            ClearPicks();
+            e.Handled = true;
+            return;
+        }
+
+        if (_mode == LauncherMode.Search
+            && e.Key == VirtualKey.P
+            && IsCtrlPressed())
+        {
+            _ = TogglePickForSelectedRowAsync();
             e.Handled = true;
             return;
         }
@@ -379,6 +397,20 @@ public sealed partial class MainWindow
             return;
         }
 
+        // Bare `:cmdid` (no space) — submit-only inline command shortcut. macOS parity
+        // (LauncherView+CommandMode.swift handleSubmit). Live `:cmdid<space>...` already
+        // routes through QueryInput_OnTextChanged before Enter ever runs.
+        if (e.Key == VirtualKey.Enter
+            && _mode != LauncherMode.Command
+            && TryExtractInlineCommand(QueryInput.Text?.Trim() ?? string.Empty,
+                out string inlineCommandId, out _, out bool inlineHasSpace)
+            && !inlineHasSpace)
+        {
+            EnterCommandScreen(inlineCommandId, string.Empty);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == VirtualKey.Enter && ResultsList.SelectedItem is LauncherRowItem enterSelected)
         {
             HandlePrimaryAction(enterSelected, forceNewWindow: IsShiftPressed());
@@ -433,15 +465,7 @@ public sealed partial class MainWindow
 
         if (e.Key == VirtualKey.C && IsCtrlPressed() && ResultsList.SelectedItem is LauncherRowItem copySelected)
         {
-            bool ok = _actionDispatcher.CopyResultPath(copySelected.Result);
-            if (ok)
-            {
-                ShowBanner("Copied path to clipboard");
-            }
-            else
-            {
-                ShowBanner("Copy action failed", BannerStyle.Error);
-            }
+            _ = HandleCopyResultAsync(copySelected.Result);
             e.Handled = true;
             return;
         }
@@ -463,14 +487,21 @@ public sealed partial class MainWindow
 
     private void ResultsList_OnSelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
     {
+        // When picks exist, the right column is occupied by the picked-items panel — don't
+        // toggle the preview on top of it. Selection changes still scroll/highlight as usual.
+        bool picksActive = _pickedKeys.Count > 0;
+
         if (ResultsList.SelectedItem is LauncherRowItem selected)
         {
             ResultsList.ScrollIntoView(selected);
-            ResultPreviewPanel.SetRow(selected);
-            if (_mode == LauncherMode.Search || _mode == LauncherMode.Clipboard || _mode == LauncherMode.Help)
+            if (!picksActive)
             {
-                ResultPreviewPanel.Visibility = Visibility.Visible;
-                PreviewDivider.Visibility = Visibility.Visible;
+                ResultPreviewPanel.SetRow(selected);
+                if (_mode == LauncherMode.Search || _mode == LauncherMode.Clipboard || _mode == LauncherMode.Help)
+                {
+                    ResultPreviewPanel.Visibility = Visibility.Visible;
+                    PreviewDivider.Visibility = Visibility.Visible;
+                }
             }
             if (_mode == LauncherMode.Command)
             {
@@ -479,9 +510,12 @@ public sealed partial class MainWindow
             return;
         }
 
-        ResultPreviewPanel.SetRow(null);
-        ResultPreviewPanel.Visibility = Visibility.Collapsed;
-        PreviewDivider.Visibility = Visibility.Collapsed;
+        if (!picksActive)
+        {
+            ResultPreviewPanel.SetRow(null);
+            ResultPreviewPanel.Visibility = Visibility.Collapsed;
+            PreviewDivider.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void HandlePrimaryAction(LauncherRowItem selected, bool forceNewWindow = false)
@@ -512,6 +546,14 @@ public sealed partial class MainWindow
         DataPackage package = new();
         package.SetText(value);
         Clipboard.SetContent(package);
+    }
+
+    private async System.Threading.Tasks.Task HandleCopyResultAsync(LauncherResult result)
+    {
+        bool ok = await _actionDispatcher.CopyResultAsync(result);
+        ShowBanner(
+            ok ? "Copied to clipboard" : "Copy action failed",
+            ok ? BannerStyle.Success : BannerStyle.Error);
     }
 
     private static bool IsCtrlPressed()

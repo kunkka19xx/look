@@ -57,6 +57,18 @@ public sealed partial class MainWindow
         int currentVersion = ++_searchVersion;
         string rawQuery = QueryInput.Text?.Trim() ?? string.Empty;
 
+        // `:cmdid<space>...` jumps straight into command mode with the rest pre-filled as
+        // command input. Bare `:cmdid` (no space) is handled on Enter only — see Keyboard.cs.
+        // Skipped while already in command mode so editing a command argument that happens to
+        // start with `:` (e.g. `:3000` for kill-by-port) doesn't re-trigger.
+        if (_mode != LauncherMode.Command
+            && TryExtractInlineCommand(rawQuery, out string inlineCommandId, out string inlineArgs, out bool inlineHasSpace)
+            && inlineHasSpace)
+        {
+            EnterCommandScreen(inlineCommandId, inlineArgs);
+            return;
+        }
+
         if (rawQuery.StartsWith("t\"", StringComparison.OrdinalIgnoreCase))
         {
             HandleTranslateInputChanged(rawQuery);
@@ -248,6 +260,10 @@ public sealed partial class MainWindow
         {
             _results.Add(new LauncherRowItem(item));
         }
+
+        // After repopulating the row list, reconcile the IsPicked flag so newly-rendered
+        // rows that are part of the session pick set show the checkmark glyph.
+        SyncPickedRowItemsForVisibleResults();
 
         if (_mode == LauncherMode.Command)
         {

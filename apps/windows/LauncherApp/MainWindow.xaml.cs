@@ -44,6 +44,11 @@ namespace LauncherApp
         private SettingsTabsView? _settingsTabsView;
         private LauncherMode _mode = LauncherMode.Search;
         private int _searchVersion;
+        // Multi-pick state (Ctrl+P toggles, Ctrl+Shift+P clears). Mirrors macOS pickedKeys /
+        // pickedResultsByKey in LauncherView.swift. Picks live for the launcher session and
+        // are independent of the visible result list / current query.
+        private readonly List<string> _pickedKeys = new();
+        private readonly Dictionary<string, LauncherResult> _pickedResultsByKey = new();
         private static readonly string[] NoisyExecutableNameTokens =
         [
             "appinstallerprotocolshim",
@@ -112,6 +117,8 @@ namespace LauncherApp
             TranslatePanel.OpenInBrowserRequested += TranslatePanel_OnOpenInBrowserRequested;
             TranslatePanel.CopyTranslatedRequested += TranslatePanel_OnCopyTranslatedRequested;
             ResultPreviewPanel.ClipboardDeleteRequested += OnClipboardDeleteRequested;
+            PickedItemsPanel.RemoveRequested += OnPickedPanelRemoveRequested;
+            PickedItemsPanel.ClearAllRequested += OnPickedPanelClearAllRequested;
             SetMode(LauncherMode.Search);
             RefreshResults(QueryInput.Text?.Trim() ?? string.Empty);
             InitializeBlurLayer();
@@ -201,6 +208,7 @@ namespace LauncherApp
 
             ResultPreviewPanel.Visibility = Visibility.Collapsed;
             PreviewDivider.Visibility = Visibility.Collapsed;
+            PickedItemsPanel.Visibility = Visibility.Collapsed;
             CommandPanelsPanel.Visibility = Visibility.Collapsed;
             HelpScreenPanel.Visibility = Visibility.Collapsed;
             TranslatePanel.Visibility = Visibility.Collapsed;
@@ -211,7 +219,7 @@ namespace LauncherApp
                 case LauncherMode.Search:
                     ApplyConfiguredSurface();
                     QueryInput.PlaceholderText = "Search apps";
-                    HintText.Text = "Enter open  •  Ctrl+F reveal  •  Ctrl+C copy  •  Ctrl+Enter web";
+                    HintText.Text = "Enter open  •  Ctrl+F reveal  •  Ctrl+C copy  •  Ctrl+P pick  •  Ctrl+Enter web";
                     ResultsHost.Visibility = Visibility.Visible;
                     break;
                 case LauncherMode.Command:
@@ -253,6 +261,14 @@ namespace LauncherApp
                     ResultsList.Visibility = Visibility.Collapsed;
                     TranslatePanel.Visibility = Visibility.Visible;
                     break;
+            }
+
+            // Re-show the picked-items panel when re-entering a mode that uses the right column.
+            // RefreshPickedSidePanel internally restores the standard preview when there are no
+            // picks, so this is also the path that re-binds preview to the current selection.
+            if (mode == LauncherMode.Search || mode == LauncherMode.Clipboard || mode == LauncherMode.Help)
+            {
+                RefreshPickedSidePanel();
             }
         }
 

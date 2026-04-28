@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using LauncherApp.Bridge;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage;
 
 namespace LauncherApp.Services;
 
@@ -59,7 +61,11 @@ public sealed class ActionDispatcher
         return _reveal.Reveal(result.Path);
     }
 
-    public bool CopyResultPath(LauncherResult result)
+    // Single-row Ctrl+C. For file/folder kinds we attach a real IStorageItem so Ctrl+V in
+    // Explorer pastes the file (parity with macOS pasteboard.writeObjects([NSURL, NSString])
+    // in LauncherView+Results.swift:164). Other kinds (settings, urls, UWP shell: targets)
+    // fall back to text-only since they have no filesystem path to attach.
+    public async Task<bool> CopyResultAsync(LauncherResult result)
     {
         if (string.IsNullOrWhiteSpace(result.Path))
         {
@@ -68,8 +74,84 @@ public sealed class ActionDispatcher
 
         DataPackage package = new();
         package.SetText(result.Path);
+
+        IStorageItem? storageItem = await TryGetStorageItemAsync(result);
+        if (storageItem is not null)
+        {
+            package.SetStorageItems(new[] { storageItem });
+        }
+
         Clipboard.SetContent(package);
+        Clipboard.Flush();
         return true;
+    }
+
+    // Multi-pick write. Mirrors macOS writePickedToPasteboard (LauncherView+Results.swift:134):
+    // attach every resolvable file/folder as IStorageItem so Explorer paste copies them all,
+    // and join paths with newlines for the text fallback (paste-into-text-field).
+    public async Task<bool> CopyResultsAsync(IReadOnlyList<LauncherResult> results)
+    {
+        if (results is null || results.Count == 0)
+        {
+            return false;
+        }
+
+        List<IStorageItem> storageItems = new();
+        List<string> paths = new();
+
+        foreach (LauncherResult result in results)
+        {
+            if (string.IsNullOrWhiteSpace(result.Path))
+                continue;
+
+            paths.Add(result.Path);
+
+            IStorageItem? item = await TryGetStorageItemAsync(result);
+            if (item is not null)
+            {
+                storageItems.Add(item);
+            }
+        }
+
+        if (paths.Count == 0)
+        {
+            return false;
+        }
+
+        DataPackage package = new();
+        package.SetText(string.Join(Environment.NewLine, paths));
+
+        if (storageItems.Count > 0)
+        {
+            package.SetStorageItems(storageItems);
+        }
+
+        Clipboard.SetContent(package);
+        Clipboard.Flush();
+        return true;
+    }
+
+    private static async Task<IStorageItem?> TryGetStorageItemAsync(LauncherResult result)
+    {
+        var kind = ResolveResultKind(result);
+        if (kind != LauncherActionKind.File && kind != LauncherActionKind.Folder)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (kind == LauncherActionKind.Folder)
+            {
+                return await StorageFolder.GetFolderFromPathAsync(result.Path);
+            }
+            return await StorageFile.GetFileFromPathAsync(result.Path);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ActionDispatcher] storage item resolve failed for '{result.Path}': {ex.Message}");
+            return null;
+        }
     }
 
     public bool WebHandoff(string query)

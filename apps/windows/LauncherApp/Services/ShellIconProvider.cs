@@ -49,14 +49,12 @@ public sealed class ShellIconProvider
         if (string.IsNullOrWhiteSpace(path))
             return null;
 
+        // ms-settings: URIs intentionally return null so the row falls back to the per-page
+        // Fluent glyph in SettingsIconCatalog. Resolving them to SystemSettings.exe gave every
+        // setting row the same generic gear PNG, which always outranks the glyph in the row
+        // template (LauncherResultRowView swaps to IconImage as soon as Icon is non-null).
         if (path.StartsWith("ms-settings:", PathComparison))
-        {
-            var settingsIconPath = ResolveWindowsSettingsIconPath();
-            if (string.IsNullOrEmpty(settingsIconPath))
-                return null;
-
-            path = settingsIconPath;
-        }
+            return null;
 
         if (path.StartsWith("ms-", PathComparison))
             return null;
@@ -354,27 +352,6 @@ public sealed class ShellIconProvider
             normalized = normalized.TrimEnd('\\');
 
         return normalized;
-    }
-
-    private static string? ResolveWindowsSettingsIconPath()
-    {
-        var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-        if (string.IsNullOrWhiteSpace(windowsDir))
-            return null;
-
-        var candidates = new[]
-        {
-            Path.Combine(windowsDir, "ImmersiveControlPanel", "SystemSettings.exe"),
-            Path.Combine(windowsDir, "System32", "control.exe"),
-        };
-
-        foreach (var candidate in candidates)
-        {
-            if (File.Exists(candidate))
-                return candidate;
-        }
-
-        return null;
     }
 
     private static ImageSource? TryCreateCachedBitmapImage(IntPtr hIcon, string sourcePath, bool smallIcon)

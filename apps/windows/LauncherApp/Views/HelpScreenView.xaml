@@ -43,11 +43,14 @@
                 <StackPanel Spacing="6">
                     <views:KeyChordRowView KeyText="Enter" Description="Open selected app/file/folder or copy selected clipboard item" />
                     <views:KeyChordRowView KeyText="Ctrl+C" Description="Copy selected file/folder to pasteboard" />
+                    <views:KeyChordRowView KeyText="Ctrl+P" Description="Pick selected file/folder (toggle); paste in Explorer to copy all picks" />
+                    <views:KeyChordRowView KeyText="Ctrl+Shift+P" Description="Clear all picked items" />
                     <views:KeyChordRowView KeyText="Tab / Shift+Tab" Description="Move selection" />
                     <views:KeyChordRowView KeyText="Up / Down" Description="Move selection" />
                     <views:KeyChordRowView KeyText="Ctrl+F" Description="Reveal selected app/file/folder in Explorer" />
                     <views:KeyChordRowView KeyText="Ctrl+Enter" Description="Search current query on Google" />
                     <views:KeyChordRowView KeyText="Ctrl+/" Description="Enter command mode" />
+                    <views:KeyChordRowView KeyText=":cmd" Description="Quick-access command from home screen (e.g. :calc 2+2, :kill chrome, :sys)" />
                     <views:KeyChordRowView KeyText="Ctrl+H" Description="Toggle this help screen" />
                     <views:KeyChordRowView KeyText="Esc" Description="Close help / back / hide launcher" />
                 </StackPanel>

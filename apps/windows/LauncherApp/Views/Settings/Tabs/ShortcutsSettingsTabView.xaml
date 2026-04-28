@@ -17,9 +17,12 @@
                     <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Shift+Tab" Description="Select previous result" />
                     <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Up / Down" Description="Move selection" />
                     <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+C" Description="Copy selected file/folder to clipboard" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+P" Description="Pick selected file/folder (toggle); paste in Explorer to copy all picks" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+Shift+P" Description="Clear all picked items" />
                     <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+F" Description="Reveal selected app/file/folder in Explorer" />
                     <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+Enter" Description="Search query on Google" />
                     <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+/" Description="Enter command mode" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText=":cmd" Description="Quick-access command from home (e.g. :calc 2+2, :kill chrome, :sys)" />
                     <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+H" Description="Toggle in-window keyboard help screen" />
                     <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Esc" Description="Back to app list (in command mode)" />
                     <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Shift+Esc" Description="Hide launcher" />

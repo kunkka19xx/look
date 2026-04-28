@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Threading.Tasks;
 using LauncherApp.Bridge;
 using LauncherApp.Services;
@@ -6,14 +7,31 @@ using Microsoft.UI.Xaml.Media;
 
 namespace LauncherApp.Core;
 
-public sealed class LauncherRowItem
+public sealed class LauncherRowItem : INotifyPropertyChanged
 {
     private static readonly IIconService SharedIconService = new IconService();
 
     private ImageSource? _icon;
     private bool _iconLoaded;
+    private bool _isPicked;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     public LauncherResult Result { get; }
+
+    // Toggled by the multi-pick flow (Ctrl+P). The row view subscribes to PropertyChanged
+    // and shows a checkmark glyph next to the icon. Mirrors macOS LauncherRowView isPicked.
+    public bool IsPicked
+    {
+        get => _isPicked;
+        set
+        {
+            if (_isPicked == value)
+                return;
+            _isPicked = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsPicked)));
+        }
+    }
 
     public string Title => Result.Title;
 
@@ -76,10 +94,16 @@ public sealed class LauncherRowItem
 
     public bool HasMetaPath => !string.IsNullOrEmpty(MetaPath) && MetaPath != MetaKind;
 
+    // Stable key used by the multi-pick set (Ctrl+P). Mirrors macOS pickedKey(for:).
+    public string PickedKey => $"{Result.Kind}|{Result.Path}";
+
+    // Bound by the Picked panel template -- full filesystem path, ellipsised at row width.
+    public string FullPath => Result.Path;
+
     public string IconGlyph => Kind switch
     {
         SearchItemKind.App => "\uE71D",
-        SearchItemKind.Setting => "\uE713",
+        SearchItemKind.Setting => SettingsIconCatalog.GetGlyph(Result.Path),
         SearchItemKind.File => "\uE8A5",
         SearchItemKind.Folder => "\uE8B7",
         _ when Result.Kind == "clipboard" => "\uE8C8",
