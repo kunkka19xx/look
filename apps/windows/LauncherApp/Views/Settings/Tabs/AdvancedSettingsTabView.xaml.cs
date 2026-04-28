@@ -157,12 +157,16 @@ public sealed partial class AdvancedSettingsTabView : UserControl
 
         SelectComboByTag(BackgroundImageModeCombo, values.GetValueOrDefault("ui_background_image_mode"), "fill");
 
-        if (double.TryParse(values.GetValueOrDefault("ui_background_image_opacity"), out double bgOpacity))
+        // AdvancedSettingsSaveLogic writes these as InvariantCulture fractions ("0.22", "8");
+        // parsing without invariant culture silently fails on locales that use ',' as the
+        // decimal separator (German, French, Vietnamese, etc.), then the slider falls back
+        // to default and the next save overwrites the config with the wrong value.
+        if (double.TryParse(values.GetValueOrDefault("ui_background_image_opacity"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double bgOpacity))
         {
             BackgroundImageOpacitySlider.Value = Math.Clamp(bgOpacity * 100d, 0, 100);
         }
 
-        if (double.TryParse(values.GetValueOrDefault("ui_background_image_blur"), out double bgBlur))
+        if (double.TryParse(values.GetValueOrDefault("ui_background_image_blur"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double bgBlur))
         {
             BackgroundImageBlurSlider.Value = Math.Clamp(bgBlur, 0, 30);
         }
