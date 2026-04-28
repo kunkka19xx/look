@@ -66,7 +66,6 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         candidate_id_suffix: "windows.accounts.sync",
         aliases: "settings sync windows backup roaming microsoft account",
     },
-
     // ---------- Apps ----------
     SettingsCatalogEntry {
         title: "Installed apps",
@@ -110,7 +109,6 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         candidate_id_suffix: "windows.apps.videoplayback",
         aliases: "settings video playback hdr battery streaming",
     },
-
     // ---------- Devices ----------
     SettingsCatalogEntry {
         title: "Bluetooth & devices",
@@ -184,7 +182,6 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         candidate_id_suffix: "windows.devices.mobile",
         aliases: "settings phone link mobile devices android iphone your",
     },
-
     // ---------- Network & Internet ----------
     SettingsCatalogEntry {
         title: "Network & Internet",
@@ -252,7 +249,6 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         candidate_id_suffix: "windows.network.advancedsettings",
         aliases: "settings advanced network adapter reset properties",
     },
-
     // ---------- Personalization ----------
     SettingsCatalogEntry {
         title: "Personalization",
@@ -320,7 +316,6 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         candidate_id_suffix: "windows.personalization.lighting",
         aliases: "settings dynamic lighting rgb peripherals effects",
     },
-
     // ---------- Privacy ----------
     SettingsCatalogEntry {
         title: "Privacy",
@@ -508,7 +503,6 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         candidate_id_suffix: "windows.privacy.voiceactivation",
         aliases: "settings privacy voice activation wake word assistant",
     },
-
     // ---------- Sound ----------
     SettingsCatalogEntry {
         title: "Sound",
@@ -528,7 +522,6 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         candidate_id_suffix: "windows.sound.appsvolume",
         aliases: "settings volume mixer apps audio per app",
     },
-
     // ---------- System ----------
     SettingsCatalogEntry {
         title: "About",
@@ -674,7 +667,6 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         candidate_id_suffix: "windows.system.search.permissions",
         aliases: "settings search permissions safe filter safesearch",
     },
-
     // ---------- Time and language ----------
     SettingsCatalogEntry {
         title: "Date & time",
@@ -706,7 +698,6 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         candidate_id_suffix: "windows.timelanguage.speech",
         aliases: "settings speech voice recognition language",
     },
-
     // ---------- Accessibility (Ease of access) ----------
     SettingsCatalogEntry {
         title: "Accessibility - Display",
@@ -798,7 +789,6 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         candidate_id_suffix: "windows.accessibility.hearingaids",
         aliases: "accessibility settings hearing aids devices bluetooth le",
     },
-
     // ---------- Family ----------
     SettingsCatalogEntry {
         title: "Family group",
@@ -806,7 +796,6 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         candidate_id_suffix: "windows.family.group",
         aliases: "settings family group safety screen time microsoft account",
     },
-
     // ---------- Gaming ----------
     SettingsCatalogEntry {
         title: "Game Bar",
@@ -826,7 +815,6 @@ pub(crate) const SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         candidate_id_suffix: "windows.gaming.gamemode",
         aliases: "settings gaming game mode performance",
     },
-
     // ---------- Update & security ----------
     SettingsCatalogEntry {
         title: "Windows Update",

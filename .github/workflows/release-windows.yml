@@ -1,0 +1,28 @@
+name: Release Windows App
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (example: 1.0.0)"
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-release:
+    uses: ./.github/workflows/reusable-release-windows.yml
+    with:
+      release_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+      trigger_event: ${{ github.event_name }}
+      attach_release: ${{ github.event_name == 'push' }}
+      concurrency_ref: ${{ github.ref }}
+    secrets: inherit
