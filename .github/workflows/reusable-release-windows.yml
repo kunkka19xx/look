@@ -225,12 +225,20 @@ jobs:
             throw "Publish directory missing: $publish"
           }
 
+          # The publish output produces LauncherApp.exe (the WinExe entry point) and
+          # LauncherApp.dll (the managed assembly), plus look_ffi.dll (the Rust core).
+          # An older revision of this workflow filtered for "Look.exe" / "Look.dll" which
+          # never matched anything in the publish dir — signing silently covered only the
+          # FFI dll while the strict-mode summary still reported "signed". Require all
+          # three so any future rename can't quietly skip the main binary again.
+          $expectedTargets = @("LauncherApp.exe", "LauncherApp.dll", "look_ffi.dll")
           $targets = @()
-          $targets += Get-ChildItem -Path $publish -Filter "Look.exe" -File -ErrorAction SilentlyContinue
-          $targets += Get-ChildItem -Path $publish -Filter "Look.dll" -File -ErrorAction SilentlyContinue
-          $targets += Get-ChildItem -Path $publish -Filter "look_ffi.dll" -File -ErrorAction SilentlyContinue
-          if ($targets.Count -eq 0) {
-            throw "No expected binaries found in $publish for signing."
+          foreach ($name in $expectedTargets) {
+            $found = Get-ChildItem -Path $publish -Filter $name -File -ErrorAction SilentlyContinue
+            if (-not $found) {
+              throw "Expected binary missing from publish output: $name (publish=$publish)"
+            }
+            $targets += $found
           }
 
           foreach ($file in $targets) {
@@ -258,10 +266,17 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $publish = $env:PUBLISH_DIR
+          # Verify the same set the sign step actually signed; this used to silently no-op
+          # for Look.exe / Look.dll because they don't exist in the publish output.
+          $expectedTargets = @("LauncherApp.exe", "LauncherApp.dll", "look_ffi.dll")
           $targets = @()
-          $targets += Get-ChildItem -Path $publish -Filter "Look.exe" -File -ErrorAction SilentlyContinue
-          $targets += Get-ChildItem -Path $publish -Filter "Look.dll" -File -ErrorAction SilentlyContinue
-          $targets += Get-ChildItem -Path $publish -Filter "look_ffi.dll" -File -ErrorAction SilentlyContinue
+          foreach ($name in $expectedTargets) {
+            $found = Get-ChildItem -Path $publish -Filter $name -File -ErrorAction SilentlyContinue
+            if (-not $found) {
+              throw "Expected signed binary missing from publish output: $name (publish=$publish)"
+            }
+            $targets += $found
+          }
           foreach ($file in $targets) {
             & $env:SIGNTOOL verify /pa /v $file.FullName
             if ($LASTEXITCODE -ne 0) { throw "signtool verify failed for $($file.FullName)" }
