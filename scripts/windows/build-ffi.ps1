@@ -1,6 +1,9 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$ManifestPath,
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("x64", "arm64")]
+    [string]$Arch = "x64",
     [switch]$Release
 )
 
@@ -10,11 +13,16 @@ if (-not (Test-Path $ManifestPath)) {
     throw "FFI manifest not found: $ManifestPath"
 }
 
+$rustTarget = switch ($Arch) {
+    "x64"   { "x86_64-pc-windows-msvc" }
+    "arm64" { "aarch64-pc-windows-msvc" }
+}
+
 $cargoArgs = @("build")
 if ($Release) {
     $cargoArgs += "--release"
 }
-$cargoArgs += @("--manifest-path", $ManifestPath)
+$cargoArgs += @("--manifest-path", $ManifestPath, "--target", $rustTarget)
 
 if (-not [string]::IsNullOrWhiteSpace($env:VSCMD_VER)) {
     & cargo @cargoArgs
@@ -37,8 +45,8 @@ if (-not (Test-Path $vsDevCmd)) {
 }
 
 $releasePart = if ($Release) { " --release" } else { "" }
-$cargoCommand = "cargo build$releasePart --manifest-path `"$ManifestPath`""
-$cmd = "`"$vsDevCmd`" -arch=x64 -host_arch=x64 && $cargoCommand"
+$cargoCommand = "cargo build$releasePart --manifest-path `"$ManifestPath`" --target $rustTarget"
+$cmd = "`"$vsDevCmd`" -arch=$Arch -host_arch=x64 && $cargoCommand"
 
 cmd /d /c $cmd
 exit $LASTEXITCODE

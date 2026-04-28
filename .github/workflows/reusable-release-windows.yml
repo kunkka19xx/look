@@ -35,10 +35,22 @@ on:
 
 jobs:
   build-release:
-    name: Build Windows release artifact
+    name: Build Windows release artifact (${{ matrix.platform }})
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x64
+            rid: win-x64
+            rust_target: x86_64-pc-windows-msvc
+            arch_label: x64
+          - platform: ARM64
+            rid: win-arm64
+            rust_target: aarch64-pc-windows-msvc
+            arch_label: arm64
     concurrency:
-      group: release-windows-${{ inputs.concurrency_ref }}
+      group: release-windows-${{ inputs.concurrency_ref }}-${{ matrix.platform }}
       cancel-in-progress: true
 
     steps:
@@ -98,6 +110,8 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -105,31 +119,34 @@ jobs:
           workspaces: |
             core
             bridge/ffi
+          key: ${{ matrix.rust_target }}
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-release-${{ hashFiles('apps/windows/LauncherApp/LauncherApp.csproj') }}
+          key: ${{ runner.os }}-${{ matrix.platform }}-nuget-release-${{ hashFiles('apps/windows/LauncherApp/LauncherApp.csproj') }}
           restore-keys: |
-            ${{ runner.os }}-nuget-release-
+            ${{ runner.os }}-${{ matrix.platform }}-nuget-release-
+            ${{ runner.os }}-${{ matrix.platform }}-nuget-
             ${{ runner.os }}-nuget-
 
-      - name: Publish (Release, x64)
+      - name: Publish (Release)
         shell: pwsh
         run: |
           dotnet publish apps/windows/LauncherApp/LauncherApp.csproj `
             -c Release `
-            -p:Platform=x64 `
-            -r win-x64 `
-            -p:PublishProfile=win-x64.pubxml `
+            -p:Platform=${{ matrix.platform }} `
+            -r ${{ matrix.rid }} `
+            -p:PublishProfile=${{ matrix.rid }}.pubxml `
             /bl:msbuild.binlog
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
       - name: Ensure FFI in publish output
         shell: pwsh
         env:
-          PUBLISH_DIR: apps/windows/LauncherApp/bin/Release/net10.0-windows10.0.19041.0/win-x64/publish
+          PUBLISH_DIR: apps/windows/LauncherApp/bin/Release/net10.0-windows10.0.19041.0/${{ matrix.rid }}/publish
+          RUST_TARGET: ${{ matrix.rust_target }}
         run: |
           $ErrorActionPreference = "Stop"
           $publish = $env:PUBLISH_DIR
@@ -138,7 +155,7 @@ jobs:
           if (Test-Path $target) {
             Write-Host "look_ffi.dll already present in publish output."
           } else {
-            $source = "bridge/ffi/target/release/look_ffi.dll"
+            $source = "bridge/ffi/target/$($env:RUST_TARGET)/release/look_ffi.dll"
             if (-not (Test-Path $source)) { throw "Built FFI artifact missing: $source" }
             Copy-Item -Path $source -Destination $target -Force
             Write-Host "Copied FFI: $source -> $target"
@@ -173,7 +190,7 @@ jobs:
           WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
           WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
           WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
-          PUBLISH_DIR: apps/windows/LauncherApp/bin/Release/net10.0-windows10.0.19041.0/win-x64/publish
+          PUBLISH_DIR: apps/windows/LauncherApp/bin/Release/net10.0-windows10.0.19041.0/${{ matrix.rid }}/publish
           STRICT_MODE: ${{ steps.strict.outputs.strict_mode }}
           SIGNTOOL: ${{ steps.signtool.outputs.path }}
         run: |
@@ -236,7 +253,7 @@ jobs:
         if: steps.sign.outputs.result == 'signed'
         shell: pwsh
         env:
-          PUBLISH_DIR: apps/windows/LauncherApp/bin/Release/net10.0-windows10.0.19041.0/win-x64/publish
+          PUBLISH_DIR: apps/windows/LauncherApp/bin/Release/net10.0-windows10.0.19041.0/${{ matrix.rid }}/publish
           SIGNTOOL: ${{ steps.signtool.outputs.path }}
         run: |
           $ErrorActionPreference = "Stop"
@@ -255,7 +272,8 @@ jobs:
         shell: pwsh
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          PUBLISH_DIR: apps/windows/LauncherApp/bin/Release/net10.0-windows10.0.19041.0/win-x64/publish
+          ARCH_LABEL: ${{ matrix.arch_label }}
+          PUBLISH_DIR: apps/windows/LauncherApp/bin/Release/net10.0-windows10.0.19041.0/${{ matrix.rid }}/publish
         run: |
           $ErrorActionPreference = "Stop"
           $publish = $env:PUBLISH_DIR
@@ -265,8 +283,8 @@ jobs:
 
           $dist = "dist"
           New-Item -ItemType Directory -Force -Path $dist | Out-Null
-          $zipPath = Join-Path $dist "Look-$($env:VERSION)-windows-x64.zip"
-          $manifestPath = Join-Path $dist "Look-$($env:VERSION)-windows-manifest.txt"
+          $zipPath = Join-Path $dist "Look-$($env:VERSION)-windows-$($env:ARCH_LABEL).zip"
+          $manifestPath = Join-Path $dist "Look-$($env:VERSION)-windows-$($env:ARCH_LABEL)-manifest.txt"
 
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
           Compress-Archive -Path (Join-Path $publish '*') -DestinationPath $zipPath -CompressionLevel Optimal
@@ -274,6 +292,7 @@ jobs:
           $sha256 = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
           @(
             "version=$($env:VERSION)",
+            "arch=$($env:ARCH_LABEL)",
             "artifact=$([IO.Path]::GetFileName($zipPath))",
             "sha256=$sha256"
           ) | Set-Content -Path $manifestPath -Encoding utf8
@@ -284,17 +303,17 @@ jobs:
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: look-windows-${{ steps.version.outputs.version }}
+          name: look-windows-${{ steps.version.outputs.version }}-${{ matrix.arch_label }}
           path: |
-            dist/Look-${{ steps.version.outputs.version }}-windows-x64.zip
-            dist/Look-${{ steps.version.outputs.version }}-windows-manifest.txt
+            dist/Look-${{ steps.version.outputs.version }}-windows-${{ matrix.arch_label }}.zip
+            dist/Look-${{ steps.version.outputs.version }}-windows-${{ matrix.arch_label }}-manifest.txt
           retention-days: 14
 
       - name: Upload msbuild binlog on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-release-msbuild-binlog
+          name: windows-release-msbuild-binlog-${{ matrix.arch_label }}
           path: msbuild.binlog
           retention-days: 7
 
@@ -303,8 +322,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/Look-${{ steps.version.outputs.version }}-windows-x64.zip
-            dist/Look-${{ steps.version.outputs.version }}-windows-manifest.txt
+            dist/Look-${{ steps.version.outputs.version }}-windows-${{ matrix.arch_label }}.zip
+            dist/Look-${{ steps.version.outputs.version }}-windows-${{ matrix.arch_label }}-manifest.txt
 
       - name: Release security summary
         if: always()
@@ -319,7 +338,7 @@ jobs:
           fi
 
           {
-            echo "## Release Security Summary"
+            echo "## Release Security Summary (${{ matrix.platform }})"
             echo "- Strict mode: ${{ steps.strict.outputs.strict_mode }} (source: ${{ steps.strict.outputs.strict_source }})"
             echo "- Code signing configured: ${SIGNING_READY}"
             echo "- Signing result: ${{ steps.sign.outputs.result || 'not_run' }}"

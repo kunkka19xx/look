@@ -117,8 +117,11 @@ mod tests {
     #[test]
     fn discovery_outputs_valid_settings_candidates() {
         let (tx, rx) = mpsc::sync_channel(64);
-        discover_system_settings_entries(tx);
+        let producer = std::thread::spawn(move || {
+            discover_system_settings_entries(tx);
+        });
         let discovered: Vec<Candidate> = rx.into_iter().collect();
+        producer.join().expect("settings discovery thread panicked");
 
         assert_eq!(discovered.len(), platform::settings_catalog().len());
 

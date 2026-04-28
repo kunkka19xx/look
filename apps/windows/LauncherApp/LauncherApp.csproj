@@ -5,8 +5,8 @@
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>LauncherApp</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Platforms>x86;x64;ARM64</Platforms>
-    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
@@ -70,7 +70,11 @@
     <RustFfiProfile Condition="'$(Configuration)' != 'Debug'">release</RustFfiProfile>
     <RustFfiReleaseFlag Condition="'$(Configuration)' == 'Debug'"></RustFfiReleaseFlag>
     <RustFfiReleaseFlag Condition="'$(Configuration)' != 'Debug'">-Release</RustFfiReleaseFlag>
-    <RustFfiDll>$(RepoRoot)bridge\ffi\target\$(RustFfiProfile)\look_ffi.dll</RustFfiDll>
+    <RustFfiArch Condition="'$(Platform)' == 'x64'">x64</RustFfiArch>
+    <RustFfiArch Condition="'$(Platform)' == 'ARM64' or '$(Platform)' == 'arm64'">arm64</RustFfiArch>
+    <RustFfiTargetTriple Condition="'$(RustFfiArch)' == 'x64'">x86_64-pc-windows-msvc</RustFfiTargetTriple>
+    <RustFfiTargetTriple Condition="'$(RustFfiArch)' == 'arm64'">aarch64-pc-windows-msvc</RustFfiTargetTriple>
+    <RustFfiDll>$(RepoRoot)bridge\ffi\target\$(RustFfiTargetTriple)\$(RustFfiProfile)\look_ffi.dll</RustFfiDll>
     <RustFfiBuildScript>$(RepoRoot)scripts\windows\build-ffi.ps1</RustFfiBuildScript>
   </PropertyGroup>
 
@@ -87,9 +91,9 @@
     <UpToDateCheckBuilt Include="$(TargetDir)look_ffi.dll" />
   </ItemGroup>
 
-  <Target Name="BuildRustFfi" BeforeTargets="Build" Condition="'$(OS)' == 'Windows_NT' and Exists('$(RustFfiManifest)') and Exists('$(RustFfiBuildScript)')">
-    <Message Importance="high" Text="Building Rust FFI backend" />
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(RustFfiBuildScript)&quot; -ManifestPath &quot;$(RustFfiManifest)&quot; $(RustFfiReleaseFlag)" />
+  <Target Name="BuildRustFfi" BeforeTargets="Build" Condition="'$(OS)' == 'Windows_NT' and '$(RustFfiArch)' != '' and Exists('$(RustFfiManifest)') and Exists('$(RustFfiBuildScript)')">
+    <Message Importance="high" Text="Building Rust FFI backend ($(RustFfiArch), $(RustFfiProfile))" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(RustFfiBuildScript)&quot; -ManifestPath &quot;$(RustFfiManifest)&quot; -Arch $(RustFfiArch) $(RustFfiReleaseFlag)" />
   </Target>
 
   <Target Name="CopyRustFfiDll" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT' and Exists('$(RustFfiDll)')">
