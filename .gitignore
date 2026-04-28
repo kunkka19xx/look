@@ -32,6 +32,10 @@ docs/tmp-issue-tracker.md
 # internal feature specs — maintainer-only design notes; user docs live in docs/
 specs/
 
+# Claude Code local state (settings, slash commands, agents, memory, project instructions)
+.claude/
+CLAUDE.md
+
 # .NET / Visual Studio
 ## User-specific files
 *.rsuser
