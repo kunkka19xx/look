@@ -6,7 +6,7 @@ A keyboard-first, local-first launcher for macOS and Windows. Open apps, files, 
 
 [![CI](https://github.com/kunkka19xx/look/actions/workflows/ci.yml/badge.svg)](https://github.com/kunkka19xx/look/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Platform](https://img.shields.io/badge/platform-macOS%2015%2B%20%7C%20Windows%2010%2B-lightgrey) [![Homebrew](https://img.shields.io/badge/homebrew-cask-orange)](#install) [![Stars](https://img.shields.io/github/stars/kunkka19xx/look?style=flat&logo=github)](https://github.com/kunkka19xx/look/stargazers)
 
-![Look demo](assets/look.gif)
+https://github.com/user-attachments/assets/176a929d-edbe-46a0-a0c5-229eb9b31c1c
 
 > 📘 **Docs:** [noah-code.com/docs/look](https://noah-code.com/docs/look) · 🎬 [Demo on YouTube](https://www.youtube.com/watch?v=4Twb4We3PIs)
 
