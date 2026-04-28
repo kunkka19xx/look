@@ -133,12 +133,27 @@ jobs:
 
       - name: Publish (Release)
         shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
+          # Inject the release tag into the assembly so File Explorer's "Details"
+          # tab, WER crash reports, and any future auto-update logic all see the
+          # right version. Without -p:Version=... the .NET SDK bakes 1.0.0.0 into
+          # every release. AssemblyVersion + FileVersion are also set explicitly
+          # so prerelease-style tags like 1.0.0-rc.1 still produce a valid
+          # 4-part numeric version on the binary (the suffix lands in
+          # AssemblyInformationalVersion, which is what File Explorer surfaces
+          # as ProductVersion). Mirrors macOS release-macos-app.sh which
+          # passes MARKETING_VERSION / CURRENT_PROJECT_VERSION to xcodebuild.
+          $numericVersion = ($env:VERSION -split '[-+]')[0]
           dotnet publish apps/windows/LauncherApp/LauncherApp.csproj `
             -c Release `
             -p:Platform=${{ matrix.platform }} `
             -r ${{ matrix.rid }} `
             -p:PublishProfile=${{ matrix.rid }}.pubxml `
+            -p:Version=$env:VERSION `
+            -p:AssemblyVersion=$numericVersion `
+            -p:FileVersion=$numericVersion `
             /bl:msbuild.binlog
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 

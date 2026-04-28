@@ -25,9 +25,16 @@ public static class ShellCommand
             };
 
             process.Start();
-            string stdout = await process.StandardOutput.ReadToEndAsync();
-            string stderr = await process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
+            // Both streams must be drained concurrently. Awaiting stdout to EOF before
+            // even starting the stderr read deadlocks any command that writes >~4KB
+            // to stderr (Windows pipe buffer size): the child blocks on stderr.Write,
+            // we block on stdout EOF that never arrives. Task.WhenAll lets both pipes
+            // empty in parallel so the child never stalls on a full buffer.
+            Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+            Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+            await Task.WhenAll(stdoutTask, stderrTask, process.WaitForExitAsync());
+            string stdout = await stdoutTask;
+            string stderr = await stderrTask;
 
             string merged = (stdout + Environment.NewLine + stderr).Trim();
             if (string.IsNullOrWhiteSpace(merged))

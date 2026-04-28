@@ -644,12 +644,25 @@ public static class KillCommand
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        // EnumerationOptions.IgnoreInaccessible makes the enumerator skip
+        // unreadable subtrees instead of throwing UnauthorizedAccessException
+        // mid-iteration. Without it, a single permission error on one Start
+        // Menu subfolder faults the surrounding Lazy<> initializer; every
+        // future ShortcutDisplayNameByTargetPath.Value access then re-throws,
+        // permanently breaking process-name resolution in the kill listing
+        // for the rest of the session.
+        EnumerationOptions enumerationOptions = new()
+        {
+            RecurseSubdirectories = true,
+            IgnoreInaccessible = true,
+        };
+
         foreach (string root in startMenuRoots)
         {
             IEnumerable<string> shortcuts;
             try
             {
-                shortcuts = Directory.EnumerateFiles(root, "*.lnk", SearchOption.AllDirectories);
+                shortcuts = Directory.EnumerateFiles(root, "*.lnk", enumerationOptions);
             }
             catch
             {
