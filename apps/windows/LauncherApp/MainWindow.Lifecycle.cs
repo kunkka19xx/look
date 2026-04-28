@@ -187,7 +187,28 @@ public sealed partial class MainWindow
             return;
         }
 
-        appWindow.Show();
+        ShowLauncher();
+    }
+
+    /// <summary>
+    /// Show the launcher window from any state and give the search input focus.
+    /// Idempotent — safe to call when already visible. Used by the global hotkey
+    /// (via ToggleLauncherVisibility) and by the single-instance activation listener
+    /// in App.SingleInstance.cs when a sibling launch hands off to the primary.
+    /// </summary>
+    public void ShowLauncher()
+    {
+        AppWindow appWindow = this.AppWindow;
+        if (appWindow is null)
+        {
+            return;
+        }
+
+        if (!appWindow.IsVisible)
+        {
+            appWindow.Show();
+        }
+
         IntPtr hwnd = WindowNative.GetWindowHandle(this);
         if (hwnd != IntPtr.Zero)
         {

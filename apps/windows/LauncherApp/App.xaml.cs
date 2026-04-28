@@ -36,6 +36,16 @@ namespace LauncherApp
         /// </summary>
         public App()
         {
+            // Mirrors macOS AppDelegate.checkAndActivateDuplicateInstance: if another
+            // copy of this exe is already running, signal it forward and exit instead
+            // of accumulating a second window / hotkey-registration / clipboard-listener.
+            // See App.SingleInstance.cs for the path-hashed mutex + activate-event setup.
+            if (!TryClaimSingleton())
+            {
+                Environment.Exit(0);
+                return;
+            }
+
             InitializeComponent();
             UnhandledException += OnUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
@@ -86,6 +96,11 @@ namespace LauncherApp
             MainAppWindow = new MainWindow();
             _window = MainAppWindow;
             _window.Activate();
+
+            // Spawn the activation listener after the window is constructed so it has a
+            // valid DispatcherQueue to marshal onto. Sibling launches Set the named event,
+            // and this thread reacts by calling MainWindow.ShowLauncher on the UI thread.
+            StartActivationListener(MainAppWindow);
         }
 
         private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)

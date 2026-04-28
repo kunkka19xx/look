@@ -188,7 +188,12 @@
                         <TextBlock Foreground="{StaticResource LauncherTextBrush}" Text="Launch at login" />
                         <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Start look automatically when you sign in." />
                     </StackPanel>
-                    <ToggleSwitch x:Name="LaunchAtLoginToggle" Grid.Column="1" IsOn="True" OnContent="On" OffContent="Off" />
+                    <!-- Default off: AdvancedSettingsTabView.xaml.cs only overrides this
+                         when launch_at_login is present and parseable, so a fresh/default
+                         config (which omits the key) would otherwise show "On" in the UI
+                         and silently write launch_at_login=true on the next save,
+                         enabling startup the user never asked for. -->
+                    <ToggleSwitch x:Name="LaunchAtLoginToggle" Grid.Column="1" IsOn="False" OnContent="On" OffContent="Off" />
                 </Grid>
             </Border>
 

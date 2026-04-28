@@ -375,9 +375,21 @@ public sealed partial class MainWindow
 
         if (e.Key == VirtualKey.Escape)
         {
-            QueryInput.Text = string.Empty;
-            SetMode(LauncherMode.Search);
-            RefreshResults(string.Empty);
+            // Mirrors macOS KeyboardSelectionMonitor.swift:135-155: in search/clipboard/
+            // translate (any state where the query input is the focus) plain Escape hides
+            // the launcher. Help mode is the one exception — Escape there should dismiss
+            // help and go back to search rather than hiding the whole window, matching
+            // macOS's `onDismissHelpIfVisible()` priority.
+            if (_mode == LauncherMode.Help)
+            {
+                QueryInput.Text = string.Empty;
+                SetMode(LauncherMode.Search);
+                RefreshResults(string.Empty);
+            }
+            else
+            {
+                this.AppWindow?.Hide();
+            }
             e.Handled = true;
             return;
         }
