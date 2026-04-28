@@ -132,9 +132,11 @@ function Download-File($url, $dest) {
 }
 
 function Verify-Sha256($filePath, $manifestPath) {
+    # All three failure modes (missing file, empty manifest, hash mismatch) throw —
+    # a release path that calls into here has implicitly opted into integrity
+    # checking, so falling back to "warn and continue" would defeat the point.
     if (-not (Test-Path $manifestPath)) {
-        Write-Warn "No manifest available; skipping SHA256 verification."
-        return
+        throw "Manifest file not present at $manifestPath; cannot verify zip integrity."
     }
     $expected = $null
     foreach ($line in Get-Content $manifestPath) {
@@ -144,8 +146,7 @@ function Verify-Sha256($filePath, $manifestPath) {
         }
     }
     if ([string]::IsNullOrWhiteSpace($expected)) {
-        Write-Warn "Manifest missing sha256= line; skipping verification."
-        return
+        throw "Manifest at $manifestPath has no 'sha256=' line; cannot verify zip integrity."
     }
     $actual = (Get-FileHash -Path $filePath -Algorithm SHA256).Hash.ToLower()
     if ($actual -ne $expected) {
@@ -192,13 +193,16 @@ function Invoke-Install {
         Download-File $zipUrl $zipPath
 
         if ($manifestUrl) {
+            # For the normal release path (resolved version + GitHub release), the
+            # manifest is the only integrity check we have on the zip we just
+            # downloaded. Silently skipping verification on download/parse failure
+            # would let a blocked or tampered manifest pass through and install an
+            # unverified zip. Fail closed instead. The -Url custom path explicitly
+            # sets $manifestUrl to $null and bypasses this branch when the user
+            # has accepted that they're installing without checksum coverage.
             $manifestPath = Join-Path $tmp "look-manifest.txt"
-            try {
-                Download-File $manifestUrl $manifestPath
-                Verify-Sha256 $zipPath $manifestPath
-            } catch {
-                Write-Warn "Manifest fetch failed; continuing without SHA256 verification ($_)"
-            }
+            Download-File $manifestUrl $manifestPath
+            Verify-Sha256 $zipPath $manifestPath
         }
 
         Stop-LookProcess
