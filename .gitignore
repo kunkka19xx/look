@@ -31,3 +31,53 @@ docs/tmp-issue-tracker.md
 
 # internal feature specs — maintainer-only design notes; user docs live in docs/
 specs/
+
+# .NET / Visual Studio
+## User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## Visual Studio cache/options
+.vs/
+
+## Visual Studio Code
+.vscode/
+*.code-workspace
+
+## Windows build scripts
+build-ffi.bat
+
+## Files built by Visual Studio
+*.sln.iml
+*.trx
+
+## Windows app packaging outputs
+AppPackages/
+BundleArtifacts/
+*.appx
+*.appxbundle
+*.appxupload
+*.msix
+*.msixbundle
+*.msixupload
+*.msixsym
+*.msi

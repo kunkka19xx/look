@@ -15,10 +15,11 @@ Parity required for Windows v1:
 - clipboard history mode (`c"`) with session-local history
 - config load/reload parity for indexing and ranking behavior
 - stable candidate ID conventions (`app:*`, `file:*`, `folder:*`, `setting:*`)
+- web translate mode (`t"`) with parallel VI/EN/JA fan-out, per-language copy, and "Open in Google Translate" handoff
 
 Can ship after Windows v1 (patch release):
 
-- full translation/dictionary parity (`t"`, `tw"`) when shell UX and networking behavior are finalized
+- dictionary lookup mode (`tw"`) — depends on a Windows-side equivalent of Apple's `DCSCopyTextDefinition` and is deferred until that's available
 - complete visual/theme parity with every macOS preset variant
 - advanced UX polish items that do not change core search/action semantics
 
@@ -31,14 +32,17 @@ Can ship after Windows v1 (patch release):
 - `d"term` filters to folders only
 - `r"pattern` enables regex search
 - `c"term` switches to clipboard history search space
+- `t"text` switches to web translate mode; translation only fires on `Enter` (not per-keystroke), three sections render parallel VI/EN/JA results, per-section copy button, and an "Open in Google Translate" handoff button
 - non-prefixed query keeps blended ranking behavior
 
 ### Action semantics
 
-- `Enter`: execute selected result action
-- web handoff: open browser search URL using current query
-- reveal action opens parent location and selects target in Explorer
-- copy action writes selected path/content to clipboard
+- `Enter`: execute selected result action (in `t"` mode: trigger translation)
+- web handoff: open browser search URL using current query (`Ctrl+Enter`)
+- reveal action opens parent location and selects target in Explorer (`Ctrl+F`, matches macOS `Cmd+F`)
+- copy action writes selected path/content to clipboard (`Ctrl+C`); for app/file/folder rows, the clipboard payload should be a real file reference so Ctrl+V in Explorer pastes the file (not just a path string) — parity with macOS `pasteboard.writeObjects([NSURL, NSString])`
+- multi-selection: Shift+Up/Down and Shift+Tab extend selection; Ctrl+C / Ctrl+F / Enter operate on the full selection — parity with macOS multi-pick (commit `74b619c`)
+- clipboard history must skip non-text entries (file references, images) so file-copy-in-Explorer does not pollute history with synthesized path text — parity with macOS `pasteboardCarriesFileReference`
 
 ### Keyboard model
 
@@ -74,3 +78,26 @@ Notes:
 - validate result action behavior from keyboard-only flow
 - verify duplicate-candidate suppression across app discovery sources
 - verify no FFI ABI breaks for `look_search_json_compact`, `look_record_usage_json`, `look_reload_config`, `look_translate_json`, `look_free_cstring`
+
+### Command mode calc parity smoke cases
+
+- `/calc 2+3*4` -> `Result: 14.0000`
+- `/calc (2+3)*4` -> `Result: 20.0000`
+- `/calc 10%3` -> `Result: 1.0000`
+- `/calc 2^8` -> `Result: 256.0000`
+- `/calc 3!` -> `Result: 6.0000`
+- `/calc 50%` -> `Result: 0.5000`
+- `/calc 200+10%` -> `Result: 220.0000`
+- `/calc 200-10%` -> `Result: 180.0000`
+- `/calc v9` -> `Result: 3.0000`
+- `/calc sqrt(16+9)` -> `Result: 5.0000`
+- `/calc abs(-5.2)` -> `Result: 5.2000`
+- `/calc floor(3.9)` -> `Result: 3.0000`
+- `/calc ceil(3.1)` -> `Result: 4.0000`
+- `/calc round(2.6)` -> `Result: 3.0000`
+- `/calc pi*2` -> `Result: 6.2832`
+- `/calc 10:4` -> `Result: 2.5000`
+- `/calc 12x3` -> `Result: 36.0000`
+- `/calc 1/0` -> `Error: division by zero`
+- `/calc (2+3` -> `Invalid expression`
+- `/calc 9999999999999*9` -> `Error: result out of range (+/-1,000,000,000,000)`

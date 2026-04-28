@@ -99,23 +99,74 @@ Recently completed (current optimization cycle):
 
 Reference: `docs/windows-port-plan.md`
 
+**Rust backend work (DONE):**
 - [x] draft Windows shell source structure in `docs/windows-port-plan.md`
 - [x] draft Rust platform refactor/change plan in `docs/windows-port-plan.md`
 - [x] define Windows v1 parity checklist from current macOS behavior (`README.md`, `docs/user-guide.md`) -> `docs/windows-v1-parity-checklist.md`
 - [x] split engine indexing into platform adapters (macOS/Windows) without changing ranking/search core
 - [x] implement Windows app discovery sources (Start Menu + install roots fallback)
 - [x] implement curated Windows Settings catalog (`ms-settings:` targets)
-- [ ] add Windows path defaults/normalization for config bootstrap and exclude handling
+- [x] add Windows path defaults/normalization for config bootstrap and exclude handling
 - [x] verify FFI API stability for multi-shell use and add Windows smoke coverage in CI
-- [ ] scaffold native Windows shell (`apps/windows/LauncherApp/`) with WinUI 3
-- [ ] wire FFI search + result rendering + keyboard navigation in Windows shell
-- [ ] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff)
-- [ ] implement global hotkey + hide/show/focus lifecycle parity on Windows
-- [ ] implement Windows clipboard history mode (`c"`) with listener-first capture strategy
-- [ ] implement Windows command mode parity (`calc`, `shell`, `kill`, `sys`)
-- [ ] implement Windows launch-at-login integration
-- [ ] add Windows packaging/signing/release pipeline (`.msix`/`.msi`) and documentation
+
+**Windows shell UI (DONE - UI mock-first):**
+- [x] scaffold native Windows shell (`apps/windows/LauncherApp/`) with WinUI 3
+- [x] wire FFI search + result rendering + keyboard navigation in Windows shell (mock-first)
+- [x] implement Windows launcher UI screens (search, command mode with 2-column cards, clipboard placeholder, settings, help)
+- [x] implement keyboard navigation and shortcuts UI bindings
+
+**Windows real functionality (remaining items):**
+- [x] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff)
+- [x] implement global hotkey + hide/show/focus lifecycle parity on Windows (Alt+Space toggle, Alt+Shift+Q quit, hide-on-focus-loss auto-dismiss, WS_EX_TOOLWINDOW hides from taskbar + Alt-Tab)
+- [x] implement Windows clipboard history mode (`c"`) with listener-first capture strategy (`AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE`, bounded history, persisted to `%LOCALAPPDATA%\look\clipboard-history.json`)
+- [x] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`)
+- [x] implement Windows launch-at-login integration (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; synced on app start + on Advanced Settings save)
+- [x] implement Windows web translate mode (`t"`) with parallel VI/EN/JA fan-out, Enter-to-translate (matches macOS), per-section copy button, and "Open in Google Translate" handoff. `tw"` (Apple Dictionary lookup) deferred — no Windows equivalent of `DCSCopyTextDefinition`.
+- [x] suppress console-window flashes on translate calls (`bridge/ffi/src/translate_api.rs` adds `CREATE_NO_WINDOW` 0x08000000 flag on the curl `Command` under `cfg(target_os = "windows")`)
+- [x] align reveal shortcut with macOS: rebound `Ctrl+R` → `Ctrl+F` to match `Cmd+F`; moved `Ctrl+F` and `Ctrl+C` handlers to `GlobalKeyDown` so they fire while the search box has focus (previously only worked from the list view)
+- [x] extract reusable XAML primitives for duplicated layouts: `KeyChordRowView` (Help + Shortcuts tabs), `LabeledSliderView` (Appearance + Advanced tabs), `CommandCardView` (CommandPanels), `TranslateLanguageSectionView` (TranslatePanel) — net –200+ XAML lines, single source of truth for visual tweaks
+- [ ] **copy as real file object on Windows** (parity with macOS `pasteboard.writeObjects([targetURL as NSURL, result.path as NSString])` at `LauncherCommandService.swift:214`). Today `ActionDispatcher.CopyResultPath` only writes a text path via `package.SetText`. Should call `package.SetStorageItems([StorageFile/StorageFolder])` so Ctrl+V in Explorer pastes an actual file/folder, not a path string. Keep text fallback so apps that only accept text still work.
+- [ ] **multi-pick result rows on Windows** (parity with macOS commit `74b619c`). Switch `ResultsList.SelectionMode` to `Multiple` (or `Extended`), wire Shift+Up/Down and Shift+Tab range selection, and update Ctrl+C/Ctrl+F/Enter handlers to operate on `ResultsList.SelectedItems` (list of `LauncherRowItem`) when count > 1 — copy multiple as a single `StorageItems` payload, reveal opens Explorer with the parent + multi-select, Enter opens each. Mirror selection-affordance UI (shaded + count badge) from macOS `LauncherSubviews.swift`.
+- [ ] **filter file/non-text clipboard entries from history on Windows** (parity with macOS `ClipboardHistoryStore.swift:136 pasteboardCarriesFileReference`). Today `ClipboardHistoryService.cs:103` only checks `Contains(StandardDataFormats.Text)`, but a file copy in Explorer ALSO carries a synthesized text path, so file copies pollute history with raw paths. Add `view.Contains(StandardDataFormats.StorageItems)` short-circuit before the text capture path. Optional follow-up: store file-reference entries as a separate kind so they can be re-pasted as actual files (otherwise just skip them).
+- [ ] implement Windows packaging/signing/release pipeline (`.msix`/`.msi`) and documentation
 - [ ] run closed beta and fix top reliability/performance parity regressions before GA
+
+Windows UI delivery note (mock-first):
+
+- [x] use mock search provider by default to unblock UI parity work
+- [x] keep FFI search provider wired behind provider abstraction for later backend re-enable
+
+**Windows UI parity tasks (mock-first, match macOS behavior - UI only, NO real execution):**
+
+- [x] define Windows design tokens (color, spacing, radius, typography) mapped from macOS theme semantics
+- [x] create shared row component styling (icon, title, meta, selection state, divider)
+- [x] define button variants (`primary`, `secondary`, `ghost`, `danger`) and interaction states
+- [x] define message/banner system (`success`, `info`, `warning`, `error`) with copy-action support
+- [x] declare launcher screens and states: search, command mode, clipboard mode, settings, help
+- [x] declare empty/loading/error states for each launcher mode with stable copywriting
+- [x] implement keyboard hint/footer style and per-mode hint mapping to match macOS intent
+- [x] implement Advanced Settings screen with real .look.config persistence (background image, scan depth/limit, lazy indexing, log level, launch at login)
+- [x] implement Shortcuts reference screen (Ctrl+ shortcuts)
+- [x] implement Command mode 2-column card layout (calc, shell, kill, sys) with default calc selection
+- [x] implement Command mode keyboard shortcuts (Ctrl+/ enter, Up/Down switch, Enter run, Ctrl+1/2/3 quick-select)
+- [ ] add preview/right-panel layout parity spec for dictionary/result preview behavior
+- [ ] add style documentation with screenshots for side-by-side macOS vs Windows parity QA
+
+---
+
+**Windows REAL functionality tasks (IN PROGRESS):**
+
+- [x] implement FFI search connection (Rust backend working, search returns real results)
+- [x] implement IconService for Windows icon extraction (SHGetFileInfo API)
+- [x] fix icon display in WinUI 3 (stable icon rendering with shell extraction + cache fallback)
+- [x] implement global hotkey + hide/show/focus lifecycle parity on Windows (Alt+Space toggle, Alt+Shift+Q quit, hide-on-focus-loss auto-dismiss, WS_EX_TOOLWINDOW hides from taskbar + Alt-Tab)
+- [x] implement Windows clipboard history mode (`c"`) with listener-first capture strategy (`AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE`, bounded history, persisted to `%LOCALAPPDATA%\look\clipboard-history.json`)
+- [x] implement Windows command mode execution (`calc`, `shell`, `kill`, `sys`) with in-panel output and keyboard run flow
+- [x] implement Windows launch-at-login integration (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; synced on app start + on Advanced Settings save)
+- [x] implement Windows action dispatch (open, reveal in Explorer, copy, web handoff) with type-aware open handling (app/file/folder/setting/url)
+- [x] implement Windows web translate mode (`t"`) — `look_translate_json` FFI binding, `TranslationService` with parallel vi/en/ja fan-out, `TranslatePanelView` with per-section copy + Open-in-Google-Translate handoff, Enter-to-translate (matches macOS); `CREATE_NO_WINDOW` on the curl Command suppresses console flashes
+
+---
 
 Windows immediate execution queue (current):
 
@@ -127,6 +178,68 @@ Windows immediate execution queue (current):
 - [x] PR-2: implement curated Windows settings catalog (`ms-settings:`) while keeping `setting:*` ID contract
 - [x] PR-2: move platform-specific app discovery into `platform/macos/apps.rs` and `platform/windows/apps.rs`; keep `index/apps.rs` as dispatch only
 - [x] PR-2: add Windows adapter unit tests (start-menu entry detection, fallback filtering, dedupe, merged roots, catalog integrity)
+- [x] PR-3: reduce Windows app noise (helper executables, System32 guardrails, WindowsApps depth handling)
+- [x] PR-3: add Windows fallback dedupe rules for Start Menu/WindowsApps/System32 overlap and keep real app preference
+- [x] PR-3: expand Windows Settings catalog coverage and render settings with dedicated UI kind/icon
+
+Windows command-mode parity updates (recent):
+
+- [x] make command screen match macOS split layout (left command list + right content panel)
+- [x] implement kill command running-app list parity with selection + confirmation flow
+- [x] add kill-by-port query parity (`:3000`, `port 3000`) with empty-state messaging
+- [x] improve kill process naming and system-noise filtering for Windows-specific background processes
+- [x] align calc parser with macOS advanced features (`^`, `!`, `%`, `pi`, `e`, `sqrt/abs/round/floor/ceil`, aliases)
+- [x] add finance-style percent semantics for add/subtract (`200 + 10%`, `200 - 10%`)
+- [x] expand and group sys output sections (overview/performance/hardware/network)
+
+Windows launcher polish (2026-Q2):
+
+Search pipeline:
+
+- [x] async search via `Task.Run` with version-based cancellation; debounce bumped 8 -> 16 ms
+- [x] drop `FileVersionInfo.GetVersionInfo` from dedup hot path; Score breaks InstallExecutable ties
+- [x] junk-path filter: `$RECYCLE.BIN`, `System Volume Information`, `$WINDOWS.~BT/~WS`, `Config.Msi`, `PerfLogs`, `Recovery`, `$GetCurrent`, `$SysReset`, `$INPLACE.~TR`, `\WindowsApps\`
+
+Icon pipeline:
+
+- [x] `IShellItemImageFactory` primary path for `shell:` URIs and `.lnk` stubs so UWP targets resolve to real tile logos
+- [x] HBITMAP -> managed `Bitmap` with alpha preservation (manual DIB copy + un-premultiplication, topdown/bottomup handling, bounds checks)
+- [x] `.url` internet shortcut parsing (`IconFile` / `IconIndex`)
+- [x] relocate icon cache to `%LOCALAPPDATA%\look\icon-cache` so it survives reboots
+- [x] log every previously-silent catch via `Debug.WriteLine` with context
+
+UWP discovery + routing:
+
+- [x] `Services/UwpAppService.cs` enumerates `shell:AppsFolder` via Shell.Application COM, filters to AUMID entries, fuzzy-merges with Rust results
+- [x] dedup extended with `AppPathCategory.UwpAppsFolder` (rank 3); pairing generalized so UWP beats Start Menu `.lnk` and Program-Files exe on matching title
+- [x] `ShellExecuteService` routes `shell:AppsFolder\<AUMID>` through `explorer.exe` so UWP entries launch cleanly
+
+Appearance parity (Windows <- macOS):
+
+- [x] port six macOS presets to Windows: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa
+- [x] add three-tier text system (primary / secondary / muted) with `dimmableColor` (0.82 / 0.64) fallback and per-preset secondary/muted overrides
+- [x] align search input theming: local `TextBox.Resources` aliases to `LauncherTextBrush` / `LauncherMutedTextBrush` / `LauncherAccentBrush` so it follows preset changes
+
+Background + backdrop rendering:
+
+- [x] Win2D pipeline for bg image: `CanvasBitmap` + `CanvasImageSource` with `GaussianBlurEffect`; live preview on slider drags; startup re-apply from config
+- [x] composition `SpriteVisual` with `CompositionBackdropBrush` + `GaussianBlurEffect` gives Appearance blur sliders a real pixel-radius instead of only tint alpha
+
+Advanced settings:
+
+- [x] add Extra Scan Dirs UI (`file_scan_roots`) as macOS-style horizontal pill strip with inline `x` remove
+- [x] redundancy check on add (home-relative path resolution + covering-entry detection, notice below Add button)
+- [x] Skip Folders migrated to matching pill strip
+
+Window + reliability:
+
+- [x] borderless window chrome (`SetBorderAndTitleBar(false, false)` + `DWMWA_COLOR_NONE`)
+- [x] `ResultsList_OnSelectionChanged` calls `ScrollIntoView` so Tab/Up/Down navigate off-viewport correctly
+- [x] global hotkeys: Alt+Space toggle, Alt+Shift+Q quit, via `RegisterHotKey` + `SetWindowSubclass`
+- [x] crash log moved to `%LOCALAPPDATA%\look\look-crash.log`; added `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException` handlers alongside the XAML one; each entry tagged with origin
+- [x] hide-on-focus-loss auto-dismiss (Spotlight-style; `Window.Activated` -> `AppWindow.Hide` with `SuppressAutoHide()` scope for file/folder pickers)
+- [x] hide launcher from taskbar and Alt-Tab (`WS_EX_TOOLWINDOW` + cleared `WS_EX_APPWINDOW`)
+- [ ] Windows packaging / signing / release pipeline (`.msix` or `.msi`)
 
 ## Milestone G: Reliability (errors, tests, logs)
 

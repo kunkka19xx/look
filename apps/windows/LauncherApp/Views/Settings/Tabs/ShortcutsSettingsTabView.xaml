@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="LauncherApp.Views.Settings.Tabs.ShortcutsSettingsTabView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:LauncherApp.Views"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer Padding="8,4,8,8" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12">
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Core launcher" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="8">
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Tab" Description="Select next result" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Shift+Tab" Description="Select previous result" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Up / Down" Description="Move selection" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+C" Description="Copy selected file/folder to clipboard" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+P" Description="Pick selected file/folder (toggle); paste in Explorer to copy all picks" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+Shift+P" Description="Clear all picked items" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+F" Description="Reveal selected app/file/folder in Explorer" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+Enter" Description="Search query on Google" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+/" Description="Enter command mode" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText=":cmd" Description="Quick-access command from home (e.g. :calc 2+2, :kill chrome, :sys)" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+H" Description="Toggle in-window keyboard help screen" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Esc" Description="Back to app list (in command mode)" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Shift+Esc" Description="Hide launcher" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Search prefixes" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="8">
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="a&quot;" Description="Apps-only query" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="f&quot;" Description="Files-only query" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="d&quot;" Description="Folders-only query" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="r&quot;" Description="Regex query" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="c&quot;" Description="Clipboard history query" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Clipboard history" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="8">
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Enter" Description="Copy selected history item back to clipboard" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Delete button" Description="Remove selected clipboard item from look history" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Panels" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="8">
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+Shift+," Description="Open/close theme and docs panel" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+Shift+;" Description="Reload .look.config" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Save Config" Description="Write current UI settings to .look.config" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Zoom" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="8">
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+-" Description="Zoom out UI scale" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+=" Description="Zoom in UI scale" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Ctrl+0" Description="Reset UI scale" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Theme controls" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="8">
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Appearance tab" Description="Tint, blur material, blur opacity" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Advanced tab" Description="Background, indexing, privacy, logging controls" />
+                    <views:KeyChordRowView IsPill="False" KeyColumnWidth="140" KeyText="Shortcuts tab" Description="In-app keyboard documentation" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

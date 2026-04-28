@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(swift|xaml|cs\\)$\")",
+      "Bash(grep -E \"\\\\.\\(swift\\)$\")",
+      "Bash(xargs grep *)",
+      "Bash(grep *)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)",
+      "Bash(git *)"
+    ]
+  }
+}

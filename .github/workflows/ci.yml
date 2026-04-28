@@ -18,6 +18,7 @@ jobs:
     outputs:
       swift: ${{ steps.filter.outputs.swift }}
       rust: ${{ steps.filter.outputs.rust }}
+      windows: ${{ steps.filter.outputs.windows }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +33,12 @@ jobs:
             rust:
               - 'core/**'
               - 'bridge/ffi/**'
+              - '.github/workflows/ci.yml'
+            windows:
+              - 'apps/windows/**'
+              - 'bridge/ffi/**'
+              - 'core/**'
+              - 'scripts/windows/**'
               - '.github/workflows/ci.yml'
 
   lint:
@@ -191,3 +198,62 @@ jobs:
 
       - name: Build Look app (Debug)
         run: xcodebuild -project "apps/macos/LauncherApp/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build
+
+  windows-build:
+    name: Build Windows App (${{ matrix.platform }})
+    runs-on: windows-latest
+    needs: changes
+    if: needs.changes.outputs.windows == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x64
+            rid: win-x64
+            rust_target: x86_64-pc-windows-msvc
+          - platform: ARM64
+            rid: win-arm64
+            rust_target: aarch64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            core
+            bridge/ffi
+          key: ${{ matrix.rust_target }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-${{ matrix.platform }}-nuget-${{ hashFiles('apps/windows/LauncherApp/LauncherApp.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.platform }}-nuget-
+            ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore apps/windows/LauncherApp/LauncherApp.csproj -p:Platform=${{ matrix.platform }} -r ${{ matrix.rid }}
+
+      - name: Build (Debug)
+        run: dotnet build apps/windows/LauncherApp/LauncherApp.csproj -c Debug -p:Platform=${{ matrix.platform }} -r ${{ matrix.rid }} --no-restore /bl:msbuild.binlog
+
+      - name: Upload msbuild binlog on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msbuild-binlog-${{ matrix.platform }}
+          path: msbuild.binlog
+          retention-days: 7

@@ -16,10 +16,12 @@ pub(crate) fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSend
         windows::REQUIRED_APP_SCAN_ROOTS,
     );
 
+    let home = windows::user_home_dir();
     let mut seen_ids = HashSet::new();
     for root in roots {
+        let expanded_root = expand_with_home(&root, home.as_deref());
         walk_windows_app_entries(
-            &root,
+            &expanded_root,
             config.app_scan_depth,
             &tx,
             &config.app_exclude_paths,
@@ -28,7 +30,6 @@ pub(crate) fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSend
         );
     }
 
-    let home = windows::user_home_dir();
     for fallback_root in windows::APP_FALLBACK_SCAN_ROOTS {
         let expanded_root = expand_with_home(fallback_root, home.as_deref());
         walk_windows_fallback_roots(
@@ -125,9 +126,15 @@ fn walk_windows_fallback_roots(
 
         // IF IT IS A DIRECTORY: Recursively scan it, subtracting 1 from depth
         if file_type.is_dir() {
+            let next_depth = if is_windowsapps_directory(path_str) {
+                depth
+            } else {
+                depth - 1
+            };
+
             walk_windows_fallback_roots(
                 path_str,
-                depth - 1,
+                next_depth,
                 tx,
                 app_exclude_paths,
                 app_exclude_names,
@@ -171,6 +178,13 @@ fn emit_windows_app_candidate(
             return;
         }
     } else {
+        if should_apply_windows_fallback_title_dedupe(path) {
+            let canonical_lock = format!("fallback-title:{normalized_identity}");
+            if !seen_ids.insert(canonical_lock) {
+                return;
+            }
+        }
+
         // Fallback Source: Check if the Start Menu already provided an entry
         let title_lock = format!("title:{}", normalized_identity);
         if seen_ids.contains(&title_lock) {
@@ -191,11 +205,38 @@ fn emit_windows_app_candidate(
 }
 
 fn is_windows_noise_executable(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    lower.contains("uninstall")
-        || lower.contains("setup")
-        || lower.contains("updater")
-        || lower.contains("crashpad")
+    let lower_path = path.to_ascii_lowercase();
+    let file_name = std::path::Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if ["uninstall", "setup", "updater", "crashpad"]
+        .iter()
+        .any(|token| file_name.contains(token))
+    {
+        return true;
+    }
+
+    if lower_path.contains("\\windowsapps\\") || lower_path.contains("/windowsapps/") {
+        return [
+            "protocolshim",
+            "pythonredirector",
+            "deploymentagent",
+            "dynamicdependency.datastore",
+            "backgroundtask",
+            "longrunningtask",
+            "startuptask",
+            "ftserver",
+            "elevate-shim",
+            "gameassist",
+        ]
+        .iter()
+        .any(|token| file_name.contains(token));
+    }
+
+    false
 }
 
 fn is_windows_start_menu_entry(path: &str) -> bool {
@@ -213,7 +254,42 @@ fn is_windows_fallback_executable(path: &str) -> bool {
         return false;
     }
 
+    if is_windows_system32_path(path) {
+        return is_allowed_windows_system32_executable(path);
+    }
+
     !is_windows_noise_executable(path)
+}
+
+fn is_windows_system32_path(path: &str) -> bool {
+    let normalized = path.replace('\\', "/").to_ascii_lowercase();
+    normalized.contains("/windows/system32/")
+}
+
+fn is_allowed_windows_system32_executable(path: &str) -> bool {
+    let file_name = std::path::Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    file_name == "notepad.exe"
+}
+fn is_windowsapps_path(path: &str) -> bool {
+    let normalized = path.replace('\\', "/").to_ascii_lowercase();
+    normalized.contains("/windowsapps/")
+}
+
+fn should_apply_windows_fallback_title_dedupe(path: &str) -> bool {
+    is_windows_system32_path(path) || is_windowsapps_path(path)
+}
+
+fn is_windowsapps_directory(path: &str) -> bool {
+    let normalized = path
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_ascii_lowercase();
+    normalized.ends_with("/windowsapps")
 }
 
 fn should_exclude_path(path: &str, app_exclude_paths: &[String]) -> bool {
@@ -263,6 +339,12 @@ mod tests {
         assert!(is_windows_fallback_executable(
             "C:/Program Files/App/app.exe"
         ));
+        assert!(is_windows_fallback_executable(
+            "C:/Windows/System32/notepad.exe"
+        ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Windows/System32/cmd.exe"
+        ));
         assert!(!is_windows_fallback_executable(
             "C:/Program Files/App/uninstall.exe"
         ));
@@ -275,6 +357,36 @@ mod tests {
         assert!(!is_windows_fallback_executable(
             "C:/Program Files/App/crashpad_handler.exe"
         ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Program Files/WindowsApps/Microsoft.WindowsAppRuntime_1.8/DeploymentAgent.exe"
+        ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Program Files/WindowsApps/Microsoft.XboxGamingOverlay_7.326/GameBarFTServer.exe"
+        ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Program Files/WindowsApps/Microsoft.Edge.GameAssist_1.0/EdgeGameAssist.exe"
+        ));
+        assert!(!is_windows_fallback_executable(
+            "C:/Program Files/WindowsApps/Microsoft.Outlook_1.0/olkPushNotificationBackgroundTask.exe"
+        ));
+    }
+
+    #[test]
+    fn windowsapps_directory_detection_handles_separators() {
+        assert!(is_windowsapps_directory("C:/Program Files/WindowsApps"));
+        assert!(is_windowsapps_directory("C:\\Program Files\\WindowsApps\\"));
+        assert!(!is_windowsapps_directory(
+            "C:/Program Files/WindowsApps/Microsoft.WindowsNotepad"
+        ));
+    }
+
+    #[test]
+    fn system32_path_detection_handles_separators() {
+        assert!(is_windows_system32_path("C:/Windows/System32/notepad.exe"));
+        assert!(is_windows_system32_path(
+            "C:\\Windows\\System32\\notepad.exe"
+        ));
+        assert!(!is_windows_system32_path("C:/Program Files/notepad.exe"));
     }
 
     #[test]
@@ -351,5 +463,89 @@ mod tests {
         assert!(should_exclude_app_name("MyApp", &excludes));
         assert!(should_exclude_app_name("Another.url", &excludes));
         assert!(!should_exclude_app_name("Different", &excludes));
+    }
+
+    #[test]
+    fn home_paths_expand_for_windows_scan_roots() {
+        let expanded = expand_with_home(
+            "~/AppData/Roaming/Microsoft/Windows/Start Menu/Programs",
+            Some("C:/Users/demo"),
+        );
+
+        assert_eq!(
+            expanded,
+            "C:/Users/demo/AppData/Roaming/Microsoft/Windows/Start Menu/Programs"
+        );
+    }
+
+    #[test]
+    fn fallback_title_dedupe_applies_to_windowsapps_and_system32() {
+        assert_eq!(
+            should_apply_windows_fallback_title_dedupe("C:/Windows/System32/notepad.exe"),
+            true
+        );
+        assert_eq!(
+            should_apply_windows_fallback_title_dedupe(
+                "C:/Program Files/WindowsApps/Microsoft.WindowsNotepad_11.0.0.0_x64__8wekyb3d8bbwe/notepad.exe"
+            ),
+            true
+        );
+        assert_eq!(
+            should_apply_windows_fallback_title_dedupe("C:/Program Files/Notepad++/notepad++.exe"),
+            false
+        );
+    }
+
+    #[test]
+    fn emit_candidate_deduplicates_same_title_across_windowsapps_and_system32() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let mut seen = HashSet::new();
+        let excludes = Vec::new();
+
+        emit_windows_app_candidate(
+            "C:/Windows/System32/notepad.exe",
+            &tx,
+            &excludes,
+            &mut seen,
+            false,
+        );
+        emit_windows_app_candidate(
+            "C:/Program Files/WindowsApps/Microsoft.WindowsNotepad_11.0.0.0_x64__8wekyb3d8bbwe/notepad.exe",
+            &tx,
+            &excludes,
+            &mut seen,
+            false,
+        );
+
+        drop(tx);
+        let emitted: Vec<Candidate> = rx.into_iter().collect();
+        assert_eq!(emitted.len(), 1);
+        assert_eq!(emitted[0].title.as_ref(), "notepad");
+    }
+
+    #[test]
+    fn emit_candidate_keeps_same_title_for_regular_vendor_paths() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let mut seen = HashSet::new();
+        let excludes = Vec::new();
+
+        emit_windows_app_candidate(
+            "C:/Program Files/Foo/Foo.exe",
+            &tx,
+            &excludes,
+            &mut seen,
+            false,
+        );
+        emit_windows_app_candidate(
+            "C:/Program Files (x86)/Foo/Foo.exe",
+            &tx,
+            &excludes,
+            &mut seen,
+            false,
+        );
+
+        drop(tx);
+        let emitted: Vec<Candidate> = rx.into_iter().collect();
+        assert_eq!(emitted.len(), 2);
     }
 }

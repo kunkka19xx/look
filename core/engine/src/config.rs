@@ -337,12 +337,14 @@ ui_border_blue=1.0\n\
 ui_border_opacity=0.12\n\
 \n\
 # Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3\n\
-alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq\n\
-alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed\n\
-alias_term=Terminal|iTerm|iTerm2|Ghostty|WezTerm|Alacritty|Kitty|Warp\n\
-alias_chat=Slack|Discord|Telegram|Messages\n\
-alias_music=Spotify|Apple Music|Music\n\
-alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave\n"
+# The defaults below cover both macOS and Windows app catalogs; entries that don't\n\
+# exist on the current host simply won't match, so cross-platform lists are harmless.\n\
+alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq|OneNote|Microsoft OneNote|Sticky Notes|Joplin\n\
+alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed|Visual Studio|Notepad++|Sublime Text\n\
+alias_term=Terminal|iTerm|iTerm2|Ghostty|WezTerm|Alacritty|Kitty|Warp|Windows Terminal|PowerShell|Command Prompt|wsl\n\
+alias_chat=Slack|Discord|Telegram|Messages|Microsoft Teams|Teams|WhatsApp|Signal|Zoom\n\
+alias_music=Spotify|Apple Music|Music|YouTube Music|VLC|Windows Media Player|foobar2000\n\
+alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave|Microsoft Edge|Edge|Brave Browser|Vivaldi|Opera\n"
     )
 }
 
@@ -357,6 +359,10 @@ fn default_search_aliases() -> HashMap<String, Vec<String>> {
             "apple notes",
             "bear",
             "logseq",
+            "onenote",
+            "microsoft onenote",
+            "sticky notes",
+            "joplin",
         ]
         .into_iter()
         .map(String::from)
@@ -375,6 +381,9 @@ fn default_search_aliases() -> HashMap<String, Vec<String>> {
             "neovim",
             "xcode",
             "zed",
+            "visual studio",
+            "notepad++",
+            "sublime text",
         ]
         .into_iter()
         .map(String::from)
@@ -391,6 +400,10 @@ fn default_search_aliases() -> HashMap<String, Vec<String>> {
             "alacritty",
             "kitty",
             "warp",
+            "windows terminal",
+            "powershell",
+            "command prompt",
+            "wsl",
         ]
         .into_iter()
         .map(String::from)
@@ -398,17 +411,35 @@ fn default_search_aliases() -> HashMap<String, Vec<String>> {
     );
     aliases.insert(
         "chat".to_string(),
-        vec!["slack", "discord", "telegram", "messages"]
-            .into_iter()
-            .map(String::from)
-            .collect(),
+        vec![
+            "slack",
+            "discord",
+            "telegram",
+            "messages",
+            "microsoft teams",
+            "teams",
+            "whatsapp",
+            "signal",
+            "zoom",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
     );
     aliases.insert(
         "music".to_string(),
-        vec!["spotify", "apple music", "music"]
-            .into_iter()
-            .map(String::from)
-            .collect(),
+        vec![
+            "spotify",
+            "apple music",
+            "music",
+            "youtube music",
+            "vlc",
+            "windows media player",
+            "foobar2000",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
     );
     aliases.insert(
         "brow".to_string(),
@@ -419,6 +450,11 @@ fn default_search_aliases() -> HashMap<String, Vec<String>> {
             "chrome",
             "firefox",
             "brave",
+            "microsoft edge",
+            "edge",
+            "brave browser",
+            "vivaldi",
+            "opera",
         ]
         .into_iter()
         .map(String::from)

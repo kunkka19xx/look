@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="LauncherApp.Views.Settings.Tabs.AppearanceSettingsTabView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:LauncherApp.Views"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <Style x:Key="AppearanceSectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource LauncherTextBrush}" />
+        </Style>
+
+        <Style x:Key="AppearanceLabelStyle" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{StaticResource LauncherMutedTextBrush}" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer Padding="8,4,8,8" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12">
+
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Theme" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="90" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Preset" />
+                        <ComboBox x:Name="PresetCombo" Grid.Column="1" SelectedIndex="0" SelectionChanged="PresetCombo_OnSelectionChanged">
+                            <ComboBoxItem Content="Catppuccin" />
+                            <ComboBoxItem Content="Tokyo Night" />
+                            <ComboBoxItem Content="Rose Pine" />
+                            <ComboBoxItem Content="Gruvbox" />
+                            <ComboBoxItem Content="Dracula" />
+                            <ComboBoxItem Content="Kanagawa" />
+                        </ComboBox>
+                        <TextBlock Grid.Column="2" HorizontalAlignment="Right" Style="{StaticResource AppearanceLabelStyle}" Text="Built-in" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="90" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Blur Style" />
+                        <ComboBox x:Name="BlurStyleCombo" Grid.Column="1" SelectedIndex="2" SelectionChanged="BlurStyleCombo_OnSelectionChanged">
+                            <ComboBoxItem Content="High Contrast" />
+                            <ComboBoxItem Content="Soft" />
+                            <ComboBoxItem Content="Balanced" />
+                            <ComboBoxItem Content="Subtle" />
+                        </ComboBox>
+                        <TextBlock Grid.Column="2" HorizontalAlignment="Right" Style="{StaticResource AppearanceLabelStyle}" Text="Material" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Tint Color" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <views:LabeledSliderView x:Name="TintRedSlider" Label="Red" Minimum="0" Maximum="100" StepFrequency="1" />
+                    <views:LabeledSliderView x:Name="TintGreenSlider" Label="Green" Minimum="0" Maximum="100" StepFrequency="1" />
+                    <views:LabeledSliderView x:Name="TintBlueSlider" Label="Blue" Minimum="0" Maximum="100" StepFrequency="1" />
+                    <views:LabeledSliderView x:Name="TintOpacitySlider" Label="Tint Opacity" Minimum="0" Maximum="100" StepFrequency="1" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Blur" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <views:LabeledSliderView x:Name="BlurOpacitySlider" Label="Blur Opacity" Minimum="0" Maximum="100" StepFrequency="1" />
+                    <views:LabeledSliderView x:Name="SettingsBlurSlider" Label="Settings Blur" Minimum="40" Maximum="100" StepFrequency="1" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Font" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="90" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource AppearanceLabelStyle}" Text="Font Name" />
+                        <AutoSuggestBox x:Name="FontNameInput" Grid.Column="1" PlaceholderText="Type a font name" TextChanged="FontNameInput_OnTextChanged" QuerySubmitted="FontNameInput_OnQuerySubmitted" />
+                        <TextBlock Grid.Column="2" HorizontalAlignment="Right" Style="{StaticResource AppearanceLabelStyle}" Text="Installed" />
+                    </Grid>
+                    <views:LabeledSliderView x:Name="FontSizeSlider" Label="Font Size" Minimum="10" Maximum="28" StepFrequency="1" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Font Color" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <views:LabeledSliderView x:Name="TextRedSlider" Label="Text Red" Minimum="0" Maximum="100" StepFrequency="1" />
+                    <views:LabeledSliderView x:Name="TextGreenSlider" Label="Text Green" Minimum="0" Maximum="100" StepFrequency="1" />
+                    <views:LabeledSliderView x:Name="TextBlueSlider" Label="Text Blue" Minimum="0" Maximum="100" StepFrequency="1" />
+                    <views:LabeledSliderView x:Name="TextOpacitySlider" Label="Text Opacity" Minimum="0" Maximum="100" StepFrequency="1" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Style="{StaticResource AppearanceSectionTitleStyle}" Text="Border" />
+            <Border Style="{StaticResource LauncherSurfaceBorderStyle}" Padding="12">
+                <StackPanel Spacing="10">
+                    <views:LabeledSliderView x:Name="BorderThicknessSlider" Label="Border Thick" Minimum="0" Maximum="60" StepFrequency="1" />
+                    <views:LabeledSliderView x:Name="BorderRedSlider" Label="Border Red" Minimum="0" Maximum="100" StepFrequency="1" />
+                    <views:LabeledSliderView x:Name="BorderGreenSlider" Label="Border Green" Minimum="0" Maximum="100" StepFrequency="1" />
+                    <views:LabeledSliderView x:Name="BorderBlueSlider" Label="Border Blue" Minimum="0" Maximum="100" StepFrequency="1" />
+                    <views:LabeledSliderView x:Name="BorderOpacitySlider" Label="Border Opacity" Minimum="0" Maximum="100" StepFrequency="1" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

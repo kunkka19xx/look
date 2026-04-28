@@ -110,13 +110,14 @@ cargo test --manifest-path bridge/ffi/Cargo.toml
 make app-run
 ```
 
-For Launchpad-style testing without replacing Homebrew `Look`, use:
+For side-by-side testing without replacing the normal install, use:
 
 ```bash
 make app-run-dev
 ```
 
-This installs and runs `/Applications/Look Dev.app` (bundle id `noah-code.Look.Dev`) side-by-side with the normal app.
+- macOS: installs and runs `/Applications/Look Dev.app` (bundle id `noah-code.Look.Dev`) alongside the Homebrew `Look.app`.
+- Windows: publishes into `%LOCALAPPDATA%\Programs\Look Dev\` and launches that copy with the dev env vars.
 
 After launch, validate:
 

@@ -1,0 +1,382 @@
+name: Reusable Windows Release
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_call:
+    inputs:
+      release_ref:
+        description: "Raw version input or ref name"
+        required: true
+        type: string
+      trigger_event:
+        description: "Original triggering event name"
+        required: true
+        type: string
+      attach_release:
+        description: "Attach assets to GitHub release"
+        required: true
+        type: boolean
+      concurrency_ref:
+        description: "Ref key used for concurrency grouping"
+        required: true
+        type: string
+    secrets:
+      WINDOWS_PFX_BASE64:
+        required: false
+      WINDOWS_PFX_PASSWORD:
+        required: false
+      WINDOWS_TIMESTAMP_URL:
+        required: false
+
+jobs:
+  build-release:
+    name: Build Windows release artifact (${{ matrix.platform }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x64
+            rid: win-x64
+            rust_target: x86_64-pc-windows-msvc
+            arch_label: x64
+          - platform: ARM64
+            rid: win-arm64
+            rust_target: aarch64-pc-windows-msvc
+            arch_label: arm64
+    concurrency:
+      group: release-windows-${{ inputs.concurrency_ref }}-${{ matrix.platform }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ inputs.trigger_event }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.release_ref }}"
+          else
+            VERSION="${{ inputs.release_ref }}"
+            VERSION="${VERSION#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve strict mode
+        id: strict
+        shell: bash
+        run: |
+          SOURCE="${{ inputs.release_ref }}"
+          SOURCE_LOWER="$(printf '%s' "$SOURCE" | tr '[:upper:]' '[:lower:]')"
+          STRICT_MODE="false"
+          if [[ "$SOURCE_LOWER" == *"strict"* ]]; then
+            STRICT_MODE="true"
+          fi
+
+          echo "strict_mode=$STRICT_MODE" >> "$GITHUB_OUTPUT"
+          echo "strict_source=$SOURCE" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release security prerequisites (strict mode)
+        if: steps.strict.outputs.strict_mode == 'true'
+        shell: bash
+        env:
+          WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+        run: |
+          missing=0
+
+          for name in WINDOWS_PFX_BASE64 WINDOWS_PFX_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing required secret in strict mode: $name" >&2
+              missing=1
+            fi
+          done
+
+          if [[ "$missing" -ne 0 ]]; then
+            echo "Strict mode enabled by ref/input '${{ steps.strict.outputs.strict_source }}'; aborting unsigned release." >&2
+            exit 1
+          fi
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            core
+            bridge/ffi
+          key: ${{ matrix.rust_target }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-${{ matrix.platform }}-nuget-release-${{ hashFiles('apps/windows/LauncherApp/LauncherApp.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.platform }}-nuget-release-
+            ${{ runner.os }}-${{ matrix.platform }}-nuget-
+            ${{ runner.os }}-nuget-
+
+      - name: Publish (Release)
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Inject the release tag into the assembly so File Explorer's "Details"
+          # tab, WER crash reports, and any future auto-update logic all see the
+          # right version. Without -p:Version=... the .NET SDK bakes 1.0.0.0 into
+          # every release. AssemblyVersion + FileVersion are also set explicitly
+          # so prerelease-style tags like 1.0.0-rc.1 still produce a valid
+          # 4-part numeric version on the binary (the suffix lands in
+          # AssemblyInformationalVersion, which is what File Explorer surfaces
+          # as ProductVersion). Mirrors macOS release-macos-app.sh which
+          # passes MARKETING_VERSION / CURRENT_PROJECT_VERSION to xcodebuild.
+          $numericVersion = ($env:VERSION -split '[-+]')[0]
+          dotnet publish apps/windows/LauncherApp/LauncherApp.csproj `
+            -c Release `
+            -p:Platform=${{ matrix.platform }} `
+            -r ${{ matrix.rid }} `
+            -p:PublishProfile=${{ matrix.rid }}.pubxml `
+            -p:Version=$env:VERSION `
+            -p:AssemblyVersion=$numericVersion `
+            -p:FileVersion=$numericVersion `
+            /bl:msbuild.binlog
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
+
+      - name: Ensure FFI in publish output
+        shell: pwsh
+        env:
+          PUBLISH_DIR: apps/windows/LauncherApp/bin/Release/net10.0-windows10.0.19041.0/${{ matrix.rid }}/publish
+          RUST_TARGET: ${{ matrix.rust_target }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $publish = $env:PUBLISH_DIR
+          if (-not (Test-Path $publish)) { throw "Publish directory missing: $publish" }
+          $target = Join-Path $publish "look_ffi.dll"
+          if (Test-Path $target) {
+            Write-Host "look_ffi.dll already present in publish output."
+          } else {
+            $source = "bridge/ffi/target/$($env:RUST_TARGET)/release/look_ffi.dll"
+            if (-not (Test-Path $source)) { throw "Built FFI artifact missing: $source" }
+            Copy-Item -Path $source -Destination $target -Force
+            Write-Host "Copied FFI: $source -> $target"
+          }
+
+      - name: Locate signtool
+        id: signtool
+        shell: pwsh
+        run: |
+          $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+          if (-not (Test-Path $kits)) {
+            Write-Host "Windows Kits not found at $kits"
+            "path=" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+          }
+          $signtool = Get-ChildItem -Path $kits -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) {
+            Write-Host "signtool.exe not located under $kits"
+            "path=" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+          }
+          Write-Host "Using signtool: $signtool"
+          "path=$signtool" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Sign binaries (optional)
+        id: sign
+        shell: pwsh
+        env:
+          WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+          PUBLISH_DIR: apps/windows/LauncherApp/bin/Release/net10.0-windows10.0.19041.0/${{ matrix.rid }}/publish
+          STRICT_MODE: ${{ steps.strict.outputs.strict_mode }}
+          SIGNTOOL: ${{ steps.signtool.outputs.path }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_PFX_BASE64)) {
+            if ($env:STRICT_MODE -eq "true") {
+              throw "Strict mode requires WINDOWS_PFX_BASE64."
+            }
+            Write-Host "No PFX secret configured; skipping signing."
+            "result=skipped_no_secret" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+          }
+          if ([string]::IsNullOrWhiteSpace($env:SIGNTOOL)) {
+            if ($env:STRICT_MODE -eq "true") {
+              throw "Strict mode requires signtool, but it was not found on the runner."
+            }
+            Write-Host "signtool not available; skipping signing."
+            "result=skipped_no_signtool" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+          }
+
+          $pfxPath = Join-Path $env:RUNNER_TEMP "look-signing.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_PFX_BASE64))
+
+          $timestampUrl = $env:WINDOWS_TIMESTAMP_URL
+          if ([string]::IsNullOrWhiteSpace($timestampUrl)) {
+            $timestampUrl = "http://timestamp.digicert.com"
+          }
+
+          $publish = $env:PUBLISH_DIR
+          if (-not (Test-Path $publish)) {
+            throw "Publish directory missing: $publish"
+          }
+
+          # The publish output produces LauncherApp.exe (the WinExe entry point) and
+          # LauncherApp.dll (the managed assembly), plus look_ffi.dll (the Rust core).
+          # An older revision of this workflow filtered for "Look.exe" / "Look.dll" which
+          # never matched anything in the publish dir — signing silently covered only the
+          # FFI dll while the strict-mode summary still reported "signed". Require all
+          # three so any future rename can't quietly skip the main binary again.
+          $expectedTargets = @("LauncherApp.exe", "LauncherApp.dll", "look_ffi.dll")
+          $targets = @()
+          foreach ($name in $expectedTargets) {
+            $found = Get-ChildItem -Path $publish -Filter $name -File -ErrorAction SilentlyContinue
+            if (-not $found) {
+              throw "Expected binary missing from publish output: $name (publish=$publish)"
+            }
+            $targets += $found
+          }
+
+          foreach ($file in $targets) {
+            Write-Host "Signing $($file.FullName)"
+            & $env:SIGNTOOL sign `
+              /f $pfxPath `
+              /p $env:WINDOWS_PFX_PASSWORD `
+              /tr $timestampUrl `
+              /td sha256 `
+              /fd sha256 `
+              $file.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signtool sign failed for $($file.FullName)" }
+          }
+
+          Remove-Item -Path $pfxPath -Force -ErrorAction SilentlyContinue
+          "result=signed" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "signed_count=$($targets.Count)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Verify signatures (optional)
+        if: steps.sign.outputs.result == 'signed'
+        shell: pwsh
+        env:
+          PUBLISH_DIR: apps/windows/LauncherApp/bin/Release/net10.0-windows10.0.19041.0/${{ matrix.rid }}/publish
+          SIGNTOOL: ${{ steps.signtool.outputs.path }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $publish = $env:PUBLISH_DIR
+          # Verify the same set the sign step actually signed; this used to silently no-op
+          # for Look.exe / Look.dll because they don't exist in the publish output.
+          $expectedTargets = @("LauncherApp.exe", "LauncherApp.dll", "look_ffi.dll")
+          $targets = @()
+          foreach ($name in $expectedTargets) {
+            $found = Get-ChildItem -Path $publish -Filter $name -File -ErrorAction SilentlyContinue
+            if (-not $found) {
+              throw "Expected signed binary missing from publish output: $name (publish=$publish)"
+            }
+            $targets += $found
+          }
+          foreach ($file in $targets) {
+            & $env:SIGNTOOL verify /pa /v $file.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signtool verify failed for $($file.FullName)" }
+          }
+
+      - name: Package zip + manifest
+        id: package
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ARCH_LABEL: ${{ matrix.arch_label }}
+          PUBLISH_DIR: apps/windows/LauncherApp/bin/Release/net10.0-windows10.0.19041.0/${{ matrix.rid }}/publish
+        run: |
+          $ErrorActionPreference = "Stop"
+          $publish = $env:PUBLISH_DIR
+          if (-not (Test-Path $publish)) {
+            throw "Publish directory missing: $publish"
+          }
+
+          $dist = "dist"
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          $zipPath = Join-Path $dist "Look-$($env:VERSION)-windows-$($env:ARCH_LABEL).zip"
+          $manifestPath = Join-Path $dist "Look-$($env:VERSION)-windows-$($env:ARCH_LABEL)-manifest.txt"
+
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path (Join-Path $publish '*') -DestinationPath $zipPath -CompressionLevel Optimal
+
+          $sha256 = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
+          @(
+            "version=$($env:VERSION)",
+            "arch=$($env:ARCH_LABEL)",
+            "artifact=$([IO.Path]::GetFileName($zipPath))",
+            "sha256=$sha256"
+          ) | Set-Content -Path $manifestPath -Encoding utf8
+
+          "zip_path=$zipPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "manifest_path=$manifestPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: look-windows-${{ steps.version.outputs.version }}-${{ matrix.arch_label }}
+          path: |
+            dist/Look-${{ steps.version.outputs.version }}-windows-${{ matrix.arch_label }}.zip
+            dist/Look-${{ steps.version.outputs.version }}-windows-${{ matrix.arch_label }}-manifest.txt
+          retention-days: 14
+
+      - name: Upload msbuild binlog on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-msbuild-binlog-${{ matrix.arch_label }}
+          path: msbuild.binlog
+          retention-days: 7
+
+      - name: Attach assets to GitHub release (tag pushes only)
+        if: inputs.attach_release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Look-${{ steps.version.outputs.version }}-windows-${{ matrix.arch_label }}.zip
+            dist/Look-${{ steps.version.outputs.version }}-windows-${{ matrix.arch_label }}-manifest.txt
+
+      - name: Release security summary
+        if: always()
+        shell: bash
+        env:
+          WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+        run: |
+          SIGNING_READY="false"
+          if [[ -n "${WINDOWS_PFX_BASE64}" && -n "${WINDOWS_PFX_PASSWORD}" ]]; then
+            SIGNING_READY="true"
+          fi
+
+          {
+            echo "## Release Security Summary (${{ matrix.platform }})"
+            echo "- Strict mode: ${{ steps.strict.outputs.strict_mode }} (source: ${{ steps.strict.outputs.strict_source }})"
+            echo "- Code signing configured: ${SIGNING_READY}"
+            echo "- Signing result: ${{ steps.sign.outputs.result || 'not_run' }}"
+            if [[ -n "${{ steps.sign.outputs.signed_count || '' }}" ]]; then
+              echo "- Files signed: ${{ steps.sign.outputs.signed_count }}"
+            fi
+            if [[ "${SIGNING_READY}" != "true" ]]; then
+              echo "- This release is unsigned."
+              echo "- Users may see SmartScreen warnings on first run; reputation will build over installs."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

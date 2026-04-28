@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="LauncherApp.Views.Settings.SettingsTabsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:tabs="using:LauncherApp.Views.Settings.Tabs"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <Style x:Key="SettingsSegmentButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="#F1F6FF" />
+            <Setter Property="BorderBrush" Value="{StaticResource LauncherBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Background" Value="{StaticResource LauncherPanelAltBrush}" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Padding="6,0,6,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Margin="0,0,0,6">
+            <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                VerticalAlignment="Center"
+                FontSize="15"
+                FontWeight="SemiBold"
+                Foreground="{StaticResource LauncherTextBrush}"
+                Text="Settings" />
+
+            <TextBlock
+                Grid.Column="1"
+                Margin="10,0,0,0"
+                VerticalAlignment="Center"
+                FontSize="11"
+                Foreground="{StaticResource LauncherMutedTextBrush}"
+                Text="Esc or Ctrl+Shift+, to close" />
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button MinWidth="110" Height="Auto" Content="Save Config" Click="SaveConfigButton_OnClick" />
+                <Button MinWidth="140" Height="Auto" Content="Back to Launcher" Click="BackToLauncherButton_OnClick" />
+            </StackPanel>
+            </Grid>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Padding="0" Background="Transparent" CornerRadius="0">
+                <Grid ColumnSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="AppearanceTabButton" Grid.Column="0" Style="{StaticResource SettingsSegmentButtonStyle}" Content="Appearance" Click="AppearanceTabButton_OnClick" />
+                    <Button x:Name="AdvancedTabButton" Grid.Column="1" Style="{StaticResource SettingsSegmentButtonStyle}" Content="Advanced" Click="AdvancedTabButton_OnClick" />
+                    <Button x:Name="ShortcutsTabButton" Grid.Column="2" Style="{StaticResource SettingsSegmentButtonStyle}" Content="Shortcuts" Click="ShortcutsTabButton_OnClick" />
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="1" Margin="0,2,0,0" Background="Transparent" CornerRadius="0" Padding="0">
+                <Grid>
+                    <tabs:AppearanceSettingsTabView x:Name="AppearanceTabContent" />
+                    <tabs:AdvancedSettingsTabView x:Name="AdvancedTabContent" Visibility="Collapsed" />
+                    <tabs:ShortcutsSettingsTabView x:Name="ShortcutsTabContent" Visibility="Collapsed" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>
