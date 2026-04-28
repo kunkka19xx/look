@@ -128,6 +128,7 @@ namespace LauncherApp
             SetBlurStyle(LookConfig.Get("ui_blur_material") ?? "balanced");
             InitializeGlobalHotkeys();
             InitializeClipboardHistory();
+            InitializeDevHintBadge();
             this.Activated += OnWindowActivated;
             this.Closed += OnWindowClosed;
         }
@@ -270,6 +271,11 @@ namespace LauncherApp
             {
                 RefreshPickedSidePanel();
             }
+
+            // Lazily-mounted panels (Settings, Command) come into the visual tree only
+            // after the user enters their mode, so the initial zoom walk in ZoomIn/Out/Reset
+            // misses them. Re-walk after each mode switch so font scale stays consistent.
+            ReapplyUiScaleAfterModeSwitch();
         }
 
         private void ToggleSettingsMode()

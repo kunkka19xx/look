@@ -116,7 +116,7 @@ public sealed partial class CommandPanelsView : UserControl
         if (changed)
         {
             CommandOutputText.Text = string.Empty;
-            CommandOutputText.Foreground = ResolveBrush("LauncherMutedTextBrush");
+            CommandOutputText.Foreground = ResolveBrush("LauncherTextBrush");
             ActiveCommandChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -124,7 +124,10 @@ public sealed partial class CommandPanelsView : UserControl
     public void SetExecutionFeedback(string message, bool isError = false)
     {
         CommandOutputText.Text = message ?? string.Empty;
-        string key = isError ? "LauncherBannerErrorBrush" : "LauncherMutedTextBrush";
+        // Success results are primary content (the answer the user asked for) -> primary
+        // text brush. Errors stay on the banner-error brush so they read as a warning.
+        // Mirrors macOS where command result content uses fontColor() not mutedTextColor().
+        string key = isError ? "LauncherBannerErrorBrush" : "LauncherTextBrush";
         CommandOutputText.Foreground = ResolveBrush(key);
     }
 

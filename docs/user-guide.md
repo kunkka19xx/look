@@ -1,6 +1,8 @@
 # look User Guide
 
-`look` is a keyboard-first launcher for macOS focused on fast local actions.
+`look` is a keyboard-first launcher for macOS and Windows focused on fast local actions.
+
+> **Cross-platform shortcut note.** Examples in this guide are written with macOS modifiers (`Cmd+...`). On Windows, read **`Cmd+X` as `Ctrl+X`** in every shortcut **except the launcher toggle**, which is `Alt+Space` on Windows (because `Win+Space` is reserved by the OS for input switching). Specifically: `Cmd+Space` → `Alt+Space`, `Cmd+Enter` → `Ctrl+Enter`, `Cmd+F` → `Ctrl+F`, `Cmd+/` → `Ctrl+/`, `Cmd+Shift+,` → `Ctrl+Shift+,`, `Cmd+P` → `Ctrl+P`, `Cmd+Shift+P` → `Ctrl+Shift+P`, etc. "Reveal in Finder" reads as "Reveal in Explorer" on Windows.
 
 ## First run
 

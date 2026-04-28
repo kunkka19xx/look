@@ -174,6 +174,31 @@ public sealed partial class MainWindow
             return;
         }
 
+        // Zoom: Ctrl+= / Ctrl+Add for zoom-in, Ctrl+- / Ctrl+Subtract for zoom-out,
+        // Ctrl+0 / Ctrl+NumPad0 for reset. Mirrors macOS Cmd+= / Cmd+- / Cmd+0
+        // (look_appApp.swift:166-185, ThemeStore.swift:268-278).
+        if (IsCtrlPressed())
+        {
+            if (e.Key == (VirtualKey)0xBB || e.Key == VirtualKey.Add)
+            {
+                ZoomIn();
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == (VirtualKey)0xBD || e.Key == VirtualKey.Subtract)
+            {
+                ZoomOut();
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == VirtualKey.Number0 || e.Key == VirtualKey.NumberPad0)
+            {
+                ResetZoom();
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (_mode == LauncherMode.Search
             && e.Key == VirtualKey.F
             && IsCtrlPressed()
@@ -497,7 +522,8 @@ public sealed partial class MainWindow
             if (!picksActive)
             {
                 ResultPreviewPanel.SetRow(selected);
-                if (_mode == LauncherMode.Search || _mode == LauncherMode.Clipboard || _mode == LauncherMode.Help)
+                // Help mode covers the entire ResultsHost grid; never show the preview over it.
+                if (_mode == LauncherMode.Search || _mode == LauncherMode.Clipboard)
                 {
                     ResultPreviewPanel.Visibility = Visibility.Visible;
                     PreviewDivider.Visibility = Visibility.Visible;

@@ -6,7 +6,12 @@ It intentionally merges architecture explanation and diagrams into one place, so
 
 ## 1) System overview and design intent
 
-`look` is a keyboard-first macOS launcher designed for low-latency local search. The architecture separates UI concerns (Swift/AppKit/SwiftUI) from search/index/ranking concerns (Rust), joined through a small FFI boundary.
+`look` is a keyboard-first launcher (macOS shipped, Windows in active development) designed for low-latency local search. The architecture separates UI concerns from search/index/ranking concerns (Rust), joined through a small FFI boundary. The UI layer is platform-specific:
+
+- **macOS:** Swift / AppKit / SwiftUI under `apps/macos/LauncherApp/` (Xcode project)
+- **Windows:** .NET 10 / WinUI 3 under `apps/windows/LauncherApp/` (`dotnet` build, MSBuild + WinUIEx)
+
+Both UIs talk to the same Rust core via the same FFI surface (`bridge/ffi`), so search, indexing, ranking, and storage behave identically across platforms.
 
 Key design goals:
 

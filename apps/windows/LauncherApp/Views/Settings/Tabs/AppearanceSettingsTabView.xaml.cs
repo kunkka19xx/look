@@ -106,6 +106,20 @@ public sealed partial class AppearanceSettingsTabView : UserControl
             SetColorSliders(textColor, TextRedSlider, TextGreenSlider, TextBlueSlider, TextOpacitySlider);
         }
 
+        // Restore preset overrides so live preview keeps the theme's signature secondary
+        // / muted tint after a restart. Without this, opening the settings panel would
+        // reset the in-memory overrides and the next ApplyThemePreview would fall back
+        // to DimmableColor, dropping the saved theme's color signature.
+        if (resources.ContainsKey("LauncherColorSecondary") && resources["LauncherColorSecondary"] is Color secondaryColor)
+        {
+            _textSecondaryOverride = (ToPercent(secondaryColor.R), ToPercent(secondaryColor.G), ToPercent(secondaryColor.B));
+        }
+
+        if (resources.ContainsKey("LauncherColorMuted") && resources["LauncherColorMuted"] is Color mutedColor)
+        {
+            _textMutedOverride = (ToPercent(mutedColor.R), ToPercent(mutedColor.G), ToPercent(mutedColor.B));
+        }
+
         if (resources.ContainsKey("LauncherColorBorder") && resources["LauncherColorBorder"] is Color borderColor)
         {
             SetColorSliders(borderColor, BorderRedSlider, BorderGreenSlider, BorderBlueSlider, BorderOpacitySlider);
@@ -409,6 +423,13 @@ public sealed partial class AppearanceSettingsTabView : UserControl
             BorderGreenPercent = BorderGreenSlider.Value,
             BorderBluePercent = BorderBlueSlider.Value,
             BorderOpacityPercent = BorderOpacitySlider.Value,
+
+            TextSecondaryRedPercent = _textSecondaryOverride?.R,
+            TextSecondaryGreenPercent = _textSecondaryOverride?.G,
+            TextSecondaryBluePercent = _textSecondaryOverride?.B,
+            TextMutedRedPercent = _textMutedOverride?.R,
+            TextMutedGreenPercent = _textMutedOverride?.G,
+            TextMutedBluePercent = _textMutedOverride?.B,
         };
 
         LookConfig.UpsertMany(AppearanceSettingsSaveLogic.BuildSavePayload(dto));
@@ -428,14 +449,16 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         UpdateBrush(resources, "LauncherPanelAltBrush", panelAltColor);
 
         Color textColor = ToColor(TextRedSlider.Value, TextGreenSlider.Value, TextBlueSlider.Value, TextOpacitySlider.Value);
-        // Secondary and muted step alpha down so the tier break stays visible on light-font
-        // themes where dimming RGB alone isn't enough separation. Matches ThemeBootstrap.
+        // Alpha multipliers (0.94 / 0.88) match ThemeBootstrap. Higher than macOS's
+        // 0.90/0.78 because Windows's opaque panel composition would otherwise grey out
+        // the theme's muted/secondary RGB; keeping these in sync keeps live preview and
+        // post-restart rendering visually identical.
         Color secondaryColor = _textSecondaryOverride is { } sec
-            ? ToColor(sec.R, sec.G, sec.B, TextOpacitySlider.Value * 0.90)
-            : DimmableColor(0.82, TextOpacitySlider.Value * 0.90);
+            ? ToColor(sec.R, sec.G, sec.B, TextOpacitySlider.Value * 0.94)
+            : DimmableColor(0.82, TextOpacitySlider.Value * 0.94);
         Color mutedColor = _textMutedOverride is { } muted
-            ? ToColor(muted.R, muted.G, muted.B, TextOpacitySlider.Value * 0.78)
-            : DimmableColor(0.64, TextOpacitySlider.Value * 0.78);
+            ? ToColor(muted.R, muted.G, muted.B, TextOpacitySlider.Value * 0.88)
+            : DimmableColor(0.64, TextOpacitySlider.Value * 0.88);
 
         UpdateBrush(resources, "LauncherTextBrush", textColor);
         UpdateBrush(resources, "LauncherSecondaryTextBrush", secondaryColor);

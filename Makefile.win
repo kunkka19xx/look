@@ -1,0 +1,148 @@
+# GnuWin32 make on Windows can't resolve "/bin/bash" as a literal path and
+# silently falls back to cmd.exe, which breaks bash-only constructs like
+# `|| true`, `[ -f ]`, `2>/dev/null`. Use bash.exe from PATH (Git Bash).
+SHELL := bash.exe
+.DEFAULT_GOAL := help
+
+# Included by top-level Makefile on Windows hosts; runs as `make <target>`.
+# Force explicitly with: make -f Makefile.win <target>
+# Override platform: PLATFORM=ARM64 RID=win-arm64
+# Override config:   CONFIG=Release
+
+PLATFORM ?= x64
+RID      ?= win-x64
+CONFIG   ?= Debug
+TFM      := net10.0-windows10.0.19041.0
+
+# Resolve home directory cross-shell: Git Bash sets HOME, PowerShell/cmd don't
+# but always set USERPROFILE. Convert the Windows form to a Unix-style path so
+# bash builtins (mkdir -p, cp, rm) handle the result without escaping issues.
+USER_HOME := $(shell echo "$${HOME:-$$(cygpath -u "$$USERPROFILE")}")
+
+# Rust target derived from PLATFORM
+RUST_ARCH    := $(if $(filter ARM64 arm64,$(PLATFORM)),arm64,x64)
+RUST_TRIPLE  := $(if $(filter arm64,$(RUST_ARCH)),aarch64-pc-windows-msvc,x86_64-pc-windows-msvc)
+RUST_PROFILE := $(if $(filter Release,$(CONFIG)),release,debug)
+
+CSPROJ           := apps/windows/LauncherApp/LauncherApp.csproj
+BUILD_DIR        := apps/windows/LauncherApp/bin/$(PLATFORM)/$(CONFIG)/$(TFM)/$(RID)
+PUBLISH_DIR      := apps/windows/LauncherApp/bin/$(CONFIG)/$(TFM)/$(RID)/publish
+APP_EXE          := $(BUILD_DIR)/LauncherApp.exe
+APP_PROCESS      := LauncherApp
+FFI_DLL          := bridge/ffi/target/$(RUST_TRIPLE)/$(RUST_PROFILE)/look_ffi.dll
+FFI_BUILD_SCRIPT := scripts/windows/build-ffi.ps1
+
+REAL_DB_PATH    := $(USER_HOME)/AppData/Local/look/look.db
+DEV_CONFIG_PATH ?= $(USER_HOME)/.look.dev.config
+DEV_INSTALL_DIR := $(USER_HOME)/AppData/Local/Programs/Look Dev
+DEV_INSTALL_EXE := $(DEV_INSTALL_DIR)/LauncherApp.exe
+
+DEV_OPEN_ENV = env -u LOOK_DB_PATH LOOK_CONFIG_PATH="$(DEV_CONFIG_PATH)" LOOK_DEV_HINT=1 LOOK_LOG_LEVEL=debug LOOK_UI_DEBUG_EVENTS=1
+
+.PHONY: help core-check ffi-check ffi-build ffi-build-release \
+        app-build app-publish app-ensure-built app-stop app-run app-open \
+        app-install-dev app-run-dev app-uninstall-dev \
+        symbols db-path db-status db-shell db-reset db-refresh
+
+help:
+	@printf "look developer tasks (Windows)\n\n"
+	@printf "build/check\n"
+	@printf "  make core-check          - cargo check core workspace\n"
+	@printf "  make ffi-check           - cargo check ffi crate\n"
+	@printf "  make ffi-build           - build look_ffi.dll (debug, via build-ffi.ps1)\n"
+	@printf "  make ffi-build-release   - build look_ffi.dll (release)\n"
+	@printf "  make app-build           - dotnet build (matches PR CI shape)\n"
+	@printf "  make app-publish         - dotnet publish (matches release CI shape)\n"
+	@printf "  make symbols             - dumpbin -EXPORTS look_ffi.dll | grep ffi symbols\n\n"
+	@printf "run app\n"
+	@printf "  make app-stop            - stop running $(APP_PROCESS)\n"
+	@printf "  make app-run             - build, stop, launch with dev config\n"
+	@printf "  make app-open            - build, launch (no dev env)\n"
+	@printf "  make app-install-dev     - publish into '$(DEV_INSTALL_DIR)'\n"
+	@printf "  make app-run-dev         - install side-by-side, then launch with dev config\n"
+	@printf "  make app-uninstall-dev   - remove side-by-side dev install\n\n"
+	@printf "database  (sqlite3 must be on PATH; e.g. 'winget install sqlite.sqlite')\n"
+	@printf "  make db-path             - print real db path\n"
+	@printf "  make db-status           - inspect candidates/usage tables\n"
+	@printf "  make db-shell            - open sqlite shell for real db\n"
+	@printf "  make db-reset            - delete real db file\n"
+	@printf "  make db-refresh          - delete db then rebuild\n\n"
+	@printf "overrides\n"
+	@printf "  PLATFORM=ARM64 RID=win-arm64    (default: x64 / win-x64)\n"
+	@printf "  CONFIG=Release                  (default: Debug)\n"
+	@printf "  DEV_CONFIG_PATH=<path>          (default: \$$HOME/.look.dev.config)\n"
+
+core-check:
+	cargo check --workspace --manifest-path core/Cargo.toml
+
+ffi-check:
+	cargo check --manifest-path bridge/ffi/Cargo.toml
+
+ffi-build:
+	powershell -NoProfile -ExecutionPolicy Bypass -File "$(FFI_BUILD_SCRIPT)" -ManifestPath "bridge/ffi/Cargo.toml" -Arch $(RUST_ARCH)
+
+ffi-build-release:
+	powershell -NoProfile -ExecutionPolicy Bypass -File "$(FFI_BUILD_SCRIPT)" -ManifestPath "bridge/ffi/Cargo.toml" -Arch $(RUST_ARCH) -Release
+
+app-build:
+	dotnet build "$(CSPROJ)" -c $(CONFIG) -p:Platform=$(PLATFORM) -r $(RID)
+
+app-publish:
+	dotnet publish "$(CSPROJ)" -c $(CONFIG) -p:Platform=$(PLATFORM) -r $(RID) -p:PublishProfile=$(RID).pubxml
+	@if [ ! -f "$(PUBLISH_DIR)/look_ffi.dll" ]; then \
+	  if [ ! -f "$(FFI_DLL)" ]; then echo "missing FFI dll: $(FFI_DLL) (run 'make ffi-build' first)"; exit 1; fi; \
+	  cp "$(FFI_DLL)" "$(PUBLISH_DIR)/look_ffi.dll" && echo "Copied FFI: $(FFI_DLL) -> $(PUBLISH_DIR)/look_ffi.dll"; \
+	fi
+
+app-ensure-built:
+	@if [ ! -f "$(APP_EXE)" ]; then echo "missing app exe: $(APP_EXE)"; exit 1; fi
+
+app-stop:
+	@echo "Stopping any running $(APP_PROCESS)"
+	@powershell -NoProfile -Command "Get-Process -Name $(APP_PROCESS) -ErrorAction SilentlyContinue | Stop-Process -Force" 2>/dev/null || true
+
+app-run: app-build app-stop app-ensure-built
+	@echo "Launching $(APP_EXE) with dev config: $(DEV_CONFIG_PATH)"
+	@$(DEV_OPEN_ENV) "$(APP_EXE)" &
+
+app-open: app-build app-ensure-built
+	@"$(APP_EXE)" &
+
+app-install-dev: app-publish
+	@echo "Installing side-by-side dev app: $(DEV_INSTALL_DIR)"
+	@powershell -NoProfile -Command "Get-Process -Name $(APP_PROCESS) -ErrorAction SilentlyContinue | Stop-Process -Force" 2>/dev/null || true
+	@rm -rf "$(DEV_INSTALL_DIR)"
+	@mkdir -p "$(DEV_INSTALL_DIR)"
+	@cp -r "$(PUBLISH_DIR)"/. "$(DEV_INSTALL_DIR)/"
+	@echo "Installed to: $(DEV_INSTALL_DIR)"
+
+app-run-dev: app-install-dev
+	@echo "Launching side-by-side dev app with config: $(DEV_CONFIG_PATH)"
+	@$(DEV_OPEN_ENV) "$(DEV_INSTALL_EXE)" &
+
+app-uninstall-dev:
+	@echo "Removing side-by-side dev app: $(DEV_INSTALL_DIR)"
+	@powershell -NoProfile -Command "Get-Process -Name $(APP_PROCESS) -ErrorAction SilentlyContinue | Stop-Process -Force" 2>/dev/null || true
+	@rm -rf "$(DEV_INSTALL_DIR)"
+
+symbols: ffi-build
+	@command -v dumpbin >/dev/null 2>&1 || { echo "dumpbin not in PATH; run this target from a VS Developer Command Prompt"; exit 1; }
+	@dumpbin -EXPORTS "$(FFI_DLL)" | grep -E "look_search_json|look_record_usage|look_free_cstring" || { echo "expected ffi symbols not found in $(FFI_DLL)"; exit 1; }
+
+db-path:
+	@echo "$(REAL_DB_PATH)"
+
+db-status:
+	@sqlite3 "$(REAL_DB_PATH)" "SELECT id,title,use_count,last_used_at_unix_s FROM candidates ORDER BY use_count DESC, title ASC LIMIT 20;"
+	@echo "---"
+	@sqlite3 "$(REAL_DB_PATH)" "SELECT candidate_id,action,used_at_unix_s FROM usage_events ORDER BY id DESC LIMIT 20;"
+
+db-shell:
+	sqlite3 "$(REAL_DB_PATH)"
+
+db-reset:
+	@rm -f "$(REAL_DB_PATH)"
+	@echo "Removed: $(REAL_DB_PATH)"
+
+db-refresh: db-reset app-build
+	@echo "DB refreshed and app rebuilt"

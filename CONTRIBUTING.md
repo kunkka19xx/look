@@ -17,16 +17,19 @@ A good bug report must include:
 - exact reproduction steps (numbered)
 - frequency (`always`, `sometimes`, `once`)
 - environment details:
-  - macOS version
+  - OS + version (macOS 15.x / Windows 11 24H2 / etc.)
   - look app version or commit SHA
-  - install method (Xcode run, zip install, Homebrew tap)
-  - architecture (`arm64` or `x86_64`)
+  - install method:
+    - macOS: Xcode run, zip install, Homebrew tap
+    - Windows: zip release, `make app-run-dev` side-by-side install
+  - architecture (`arm64` / `x86_64` on macOS; `x64` / `ARM64` on Windows)
 - logs or screenshots if available
 
 If crash related, include:
 
 - crash dialog text
-- stack trace or Xcode console output
+- macOS: stack trace or Xcode console output
+- Windows: contents of `%LOCALAPPDATA%\look\look-crash.log`, plus `Get-WinEvent -LogName Application -MaxEvents 10` filtered to `LauncherApp`
 - whether it happens on clean launch
 
 ## Feature requests
@@ -42,15 +45,26 @@ User-facing feature documentation lives in `docs/` (`features.md`, `user-guide.m
 
 ## Development setup
 
-Prerequisites:
+Prerequisites (common):
 
-- macOS + Xcode
 - Rust stable toolchain
+- GNU Make (the top-level `Makefile` dispatches to `Makefile.mac` or `Makefile.win`)
 
-Checks:
+macOS:
+
+- Xcode (for the app shell)
+
+Windows:
+
+- .NET 10 SDK + Visual Studio Build Tools (C++ workload)
+- Git Bash — every `make` target must be run from Git Bash, not cmd or PowerShell
+- `winget install GnuWin32.Make` if `make` is missing
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for the full setup walkthrough including the common Windows gotchas.
+
+Checks (cross-platform):
 
 ```bash
-./scripts/bootstrap.sh
 cargo test --workspace --manifest-path core/Cargo.toml
 cargo test --manifest-path bridge/ffi/Cargo.toml
 ```
@@ -107,6 +121,7 @@ CI runs for pushes and pull requests targeting `dev` and `main`.
 - Rust jobs (`lint`, `test`, `cargo-audit`, release `build`) run only when Rust-related paths change
 - secrets scanning (`gitleaks`) always runs
 - macOS app build runs only for PRs to `dev`/`main` when Swift files change
+- Windows app build (x64 + ARM64) runs when `apps/windows/**`, `bridge/ffi/**`, `core/**`, `scripts/windows/**`, or the workflow itself changes
 - release-style Rust build artifacts run only on push to `main`
 
 ## Pull request checklist

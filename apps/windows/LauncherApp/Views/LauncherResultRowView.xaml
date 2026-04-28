@@ -57,11 +57,10 @@
                     Foreground="{StaticResource LauncherTextBrush}"
                     Text="{Binding Title}"
                     TextTrimming="CharacterEllipsis" />
-                <!-- Meta line (kind + path / subtitle). Uses the muted tier so the path
-                     breadcrumb visibly steps back from the bright primary title. On dark
-                     themes where the font color is already near-white, the 0.82 secondary
-                     factor is too close to primary to read as its own role — 0.64 muted
-                     gives the clear tier separation macOS expresses through NSVisualEffect. -->
+                <!-- Meta line (kind + path / subtitle). Uses the muted tier brush which,
+                     when a preset is active, carries the theme's signature textMuted
+                     token (e.g. Tokyo Night's blue-grey #8FA3C7). Mirrors macOS
+                     LauncherRowView's foregroundStyle(themeStore.mutedTextColor()). -->
                 <TextBlock
                     FontSize="11"
                     Foreground="{StaticResource LauncherMutedTextBrush}"

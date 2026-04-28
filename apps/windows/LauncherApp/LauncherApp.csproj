@@ -61,6 +61,11 @@
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
+    <!-- Bundle the WindowsAppRuntime so unpackaged users can run the app
+         without installing WAR system-wide. Without this, the auto-initializer
+         throws REGDB_E_CLASSNOTREG before App() even constructs. Adds ~50MB to
+         the publish output but makes the release zip drop-in runnable. -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
   </PropertyGroup>
 
   <PropertyGroup>

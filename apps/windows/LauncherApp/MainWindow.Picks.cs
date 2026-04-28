@@ -130,7 +130,9 @@ public sealed partial class MainWindow
             PickedItemsPanel.SetItems(Array.Empty<LauncherRowItem>());
 
             // Restore the preview panel for the current selection (only in modes that show it).
-            if ((_mode == LauncherMode.Search || _mode == LauncherMode.Clipboard || _mode == LauncherMode.Help)
+            // Help mode covers the entire ResultsHost grid (Grid.ColumnSpan="3" in MainWindow.xaml)
+            // so showing the preview here paints it on top of the help screen — exclude it.
+            if ((_mode == LauncherMode.Search || _mode == LauncherMode.Clipboard)
                 && ResultsList.SelectedItem is LauncherRowItem selectedRow)
             {
                 ResultPreviewPanel.SetRow(selectedRow);

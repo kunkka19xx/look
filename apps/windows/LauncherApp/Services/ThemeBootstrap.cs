@@ -46,12 +46,22 @@ public static class ThemeBootstrap
         double textBp = GetPercent(cfg, "ui_font_blue", 98);
         double textAp = GetPercent(cfg, "ui_font_opacity", 96);
         Color text = ToColor(textRp, textGp, textBp, textAp);
-        // Secondary and muted also step the alpha down so the tier break is visible on
-        // light-font themes — RGB dimming alone isn't enough contrast when the primary is
-        // already near-white on a dark backdrop. macOS gets free contrast from NSVisualEffect;
-        // we bake it into the brush.
-        Color secondary = DimmableColor(textRp, textGp, textBp, 0.82, textAp * 0.90);
-        Color muted = DimmableColor(textRp, textGp, textBp, 0.64, textAp * 0.78);
+        // Secondary and muted: when the user picked a built-in theme (Tokyo Night,
+        // Dracula, etc.), AppearanceSettings persists ui_text_secondary_* / ui_text_muted_*
+        // tokens that carry each theme's signature tint (e.g. Tokyo Night's #8FA3C7 muted
+        // blue-grey). When absent (custom themes / pre-existing configs), fall back to
+        // luminance-aware dimming. Mirrors macOS ThemeStore.mutedTextColor() which checks
+        // `activeAppearanceStyle()?.textMuted` before falling back to dimmableColor().
+        // Alpha multipliers: macOS gets visual "lift" for free from NSVisualEffectView
+        // translucency, so 0.78/0.90 reads fine there. On Windows's opaque panel, the dark
+        // tint bleeds through and washes the theme's muted RGB toward grey — bumping the
+        // multipliers lets each theme's color signature carry through composition.
+        Color secondary = TryGetRgb(cfg, "ui_text_secondary", out double sR, out double sG, out double sB)
+            ? ToColor(sR, sG, sB, textAp * 0.94)
+            : DimmableColor(textRp, textGp, textBp, 0.82, textAp * 0.94);
+        Color muted = TryGetRgb(cfg, "ui_text_muted", out double mR, out double mG, out double mB)
+            ? ToColor(mR, mG, mB, textAp * 0.88)
+            : DimmableColor(textRp, textGp, textBp, 0.64, textAp * 0.88);
 
         // Border
         double borderRp = GetPercent(cfg, "ui_border_red", 100);
@@ -103,6 +113,23 @@ public static class ThemeBootstrap
             return Math.Clamp(fraction * 100d, 0, 100);
         }
         return fallback;
+    }
+
+    private static bool TryGetRgb(Dictionary<string, string> cfg, string keyPrefix, out double rPct, out double gPct, out double bPct)
+    {
+        rPct = 0;
+        gPct = 0;
+        bPct = 0;
+        if (!cfg.TryGetValue(keyPrefix + "_red", out string? rRaw) || string.IsNullOrWhiteSpace(rRaw)) return false;
+        if (!cfg.TryGetValue(keyPrefix + "_green", out string? gRaw) || string.IsNullOrWhiteSpace(gRaw)) return false;
+        if (!cfg.TryGetValue(keyPrefix + "_blue", out string? bRaw) || string.IsNullOrWhiteSpace(bRaw)) return false;
+        if (!double.TryParse(rRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out double rFraction)) return false;
+        if (!double.TryParse(gRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out double gFraction)) return false;
+        if (!double.TryParse(bRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out double bFraction)) return false;
+        rPct = Math.Clamp(rFraction * 100d, 0, 100);
+        gPct = Math.Clamp(gFraction * 100d, 0, 100);
+        bPct = Math.Clamp(bFraction * 100d, 0, 100);
+        return true;
     }
 
     private static double GetDouble(Dictionary<string, string> cfg, string key, double fallback)

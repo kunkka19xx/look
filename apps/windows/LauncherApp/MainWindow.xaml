@@ -15,13 +15,18 @@
     </Window.SystemBackdrop>
     <Grid Background="Transparent">
 
+        <!-- Mirrors macOS LauncherView+Background.swift layering: BlurLayer
+             samples only what's behind the window (desktop + system tint), so
+             the Appearance "Blur" slider never gaussian-blurs the user's BG
+             image. BG image sharpness is controlled solely by its own
+             "Background Image Blur" setting (ui_background_image_blur). -->
+        <Grid x:Name="BlurLayer" IsHitTestVisible="False" />
+
         <Image
             x:Name="BackgroundImage"
             Stretch="UniformToFill"
             Opacity="0"
             IsHitTestVisible="False" />
-
-        <Grid x:Name="BlurLayer" IsHitTestVisible="False" />
 
         <Border
             x:Name="BannerHost"
@@ -205,6 +210,43 @@
                 </StackPanel>
             </Grid>
         </Border>
+
+        <Border
+            x:Name="DevHintBadge"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Margin="0,8,10,0"
+            Padding="10,5"
+            CornerRadius="999"
+            Background="#59000000"
+            Visibility="Collapsed"
+            Canvas.ZIndex="20"
+            IsHitTestVisible="False">
+            <TextBlock
+                Text="TEST APP"
+                FontSize="11"
+                FontWeight="Bold"
+                Foreground="#F2FF3B30" />
+        </Border>
+
+        <!-- Mirrors macOS LauncherView.swift bottomTrailing Link overlay: small
+             attribution + GitHub link in 50%-opacity primary text color, anchored
+             10/8 from the bottom-right window edge. -->
+        <HyperlinkButton
+            x:Name="GitHubLink"
+            NavigateUri="https://github.com/kunkka19xx"
+            Content="© 2026 by Kunkka"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Margin="0,0,10,8"
+            Padding="0"
+            MinHeight="0"
+            FontSize="10"
+            Opacity="0.5"
+            Foreground="{StaticResource LauncherTextBrush}"
+            Background="Transparent"
+            BorderThickness="0"
+            Canvas.ZIndex="20" />
 
     </Grid>
 </Window>

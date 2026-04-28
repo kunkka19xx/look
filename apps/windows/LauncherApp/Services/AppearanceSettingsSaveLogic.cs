@@ -24,6 +24,17 @@ public sealed class AppearanceSettingsDto
     public double FontBluePercent { get; set; }
     public double FontOpacityPercent { get; set; }
 
+    // Theme preset textSecondary / textMuted RGB tokens (mirrors macOS BuiltinThemeStyle's
+    // textSecondary / textMuted fields). Null when no preset is active — bootstrap then
+    // derives muted/secondary via DimmableColor instead. Persisting these is what keeps
+    // each theme's signature tint (e.g. Tokyo Night's blue-grey muted) across restarts.
+    public double? TextSecondaryRedPercent { get; set; }
+    public double? TextSecondaryGreenPercent { get; set; }
+    public double? TextSecondaryBluePercent { get; set; }
+    public double? TextMutedRedPercent { get; set; }
+    public double? TextMutedGreenPercent { get; set; }
+    public double? TextMutedBluePercent { get; set; }
+
     public double BorderThicknessTenths { get; set; }
     public double BorderRedPercent { get; set; }
     public double BorderGreenPercent { get; set; }
@@ -37,7 +48,7 @@ public static class AppearanceSettingsSaveLogic
     {
         var culture = CultureInfo.InvariantCulture;
 
-        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        var payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["ui_tint_red"] = FormatFraction(dto.TintRedPercent, culture),
             ["ui_tint_green"] = FormatFraction(dto.TintGreenPercent, culture),
@@ -61,6 +72,24 @@ public static class AppearanceSettingsSaveLogic
             ["ui_border_blue"] = FormatFraction(dto.BorderBluePercent, culture),
             ["ui_border_opacity"] = FormatFraction(dto.BorderOpacityPercent, culture),
         };
+
+        // Empty string when not set, so on load we can distinguish "no override → derive
+        // muted/secondary via dimming" from "override present → use these RGB values".
+        // Mirrors macOS where textMuted token presence flips mutedTextColor() between
+        // theme-token path and dimmableColor() fallback.
+        payload["ui_text_secondary_red"] = FormatOptionalFraction(dto.TextSecondaryRedPercent, culture);
+        payload["ui_text_secondary_green"] = FormatOptionalFraction(dto.TextSecondaryGreenPercent, culture);
+        payload["ui_text_secondary_blue"] = FormatOptionalFraction(dto.TextSecondaryBluePercent, culture);
+        payload["ui_text_muted_red"] = FormatOptionalFraction(dto.TextMutedRedPercent, culture);
+        payload["ui_text_muted_green"] = FormatOptionalFraction(dto.TextMutedGreenPercent, culture);
+        payload["ui_text_muted_blue"] = FormatOptionalFraction(dto.TextMutedBluePercent, culture);
+
+        return payload;
+    }
+
+    private static string FormatOptionalFraction(double? percent, CultureInfo culture)
+    {
+        return percent.HasValue ? FormatFraction(percent.Value, culture) : string.Empty;
     }
 
     private static string FormatFraction(double percent, CultureInfo culture)

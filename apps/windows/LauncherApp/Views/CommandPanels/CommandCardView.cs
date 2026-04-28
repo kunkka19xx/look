@@ -19,6 +19,15 @@ public sealed class CommandCardView : ToggleButton
         {
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
         };
+        // Without an explicit Foreground the title falls through to ToggleButton's
+        // default brush (a generic theme-resource), which on dark themes reads almost
+        // identical to the muted subtitle below it. Bind to LauncherTextBrush so the
+        // command-card title sits in the same primary tier as app-list row titles.
+        if (Application.Current.Resources.TryGetValue("LauncherTextBrush", out object titleBrushObj)
+            && titleBrushObj is Microsoft.UI.Xaml.Media.Brush titleBrush)
+        {
+            _titleText.Foreground = titleBrush;
+        }
 
         _subtitleText = new TextBlock
         {

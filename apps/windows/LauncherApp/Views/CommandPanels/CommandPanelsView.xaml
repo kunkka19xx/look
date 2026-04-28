@@ -33,21 +33,63 @@
                 </Grid.RowDefinitions>
 
                 <Grid x:Name="CommandInputHost">
-                    <TextBox
-                        x:Name="CommandInputBox"
-                        Padding="34,10,12,10"
-                        FontSize="14"
-                        PlaceholderText="Type command arguments"
-                        PreviewKeyDown="CommandInputBox_OnPreviewKeyDown"
-                        TextChanged="CommandInputBox_OnTextChanged" />
-                    <TextBlock
-                        Margin="12,0,0,0"
-                        FontFamily="Segoe MDL2 Assets"
-                        FontSize="13"
-                        VerticalAlignment="Center"
-                        Foreground="{StaticResource LauncherMutedTextBrush}"
-                        Text="&#xE70F;"
-                        IsHitTestVisible="False" />
+                    <!-- Capsule wrapper mirrors MainWindow.xaml's SearchBarHost: rounded
+                         tint + border so the input bar reads as a distinct "input pill"
+                         visually separated from the output area below, instead of the
+                         text floating directly above the result. -->
+                    <Border
+                        CornerRadius="10"
+                        Background="{StaticResource LauncherPanelAltBrush}"
+                        BorderBrush="{StaticResource LauncherBorderBrush}"
+                        BorderThickness="1">
+                        <Grid>
+                            <TextBox
+                                x:Name="CommandInputBox"
+                                Padding="34,10,12,10"
+                                FontSize="14"
+                                PlaceholderText="Type command arguments"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="{StaticResource LauncherTextBrush}"
+                                SelectionHighlightColor="{StaticResource LauncherAccentBrush}"
+                                PreviewKeyDown="CommandInputBox_OnPreviewKeyDown"
+                                TextChanged="CommandInputBox_OnTextChanged">
+                                <!-- Mirrors MainWindow QueryInput's TextBox.Resources: pin every
+                                     TextControl* visual state to the launcher palette so the
+                                     command input doesn't fall back to system theme greys. -->
+                                <TextBox.Resources>
+                                    <StaticResource x:Key="TextControlForeground" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlForegroundPointerOver" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlForegroundFocused" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlPlaceholderForeground" ResourceKey="LauncherMutedTextBrush" />
+                                    <StaticResource x:Key="TextControlPlaceholderForegroundPointerOver" ResourceKey="LauncherMutedTextBrush" />
+                                    <StaticResource x:Key="TextControlPlaceholderForegroundFocused" ResourceKey="LauncherMutedTextBrush" />
+                                    <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent" />
+                                    <StaticResource x:Key="TextControlButtonForeground" ResourceKey="LauncherMutedTextBrush" />
+                                    <StaticResource x:Key="TextControlButtonForegroundPointerOver" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlButtonForegroundPressed" ResourceKey="LauncherTextBrush" />
+                                    <SolidColorBrush x:Key="TextControlButtonBackground" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlButtonBackgroundPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlButtonBackgroundPressed" Color="Transparent" />
+                                </TextBox.Resources>
+                            </TextBox>
+                            <TextBlock
+                                Margin="12,0,0,0"
+                                FontFamily="Segoe MDL2 Assets"
+                                FontSize="13"
+                                VerticalAlignment="Center"
+                                Foreground="{StaticResource LauncherMutedTextBrush}"
+                                Text="&#xE70F;"
+                                IsHitTestVisible="False" />
+                        </Grid>
+                    </Border>
                 </Grid>
 
                 <Border Grid.Row="1" Background="Transparent" CornerRadius="8" Padding="8">
@@ -61,10 +103,14 @@
                             <ScrollViewer x:Name="CommandOutputHost" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MinHeight="280">
                                 <StackPanel Spacing="6">
                                     <TextBlock x:Name="CommandTitleText" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="calc" />
+                                    <!-- Command result content sits in the primary tier on macOS
+                                         (KillCommand.swift:168, SystemInfoCommand.swift:27 use
+                                         fontColor()); muted/secondary are reserved for labels
+                                         and hints, not the answer the user asked for. -->
                                     <TextBlock
                                         x:Name="CommandOutputText"
                                         FontFamily="Consolas"
-                                        Foreground="{StaticResource LauncherMutedTextBrush}"
+                                        Foreground="{StaticResource LauncherTextBrush}"
                                         Text=""
                                         TextWrapping="Wrap" />
                                 </StackPanel>
