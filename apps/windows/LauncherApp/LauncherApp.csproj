@@ -46,6 +46,26 @@
     <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
   </ItemGroup>
 
+  <!-- WinUI 3 instantiates code-only controls (e.g. CommandCardView, a ToggleButton
+       subclass referenced only from CommandPanelsView.xaml) reflectively at XAML-parse
+       time. With PublishTrimmed=true the linker can drop the parameterless ctor
+       metadata even though the type itself is kept, which surfaces in production as
+       `XamlParseException: Cannot create instance of type ...` on first launch (v0.4.0
+       release zip crashed on Alt+Space here). Rooting our own assembly preserves all
+       metadata for LauncherApp types without disabling trimming for the framework
+       dependencies that account for nearly all of the zip-size savings. -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="LauncherApp" />
+    <!-- Without this, the trimmer strips CsWinRT's vtable-lookup metadata for
+         Microsoft.UI.Xaml types, which surfaces as InvalidCastException when a
+         .NET-instantiated UIElement (e.g. StackPanel constructed in CommandCardView's
+         ctor) is assigned to a projected object-typed property like
+         ContentControl.Content or DependencyObject.SetValue. Rooting the WinUI
+         projection assembly preserves those marshalers; the rest of the trim pass
+         still runs on the BCL and other framework deps. -->
+    <TrimmerRootAssembly Include="Microsoft.WinUI" />
+  </ItemGroup>
+
   <!--
     Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
     Explorer "Package and Publish" context menu entry to be enabled for this project even if
@@ -66,6 +86,21 @@
          throws REGDB_E_CLASSNOTREG before App() even constructs. Adds ~50MB to
          the publish output but makes the release zip drop-in runnable. -->
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Trimming sets the runtime default to false, which makes
+         JsonSerializer.Deserialize<T>(...) without an explicit TypeInfoResolver
+         throw InvalidOperationException at first use. EngineBridge.Search and
+         friends fall through that path, killing the app the moment the user
+         types into the launcher. Re-enable reflection-based JSON: cheaper than
+         migrating every call site to System.Text.Json source generators and
+         the metadata cost is small relative to the trimmed BCL. -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <!-- ShellIconProvider and UwpAppService rely on [ComImport] interfaces
+         (IShellItem, IEnumShellItems, IShellLinkW, IShellItemImageFactory).
+         The trimmer disables built-in COM interop by default, which kills the
+         RCW creation that backs `[MarshalAs(UnmanagedType.Interface)] out
+         object` on shell32 P/Invokes — UWP apps fail to seed and shortcut
+         icons fail to resolve. Re-enable. -->
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
   </PropertyGroup>
 
   <PropertyGroup>
