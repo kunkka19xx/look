@@ -65,6 +65,12 @@ enum AppConstants {
                 QuickFolderDefinition(title: "Desktop", relativePath: "Desktop"),
                 QuickFolderDefinition(title: "Documents", relativePath: "Documents"),
                 QuickFolderDefinition(title: "Downloads", relativePath: "Downloads"),
+                QuickFolderDefinition(title: "Pictures", relativePath: "Pictures"),
+                // macOS names this folder "Movies" (Windows calls the equivalent "Videos");
+                // each platform's QuickFolder uses the OS-native folder name so typing what
+                // the user sees in Finder/Explorer pins it.
+                QuickFolderDefinition(title: "Movies", relativePath: "Movies"),
+                QuickFolderDefinition(title: "Music", relativePath: "Music"),
             ]
         }
 
