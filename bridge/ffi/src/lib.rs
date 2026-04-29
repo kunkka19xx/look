@@ -443,7 +443,9 @@ mod tests {
                 results.iter().any(|item| {
                     item.get("id")
                         .and_then(|value| value.as_str())
-                        .is_some_and(|id| id == "app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App")
+                        .is_some_and(|id| {
+                            id == "app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App"
+                        })
                 })
             });
         assert!(
