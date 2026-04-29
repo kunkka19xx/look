@@ -1,6 +1,6 @@
 use look_indexing::{Candidate, CandidateKind};
 use rusqlite::{Connection, params};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -362,6 +362,44 @@ impl SqliteStore {
         Ok(removed)
     }
 
+    /// Deletes every candidate whose `id` starts with `prefix` and is NOT in `keep_ids`,
+    /// along with its usage_events rows. Returned value is the number of candidate rows
+    /// removed. Used by the UWP seed path (bridge/ffi/src/seed_api.rs) to age out apps
+    /// that disappeared from `shell:AppsFolder` between runs — those rows can't be
+    /// pruned by `delete_stale_candidates` because they're written with
+    /// `indexed_at_unix_s = i64::MAX` to survive the regular index-refresh sweep.
+    pub fn delete_candidates_by_prefix_except(
+        &mut self,
+        prefix: &str,
+        keep_ids: &HashSet<&str>,
+    ) -> StorageResult<usize> {
+        let tx = self.conn.transaction()?;
+        let like_pattern = format!("{}%", prefix.replace('\\', "\\\\").replace('%', "\\%"));
+
+        let stale_ids: Vec<String> = {
+            let mut stmt = tx.prepare("SELECT id FROM candidates WHERE id LIKE ?1 ESCAPE '\\'")?;
+            let rows = stmt.query_map(params![like_pattern], |row| row.get::<_, String>(0))?;
+            let mut out = Vec::new();
+            for row in rows {
+                let id = row?;
+                if !keep_ids.contains(id.as_str()) {
+                    out.push(id);
+                }
+            }
+            out
+        };
+
+        for id in &stale_ids {
+            tx.execute(
+                "DELETE FROM usage_events WHERE candidate_id = ?1",
+                params![id],
+            )?;
+            tx.execute("DELETE FROM candidates WHERE id = ?1", params![id])?;
+        }
+        tx.commit()?;
+        Ok(stale_ids.len())
+    }
+
     pub fn prune_usage_events_older_than(&mut self, cutoff_unix_s: i64) -> StorageResult<usize> {
         let removed = self.conn.execute(
             "DELETE FROM usage_events WHERE used_at_unix_s < ?1",
@@ -684,6 +722,85 @@ mod tests {
 
         let loaded = store.load_candidates(None).expect("load candidates");
         assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn delete_candidates_by_prefix_except_removes_vanished_rows_and_preserves_kept() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let kept = candidate(
+            "app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
+            "Terminal",
+            "shell:AppsFolder\\Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
+        );
+        let stale = candidate(
+            "app:uwp:Old.PackageThatGotUninstalled_abc!App",
+            "Old App",
+            "shell:AppsFolder\\Old.PackageThatGotUninstalled_abc!App",
+        );
+        let win32 = candidate(
+            "app:edge_c:/programdata/microsoft/windows/start menu/programs/microsoft edge.lnk",
+            "Microsoft Edge",
+            "C:/ProgramData/Microsoft/Windows/Start Menu/Programs/Microsoft Edge.lnk",
+        );
+
+        store
+            .upsert_candidates_indexed(&[kept, stale.clone(), win32], Some(i64::MAX))
+            .expect("seed candidates");
+
+        // Record usage on the stale row so we can verify usage_events are also removed.
+        store
+            .record_usage_event(stale.id.as_ref(), "open_app")
+            .expect("record stale usage");
+
+        let mut keep_set = HashSet::new();
+        keep_set.insert("app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App");
+
+        let removed = store
+            .delete_candidates_by_prefix_except("app:uwp:", &keep_set)
+            .expect("prune");
+        assert_eq!(removed, 1);
+
+        let loaded = store.load_candidates(None).expect("load");
+        let ids: Vec<&str> = loaded.iter().map(|c| c.id.as_ref()).collect();
+        assert!(ids.contains(&"app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App"));
+        assert!(!ids.contains(&"app:uwp:Old.PackageThatGotUninstalled_abc!App"));
+        // The non-uwp `app:` row must be untouched even though it shares the broader
+        // `app:` prefix — only `app:uwp:` rows are eligible for this sweep.
+        assert!(ids.contains(
+            &"app:edge_c:/programdata/microsoft/windows/start menu/programs/microsoft edge.lnk"
+        ));
+
+        // usage_events for the deleted candidate should also be cleaned up.
+        let usage_count: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM usage_events WHERE candidate_id = ?1",
+                params![stale.id.as_ref()],
+                |row| row.get(0),
+            )
+            .expect("count usage events");
+        assert_eq!(usage_count, 0);
+    }
+
+    #[test]
+    fn delete_candidates_by_prefix_except_is_noop_when_all_kept() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let cand = candidate(
+            "app:uwp:Microsoft.Notepad_8wekyb3d8bbwe!App",
+            "Notepad",
+            "shell:AppsFolder\\Microsoft.Notepad_8wekyb3d8bbwe!App",
+        );
+        store
+            .upsert_candidates_indexed(&[cand], Some(i64::MAX))
+            .expect("seed");
+
+        let mut keep_set = HashSet::new();
+        keep_set.insert("app:uwp:Microsoft.Notepad_8wekyb3d8bbwe!App");
+
+        let removed = store
+            .delete_candidates_by_prefix_except("app:uwp:", &keep_set)
+            .expect("prune");
+        assert_eq!(removed, 0);
     }
 
     #[test]

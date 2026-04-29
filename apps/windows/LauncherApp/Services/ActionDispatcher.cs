@@ -362,24 +362,11 @@ public sealed class ActionDispatcher
             return false;
         }
 
-        string aumid = path.Substring(prefix.Length).Trim();
-        int bang = aumid.IndexOf('!');
-        if (bang <= 0)
+        string targetAumid = path.Substring(prefix.Length).Trim();
+        if (targetAumid.IndexOf('!') <= 0)
         {
             return false;
         }
-        // Family name is "<Name>_<PublisherHash>" (e.g. Microsoft.WindowsTerminal_8wekyb3d8bbwe).
-        // The installed package directory under WindowsApps is "<Name>_<Version>_<Arch>__<PublisherHash>",
-        // so MainModule paths always contain BOTH "<Name>_" as a prefix segment AND "_<PublisherHash>\"
-        // as a tail segment of the directory. Match on both for robustness.
-        string familyName = aumid.Substring(0, bang);
-        int lastUnderscore = familyName.LastIndexOf('_');
-        if (lastUnderscore <= 0 || lastUnderscore == familyName.Length - 1)
-        {
-            return false;
-        }
-        string packageName = familyName.Substring(0, lastUnderscore);
-        string publisherHash = familyName.Substring(lastUnderscore + 1);
 
         Process[] processes;
         try
@@ -391,6 +378,12 @@ public sealed class ActionDispatcher
             return false;
         }
 
+        // Exact-match by full AUMID (PackageFamilyName!AppId) via GetApplicationUserModelId
+        // on each candidate process. Matching only on the package family name was ambiguous
+        // when a single package exposes multiple AppIds (e.g. utilities that ship a "Settings"
+        // entry alongside the main app) — selecting one would activate the other's window
+        // and report success. Pre-filter by `\WindowsApps\` in the exe path so we only call
+        // the kernel32 API on processes that could plausibly host a UWP entrypoint.
         foreach (var process in processes)
         {
             try
@@ -415,10 +408,11 @@ public sealed class ActionDispatcher
                 if (processPath.IndexOf("\\WindowsApps\\", StringComparison.OrdinalIgnoreCase) < 0)
                     continue;
 
-                if (processPath.IndexOf(packageName + "_", StringComparison.OrdinalIgnoreCase) < 0)
+                string? processAumid = TryGetProcessAumid(process.Id);
+                if (processAumid is null)
                     continue;
 
-                if (processPath.IndexOf("_" + publisherHash, StringComparison.OrdinalIgnoreCase) < 0)
+                if (!string.Equals(processAumid, targetAumid, StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 ActivateWindow(process.MainWindowHandle);
@@ -434,6 +428,47 @@ public sealed class ActionDispatcher
         }
 
         return false;
+    }
+
+    private static string? TryGetProcessAumid(int processId)
+    {
+        IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+        if (handle == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            uint length = 0;
+            int sizeProbeRc = GetApplicationUserModelId(handle, ref length, null);
+            // ERROR_INSUFFICIENT_BUFFER (122) is the only path that gives us the real length
+            // for non-empty AUMIDs. Anything else (APPMODEL_ERROR_NO_APPLICATION = 15700,
+            // success with length=0, etc.) means there's no AUMID to match against.
+            if (sizeProbeRc != ERROR_INSUFFICIENT_BUFFER || length == 0)
+            {
+                return null;
+            }
+
+            char[] buffer = new char[length];
+            int rc = GetApplicationUserModelId(handle, ref length, buffer);
+            if (rc != 0 || length == 0)
+            {
+                return null;
+            }
+
+            // Returned length includes the trailing null terminator; trim it.
+            int actual = (int)length;
+            if (actual > 0 && buffer[actual - 1] == '\0')
+            {
+                actual -= 1;
+            }
+            return actual <= 0 ? null : new string(buffer, 0, actual);
+        }
+        finally
+        {
+            CloseHandle(handle);
+        }
     }
 
     private static IEnumerable<string> EnumerateProcessNameCandidates(string? normalizedExePath, string? title)
@@ -547,6 +582,9 @@ public sealed class ActionDispatcher
 
     private const int SW_RESTORE = 9;
 
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    private const int ERROR_INSUFFICIENT_BUFFER = 122;
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -558,4 +596,17 @@ public sealed class ActionDispatcher
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetApplicationUserModelId(
+        IntPtr hProcess,
+        ref uint applicationUserModelIdLength,
+        [Out] char[]? applicationUserModelId);
 }

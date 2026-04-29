@@ -2,7 +2,10 @@ use crate::state::{cstr_to_string, default_db_path, refresh_engine_cache};
 use look_indexing::{Candidate, CandidateKind};
 use look_storage::SqliteStore;
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::os::raw::c_char;
+
+const UWP_ID_PREFIX: &str = "app:uwp:";
 
 #[derive(Deserialize)]
 struct UwpAppPayload {
@@ -37,14 +40,17 @@ pub(crate) fn look_seed_uwp_apps_json_impl(json: *const c_char) -> bool {
     };
 
     let mut candidates: Vec<Candidate> = Vec::with_capacity(entries.len());
+    let mut kept_ids: Vec<String> = Vec::with_capacity(entries.len());
     for e in entries {
         let aumid = e.aumid.trim();
         let title = e.title.trim();
         if aumid.is_empty() || title.is_empty() || !aumid.contains('!') {
             continue;
         }
+        let id = format!("{}{}", UWP_ID_PREFIX, aumid);
+        kept_ids.push(id.clone());
         candidates.push(Candidate {
-            id: format!("app:uwp:{}", aumid).into(),
+            id: id.into(),
             kind: CandidateKind::App,
             title: title.into(),
             subtitle: None,
@@ -71,6 +77,13 @@ pub(crate) fn look_seed_uwp_apps_json_impl(json: *const c_char) -> bool {
     {
         return false;
     }
+
+    // Drop rows for UWP apps that vanished from AppsFolder since the last seed
+    // (uninstalls / package renames). Without this, those rows would persist
+    // forever — `delete_stale_candidates` skips them because their indexed_at is
+    // i64::MAX, and they'd keep showing in search with their old usage weight.
+    let keep_set: HashSet<&str> = kept_ids.iter().map(|s| s.as_str()).collect();
+    let _ = store.delete_candidates_by_prefix_except(UWP_ID_PREFIX, &keep_set);
 
     refresh_engine_cache();
     true

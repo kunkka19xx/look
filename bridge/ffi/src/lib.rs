@@ -471,6 +471,27 @@ mod tests {
             "re-seeding must preserve use_count via ON CONFLICT"
         );
 
+        // Re-seed with Notepad omitted — simulates the user uninstalling that UWP app
+        // between runs. The vanished row must be pruned so it doesn't keep showing up
+        // in search forever (delete_stale_candidates can't reach rows written with
+        // indexed_at_unix_s = i64::MAX).
+        let json_terminal_only = CString::new(
+            r#"[{"aumid": "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", "title": "Terminal"}]"#,
+        )
+        .expect("seed json terminal only");
+        assert!(look_seed_uwp_apps_json(json_terminal_only.as_ptr()));
+
+        let after_prune = SqliteStore::open(&db_path)
+            .expect("reopen for prune check")
+            .load_candidates(None)
+            .expect("load after prune");
+        let ids_after_prune: Vec<&str> = after_prune.iter().map(|c| c.id.as_ref()).collect();
+        assert!(ids_after_prune.contains(&"app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App"));
+        assert!(
+            !ids_after_prune.contains(&"app:uwp:Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"),
+            "Notepad should have been pruned after disappearing from the seed"
+        );
+
         let _ = fs::remove_file(&db_path);
     }
 }
