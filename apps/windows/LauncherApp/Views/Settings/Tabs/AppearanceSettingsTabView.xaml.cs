@@ -390,6 +390,33 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         ApplyBlurStyle();
     }
 
+    // Re-reads the current Application.Resources state into the controls so that after
+    // ThemeBootstrap.ApplyFromConfig() rewrites resources from a fresh config, the
+    // Appearance sliders / blur style / typography reflect the new defaults instead of
+    // the stale pre-reset values. Reset the "applied" trackers so ApplyTypographyPreview
+    // and ApplyBlurStyle won't short-circuit when the new value happens to match the
+    // last one we pushed to MainWindow.
+    public void ReloadFromConfig()
+    {
+        _isInitializing = true;
+        try
+        {
+            _appliedFontName = string.Empty;
+            _appliedFontSize = -1;
+            _appliedBlurStyle = string.Empty;
+            _textSecondaryOverride = null;
+            _textMutedOverride = null;
+            InitializeFromCurrentTheme();
+        }
+        finally
+        {
+            _isInitializing = false;
+        }
+
+        ApplyThemePreview();
+        ApplyBlurStyle();
+    }
+
     // Writes all appearance/theme keys to ~/.look.config. Mirrors macOS's ThemeStore save path
     // so custom tints, fonts, borders, and blur opacity survive restarts. Called by the Save
     // Config button in SettingsTabsView.

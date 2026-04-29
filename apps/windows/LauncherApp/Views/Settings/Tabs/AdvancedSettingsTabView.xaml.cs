@@ -12,12 +12,14 @@ namespace LauncherApp.Views.Settings.Tabs;
 
 public sealed partial class AdvancedSettingsTabView : UserControl
 {
+    public event System.EventHandler? FreshConfigRequested;
+
     private readonly ObservableCollection<string> _excludedFolders = [];
     private readonly ObservableCollection<string> _scanRoots = [];
     private string? _backgroundImagePath;
 
     private const string DefaultConfigContents = "# look configuration\n"
-        + "# Generated on first launch. Edit values and press Cmd+Shift+; to reload.\n\n"
+        + "# Generated on first launch. Edit values and press Ctrl+Shift+; to reload.\n\n"
         + "# Backend indexing (file_scan_depth: 1-12, file_scan_limit: 500-50000)\n"
         + "app_scan_roots=\n"
         + "app_scan_depth=3\n"
@@ -39,7 +41,7 @@ public sealed partial class AdvancedSettingsTabView : UserControl
         + "ui_tint_opacity=0.55\n"
         + "ui_blur_material=balanced\n"
         + "ui_blur_opacity=0.95\n"
-        + "ui_font_name=SF Pro Text\n"
+        + "ui_font_name=Segoe UI\n"
         + "ui_font_size=14\n"
         + "ui_font_red=0.96\n"
         + "ui_font_green=0.96\n"
@@ -227,23 +229,27 @@ public sealed partial class AdvancedSettingsTabView : UserControl
             }
 
             EnsureDefaultConfigFileExists(path);
-            LoadFromConfig();
-            RefreshExcludedFoldersState();
-            RefreshScanRootsState();
-            try
-            {
-                global::LauncherApp.Bridge.FfiBindings.look_reload_config();
-            }
-            catch
-            {
-                // swallow - UI message below is enough
-            }
+            // Hand off to SettingsTabsView so it can also re-bootstrap the theme resources,
+            // reload the Appearance tab, clear any background image, and reload the backend.
+            // Falling back to a local-only reload would leave Appearance sliders and the
+            // running window's brushes / borders / fonts pinned to the pre-reset values
+            // even though the file on disk is the new default.
+            FreshConfigRequested?.Invoke(this, System.EventArgs.Empty);
+            ReloadFromConfig();
             FreshConfigStatusText.Text = "Fresh config created.";
         }
         catch
         {
             FreshConfigStatusText.Text = "Failed to recreate config.";
         }
+    }
+
+    public void ReloadFromConfig()
+    {
+        LoadFromConfig();
+        RefreshExcludedFoldersState();
+        RefreshScanRootsState();
+        ApplyBackgroundImageLive();
     }
 
     private async void ChooseBackgroundImageButton_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

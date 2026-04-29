@@ -11,9 +11,10 @@ using LauncherApp.Services;
 
 namespace LauncherApp;
 
-// Search pipeline: query routing (ResolveMode / IsNonAppScopedQuery), async backend fetch +
-// UWP merge (QueryInput_OnTextChanged), rendering (RefreshResults), and the de-dup/noise
-// filters that trim Rust results before showing them.
+// Search pipeline: query routing (ResolveMode), async Rust backend fetch (QueryInput_OnTextChanged),
+// rendering (RefreshResults), and the dedup/noise filters that trim Rust results before display.
+// UWP entries live in the Rust candidates table (seeded by UwpAppService at startup) so there's no
+// separate UWP search path here — the engine ranks them alongside System32 / Start Menu apps.
 public sealed partial class MainWindow
 {
     private (LauncherMode mode, string normalizedQuery) ResolveMode(string rawQuery)
@@ -36,20 +37,6 @@ public sealed partial class MainWindow
         }
 
         return (LauncherMode.Search, query);
-    }
-
-    // Returns true for f"/d"/r" scoped queries — scopes that by definition exclude UWP apps.
-    // The Rust engine parses the same prefixes (ParsedQuery::from_input), so raw passthrough
-    // handles the filtering server-side; we only use this to decide whether to merge UWP
-    // results on top of the Rust results.
-    private static bool IsNonAppScopedQuery(string raw)
-    {
-        if (string.IsNullOrEmpty(raw) || raw.Length < 2 || raw[1] != '"')
-        {
-            return false;
-        }
-        char prefix = char.ToLowerInvariant(raw[0]);
-        return prefix == 'f' || prefix == 'd' || prefix == 'r';
     }
 
     private async void QueryInput_OnTextChanged(object sender, Microsoft.UI.Xaml.Controls.TextChangedEventArgs e)
@@ -93,17 +80,7 @@ public sealed partial class MainWindow
             try
             {
                 string searchQuery = resolvedQuery;
-                bool skipUwp = IsNonAppScopedQuery(searchQuery);
-                backendResults = await Task.Run(() =>
-                {
-                    var rust = _searchLogic.Search(searchQuery, 120);
-                    if (skipUwp)
-                    {
-                        return rust;
-                    }
-                    var uwp = _uwpAppService.Search(searchQuery, 30);
-                    return MergeBackendAndUwpResults(rust, uwp);
-                });
+                backendResults = await Task.Run(() => _searchLogic.Search(searchQuery, 120));
             }
             catch (Exception ex)
             {
@@ -312,22 +289,6 @@ public sealed partial class MainWindow
             .Where(item => !ShouldHideSearchResult(item))
             .Take(limit)
             .ToList();
-    }
-
-    private static IReadOnlyList<LauncherResult> MergeBackendAndUwpResults(
-        IReadOnlyList<LauncherResult> rust,
-        IReadOnlyList<LauncherResult> uwp)
-    {
-        if (uwp.Count == 0)
-        {
-            return rust;
-        }
-
-        var merged = new List<LauncherResult>(rust.Count + uwp.Count);
-        merged.AddRange(uwp);
-        merged.AddRange(rust);
-        merged.Sort((a, b) => b.Score.CompareTo(a.Score));
-        return merged;
     }
 
     private static IReadOnlyList<LauncherResult> DeduplicatePairedAppEntries(IReadOnlyList<LauncherResult> source)

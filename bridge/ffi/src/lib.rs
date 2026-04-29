@@ -2,6 +2,7 @@
 
 mod runtime_config;
 mod search_api;
+mod seed_api;
 mod state;
 mod translate_api;
 mod usage_api;
@@ -66,6 +67,14 @@ pub extern "C" fn look_reload_config() -> bool {
         state::refresh_engine_cache();
         state::clear_index_dirty();
         true
+    }))
+    .unwrap_or(false)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn look_seed_uwp_apps_json(json: *const c_char) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        seed_api::look_seed_uwp_apps_json_impl(json)
     }))
     .unwrap_or(false)
 }
@@ -374,5 +383,92 @@ mod tests {
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         env::temp_dir().join(format!("look-ffi-config-smoke-{nanos}.config"))
+    }
+
+    #[test]
+    fn ffi_seed_uwp_apps_json_inserts_and_search_finds() {
+        let lock = TEST_MUTEX.get_or_init(|| Mutex::new(()));
+        let _guard = lock.lock().expect("test lock poisoned");
+
+        let db_path = unique_test_db_path();
+        let _ = fs::remove_file(&db_path);
+
+        unsafe {
+            env::set_var("LOOK_DB_PATH", db_path.as_os_str());
+        }
+        assert!(look_reload_config());
+
+        // Mirror the JSON format the C# UwpAppService produces (System.Text.Json with
+        // [JsonPropertyName] attributes → snake_case keys).
+        let json = CString::new(
+            r#"[
+                {"aumid": "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", "title": "Terminal"},
+                {"aumid": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", "title": "Notepad"}
+            ]"#,
+        )
+        .expect("seed json");
+        assert!(look_seed_uwp_apps_json(json.as_ptr()));
+
+        // Round-trip via sqlite — make sure the rows actually persisted with the right shape.
+        let stored = SqliteStore::open(&db_path)
+            .expect("reopen sqlite")
+            .load_candidates(None)
+            .expect("load candidates");
+        let terminal = stored
+            .iter()
+            .find(|c| c.id.as_ref() == "app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App")
+            .expect("seeded terminal candidate");
+        assert_eq!(terminal.title.as_ref(), "Terminal");
+        assert_eq!(
+            terminal.path.as_ref(),
+            "shell:AppsFolder\\Microsoft.WindowsTerminal_8wekyb3d8bbwe!App"
+        );
+        assert_eq!(terminal.use_count, 0);
+        assert_eq!(terminal.last_used_at_unix_s, None);
+
+        // Search has to surface the seeded entry — without this, the user can't find Terminal
+        // via the launcher even though it sits in the DB.
+        let query = CString::new("terminal").expect("query");
+        let ptr = look_search_json(query.as_ptr(), 10);
+        assert!(!ptr.is_null());
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        look_free_cstring(ptr);
+        let payload: serde_json::Value = serde_json::from_str(&raw).expect("valid search payload");
+        let has_terminal = payload
+            .get("results")
+            .and_then(|value| value.as_array())
+            .is_some_and(|results| {
+                results.iter().any(|item| {
+                    item.get("id")
+                        .and_then(|value| value.as_str())
+                        .is_some_and(|id| id == "app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App")
+                })
+            });
+        assert!(
+            has_terminal,
+            "expected seeded UWP Terminal in search results, got: {raw}"
+        );
+
+        // Re-seeding must be idempotent and preserve use_count after a launch.
+        let id = CString::new("app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App").expect("id");
+        let action = CString::new("open_app").expect("action");
+        assert!(look_record_usage(id.as_ptr(), action.as_ptr()));
+        assert!(look_seed_uwp_apps_json(json.as_ptr())); // second seed
+        let after = SqliteStore::open(&db_path)
+            .expect("reopen")
+            .load_candidates(None)
+            .expect("load");
+        let after_terminal = after
+            .iter()
+            .find(|c| c.id.as_ref() == "app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App")
+            .expect("still here");
+        assert_eq!(
+            after_terminal.use_count, 1,
+            "re-seeding must preserve use_count via ON CONFLICT"
+        );
+
+        let _ = fs::remove_file(&db_path);
     }
 }

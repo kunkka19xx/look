@@ -21,6 +21,17 @@ public static class FfiBindings
     [return: MarshalAs(UnmanagedType.I1)]
     public static extern bool look_reload_config();
 
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool look_record_usage(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string candidateId,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string action);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool look_seed_uwp_apps_json(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string json);
+
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     public static extern IntPtr look_translate_json(IntPtr text, IntPtr targetLang);
 }

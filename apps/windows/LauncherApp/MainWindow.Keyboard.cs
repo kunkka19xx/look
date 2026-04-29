@@ -31,6 +31,12 @@ public sealed partial class MainWindow
         return key == (VirtualKey)188 && IsCtrlPressed() && IsShiftPressed();
     }
 
+    // VK_OEM_1 (`;`) + Ctrl + Shift mirrors macOS Cmd+Shift+; in look_appApp.swift:162.
+    private bool IsReloadConfigShortcut(VirtualKey key)
+    {
+        return key == (VirtualKey)186 && IsCtrlPressed() && IsShiftPressed();
+    }
+
     private bool IsCommandModeShortcut(KeyRoutedEventArgs e)
     {
         if (!IsCtrlPressed())
@@ -276,6 +282,13 @@ public sealed partial class MainWindow
             return;
         }
 
+        if (IsReloadConfigShortcut(e.Key))
+        {
+            HandleReloadConfigShortcut();
+            e.Handled = true;
+            return;
+        }
+
         if (!IsSettingsToggleShortcut(e.Key))
         {
             return;
@@ -283,6 +296,24 @@ public sealed partial class MainWindow
 
         ToggleSettingsMode();
         e.Handled = true;
+    }
+
+    private void HandleReloadConfigShortcut()
+    {
+        bool ok;
+        try
+        {
+            ok = FfiBindings.look_reload_config();
+        }
+        catch
+        {
+            ok = false;
+        }
+
+        ShowBanner(
+            ok ? "Config reloaded" : "Config reload failed",
+            ok ? BannerStyle.Info : BannerStyle.Error,
+            durationSeconds: ok ? 1.4 : 3.0);
     }
 
     private void QueryInput_OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)

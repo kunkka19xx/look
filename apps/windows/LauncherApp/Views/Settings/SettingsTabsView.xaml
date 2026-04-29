@@ -13,12 +13,15 @@
             <Setter Property="Foreground" Value="#F1F6FF" />
             <Setter Property="BorderBrush" Value="{StaticResource LauncherBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Height" Value="36" />
-            <Setter Property="Padding" Value="10,0" />
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Background" Value="{StaticResource LauncherPanelAltBrush}" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
     </UserControl.Resources>
 
@@ -52,8 +55,8 @@
                 Text="Esc or Ctrl+Shift+, to close" />
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Button MinWidth="110" Height="Auto" Content="Save Config" Click="SaveConfigButton_OnClick" />
-                <Button MinWidth="140" Height="Auto" Content="Back to Launcher" Click="BackToLauncherButton_OnClick" />
+                <Button MinWidth="110" Height="26" Padding="14,0" FontSize="12" Content="Save Config" Click="SaveConfigButton_OnClick" />
+                <Button MinWidth="140" Height="26" Padding="14,0" FontSize="12" Content="Back to Launcher" Click="BackToLauncherButton_OnClick" />
             </StackPanel>
             </Grid>
         </Grid>
@@ -64,8 +67,12 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Border Padding="0" Background="Transparent" CornerRadius="0">
-                <Grid ColumnSpacing="6">
+            <Border
+                Padding="0"
+                Margin="20,2,20,4"
+                Background="Transparent"
+                CornerRadius="0">
+                <Grid ColumnSpacing="4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="*" />

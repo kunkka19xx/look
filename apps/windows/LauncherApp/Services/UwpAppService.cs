@@ -1,29 +1,23 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Threading.Tasks;
 using LauncherApp.Bridge;
 
 namespace LauncherApp.Services;
 
+// Rust doesn't enumerate shell:AppsFolder (no equivalent of macOS Spotlight on Windows),
+// so we walk it once via Shell.Application COM at app start and forward each entry to
+// the Rust candidates table via look_seed_uwp_apps_json. After that, the Rust engine
+// owns ranking, scoring, use_count, and recency for UWP entries — there's no parallel
+// C# scoring path. The seed is idempotent (upsert preserves use_count via ON CONFLICT)
+// so re-running on every launch is safe and refreshes the install list cheaply.
 public sealed class UwpAppService
 {
-    private readonly object _cacheLock = new();
-    private List<LauncherResult> _cache = [];
-    private bool _populated;
-
-    public bool IsReady
-    {
-        get
-        {
-            lock (_cacheLock)
-            {
-                return _populated;
-            }
-        }
-    }
+    private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "look-open.log");
 
     public void BeginInitialize()
     {
@@ -31,102 +25,49 @@ public sealed class UwpAppService
         {
             try
             {
-                var apps = EnumerateAppsFolder();
-                lock (_cacheLock)
+                var entries = EnumerateAppsFolder();
+                Log($"UwpAppService.BeginInitialize: enumerated {entries.Count} apps");
+                if (entries.Count == 0)
                 {
-                    _cache = apps;
-                    _populated = true;
+                    return;
                 }
-                Debug.WriteLine($"[UwpAppService] loaded {apps.Count} apps");
+
+                string json = JsonSerializer.Serialize(entries);
+                Log($"UwpAppService.BeginInitialize: json length={json.Length} preview={json.Substring(0, Math.Min(json.Length, 240))}");
+
+                bool ok = false;
+                try
+                {
+                    ok = FfiBindings.look_seed_uwp_apps_json(json);
+                }
+                catch (Exception ex)
+                {
+                    Log($"UwpAppService.BeginInitialize: seed FFI threw: {ex.GetType().Name} {ex.Message}");
+                }
+
+                Log($"UwpAppService.BeginInitialize: seeded {entries.Count} apps ok={ok}");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[UwpAppService] init failed: {ex.Message}");
-                lock (_cacheLock)
-                {
-                    _populated = true;
-                }
+                Log($"UwpAppService.BeginInitialize: failed {ex.GetType().Name} {ex.Message}");
             }
         });
     }
 
-    public IReadOnlyList<LauncherResult> Search(string query, int limit)
+    private static void Log(string message)
     {
-        List<LauncherResult> snapshot;
-        lock (_cacheLock)
+        try
         {
-            snapshot = _cache;
+            File.AppendAllText(LogPath, $"[{DateTime.Now:HH:mm:ss.fff}] {message}{Environment.NewLine}");
         }
-
-        if (snapshot.Count == 0)
+        catch
         {
-            return Array.Empty<LauncherResult>();
         }
-
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return snapshot.Take(limit).ToList();
-        }
-
-        var filtered = new List<(LauncherResult Result, int Score)>();
-        foreach (var app in snapshot)
-        {
-            int score = MatchScore(app.Title, query);
-            if (score <= 0)
-            {
-                continue;
-            }
-
-            filtered.Add((
-                new LauncherResult
-                {
-                    Id = app.Id,
-                    Kind = app.Kind,
-                    Title = app.Title,
-                    Subtitle = app.Subtitle,
-                    Path = app.Path,
-                    Score = score,
-                },
-                score));
-        }
-
-        return filtered
-            .OrderByDescending(x => x.Score)
-            .Take(limit)
-            .Select(x => x.Result)
-            .ToList();
     }
 
-    private static int MatchScore(string title, string query)
+    private static List<UwpAppEntry> EnumerateAppsFolder()
     {
-        if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(query))
-        {
-            return 0;
-        }
-
-        if (title.Equals(query, StringComparison.OrdinalIgnoreCase))
-        {
-            return 1500;
-        }
-
-        if (title.StartsWith(query, StringComparison.OrdinalIgnoreCase))
-        {
-            return 1400;
-        }
-
-        int idx = title.IndexOf(query, StringComparison.OrdinalIgnoreCase);
-        if (idx < 0)
-        {
-            return 0;
-        }
-
-        int wordBoundaryBonus = idx > 0 && !char.IsLetterOrDigit(title[idx - 1]) ? 100 : 0;
-        return 1000 + wordBoundaryBonus;
-    }
-
-    private static List<LauncherResult> EnumerateAppsFolder()
-    {
-        var results = new List<LauncherResult>();
+        var results = new List<UwpAppEntry>();
 
         Type? shellType = Type.GetTypeFromProgID("Shell.Application");
         if (shellType is null)
@@ -164,7 +105,8 @@ public sealed class UwpAppService
                     }
 
                     // AUMIDs contain "!" separating PackageFamilyName from AppId.
-                    // Entries without "!" are Win32 shortcuts already indexed by the Rust backend.
+                    // Entries without "!" are Win32 shortcuts already indexed by the
+                    // Rust backend's Start Menu scan and shouldn't be duplicated here.
                     if (!path.Contains('!'))
                     {
                         continue;
@@ -175,14 +117,11 @@ public sealed class UwpAppService
                         continue;
                     }
 
-                    results.Add(new LauncherResult
-                    {
-                        Id = "uwp:" + path,
-                        Kind = "app",
-                        Title = name,
-                        Path = "shell:AppsFolder\\" + path,
-                        Score = 800,
-                    });
+                    // Anonymous type with lowercase fields → JSON exactly matches the
+                    // serde keys in bridge/ffi/src/seed_api.rs (`aumid`, `title`). Avoids
+                    // any chance of a default-options PascalCase mismatch (`Aumid`/`Title`)
+                    // that would silently make the Rust deserializer drop every entry.
+                    results.Add(new UwpAppEntry { aumid = path, title = name });
                 }
                 catch (Exception ex)
                 {
@@ -209,5 +148,14 @@ public sealed class UwpAppService
         }
 
         return results;
+    }
+
+    // Public so System.Text.Json's reflection serializer always sees it regardless of
+    // assembly access modifiers, and lowercase property names so the emitted JSON keys
+    // exactly match seed_api::UwpAppPayload's serde fields with no naming-policy assumptions.
+    public sealed class UwpAppEntry
+    {
+        public string aumid { get; set; } = string.Empty;
+        public string title { get; set; } = string.Empty;
     }
 }

@@ -19,7 +19,61 @@ public sealed partial class SettingsTabsView : UserControl
         this.InitializeComponent();
         _selectedTabBrush = ResolveBrush("LauncherAccentBrush", Windows.UI.Color.FromArgb(170, 86, 126, 173));
         _idleTabBrush = ResolveBrush("LauncherPanelAltBrush", Windows.UI.Color.FromArgb(120, 35, 50, 69));
+        AdvancedTabContent.FreshConfigRequested += AdvancedTabContent_OnFreshConfigRequested;
         SelectTab("appearance");
+    }
+
+    private void AdvancedTabContent_OnFreshConfigRequested(object? sender, EventArgs e)
+    {
+        // Order matters: rewrite Application.Resources from the on-disk defaults BEFORE
+        // asking either tab to reload, so AppearanceSettingsTabView.InitializeFromCurrentTheme
+        // reads the freshly-bootstrapped colors / font / blur instead of the pre-reset values
+        // that are still in resources.
+        try
+        {
+            LauncherApp.Services.ThemeBootstrap.ApplyFromConfig();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SettingsTabsView] ThemeBootstrap.ApplyFromConfig failed: {ex.Message}");
+        }
+
+        try
+        {
+            AppearanceTabContent.ReloadFromConfig();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SettingsTabsView] AppearanceTabContent.ReloadFromConfig failed: {ex.Message}");
+        }
+
+        // Default config has no ui_background_image, so Backdrop's loader returns early
+        // without clearing what's currently shown — clear it explicitly here.
+        if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
+        {
+            try
+            {
+                window.ApplyBackgroundImage(null, "fill", 35, 8);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SettingsTabsView] clear background image failed: {ex.Message}");
+            }
+        }
+
+        try
+        {
+            FfiBindings.look_reload_config();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[SettingsTabsView] look_reload_config (fresh) failed: {ex.Message}");
+        }
+
+        if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow w)
+        {
+            w.ShowBanner("Reset to default settings", global::LauncherApp.MainWindow.BannerStyle.Success);
+        }
     }
 
     private static Brush ResolveBrush(string key, Windows.UI.Color fallback)

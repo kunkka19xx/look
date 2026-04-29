@@ -31,6 +31,7 @@ public sealed class ActionDispatcher
         if (!forceNewWindow && kind == LauncherActionKind.App && TryActivateExistingAppWindow(result.Path, result.Title))
         {
             Log("Dispatch activate-existing succeeded");
+            RecordUsage(result, kind);
             return true;
         }
 
@@ -45,10 +46,17 @@ public sealed class ActionDispatcher
         };
 
         if (opened)
+        {
+            RecordUsage(result, kind);
             return true;
+        }
 
         bool fallback = _shellExecute.Open(result.Path);
         Log($"Dispatch fallback open result={fallback}");
+        if (fallback)
+        {
+            RecordUsage(result, kind);
+        }
         return fallback;
     }
 
@@ -218,6 +226,42 @@ public sealed class ActionDispatcher
         return LauncherActionKind.Unknown;
     }
 
+    // Records a successful launch so the Rust engine's rank_score (core/ranking/src/lib.rs)
+    // sees the use_count bump. UWP entries are seeded into sqlite as `app:uwp:<AUMID>` by
+    // UwpAppService on startup, so they go through this same FFI path with no special-casing.
+    private static void RecordUsage(LauncherResult result, LauncherActionKind kind)
+    {
+        if (string.IsNullOrWhiteSpace(result.Id))
+        {
+            Log("Dispatch record_usage skipped: empty id");
+            return;
+        }
+
+        string? action = kind switch
+        {
+            LauncherActionKind.App => "open_app",
+            LauncherActionKind.File => "open_file",
+            LauncherActionKind.Folder => "open_folder",
+            LauncherActionKind.Setting => "open",
+            _ => null,
+        };
+
+        if (action is null)
+        {
+            return;
+        }
+
+        try
+        {
+            bool ok = LauncherApp.Bridge.FfiBindings.look_record_usage(result.Id, action);
+            Log($"Dispatch record_usage: id='{result.Id}' action='{action}' ok={ok}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Dispatch record_usage threw: {ex.Message}");
+        }
+    }
+
     private bool OpenSetting(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -233,6 +277,17 @@ public sealed class ActionDispatcher
     {
         if (string.IsNullOrWhiteSpace(path))
             return false;
+
+        // UWP entries: shell:AppsFolder\<PackageFamilyName>!<AppId>. Process.GetProcessesByName(title)
+        // misses these whenever the AppX display name and the executable basename diverge —
+        // Windows Terminal ("Terminal" vs "WindowsTerminal.exe"), Photos, Snipping Tool, etc.
+        // So we scan all running processes and match the WindowsApps install dir's package
+        // name prefix against MainModule.FileName, which always contains the package full name
+        // (e.g. C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_<ver>_<arch>__<hash>\WindowsTerminal.exe).
+        if (TryActivateUwpByAumid(path))
+        {
+            return true;
+        }
 
         string resolved = ResolveExecutablePath(path);
         string normalizedPath = NormalizePath(resolved);
@@ -293,6 +348,88 @@ public sealed class ActionDispatcher
             {
                 ActivateWindow(fallbackWindow);
                 return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryActivateUwpByAumid(string path)
+    {
+        const string prefix = "shell:AppsFolder\\";
+        if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string aumid = path.Substring(prefix.Length).Trim();
+        int bang = aumid.IndexOf('!');
+        if (bang <= 0)
+        {
+            return false;
+        }
+        // Family name is "<Name>_<PublisherHash>" (e.g. Microsoft.WindowsTerminal_8wekyb3d8bbwe).
+        // The installed package directory under WindowsApps is "<Name>_<Version>_<Arch>__<PublisherHash>",
+        // so MainModule paths always contain BOTH "<Name>_" as a prefix segment AND "_<PublisherHash>\"
+        // as a tail segment of the directory. Match on both for robustness.
+        string familyName = aumid.Substring(0, bang);
+        int lastUnderscore = familyName.LastIndexOf('_');
+        if (lastUnderscore <= 0 || lastUnderscore == familyName.Length - 1)
+        {
+            return false;
+        }
+        string packageName = familyName.Substring(0, lastUnderscore);
+        string publisherHash = familyName.Substring(lastUnderscore + 1);
+
+        Process[] processes;
+        try
+        {
+            processes = Process.GetProcesses();
+        }
+        catch
+        {
+            return false;
+        }
+
+        foreach (var process in processes)
+        {
+            try
+            {
+                if (process.MainWindowHandle == IntPtr.Zero)
+                    continue;
+
+                string? processPath;
+                try
+                {
+                    processPath = process.MainModule?.FileName;
+                }
+                catch
+                {
+                    // Access-denied on processes from other users / elevated; skip.
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(processPath))
+                    continue;
+
+                if (processPath.IndexOf("\\WindowsApps\\", StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
+
+                if (processPath.IndexOf(packageName + "_", StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
+
+                if (processPath.IndexOf("_" + publisherHash, StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
+
+                ActivateWindow(process.MainWindowHandle);
+                return true;
+            }
+            catch
+            {
+            }
+            finally
+            {
+                try { process.Dispose(); } catch { }
             }
         }
 

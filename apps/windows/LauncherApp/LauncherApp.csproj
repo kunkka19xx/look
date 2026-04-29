@@ -106,4 +106,14 @@
     <Copy SourceFiles="$(RustFfiDll)" DestinationFiles="$(TargetDir)look_ffi.dll" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(RustFfiDll)" DestinationFiles="$(TargetDir)AppX\look_ffi.dll" SkipUnchangedFiles="true" ContinueOnError="WarnAndContinue" Condition="Exists('$(TargetDir)AppX')" />
   </Target>
+
+  <!-- Without this, `dotnet publish` (and therefore `make app-run-dev`) leaves the publish
+       directory's look_ffi.dll at whatever was committed before the last C# rebuild — a
+       brand new FFI export will compile and copy into bin\<plat>\Debug\... but never reach
+       bin\Debug\...\publish\, so the dev install runs against a stale DLL whose missing
+       entrypoint silently fails (EntryPointNotFoundException, swallowed at the call site). -->
+  <Target Name="CopyRustFfiDllToPublish" AfterTargets="Publish" Condition="'$(OS)' == 'Windows_NT' and Exists('$(RustFfiDll)')">
+    <Message Importance="high" Text="Copying look_ffi.dll to publish output ($(PublishDir))" />
+    <Copy SourceFiles="$(RustFfiDll)" DestinationFiles="$(PublishDir)look_ffi.dll" SkipUnchangedFiles="false" />
+  </Target>
 </Project>
