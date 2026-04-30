@@ -63,7 +63,7 @@ namespace LauncherApp
             e.SetObserved();
         }
 
-        private static void WriteCrashLog(string origin, Exception? ex)
+        internal static void WriteCrashLog(string origin, Exception? ex)
         {
             try
             {

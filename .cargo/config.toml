@@ -1,0 +1,12 @@
+# Static-link the MSVC C runtime into Windows binaries (look_ffi.dll, etc.) so
+# they don't import VCRUNTIME140.dll / MSVCP140.dll at load time. Without this,
+# a fresh Windows machine without the Microsoft Visual C++ Redistributable
+# fails to LoadLibrary the FFI dll, every C# DllImport throws
+# DllNotFoundException, bootstrap_sqlite never runs, and look.db never gets
+# created — surfacing as "search returns nothing" with no other signal.
+# Target-scoped so macOS/Linux builds are unaffected.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
