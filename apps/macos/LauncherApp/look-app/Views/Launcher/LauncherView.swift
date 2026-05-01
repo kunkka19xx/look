@@ -274,7 +274,7 @@ struct LauncherView: View {
                 return ["Esc back", "Tab/Cmd+1-5 switch", "Cmd+/ command mode", "Cmd+Shift+, settings"]
             }
             if activeCommandID == AppConstants.Launcher.Command.pomo {
-                return ["Enter start/pause", "R reset", "Esc back", "Tab/Cmd+1-5 switch"]
+                return ["Space start/pause", "R reset", "P music", "Esc back", "Tab/Cmd+1-5 switch"]
             }
             return ["Enter run", "Tab select", "Cmd+1-5 switch", "Esc back"]
         }
@@ -599,6 +599,11 @@ struct LauncherView: View {
                 }
                 setInitialSelection()
             }
+        }
+        .onChange(of: activeCommandID) { _, newID in
+            // Remember which command was last open so re-entering
+            // command mode resumes there instead of always /calc.
+            if let newID { appUIState.lastCommandID = newID }
         }
         .onChange(of: appUIState.showsThemeSettings) { _, showsSettings in
             if showsSettings {

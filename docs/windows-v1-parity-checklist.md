@@ -11,7 +11,7 @@ Parity required for Windows v1:
 - app/file/folder search from indexed local sources
 - query prefixes: `a"`, `f"`, `d"`, `r"`, `c"`
 - core actions: open target (`Enter`), reveal in Explorer, copy selected path/content, web handoff (`Cmd/Ctrl+Enter` equivalent)
-- command mode: `calc`, `shell`, `kill`, `sys`
+- command mode: `calc`, `shell`, `kill`, `sys` (note: `pomo` is macOS-only at v1 — see "Can ship after Windows v1" below)
 - clipboard history mode (`c"`) with session-local history
 - config load/reload parity for indexing and ranking behavior
 - stable candidate ID conventions (`app:*`, `file:*`, `folder:*`, `setting:*`)
@@ -22,6 +22,13 @@ Can ship after Windows v1 (patch release):
 - dictionary lookup mode (`tw"`) — depends on a Windows-side equivalent of Apple's `DCSCopyTextDefinition` and is deferred until that's available
 - complete visual/theme parity with every macOS preset variant
 - advanced UX polish items that do not change core search/action semantics
+- `pomo` command (Pomodoro focus timer) — depends on three macOS-specific frameworks that need Windows equivalents:
+  - `AVFoundation` (`AVPlayer` / `AVPlayerItem`) — Windows uses `Windows.Media.Playback.MediaPlayer` from WinRT, or `MediaElement` (XAML) for the streaming-one-track-at-a-time playback model
+  - `NSStatusItem` mini-timer in the menu bar — Windows uses a `NotifyIcon` (system tray icon) with optional balloon/popover
+  - `UNUserNotifications` — Windows uses `Windows.UI.Notifications.ToastNotification`; macOS-only the foreground-delivery delegate is unnecessary
+  - `NSSound` chime fallback — Windows uses `System.Media.SystemSounds` or a packaged `.wav`
+  - Persistence (`pomo_sessions`, `pomo_timer_style`, `pomo_music_folder` keys in `.look.config`) is platform-neutral and can ship as-is on Windows once the playback/notification layers exist
+  - Behavior contracts to preserve: editable session list with focus/break types + per-item duration; auto-advance with end-of-list looping; "ending soon" alert at 10s remaining; `Space` start/pause, `R` reset, `P` music toggle; 5-second standby fade with sidebar collapse on idle
 
 ## 2) Behavior contracts (must not drift)
 

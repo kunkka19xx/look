@@ -35,8 +35,15 @@ extension LauncherView {
         isCommandMode = true
         commandInput = ""
         commandFeedback = ""
-        activeCommandID = AppConstants.Launcher.Command.calc
-        selectedCommandID = AppConstants.Launcher.Command.calc
+        // Reopen the last-visited command panel; fall back to /calc on
+        // first run (or if the persisted id refers to a command no
+        // longer in the catalog).
+        let preferred = appUIState.lastCommandID ?? AppConstants.Launcher.Command.calc
+        let resolved = commandCatalog.contains { $0.id == preferred }
+            ? preferred
+            : AppConstants.Launcher.Command.calc
+        activeCommandID = resolved
+        selectedCommandID = resolved
         focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
     }
 
@@ -229,21 +236,29 @@ extension LauncherView {
         let dividerWidth: CGFloat = 1
         let leftWidth: CGFloat = 170
 
-        HStack(spacing: splitSpacing) {
-                CommandListView(
-                    commands: commandCatalog,
-                    selectedID: selectedCommandID,
-                    activeID: activeCommandID,
-                    themeStore: themeStore,
-                    onSelect: selectCommand
-                )
-                .frame(width: leftWidth)
-                .frame(maxHeight: .infinity, alignment: .topLeading)
+        // Hide the command sidebar while /pomo is in standby/idle mode
+        // — keeps the user's focus on the clock + music card with no
+        // distractions. Other commands keep the sidebar always visible.
+        let hideSidebar = activeCommandID == AppConstants.Launcher.Command.pomo
+            && PomoSharedState.shared.idle
 
-                Rectangle()
-                    .fill(themeStore.dividerColor())
-                    .frame(width: dividerWidth)
-                    .padding(.vertical, 2)
+        HStack(spacing: splitSpacing) {
+                if !hideSidebar {
+                    CommandListView(
+                        commands: commandCatalog,
+                        selectedID: selectedCommandID,
+                        activeID: activeCommandID,
+                        themeStore: themeStore,
+                        onSelect: selectCommand
+                    )
+                    .frame(width: leftWidth)
+                    .frame(maxHeight: .infinity, alignment: .topLeading)
+
+                    Rectangle()
+                        .fill(themeStore.dividerColor())
+                        .frame(width: dividerWidth)
+                        .padding(.vertical, 2)
+                }
 
                 VStack(alignment: .leading, spacing: 6) {
                     if let activeCommand {

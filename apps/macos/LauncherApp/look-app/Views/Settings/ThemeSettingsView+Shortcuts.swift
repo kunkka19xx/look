@@ -45,7 +45,8 @@ enum ShortcutDocs {
                 ShortcutItem(keys: "Cmd+F", action: "Reveal selected app/file/folder in Finder"),
                 ShortcutItem(keys: "Cmd+Enter", action: "Search query on Google"),
                 ShortcutItem(keys: "Cmd+/", action: "Enter command mode"),
-                ShortcutItem(keys: ":cmd", action: "Jump to a command from home (e.g. :calc 2+2, :kill chrome, :sys)"),
+                ShortcutItem(keys: ":cmd", action: "Jump to a command from home (e.g. :calc 2+2, :kill chrome, :sys, :pomo)"),
+                ShortcutItem(keys: "Cmd+1..5", action: "Switch directly to /shell, /calc, /kill, /sys, /pomo"),
                 ShortcutItem(keys: "Cmd+Shift+,", action: "Open/close settings panel"),
                 ShortcutItem(keys: "Cmd+Shift+;", action: "Reload .look.config"),
                 ShortcutItem(keys: "Cmd+H", action: "Toggle in-window keyboard help screen"),
@@ -68,6 +69,16 @@ enum ShortcutDocs {
             items: [
                 ShortcutItem(keys: "Enter", action: "Copy selected history item back to clipboard"),
                 ShortcutItem(keys: "Delete button", action: "Remove selected clipboard item from look history"),
+            ]
+        ),
+        ShortcutSectionData(
+            title: "Pomodoro (/pomo)",
+            items: [
+                ShortcutItem(keys: "Space", action: "Start / pause the active session"),
+                ShortcutItem(keys: "R", action: "Reset the timer back to idle"),
+                ShortcutItem(keys: "P", action: "Toggle music play / pause"),
+                ShortcutItem(keys: "Mouse / key idle", action: "After 5s, panel fades to clock-only standby; any input restores"),
+                ShortcutItem(keys: "Menu bar item", action: "Click the timer icon in the menu bar to jump back into /pomo"),
             ]
         ),
         ShortcutSectionData(

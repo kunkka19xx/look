@@ -1,5 +1,8 @@
 import AppKit
+import OSLog
 import SwiftUI
+
+private let hotkeyLog = Logger(subsystem: "noah-code.Look", category: "hotkey")
 
 extension LauncherView {
     func focusActiveInput(
@@ -62,15 +65,33 @@ extension LauncherView {
     }
 
     func launcherWindow() -> NSWindow? {
-        if let keyWindow = NSApplication.shared.keyWindow {
-            return keyWindow
+        // The app has multiple NSWindows now (the launcher itself, the
+        // menu-bar status item button window, the pomo popover anchor).
+        // The status item / popover windows are tiny (≈16x24); the
+        // launcher's minimum frame is 620x600 (set on ContentView). Use
+        // a size threshold to filter them out.
+        let isLauncherSized: (NSWindow) -> Bool = { w in
+            w.frame.width >= 400 && w.frame.height >= 400
         }
 
-        if let visibleWindow = NSApplication.shared.windows.first(where: { $0.isVisible }) {
-            return visibleWindow
+        if let key = NSApplication.shared.keyWindow, isLauncherSized(key) {
+            return key
         }
 
-        return NSApplication.shared.windows.first
+        let windows = NSApplication.shared.windows
+
+        if let visibleLauncher = windows.first(where: { $0.isVisible && isLauncherSized($0) }) {
+            return visibleLauncher
+        }
+
+        if let anyLauncher = windows.first(where: isLauncherSized) {
+            return anyLauncher
+        }
+
+        // Fallbacks if for some reason no launcher-sized window exists yet.
+        if let key = NSApplication.shared.keyWindow { return key }
+        if let visible = windows.first(where: { $0.isVisible }) { return visible }
+        return windows.first
     }
 
     func findEditableTextField(in view: NSView?) -> NSView? {
@@ -94,11 +115,18 @@ extension LauncherView {
     }
 
     func toggleWindowVisibility() {
-        if let window = launcherWindow(), window.isVisible && NSApplication.shared.isActive {
+        let win = launcherWindow()
+        let isActive = NSApplication.shared.isActive
+        let visibleWindowCount = NSApplication.shared.windows.filter { $0.isVisible }.count
+        hotkeyLog.notice("toggle: isActive=\(isActive) windowCount=\(NSApplication.shared.windows.count) visibleCount=\(visibleWindowCount) keyWindow=\(NSApplication.shared.keyWindow != nil) winIsVisible=\(win?.isVisible ?? false) winIsHidden=\(NSApp.isHidden)")
+
+        if let window = win, window.isVisible && isActive {
+            hotkeyLog.notice("toggle: -> HIDE branch")
             hideLauncherWindow()
             return
         }
 
+        hotkeyLog.notice("toggle: -> SHOW branch")
         captureFrontmostAppForRestoreIfNeeded()
         _ = bridge.requestIndexRefresh()
         NSApplication.shared.unhide(nil)
@@ -107,6 +135,8 @@ extension LauncherView {
         if let window = launcherWindow() {
             window.makeKeyAndOrderFront(nil)
             activateLauncherModeAndFocus()
+            let frameStr = NSStringFromRect(window.frame)
+            hotkeyLog.notice("toggle: SHOW done — visible=\(window.isVisible) onActiveSpace=\(window.isOnActiveSpace) frame=\(frameStr, privacy: .public)")
             return
         }
 
@@ -119,15 +149,22 @@ extension LauncherView {
     }
 
     func hideLauncherWindow(restorePreviousApp: Bool = true) {
-        guard let window = launcherWindow() else { return }
+        guard let window = launcherWindow() else {
+            hotkeyLog.notice("hide: no window")
+            return
+        }
         focusRequestToken &+= 1
         isQueryFocused = false
+        let wasVisible = window.isVisible
         window.orderOut(nil)
+        hotkeyLog.notice("hide: orderOut wasVisible=\(wasVisible) restore=\(restorePreviousApp)")
+
         if restorePreviousApp {
-            reactivatePreviouslyFocusedAppIfNeeded()
+            _ = reactivatePreviouslyFocusedAppIfNeeded()
         } else {
             pidToRestoreOnHide = nil
         }
+
         refreshClipboardMonitoringMode()
     }
 
@@ -168,16 +205,18 @@ extension LauncherView {
         pidToRestoreOnHide = frontmost.processIdentifier
     }
 
-    func reactivatePreviouslyFocusedAppIfNeeded() {
-        guard let pid = pidToRestoreOnHide else { return }
+    @discardableResult
+    func reactivatePreviouslyFocusedAppIfNeeded() -> Bool {
+        guard let pid = pidToRestoreOnHide else { return false }
         pidToRestoreOnHide = nil
-        guard pid != ProcessInfo.processInfo.processIdentifier else { return }
-        guard let app = NSRunningApplication(processIdentifier: pid) else { return }
-        guard !app.isTerminated else { return }
+        guard pid != ProcessInfo.processInfo.processIdentifier else { return false }
+        guard let app = NSRunningApplication(processIdentifier: pid) else { return false }
+        guard !app.isTerminated else { return false }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.postHideActivationDelay) {
             _ = app.activate()
         }
+        return true
     }
 
     func refreshClipboardMonitoringMode() {

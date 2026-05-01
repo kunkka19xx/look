@@ -17,20 +17,26 @@ import UniformTypeIdentifiers
 final class PomoState {
     var sessions: [PomoSession] = PomoCommand.defaultSessions()
     var timerStyle: PomoTimerStyle = .modern
-    var musicFolderPath: String?
+    let music = PomoMusicPlayer()
 
-    private(set) var activeIndex: Int? = nil      // nil = idle
+    private(set) var activeIndex: Int? = nil      // nil = no session selected
     private(set) var secondsLeft: Int = 0
     private(set) var running: Bool = false
 
+    // UI state for the idle fade — kept here (not as @State on PomoView)
+    // so other views (the launcher's command sidebar) can react to it
+    // and collapse out of the way.
+    var idle: Bool = false
+
     @ObservationIgnored private var cancellable: AnyCancellable?
     @ObservationIgnored private var lastTickAt: Date?
+    @ObservationIgnored private var didNotifyEndingSoon = false
 
     init() {
         let snap = PomoPersistence.load()
         sessions = snap.sessions
         timerStyle = snap.timerStyle
-        musicFolderPath = snap.musicFolderPath
+        music.restore(folderPath: snap.musicFolderPath)
     }
 
     // ── Computed ────────────────────────────────────────────────────────
@@ -58,6 +64,7 @@ final class PomoState {
             guard let first = sessions.first else { return }
             activeIndex = 0
             secondsLeft = first.durationMinutes * 60
+            didNotifyEndingSoon = false
             startTicking()
             running = true
         } else {
@@ -71,6 +78,7 @@ final class PomoState {
         running = false
         activeIndex = nil
         secondsLeft = 0
+        didNotifyEndingSoon = false
     }
 
     // Removes a session by index and keeps `activeIndex` valid.
@@ -103,7 +111,7 @@ final class PomoState {
         PomoPersistence.save(.init(
             sessions: sessions,
             timerStyle: timerStyle,
-            musicFolderPath: musicFolderPath
+            musicFolderPath: music.folderPath
         ))
     }
 
@@ -134,6 +142,16 @@ final class PomoState {
         self.lastTickAt = lastTickAt.addingTimeInterval(TimeInterval(elapsed))
 
         secondsLeft -= elapsed
+        // Fire the "ending soon" notification once per phase, when
+        // remaining time first crosses below the threshold.
+        if !didNotifyEndingSoon,
+           secondsLeft <= PomoCommand.endingSoonThresholdSeconds,
+           secondsLeft > 0,
+           let s = currentSession
+        {
+            didNotifyEndingSoon = true
+            PomoNotifications.notifyEndingSoon(session: s, secondsLeft: secondsLeft)
+        }
         if secondsLeft <= 0 {
             secondsLeft = 0
             handlePhaseEnd()
@@ -142,10 +160,13 @@ final class PomoState {
 
     private func handlePhaseEnd() {
         guard let i = activeIndex else { return }
-        let finished = sessions[i]
+        _ = sessions[i]
+        didNotifyEndingSoon = false  // ready to fire again for the next phase
 
+        // Only the "ending soon" notification (10s before end) is shown
+        // to the user — the phase-end moment itself is silent because
+        // the timer / phase color visibly transitioning is enough.
         let next: PomoSession? = (i + 1 < sessions.count) ? sessions[i + 1] : nil
-        PomoNotifications.notifyPhaseTransition(finished: finished, next: next)
 
         if next != nil {
             activeIndex = i + 1
@@ -195,8 +216,8 @@ struct PomoView: View {
 
     @State private var showSessionList = false
     @State private var showSettings = false
-    @State private var idle = false
     @State private var idleResetToken: UUID = UUID()
+    private var idle: Bool { state.idle }
 
     init(themeStore: ThemeStore, state: PomoState? = nil) {
         self.themeStore = themeStore
@@ -250,8 +271,11 @@ struct PomoView: View {
             scheduleIdleReset()
         }
         .onChange(of: state.activeIndex) { _, _ in
-            restoreFromIdle()
-            scheduleIdleReset()
+            // Don't restore from standby on auto-advance — the user
+            // explicitly wants to stay in focus mode across the phase
+            // boundary. Re-arming the idle countdown is also unnecessary
+            // here; the existing schedule (or the next activity event)
+            // will handle it.
         }
         .onChange(of: state.sessions) { _, _ in
             state.persist()
@@ -259,25 +283,30 @@ struct PomoView: View {
         .onChange(of: state.timerStyle) { _, _ in
             state.persist()
         }
-        .onChange(of: state.musicFolderPath) { _, _ in
+        .onChange(of: state.music.folderPath) { _, _ in
             state.persist()
         }
         .background(KeyCommandsRecognizer(
             onToggle: { state.toggle() },
             onR: { state.reset() },
+            onP: { state.music.togglePlay() },
             onActivity: { restoreFromIdle() }
         ))
     }
 
     private func restoreFromIdle() {
-        guard idle else { return }
         // Plain assignment, no `withAnimation`. The fade is driven by
         // `.animation(_:value: idle)` modifiers on the views that
         // actually fade — so an in-progress idle change can't capture
         // unrelated state mutations (e.g. a button color flipping when
         // the user clicks Start/Pause) and animate them too. That was
         // showing up as a yellow/red halo around the buttons.
-        idle = false
+        if state.idle { state.idle = false }
+        // Always re-arm the 5s countdown — without this, an activity
+        // event silently consumed the schedule and standby never
+        // re-triggered. Token logic in scheduleIdleReset handles the
+        // pile-up of pending tasks (only the latest one fires).
+        scheduleIdleReset()
     }
 
     // ── Header ──────────────────────────────────────────────────────────
@@ -386,8 +415,8 @@ struct PomoView: View {
     }
 
     private var toggleLabel: String {
-        if state.activeIndex == nil { return "Start (Enter)" }
-        return state.running ? "Pause (Enter)" : "Resume (Enter)"
+        if state.activeIndex == nil { return "Start (Space)" }
+        return state.running ? "Pause (Space)" : "Resume (Space)"
     }
 
     private var toggleColor: Color {
@@ -526,14 +555,17 @@ struct PomoView: View {
                     .foregroundStyle(themeStore.fontColor())
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                musicButton(systemName: "backward.fill") { /* prev — stub */ }
-                musicButton(systemName: "playpause.fill") { /* play/pause — stub */ }
-                musicButton(systemName: "forward.fill") { /* next — stub */ }
+                musicButton(systemName: "backward.fill") { state.music.prev() }
+                // Single play/pause button — icon swaps on state.
+                musicButton(systemName: state.music.isPlaying ? "pause.fill" : "play.fill") {
+                    state.music.togglePlay()
+                }
+                musicButton(systemName: "forward.fill") { state.music.next() }
             }
             HStack(spacing: 6) {
                 Image(systemName: "folder")
                     .foregroundStyle(themeStore.mutedTextColor())
-                Text(state.musicFolderPath ?? "No folder selected")
+                Text(state.music.folderPath ?? "No folder selected")
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
                     .foregroundStyle(themeStore.mutedTextColor())
                     .lineLimit(1)
@@ -546,9 +578,9 @@ struct PomoView: View {
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
                 .foregroundStyle(themeStore.accentColor())
 
-                if state.musicFolderPath != nil {
+                if state.music.hasFolder {
                     Button("Clear") {
-                        state.musicFolderPath = nil
+                        state.music.clearFolder()
                     }
                     .buttonStyle(.plain)
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
@@ -561,28 +593,9 @@ struct PomoView: View {
     }
 
     private var musicTrackTitle: String {
-        // Real audio playback isn't wired yet, but we can at least show
-        // the first audio file in the picked folder so the player feels
-        // alive instead of permanently showing "—".
-        guard let folder = state.musicFolderPath else {
-            return "Pick a folder to enable music"
-        }
-        let exts: Set<String> = ["mp3", "m4a", "wav", "aac", "flac", "ogg", "aiff", "alac"]
-        let url = URL(fileURLWithPath: folder)
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) else {
-            return "(no audio files)"
-        }
-        let audio = entries
-            .filter { exts.contains($0.pathExtension.lowercased()) }
-            .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
-        guard let first = audio.first else {
-            return "(no audio files)"
-        }
-        return first.deletingPathExtension().lastPathComponent
+        if !state.music.hasFolder { return "Pick a folder to enable music" }
+        if state.music.tracks.isEmpty { return "(no audio files)" }
+        return state.music.currentTitle ?? "(press play)"
     }
 
     private func musicButton(systemName: String, action: @escaping () -> Void) -> some View {
@@ -599,7 +612,7 @@ struct PomoView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         if panel.runModal() == .OK, let url = panel.url {
-            state.musicFolderPath = url.path
+            state.music.setFolder(url)
         }
     }
 
@@ -608,10 +621,10 @@ struct PomoView: View {
     private func scheduleIdleReset() {
         idleResetToken = UUID()
         let token = idleResetToken
-        guard state.running else { idle = false; return }
+        guard state.running else { state.idle = false; return }
         DispatchQueue.main.asyncAfter(deadline: .now() + PomoCommand.idleFadeSeconds) {
             guard token == idleResetToken, state.running else { return }
-            withAnimation(.easeInOut(duration: 0.6)) { idle = true }
+            state.idle = true
         }
     }
 }
@@ -700,11 +713,7 @@ private struct SessionRow: View {
     }
 }
 
-// ── Local key recognizer for Return + R ────────────────────────────────
-//
-// Toggle key changed from Space to Return: Space conflicted with the
-// global Cmd+Space hotkey (the launcher toggle was sometimes swallowed
-// by this monitor when modifier handling raced).
+// ── Local key recognizer for Space + R + P ─────────────────────────────
 //
 // We don't want these to fight with text fields, so the recognizer
 // installs a local monitor only while the view is on screen and ignores
@@ -713,12 +722,14 @@ private struct SessionRow: View {
 private struct KeyCommandsRecognizer: NSViewRepresentable {
     var onToggle: () -> Void
     var onR: () -> Void
+    var onP: () -> Void
     var onActivity: () -> Void
 
     func makeNSView(context: Context) -> KeyCommandsHostView {
         let v = KeyCommandsHostView()
         v.onToggle = onToggle
         v.onR = onR
+        v.onP = onP
         v.onActivity = onActivity
         return v
     }
@@ -726,6 +737,7 @@ private struct KeyCommandsRecognizer: NSViewRepresentable {
     func updateNSView(_ nsView: KeyCommandsHostView, context: Context) {
         nsView.onToggle = onToggle
         nsView.onR = onR
+        nsView.onP = onP
         nsView.onActivity = onActivity
     }
 }
@@ -733,6 +745,7 @@ private struct KeyCommandsRecognizer: NSViewRepresentable {
 private final class KeyCommandsHostView: NSView {
     var onToggle: (() -> Void)?
     var onR: (() -> Void)?
+    var onP: (() -> Void)?
     var onActivity: (() -> Void)?
     private var keyMonitor: Any?
     private var activityMonitor: Any?
@@ -755,13 +768,19 @@ private final class KeyCommandsHostView: NSView {
                    text.isKind(of: NSTextField.self) || text.isKind(of: NSTextView.self) { return event }
                 let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
                 let plainModifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
-                // Return (36) or numpad Enter (76), no modifiers — start/pause.
-                if (event.keyCode == 36 || event.keyCode == 76) && plainModifiers {
+                // Space (49), no modifiers — start/pause. Cmd+Space
+                // (the launcher hotkey) carries .command and is rejected
+                // by the plainModifiers check, so it passes through.
+                if event.keyCode == 49 && plainModifiers {
                     self.onToggle?()
                     return nil
                 }
                 if chars == "r" && plainModifiers {
                     self.onR?()
+                    return nil
+                }
+                if chars == "p" && plainModifiers {
+                    self.onP?()
                     return nil
                 }
                 return event

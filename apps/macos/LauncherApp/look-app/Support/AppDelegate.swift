@@ -1,5 +1,6 @@
 import AppKit
 import Darwin
+import UserNotifications
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotKeyManager = GlobalHotKeyManager()
@@ -25,6 +26,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyManager.registerToggleHotKey()
         NSApp.setActivationPolicy(.accessory)
         pomoMenuBarItem.install()
+
+        // Notifications: ask for permission early (so the prompt isn't
+        // tied to the user being mid-pomodoro) and forward foreground
+        // deliveries through a delegate so banners aren't suppressed
+        // when the launcher window is the active app.
+        UNUserNotificationCenter.current().delegate = PomoNotifications.foregroundDelegate
+        PomoNotifications.requestPermissionEarly()
     }
 
     private func shouldTerminateDuplicateInstance() -> Bool {

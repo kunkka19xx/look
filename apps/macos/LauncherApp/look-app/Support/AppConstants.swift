@@ -105,11 +105,11 @@ enum AppConstants {
         static let calcMaxMagnitude = 1_000_000_000_000.0
 
         static let commandCatalog: [AppCommand] = [
-            AppCommand(id: Command.shell, title: "shell (⌘1)", detail: "Run a shell command", placeholder: "Type shell command"),
-            AppCommand(id: Command.calc, title: "calc (⌘2)", detail: "Evaluate math expression", placeholder: "Type math expression"),
+            AppCommand(id: Command.calc, title: "calc (⌘1)", detail: "Evaluate math expression", placeholder: "Type math expression"),
+            AppCommand(id: Command.pomo, title: "pomo (⌘2)", detail: "Pomodoro focus timer", placeholder: "Manage focus sessions"),
             AppCommand(id: Command.kill, title: "kill (⌘3)", detail: "Force kill app or process by port", placeholder: "Type app name, or :3000"),
-            AppCommand(id: Command.sys, title: "sys (⌘4)", detail: "Show system information", placeholder: "View system info"),
-            AppCommand(id: Command.pomo, title: "pomo (⌘5)", detail: "Pomodoro focus timer", placeholder: "Manage focus sessions"),
+            AppCommand(id: Command.shell, title: "shell (⌘4)", detail: "Run a shell command", placeholder: "Type shell command"),
+            AppCommand(id: Command.sys, title: "sys (⌘5)", detail: "Show system information", placeholder: "View system info"),
         ]
 
         static let normalHint = HintText.Launcher.normal

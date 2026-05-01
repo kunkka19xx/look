@@ -1,6 +1,9 @@
 import Foundation
 import AppKit
+import OSLog
 @preconcurrency import UserNotifications
+
+private let pomoNotifLog = Logger(subsystem: "noah-code.Look", category: "pomo-notif")
 
 // ── Model ──────────────────────────────────────────────────────────────
 
@@ -50,8 +53,9 @@ enum PomoCommand {
 
     static let focusDefaultMinutes = 30
     static let breakDefaultMinutes = 5
-    static let idleFadeSeconds: TimeInterval = 15
+    static let idleFadeSeconds: TimeInterval = 5
     static let menuBarTickSeconds: TimeInterval = 1.0
+    static let endingSoonThresholdSeconds = 10
 
     static func formattedRemaining(_ seconds: Int) -> String {
         let safe = max(0, seconds)
@@ -197,10 +201,45 @@ enum PomoPersistence {
 enum PomoNotifications {
     private static var permissionRequested = false
 
-    static func notifyPhaseTransition(finished: PomoSession, next: PomoSession?) {
+    static func notifyEndingSoon(session: PomoSession, secondsLeft: Int) {
+        pomoNotifLog.notice("notifyEndingSoon name=\(session.name, privacy: .public) secondsLeft=\(secondsLeft)")
+        NSSound(named: "Tink")?.play()
+        let title = session.type == .focus ? "Focus ending soon" : "Break ending soon"
+        let subtitle = "\(session.name) — \(secondsLeft)s left"
+        NotificationCenter.default.post(
+            name: .lookPomoStatusMessage,
+            object: nil,
+            userInfo: ["title": title, "subtitle": subtitle]
+        )
         ensurePermission { granted in
             guard granted else { return }
-            let center = UNUserNotificationCenter.current()
+            let content = UNMutableNotificationContent()
+            content.title = session.type == .focus ? "Focus ending soon" : "Break ending soon"
+            content.body = "\(session.name) — \(secondsLeft)s left"
+            content.sound = .default
+            content.interruptionLevel = .timeSensitive
+            let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            deliver(req, label: "endingSoon")
+        }
+    }
+
+    static func notifyPhaseTransition(finished: PomoSession, next: PomoSession?) {
+        pomoNotifLog.notice("notifyPhaseTransition finished=\(finished.name, privacy: .public) hasNext=\(next != nil)")
+        NSSound(named: "Glass")?.play()
+        let title = finished.type == .focus ? "Focus done" : "Break done"
+        let subtitle: String
+        if let next {
+            subtitle = "Next: \(next.name) (\(next.durationMinutes) min)"
+        } else {
+            subtitle = "All sessions complete"
+        }
+        NotificationCenter.default.post(
+            name: .lookPomoStatusMessage,
+            object: nil,
+            userInfo: ["title": title, "subtitle": subtitle]
+        )
+        ensurePermission { granted in
+            guard granted else { return }
             let content = UNMutableNotificationContent()
             content.title = finished.type == .focus ? "Focus done" : "Break done"
             if let next {
@@ -209,27 +248,78 @@ enum PomoNotifications {
                 content.body = "All sessions complete"
             }
             content.sound = .default
+            content.interruptionLevel = .timeSensitive
             let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-            center.add(req)
+            deliver(req, label: "phaseTransition")
         }
     }
 
+    // Request notification permission proactively at app launch so the
+    // first phase transition isn't where the user discovers the
+    // permission flow.
+    static func requestPermissionEarly() {
+        ensurePermission { _ in /* answer comes later, just prime it */ }
+    }
+
+    // Forward foreground notifications so they show even while the
+    // launcher window is active. Set this delegate at app launch.
+    final class ForegroundDeliveryDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            willPresent notification: UNNotification,
+            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+        ) {
+            completionHandler([.banner, .sound, .list])
+        }
+    }
+    static let foregroundDelegate = ForegroundDeliveryDelegate()
+
     private static func ensurePermission(_ then: @escaping (Bool) -> Void) {
         let center = UNUserNotificationCenter.current()
+        let bundleID = Bundle.main.bundleIdentifier ?? "<no-bundle-id>"
         center.getNotificationSettings { settings in
+            let statusName: String
+            switch settings.authorizationStatus {
+            case .authorized: statusName = "authorized"
+            case .denied: statusName = "denied"
+            case .notDetermined: statusName = "notDetermined"
+            case .provisional: statusName = "provisional"
+            case .ephemeral: statusName = "ephemeral"
+            @unknown default: statusName = "unknown"
+            }
+            pomoNotifLog.notice("auth status=\(statusName, privacy: .public) bundle=\(bundleID, privacy: .public) alertSetting=\(settings.alertSetting.rawValue) soundSetting=\(settings.soundSetting.rawValue)")
             switch settings.authorizationStatus {
             case .authorized, .provisional, .ephemeral:
                 then(true)
             case .denied:
+                pomoNotifLog.error("DENIED — open System Settings → Notifications → \(bundleID, privacy: .public) and enable")
                 then(false)
             case .notDetermined:
                 guard !permissionRequested else { then(false); return }
                 permissionRequested = true
-                center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                pomoNotifLog.notice("requesting authorization …")
+                center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+                    if let error {
+                        pomoNotifLog.error("requestAuthorization error: \(error.localizedDescription, privacy: .public)")
+                    }
+                    pomoNotifLog.notice("requestAuthorization granted=\(granted)")
                     then(granted)
                 }
             @unknown default:
                 then(false)
+            }
+        }
+    }
+
+    // Wrap center.add so we capture any post-add error (e.g. malformed
+    // request, system unavailable). Without this completion handler the
+    // failure is silent.
+    private static func deliver(_ req: UNNotificationRequest, label: String) {
+        UNUserNotificationCenter.current().add(req) { error in
+            if let error {
+                pomoNotifLog.error("\(label, privacy: .public) add error: \(error.localizedDescription, privacy: .public)")
+            } else {
+                pomoNotifLog.notice("\(label, privacy: .public) added id=\(req.identifier, privacy: .public)")
             }
         }
     }

@@ -9,7 +9,18 @@ final class AppUIState: ObservableObject {
         }
     }
 
+    // Remembered command id of the last command-mode panel the user
+    // visited. Used so re-entering command mode (Cmd+/) reopens the
+    // panel they last had focused, instead of always defaulting to
+    // /calc. nil = no preference yet → fall back to /calc.
+    @Published var lastCommandID: String? {
+        didSet {
+            UserDefaults.standard.set(lastCommandID, forKey: Self.lastCommandIDKey)
+        }
+    }
+
     private static let settingsBlurMultiplierKey = "look.ui.settingsBlurMultiplier"
+    private static let lastCommandIDKey = "look.ui.lastCommandID"
 
     init() {
         if let stored = UserDefaults.standard.object(forKey: Self.settingsBlurMultiplierKey) as? Double,
@@ -19,6 +30,7 @@ final class AppUIState: ObservableObject {
         } else {
             settingsBlurMultiplier = 0.5
         }
+        lastCommandID = UserDefaults.standard.string(forKey: Self.lastCommandIDKey)
     }
 }
 

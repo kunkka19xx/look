@@ -88,6 +88,7 @@ Built-in commands:
 - `shell`: run shell command text
 - `kill`: force-kill a running app/process (with confirmation), supports port queries like `:3000` or `port 3000`
 - `sys`: show system information
+- `pomo`: pomodoro focus timer with editable session list, three timer styles (Modern Ring / Vintage Dial / Minimal Text), background-music folder, menu-bar mini-timer, and a 5-second standby fade
 
 `calc` quick examples:
 
@@ -98,12 +99,20 @@ Built-in commands:
 - `200*15%` -> `30`
 - `10%3` -> `1` (`%` remains modulo when used between operands)
 
+`pomo` quick reference:
+
+- Edit the **Session List** to plan focus + break blocks; the timer auto-advances through them and loops the music folder while running
+- `Space` start/pause the active session • `R` reset • `P` toggle music play/pause
+- Pick a folder of audio files (mp3/m4a/wav/aac/flac/ogg/aiff/alac); tracks are played one at a time, shuffled per launch
+- A "session ending soon" alert fires 10s before each block ends — both as a menu-bar popover and (when granted) a macOS notification with chime
+- Menu-bar mini-timer shows remaining time even when the launcher is hidden; click to jump back into `/pomo`
+
 Behavior:
 
 - `Escape`: leave command mode
 - `Shift+Escape`: hide launcher
 - `Tab` / `Shift+Tab`: switch commands while staying in command mode
-- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4`: jump to specific command (`shell`, `calc`, `kill`, `sys`)
+- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4` / `Cmd+5`: jump to specific command (`shell`, `calc`, `kill`, `sys`, `pomo`)
 - `Up` / `Down`: in `kill`, navigate process/app results
 - shell text containing `sudo` shows an orange warning cue
 
@@ -214,8 +223,9 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
 - `Up` / `Down`: move selection (and in `kill`, move process selection)
 - `Cmd+/`: command mode
-- `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`): jump to a command directly from the home screen
-- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4`: direct command switch
+- `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:pomo`): jump to a command directly from the home screen
+- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4` / `Cmd+5`: direct command switch (`shell`, `calc`, `kill`, `sys`, `pomo`)
+- `Space` / `R` / `P` (inside `/pomo`): start/pause session, reset, toggle music play/pause
 - `Escape`: back/close (context dependent)
 - `Shift+Escape`: hide launcher
 - `Cmd+Enter`: web search
