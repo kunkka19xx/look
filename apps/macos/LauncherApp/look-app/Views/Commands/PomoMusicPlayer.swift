@@ -103,8 +103,12 @@ final class PomoMusicPlayer {
             object: item,
             queue: .main
         ) { [weak self] _ in
-            // Loops at end of list (next wraps via modulo).
-            self?.next()
+            // Notification queue: .main delivers on the main thread; the
+            // explicit hop satisfies Swift 6's @Sendable-closure check.
+            MainActor.assumeIsolated {
+                // Loops at end of list (next wraps via modulo).
+                self?.next()
+            }
         }
         player = newPlayer
         currentIndex = index

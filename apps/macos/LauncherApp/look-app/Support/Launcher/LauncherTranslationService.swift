@@ -6,7 +6,7 @@ enum LauncherTranslationCommand {
     case lookup(String)
 }
 
-final class LauncherTranslationService {
+final class LauncherTranslationService: Sendable {
     private struct LookupTranslationResult {
         let translated: String?
         let dictionaryDefinition: LookupPresentation?

@@ -92,7 +92,8 @@ struct look_appApp: App {
         if size > 0 {
             var buffer = [CChar](repeating: 0, count: Int(size))
             if _NSGetExecutablePath(&buffer, &size) == 0 {
-                let path = String(cString: buffer)
+                let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+                let path = String(decoding: bytes, as: UTF8.self)
                 return URL(fileURLWithPath: path).resolvingSymlinksInPath()
             }
         }

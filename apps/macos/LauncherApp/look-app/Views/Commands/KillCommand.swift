@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct KillCommand {
     struct Candidate: Identifiable {
@@ -160,7 +161,7 @@ struct KillCommandView: View {
                         onSelect(candidate)
                     } label: {
                         HStack(spacing: 10) {
-                            Image(nsImage: candidate.icon ?? NSWorkspace.shared.icon(forFileType: "public.application"))
+                            Image(nsImage: candidate.icon ?? NSWorkspace.shared.icon(for: .application))
                                 .resizable()
                                 .frame(width: 20, height: 20)
                             Text(candidate.displayName)
@@ -208,7 +209,7 @@ struct KillConfirmationBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(nsImage: candidate.icon ?? NSWorkspace.shared.icon(forFileType: "public.application"))
+            Image(nsImage: candidate.icon ?? NSWorkspace.shared.icon(for: .application))
                 .resizable()
                 .frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 2) {

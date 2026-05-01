@@ -3,7 +3,9 @@ import AppKit
 import OSLog
 @preconcurrency import UserNotifications
 
-private let pomoNotifLog = Logger(subsystem: "noah-code.Look", category: "pomo-notif")
+// nonisolated so the UNUserNotificationCenter completion-queue
+// closures can write to it without needing a MainActor hop.
+nonisolated private let pomoNotifLog = Logger(subsystem: "noah-code.Look", category: "pomo-notif")
 
 // ── Model ──────────────────────────────────────────────────────────────
 
@@ -280,7 +282,7 @@ enum PomoNotifications {
     }
     static let foregroundDelegate = ForegroundDeliveryDelegate()
 
-    private static func ensurePermission(_ then: @escaping (Bool) -> Void) {
+    private static func ensurePermission(_ then: @escaping @Sendable (Bool) -> Void) {
         let center = UNUserNotificationCenter.current()
         let bundleID = Bundle.main.bundleIdentifier ?? "<no-bundle-id>"
         center.getNotificationSettings { settings in
@@ -320,7 +322,7 @@ enum PomoNotifications {
     // Wrap center.add so we capture any post-add error (e.g. malformed
     // request, system unavailable). Without this completion handler the
     // failure is silent.
-    private static func deliver(_ req: UNNotificationRequest, label: String) {
+    nonisolated private static func deliver(_ req: UNNotificationRequest, label: String) {
         UNUserNotificationCenter.current().add(req) { error in
             if let error {
                 pomoNotifLog.error("\(label, privacy: .public) add error: \(error.localizedDescription, privacy: .public)")
