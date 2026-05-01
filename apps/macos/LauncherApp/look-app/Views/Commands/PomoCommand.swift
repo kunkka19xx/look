@@ -7,7 +7,7 @@ private let pomoNotifLog = Logger(subsystem: "noah-code.Look", category: "pomo-n
 
 // ── Model ──────────────────────────────────────────────────────────────
 
-nonisolated struct PomoSession: Identifiable, Equatable {
+struct PomoSession: Identifiable, Equatable {
     let id: UUID
     var type: SessionType
     var durationMinutes: Int
@@ -18,7 +18,9 @@ nonisolated struct PomoSession: Identifiable, Equatable {
         case `break`
     }
 
-    init(id: UUID = UUID(), type: SessionType, durationMinutes: Int, name: String) {
+    // `nonisolated init` (rather than `nonisolated struct ...`) — the
+    // latter is Swift 6 syntax and isn't accepted under SWIFT_VERSION=5.
+    nonisolated init(id: UUID = UUID(), type: SessionType, durationMinutes: Int, name: String) {
         self.id = id
         self.type = type
         self.durationMinutes = durationMinutes

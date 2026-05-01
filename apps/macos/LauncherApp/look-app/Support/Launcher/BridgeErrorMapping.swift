@@ -16,7 +16,7 @@ enum BridgeErrorCode: String {
     case serializeFailed = "serialize_failed"
 }
 
-enum BridgeErrorMapping {
+nonisolated enum BridgeErrorMapping {
     static func userFacingMessage(code: String, fallback: String) -> String {
         guard let code = BridgeErrorCode(rawValue: code) else {
             return fallback

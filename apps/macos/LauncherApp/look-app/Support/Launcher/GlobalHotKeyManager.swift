@@ -4,18 +4,32 @@ import OSLog
 
 private let hotkeyLog = Logger(subsystem: "noah-code.Look", category: "hotkey")
 
+@MainActor
 final class GlobalHotKeyManager {
-    private var hotKeyRef: EventHotKeyRef?
-    private var eventHandler: EventHandlerRef?
+    // nonisolated(unsafe) so the nonisolated deinit can release these
+    // (they're Carbon/AppKit handles — not actually Sendable, but they're
+    // only mutated from MainActor anyway).
+    nonisolated(unsafe) private var hotKeyRef: EventHotKeyRef?
+    nonisolated(unsafe) private var eventHandler: EventHandlerRef?
     // Carbon's RegisterEventHotKey only fires when the registering app is
     // NOT the currently-active app. When Look is in the foreground (e.g.
     // user has the launcher open and focused), Cmd+Space goes through
     // the normal local event chain instead. Install a parallel local
     // NSEvent monitor so the toggle works regardless of focus state.
-    private var localMonitor: Any?
+    nonisolated(unsafe) private var localMonitor: Any?
 
+    // deinit is nonisolated; unregister is MainActor. Inline the cleanup
+    // here using nonisolated-safe API only.
     deinit {
-        unregister()
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+        }
+        if let eventHandler {
+            RemoveEventHandler(eventHandler)
+        }
+        if let localMonitor {
+            NSEvent.removeMonitor(localMonitor)
+        }
     }
 
     func registerToggleHotKey() {

@@ -1,7 +1,7 @@
 import Foundation
 
 struct ShellCommand {
-    static func run(_ command: String, completion: @escaping (String) -> Void) {
+    static func run(_ command: String, completion: @escaping @MainActor (String) -> Void) {
         Task.detached(priority: .userInitiated) {
             let process = Process()
             let outputPipe = Pipe()

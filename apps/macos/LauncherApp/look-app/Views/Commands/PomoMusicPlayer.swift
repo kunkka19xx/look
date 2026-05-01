@@ -14,8 +14,8 @@ final class PomoMusicPlayer {
     private(set) var isPlaying = false
     private(set) var folderPath: String?
 
-    @ObservationIgnored private var player: AVPlayer?
-    @ObservationIgnored private var endObserver: NSObjectProtocol?
+    @ObservationIgnored nonisolated(unsafe) private var player: AVPlayer?
+    @ObservationIgnored nonisolated(unsafe) private var endObserver: NSObjectProtocol?
 
     static let supportedExtensions: Set<String> = [
         "mp3", "m4a", "wav", "aac", "flac", "ogg", "aiff", "alac",
@@ -122,7 +122,12 @@ final class PomoMusicPlayer {
     }
 
     deinit {
-        clearPlayer()
+        // Inline cleanup so deinit stays nonisolated. Pause + observer
+        // removal are safe to call from any thread.
+        player?.pause()
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+        }
     }
 
     private func scanFolder(_ url: URL) -> [URL] {

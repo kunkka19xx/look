@@ -56,8 +56,10 @@ final class ClipboardHistoryStore: ObservableObject {
     private let maxEntries = AppConstants.Launcher.Clipboard.maxEntries
     private let maxStoredCharacters = AppConstants.Launcher.Clipboard.maxStoredCharacters
     private var monitoringMode: MonitoringMode = .foreground
-    private var timer: Timer?
-    private var burstTimer: Timer?
+    // nonisolated(unsafe) so the nonisolated deinit can call invalidate()
+    // on these without going through the actor.
+    nonisolated(unsafe) private var timer: Timer?
+    nonisolated(unsafe) private var burstTimer: Timer?
     private var remainingBurstSamples = 0
     private var lastChangeCount: Int
 

@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let relaunchGracePeriodSeconds: TimeInterval = 0.8
     private static let contentionRetrySeconds: TimeInterval = 0.25
     private static let lockPollIntervalMicros: useconds_t = 50_000
-    private static var singletonLockFD: CInt = -1
+    nonisolated(unsafe) private static var singletonLockFD: CInt = -1
 
     deinit {
         SingleInstanceLock.release(Self.singletonLockFD)
