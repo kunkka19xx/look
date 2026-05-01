@@ -20,8 +20,6 @@ struct PomoSession: Identifiable, Equatable {
         case `break`
     }
 
-    // `nonisolated init` (rather than `nonisolated struct ...`) — the
-    // latter is Swift 6 syntax and isn't accepted under SWIFT_VERSION=5.
     nonisolated init(id: UUID = UUID(), type: SessionType, durationMinutes: Int, name: String) {
         self.id = id
         self.type = type

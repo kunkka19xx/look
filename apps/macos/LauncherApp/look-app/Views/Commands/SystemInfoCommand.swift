@@ -79,9 +79,7 @@ struct SystemInfoView: View {
     }
 }
 
-// `nonisolated enum` is Swift 6 syntax; under SWIFT_VERSION=5 the
-// modifier has to live on the individual members instead.
-enum SystemInfoCommand {
+nonisolated enum SystemInfoCommand {
     struct Snapshot {
         let items: [SystemInfoItem]
         let cpuLoad: host_cpu_load_info?
@@ -89,7 +87,7 @@ enum SystemInfoCommand {
 
     // Pure function — safe to call off the main actor. The caller owns the
     // previous CPU sample so we don't need shared mutable state.
-    nonisolated static func snapshot(previousCPULoad: host_cpu_load_info?) -> Snapshot {
+    static func snapshot(previousCPULoad: host_cpu_load_info?) -> Snapshot {
         var items: [SystemInfoItem] = []
         items.append(SystemInfoItem(label: "", value: "System Info", isHeader: true))
         items.append(contentsOf: getSystemOverviewItems())
@@ -106,7 +104,7 @@ enum SystemInfoCommand {
         return Snapshot(items: items, cpuLoad: currentLoad)
     }
 
-    nonisolated static func getSystemInfo() -> String {
+    static func getSystemInfo() -> String {
         let items = snapshot(previousCPULoad: nil).items
         var lines: [String] = []
         for item in items {
@@ -121,11 +119,11 @@ enum SystemInfoCommand {
         return lines.joined(separator: "\n")
     }
 
-    nonisolated static func getSystemInfoItems() -> [SystemInfoItem] {
+    static func getSystemInfoItems() -> [SystemInfoItem] {
         snapshot(previousCPULoad: nil).items
     }
 
-    nonisolated private static func getSystemOverviewItems() -> [SystemInfoItem] {
+    private static func getSystemOverviewItems() -> [SystemInfoItem] {
         let model = getModelIdentifier()
         let osVersion = ProcessInfo.processInfo.operatingSystemVersion
         let osName = getMacOSName(osVersion: osVersion)
@@ -135,7 +133,7 @@ enum SystemInfoCommand {
         ]
     }
 
-    nonisolated private static func getModelIdentifier() -> String {
+    private static func getModelIdentifier() -> String {
         var size = 0
         sysctlbyname("hw.model", nil, &size, nil, 0)
         var model = [CChar](repeating: 0, count: size)
@@ -143,7 +141,7 @@ enum SystemInfoCommand {
         return cStringArrayToString(model)
     }
 
-    nonisolated private static func getMacOSName(osVersion: OperatingSystemVersion) -> String {
+    private static func getMacOSName(osVersion: OperatingSystemVersion) -> String {
         let major = osVersion.majorVersion
         if major >= 15 {
             return "Sequoia"
@@ -160,7 +158,7 @@ enum SystemInfoCommand {
         }
     }
 
-    nonisolated private static func getMemoryItems() -> [SystemInfoItem] {
+    private static func getMemoryItems() -> [SystemInfoItem] {
         let physicalMem = ProcessInfo.processInfo.physicalMemory
         let physicalGB = Double(physicalMem) / (1024 * 1024 * 1024)
 
@@ -200,7 +198,7 @@ enum SystemInfoCommand {
         ]
     }
 
-    nonisolated private static func getCPUItems(currentLoad: host_cpu_load_info?, previousLoad: host_cpu_load_info?) -> [SystemInfoItem] {
+    private static func getCPUItems(currentLoad: host_cpu_load_info?, previousLoad: host_cpu_load_info?) -> [SystemInfoItem] {
         var cpuBrand = "Unknown"
         let cpuCount = ProcessInfo.processInfo.processorCount
         let cpuCores = ProcessInfo.processInfo.activeProcessorCount
@@ -231,7 +229,7 @@ enum SystemInfoCommand {
         ]
     }
 
-    nonisolated static func sampleCPULoad() -> host_cpu_load_info? {
+    static func sampleCPULoad() -> host_cpu_load_info? {
         var load = host_cpu_load_info()
         var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
         let result = withUnsafeMutablePointer(to: &load) {
@@ -245,7 +243,7 @@ enum SystemInfoCommand {
     // host_cpu_load_info gives cumulative ticks since boot; usage % needs the
     // delta between two samples. The first refresh after the panel opens has
     // no prior sample and shows "—".
-    nonisolated private static func formatCPUUsage(current: host_cpu_load_info?, previous: host_cpu_load_info?) -> String {
+    private static func formatCPUUsage(current: host_cpu_load_info?, previous: host_cpu_load_info?) -> String {
         guard let current else { return "N/A" }
         guard let previous else { return "—" }
 
@@ -260,7 +258,7 @@ enum SystemInfoCommand {
         return String(format: "%.1f", usage)
     }
 
-    nonisolated private static func getBatteryItems() -> [SystemInfoItem]? {
+    private static func getBatteryItems() -> [SystemInfoItem]? {
         guard let snapshotRef = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
             return nil
         }
@@ -305,7 +303,7 @@ enum SystemInfoCommand {
         return nil
     }
 
-    nonisolated private static func getUptimeItems() -> [SystemInfoItem] {
+    private static func getUptimeItems() -> [SystemInfoItem] {
         let uptime = ProcessInfo.processInfo.systemUptime
         let days = Int(uptime) / 86400
         let hours = (Int(uptime) % 86400) / 3600
@@ -323,7 +321,7 @@ enum SystemInfoCommand {
         ]
     }
 
-    nonisolated private static func getDiskItems() -> [SystemInfoItem] {
+    private static func getDiskItems() -> [SystemInfoItem] {
         var items: [SystemInfoItem] = [SystemInfoItem(label: "", value: "Disk", isHeader: true)]
 
         let fileManager = FileManager.default
@@ -356,7 +354,7 @@ enum SystemInfoCommand {
         return items
     }
 
-    nonisolated private static func cStringArrayToString(_ buffer: [CChar]) -> String {
+    private static func cStringArrayToString(_ buffer: [CChar]) -> String {
         let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
         return String(decoding: bytes, as: UTF8.self)
     }
