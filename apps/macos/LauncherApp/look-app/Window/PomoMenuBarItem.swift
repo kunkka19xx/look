@@ -46,7 +46,12 @@ final class PomoMenuBarItem {
             guard let self else { return }
             let title = note.userInfo?["title"] as? String ?? "Pomodoro"
             let subtitle = note.userInfo?["subtitle"] as? String
-            self.showPopoverMessage(title: title, subtitle: subtitle)
+            // queue: .main delivers on the main thread, but the closure
+            // type is @Sendable so we still need an explicit hop to
+            // satisfy Swift 6's actor-isolation check.
+            Task { @MainActor in
+                self.showPopoverMessage(title: title, subtitle: subtitle)
+            }
         }
 
         refresh()

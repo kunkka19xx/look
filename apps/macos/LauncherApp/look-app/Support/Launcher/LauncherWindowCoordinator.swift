@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 
+@MainActor
 final class LauncherWindowCoordinator {
     private var focusRequestToken: UInt64 = 0
 

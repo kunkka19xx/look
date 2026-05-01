@@ -182,6 +182,12 @@ final class PomoState {
     }
 
     private func advance(from i: Int) {
+        // Reset the per-phase notification flag so the next session's
+        // own ending-soon alert can fire — covers both the natural
+        // phase-end path and `skip()`, which would otherwise carry the
+        // already-notified flag into the next session.
+        didNotifyEndingSoon = false
+
         let next = i + 1
         if sessions.indices.contains(next) {
             activeIndex = next
@@ -747,15 +753,19 @@ private final class KeyCommandsHostView: NSView {
     var onR: (() -> Void)?
     var onP: (() -> Void)?
     var onActivity: (() -> Void)?
-    private var keyMonitor: Any?
-    private var activityMonitor: Any?
+    nonisolated(unsafe) private var keyMonitor: Any?
+    nonisolated(unsafe) private var activityMonitor: Any?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window != nil { installMonitors() } else { removeMonitors() }
     }
 
-    deinit { removeMonitors() }
+    deinit {
+        // Inline cleanup so deinit stays nonisolated.
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        if let activityMonitor { NSEvent.removeMonitor(activityMonitor) }
+    }
 
     private func installMonitors() {
         if keyMonitor == nil {
