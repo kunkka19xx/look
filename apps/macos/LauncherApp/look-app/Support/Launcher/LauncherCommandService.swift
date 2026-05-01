@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import SwiftUI
 
+@MainActor
 final class LauncherCommandService: ObservableObject {
     private let bridge: EngineBridge
     private let commandCatalog: [AppCommand]
@@ -27,7 +28,7 @@ final class LauncherCommandService: ObservableObject {
     func runCommand(
         command: AppCommand,
         args: String,
-        onComplete: @escaping (String) -> Void
+        onComplete: @escaping @MainActor (String) -> Void
     ) {
         switch command.id {
         case AppConstants.Launcher.Command.shell:
