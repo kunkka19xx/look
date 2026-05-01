@@ -48,6 +48,10 @@ jobs:
     concurrency:
       group: release-macos-${{ inputs.concurrency_ref }}
       cancel-in-progress: true
+    env:
+      # Match the dev toolchain (Xcode 26.3) — runner default 16.4 has
+      # stricter Swift 6 diagnostics that current dev machines don't see.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
 
     steps:
       - uses: actions/checkout@v4

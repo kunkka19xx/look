@@ -193,6 +193,11 @@ jobs:
     runs-on: macos-latest
     needs: changes
     if: github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev') && needs.changes.outputs.swift == 'true'
+    env:
+      # Pin to Xcode 26.3 — the runner default is 16.4, whose Swift 6
+      # diagnostics are stricter than current dev machines and produce
+      # spurious failures. Match the toolchain we actually develop on.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
 
