@@ -2,6 +2,7 @@ import AppKit
 import Darwin
 import UserNotifications
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotKeyManager = GlobalHotKeyManager()
     private let pomoMenuBarItem = PomoMenuBarItem()

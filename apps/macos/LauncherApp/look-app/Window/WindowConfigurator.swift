@@ -65,4 +65,7 @@ struct WindowConfigurator: NSViewRepresentable {
 }
 
 // One-shot guard so configureWindow runs exactly once per NSWindow.
-private var configuredWindowIDs: Set<ObjectIdentifier> = []
+// Only ever read/written on the main actor (configureWindow is invoked
+// from SwiftUI's main-actor view-update path), but the global is
+// otherwise unprotected — declare its isolation explicitly for Swift 6.
+@MainActor private var configuredWindowIDs: Set<ObjectIdentifier> = []

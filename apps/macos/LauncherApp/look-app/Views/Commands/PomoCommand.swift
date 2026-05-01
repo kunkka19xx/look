@@ -201,7 +201,11 @@ enum PomoPersistence {
 // still shows the transition).
 
 enum PomoNotifications {
-    private static var permissionRequested = false
+    // Bool flag — accessed from the UNUserNotificationCenter completion
+    // queue (not main). nonisolated(unsafe) is fine: occasional
+    // double-set is harmless (worst case: we issue the auth prompt
+    // twice; the system de-dupes).
+    nonisolated(unsafe) private static var permissionRequested = false
 
     static func notifyEndingSoon(session: PomoSession, secondsLeft: Int) {
         pomoNotifLog.notice("notifyEndingSoon name=\(session.name, privacy: .public) secondsLeft=\(secondsLeft)")

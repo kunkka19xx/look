@@ -28,7 +28,7 @@ private func look_request_index_refresh() -> Bool
 nonisolated
 private func look_translate_json(_ text: UnsafePointer<CChar>?, _ targetLang: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
-final class EngineBridge {
+final class EngineBridge: @unchecked Sendable {
     static let shared = EngineBridge()
 
     private init() {}
