@@ -92,7 +92,7 @@ struct CommandListView: View {
                     .padding(.vertical, 5)
                     .background(
                         (selectedID == command.id || activeID == command.id)
-                            ? themeStore.selectionFillColor() : themeStore.controlFillColor().opacity(0.75),
+                            ? themeStore.selectionFillColor() : Color.clear,
                         in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                     )
                     .onTapGesture { onSelect(command.id) }
@@ -101,7 +101,10 @@ struct CommandListView: View {
             .padding(2)
         }
         .padding(5)
-        .background(themeStore.panelFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        // No outer panel-fill: matches the bg-less right column. Rows
+        // sit directly on the command-mode backdrop. Only the selected /
+        // active row paints a backdrop (selectionFillColor); other rows
+        // are transparent.
         .frame(maxHeight: .infinity, alignment: .top)
     }
 }

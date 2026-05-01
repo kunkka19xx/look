@@ -5,19 +5,28 @@ struct WindowConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
-            configureWindow(from: view)
+            configureWindow(from: view, force: true)
         }
         return view
     }
 
+    // updateNSView is called every time SwiftUI re-evaluates the view tree
+    // containing WindowConfigurator. Re-running configureWindow on every
+    // update was causing visible flicker during drag: setting styleMask,
+    // isOpaque, layer.cornerRadius, masksToBounds, etc. on a moving window
+    // forces CALayer recomposition mid-drag. Window properties here are
+    // all constant, so we only configure once (when the window first
+    // attaches) — subsequent updates are a no-op.
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async {
-            configureWindow(from: nsView)
+            configureWindow(from: nsView, force: false)
         }
     }
 
-    private func configureWindow(from view: NSView) {
+    private func configureWindow(from view: NSView, force: Bool) {
         guard let window = view.window else { return }
+        if !force, configuredWindowIDs.contains(ObjectIdentifier(window)) { return }
+        configuredWindowIDs.insert(ObjectIdentifier(window))
 
         window.styleMask.insert(.titled)
         window.styleMask.remove(.closable)
@@ -54,3 +63,6 @@ struct WindowConfigurator: NSViewRepresentable {
         }
     }
 }
+
+// One-shot guard so configureWindow runs exactly once per NSWindow.
+private var configuredWindowIDs: Set<ObjectIdentifier> = []

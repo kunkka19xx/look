@@ -3,6 +3,7 @@ import Darwin
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotKeyManager = GlobalHotKeyManager()
+    private let pomoMenuBarItem = PomoMenuBarItem()
 
     // Grace period allows macOS "Quit & Reopen" handoff to release the previous process lock.
     private static let relaunchGracePeriodSeconds: TimeInterval = 0.8
@@ -23,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         hotKeyManager.registerToggleHotKey()
         NSApp.setActivationPolicy(.accessory)
+        pomoMenuBarItem.install()
     }
 
     private func shouldTerminateDuplicateInstance() -> Bool {

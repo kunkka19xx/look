@@ -110,6 +110,32 @@ extension ThemeStore {
         return .white
     }
 
+    // Command-mode panels render against an opaque backdrop (no
+    // visualEffect blur, no bg image) so we need solid theme-derived
+    // colors. Both the outer backdrop and the inner card colors share
+    // the same tint contribution so they read as one continuous surface
+    // — the card is just a few points darker, like a subtle recess.
+
+    func commandModeBackgroundColor() -> Color {
+        Color(
+            .sRGB,
+            red: 0.18 + settings.tintRed * 0.25,
+            green: 0.18 + settings.tintGreen * 0.25,
+            blue: 0.20 + settings.tintBlue * 0.25,
+            opacity: 1.0
+        )
+    }
+
+    func commandModePanelColor() -> Color {
+        Color(
+            .sRGB,
+            red: 0.13 + settings.tintRed * 0.25,
+            green: 0.13 + settings.tintGreen * 0.25,
+            blue: 0.15 + settings.tintBlue * 0.25,
+            opacity: 1.0
+        )
+    }
+
     func borderColor() -> Color {
         Color(
             red: settings.borderRed,
@@ -178,7 +204,6 @@ extension ThemeStore {
             return Color(red: r * factor, green: g * factor, blue: b * factor, opacity: settings.fontOpacity)
         } else {
             // Dark text: lighten towards white
-            let newFactor = 1.0 - (1.0 - factor) * (1.0 - luminance)
             return Color(red: r + (1.0 - r) * (1.0 - factor), green: g + (1.0 - g) * (1.0 - factor), blue: b + (1.0 - b) * (1.0 - factor), opacity: settings.fontOpacity)
         }
     }

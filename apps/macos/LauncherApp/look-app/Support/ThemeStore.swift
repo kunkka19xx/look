@@ -76,7 +76,6 @@ final class ThemeStore: ObservableObject {
         Self.ensureDefaultConfigFileExists(at: Self.configPath())
 
         var warnings: [String] = []
-        var loadedSettingsBlurMultiplier: Double? = nil
         let configPath = Self.configPath()
 
         // First, scan raw config for invalid values before applying

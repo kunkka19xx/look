@@ -114,9 +114,17 @@ final class KeyboardSelectionMonitor {
             }
 
             if event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control) && !event.modifierFlags.contains(.option) {
-                let keyNumber = Int(event.keyCode)
-                if keyNumber >= 18 && keyNumber <= 21 {
-                    let index = keyNumber - 17
+                // macOS digit keyCodes are not contiguous: 1=18, 2=19, 3=20, 4=21, 5=23.
+                let mappedIndex: Int?
+                switch event.keyCode {
+                case 18: mappedIndex = 1
+                case 19: mappedIndex = 2
+                case 20: mappedIndex = 3
+                case 21: mappedIndex = 4
+                case 23: mappedIndex = 5
+                default: mappedIndex = nil
+                }
+                if let index = mappedIndex {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                         onSelectCommandByIndex(index)
                     }

@@ -13,6 +13,11 @@ struct VisualEffectBlur: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
+        // Reassigning the same material forces the blur to recompute
+        // and produces a brief brighter→darker flash. Skip if it
+        // hasn't actually changed.
+        if nsView.material != material {
+            nsView.material = material
+        }
     }
 }
