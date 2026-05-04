@@ -65,7 +65,16 @@ public sealed partial class AdvancedSettingsTabView : UserControl
         ExcludedFoldersList.ItemsSource = _excludedFolders;
         ScanRootsList.ItemsSource = _scanRootPills;
         DetectedDrivesList.ItemsSource = _detectedDrives;
-        _scanRoots.CollectionChanged += (_, _) => RefreshScanRootPills();
+        // Both views derive from _scanRoots: the pills collection filters out bare drive
+        // roots, and the detected-drives list re-runs DriveDiscoveryService.Filter so that
+        // adding e.g. "D:\Projects" via Add Folder immediately hides D: (now partially
+        // covered) and removing it restores D: as a candidate. Without the second refresh,
+        // the two views would disagree about D:'s coverage until the next reload.
+        _scanRoots.CollectionChanged += (_, _) =>
+        {
+            RefreshScanRootPills();
+            RefreshDetectedDrives();
+        };
         LoadFromConfig();
         RefreshExcludedFoldersState();
         RefreshScanRootsState();

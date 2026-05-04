@@ -27,10 +27,11 @@ public class DriveDiscoveryServiceTests
     }
 
     [Fact]
-    public void Filter_PartiallyCoveredDrive_IsHidden()
+    public void Filter_PartiallyCoveredDrive_IsShownUnchecked()
     {
-        // If the user has a sub-path on D: (e.g. D:\Projects), they're indexing at a
-        // different granularity. A top-level checkbox would be ambiguous, so D: is omitted.
+        // If the user has a sub-path on D: (e.g. D:\Projects) but not the bare root,
+        // we still surface D: as a normal candidate. The user is free to add the whole
+        // drive on top of the sub-path; managing that overlap is their call, not ours.
         var drives = new[]
         {
             Snapshot("D:\\", DriveType.Fixed, ready: true),
@@ -42,8 +43,9 @@ public class DriveDiscoveryServiceTests
             existingScanRoots: ["D:\\Projects"],
             systemDriveLetter: "C:");
 
-        Assert.Single(result);
-        Assert.Equal("E", result[0].DriveLetter);
+        Assert.Equal(2, result.Count);
+        Assert.False(result.Single(c => c.DriveLetter == "D").IsSelected);
+        Assert.False(result.Single(c => c.DriveLetter == "E").IsSelected);
     }
 
     [Fact]

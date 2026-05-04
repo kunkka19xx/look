@@ -35,28 +35,20 @@ public static class DriveDiscoveryService
         IReadOnlyList<string> existingScanRoots,
         string? systemDriveLetter)
     {
-        // Distinguish exact-coverage (the user has the entire drive root, e.g. "D:\") from
-        // partial-coverage (a sub-path on that drive, e.g. "D:\Projects"). Exact-coverage
-        // drives are still shown — checked — so the user can uncheck to remove them.
-        // Partial-coverage drives are hidden because the user is indexing at a different
-        // granularity and a top-level checkbox would be ambiguous.
+        // Track drives the user has opted into via their bare root ("D:\") so the
+        // corresponding checkbox shows pre-checked. A sub-path on the same drive
+        // (e.g. "D:\Projects") doesn't pre-check the box — the bare root and the
+        // sub-path are independent scan entries, and we let the user manage any overlap.
         var exactlyCovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var partiallyCovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (string root in existingScanRoots)
         {
-            string letter = ExtractDriveLetter(root);
-            if (letter.Length == 0)
-            {
-                continue;
-            }
-
             if (IsBareDriveRoot(root))
             {
-                exactlyCovered.Add(letter);
-            }
-            else
-            {
-                partiallyCovered.Add(letter);
+                string letter = ExtractDriveLetter(root);
+                if (letter.Length > 0)
+                {
+                    exactlyCovered.Add(letter);
+                }
             }
         }
 
@@ -77,11 +69,6 @@ public static class DriveDiscoveryService
             }
 
             if (sysLetter.Length > 0 && letter.Equals(sysLetter, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (partiallyCovered.Contains(letter))
             {
                 continue;
             }
