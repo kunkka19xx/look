@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
+using LauncherApp.Services;
 
 namespace LauncherApp.Commands;
 
@@ -673,7 +674,7 @@ public static class KillCommand
             {
                 try
                 {
-                    if (!TryResolveShortcutTarget(shortcutPath, out string targetPath))
+                    if (!ShortcutResolver.TryResolveShortcutTarget(shortcutPath, out string targetPath))
                     {
                         continue;
                     }
@@ -704,35 +705,6 @@ public static class KillCommand
         }
 
         return map;
-    }
-
-    private static bool TryResolveShortcutTarget(string shortcutPath, out string targetPath)
-    {
-        targetPath = string.Empty;
-        IShellLinkW? shellLink = null;
-        IPersistFile? persistFile = null;
-        try
-        {
-            shellLink = (IShellLinkW)new ShellLink();
-            persistFile = (IPersistFile)shellLink;
-            persistFile.Load(shortcutPath, 0);
-
-            var pathBuffer = new StringBuilder(32768);
-            shellLink.GetPath(pathBuffer, pathBuffer.Capacity, IntPtr.Zero, 0);
-            targetPath = pathBuffer.ToString().Trim();
-            return !string.IsNullOrWhiteSpace(targetPath);
-        }
-        catch
-        {
-            return false;
-        }
-        finally
-        {
-            if (persistFile != null)
-                Marshal.ReleaseComObject(persistFile);
-            if (shellLink != null)
-                Marshal.ReleaseComObject(shellLink);
-        }
     }
 
     private static string NormalizePath(string path)
@@ -858,49 +830,5 @@ public static class KillCommand
         public uint RemotePort;
         public uint State;
         public uint OwningPid;
-    }
-
-    [ComImport]
-    [Guid("00021401-0000-0000-C000-000000000046")]
-    private class ShellLink
-    {
-    }
-
-    [ComImport]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    [Guid("000214F9-0000-0000-C000-000000000046")]
-    private interface IShellLinkW
-    {
-        void GetPath([Out] StringBuilder pszFile, int cch, IntPtr pfd, uint fFlags);
-        void GetIDList(out IntPtr ppidl);
-        void SetIDList(IntPtr pidl);
-        void GetDescription([Out] StringBuilder pszName, int cch);
-        void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
-        void GetWorkingDirectory([Out] StringBuilder pszDir, int cch);
-        void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
-        void GetArguments([Out] StringBuilder pszArgs, int cch);
-        void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
-        void GetHotkey(out short wHotkey);
-        void SetHotkey(short wHotkey);
-        void GetShowCmd(out int iShowCmd);
-        void SetShowCmd(int iShowCmd);
-        void GetIconLocation([Out] StringBuilder pszIconPath, int cch, out int iIcon);
-        void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
-        void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, uint dwReserved);
-        void Resolve(IntPtr hwnd, uint fFlags);
-        void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
-    }
-
-    [ComImport]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    [Guid("0000010b-0000-0000-C000-000000000046")]
-    private interface IPersistFile
-    {
-        void GetClassID(out Guid pClassID);
-        void IsDirty();
-        void Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, uint dwMode);
-        void Save([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, bool fRemember);
-        void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
-        void GetCurFile([MarshalAs(UnmanagedType.LPWStr)] out string ppszFileName);
     }
 }
