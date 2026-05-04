@@ -28,6 +28,14 @@ public sealed partial class AppearanceSettingsTabView : UserControl
         InitializeComponent();
         LoadInstalledFonts();
         InitializeFromCurrentTheme();
+        // Seed typography trackers to match what's already on screen so the first Save
+        // doesn't see the -1 / "" sentinels as "user changed font" and walk the visual
+        // tree forcing FontSize on every Control/TextBlock — which would clobber explicit
+        // XAML sizes like the FontSize="11" hint text. ReloadFromConfig deliberately
+        // re-resets these to the sentinels so a fresh-config reset still does fire the
+        // tree walk and clear stale per-instance overrides; that path is unaffected.
+        _appliedFontSize = FontSizeSlider.Value;
+        _appliedFontName = FontNameInput.Text ?? string.Empty;
         HookLiveEvents();
         _isInitializing = false;
     }

@@ -16,6 +16,12 @@ public sealed partial class AdvancedSettingsTabView : UserControl
 
     private readonly ObservableCollection<string> _excludedFolders = [];
     private readonly ObservableCollection<string> _scanRoots = [];
+    // Pills view of _scanRoots that hides bare drive roots (e.g. "D:\") because those are
+    // owned by the Detected Drives checkbox UI above. Without this filter the same drive
+    // would appear twice — once as a checkbox, once as a removable pill — and removing
+    // either would leave the other in a stale state.
+    private readonly ObservableCollection<string> _scanRootPills = [];
+    private readonly ObservableCollection<CandidateDrive> _detectedDrives = [];
     private string? _backgroundImagePath;
 
     private const string DefaultConfigContents = "# look configuration\n"
@@ -57,10 +63,13 @@ public sealed partial class AdvancedSettingsTabView : UserControl
     {
         InitializeComponent();
         ExcludedFoldersList.ItemsSource = _excludedFolders;
-        ScanRootsList.ItemsSource = _scanRoots;
+        ScanRootsList.ItemsSource = _scanRootPills;
+        DetectedDrivesList.ItemsSource = _detectedDrives;
+        _scanRoots.CollectionChanged += (_, _) => RefreshScanRootPills();
         LoadFromConfig();
         RefreshExcludedFoldersState();
         RefreshScanRootsState();
+        RefreshDetectedDrives();
         HookBackgroundLiveEvents();
         ApplyBackgroundImageLive();
     }
@@ -249,6 +258,7 @@ public sealed partial class AdvancedSettingsTabView : UserControl
         LoadFromConfig();
         RefreshExcludedFoldersState();
         RefreshScanRootsState();
+        RefreshDetectedDrives();
         ApplyBackgroundImageLive();
     }
 
@@ -381,9 +391,72 @@ public sealed partial class AdvancedSettingsTabView : UserControl
 
     private void RefreshScanRootsState()
     {
-        ScanRootsEmptyText.Visibility = _scanRoots.Count == 0
+        ScanRootsEmptyText.Visibility = _scanRootPills.Count == 0
             ? Microsoft.UI.Xaml.Visibility.Visible
             : Microsoft.UI.Xaml.Visibility.Collapsed;
+    }
+
+    private void RefreshScanRootPills()
+    {
+        _scanRootPills.Clear();
+        foreach (string entry in _scanRoots)
+        {
+            if (!DriveDiscoveryService.IsBareDriveRoot(entry))
+            {
+                _scanRootPills.Add(entry);
+            }
+        }
+        RefreshScanRootsState();
+    }
+
+    private void RefreshDetectedDrives()
+    {
+        _detectedDrives.Clear();
+
+        // Treat both the Rust-managed baseline (file_scan_roots) and the user's extra
+        // additions (the in-memory _scanRoots list) as "already covered" so we don't suggest
+        // a drive the user has already opted into via any path on it.
+        var existingRoots = new List<string>(ParseCsvTokens(LookConfig.Get("file_scan_roots")));
+        existingRoots.AddRange(_scanRoots);
+
+        foreach (CandidateDrive drive in DriveDiscoveryService.Discover(existingRoots))
+        {
+            _detectedDrives.Add(drive);
+        }
+
+        DetectedDrivesEmptyText.Visibility = _detectedDrives.Count == 0
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+    }
+
+    private void DetectedDriveCheckbox_OnClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is not CheckBox cb || cb.Tag is not string letter || string.IsNullOrWhiteSpace(letter))
+        {
+            return;
+        }
+
+        string root = letter + ":\\";
+        bool nowChecked = cb.IsChecked == true;
+
+        if (nowChecked)
+        {
+            if (!_scanRoots.Any(r => string.Equals(r, root, StringComparison.OrdinalIgnoreCase)))
+            {
+                _scanRoots.Add(root);
+            }
+        }
+        else
+        {
+            string? match = _scanRoots.FirstOrDefault(r => string.Equals(r, root, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                _scanRoots.Remove(match);
+            }
+        }
+
+        ClearScanRootsNotice();
+        RefreshScanRootsState();
     }
 
     private void ShowScanRootsNotice(string message)

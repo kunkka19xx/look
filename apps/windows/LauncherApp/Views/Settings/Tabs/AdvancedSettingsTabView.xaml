@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:views="using:LauncherApp.Views"
+    xmlns:services="using:LauncherApp.Services"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -76,6 +77,38 @@
                             <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="Refresh index automatically when launcher opens after file/app changes." />
                         </StackPanel>
                         <ToggleSwitch x:Name="LazyIndexingToggle" Grid.Column="1" IsOn="True" OnContent="On" OffContent="Off" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Top" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Detected Drives" />
+                        <StackPanel Grid.Column="1" Spacing="6">
+                            <TextBlock Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" TextWrapping="Wrap"
+                                       Text="Other fixed drives found on this PC. Tick a drive to include it in the index (saved with Save)." />
+                            <ItemsControl x:Name="DetectedDrivesList">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Vertical" Spacing="6" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="services:CandidateDrive">
+                                        <Border Padding="10,5" Background="{StaticResource LauncherPanelAltBrush}" CornerRadius="12">
+                                            <CheckBox Click="DetectedDriveCheckbox_OnClick"
+                                                      Tag="{x:Bind DriveLetter}"
+                                                      IsChecked="{x:Bind IsSelected}"
+                                                      Content="{x:Bind DisplayLabel}"
+                                                      Foreground="{StaticResource LauncherTextBrush}"
+                                                      VerticalAlignment="Center" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock x:Name="DetectedDrivesEmptyText" Foreground="{StaticResource LauncherMutedTextBrush}" FontSize="11" Text="No additional drives detected." />
+                        </StackPanel>
                     </Grid>
 
                     <Grid ColumnSpacing="8">
