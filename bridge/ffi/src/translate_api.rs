@@ -15,7 +15,12 @@ const TRANSLATE_URL_PREFIX: &str =
 const TRANSLATE_URL_MIDDLE: &str = "&dt=t&q=";
 const CURL_BIN: &str = "curl";
 const CURL_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-const CURL_ARGS_PREFIX: [&str; 9] = [
+// `--compressed` was dropped: the curl shipped in C:\Windows\System32 on some
+// Windows 10 builds lacks zlib support and exits non-zero with "the installed
+// libcurl version doesn't support this", surfacing as "Translation request
+// failed". Translation responses are ~hundreds of bytes; the bandwidth saving
+// isn't worth a platform fork.
+const CURL_ARGS_PREFIX: [&str; 8] = [
     "-s",
     "-m",
     "3",
@@ -24,7 +29,6 @@ const CURL_ARGS_PREFIX: [&str; 9] = [
     "--tlsv1.2",
     "-H",
     "Accept-Language: en-US,en;q=0.9",
-    "--compressed",
 ];
 
 #[derive(Clone, Copy)]
