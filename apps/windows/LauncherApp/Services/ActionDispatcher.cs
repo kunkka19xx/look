@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading.Tasks;
 using LauncherApp.Bridge;
 using Windows.ApplicationModel.DataTransfer;
@@ -512,26 +513,47 @@ public sealed class ActionDispatcher
         if (!normalized.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
             return normalized;
 
-        try
+        // Resolved via IShellLinkW directly. The previous WScript.Shell + `dynamic`
+        // implementation crashed the process on some Windows 10 installs: the DLR's
+        // IDispatch type-info scan hit an uncatchable failure inside
+        // Microsoft.CSharp.RuntimeBinder.ComInterop.GetTypeAttrForTypeInfo.
+        if (TryResolveShortcutTarget(normalized, out string targetPath)
+            && !string.IsNullOrWhiteSpace(targetPath))
         {
-            var shellType = Type.GetTypeFromProgID("WScript.Shell");
-            if (shellType == null)
-                return normalized;
-
-            dynamic? shell = Activator.CreateInstance(shellType);
-            if (shell == null)
-                return normalized;
-
-            dynamic shortcut = shell.CreateShortcut(normalized);
-            string targetPath = shortcut.TargetPath;
-            if (!string.IsNullOrWhiteSpace(targetPath))
-                return NormalizePath(targetPath);
-        }
-        catch
-        {
+            return NormalizePath(targetPath);
         }
 
         return normalized;
+    }
+
+    private static bool TryResolveShortcutTarget(string shortcutPath, out string targetPath)
+    {
+        targetPath = string.Empty;
+
+        IShellLinkW? shellLink = null;
+        IPersistFile? persistFile = null;
+        try
+        {
+            shellLink = (IShellLinkW)new ShellLink();
+            persistFile = (IPersistFile)shellLink;
+            persistFile.Load(shortcutPath, 0);
+
+            var buffer = new StringBuilder(32768);
+            shellLink.GetPath(buffer, buffer.Capacity, IntPtr.Zero, 0);
+            targetPath = buffer.ToString().Trim();
+            return targetPath.Length > 0;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            if (persistFile != null)
+                Marshal.ReleaseComObject(persistFile);
+            if (shellLink != null)
+                Marshal.ReleaseComObject(shellLink);
+        }
     }
 
     private static bool IsLikelySingleAppAlias(string originalPath, string resolvedExePath, string? title)
@@ -609,4 +631,48 @@ public sealed class ActionDispatcher
         IntPtr hProcess,
         ref uint applicationUserModelIdLength,
         [Out] char[]? applicationUserModelId);
+
+    [ComImport]
+    [Guid("00021401-0000-0000-C000-000000000046")]
+    private class ShellLink
+    {
+    }
+
+    [ComImport]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("000214F9-0000-0000-C000-000000000046")]
+    private interface IShellLinkW
+    {
+        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cchMaxPath, IntPtr pfd, uint fFlags);
+        void GetIDList(out IntPtr ppidl);
+        void SetIDList(IntPtr pidl);
+        void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszName, int cchMaxName);
+        void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+        void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszDir, int cchMaxPath);
+        void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
+        void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszArgs, int cchMaxPath);
+        void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
+        void GetHotkey(out short pwHotkey);
+        void SetHotkey(short wHotkey);
+        void GetShowCmd(out int piShowCmd);
+        void SetShowCmd(int iShowCmd);
+        void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszIconPath, int cchIconPath, out int piIcon);
+        void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
+        void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, uint dwReserved);
+        void Resolve(IntPtr hwnd, uint fFlags);
+        void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
+    }
+
+    [ComImport]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("0000010B-0000-0000-C000-000000000046")]
+    private interface IPersistFile
+    {
+        void GetClassID(out Guid pClassID);
+        void IsDirty();
+        void Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, int dwMode);
+        void Save([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, bool fRemember);
+        void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
+        void GetCurFile([MarshalAs(UnmanagedType.LPWStr)] out string ppszFileName);
+    }
 }
