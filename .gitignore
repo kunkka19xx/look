@@ -86,3 +86,6 @@ BundleArtifacts/
 .claude
 AGENTS.md
 CLAUDE.md
+
+## Literal ~ directories (cargo bug)
+~/

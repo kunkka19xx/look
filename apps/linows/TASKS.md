@@ -7,36 +7,37 @@ Based on macOS app as source of truth. Organized by phase.
 ## Phase 1: Core Search (MVP)
 
 ### Scaffold
-- [ ] Create Tauri v2 project structure (src-tauri/, src/)
-- [ ] Cargo.toml with core crate deps (look-engine, look-indexing, look-storage)
-- [ ] tauri.conf.json (borderless, transparent, always-on-top, 620x600)
+- [x] Create Tauri v2 project structure (src-tauri/, src/)
+- [x] Cargo.toml with core crate deps (look-engine, look-indexing, look-storage)
+- [x] tauri.conf.json (borderless, always-on-top, 860x580)
+- [x] flake.nix dev shell with cargo-tauri
 - [ ] Build script integration (Makefile targets)
 
 ### Backend (Rust)
-- [ ] `state.rs` — Engine cache (RwLock<QueryEngine>), bootstrap refresh, file watchers
-- [ ] `commands.rs` — search(query, limit), record_usage(id, action)
-- [ ] `commands.rs` — open_path(path), reveal_path(path)
-- [ ] `commands.rs` — reload_config(), request_index_refresh()
+- [x] `state.rs` — Engine cache (RwLock<QueryEngine>), bootstrap refresh, file watchers
+- [x] `commands.rs` — search(query, limit), record_usage(id, action)
+- [x] `commands.rs` — open_path(path), reveal_path(path)
+- [x] `commands.rs` — reload_config(), request_index_refresh()
 - [ ] `platform.rs` — File icon extraction (SHGetFileInfo on Windows, freedesktop on Linux)
-- [ ] `config.rs` — Load/reload RuntimeConfig, db path resolution
 
 ### Frontend (HTML/CSS/JS)
-- [ ] `index.html` — Main window structure
-- [ ] `css/reset.css` — CSS reset
-- [ ] `css/theme.css` — CSS custom properties (colors, spacing, typography)
-- [ ] `css/layout.css` — Window layout, search bar, content area
-- [ ] `css/components.css` — Result rows, panels, badges
-- [ ] `js/ipc.js` — Tauri invoke wrapper
-- [ ] `js/app.js` — Main controller, mode switching
-- [ ] `js/search.js` — Debounced search (70ms), query → invoke → render
-- [ ] `js/results.js` — DOM rendering of result rows (icon, title, kind badge, path)
-- [ ] `js/keyboard.js` — Arrow navigation, Enter to open, Escape to hide
+- [x] `index.html` — Main window structure
+- [x] `css/reset.css` — CSS reset
+- [x] `css/theme.css` — CSS custom properties (colors, spacing, typography)
+- [x] `css/layout.css` — Window layout, search bar, content area
+- [x] `css/components.css` — Result rows, panels
+- [x] `js/ipc.js` — Tauri invoke wrapper
+- [x] `js/app.js` — Main controller, mode switching
+- [x] `js/search.js` — Debounced search (70ms), query → invoke → render
+- [x] `js/results.js` — DOM rendering of result rows (icon, title, kind subtitle)
+- [x] `js/keyboard.js` — Arrow navigation, Enter to open, Escape to hide
 
 ### Window & System
-- [ ] Global hotkey (Alt+Space) via tauri-plugin-global-shortcut
-- [ ] Single instance via tauri-plugin-single-instance
-- [ ] Window blur/transparency (Mica on Windows, compositor on Linux, solid fallback)
-- [ ] Auto-hide on focus loss
+- [x] Global hotkey (Alt+Space) via tauri-plugin-global-shortcut
+- [x] Single instance via tauri-plugin-single-instance
+- [x] Transparency detection (Wayland/compositor → transparent + rounded corners, X11 bare → solid + square)
+- [x] Auto-hide on focus loss (transparent-capable platforms only)
+- [x] i3/tiling WM support (floating rule, manual centering)
 
 ---
 
@@ -89,12 +90,12 @@ Based on macOS app as source of truth. Organized by phase.
 - [ ] Help screen (Ctrl+H) — keyboard shortcuts
 
 ### Themes (CSS custom property sets)
-- [ ] Catppuccin (default)
-- [ ] Tokyo Night
-- [ ] Rose Pine
-- [ ] Gruvbox
-- [ ] Dracula
-- [ ] Kanagawa
+- [x] Catppuccin (default)
+- [x] Tokyo Night
+- [x] Rose Pine
+- [x] Gruvbox
+- [x] Dracula
+- [x] Kanagawa
 
 ### Features
 - [ ] Theme switching via CSS custom properties on :root
@@ -123,3 +124,4 @@ Based on macOS app as source of truth. Organized by phase.
 - Auto-start: ~/.config/autostart/look.desktop
 - DB path: ~/.local/share/look/look.db
 - Global hotkey: Works on X11; Wayland support may be limited
+- i3/tiling WMs: needs `for_window [title="Look"] floating enable, border none` in config

@@ -1,0 +1,119 @@
+/* Catppuccin (Default Theme) */
+:root {
+  /* Background tint */
+  --bg-tint: rgb(30, 30, 46);
+
+  /* Text hierarchy */
+  --font-color: rgba(242, 240, 250, 0.97);
+  --font-secondary: rgba(204, 214, 245, 1.0);
+  --font-muted: rgba(171, 178, 199, 0.78);
+
+  /* Border */
+  --border-color: rgba(255, 255, 255, 0.12);
+  --border-thickness: 1px;
+
+  /* Surfaces */
+  --panel-fill: rgba(30, 28, 46, 0.34);
+  --control-fill: rgba(48, 51, 69, 0.34);
+  --divider-color: rgba(102, 102, 112, 0.28);
+  --selection-fill: rgba(148, 153, 178, 0.28);
+
+  /* Accent & semantic */
+  --accent-color: rgba(138, 181, 250, 1.0);
+  --on-accent-color: rgba(0, 0, 0, 0.90);
+  --color-success: #a6e3a1;
+  --color-warning: #fab387;
+  --color-danger: #f38ba8;
+  --color-info: #89b4fa;
+
+  /* Typography */
+  --font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", monospace;
+  --font-size: 14px;
+
+  /* Spacing */
+  --content-padding: 14px;
+  --row-height: 38px;
+  --row-spacing: 4px;
+  --icon-size: 32px;
+  --corner-radius: 0;
+  --control-radius: 8px;
+  --input-padding-x: 12px;
+  --input-padding-y: 10px;
+}
+
+/* Tokyo Night */
+[data-theme="tokyo-night"] {
+  --bg-tint: rgba(26, 27, 38, 0.60);
+  --font-color: rgba(214, 222, 245, 0.98);
+  --font-secondary: rgba(189, 204, 230, 1.0);
+  --font-muted: rgba(143, 163, 199, 0.78);
+  --panel-fill: rgba(15, 23, 46, 0.38);
+  --control-fill: rgba(36, 43, 71, 0.34);
+  --divider-color: rgba(102, 102, 112, 0.28);
+  --selection-fill: rgba(97, 120, 184, 0.28);
+  --accent-color: rgba(133, 184, 250, 1.0);
+  --border-color: rgba(169, 177, 214, 0.10);
+}
+
+/* Rose Pine */
+[data-theme="rose-pine"] {
+  --bg-tint: rgba(25, 23, 36, 0.58);
+  --font-color: rgba(242, 237, 232, 0.98);
+  --font-secondary: rgba(224, 214, 207, 1.0);
+  --font-muted: rgba(189, 178, 168, 0.78);
+  --panel-fill: rgba(33, 28, 43, 0.38);
+  --control-fill: rgba(51, 46, 64, 0.34);
+  --divider-color: rgba(102, 102, 112, 0.28);
+  --selection-fill: rgba(148, 133, 168, 0.28);
+  --accent-color: rgba(184, 156, 199, 1.0);
+  --border-color: rgba(224, 222, 244, 0.10);
+}
+
+/* Gruvbox */
+[data-theme="gruvbox"] {
+  --bg-tint: rgba(40, 40, 40, 0.60);
+  --font-color: rgba(237, 227, 201, 0.98);
+  --font-secondary: rgba(222, 204, 163, 1.0);
+  --font-muted: rgba(184, 163, 122, 0.78);
+  --panel-fill: rgba(36, 28, 23, 0.38);
+  --control-fill: rgba(54, 43, 33, 0.34);
+  --divider-color: rgba(102, 102, 112, 0.28);
+  --selection-fill: rgba(189, 138, 66, 0.28);
+  --accent-color: rgba(219, 184, 102, 1.0);
+  --border-color: rgba(235, 219, 178, 0.10);
+}
+
+/* Dracula */
+[data-theme="dracula"] {
+  --bg-tint: rgba(40, 42, 54, 0.58);
+  --font-color: rgba(248, 248, 250, 0.98);
+  --font-secondary: rgba(235, 222, 250, 1.0);
+  --font-muted: rgba(196, 189, 217, 0.78);
+  --panel-fill: rgba(28, 25, 46, 0.38);
+  --control-fill: rgba(54, 51, 77, 0.34);
+  --divider-color: rgba(102, 102, 112, 0.28);
+  --selection-fill: rgba(158, 133, 201, 0.28);
+  --accent-color: rgba(163, 191, 250, 1.0);
+  --border-color: rgba(248, 248, 242, 0.10);
+}
+
+/* Kanagawa */
+[data-theme="kanagawa"] {
+  --bg-tint: rgba(22, 22, 29, 0.60);
+  --font-color: rgba(222, 219, 201, 0.98);
+  --font-secondary: rgba(204, 199, 168, 1.0);
+  --font-muted: rgba(168, 161, 128, 0.78);
+  --panel-fill: rgba(25, 31, 36, 0.38);
+  --control-fill: rgba(46, 51, 61, 0.34);
+  --divider-color: rgba(102, 102, 112, 0.28);
+  --selection-fill: rgba(128, 122, 97, 0.28);
+  --accent-color: rgba(117, 166, 209, 1.0);
+  --border-color: rgba(220, 215, 186, 0.10);
+}
+
+/* Transparency-capable environments (macOS, Windows, Wayland, X11 with compositor) */
+[data-transparent="true"] {
+  --bg-tint: rgba(30, 30, 46, 0.55);
+  --corner-radius: 16px;
+}

@@ -1,12 +1,16 @@
 pub(crate) mod paths;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "windows")]
 mod windows;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 use macos as platform_impl;
+#[cfg(target_os = "linux")]
+use linux as platform_impl;
 #[cfg(target_os = "windows")]
 use windows as platform_impl;
 
@@ -29,12 +33,20 @@ pub(crate) fn discover_windows_installed_apps(
     windows::discover_installed_apps(config, tx)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 pub(crate) fn discover_macos_installed_apps(
     config: &crate::config::RuntimeConfig,
     tx: std::sync::mpsc::SyncSender<look_indexing::Candidate>,
 ) {
     macos::discover_installed_apps(config, tx)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn discover_linux_installed_apps(
+    config: &crate::config::RuntimeConfig,
+    tx: std::sync::mpsc::SyncSender<look_indexing::Candidate>,
+) {
+    linux::discover_installed_apps(config, tx)
 }
 
 pub(crate) fn file_scan_root_suffixes() -> &'static [&'static str] {

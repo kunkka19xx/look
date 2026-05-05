@@ -1,0 +1,23 @@
+[package]
+name = "look-desktop"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "devtools"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+look-engine = { path = "../../../core/engine" }
+look-indexing = { path = "../../../core/indexing" }
+look-storage = { path = "../../../core/storage" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+notify = "6"
+open = "5"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
