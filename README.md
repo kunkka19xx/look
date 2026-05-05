@@ -163,7 +163,7 @@ Out of scope for v1:
 - semantic/vector search
 - full content indexing (names and metadata only)
 
-Platform direction: macOS shipped, Windows in active development on `big/windows-porting`. Linux is not a near-term priority because `rofi` already covers the workflow well.
+Platform direction: macOS shipped (SwiftUI, native). Windows + Linux moving to a shared Tauri app (`apps/linows/`) — the current WinUI3 app (`apps/windows/`) will be archived once the Tauri migration reaches feature parity.
 
 ## License
 
