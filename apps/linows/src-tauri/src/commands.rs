@@ -91,17 +91,34 @@ pub fn open_path(
     kind: Option<String>,
     id: Option<String>,
 ) -> Result<(), String> {
-    let result = if kind.as_deref() == Some("app") && !path.contains("://") {
-        launch_app(&path, id.as_deref())
-    } else {
-        open::that(&path).map_err(|e| format!("Failed to open: {e}"))
-    };
-
-    if result.is_ok() {
+    if kind.as_deref() == Some("app") && !path.contains("://") {
+        let result = launch_app(&path, id.as_deref());
+        if result.is_ok() {
+            let _ = window.hide();
+        }
+        result
+    } else if kind.as_deref() == Some("browser") {
+        // Open URL and try to focus the browser window
         let _ = window.hide();
+        std::thread::spawn(move || {
+            let _ = open::that(&path);
+            // Try to focus browser via i3
+            for class in &["Brave-browser", "firefox", "chromium", "Google-chrome"] {
+                if try_focus_window(class) {
+                    break;
+                }
+            }
+        });
+        Ok(())
+    } else {
+        // open::that() calls xdg-open which blocks until the app closes.
+        // Spawn in a background thread to avoid freezing Look.
+        let _ = window.hide();
+        std::thread::spawn(move || {
+            let _ = open::that(&path);
+        });
+        Ok(())
     }
-
-    result
 }
 
 fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
@@ -303,6 +320,36 @@ pub fn toggle_window(window: tauri::WebviewWindow) {
         let _ = window.show();
         let _ = window.set_focus();
     }
+}
+
+#[tauri::command]
+pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), String> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let uris: Vec<String> = paths.iter().map(|p| format!("file://{p}")).collect();
+    let uri = format!("copy\n{}", uris.join("\n"));
+
+    // Use sh -c with a pipe to fully detach from our process
+    // xclip stays alive to serve the X11 clipboard, so it must be detached
+    let script = format!(
+        "echo -n '{}' | xclip -selection clipboard -t x-special/gnome-copied-files 2>/dev/null || \
+         echo -n '{}' | wl-copy -t x-special/gnome-copied-files 2>/dev/null",
+        uri.replace('\'', "'\\''"),
+        uri.replace('\'', "'\\''"),
+    );
+
+    // setsid detaches xclip into its own session so it doesn't
+    // interfere with Look's X11 event loop
+    let result = std::process::Command::new("setsid")
+        .args(["sh", "-c", &script])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+
+    result.map_err(|e| format!("Failed to copy: {e}"))?;
+    Ok(())
 }
 
 #[tauri::command]

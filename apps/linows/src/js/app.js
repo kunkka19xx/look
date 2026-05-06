@@ -2,7 +2,8 @@ import * as results from './components/results.js';
 import * as search from './search.js';
 import * as keyboard from './keyboard.js';
 import * as preview from './components/preview.js';
-import { onWindowShown, getHomeDir } from './ipc.js';
+import * as picked from './components/picked.js';
+import { onWindowShown, getHomeDir, copyFilesToClipboard } from './ipc.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   const queryInput = document.getElementById('query');
@@ -13,10 +14,34 @@ document.addEventListener('DOMContentLoaded', () => {
   results.init(resultsList);
   keyboard.init(queryInput);
   preview.init(previewPanel);
+  picked.init(previewPanel, {
+    onRemoveItem: (key) => results.removePick(key),
+    onClearAll: () => results.clearPicks(),
+  });
 
-  // Update preview when selection changes
+  // Update right panel when selection changes
   results.setOnSelectionChange((item) => {
-    preview.update(item);
+    if (!results.hasPickedItems()) {
+      preview.update(item);
+    }
+  });
+
+  // Update right panel when picks change + auto-copy
+  results.setOnPickChange((pickedItems) => {
+    if (pickedItems.length > 0) {
+      preview.clear();
+      picked.update(pickedItems);
+      // Auto-copy picked files to clipboard
+      const paths = pickedItems
+        .filter((i) => i.kind === 'file' || i.kind === 'folder')
+        .map((i) => i.path);
+      if (paths.length > 0) {
+        copyFilesToClipboard(paths).catch(() => {});
+      }
+    } else {
+      picked.update([]);
+      preview.update(results.getSelected());
+    }
   });
 
   // Wire search → results

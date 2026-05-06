@@ -88,6 +88,20 @@
 .result-badge.kind-folder { color: var(--color-warning); }
 .result-badge.kind-setting { color: var(--color-info); }
 
+/* Pick checkmark */
+.pick-check {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 11px;
+  color: var(--on-accent-color);
+  background: var(--accent-color);
+}
+
 /* Empty state */
 .empty-state {
   display: flex;

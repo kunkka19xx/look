@@ -41,6 +41,10 @@ export async function getAppVersion(path) {
   return invoke('get_app_version', { path });
 }
 
+export async function copyFilesToClipboard(paths) {
+  return invoke('copy_files_to_clipboard', { paths });
+}
+
 export async function getHomeDir() {
   return invoke('get_home_dir');
 }

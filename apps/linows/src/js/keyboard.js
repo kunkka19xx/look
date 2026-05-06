@@ -1,5 +1,5 @@
 import * as results from './components/results.js';
-import { openPath, recordUsage, revealPath, hideWindow } from './ipc.js';
+import { openPath, recordUsage, revealPath, hideWindow, copyFilesToClipboard } from './ipc.js';
 
 let queryInput = null;
 let shiftHeld = false;
@@ -51,7 +51,11 @@ function handleKeyDown(e) {
 
     case 'Enter':
       e.preventDefault();
-      openSelected();
+      if (e.ctrlKey) {
+        searchWeb();
+      } else {
+        openSelected();
+      }
       break;
 
     case 'Escape':
@@ -63,6 +67,24 @@ function handleKeyDown(e) {
       if (e.ctrlKey) {
         e.preventDefault();
         revealSelected();
+      }
+      break;
+
+    case 'c':
+      if (e.ctrlKey && !window.getSelection()?.toString()) {
+        e.preventDefault();
+        copySelectedPath();
+      }
+      break;
+
+    case 'p':
+    case 'P':
+      if (e.ctrlKey && (e.shiftKey || shiftHeld)) {
+        e.preventDefault();
+        results.clearPicks();
+      } else if (e.ctrlKey) {
+        e.preventDefault();
+        results.togglePick(results.getSelected());
       }
       break;
   }
@@ -85,6 +107,28 @@ async function openSelected() {
     await recordUsage(item.id, action);
   } catch (err) {
     console.error('Failed to open:', err);
+  }
+}
+
+function searchWeb() {
+  const query = queryInput.value.trim();
+  if (!query) return;
+  const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  openPath(url, 'browser');
+}
+
+async function copySelectedPath() {
+  const item = results.getSelected();
+  if (!item) return;
+
+  try {
+    if (item.kind === 'file' || item.kind === 'folder') {
+      await copyFilesToClipboard([item.path]);
+    } else {
+      await navigator.clipboard.writeText(item.path);
+    }
+  } catch (err) {
+    console.error('Failed to copy:', err);
   }
 }
 

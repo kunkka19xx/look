@@ -1,11 +1,13 @@
 import { getIcon } from '../ipc.js';
 
 const iconCache = new Map();
+const pickedMap = new Map(); // key → result
 
 let currentResults = [];
 let selectedIndex = -1;
 let container = null;
 let onSelectionChange = null;
+let onPickChange = null;
 
 export function init(containerEl) {
   container = containerEl;
@@ -13,6 +15,10 @@ export function init(containerEl) {
 
 export function setOnSelectionChange(callback) {
   onSelectionChange = callback;
+}
+
+export function setOnPickChange(callback) {
+  onPickChange = callback;
 }
 
 export function render(results) {
@@ -71,6 +77,69 @@ export function select(index) {
   }
 }
 
+// --- Pick management ---
+
+function pickKey(item) {
+  return `${item.kind}|${item.path}`;
+}
+
+export function togglePick(item) {
+  if (!item) return;
+  const key = pickKey(item);
+  if (pickedMap.has(key)) {
+    pickedMap.delete(key);
+  } else {
+    pickedMap.set(key, item);
+  }
+  updatePickedIndicators();
+  if (onPickChange) onPickChange(getPickedItems());
+}
+
+export function removePick(key) {
+  pickedMap.delete(key);
+  updatePickedIndicators();
+  if (onPickChange) onPickChange(getPickedItems());
+}
+
+export function clearPicks() {
+  pickedMap.clear();
+  updatePickedIndicators();
+  if (onPickChange) onPickChange(getPickedItems());
+}
+
+export function isPicked(item) {
+  return pickedMap.has(pickKey(item));
+}
+
+export function getPickedItems() {
+  return [...pickedMap.entries()].map(([key, item]) => ({ key, ...item }));
+}
+
+export function hasPickedItems() {
+  return pickedMap.size > 0;
+}
+
+function updatePickedIndicators() {
+  const rows = container.querySelectorAll('.result-row');
+  rows.forEach((row, i) => {
+    const result = currentResults[i];
+    if (!result) return;
+    const check = row.querySelector('.pick-check');
+    if (pickedMap.has(pickKey(result))) {
+      if (!check) {
+        const el = document.createElement('div');
+        el.className = 'pick-check';
+        el.innerHTML = '&#10003;';
+        row.appendChild(el);
+      }
+    } else if (check) {
+      check.remove();
+    }
+  });
+}
+
+// --- Row creation ---
+
 function createRow(result, index) {
   const row = document.createElement('div');
   row.className = 'result-row';
@@ -107,6 +176,14 @@ function createRow(result, index) {
 
   row.appendChild(text);
 
+  // Picked indicator
+  if (pickedMap.has(pickKey(result))) {
+    const el = document.createElement('div');
+    el.className = 'pick-check';
+    el.innerHTML = '&#10003;';
+    row.appendChild(el);
+  }
+
   row.addEventListener('click', () => {
     select(index);
     row.dispatchEvent(new CustomEvent('result-activate', { bubbles: true }));
@@ -118,7 +195,6 @@ function createRow(result, index) {
 function loadIcon(iconEl, kind, path, id) {
   const cacheKey = `${kind}:${path}`;
 
-  // Check JS cache first
   if (iconCache.has(cacheKey)) {
     const dataUrl = iconCache.get(cacheKey);
     if (dataUrl) {
