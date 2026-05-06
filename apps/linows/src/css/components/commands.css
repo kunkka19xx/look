@@ -1,0 +1,329 @@
+/* Command mode layout */
+
+/* Sidebar */
+.cmd-sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.cmd-row:hover {
+  background: var(--selection-fill);
+}
+
+.cmd-row-active {
+  background: var(--selection-fill);
+}
+
+.cmd-row-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-color);
+  font-family: var(--font-mono);
+  border: 1.5px solid var(--accent-color);
+  border-radius: 50%;
+}
+
+.cmd-row-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cmd-row-label {
+  font-size: calc(var(--font-size) - 1px);
+  font-weight: 600;
+  color: var(--font-color);
+}
+
+.cmd-row-shortcut {
+  font-weight: 400;
+  color: var(--font-secondary);
+  font-size: calc(var(--font-size) - 2px);
+}
+
+.cmd-row-detail {
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--font-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Divider */
+.cmd-divider {
+  width: 1px;
+  background: var(--divider-color);
+  margin: 2px 0;
+  flex-shrink: 0;
+}
+
+/* Right content area */
+.cmd-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Input bar */
+.cmd-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--control-fill);
+  border-radius: 10px;
+  margin: 8px 8px 0;
+}
+
+.cmd-input-bar-icon {
+  color: var(--accent-color);
+  font-size: 14px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+
+.cmd-input-bar input {
+  flex: 1;
+  font-size: var(--font-size);
+  color: var(--font-color);
+  caret-color: var(--accent-color);
+  background: none;
+  border: none;
+  outline: none;
+  font: inherit;
+}
+
+.cmd-input-bar input::placeholder {
+  color: var(--font-muted);
+}
+
+.cmd-pill {
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size) - 1px);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--selection-fill);
+  color: var(--font-color);
+  flex-shrink: 0;
+}
+
+/* Header bar for read-only commands */
+.cmd-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--control-fill);
+  border-radius: 10px;
+  margin: 8px 8px 0;
+}
+
+.cmd-header-bar .cmd-subtitle {
+  flex: 1;
+  font-size: var(--font-size);
+  color: var(--font-secondary);
+}
+
+/* Feedback/output */
+.cmd-content {
+  flex: 1;
+  padding: 10px;
+  margin: 0 8px 8px;
+  overflow-y: auto;
+}
+
+.cmd-feedback {
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size) + 4px);
+  font-weight: 600;
+  color: var(--font-color);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.cmd-feedback-error {
+  color: var(--color-danger);
+}
+
+/* Process list (kill) */
+.cmd-process-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cmd-proc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: var(--font-size);
+}
+
+.cmd-proc-row:hover {
+  background: var(--selection-fill);
+}
+
+.cmd-proc-row-active {
+  background: var(--selection-fill);
+}
+
+.cmd-proc-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.cmd-proc-name {
+  flex: 1;
+  font-weight: 600;
+  color: var(--font-color);
+}
+
+.cmd-proc-pid {
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size) - 1px);
+  color: var(--font-secondary);
+}
+
+.cmd-proc-enter {
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+/* Kill confirm bar — pinned to bottom of cmd-main */
+.cmd-confirm-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  margin-top: auto;
+  border-top: 1px solid var(--divider-color);
+  flex-shrink: 0;
+}
+
+.cmd-confirm-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cmd-confirm-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cmd-confirm-title {
+  font-size: var(--font-size);
+  font-weight: 600;
+  color: var(--font-color);
+}
+
+.cmd-confirm-pid {
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--font-secondary);
+}
+
+.cmd-confirm-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cmd-confirm-yes {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: calc(var(--font-size) - 1px);
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--color-danger, #e55);
+  color: #fff;
+}
+
+.cmd-confirm-no {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: calc(var(--font-size) - 1px);
+  color: var(--font-secondary);
+}
+
+/* System info table */
+.cmd-sys-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.cmd-sys-spacer {
+  height: 14px;
+}
+
+.cmd-sys-row {
+  display: flex;
+  align-items: baseline;
+  padding: 2px 0;
+  font-size: var(--font-size);
+}
+
+.cmd-sys-label {
+  width: 80px;
+  flex-shrink: 0;
+  color: var(--font-secondary);
+  font-size: calc(var(--font-size) - 1px);
+}
+
+.cmd-sys-value {
+  color: var(--font-color);
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+/* Pomo timer display */
+.cmd-pomo-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 40px;
+  gap: 12px;
+}
+
+.cmd-pomo-time {
+  font-family: var(--font-mono);
+  font-size: 56px;
+  font-weight: 700;
+  color: var(--font-color);
+  letter-spacing: 2px;
+}
+
+.cmd-pomo-status {
+  font-size: var(--font-size);
+  color: var(--font-secondary);
+}

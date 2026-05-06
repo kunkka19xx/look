@@ -3,21 +3,38 @@ import * as search from './search.js';
 import * as keyboard from './keyboard.js';
 import * as preview from './components/preview.js';
 import * as picked from './components/picked.js';
-import { onWindowShown, getHomeDir, copyFilesToClipboard } from './ipc.js';
+import * as banner from './components/banner.js';
+import * as commands from './screens/commands.js';
+import {
+  onWindowShown, getHomeDir, copyFilesToClipboard,
+  evalCalc, runShellCommand, getSystemInfo,
+  listProcesses, killProcess, getIcon,
+} from './ipc.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   const queryInput = document.getElementById('query');
   const resultsList = document.getElementById('results-list');
   const previewPanel = document.getElementById('preview-panel');
+  const hintBar = document.getElementById('hint-bar');
+  const contentArea = document.querySelector('.content-area');
 
   // Initialize modules
   results.init(resultsList);
   keyboard.init(queryInput);
   preview.init(previewPanel);
+  banner.init(document.getElementById('banner'));
   picked.init(previewPanel, {
     onRemoveItem: (key) => results.removePick(key),
     onClearAll: () => results.clearPicks(),
   });
+  commands.init(contentArea, queryInput, {
+    onExitMode: exitCommandMode,
+    onExecuteCommand: executeCommand,
+    onGetIcon: getIcon,
+  });
+
+  // Expose command mode toggle for keyboard.js
+  keyboard.setCommandMode(commands);
 
   // Update right panel when selection changes
   results.setOnSelectionChange((item) => {
@@ -31,12 +48,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pickedItems.length > 0) {
       preview.clear();
       picked.update(pickedItems);
-      // Auto-copy picked files to clipboard
       const paths = pickedItems
         .filter((i) => i.kind === 'file' || i.kind === 'folder')
         .map((i) => i.path);
       if (paths.length > 0) {
-        copyFilesToClipboard(paths).catch(() => {});
+        copyFilesToClipboard(paths)
+          .then(() => banner.show(`Picked ${pickedItems.length} item(s)`, 'success', 1.0))
+          .catch(() => banner.show('Pick failed', 'error', 1.2));
+      } else {
+        banner.show(`Picked ${pickedItems.length} item(s)`, 'success', 1.0);
       }
     } else {
       picked.update([]);
@@ -77,4 +97,119 @@ document.addEventListener('DOMContentLoaded', () => {
     if (home) search.setHomeDir(home);
     search.handleQueryInput('');
   });
+
+  // --- Command mode helpers ---
+
+  function enterCommandMode() {
+    resultsList.hidden = true;
+    previewPanel.hidden = true;
+    updateCommandHintBar();
+    commands.enter();
+    commands.setOnCommandChange(updateCommandHintBar);
+  }
+
+  function updateCommandHintBar() {
+    const cmd = commands.getActiveCommand();
+    if (cmd === 'kill') {
+      hintBar.querySelector('span').textContent =
+        'Y confirm \u2022 N cancel \u2022 Tab/Ctrl+1-5 switch \u2022 Esc back';
+    } else if (cmd === 'sys') {
+      hintBar.querySelector('span').textContent =
+        'Esc back \u2022 Tab/Ctrl+1-5 switch \u2022 Ctrl+/ command mode';
+    } else {
+      hintBar.querySelector('span').textContent =
+        'Enter run \u2022 Tab select \u2022 Ctrl+1-5 switch \u2022 Esc back';
+    }
+  }
+
+  function exitCommandMode() {
+    // Restore search bar
+    queryInput.parentElement.style.display = '';
+    resultsList.hidden = false;
+    hintBar.querySelector('span').textContent =
+      'Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide';
+    queryInput.value = '';
+    search.handleQueryInput('');
+    queryInput.focus();
+  }
+
+  async function executeCommand(cmdId, input) {
+    if (cmdId === 'calc-preview') {
+      try {
+        const result = await evalCalc(input);
+        commands.showFeedback(result);
+      } catch {
+        // Don't show errors during live preview
+      }
+      return;
+    }
+
+    if (cmdId === 'kill-load') {
+      try {
+        const procs = await listProcesses();
+        commands.setProcessList(procs);
+      } catch (err) {
+        commands.showFeedback(err || 'Failed to list processes', true);
+      }
+      return;
+    }
+
+    if (cmdId === 'kill-execute') {
+      const pid = parseInt(input);
+      if (!pid) return;
+      try {
+        const msg = await killProcess(pid);
+        banner.show(msg, 'success', 1.2);
+        // Wait briefly for process to terminate, then refresh
+        await new Promise((r) => setTimeout(r, 300));
+        const procs = await listProcesses();
+        commands.setProcessList(procs);
+      } catch (err) {
+        banner.show(err || 'Kill failed', 'error', 1.5);
+      }
+      return;
+    }
+
+    if (cmdId === 'sys-load') {
+      try {
+        const sections = await getSystemInfo();
+        commands.setSysInfo(sections);
+      } catch (err) {
+        commands.showFeedback(err || 'Failed to get system info', true);
+      }
+      return;
+    }
+
+    switch (cmdId) {
+      case 'calc':
+        if (!input) return;
+        try {
+          const result = await evalCalc(input);
+          commands.showFeedback(result);
+          await navigator.clipboard.writeText(result);
+          banner.show('Result copied', 'success', 1.0);
+        } catch (err) {
+          commands.showFeedback(err || 'Invalid expression', true);
+        }
+        break;
+
+      case 'shell':
+        if (!input) return;
+        commands.showFeedback('Running...');
+        try {
+          const output = await runShellCommand(input);
+          commands.showFeedback(output);
+        } catch (err) {
+          commands.showFeedback(err || 'Command failed', true);
+        }
+        break;
+
+      case 'sys':
+        executeCommand('sys-load');
+        break;
+    }
+  }
+
+  // Expose enterCommandMode for keyboard
+  keyboard.setEnterCommandMode(enterCommandMode);
 });

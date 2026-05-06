@@ -45,6 +45,26 @@ export async function copyFilesToClipboard(paths) {
   return invoke('copy_files_to_clipboard', { paths });
 }
 
+export async function evalCalc(expr) {
+  return invoke('eval_calc', { expr });
+}
+
+export async function runShellCommand(cmd) {
+  return invoke('run_shell_command', { cmd });
+}
+
+export async function getSystemInfo() {
+  return invoke('get_system_info');
+}
+
+export async function listProcesses() {
+  return invoke('list_processes');
+}
+
+export async function killProcess(pid) {
+  return invoke('kill_process', { pid });
+}
+
 export async function getHomeDir() {
   return invoke('get_home_dir');
 }

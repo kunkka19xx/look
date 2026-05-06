@@ -1,8 +1,11 @@
 import * as results from './components/results.js';
 import { openPath, recordUsage, revealPath, hideWindow, copyFilesToClipboard } from './ipc.js';
+import * as banner from './components/banner.js';
 
 let queryInput = null;
 let shiftHeld = false;
+let commandMode = null;
+let enterCommandModeFn = null;
 
 export function init(inputEl) {
   queryInput = inputEl;
@@ -24,7 +27,33 @@ export function init(inputEl) {
   document.addEventListener('keydown', handleKeyDown, true);
 }
 
+export function setCommandMode(cmdModule) {
+  commandMode = cmdModule;
+}
+
+export function setEnterCommandMode(fn) {
+  enterCommandModeFn = fn;
+}
+
 function handleKeyDown(e) {
+  // Ctrl+/ toggles command mode
+  if (e.ctrlKey && (e.key === '/' || e.key === '?')) {
+    e.preventDefault();
+    if (commandMode?.isActive()) {
+      commandMode.exit();
+    } else if (enterCommandModeFn) {
+      enterCommandModeFn();
+    }
+    return;
+  }
+
+  // Delegate to command mode if active
+  if (commandMode?.isActive()) {
+    if (commandMode.handleKey(e)) return;
+    // Let typing through to input
+    return;
+  }
+
   // WebKitGTK reports Shift+Tab as key="Unidentified", code="Tab"
   if (e.key === 'Tab' || (e.code === 'Tab' && e.key === 'Unidentified')) {
     e.preventDefault();
@@ -96,13 +125,7 @@ async function openSelected() {
 
   try {
     await openPath(item.path, item.kind, item.id);
-
-    // Determine action type from kind
-    const actionMap = {
-      app: 'open_app',
-      file: 'open_file',
-      folder: 'open_folder',
-    };
+    const actionMap = { app: 'open_app', file: 'open_file', folder: 'open_folder' };
     const action = actionMap[item.kind] || 'open_file';
     await recordUsage(item.id, action);
   } catch (err) {
@@ -127,8 +150,9 @@ async function copySelectedPath() {
     } else {
       await navigator.clipboard.writeText(item.path);
     }
+    banner.show('Copied to clipboard', 'success', 1.0);
   } catch (err) {
-    console.error('Failed to copy:', err);
+    banner.show('Copy failed', 'error', 1.2);
   }
 }
 

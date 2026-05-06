@@ -40,31 +40,6 @@
   color: var(--font-muted);
 }
 
-/* Banner */
-.banner {
-  padding: 8px var(--content-padding);
-  background: var(--control-fill);
-  border-bottom: var(--border-thickness) solid var(--divider-color);
-  flex-shrink: 0;
-  animation: banner-in 200ms ease-in-out;
-}
-
-.banner-text {
-  font-size: calc(var(--font-size) - 1px);
-  color: var(--font-secondary);
-}
-
-@keyframes banner-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 /* Content area */
 .content-area {
   display: flex;

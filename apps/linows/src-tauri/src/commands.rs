@@ -463,6 +463,42 @@ fn extract_nix_version(path: &str) -> Option<String> {
     Some(after_hash[start..].to_string())
 }
 
+#[tauri::command]
+pub fn run_shell_command(cmd: String) -> Result<String, String> {
+    let output = std::process::Command::new("sh")
+        .args(["-c", &cmd])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to run: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    let mut result = String::new();
+    if !stdout.is_empty() {
+        result.push_str(&stdout);
+    }
+    if !stderr.is_empty() {
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        result.push_str(&stderr);
+    }
+
+    if result.len() > 800 {
+        result.truncate(800);
+        result.push_str("\n... (truncated)");
+    }
+
+    if result.is_empty() {
+        result = format!("(exit code: {})", output.status.code().unwrap_or(-1));
+    }
+
+    Ok(result)
+}
+
 fn time_from_unix(secs: u64) -> String {
     // Simple UTC formatting without extra deps
     let days = secs / 86400;

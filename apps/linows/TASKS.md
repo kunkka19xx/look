@@ -66,8 +66,8 @@ Based on macOS app as source of truth. Organized by phase.
 
 ### Screens
 - [ ] Clipboard history view — list of entries with time, char/line count
-- [ ] Command mode panel — 4 cards (calc, shell, kill, sys) with shared input
-- [ ] Kill confirmation bar
+- [x] Command mode panel — 5 commands (calc, pomo, kill, shell, sys) with sidebar + shared input
+- [x] Kill confirmation bar — app icon, name, PID, Y/N at bottom
 - [ ] Translation panel — input, language buttons, output, copy/browser actions
 - [ ] Banner notifications (animated toast messages)
 
@@ -76,11 +76,13 @@ Based on macOS app as source of truth. Organized by phase.
 - [ ] Clipboard monitoring (platform clipboard listener)
 - [ ] `c"` prefix to browse clipboard history
 - [ ] Delete individual clipboard entries
-- [ ] Command mode toggle (Ctrl+/)
-- [ ] Calculator command — expression evaluation (+, -, *, /, %, ^, parens)
-- [ ] Shell command — execute and capture output (<800 chars)
-- [ ] Kill command — fuzzy process match, terminate with confirmation
-- [ ] System info command — CPU, memory, disk, GPU, network
+- [x] Command mode toggle (Ctrl+/)
+- [x] Calculator command — full parity with macOS (functions, constants, factorial, %, formatting)
+- [x] Shell command — execute and capture output (<800 chars)
+- [x] Kill command — running GUI apps list with icons, filter, confirm + kill
+- [x] System info command — structured table (OS, memory, CPU, battery, uptime, disk)
+- [x] Pomodoro timer — 25/5 min work/break, start/pause/reset
+- [ ] Kill by port (`:3000` syntax)
 - [ ] Translation (`t"` prefix) — web translation via Rust bridge
 - [ ] Language selection (English, Vietnamese, Japanese)
 
