@@ -91,7 +91,7 @@ pub fn open_path(
     kind: Option<String>,
     id: Option<String>,
 ) -> Result<(), String> {
-    let result = if kind.as_deref() == Some("app") {
+    let result = if kind.as_deref() == Some("app") && !path.contains("://") {
         launch_app(&path, id.as_deref())
     } else {
         open::that(&path).map_err(|e| format!("Failed to open: {e}"))
