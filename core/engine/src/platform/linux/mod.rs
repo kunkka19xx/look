@@ -3,10 +3,8 @@ mod settings_catalog;
 
 use std::env;
 
-pub(crate) const APP_SCAN_ROOTS: &[&str] = &[
-    "/usr/share/applications",
-    "/usr/local/share/applications",
-];
+pub(crate) const APP_SCAN_ROOTS: &[&str] =
+    &["/usr/share/applications", "/usr/local/share/applications"];
 
 pub(crate) const FILE_SCAN_ROOT_SUFFIXES: &[&str] = &["Desktop", "Documents", "Downloads"];
 

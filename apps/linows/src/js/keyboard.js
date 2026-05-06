@@ -73,7 +73,7 @@ async function openSelected() {
   if (!item) return;
 
   try {
-    await openPath(item.path, item.kind);
+    await openPath(item.path, item.kind, item.id);
 
     // Determine action type from kind
     const actionMap = {

@@ -29,7 +29,7 @@ export function update(result) {
   iconWrap.textContent = result.title.charAt(0).toUpperCase();
   header.appendChild(iconWrap);
 
-  getIcon(result.kind, result.path).then((res) => {
+  getIcon(result.kind, result.path, result.id).then((res) => {
     if (res?.data_url && currentPath === result.path) {
       const img = document.createElement('img');
       img.src = res.data_url;

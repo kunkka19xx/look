@@ -82,7 +82,7 @@ function createRow(result, index) {
   icon.textContent = result.title.charAt(0).toUpperCase();
   row.appendChild(icon);
 
-  loadIcon(icon, result.kind, result.path);
+  loadIcon(icon, result.kind, result.path, result.id);
 
   // Text content
   const text = document.createElement('div');
@@ -95,7 +95,9 @@ function createRow(result, index) {
 
   const subtitle = document.createElement('div');
   subtitle.className = 'result-path';
-  if (result.kind === 'file' || result.kind === 'folder') {
+  if (result.subtitle) {
+    subtitle.textContent = result.subtitle;
+  } else if (result.kind === 'file' || result.kind === 'folder') {
     subtitle.textContent = result.path;
   } else {
     const kindLabels = { app: 'App', setting: 'Setting' };
@@ -113,7 +115,7 @@ function createRow(result, index) {
   return row;
 }
 
-function loadIcon(iconEl, kind, path) {
+function loadIcon(iconEl, kind, path, id) {
   const cacheKey = `${kind}:${path}`;
 
   // Check JS cache first
@@ -125,7 +127,7 @@ function loadIcon(iconEl, kind, path) {
     return;
   }
 
-  getIcon(kind, path).then((result) => {
+  getIcon(kind, path, id).then((result) => {
     const dataUrl = result?.data_url || null;
     iconCache.set(cacheKey, dataUrl);
     if (dataUrl) {

@@ -19,7 +19,12 @@ pub struct IconResult {
 }
 
 #[tauri::command]
-pub fn get_icon(cache: State<'_, IconCache>, kind: String, path: String) -> IconResult {
+pub fn get_icon(
+    cache: State<'_, IconCache>,
+    kind: String,
+    path: String,
+    id: Option<String>,
+) -> IconResult {
     let key = format!("{kind}:{path}");
 
     {
@@ -31,7 +36,7 @@ pub fn get_icon(cache: State<'_, IconCache>, kind: String, path: String) -> Icon
         }
     }
 
-    let data_url = resolve_icon(&kind, &path);
+    let data_url = resolve_icon(&kind, &path, id.as_deref());
 
     {
         let mut map = cache.0.lock().unwrap();
@@ -41,9 +46,9 @@ pub fn get_icon(cache: State<'_, IconCache>, kind: String, path: String) -> Icon
     IconResult { data_url }
 }
 
-fn resolve_icon(kind: &str, path: &str) -> Option<String> {
+fn resolve_icon(kind: &str, path: &str, id: Option<&str>) -> Option<String> {
     match kind {
-        "app" => resolve_app_icon(path),
+        "app" => resolve_app_icon(path, id),
         "folder" => resolve_themed_icon("folder"),
         _ => resolve_file_icon(path),
     }
@@ -92,20 +97,30 @@ fn xdg_data_dirs() -> Vec<String> {
 
 // --- App icons ---
 
-fn resolve_app_icon(exec_path: &str) -> Option<String> {
-    // exec_path may be a full command like "firefox --name firefox"
+fn resolve_app_icon(exec_path: &str, id: Option<&str>) -> Option<String> {
+    // Try direct .desktop lookup from id (most reliable)
+    if let Some(id) = id {
+        if let Some(desktop_path) = id.strip_prefix("app:") {
+            if let Some(icon_name) = parse_desktop_icon(desktop_path) {
+                if let Some(icon) = resolve_themed_icon(&icon_name) {
+                    return Some(icon);
+                }
+            }
+        }
+    }
+
     let first_token = exec_path.split_whitespace().next()?;
     let bin_name = Path::new(first_token)
         .file_name()?
         .to_str()?
         .to_lowercase();
 
-    // Fast path: try binary name directly as icon name
+    // Try binary name as icon name
     if let Some(icon) = resolve_themed_icon(&bin_name) {
         return Some(icon);
     }
 
-    // Scan .desktop files to find the Icon= for this app
+    // Scan .desktop files by Exec match
     let data_dirs = xdg_data_dirs();
     for data_dir in &data_dirs {
         let apps_dir = format!("{data_dir}/applications");
@@ -114,6 +129,49 @@ fn resolve_app_icon(exec_path: &str) -> Option<String> {
         }
     }
 
+    None
+}
+
+/// Parse Icon= from a .desktop file. Tries the path as-is first,
+/// then case-insensitive search in the same directory (id is lowercased).
+fn parse_desktop_icon(desktop_path: &str) -> Option<String> {
+    // Try exact path first
+    if let Some(icon) = parse_desktop_icon_field(desktop_path) {
+        return Some(icon);
+    }
+    // The id is lowercased, so try case-insensitive match in the directory
+    let path = Path::new(desktop_path);
+    let dir = path.parent()?;
+    let filename_lower = path.file_name()?.to_str()?.to_lowercase();
+    let entries = fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if name.to_str()?.to_lowercase() == filename_lower {
+            return parse_desktop_icon_field(entry.path().to_str()?);
+        }
+    }
+    None
+}
+
+fn parse_desktop_icon_field(path: &str) -> Option<String> {
+    let content = fs::read_to_string(path).ok()?;
+    let mut in_desktop_entry = false;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_desktop_entry = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_desktop_entry {
+            continue;
+        }
+        if let Some(val) = line.strip_prefix("Icon=") {
+            let val = val.trim();
+            if !val.is_empty() {
+                return Some(val.to_string());
+            }
+        }
+    }
     None
 }
 

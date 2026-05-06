@@ -85,18 +85,83 @@ pub fn record_usage(state: State<'_, AppState>, candidate_id: String, action: St
 }
 
 #[tauri::command]
-pub fn open_path(path: String, kind: Option<String>) -> Result<(), String> {
-    if kind.as_deref() == Some("app") {
-        launch_app(&path)
+pub fn open_path(
+    window: tauri::WebviewWindow,
+    path: String,
+    kind: Option<String>,
+    id: Option<String>,
+) -> Result<(), String> {
+    let result = if kind.as_deref() == Some("app") {
+        launch_app(&path, id.as_deref())
     } else {
         open::that(&path).map_err(|e| format!("Failed to open: {e}"))
+    };
+
+    if result.is_ok() {
+        let _ = window.hide();
     }
+
+    result
 }
 
-fn launch_app(exec: &str) -> Result<(), String> {
+fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
+    let desktop_file = id
+        .and_then(|id| id.strip_prefix("app:"))
+        .and_then(find_desktop_file);
+
+    // Try to focus an existing window first
+    if let Some(ref real_path) = desktop_file {
+        // Try StartupWMClass first
+        if let Some(wm_class) = parse_desktop_field(real_path, "StartupWMClass") {
+            if try_focus_window(&wm_class) {
+                return Ok(());
+            }
+        }
+        // Fallback: try the .desktop basename (e.g., "brave-browser" from "brave-browser.desktop")
+        if let Some(name) = std::path::Path::new(real_path)
+            .file_stem()
+            .and_then(|f| f.to_str())
+        {
+            if try_focus_window(name) {
+                return Ok(());
+            }
+        }
+    }
+
+    // Launch the app
+    if let Some(ref real_path) = desktop_file {
+        let result = std::process::Command::new("gio")
+            .args(["launch", real_path])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        if result.is_ok() {
+            return Ok(());
+        }
+    }
+
+    if let Some(desktop_name) = id
+        .and_then(|id| id.strip_prefix("app:"))
+        .and_then(|p| std::path::Path::new(p).file_name())
+        .and_then(|f| f.to_str())
+        .and_then(|f| f.strip_suffix(".desktop"))
+    {
+        let result = std::process::Command::new("gtk-launch")
+            .arg(desktop_name)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        if result.is_ok() {
+            return Ok(());
+        }
+    }
+
+    // Fallback: spawn directly
     let mut parts = exec.split_whitespace();
     let cmd = parts.next().ok_or("Empty exec command")?;
-    let args: Vec<&str> = parts.collect();
+    let args: Vec<&str> = parts.filter(|s| !s.starts_with('%')).collect();
 
     std::process::Command::new(cmd)
         .args(&args)
@@ -107,6 +172,82 @@ fn launch_app(exec: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to launch {cmd}: {e}"))?;
 
     Ok(())
+}
+
+fn try_focus_window(wm_class: &str) -> bool {
+    // Try i3-msg (i3/sway)
+    if let Ok(output) = std::process::Command::new("i3-msg")
+        .arg(format!("[class=\"(?i){wm_class}\"] focus"))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.contains("\"success\":true") {
+            return true;
+        }
+    }
+
+    // Try xdotool
+    if let Ok(output) = std::process::Command::new("xdotool")
+        .args(["search", "--class", wm_class])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if let Some(wid) = stdout.lines().next() {
+            let _ = std::process::Command::new("xdotool")
+                .args(["windowactivate", wid])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+            return true;
+        }
+    }
+
+    false
+}
+
+fn parse_desktop_field(path: &str, field: &str) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let prefix = format!("{field}=");
+    let mut in_desktop_entry = false;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_desktop_entry = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_desktop_entry {
+            continue;
+        }
+        if let Some(val) = line.strip_prefix(&prefix) {
+            let val = val.trim();
+            if !val.is_empty() {
+                return Some(val.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Find the actual .desktop file from a lowercased id path.
+/// Tries exact path first, then case-insensitive search in the directory.
+fn find_desktop_file(id_path: &str) -> Option<String> {
+    if std::path::Path::new(id_path).exists() {
+        return Some(id_path.to_string());
+    }
+    // Case-insensitive search
+    let path = std::path::Path::new(id_path);
+    let dir = path.parent()?;
+    let filename_lower = path.file_name()?.to_str()?.to_lowercase();
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        if entry.file_name().to_str()?.to_lowercase() == filename_lower {
+            return Some(entry.path().to_string_lossy().to_string());
+        }
+    }
+    None
 }
 
 #[tauri::command]
@@ -165,6 +306,11 @@ pub fn toggle_window(window: tauri::WebviewWindow) {
 }
 
 #[tauri::command]
+pub fn get_home_dir() -> Option<String> {
+    std::env::var("HOME").ok()
+}
+
+#[tauri::command]
 pub fn hide_window(window: tauri::WebviewWindow) {
     let _ = window.hide();
 }
@@ -212,15 +358,32 @@ pub fn get_file_meta(path: String) -> FileMeta {
 pub fn get_app_version(path: String) -> Option<String> {
     let bin = path.split_whitespace().next()?;
 
-    // Resolve symlinks to find real path (e.g., nix store path with version)
-    if let Ok(real) = std::fs::canonicalize(bin) {
+    // If bin is an absolute path, canonicalize directly
+    // Otherwise, find it in PATH first
+    let resolved = if bin.starts_with('/') {
+        std::fs::canonicalize(bin).ok()
+    } else {
+        resolve_in_path(bin).and_then(|p| std::fs::canonicalize(p).ok())
+    };
+
+    if let Some(real) = resolved {
         let real_str = real.to_string_lossy();
-        // Nix store: /nix/store/hash-name-1.2.3/bin/foo
-        if let Some(caps) = extract_nix_version(&real_str) {
-            return Some(caps);
+        if let Some(v) = extract_nix_version(&real_str) {
+            return Some(v);
         }
     }
 
+    None
+}
+
+fn resolve_in_path(bin: &str) -> Option<std::path::PathBuf> {
+    let path_var = std::env::var("PATH").ok()?;
+    for dir in path_var.split(':') {
+        let candidate = std::path::Path::new(dir).join(bin);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
     None
 }
 

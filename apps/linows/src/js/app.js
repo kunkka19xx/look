@@ -2,7 +2,7 @@ import * as results from './results.js';
 import * as search from './search.js';
 import * as keyboard from './keyboard.js';
 import * as preview from './preview.js';
-import { onWindowShown } from './ipc.js';
+import { onWindowShown, getHomeDir } from './ipc.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   const queryInput = document.getElementById('query');
@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const item = results.getSelected();
     if (item) {
       import('./ipc.js').then(({ openPath, recordUsage }) => {
-        openPath(item.path, item.kind);
+        openPath(item.path, item.kind, item.id);
         const actionMap = { app: 'open_app', file: 'open_file', folder: 'open_folder' };
         recordUsage(item.id, actionMap[item.kind] || 'open_file');
       });
@@ -47,6 +47,9 @@ document.addEventListener('DOMContentLoaded', () => {
     queryInput.select();
   });
 
-  // Initial empty-query search (browse mode)
-  search.handleQueryInput('');
+  // Load home dir for quick folders, then initial search
+  getHomeDir().then((home) => {
+    if (home) search.setHomeDir(home);
+    search.handleQueryInput('');
+  });
 });

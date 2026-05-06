@@ -114,6 +114,7 @@ fn main() {
             commands::reload_config,
             commands::request_index_refresh,
             commands::toggle_window,
+            commands::get_home_dir,
             commands::hide_window,
             commands::get_file_meta,
             commands::get_app_version,
