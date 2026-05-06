@@ -327,7 +327,18 @@ pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), String> {
     if paths.is_empty() {
         return Ok(());
     }
-    let uris: Vec<String> = paths.iter().map(|p| format!("file://{p}")).collect();
+    // Percent-encode each path into a valid file:// URI.
+    // Paths may contain spaces, #, %, or unicode which would break
+    // the x-special/gnome-copied-files clipboard format if left raw.
+    // e.g. "/tmp/a #b.txt" → "file:///tmp/a%20%23b.txt"
+    let uris: Vec<String> = paths.iter().map(|p| {
+        let encoded: String = p.bytes().map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9'
+            | b'-' | b'.' | b'_' | b'~' | b'/' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        }).collect();
+        format!("file://{encoded}")
+    }).collect();
     let uri = format!("copy\n{}", uris.join("\n"));
 
     // Use sh -c with a pipe to fully detach from our process

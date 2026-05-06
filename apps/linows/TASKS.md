@@ -28,13 +28,14 @@ Based on macOS app as source of truth. Organized by phase.
 - [x] `css/reset.css` — CSS reset
 - [x] `css/theme.css` — CSS custom properties (colors, spacing, typography)
 - [x] `css/layout.css` — Window layout, search bar, content area
-- [x] `css/components.css` — Result rows, panels
+- [x] `css/components/` — Per-component CSS (results, preview, picked)
 - [x] `js/ipc.js` — Tauri invoke wrapper
 - [x] `js/app.js` — Main controller, mode switching
-- [x] `js/search.js` — Debounced search (70ms), query → invoke → render
-- [x] `js/results.js` — DOM rendering of result rows (icon, title, kind subtitle)
-- [x] `js/keyboard.js` — Arrow/Tab/Shift+Tab navigation, Enter to open, Escape to hide, wrap-around
-- [x] `js/preview.js` — Preview panel (icon, title, badge, metadata, image preview)
+- [x] `js/search.js` — Debounced search (70ms), query → invoke → render, quick folders
+- [x] `js/components/results.js` — Result rows, icons, pick state management
+- [x] `js/components/preview.js` — Preview panel (icon, title, badge, metadata, image preview)
+- [x] `js/components/picked.js` — Picked items panel (header, list, remove buttons)
+- [x] `js/keyboard.js` — Arrow/Tab/Shift+Tab navigation, Enter/Ctrl+Enter, Escape, wrap-around
 
 ### Window & System
 - [x] Global hotkey (Alt+Space) via tauri-plugin-global-shortcut
@@ -49,14 +50,15 @@ Based on macOS app as source of truth. Organized by phase.
 
 ### Screens
 - [x] Result preview panel — file metadata (size, modified, path), image preview, app version
-- [ ] Picked items panel — list of multi-selected items with remove buttons
+- [x] Picked items panel — list of multi-selected items with remove buttons
 
 ### Features
 - [x] Quick folders (Desktop, Documents, Downloads, Pictures, Videos, Music)
-- [ ] Multi-pick (Ctrl+Click to toggle selection)
-- [ ] Clipboard write (picked items as paths + text)
+- [x] Multi-pick (Ctrl+P toggle, Ctrl+Shift+P clear all)
+- [x] Clipboard write — Ctrl+C copies file/folder (pasteable in file managers), auto-copy on pick
 - [x] Reveal in file manager (Ctrl+F)
 - [x] Hint bar (bottom status text)
+- [x] Web search (Ctrl+Enter) — opens Google search in default browser
 
 ---
 
