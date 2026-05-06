@@ -112,6 +112,16 @@ Based on macOS app as source of truth. Organized by phase.
 
 ---
 
+## Backlog / Improvements
+
+- [ ] Linux settings handling — detect DE (GNOME/KDE/minimal):
+  - GNOME/KDE: `settings://` URLs work via `gnome-control-center` / `systemsettings`
+  - Minimal (i3/sway/X11 bare): map to standalone tools (pavucontrol, arandr, blueman-manager, etc.) or hide settings entries
+  - Detect via `XDG_CURRENT_DESKTOP`, `DESKTOP_SESSION`, or presence of `gnome-control-center`
+- [ ] Some DBUS single-instance apps (blueman-manager, fcitx5-config) fail to launch — known limitation
+
+---
+
 ## Platform-Specific Notes
 
 ### Windows
