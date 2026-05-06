@@ -16,9 +16,12 @@ Based on macOS app as source of truth. Organized by phase.
 ### Backend (Rust)
 - [x] `state.rs` — Engine cache (RwLock<QueryEngine>), bootstrap refresh, file watchers
 - [x] `commands.rs` — search(query, limit), record_usage(id, action)
-- [x] `commands.rs` — open_path(path), reveal_path(path)
+- [x] `commands.rs` — open_path(path, kind, id), reveal_path(path)
 - [x] `commands.rs` — reload_config(), request_index_refresh()
-- [ ] `platform.rs` — File icon extraction (SHGetFileInfo on Windows, freedesktop on Linux)
+- [x] `commands.rs` — get_file_meta(path), get_app_version(path), get_home_dir()
+- [x] `platform.rs` — Icon extraction (freedesktop theme + XDG_DATA_DIRS, .desktop Icon= parsing)
+- [x] App launching — gio launch → gtk-launch → direct spawn, focus existing window via i3-msg/xdotool
+- [x] Settings URL handling — settings:// paths routed through xdg-open
 
 ### Frontend (HTML/CSS/JS)
 - [x] `index.html` — Main window structure
@@ -30,7 +33,8 @@ Based on macOS app as source of truth. Organized by phase.
 - [x] `js/app.js` — Main controller, mode switching
 - [x] `js/search.js` — Debounced search (70ms), query → invoke → render
 - [x] `js/results.js` — DOM rendering of result rows (icon, title, kind subtitle)
-- [x] `js/keyboard.js` — Arrow navigation, Enter to open, Escape to hide
+- [x] `js/keyboard.js` — Arrow/Tab/Shift+Tab navigation, Enter to open, Escape to hide, wrap-around
+- [x] `js/preview.js` — Preview panel (icon, title, badge, metadata, image preview)
 
 ### Window & System
 - [x] Global hotkey (Alt+Space) via tauri-plugin-global-shortcut
@@ -44,15 +48,15 @@ Based on macOS app as source of truth. Organized by phase.
 ## Phase 2: Preview & Multi-pick
 
 ### Screens
-- [ ] Result preview panel — file metadata (size, modified, path), image preview
+- [x] Result preview panel — file metadata (size, modified, path), image preview, app version
 - [ ] Picked items panel — list of multi-selected items with remove buttons
 
 ### Features
-- [ ] Quick folders (Desktop, Documents, Downloads, Pictures, Videos, Music)
+- [x] Quick folders (Desktop, Documents, Downloads, Pictures, Videos, Music)
 - [ ] Multi-pick (Ctrl+Click to toggle selection)
 - [ ] Clipboard write (picked items as paths + text)
-- [ ] Reveal in file manager (Ctrl+F)
-- [ ] Hint bar (bottom status text)
+- [x] Reveal in file manager (Ctrl+F)
+- [x] Hint bar (bottom status text)
 
 ---
 
