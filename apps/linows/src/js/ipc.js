@@ -9,8 +9,8 @@ export async function recordUsage(candidateId, action) {
   return invoke('record_usage', { candidateId, action });
 }
 
-export async function openPath(path) {
-  return invoke('open_path', { path });
+export async function openPath(path, kind) {
+  return invoke('open_path', { path, kind });
 }
 
 export async function revealPath(path) {
@@ -27,6 +27,18 @@ export async function requestIndexRefresh() {
 
 export async function hideWindow() {
   return invoke('hide_window');
+}
+
+export async function getIcon(kind, path) {
+  return invoke('get_icon', { kind, path });
+}
+
+export async function getFileMeta(path) {
+  return invoke('get_file_meta', { path });
+}
+
+export async function getAppVersion(path) {
+  return invoke('get_app_version', { path });
 }
 
 export async function onWindowShown(callback) {

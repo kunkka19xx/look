@@ -74,16 +74,17 @@
 
 .results-list {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   padding: var(--row-spacing) 0;
 }
 
 .preview-panel {
-  width: 240px;
+  flex: 1;
+  min-width: 0;
   border-left: var(--border-thickness) solid var(--divider-color);
   padding: var(--content-padding);
   overflow-y: auto;
-  flex-shrink: 0;
 }
 
 /* Hint bar */

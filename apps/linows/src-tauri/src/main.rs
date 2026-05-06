@@ -2,13 +2,23 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod platform;
 mod state;
 
 use state::AppState;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, PhysicalPosition};
 
-static WINDOW_VISIBLE: AtomicBool = AtomicBool::new(true);
+/// Timestamp (ms) of last window show, used to debounce focus-loss auto-hide.
+static LAST_SHOWN_AT: AtomicU64 = AtomicU64::new(0);
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 fn supports_transparency() -> bool {
     #[cfg(not(target_os = "linux"))]
@@ -40,17 +50,21 @@ fn main() {
         }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(AppState::new())
+        .manage(platform::IconCache::new())
         .setup(|app| {
             let app_handle = app.handle().clone();
 
             // Register Alt+Space global hotkey
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            app.global_shortcut().on_shortcut("Alt+Space", move |_app, _shortcut, _event| {
+            app.global_shortcut().on_shortcut("Alt+Space", move |_app, _shortcut, event| {
+                if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                    return;
+                }
                 if let Some(window) = app_handle.get_webview_window("main") {
-                    if WINDOW_VISIBLE.load(Ordering::Relaxed) {
+                    if window.is_visible().unwrap_or(false) {
                         let _ = window.hide();
-                        WINDOW_VISIBLE.store(false, Ordering::Relaxed);
                     } else {
+                        LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
                         let _ = window.show();
                         let _ = window.set_focus();
                         if let Ok(Some(monitor)) = window.current_monitor() {
@@ -62,7 +76,6 @@ fn main() {
                             let y = ((screen.height as f64 - win_h) / 2.0) as i32;
                             let _ = window.set_position(PhysicalPosition::new(x, y));
                         }
-                        WINDOW_VISIBLE.store(true, Ordering::Relaxed);
                         let _ = window.emit("window-shown", ());
                     }
                 }
@@ -80,7 +93,9 @@ fn main() {
                 let w = window.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::Focused(false) = event {
-                        let _ = w.hide();
+                        if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
+                            let _ = w.hide();
+                        }
                     }
                 });
             } else {
@@ -100,6 +115,9 @@ fn main() {
             commands::request_index_refresh,
             commands::toggle_window,
             commands::hide_window,
+            commands::get_file_meta,
+            commands::get_app_version,
+            platform::get_icon,
         ])
         .run(tauri::generate_context!())
         .expect("error while running look desktop");

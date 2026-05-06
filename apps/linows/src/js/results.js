@@ -1,16 +1,18 @@
-const BADGE_LABELS = {
-  app: 'APP',
-  file: 'FILE',
-  folder: 'DIR',
-  setting: 'SYS',
-};
+import { getIcon } from './ipc.js';
+
+const iconCache = new Map();
 
 let currentResults = [];
 let selectedIndex = -1;
 let container = null;
+let onSelectionChange = null;
 
 export function init(containerEl) {
   container = containerEl;
+}
+
+export function setOnSelectionChange(callback) {
+  onSelectionChange = callback;
 }
 
 export function render(results) {
@@ -44,16 +46,15 @@ export function getSelectedIndex() {
 
 export function selectNext() {
   if (currentResults.length === 0) return;
-  select(Math.min(selectedIndex + 1, currentResults.length - 1));
+  select((selectedIndex + 1) % currentResults.length);
 }
 
 export function selectPrev() {
   if (currentResults.length === 0) return;
-  select(Math.max(selectedIndex - 1, 0));
+  select((selectedIndex - 1 + currentResults.length) % currentResults.length);
 }
 
 export function select(index) {
-  // Remove previous selection
   const prev = container.querySelector('.result-row.selected');
   if (prev) prev.classList.remove('selected');
 
@@ -64,6 +65,10 @@ export function select(index) {
     rows[index].classList.add('selected');
     rows[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
+
+  if (onSelectionChange) {
+    onSelectionChange(getSelected());
+  }
 }
 
 function createRow(result, index) {
@@ -71,11 +76,13 @@ function createRow(result, index) {
   row.className = 'result-row';
   row.dataset.index = index;
 
-  // Icon (fallback: first letter)
+  // Icon (first letter fallback, async-load real icon)
   const icon = document.createElement('div');
   icon.className = 'result-icon';
   icon.textContent = result.title.charAt(0).toUpperCase();
   row.appendChild(icon);
+
+  loadIcon(icon, result.kind, result.path);
 
   // Text content
   const text = document.createElement('div');
@@ -88,18 +95,52 @@ function createRow(result, index) {
 
   const subtitle = document.createElement('div');
   subtitle.className = 'result-path';
-  const kindLabels = { app: 'App', file: 'File', folder: 'Folder', setting: 'Setting' };
-  subtitle.textContent = kindLabels[result.kind] || result.kind;
+  if (result.kind === 'file' || result.kind === 'folder') {
+    subtitle.textContent = result.path;
+  } else {
+    const kindLabels = { app: 'App', setting: 'Setting' };
+    subtitle.textContent = kindLabels[result.kind] || result.kind;
+  }
   text.appendChild(subtitle);
 
   row.appendChild(text);
 
-  // Click to select and open
   row.addEventListener('click', () => {
     select(index);
-    // Dispatch a custom event so app.js can handle open
     row.dispatchEvent(new CustomEvent('result-activate', { bubbles: true }));
   });
 
   return row;
+}
+
+function loadIcon(iconEl, kind, path) {
+  const cacheKey = `${kind}:${path}`;
+
+  // Check JS cache first
+  if (iconCache.has(cacheKey)) {
+    const dataUrl = iconCache.get(cacheKey);
+    if (dataUrl) {
+      applyIcon(iconEl, dataUrl);
+    }
+    return;
+  }
+
+  getIcon(kind, path).then((result) => {
+    const dataUrl = result?.data_url || null;
+    iconCache.set(cacheKey, dataUrl);
+    if (dataUrl) {
+      applyIcon(iconEl, dataUrl);
+    }
+  }).catch(() => {
+    iconCache.set(cacheKey, null);
+  });
+}
+
+function applyIcon(iconEl, dataUrl) {
+  const img = document.createElement('img');
+  img.src = dataUrl;
+  img.alt = '';
+  iconEl.textContent = '';
+  iconEl.style.background = 'none';
+  iconEl.appendChild(img);
 }
