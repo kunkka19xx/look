@@ -681,7 +681,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     fn app_scan_roots_include_finder_embedded_apps() {
         let roots = default_app_scan_roots();
         assert!(
@@ -783,7 +783,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     fn default_config_contents_include_coreservices_applications_root() {
         assert!(default_config_contents().contains("/System/Library/CoreServices/Applications"));
     }
