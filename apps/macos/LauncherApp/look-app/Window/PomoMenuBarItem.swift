@@ -1,14 +1,13 @@
 import AppKit
-import Combine
 import Observation
 import SwiftUI
 
 // Persistent NSStatusItem mini-timer.
 //
 // Visible only while a session is active. Click → opens the launcher
-// to /pomo via a notification. PomoState is now @Observable (Combine
-// publishers gone), so we get instant updates via `withObservationTracking`
-// and ongoing once-per-second redraws via a Timer publisher.
+// to /pomo via a notification. PomoState is @Observable, so refresh()
+// re-runs whenever a tracked property mutates — no separate heartbeat
+// timer is needed.
 //
 // Also surfaces in-app messages via a popover anchored to the status
 // item button — used as a fallback for users who haven't granted macOS
@@ -17,25 +16,28 @@ import SwiftUI
 @MainActor
 final class PomoMenuBarItem {
     private var statusItem: NSStatusItem?
-    private var tickCancellable: AnyCancellable?
     private var messageObserver: NSObjectProtocol?
     private var popover: NSPopover?
     private var dismissWorkItem: DispatchWorkItem?
+    // Coalesces overlapping refresh() calls. Without this, each fired
+    // observer schedules its own async refresh, which installs another
+    // observer — repeat ticks compound into N refreshes per second and
+    // the SF Symbol re-rasterization saturates the main thread.
+    private var refreshScheduled = false
+    private var timerImage: NSImage?
 
     func install() {
         guard statusItem == nil else { return }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: "timer", accessibilityDescription: "Pomodoro")
+        let image = NSImage(systemSymbolName: "timer", accessibilityDescription: "Pomodoro")
+        image?.isTemplate = true
+        timerImage = image
+        item.button?.image = nil
         item.button?.imagePosition = .imageLeft
         item.button?.title = ""
         item.button?.target = self
         item.button?.action = #selector(handleClick)
         statusItem = item
-
-        // 1-Hz heartbeat keeps the visible remaining-time current.
-        tickCancellable = Timer.publish(every: 1.0, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in self?.refresh() }
 
         // In-app message popover requests (phase transitions, ending-soon).
         messageObserver = NotificationCenter.default.addObserver(
@@ -62,8 +64,6 @@ final class PomoMenuBarItem {
             NSStatusBar.system.removeStatusItem(statusItem)
         }
         statusItem = nil
-        tickCancellable?.cancel()
-        tickCancellable = nil
         if let messageObserver {
             NotificationCenter.default.removeObserver(messageObserver)
         }
@@ -106,25 +106,31 @@ final class PomoMenuBarItem {
     }
 
     private func refresh() {
+        refreshScheduled = false
         let state = PomoSharedState.shared
         guard let button = statusItem?.button else { return }
 
-        // Wrap reads in withObservationTracking so the next change to any
-        // of these properties re-runs refresh() immediately — even between
-        // 1-Hz timer ticks. This keeps menu-bar updates feeling instant
-        // when the user hits Start/Pause/Reset in the launcher.
+        // Reading inside withObservationTracking re-fires onChange when
+        // any read property next mutates. onChange fires at most once per
+        // installed tracker, so we install exactly one per refresh and
+        // gate re-entry through `refreshScheduled` to keep the count flat.
         withObservationTracking {
             if let _ = state.activeIndex {
                 button.title = " " + PomoCommand.formattedRemaining(state.secondsLeft)
-                button.image = NSImage(systemSymbolName: "timer", accessibilityDescription: "Pomodoro")
-                button.image?.isTemplate = true
+                if button.image !== timerImage { button.image = timerImage }
             } else {
                 button.title = ""
-                button.image = nil
+                if button.image != nil { button.image = nil }
             }
         } onChange: { [weak self] in
-            DispatchQueue.main.async { self?.refresh() }
+            DispatchQueue.main.async { self?.scheduleRefresh() }
         }
+    }
+
+    private func scheduleRefresh() {
+        guard !refreshScheduled else { return }
+        refreshScheduled = true
+        refresh()
     }
 }
 
