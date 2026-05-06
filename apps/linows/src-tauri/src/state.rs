@@ -5,7 +5,7 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc, Mutex, RwLock};
+use std::sync::{Mutex, RwLock, mpsc};
 use std::thread;
 use std::time::Instant;
 
