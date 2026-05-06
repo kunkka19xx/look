@@ -67,6 +67,13 @@ fn main() {
                         LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
                         let _ = window.show();
                         let _ = window.set_focus();
+                        // Ensure search input gets focus inside the webview
+                        let w = window.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                            let _ = w.set_focus();
+                            let _ = w.eval("document.getElementById('query')?.focus()");
+                        });
                         if let Ok(Some(monitor)) = window.current_monitor() {
                             let screen = monitor.size();
                             let scale = monitor.scale_factor();

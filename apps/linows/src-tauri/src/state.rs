@@ -157,6 +157,26 @@ impl AppState {
         let mut roots = config.app_scan_roots;
         roots.extend(config.file_scan_roots);
         roots.extend(config.file_scan_extra_roots);
+
+        // Include Linux additional app roots that the indexer also scans
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok(home) = std::env::var("HOME") {
+                let home = home.trim().to_string();
+                if !home.is_empty() {
+                    roots.push(format!("{home}/.local/share/applications"));
+                }
+            }
+            if let Ok(data_dirs) = std::env::var("XDG_DATA_DIRS") {
+                for dir in data_dirs.split(':') {
+                    let dir = dir.trim();
+                    if !dir.is_empty() {
+                        roots.push(format!("{dir}/applications"));
+                    }
+                }
+            }
+        }
+
         roots.sort();
         roots.dedup();
 
