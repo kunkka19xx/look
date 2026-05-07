@@ -1,3 +1,5 @@
+import { scanMusicFolder, pickFolder } from '../../ipc.js';
+
 // --- Default sessions ---
 const DEFAULT_SESSIONS = [
   { type: 'focus', duration: 30, name: 'Deep Work' },
@@ -14,6 +16,7 @@ const IDLE_FADE_SECS = 5;
 // --- Persistence ---
 const STORAGE_KEY_SESSIONS = 'pomo_sessions';
 const STORAGE_KEY_STYLE = 'pomo_timer_style';
+const STORAGE_KEY_MUSIC_FOLDER = 'pomo_music_folder';
 
 function loadConfig() {
   try {
@@ -51,11 +54,20 @@ let endingSoonFired = false;
 let sessionsOpen = false;
 let settingsOpen = false;
 
+// --- Music state ---
+let musicTracks = [];
+let musicIndex = -1;
+let musicPlaying = false;
+let musicFolderPath = '';
+let audio = null;
+
 // --- DOM refs ---
 let panel, header, sessionNameEl, canvas, ctx;
 let toggleBtn, skipBtn, resetBtn, settingsBtn;
 let settingsPanel, sessionsListEl, sessionsActionsEl, chevronEl;
 let cardEl, controlsEl, sessionsEl;
+let musicEl, musicTrackEl, musicControlsEl, musicToggleBtn;
+let musicFolderPathEl, musicClearBtn;
 
 export function init() {
   panel = document.getElementById('cmd-panel-pomo');
@@ -100,6 +112,24 @@ export function init() {
   document.getElementById('cmd-pomo-add-focus').addEventListener('click', (e) => { e.stopPropagation(); addSession('focus'); });
   document.getElementById('cmd-pomo-add-break').addEventListener('click', (e) => { e.stopPropagation(); addSession('break'); });
 
+  // Music player
+  musicEl = document.getElementById('cmd-pomo-music');
+  musicTrackEl = document.getElementById('cmd-pomo-music-track');
+  musicControlsEl = document.getElementById('cmd-pomo-music-controls');
+  musicToggleBtn = document.getElementById('cmd-pomo-music-toggle');
+  musicFolderPathEl = document.getElementById('cmd-pomo-music-folder-path');
+  musicClearBtn = document.getElementById('cmd-pomo-music-clear');
+
+  document.getElementById('cmd-pomo-music-toggle').addEventListener('click', musicToggle);
+  document.getElementById('cmd-pomo-music-prev').addEventListener('click', musicPrev);
+  document.getElementById('cmd-pomo-music-next').addEventListener('click', musicNext);
+  document.getElementById('cmd-pomo-music-choose').addEventListener('click', musicChooseFolder);
+  musicClearBtn.addEventListener('click', musicClearFolder);
+
+  // Restore saved music folder
+  const savedFolder = localStorage.getItem(STORAGE_KEY_MUSIC_FOLDER);
+  if (savedFolder) musicRestoreFolder(savedFolder);
+
   // Idle restore events
   panel.addEventListener('click', restoreFromIdle);
   panel.addEventListener('wheel', restoreFromIdle);
@@ -131,6 +161,11 @@ export function handleKey(e) {
   if (e.key === 'r' || e.key === 'R') {
     e.preventDefault();
     reset();
+    return true;
+  }
+  if (e.key === 'p' || e.key === 'P') {
+    e.preventDefault();
+    musicToggle();
     return true;
   }
   return false;
@@ -581,4 +616,154 @@ function addSession(type) {
   sessions.push({ type, duration, name });
   saveConfig();
   updateAll();
+}
+
+// --- Music player ---
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function convertFileSrc(path) {
+  return window.__TAURI__.core.convertFileSrc(path);
+}
+
+function trackName(path) {
+  const name = path.split('/').pop() || path;
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.substring(0, dot) : name;
+}
+
+async function musicChooseFolder() {
+  const folder = await pickFolder();
+  if (!folder) return;
+  await musicSetFolder(folder);
+}
+
+async function musicSetFolder(folder) {
+  musicStop();
+  const files = await scanMusicFolder(folder);
+  musicTracks = shuffle([...files]);
+  musicIndex = -1;
+  musicFolderPath = folder;
+  localStorage.setItem(STORAGE_KEY_MUSIC_FOLDER, folder);
+  updateMusicUI();
+}
+
+async function musicRestoreFolder(folder) {
+  const files = await scanMusicFolder(folder);
+  if (files.length === 0) {
+    localStorage.removeItem(STORAGE_KEY_MUSIC_FOLDER);
+    return;
+  }
+  musicTracks = shuffle([...files]);
+  musicIndex = -1;
+  musicFolderPath = folder;
+  updateMusicUI();
+}
+
+function musicClearFolder() {
+  musicStop();
+  musicTracks = [];
+  musicIndex = -1;
+  musicFolderPath = '';
+  localStorage.removeItem(STORAGE_KEY_MUSIC_FOLDER);
+  updateMusicUI();
+}
+
+function musicToggle() {
+  if (musicTracks.length === 0) return;
+  if (musicPlaying) {
+    musicPause();
+  } else {
+    if (musicIndex < 0) musicIndex = 0;
+    musicPlay();
+  }
+}
+
+function musicPlay() {
+  if (musicTracks.length === 0 || musicIndex < 0) return;
+  const src = convertFileSrc(musicTracks[musicIndex]);
+  if (!audio) {
+    audio = new Audio();
+    audio.addEventListener('ended', musicOnEnded);
+  }
+  if (audio.src !== src) {
+    audio.src = src;
+  }
+  audio.play();
+  musicPlaying = true;
+  updateMusicUI();
+}
+
+function musicPause() {
+  if (audio) audio.pause();
+  musicPlaying = false;
+  updateMusicUI();
+}
+
+function musicStop() {
+  if (audio) {
+    audio.pause();
+    audio.src = '';
+  }
+  musicPlaying = false;
+  musicIndex = -1;
+}
+
+function musicNext() {
+  if (musicTracks.length === 0) return;
+  musicIndex = (musicIndex + 1) % musicTracks.length;
+  if (musicPlaying) musicPlay();
+  else updateMusicUI();
+}
+
+function musicPrev() {
+  if (musicTracks.length === 0) return;
+  musicIndex = (musicIndex - 1 + musicTracks.length) % musicTracks.length;
+  if (musicPlaying) musicPlay();
+  else updateMusicUI();
+}
+
+function musicOnEnded() {
+  musicIndex = (musicIndex + 1) % musicTracks.length;
+  musicPlay();
+}
+
+function updateMusicUI() {
+  if (!musicTrackEl) return;
+
+  if (!musicFolderPath) {
+    musicTrackEl.textContent = 'Pick a folder to enable music';
+    musicControlsEl.style.display = 'none';
+    musicClearBtn.style.display = 'none';
+    musicFolderPathEl.textContent = '';
+    return;
+  }
+
+  musicClearBtn.style.display = '';
+  musicFolderPathEl.textContent = musicFolderPath;
+
+  if (musicTracks.length === 0) {
+    musicTrackEl.textContent = '(no audio files)';
+    musicControlsEl.style.display = 'none';
+    return;
+  }
+
+  musicControlsEl.style.display = '';
+
+  if (musicPlaying && musicIndex >= 0) {
+    musicTrackEl.textContent = trackName(musicTracks[musicIndex]);
+    musicToggleBtn.innerHTML = '&#x23F8;'; // pause
+  } else if (musicIndex >= 0) {
+    musicTrackEl.textContent = trackName(musicTracks[musicIndex]);
+    musicToggleBtn.innerHTML = '&#x25B6;'; // play
+  } else {
+    musicTrackEl.textContent = '(press play)';
+    musicToggleBtn.innerHTML = '&#x25B6;';
+  }
 }

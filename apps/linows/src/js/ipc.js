@@ -73,6 +73,14 @@ export async function getHomeDir() {
   return invoke('get_home_dir');
 }
 
+export async function scanMusicFolder(folder) {
+  return invoke('scan_music_folder', { folder });
+}
+
+export async function pickFolder() {
+  return invoke('pick_folder');
+}
+
 export async function onWindowShown(callback) {
   return listen('window-shown', callback);
 }

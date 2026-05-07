@@ -143,6 +143,8 @@ fn main() {
             process::list_processes_on_port,
             process::kill_process,
             platform::get_icon,
+            commands::scan_music_folder,
+            commands::pick_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running look desktop");

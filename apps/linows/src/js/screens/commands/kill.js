@@ -57,23 +57,19 @@ export function handleKey(e) {
     return true;
   }
 
-  // Confirm state
+  // Confirm state — consume all keys, only act on Y/N
   if (confirmPid !== null) {
+    e.preventDefault();
     if (e.key === 'y' || e.key === 'Y') {
-      e.preventDefault();
       if (onExecute) onExecute('kill-execute', String(confirmPid));
       confirmPid = null;
       updateConfirmBar();
-      return true;
-    }
-    if (e.key === 'n' || e.key === 'N') {
-      e.preventDefault();
+    } else if (e.key === 'n' || e.key === 'N') {
       confirmPid = null;
       updateConfirmBar();
       updateSelection();
-      return true;
     }
-    return false;
+    return true;
   }
 
   if (e.key === 'ArrowDown') {

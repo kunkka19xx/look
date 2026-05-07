@@ -499,6 +499,50 @@ pub fn run_shell_command(cmd: String) -> Result<String, String> {
     Ok(result)
 }
 
+const AUDIO_EXTENSIONS: &[&str] = &[
+    "mp3", "m4a", "wav", "aac", "flac", "ogg", "aiff", "alac",
+];
+
+#[tauri::command]
+pub fn scan_music_folder(folder: String) -> Vec<String> {
+    let dir = std::path::Path::new(&folder);
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return vec![];
+    };
+    let mut files: Vec<String> = entries
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            if !path.is_file() {
+                return None;
+            }
+            let ext = path.extension()?.to_str()?.to_lowercase();
+            if AUDIO_EXTENSIONS.contains(&ext.as_str()) {
+                Some(path.to_string_lossy().to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    files.sort();
+    files
+}
+
+#[tauri::command]
+pub fn pick_folder() -> Option<String> {
+    let output = std::process::Command::new("zenity")
+        .args(["--file-selection", "--directory", "--title=Choose Music Folder"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if path.is_empty() { None } else { Some(path) }
+}
+
 fn time_from_unix(secs: u64) -> String {
     // Simple UTC formatting without extra deps
     let days = secs / 86400;

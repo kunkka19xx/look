@@ -229,6 +229,10 @@
 }
 
 /* Kill confirm bar — pinned to bottom of cmd-main */
+.cmd-confirm-bar[hidden] {
+  display: none;
+}
+
 .cmd-confirm-bar {
   display: flex;
   align-items: center;
@@ -426,6 +430,94 @@
 .cmd-pomo-style-btn.active {
   background: var(--accent-color);
   color: #fff;
+}
+
+/* Music player — pinned to bottom */
+.cmd-pomo-music {
+  margin-top: auto;
+  padding: 10px;
+  margin: auto 8px 8px;
+  background: var(--control-fill);
+  border-radius: 8px;
+}
+
+.cmd-pomo-music-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: calc(var(--font-size) - 1px);
+}
+
+.cmd-pomo-music-icon {
+  color: var(--accent-color);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.cmd-pomo-music-track {
+  flex: 1;
+  min-width: 0;
+  color: var(--font-color);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmd-pomo-music-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.cmd-pomo-music-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--font-secondary);
+  font-size: 14px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.cmd-pomo-music-btn:hover {
+  color: var(--font-color);
+  background: var(--selection-fill);
+}
+
+.cmd-pomo-music-folder-row {
+  font-size: calc(var(--font-size) - 2px);
+  gap: 6px;
+}
+
+.cmd-pomo-music-folder-path {
+  flex: 1;
+  min-width: 0;
+  color: var(--font-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.cmd-pomo-music-folder-btn {
+  font-size: calc(var(--font-size) - 2px);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--divider-color);
+  cursor: pointer;
+  background: none;
+  color: var(--font-secondary);
+  flex-shrink: 0;
+}
+
+.cmd-pomo-music-folder-btn:hover {
+  background: var(--selection-fill);
+  color: var(--font-color);
 }
 
 /* Session list */
