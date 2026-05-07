@@ -85,6 +85,17 @@
   flex-direction: column;
 }
 
+.cmd-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cmd-panel[hidden] {
+  display: none;
+}
+
 /* Input bar */
 .cmd-input-bar {
   display: flex;

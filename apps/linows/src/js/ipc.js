@@ -61,6 +61,10 @@ export async function listProcesses() {
   return invoke('list_processes');
 }
 
+export async function listProcessesOnPort(port) {
+  return invoke('list_processes_on_port', { port });
+}
+
 export async function killProcess(pid) {
   return invoke('kill_process', { pid });
 }

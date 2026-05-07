@@ -47,3 +47,9 @@ cd apps/linows
 cargo tauri dev       # development
 cargo tauri build     # production
 ```
+
+**For dev in VM (nixos)**
+
+```bash
+WEBKIT_DISABLE_COMPOSITING_MODE=1 cargo tauri dev
+```

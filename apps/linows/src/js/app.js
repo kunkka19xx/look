@@ -4,19 +4,37 @@ import * as keyboard from './keyboard.js';
 import * as preview from './components/preview.js';
 import * as picked from './components/picked.js';
 import * as banner from './components/banner.js';
-import * as commands from './screens/commands.js';
+import * as commands from './screens/commands/index.js';
+import { load } from './html-loader.js';
 import {
   onWindowShown, getHomeDir, copyFilesToClipboard,
   evalCalc, runShellCommand, getSystemInfo,
-  listProcesses, killProcess, getIcon,
+  listProcesses, listProcessesOnPort, killProcess, getIcon,
 } from './ipc.js';
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  const app = document.getElementById('app');
+
+  // Load screen templates
+  await load('html/screens/search.html', app);
+  await load('html/screens/commands/index.html', app);
+
+  // Load command panels into cmd-main
+  const cmdMain = document.getElementById('cmd-main');
+  await Promise.all([
+    load('html/screens/commands/calc.html', cmdMain),
+    load('html/screens/commands/pomo.html', cmdMain),
+    load('html/screens/commands/kill.html', cmdMain),
+    load('html/screens/commands/shell.html', cmdMain),
+    load('html/screens/commands/sys.html', cmdMain),
+  ]);
+
+  // DOM refs
   const queryInput = document.getElementById('query');
   const resultsList = document.getElementById('results-list');
   const previewPanel = document.getElementById('preview-panel');
   const hintBar = document.getElementById('hint-bar');
-  const contentArea = document.querySelector('.content-area');
+  const contentArea = document.getElementById('search-content');
 
   // Initialize modules
   results.init(resultsList);
@@ -64,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Wire search → results
+  // Wire search -> results
   search.setOnResults((items, query) => {
     results.render(items);
   });
@@ -74,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     search.handleQueryInput(e.target.value);
   });
 
-  // Click on result row → open
+  // Click on result row -> open
   resultsList.addEventListener('result-activate', () => {
     const item = results.getSelected();
     if (item) {
@@ -103,6 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function enterCommandMode() {
     resultsList.hidden = true;
     previewPanel.hidden = true;
+    hintBar.style.display = 'none';
     updateCommandHintBar();
     commands.enter();
     commands.setOnCommandChange(updateCommandHintBar);
@@ -123,9 +142,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function exitCommandMode() {
-    // Restore search bar
     queryInput.parentElement.style.display = '';
     resultsList.hidden = false;
+    hintBar.style.display = '';
     hintBar.querySelector('span').textContent =
       'Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide';
     queryInput.value = '';
@@ -154,13 +173,24 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    if (cmdId === 'kill-port') {
+      const port = parseInt(input);
+      if (!port) return;
+      try {
+        const procs = await listProcessesOnPort(port);
+        commands.setProcessList(procs);
+      } catch (err) {
+        commands.showFeedback(err || 'Failed to query port', true);
+      }
+      return;
+    }
+
     if (cmdId === 'kill-execute') {
       const pid = parseInt(input);
       if (!pid) return;
       try {
         const msg = await killProcess(pid);
         banner.show(msg, 'success', 1.2);
-        // Wait briefly for process to terminate, then refresh
         await new Promise((r) => setTimeout(r, 300));
         const procs = await listProcesses();
         commands.setProcessList(procs);

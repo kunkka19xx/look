@@ -140,6 +140,7 @@ fn main() {
             calc::eval_calc,
             sysinfo::get_system_info,
             process::list_processes,
+            process::list_processes_on_port,
             process::kill_process,
             platform::get_icon,
         ])
