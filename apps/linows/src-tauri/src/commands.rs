@@ -529,18 +529,17 @@ pub fn scan_music_folder(folder: String) -> Vec<String> {
 }
 
 #[tauri::command]
-pub fn pick_folder() -> Option<String> {
-    let output = std::process::Command::new("zenity")
-        .args(["--file-selection", "--directory", "--title=Choose Music Folder"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if path.is_empty() { None } else { Some(path) }
+pub async fn pick_folder(app: tauri::AppHandle) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose Music Folder")
+        .pick_folder(move |folder| {
+            let result = folder.map(|f| f.to_string());
+            let _ = tx.send(result);
+        });
+    rx.recv().ok().flatten()
 }
 
 fn time_from_unix(secs: u64) -> String {

@@ -84,3 +84,23 @@ export async function pickFolder() {
 export async function onWindowShown(callback) {
   return listen('window-shown', callback);
 }
+
+export async function musicPlay(path) {
+  return invoke('music_play', { path });
+}
+
+export async function musicPauseBackend() {
+  return invoke('music_pause');
+}
+
+export async function musicResumeBackend() {
+  return invoke('music_resume');
+}
+
+export async function musicStopBackend() {
+  return invoke('music_stop');
+}
+
+export async function musicIsFinished() {
+  return invoke('music_is_finished');
+}

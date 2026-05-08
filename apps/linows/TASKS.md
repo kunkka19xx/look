@@ -81,7 +81,9 @@ Based on macOS app as source of truth. Organized by phase.
 - [x] Shell command — execute and capture output (<800 chars)
 - [x] Kill command — running GUI apps list with icons, filter, confirm + kill
 - [x] System info command — structured table (OS, memory, CPU, battery, uptime, disk)
-- [x] Pomodoro timer — 25/5 min work/break, start/pause/reset
+- [x] Pomodoro timer — configurable sessions, 3 timer styles, idle standby mode, bg music (rodio)
+- [x] Pomo music player — folder picker, shuffle, prev/next/play/pause, auto-advance
+- [x] Context-sensitive hint bar — per-command keyboard hints at bottom
 - [ ] Kill by port (`:3000` syntax)
 - [ ] Translation (`t"` prefix) — web translation via Rust bridge
 - [ ] Language selection (English, Vietnamese, Japanese)
@@ -143,3 +145,6 @@ Based on macOS app as source of truth. Organized by phase.
 - DB path: ~/.local/share/look/look.db
 - Global hotkey: Works on X11; Wayland support may be limited
 - i3/tiling WMs: needs `for_window [title="Look"] floating enable, border none` in config
+- Audio: rodio → cpal → ALSA (works on all distros, PulseAudio/PipeWire provide ALSA compat)
+- Folder picker: tauri-plugin-dialog (uses xdg-desktop-portal on portal-enabled desktops, GTK fallback)
+- NixOS: needs alsa-lib in buildInputs, xdg-desktop-portal-gtk for folder picker

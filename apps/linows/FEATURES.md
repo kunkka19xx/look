@@ -91,7 +91,8 @@ The search input recognizes special prefixes that change search behavior:
 
 ## Command Mode (Ctrl+/)
 
-Activated by Ctrl+/, hides search bar, shows 4 command cards.
+Activated by Ctrl+/, hides search bar, shows sidebar with 5 commands.
+Context-sensitive hint bar at the bottom shows available shortcuts per command.
 
 ### Calculator (`calc`)
 
@@ -142,6 +143,33 @@ date                → current date/time
 - By name: fuzzy match against process names
 - By PID: exact match
 - By port: find process listening on port (netstat/ss)
+
+### Pomodoro (`pomo`)
+
+**Features:**
+- Configurable session list (focus/break, name, duration) — editable inline
+- 3 timer styles: Modern Ring, Vintage Dial, Minimal Text
+- Start/Pause/Resume with keyboard shortcut hint on button
+- Skip and Reset controls
+- Session List toggle (collapsible, shows count)
+- Idle standby mode: after 5s of no interaction, fades UI and expands timer
+- Desktop notifications for phase transitions and ending soon (10s warning)
+
+**Background Music:**
+- Folder-based music player (Choose folder → scan for audio files)
+- Supported formats: mp3, m4a, wav, aac, flac, ogg, aiff, alac
+- Shuffle on load, auto-advance to next track
+- Play/Pause/Prev/Next controls
+- Audio playback via Rust `rodio` crate (not HTML5 Audio — WebKitGTK has issues)
+- Folder picker via `tauri-plugin-dialog` (native cross-platform)
+- Persists selected folder in localStorage
+
+**Keyboard:**
+| Key | Action |
+|-----|--------|
+| Space | Start/Pause/Resume timer |
+| R | Reset timer |
+| P | Toggle music play/pause |
 
 ### System Info (`sys`)
 
@@ -303,9 +331,11 @@ Set `alias_<keyword>=` (empty value) to remove a default alias.
 | Shortcut | Action |
 |----------|--------|
 | Ctrl+1 | Switch to calc |
-| Ctrl+2 | Switch to shell |
+| Ctrl+2 | Switch to pomo |
 | Ctrl+3 | Switch to kill |
-| Ctrl+4 | Switch to sys |
+| Ctrl+4 | Switch to shell |
+| Ctrl+5 | Switch to sys |
+| Tab | Cycle to next command |
 | Escape | Exit command mode → search mode |
 | Enter | Execute command / confirm kill |
 

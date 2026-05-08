@@ -19,6 +19,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   await load('html/screens/search.html', app);
   await load('html/screens/commands/index.html', app);
 
+  // Hint bar — always at bottom, shared by all screens
+  app.insertAdjacentHTML('beforeend',
+    '<div class="hint-bar" id="hint-bar"><span>Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide</span></div>');
+
   // Load command panels into cmd-main
   const cmdMain = document.getElementById('cmd-main');
   await Promise.all([
@@ -121,7 +125,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   function enterCommandMode() {
     resultsList.hidden = true;
     previewPanel.hidden = true;
-    hintBar.style.display = 'none';
     updateCommandHintBar();
     commands.enter();
     commands.setOnCommandChange(updateCommandHintBar);
@@ -129,22 +132,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function updateCommandHintBar() {
     const cmd = commands.getActiveCommand();
-    if (cmd === 'kill') {
-      hintBar.querySelector('span').textContent =
+    const h = hintBar.querySelector('span');
+    if (cmd === 'pomo') {
+      h.textContent =
+        'Space start/pause \u2022 R reset \u2022 P music \u2022 Esc back \u2022 Tab/Ctrl+1-5 switch';
+    } else if (cmd === 'kill') {
+      h.textContent =
         'Y confirm \u2022 N cancel \u2022 Tab/Ctrl+1-5 switch \u2022 Esc back';
     } else if (cmd === 'sys') {
-      hintBar.querySelector('span').textContent =
-        'Esc back \u2022 Tab/Ctrl+1-5 switch \u2022 Ctrl+/ command mode';
+      h.textContent =
+        'Esc back \u2022 Tab/Ctrl+1-5 switch';
+    } else if (cmd === 'calc') {
+      h.textContent =
+        'Enter evaluate \u2022 Tab/Ctrl+1-5 switch \u2022 Esc back';
+    } else if (cmd === 'shell') {
+      h.textContent =
+        'Enter run \u2022 Tab/Ctrl+1-5 switch \u2022 Esc back';
     } else {
-      hintBar.querySelector('span').textContent =
-        'Enter run \u2022 Tab select \u2022 Ctrl+1-5 switch \u2022 Esc back';
+      h.textContent =
+        'Tab/Ctrl+1-5 switch \u2022 Esc back';
     }
   }
 
   function exitCommandMode() {
     queryInput.parentElement.style.display = '';
     resultsList.hidden = false;
-    hintBar.style.display = '';
+    previewPanel.hidden = false;
     hintBar.querySelector('span').textContent =
       'Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide';
     queryInput.value = '';

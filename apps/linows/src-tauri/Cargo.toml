@@ -16,6 +16,8 @@ serde_json = "1"
 notify = "6"
 open = "5"
 base64 = "0.22"
+rodio = "0.20"
+tauri-plugin-dialog = "2"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

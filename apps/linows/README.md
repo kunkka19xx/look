@@ -11,11 +11,16 @@ its look, feel, and feature set using web technologies.
 apps/linows/
   src-tauri/           Rust backend (Tauri commands, state, platform logic)
     src/
-      main.rs          Entry point, plugin registration
-      commands.rs      #[tauri::command] handlers
+      main.rs          Entry point, plugin registration, global hotkey
+      commands.rs      #[tauri::command] handlers (search, open, shell, etc.)
       state.rs         AppState (engine cache, file watchers, index refresh)
-      platform.rs      Windows/Linux specifics (icons, app discovery)
-      config.rs        RuntimeConfig bridge
+      platform.rs      Icon extraction (freedesktop, XDG_DATA_DIRS, .desktop)
+      process.rs       Running apps list (match .desktop vs /proc) + kill
+      sysinfo.rs       System info (OS, memory, CPU, battery, uptime, disk)
+      calc.rs          Calculator (functions, constants, !, %, commas)
+      music.rs         Background music player (rodio, ALSA)
+    capabilities/
+      default.json     Tauri v2 permissions (events, dialog)
   src/                 Vanilla frontend (served by Tauri webview)
     index.html
     css/
@@ -39,6 +44,9 @@ The WinUI3 app remains in `apps/windows/` (bug fixes only) until this migration 
 - ES modules (`<script type="module">`) — no bundler
 - CSS custom properties for theming
 - macOS design language: dark, blurred, rounded, minimal
+- Audio playback via `rodio` (Rust) — WebKitGTK's HTML5 Audio has issues on Linux
+- Folder picker via `tauri-plugin-dialog` — cross-platform native dialogs
+- Tauri v2 capabilities in `capabilities/default.json` for event/dialog permissions
 
 ## Build
 

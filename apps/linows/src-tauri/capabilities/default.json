@@ -1,0 +1,16 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for Look",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:event:allow-listen",
+    "core:event:allow-emit",
+    "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "dialog:default",
+    "dialog:allow-open"
+  ]
+}

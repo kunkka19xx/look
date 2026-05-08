@@ -3,6 +3,7 @@
 
 mod calc;
 mod commands;
+mod music;
 mod platform;
 mod process;
 mod state;
@@ -60,6 +61,7 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
         .manage(platform::IconCache::new())
         .setup(|app| {
@@ -145,6 +147,11 @@ fn main() {
             platform::get_icon,
             commands::scan_music_folder,
             commands::pick_folder,
+            music::music_play,
+            music::music_pause,
+            music::music_resume,
+            music::music_stop,
+            music::music_is_finished,
         ])
         .run(tauri::generate_context!())
         .expect("error while running look desktop");

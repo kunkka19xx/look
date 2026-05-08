@@ -28,6 +28,8 @@
               cargo
               rustc
               cargo-tauri
+              xdg-desktop-portal
+              xdg-desktop-portal-gtk
             ];
 
             buildInputs = with pkgs; [
@@ -42,6 +44,7 @@
               gdk-pixbuf
               harfbuzz
               librsvg
+              alsa-lib
             ];
 
             shellHook = ''
@@ -58,8 +61,10 @@
                   pkgs.gdk-pixbuf
                   pkgs.harfbuzz
                   pkgs.librsvg
+                  pkgs.alsa-lib
                 ]
               }:$LD_LIBRARY_PATH"
+              export GSETTINGS_SCHEMA_DIR="${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}/glib-2.0/schemas''${GSETTINGS_SCHEMA_DIR:+:$GSETTINGS_SCHEMA_DIR}"
             '';
           };
 

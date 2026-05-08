@@ -87,6 +87,13 @@ Mapping from Rust core to Tauri commands, and frontend IPC calls.
 | `list_processes` | `(query: String) -> Vec<ProcessInfo>` | Fuzzy-match running processes |
 | `kill_process` | `(pid: u32) -> bool` | Terminate process by PID |
 | `get_system_info` | `() -> SystemInfo` | CPU, memory, disk, GPU, network |
+| `scan_music_folder` | `(folder: String) -> Vec<String>` | List audio files in folder |
+| `pick_folder` | `(app: AppHandle) -> Option<String>` | Native folder picker dialog |
+| `music_play` | `(path: String) -> Result<(), String>` | Play audio file via rodio |
+| `music_pause` | `() -> ()` | Pause playback |
+| `music_resume` | `() -> ()` | Resume playback |
+| `music_stop` | `() -> ()` | Stop playback |
+| `music_is_finished` | `() -> bool` | Check if current track finished |
 
 ---
 

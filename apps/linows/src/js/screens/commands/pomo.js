@@ -1,4 +1,8 @@
-import { scanMusicFolder, pickFolder } from '../../ipc.js';
+import {
+  scanMusicFolder, pickFolder,
+  musicPlay as ipcPlay, musicPauseBackend, musicResumeBackend,
+  musicStopBackend, musicIsFinished,
+} from '../../ipc.js';
 
 // --- Default sessions ---
 const DEFAULT_SESSIONS = [
@@ -59,7 +63,7 @@ let musicTracks = [];
 let musicIndex = -1;
 let musicPlaying = false;
 let musicFolderPath = '';
-let audio = null;
+let endPollTimer = null;
 
 // --- DOM refs ---
 let panel, header, sessionNameEl, canvas, ctx;
@@ -363,17 +367,17 @@ function updateSessionName() {
 
 function updateButtons() {
   if (activeIndex === null) {
-    toggleBtn.textContent = 'Start';
+    toggleBtn.textContent = 'Start (Space)';
     toggleBtn.className = 'cmd-pomo-btn cmd-pomo-btn-toggle';
     skipBtn.hidden = true;
     resetBtn.hidden = true;
   } else if (running) {
-    toggleBtn.textContent = 'Pause';
+    toggleBtn.textContent = 'Pause (Space)';
     toggleBtn.className = 'cmd-pomo-btn cmd-pomo-btn-toggle pomo-running';
     skipBtn.hidden = false;
     resetBtn.hidden = false;
   } else {
-    toggleBtn.textContent = 'Resume';
+    toggleBtn.textContent = 'Resume (Space)';
     toggleBtn.className = 'cmd-pomo-btn cmd-pomo-btn-toggle pomo-paused';
     skipBtn.hidden = false;
     resetBtn.hidden = false;
@@ -542,6 +546,8 @@ function toggleSessionsList() {
 }
 
 function updateSessionList() {
+  const label = document.getElementById('cmd-pomo-sessions-label');
+  if (label) label.textContent = `Session List (${sessions.length})`;
   if (sessionsOpen) renderSessionList();
 }
 
@@ -628,10 +634,6 @@ function shuffle(arr) {
   return arr;
 }
 
-function convertFileSrc(path) {
-  return window.__TAURI__.core.convertFileSrc(path);
-}
-
 function trackName(path) {
   const name = path.split('/').pop() || path;
   const dot = name.lastIndexOf('.');
@@ -680,58 +682,74 @@ function musicToggle() {
   if (musicPlaying) {
     musicPause();
   } else {
-    if (musicIndex < 0) musicIndex = 0;
-    musicPlay();
+    if (musicIndex < 0) {
+      musicIndex = 0;
+      musicPlayCurrent();
+    } else {
+      // Resume
+      musicResumeBackend();
+      musicPlaying = true;
+      startEndPoll();
+      updateMusicUI();
+    }
   }
 }
 
-function musicPlay() {
+function musicPlayCurrent() {
   if (musicTracks.length === 0 || musicIndex < 0) return;
-  const src = convertFileSrc(musicTracks[musicIndex]);
-  if (!audio) {
-    audio = new Audio();
-    audio.addEventListener('ended', musicOnEnded);
-  }
-  if (audio.src !== src) {
-    audio.src = src;
-  }
-  audio.play();
+  ipcPlay(musicTracks[musicIndex]).catch((err) =>
+    console.error('[music] play error:', err),
+  );
   musicPlaying = true;
+  startEndPoll();
   updateMusicUI();
 }
 
 function musicPause() {
-  if (audio) audio.pause();
+  musicPauseBackend();
   musicPlaying = false;
+  stopEndPoll();
   updateMusicUI();
 }
 
 function musicStop() {
-  if (audio) {
-    audio.pause();
-    audio.src = '';
-  }
+  musicStopBackend();
   musicPlaying = false;
   musicIndex = -1;
+  stopEndPoll();
 }
 
 function musicNext() {
   if (musicTracks.length === 0) return;
   musicIndex = (musicIndex + 1) % musicTracks.length;
-  if (musicPlaying) musicPlay();
+  if (musicPlaying) musicPlayCurrent();
   else updateMusicUI();
 }
 
 function musicPrev() {
   if (musicTracks.length === 0) return;
   musicIndex = (musicIndex - 1 + musicTracks.length) % musicTracks.length;
-  if (musicPlaying) musicPlay();
+  if (musicPlaying) musicPlayCurrent();
   else updateMusicUI();
 }
 
-function musicOnEnded() {
-  musicIndex = (musicIndex + 1) % musicTracks.length;
-  musicPlay();
+function startEndPoll() {
+  stopEndPoll();
+  endPollTimer = setInterval(async () => {
+    if (!musicPlaying) return;
+    const finished = await musicIsFinished();
+    if (finished && musicPlaying) {
+      musicIndex = (musicIndex + 1) % musicTracks.length;
+      musicPlayCurrent();
+    }
+  }, 1000);
+}
+
+function stopEndPoll() {
+  if (endPollTimer) {
+    clearInterval(endPollTimer);
+    endPollTimer = null;
+  }
 }
 
 function updateMusicUI() {
