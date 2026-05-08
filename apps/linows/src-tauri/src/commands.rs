@@ -465,14 +465,32 @@ fn extract_nix_version(path: &str) -> Option<String> {
 
 #[tauri::command]
 pub fn run_shell_command(cmd: String) -> Result<String, String> {
-    let output = std::process::Command::new("sh")
+    let mut child = std::process::Command::new("sh")
         .args(["-c", &cmd])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .output()
+        .spawn()
         .map_err(|e| format!("Failed to run: {e}"))?;
 
+    let timeout = std::time::Duration::from_secs(10);
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Ok("(timed out after 10s)".to_string());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(e) => return Err(format!("Wait error: {e}")),
+        }
+    }
+
+    let output = child.wait_with_output().map_err(|e| format!("Output error: {e}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 

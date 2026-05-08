@@ -626,8 +626,25 @@
   border-radius: 3px;
 }
 
+.cmd-pomo-session-dur-wrap {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.cmd-pomo-session-dur-unit {
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--font-muted);
+}
+
 .cmd-pomo-session-dur:focus {
   background: var(--control-fill);
+}
+
+.cmd-pomo-session-dur::-webkit-inner-spin-button,
+.cmd-pomo-session-dur::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .cmd-pomo-session-type-btn {

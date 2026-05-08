@@ -573,7 +573,9 @@ function renderSessionList() {
     });
     row.appendChild(nameInput);
 
-    // Duration input
+    // Duration input + "m" suffix
+    const durWrap = document.createElement('span');
+    durWrap.className = 'cmd-pomo-session-dur-wrap';
     const durInput = document.createElement('input');
     durInput.className = 'cmd-pomo-session-dur';
     durInput.type = 'number';
@@ -586,7 +588,12 @@ function renderSessionList() {
       saveConfig();
       updateAll();
     });
-    row.appendChild(durInput);
+    durWrap.appendChild(durInput);
+    const durUnit = document.createElement('span');
+    durUnit.className = 'cmd-pomo-session-dur-unit';
+    durUnit.textContent = 'm';
+    durWrap.appendChild(durUnit);
+    row.appendChild(durWrap);
 
     // Type toggle
     const typeBtn = document.createElement('button');
@@ -603,6 +610,7 @@ function renderSessionList() {
     delBtn.className = 'cmd-pomo-session-del';
     delBtn.textContent = '\u00D7';
     delBtn.addEventListener('click', () => {
+      if (sessions.length <= 1) return;
       sessions.splice(i, 1);
       if (activeIndex !== null && activeIndex >= sessions.length) {
         reset();

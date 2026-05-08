@@ -288,6 +288,51 @@ On Linux: use solid `--bg-tint` as fallback when compositor doesn't support blur
 
 ---
 
+## Platform Visual Parity
+
+macOS (SwiftUI) is the design source of truth. This table documents what each platform can and cannot achieve.
+
+**Legend:** ✅ native support, ⚠️ partial/workaround, ❌ not possible
+
+| Feature | macOS | Windows | Linux (GNOME/KDE) | Linux (i3/sway/X11 bare) |
+|---------|-------|---------|-------------------|--------------------------|
+| Window blur | ✅ NSVisualEffectView | ✅ Mica (Win11) / Acrylic (Win10) | ⚠️ KDE supports blur; GNOME no native API | ❌ No compositor blur |
+| Transparency | ✅ Native | ✅ DWM composition | ⚠️ Wayland compositors support it; X11 needs picom/compton | ❌ Solid background fallback |
+| Rounded corners | ✅ Native window mask | ✅ DWM auto-rounds (Win11) | ⚠️ CSS border-radius works but no window-level mask | ⚠️ CSS border-radius, visible square edges underneath |
+| Window shadow | ✅ Native macOS shadow | ✅ DWM shadow | ⚠️ Compositor-dependent | ❌ No shadow |
+| Font: SF Pro | ✅ System font | ❌ Segoe UI fallback | ❌ System sans-serif fallback | ❌ System sans-serif fallback |
+| Font: SF Mono | ✅ System font | ❌ Cascadia Code fallback | ❌ JetBrains Mono / monospace fallback | ❌ monospace fallback |
+| Icon quality | ✅ NSImage, crisp at all DPIs | ✅ SHGetFileInfo, DPI-aware | ⚠️ freedesktop icon theme, quality varies | ⚠️ Same as GNOME/KDE |
+| Scrollbars | ✅ Native thin overlay | ⚠️ Can be styled with CSS | ⚠️ WebKitGTK scrollbars, CSS styling | ⚠️ Same |
+| Animations | ✅ SwiftUI spring/easeOut | ⚠️ CSS transitions (simpler) | ⚠️ CSS transitions | ⚠️ CSS transitions |
+| Vibrancy materials | ✅ hudWindow, sidebar, menu | ⚠️ Mica/Acrylic (fewer options) | ❌ Faked with rgba tint | ❌ Solid dark background |
+| Native file dialog | ✅ NSOpenPanel | ✅ Win32 dialog | ✅ xdg-desktop-portal | ⚠️ Needs portal service running |
+| Audio playback | ✅ AVFoundation | ✅ WASAPI via rodio | ✅ ALSA via rodio (PulseAudio/PipeWire compat) | ✅ Same |
+| Global hotkey | ✅ NSEvent | ✅ RegisterHotKey | ✅ X11 grab | ⚠️ Works on X11; Wayland limited |
+| Tray icon | ✅ NSStatusBar | ✅ Shell_NotifyIcon | ✅ libappindicator | ⚠️ Depends on tray support |
+
+### Unsolvable Gaps
+
+These are platform limitations that cannot be fixed in app code:
+
+1. **No blur on i3/sway/X11 bare** — There is no compositor blur API. The app uses a solid dark `--bg-tint` background instead. This is the expected look on minimal WMs.
+
+2. **No SF Pro / SF Mono on non-macOS** — Apple's fonts are not redistributable. Each platform uses its best system font. The visual weight and spacing will differ slightly.
+
+3. **No true vibrancy on Linux** — macOS vibrancy shows desktop content through the window with a tinted blur. Linux has no equivalent API. GNOME/KDE compositors may support basic transparency but not the material effect.
+
+4. **Rounded window mask on X11** — CSS `border-radius` rounds the content, but the actual window shape remains rectangular on X11. A thin gap may be visible at corners. Wayland compositors handle this better.
+
+### Recommendations per Platform
+
+- **Windows (Win11):** Enable `"effects": ["mica"]` in tauri.conf.json for near-macOS appearance.
+- **Windows (Win10):** Use `"effects": ["acrylic"]` — less refined but still translucent.
+- **Linux (GNOME on Wayland):** Enable transparency in tauri.conf.json. No blur but transparent tint works.
+- **Linux (KDE):** KDE compositor supports blur hints — may work with additional config.
+- **Linux (i3/sway):** Solid background mode. Add picom for X11 transparency. No blur possible.
+
+---
+
 ## Screens
 
 ### 1. Search (Default)
