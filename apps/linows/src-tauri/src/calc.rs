@@ -184,7 +184,7 @@ fn is_modulo(tokens: &[Token], pos: usize) -> bool {
     }
     matches!(
         tokens[pos + 1],
-        Token::Num(_) | Token::LParen | Token::Func(_) | Token::Op('-') | Token::Op('+')
+        Token::Num(_) | Token::LParen | Token::Func(_)
     )
 }
 

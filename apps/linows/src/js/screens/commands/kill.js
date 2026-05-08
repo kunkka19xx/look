@@ -10,6 +10,7 @@ let confirmPidEl = null;
 let onExecute = null;
 let getIconFn = null;
 
+let baseProcessList = [];
 let processList = [];
 let filteredProcesses = [];
 let selectedIndex = 0;
@@ -100,17 +101,18 @@ export function handleKey(e) {
   return false;
 }
 
-export function setProcessList(procs) {
+export function setProcessList(procs, isPortResult = false) {
   const savedValue = input ? input.value : '';
-  const isPortQuery = savedValue.startsWith(':');
-  processList = procs || [];
-  selectedIndex = 0;
-  confirmPid = null;
-  if (isPortQuery) {
+  if (isPortResult) {
+    processList = procs || [];
     filteredProcesses = [...processList];
   } else {
+    baseProcessList = procs || [];
+    processList = [...baseProcessList];
     filterProcesses(savedValue);
   }
+  selectedIndex = 0;
+  confirmPid = null;
   renderList();
   updateConfirmBar();
 }
@@ -124,6 +126,7 @@ export function showFeedback(text, isError = false) {
 
 function filterProcesses(query) {
   if (!query) {
+    processList = [...baseProcessList];
     filteredProcesses = [...processList];
   } else if (query.startsWith(':')) {
     filteredProcesses = [];
@@ -138,7 +141,7 @@ function filterProcesses(query) {
     return;
   } else {
     const q = query.toLowerCase();
-    filteredProcesses = processList.filter((p) => p.name.toLowerCase().includes(q));
+    filteredProcesses = baseProcessList.filter((p) => p.name.toLowerCase().includes(q));
   }
   selectedIndex = Math.min(selectedIndex, Math.max(0, filteredProcesses.length - 1));
 }

@@ -114,8 +114,8 @@ export function showFeedback(text, isError = false) {
   if (mod.showFeedback) mod.showFeedback(text, isError);
 }
 
-export function setProcessList(procs) {
-  kill.setProcessList(procs);
+export function setProcessList(procs, isPortResult = false) {
+  kill.setProcessList(procs, isPortResult);
 }
 
 export function setSysInfo(sections) {

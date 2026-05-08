@@ -191,7 +191,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!port) return;
       try {
         const procs = await listProcessesOnPort(port);
-        commands.setProcessList(procs);
+        commands.setProcessList(procs, true);
       } catch (err) {
         commands.showFeedback(err || 'Failed to query port', true);
       }
