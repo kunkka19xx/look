@@ -1,4 +1,5 @@
 import { getIcon, getFileMeta, getAppVersion, deleteClipboardEntry } from '../ipc.js';
+import { clipboard as clipboardIcon, trash as trashIcon, appIcon, fileIcon, folderIcon, settingIcon } from '../icons.js';
 
 let panel = null;
 let currentPath = null;
@@ -38,7 +39,11 @@ export function update(result) {
 
   const iconWrap = document.createElement('div');
   iconWrap.className = 'preview-icon';
-  iconWrap.textContent = result.title.charAt(0).toUpperCase();
+  const isSettings = result.path?.startsWith('settings://') || result.subtitle?.toLowerCase().startsWith('settings');
+  const fallbacks = { file: fileIcon, folder: folderIcon, setting: settingIcon };
+  iconWrap.innerHTML = isSettings ? settingIcon : (fallbacks[result.kind] || appIcon);
+  iconWrap.style.background = 'var(--control-fill)';
+  iconWrap.style.color = 'var(--font-secondary)';
   header.appendChild(iconWrap);
 
   getIcon(result.kind, result.path, result.id).then((res) => {
@@ -46,8 +51,9 @@ export function update(result) {
       const img = document.createElement('img');
       img.src = res.data_url;
       img.alt = '';
-      iconWrap.textContent = '';
+      iconWrap.innerHTML = '';
       iconWrap.style.background = 'none';
+      iconWrap.style.color = '';
       iconWrap.appendChild(img);
     }
   });
@@ -92,9 +98,9 @@ function renderClipboardPreview(result) {
 
   const iconWrap = document.createElement('div');
   iconWrap.className = 'preview-icon';
-  iconWrap.textContent = '\u{1F4CB}';
-  iconWrap.style.fontSize = '22px';
+  iconWrap.innerHTML = clipboardIcon;
   iconWrap.style.background = 'var(--control-fill)';
+  iconWrap.style.color = 'var(--font-secondary)';
   header.appendChild(iconWrap);
 
   const headerText = document.createElement('div');
@@ -115,7 +121,7 @@ function renderClipboardPreview(result) {
   // Delete button
   const delBtn = document.createElement('button');
   delBtn.className = 'preview-clip-delete';
-  delBtn.innerHTML = '\u{1F5D1} Delete';
+  delBtn.innerHTML = trashIcon + ' Delete';
   delBtn.addEventListener('click', async () => {
     await deleteClipboardEntry(result.clipIndex);
     if (onClipDelete) onClipDelete();

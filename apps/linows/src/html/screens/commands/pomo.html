@@ -1,7 +1,7 @@
 <div class="cmd-panel" id="cmd-panel-pomo" hidden>
   <!-- Header -->
   <div class="cmd-header-bar">
-    <span class="cmd-input-bar-icon">&#x23F1;</span>
+    <span class="cmd-input-bar-icon" id="cmd-pomo-header-icon"></span>
     <span class="cmd-subtitle" id="cmd-pomo-header">6 sessions planned</span>
     <span class="cmd-pill">/pomo</span>
   </div>
@@ -19,7 +19,7 @@
     <button class="cmd-pomo-btn cmd-pomo-btn-toggle" id="cmd-pomo-toggle">Start (Space)</button>
     <button class="cmd-pomo-btn cmd-pomo-btn-skip" id="cmd-pomo-skip" hidden>Skip</button>
     <button class="cmd-pomo-btn cmd-pomo-btn-reset" id="cmd-pomo-reset" hidden>Reset (R)</button>
-    <button class="cmd-pomo-btn cmd-pomo-btn-settings" id="cmd-pomo-settings-btn" title="Timer style">&#x2699;</button>
+    <button class="cmd-pomo-btn cmd-pomo-btn-settings" id="cmd-pomo-settings-btn" title="Timer style"></button>
   </div>
 
   <!-- Settings panel (timer style picker) -->
@@ -33,7 +33,7 @@
   <!-- Session list -->
   <div class="cmd-pomo-sessions" id="cmd-pomo-sessions">
     <div class="cmd-pomo-sessions-header" id="cmd-pomo-sessions-toggle">
-      <span class="cmd-pomo-chevron" id="cmd-pomo-chevron">&#x25B6;</span>
+      <span class="cmd-pomo-chevron" id="cmd-pomo-chevron"></span>
       <span id="cmd-pomo-sessions-label">Session List</span>
       <div class="cmd-pomo-sessions-actions" id="cmd-pomo-sessions-actions">
         <button class="cmd-pomo-add-btn" id="cmd-pomo-add-focus">+ Focus</button>
@@ -46,16 +46,16 @@
   <!-- Music player — pinned to bottom -->
   <div class="cmd-pomo-music" id="cmd-pomo-music">
     <div class="cmd-pomo-music-row">
-      <span class="cmd-pomo-music-icon">&#x266B;</span>
+      <span class="cmd-pomo-music-icon" id="cmd-pomo-music-icon"></span>
       <span class="cmd-pomo-music-track" id="cmd-pomo-music-track">Pick a folder to enable music</span>
       <div class="cmd-pomo-music-controls" id="cmd-pomo-music-controls" style="display:none">
-        <button class="cmd-pomo-music-btn" id="cmd-pomo-music-prev" title="Previous">&#x23EE;</button>
-        <button class="cmd-pomo-music-btn" id="cmd-pomo-music-toggle" title="Play/Pause">&#x25B6;</button>
-        <button class="cmd-pomo-music-btn" id="cmd-pomo-music-next" title="Next">&#x23ED;</button>
+        <button class="cmd-pomo-music-btn" id="cmd-pomo-music-prev" title="Previous"></button>
+        <button class="cmd-pomo-music-btn" id="cmd-pomo-music-toggle" title="Play/Pause"></button>
+        <button class="cmd-pomo-music-btn" id="cmd-pomo-music-next" title="Next"></button>
       </div>
     </div>
     <div class="cmd-pomo-music-row cmd-pomo-music-folder-row">
-      <span class="cmd-pomo-music-icon">&#x1F4C1;</span>
+      <span class="cmd-pomo-music-icon" id="cmd-pomo-folder-icon"></span>
       <span class="cmd-pomo-music-folder-path" id="cmd-pomo-music-folder-path"></span>
       <button class="cmd-pomo-music-folder-btn" id="cmd-pomo-music-choose">Choose…</button>
       <button class="cmd-pomo-music-folder-btn cmd-pomo-music-clear" id="cmd-pomo-music-clear" style="display:none">Clear</button>

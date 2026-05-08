@@ -1,4 +1,5 @@
 import { translate, copyToClipboard } from '../ipc.js';
+import { globeLg, copy as copyIcon, link as linkIcon, externalLink } from '../icons.js';
 
 const LANGUAGES = [
   { code: 'vi', label: 'TIẾNG VIỆT' },
@@ -24,7 +25,7 @@ export function showPlaceholder() {
   panel.className = 'translate-panel';
   const placeholder = document.createElement('div');
   placeholder.className = 'translate-placeholder';
-  placeholder.innerHTML = '<div class="translate-placeholder-icon">\u{1F310}</div>' +
+  placeholder.innerHTML = '<div class="translate-placeholder-icon">' + globeLg + '</div>' +
     '<div class="translate-placeholder-text">Press Enter after finishing input to translate on web</div>';
   panel.appendChild(placeholder);
   container.appendChild(panel);
@@ -83,7 +84,7 @@ export async function perform(text) {
     const copyBtn = document.createElement('button');
     copyBtn.className = 'translate-icon-btn';
     copyBtn.title = 'Copy';
-    copyBtn.innerHTML = '\u{1F4CB}';
+    copyBtn.innerHTML = copyIcon;
     copyBtn.disabled = true;
     actions.appendChild(copyBtn);
 
@@ -107,9 +108,9 @@ export async function perform(text) {
     window.__TAURI__.core.invoke('open_path', { path: url, kind: 'browser', id: '' });
   });
   footer.innerHTML =
-    '<span class="translate-footer-icon">\u{1F517}</span>' +
+    '<span class="translate-footer-icon">' + linkIcon + '</span>' +
     '<span class="translate-footer-text">Open in Browser</span>' +
-    '<span class="translate-footer-arrow">\u2197</span>';
+    '<span class="translate-footer-arrow">' + externalLink + '</span>';
   panel.appendChild(footer);
 
   // Translate all 3 in parallel

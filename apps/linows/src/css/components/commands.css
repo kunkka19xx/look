@@ -34,12 +34,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
   color: var(--accent-color);
-  font-family: var(--font-mono);
-  border: 1.5px solid var(--accent-color);
-  border-radius: 50%;
+}
+
+.cmd-row-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .cmd-row-text {
@@ -109,9 +109,14 @@
 
 .cmd-input-bar-icon {
   color: var(--accent-color);
-  font-size: 14px;
   flex-shrink: 0;
-  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+}
+
+.cmd-input-bar-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .cmd-input-bar input {
@@ -394,7 +399,13 @@
   background: var(--control-fill);
   color: var(--font-secondary);
   padding: 5px 8px;
-  font-size: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.cmd-pomo-btn-settings svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* Settings panel */
@@ -451,8 +462,14 @@
 
 .cmd-pomo-music-icon {
   color: var(--accent-color);
-  font-size: 14px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.cmd-pomo-music-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .cmd-pomo-music-track {
@@ -477,10 +494,15 @@
   border: none;
   cursor: pointer;
   color: var(--font-secondary);
-  font-size: 14px;
   padding: 2px 5px;
   border-radius: 4px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+
+.cmd-pomo-music-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .cmd-pomo-music-btn:hover {
@@ -548,8 +570,14 @@
 }
 
 .cmd-pomo-chevron {
-  font-size: 10px;
+  display: flex;
+  align-items: center;
   transition: transform 0.2s;
+}
+
+.cmd-pomo-chevron svg {
+  width: 12px;
+  height: 12px;
 }
 
 .cmd-pomo-chevron.open {

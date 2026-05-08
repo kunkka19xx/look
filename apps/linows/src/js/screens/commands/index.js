@@ -3,13 +3,14 @@ import * as pomo from './pomo.js';
 import * as kill from './kill.js';
 import * as shell from './shell.js';
 import * as sys from './sys.js';
+import { calculator, timer, xCircle, terminal, info } from '../../icons.js';
 
 const COMMANDS = [
-  { id: 'calc', label: '/calc', shortcut: '1', detail: 'Evaluate math...', icon: 'f(x)', module: calc },
-  { id: 'pomo', label: '/pomo', shortcut: '2', detail: 'Pomodoro focus...', icon: '\u23F1', module: pomo },
-  { id: 'kill', label: '/kill', shortcut: '3', detail: 'Force kill app...', icon: '\u2718', module: kill },
-  { id: 'shell', label: '/shell', shortcut: '4', detail: 'Run a shell co...', icon: '\u25B8', module: shell },
-  { id: 'sys', label: '/sys', shortcut: '5', detail: 'Show system in...', icon: '\u24D8', module: sys },
+  { id: 'calc', label: '/calc', shortcut: '1', detail: 'Evaluate math...', icon: calculator, module: calc },
+  { id: 'pomo', label: '/pomo', shortcut: '2', detail: 'Pomodoro focus...', icon: timer, module: pomo },
+  { id: 'kill', label: '/kill', shortcut: '3', detail: 'Force kill app...', icon: xCircle, module: kill },
+  { id: 'shell', label: '/shell', shortcut: '4', detail: 'Run a shell co...', icon: terminal, module: shell },
+  { id: 'sys', label: '/sys', shortcut: '5', detail: 'Show system in...', icon: info, module: sys },
 ];
 
 let screen = null;
@@ -37,6 +38,12 @@ export function init(contentAreaEl, inputEl, { onExitMode, onExecuteCommand, onG
   kill.init(onExecuteCommand, onGetIcon);
   shell.init(onExecuteCommand);
   sys.init(onExecuteCommand);
+
+  // Set header bar icons
+  document.getElementById('cmd-calc-header-icon').innerHTML = calculator;
+  document.getElementById('cmd-kill-header-icon').innerHTML = xCircle;
+  document.getElementById('cmd-shell-header-icon').innerHTML = terminal;
+  document.getElementById('cmd-sys-header-icon').innerHTML = info;
 
   buildSidebar();
 }

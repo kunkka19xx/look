@@ -125,6 +125,14 @@
   cursor: pointer;
   background: var(--color-danger, #e55);
   color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.preview-clip-delete svg {
+  width: 14px;
+  height: 14px;
 }
 
 .preview-clip-delete:hover {

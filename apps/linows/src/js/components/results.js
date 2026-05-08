@@ -1,4 +1,5 @@
 import { getIcon } from '../ipc.js';
+import { clipboard as clipboardIcon, check as checkIcon, appIcon, fileIcon, folderIcon, settingIcon } from '../icons.js';
 
 const iconCache = new Map();
 const pickedMap = new Map(); // key → result
@@ -129,7 +130,7 @@ function updatePickedIndicators() {
       if (!check) {
         const el = document.createElement('div');
         el.className = 'pick-check';
-        el.innerHTML = '&#10003;';
+        el.innerHTML = checkIcon;
         row.appendChild(el);
       }
     } else if (check) {
@@ -145,17 +146,17 @@ function createRow(result, index) {
   row.className = 'result-row';
   row.dataset.index = index;
 
-  // Icon (first letter fallback, async-load real icon)
+  // Icon (kind-based SVG fallback, async-load real icon)
   const icon = document.createElement('div');
   icon.className = 'result-icon';
-  icon.textContent = result.title.charAt(0).toUpperCase();
+  const isSettings = result.path?.startsWith('settings://') || result.subtitle?.toLowerCase().startsWith('settings');
+  const fallbacks = { file: fileIcon, folder: folderIcon, setting: settingIcon, clipboard: clipboardIcon };
+  icon.innerHTML = isSettings ? settingIcon : (fallbacks[result.kind] || appIcon);
+  icon.style.background = 'var(--control-fill)';
+  icon.style.color = 'var(--font-secondary)';
   row.appendChild(icon);
 
-  if (result.kind === 'clipboard') {
-    icon.textContent = '\u{1F4CB}';
-    icon.style.fontSize = '16px';
-    icon.style.background = 'var(--control-fill)';
-  } else {
+  if (result.kind !== 'clipboard') {
     loadIcon(icon, result.kind, result.path, result.id);
   }
 
@@ -188,7 +189,7 @@ function createRow(result, index) {
   if (pickedMap.has(pickKey(result))) {
     const el = document.createElement('div');
     el.className = 'pick-check';
-    el.innerHTML = '&#10003;';
+    el.innerHTML = checkIcon;
     row.appendChild(el);
   }
 

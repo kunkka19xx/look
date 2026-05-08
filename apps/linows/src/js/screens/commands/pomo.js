@@ -3,6 +3,7 @@ import {
   musicPlay as ipcPlay, musicPauseBackend, musicResumeBackend,
   musicStopBackend, musicIsFinished,
 } from '../../ipc.js';
+import { timer, settings, chevronRight, music, folder, play, pause, skipBack, skipForward } from '../../icons.js';
 
 // --- Default sessions ---
 const DEFAULT_SESSIONS = [
@@ -133,6 +134,16 @@ export function init() {
   // Restore saved music folder
   const savedFolder = localStorage.getItem(STORAGE_KEY_MUSIC_FOLDER);
   if (savedFolder) musicRestoreFolder(savedFolder);
+
+  // Set SVG icons
+  document.getElementById('cmd-pomo-header-icon').innerHTML = timer;
+  settingsBtn.innerHTML = settings;
+  chevronEl.innerHTML = chevronRight;
+  document.getElementById('cmd-pomo-music-icon').innerHTML = music;
+  document.getElementById('cmd-pomo-folder-icon').innerHTML = folder;
+  document.getElementById('cmd-pomo-music-prev').innerHTML = skipBack;
+  document.getElementById('cmd-pomo-music-next').innerHTML = skipForward;
+  musicToggleBtn.innerHTML = play;
 
   // Idle restore events
   panel.addEventListener('click', restoreFromIdle);
@@ -784,12 +795,12 @@ function updateMusicUI() {
 
   if (musicPlaying && musicIndex >= 0) {
     musicTrackEl.textContent = trackName(musicTracks[musicIndex]);
-    musicToggleBtn.innerHTML = '&#x23F8;'; // pause
+    musicToggleBtn.innerHTML = pause;
   } else if (musicIndex >= 0) {
     musicTrackEl.textContent = trackName(musicTracks[musicIndex]);
-    musicToggleBtn.innerHTML = '&#x25B6;'; // play
+    musicToggleBtn.innerHTML = play;
   } else {
     musicTrackEl.textContent = '(press play)';
-    musicToggleBtn.innerHTML = '&#x25B6;';
+    musicToggleBtn.innerHTML = play;
   }
 }
