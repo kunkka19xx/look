@@ -28,7 +28,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": ["$HOME/**", "/usr/share/**", "/nix/**", "/run/**", "/tmp/**"]
       }
     }
   },

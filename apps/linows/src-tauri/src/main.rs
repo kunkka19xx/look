@@ -137,7 +137,7 @@ fn main() {
             #[cfg(target_os = "linux")]
             {
                 linux_window_focus::cache_self_window();
-                let w_monitor = app.get_webview_window("main").unwrap();
+                let w_monitor = app.get_webview_window("main").expect("main window missing");
                 linux_window_focus::start_active_window_monitor(move || {
                     if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
                         LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
@@ -147,7 +147,7 @@ fn main() {
             }
 
             // Scale window for current monitor on startup
-            let window = app.get_webview_window("main").unwrap();
+            let window = app.get_webview_window("main").expect("main window missing");
             if let Ok(Some(monitor)) = window.current_monitor() {
                 let screen = monitor.size();
                 let scale = monitor.scale_factor();
@@ -176,8 +176,10 @@ fn main() {
                     tauri::WindowEvent::Focused(true) => {
                         let _ = w.eval("{ let q = document.getElementById('query'); if (q) { q.focus(); q.select(); } }");
                     }
-                    // On Linux, auto-hide is handled by the X11 active-window
-                    // monitor (more reliable than Focused events on GNOME).
+                    // On Linux, Focused(false) fires on mouse-leave (GNOME/Mutter
+                    // with undecorated always-on-top windows), so auto-hide is
+                    // handled entirely by the X11 active-window monitor instead.
+                    // TODO: add Wayland auto-hide when Wayland support is added.
                     #[cfg(not(target_os = "linux"))]
                     tauri::WindowEvent::Focused(false) => {
                         if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {

@@ -8,6 +8,9 @@
 //! Also provides a background monitor that:
 //! - Retries focus activation after show (handles GNOME's async mapping)
 //! - Auto-hides Look when another window becomes active
+//!
+//! Tested: GNOME Xorg, i3 X11.
+//! Not yet tested: GNOME Wayland (auto-hide disabled there; see TODO in main.rs).
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use x11rb::connection::Connection;
@@ -81,12 +84,9 @@ fn find_window_by_class(wm_class: &str) -> Option<u32> {
     let target = wm_class.to_lowercase();
 
     let windows = get_client_list(&conn, root)?;
-    for wid in windows {
-        if wm_class_matches(&conn, wid, &target) {
-            return Some(wid);
-        }
-    }
-    None
+    windows
+        .into_iter()
+        .find(|&wid| wm_class_matches(&conn, wid, &target))
 }
 
 fn get_client_list(conn: &impl Connection, root: Window) -> Option<Vec<Window>> {
@@ -189,6 +189,20 @@ fn read_active_window(conn: &impl Connection, root: Window, atom: Atom) -> u32 {
 
 static MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
 
+/// Returns true for WMs that use focus-follows-mouse (i3, sway, etc.)
+/// where auto-hide on focus loss would fight the WM's focus policy.
+fn is_focus_follows_mouse_wm() -> bool {
+    // I3SOCK is always set when running under i3
+    if std::env::var("I3SOCK").is_ok() {
+        return true;
+    }
+    // SWAYSOCK for sway
+    if std::env::var("SWAYSOCK").is_ok() {
+        return true;
+    }
+    false
+}
+
 /// Start a background thread that:
 /// 1. Retries focus activation after show until focus is confirmed
 /// 2. Auto-hides Look when another window becomes active (focus lost)
@@ -206,6 +220,7 @@ where
             return;
         };
         let root = conn.setup().roots[screen_num].root;
+        let skip_auto_hide = is_focus_follows_mouse_wm();
 
         let _ = conn.change_window_attributes(
             root,
@@ -223,10 +238,16 @@ where
         loop {
             // Process any pending X11 events
             while let Ok(Some(event)) = conn.poll_for_event() {
-                if let x11rb::protocol::Event::PropertyNotify(ev) = event {
-                    if ev.atom == active_atom.atom {
-                        handle_active_change(&conn, root, active_atom.atom, &on_lost_focus);
-                    }
+                if let x11rb::protocol::Event::PropertyNotify(ev) = event
+                    && ev.atom == active_atom.atom
+                {
+                    handle_active_change(
+                        &conn,
+                        root,
+                        active_atom.atom,
+                        &on_lost_focus,
+                        skip_auto_hide,
+                    );
                 }
             }
 
@@ -251,8 +272,13 @@ where
     });
 }
 
-fn handle_active_change<F>(conn: &impl Connection, root: Window, atom: Atom, on_lost_focus: &F)
-where
+fn handle_active_change<F>(
+    conn: &impl Connection,
+    root: Window,
+    atom: Atom,
+    on_lost_focus: &F,
+    skip_auto_hide: bool,
+) where
     F: Fn(),
 {
     let our_wid = SELF_WID.load(Ordering::Relaxed);
@@ -263,7 +289,21 @@ where
         NEEDS_FOCUS.store(false, Ordering::SeqCst);
         HAS_FOCUS.store(true, Ordering::SeqCst);
     } else if active != 0 && HAS_FOCUS.swap(false, Ordering::SeqCst) {
-        // We HAD focus and now lost it — auto-hide
-        on_lost_focus();
+        // We HAD focus and now lost it — auto-hide.
+        if skip_auto_hide {
+            // On focus-follows-mouse WMs (i3, sway), only auto-hide when
+            // the user clicked outside (mouse button is still pressed).
+            // Moving the mouse away just changes focus passively.
+            let clicked = conn
+                .query_pointer(root)
+                .ok()
+                .and_then(|c| c.reply().ok())
+                .is_some_and(|r| u16::from(r.mask) & 0x700 != 0);
+            if clicked {
+                on_lost_focus();
+            }
+        } else {
+            on_lost_focus();
+        }
     }
 }

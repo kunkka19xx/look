@@ -145,10 +145,10 @@ impl AppState {
                             "look: bootstrap ok elapsed_ms={}",
                             started_at.elapsed().as_millis()
                         );
-                        if let Some(handle) = APP_HANDLE.get() {
-                            if let Some(w) = handle.get_webview_window("main") {
-                                let _ = w.emit("index-ready", ());
-                            }
+                        if let Some(handle) = APP_HANDLE.get()
+                            && let Some(w) = handle.get_webview_window("main")
+                        {
+                            let _ = w.emit("index-ready", ());
                         }
                     }
                     Err(err) => {

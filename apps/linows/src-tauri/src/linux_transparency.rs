@@ -22,7 +22,7 @@ pub fn has_compositor() -> bool {
 /// and non-systemd setups) and `XDG_SESSION_TYPE`.
 #[cfg(target_os = "linux")]
 pub fn is_wayland() -> bool {
-    if std::env::var("WAYLAND_DISPLAY").map_or(false, |v| !v.is_empty()) {
+    if std::env::var("WAYLAND_DISPLAY").is_ok_and(|v| !v.is_empty()) {
         return true;
     }
     std::env::var("XDG_SESSION_TYPE")

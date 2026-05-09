@@ -48,6 +48,15 @@ The WinUI3 app remains in `apps/windows/` (bug fixes only) until this migration 
 - Folder picker via `tauri-plugin-dialog` — cross-platform native dialogs
 - Tauri v2 capabilities in `capabilities/default.json` for event/dialog permissions
 
+## Linux Desktop Environments
+
+| Environment    | Status    |
+|----------------|-----------|
+| GNOME Xorg     | Testing   |
+| i3 X11         | Testing   |
+| GNOME Wayland  | Untested  |
+| Sway           | Untested  |
+
 ## Build
 
 ```bash
