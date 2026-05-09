@@ -176,14 +176,10 @@ fn main() {
                     tauri::WindowEvent::Focused(true) => {
                         let _ = w.eval("{ let q = document.getElementById('query'); if (q) { q.focus(); q.select(); } }");
                     }
+                    // On Linux, auto-hide is handled by the X11 active-window
+                    // monitor (more reliable than Focused events on GNOME).
+                    #[cfg(not(target_os = "linux"))]
                     tauri::WindowEvent::Focused(false) => {
-                        // On Linux X11, auto-hide is handled by the X11 active-window
-                        // monitor (more reliable than Focused events on GNOME).
-                        // Fall back to this handler on Wayland or when X11 is unavailable.
-                        #[cfg(target_os = "linux")]
-                        if linux_window_focus::is_monitor_running() {
-                            return;
-                        }
                         if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
                             LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
                             let _ = w.hide();
