@@ -61,6 +61,20 @@ repos:
         pass_filenames: false
         types: [rust]
 
+      - id: cargo-fmt-linows
+        name: cargo fmt (linows/tauri, auto-fix)
+        entry: cargo fmt --manifest-path apps/linows/src-tauri/Cargo.toml --all
+        language: system
+        pass_filenames: false
+        types: [rust]
+
+      - id: cargo-clippy-linows
+        name: cargo clippy (linows/tauri)
+        entry: cargo clippy --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings
+        language: system
+        pass_filenames: false
+        types: [rust]
+
       - id: secrets
         name: Detect secrets
         entry: bash -c 'grep -rnE "(password|secret|token|api_key|apikey|private_key)" --include="*.rs" --include="*.toml" --include="*.yaml" --include="*.yml" --exclude-dir=target . | grep -v "^[^\:]+\:\s*//\|#" || true'
