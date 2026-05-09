@@ -356,23 +356,7 @@ pub fn get_platform() -> PlatformInfo {
     let os = std::env::consts::OS.to_string();
 
     #[cfg(target_os = "linux")]
-    let has_compositor = {
-        let is_wayland = std::env::var("XDG_SESSION_TYPE")
-            .map(|v| v == "wayland")
-            .unwrap_or(false);
-        if is_wayland {
-            true
-        } else {
-            std::process::Command::new("sh")
-                .args([
-                    "-c",
-                    "pgrep -x picom || pgrep -x compton || pgrep -x compiz || pgrep -x kwin || pgrep -x mutter",
-                ])
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        }
-    };
+    let has_compositor = crate::linux_transparency::has_compositor();
 
     #[cfg(not(target_os = "linux"))]
     let has_compositor = true;

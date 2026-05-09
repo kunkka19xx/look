@@ -6,6 +6,10 @@ mod clipboard;
 mod commands;
 mod config;
 mod files;
+#[cfg(target_os = "linux")]
+mod linux_transparency;
+#[cfg(target_os = "linux")]
+mod linux_window_focus;
 mod music;
 mod platform;
 mod process;
@@ -37,22 +41,7 @@ fn supports_transparency() -> bool {
 
     #[cfg(target_os = "linux")]
     {
-        // Wayland compositors generally support transparency
-        if std::env::var("XDG_SESSION_TYPE")
-            .map(|v| v == "wayland")
-            .unwrap_or(false)
-        {
-            return true;
-        }
-        // X11: only if a compositor is running
-        std::process::Command::new("sh")
-            .args([
-                "-c",
-                "pgrep -x picom || pgrep -x compton || pgrep -x compiz",
-            ])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+        linux_transparency::has_compositor()
     }
 }
 
@@ -105,15 +94,8 @@ fn main() {
                             let _ = window.hide();
                         } else {
                             LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
+                            let _ = window.set_always_on_top(true);
                             let _ = window.show();
-                            let _ = window.set_focus();
-                            // Ensure search input gets focus inside the webview
-                            let w = window.clone();
-                            std::thread::spawn(move || {
-                                std::thread::sleep(std::time::Duration::from_millis(50));
-                                let _ = w.set_focus();
-                                let _ = w.eval("document.getElementById('query')?.focus()");
-                            });
                             if let Ok(Some(monitor)) = window.current_monitor() {
                                 let screen = monitor.size();
                                 let scale = monitor.scale_factor();
@@ -125,9 +107,22 @@ fn main() {
                                 let _ = window.set_position(PhysicalPosition::new(x, y));
                             }
                             let _ = window.emit("window-shown", ());
+
+                            // On Linux, bypass Mutter's focus-stealing prevention
+                            // by bumping _NET_WM_USER_TIME before activation.
+                            // Called directly (no idle callback) to avoid races
+                            // with a quick Alt+Space hide toggle.
+                            #[cfg(target_os = "linux")]
+                            linux_window_focus::activate_self();
+
+                            let _ = window.set_focus();
                         }
                     }
                 })?;
+
+            // Cache Look's X11 window ID for later focus activation
+            #[cfg(target_os = "linux")]
+            linux_window_focus::cache_self_window();
 
             // Scale window for current monitor on startup
             let window = app.get_webview_window("main").unwrap();
@@ -147,19 +142,43 @@ fn main() {
             if supports_transparency {
                 let _ = window
                     .eval("document.documentElement.setAttribute('data-transparent', 'true')");
-                // Auto-hide on focus loss (works on macOS/Windows/Wayland)
-                let w = window.clone();
-                window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Focused(false) = event
-                        && now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300
-                    {
-                        let _ = w.hide();
-                    }
-                });
             } else {
                 let _ = window
                     .eval("document.documentElement.setAttribute('data-transparent', 'false')");
             }
+
+            // On GNOME X11, the WM fires Focused(false) before the global
+            // shortcut handler runs, so auto-hide must be disabled there.
+            #[cfg(target_os = "linux")]
+            let gnome_x11 = {
+                let is_gnome = std::env::var("XDG_CURRENT_DESKTOP")
+                    .map(|v| v.split(':').any(|s| s.trim().eq_ignore_ascii_case("GNOME")))
+                    .unwrap_or(false);
+                is_gnome && !linux_transparency::is_wayland()
+            };
+            #[cfg(not(target_os = "linux"))]
+            let gnome_x11 = false;
+
+            // Window event handler
+            let w = window.clone();
+            window.on_window_event(move |event| {
+                match event {
+                    // When the window gains focus, ensure the search input is focused.
+                    tauri::WindowEvent::Focused(true) => {
+                        let _ = w.eval("{ let q = document.getElementById('query'); if (q) { q.focus(); q.select(); } }");
+                    }
+                    // Auto-hide on focus loss (click outside, Alt+Tab, etc.).
+                    // Disabled on GNOME X11: the WM fires Focused(false) BEFORE
+                    // the global shortcut handler runs, making Alt+Space toggle
+                    // impossible.  On i3 and other WMs this race doesn't exist.
+                    tauri::WindowEvent::Focused(false) if !gnome_x11 => {
+                        if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
+                            let _ = w.hide();
+                        }
+                    }
+                    _ => {}
+                }
+            });
 
             Ok(())
         })

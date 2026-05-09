@@ -186,6 +186,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     queryInput.select();
   });
 
+  // Guard: if focus drifts to another element on the main screen,
+  // pull it back to the search input.
+  document.addEventListener('focusin', (e) => {
+    if (e.target !== queryInput
+        && !commands.isActive()
+        && !settings.isActive()
+        && !helpScreen?.contains(e.target)) {
+      queryInput.focus();
+    }
+  });
+
   // Load home dir for quick folders, then initial search
   getHomeDir().then((home) => {
     if (home) search.setHomeDir(home);
