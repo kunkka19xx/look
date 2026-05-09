@@ -12,9 +12,9 @@ const TABS = ['appearance', 'shortcuts', 'advanced'];
 // Maps config keys to CSS custom property update functions.
 // Each slider with data-key drives live CSS + config persistence.
 const BLUR_PRESETS = {
-  high_contrast: { ui_blur_radius: 12, ui_blur_opacity: 0.95 },
-  balanced: { ui_blur_radius: 20, ui_blur_opacity: 0.80 },
-  soft: { ui_blur_radius: 32, ui_blur_opacity: 0.60 },
+  high_contrast: { ui_blur_opacity: 0.95 },
+  balanced: { ui_blur_opacity: 0.80 },
+  soft: { ui_blur_opacity: 0.60 },
 };
 
 const CSS_MAP = {
@@ -28,12 +28,8 @@ const CSS_MAP = {
   ui_bg_blur: (v) => {
     document.documentElement.style.setProperty('--bg-image-blur', parseFloat(v).toFixed(1) + 'px');
   },
-  ui_blur_radius: (v) => {
-    // Use platform-aware blur (native on Windows, CSS on Linux)
-    const style = getCurrentBlurStyle();
-    platform.applyBlur(parseFloat(v), style);
-  },
   ui_blur_opacity: applyBlurOpacity,
+  settings_blur_multiplier: applyBlurOpacity,
   ui_font_size: (v) => {
     document.documentElement.style.setProperty('--font-size', Math.round(parseFloat(v)) + 'px');
   },
@@ -144,8 +140,6 @@ export function init(exitFn) {
           valueEl.textContent = formatValue(key, val);
         }
       }
-      // Apply blur via platform module
-      platform.applyBlur(preset.ui_blur_radius, style);
       if (platform.hasCompositor()) applytint();
       saveConfig({ ...preset, ui_blur_style: style });
     }
@@ -472,11 +466,6 @@ export async function reloadFromFile() {
     // Border thickness
     if (map.ui_border_thickness) CSS_MAP.ui_border_thickness(map.ui_border_thickness);
 
-    // Blur
-    if (map.ui_blur_radius) {
-      platform.applyBlur(parseFloat(map.ui_blur_radius), map.ui_blur_style || 'high_contrast');
-    }
-
     // Background image
     if (map.ui_bg_image) {
       applyBackgroundImage(map.ui_bg_image);
@@ -563,11 +552,6 @@ export async function restoreOnStartup() {
     }
 
     // Blur
-    if (map.ui_blur_radius) {
-      const blurStyle = map.ui_blur_style || 'high_contrast';
-      platform.applyBlur(parseFloat(map.ui_blur_radius), blurStyle);
-    }
-
     // Border thickness
     if (map.ui_border_thickness) {
       CSS_MAP.ui_border_thickness(map.ui_border_thickness);
@@ -809,7 +793,8 @@ function applytint() {
   }
   const tintA = getSliderVal('ui_tint_opacity');
   const blurA = getSliderVal('ui_blur_opacity') || 0.95;
-  const a = tintA * blurA;
+  const settingsBlur = active ? (getSliderVal('settings_blur_multiplier') || 0.5) : 1.0;
+  const a = tintA * blurA * settingsBlur;
   document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})`);
 }
 
@@ -845,6 +830,7 @@ function applyTintFromMap(map) {
   }
   const tintA = parseFloat(map.ui_tint_opacity ?? 0.95);
   const blurA = parseFloat(map.ui_blur_opacity ?? 0.95);
+  const settingsBlur = parseFloat(map.settings_blur_multiplier ?? 0.5);
   const a = tintA * blurA;
   document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})`);
 }
@@ -892,7 +878,6 @@ function applyBgLayout(layout) {
 }
 
 function formatValue(key, v) {
-  if (key === 'ui_blur_radius') return Math.round(v).toString();
   return v.toFixed(2);
 }
 
