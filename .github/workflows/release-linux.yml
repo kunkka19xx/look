@@ -1,0 +1,97 @@
+name: Release Linux App
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (example: 1.0.0)"
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-release:
+    name: Build Linux release artifacts
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: release-linux-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libsoup-3.0-dev \
+            libglib2.0-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libharfbuzz-dev \
+            libdbus-1-dev \
+            libasound2-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libappindicator3-dev \
+            pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            core
+            apps/linows/src-tauri
+
+      - name: Install cargo-tauri
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Build Tauri app
+        working-directory: apps/linows
+        run: cargo tauri build
+
+      - name: Collect artifacts
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p dist
+          cp apps/linows/src-tauri/target/release/bundle/deb/*.deb dist/ 2>/dev/null || true
+          cp apps/linows/src-tauri/target/release/bundle/appimage/*.AppImage dist/ 2>/dev/null || true
+          cd dist && sha256sum * > "Look-${VERSION}-linux-checksums.txt"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: look-linux-${{ steps.version.outputs.version }}
+          path: dist/
+          retention-days: 14
+
+      - name: Attach to GitHub release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

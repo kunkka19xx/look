@@ -45,6 +45,7 @@
               harfbuzz
               librsvg
               alsa-lib
+              libappindicator-gtk3
             ];
 
             shellHook = ''
@@ -62,6 +63,7 @@
                   pkgs.harfbuzz
                   pkgs.librsvg
                   pkgs.alsa-lib
+                  pkgs.libappindicator-gtk3
                 ]
               }:$LD_LIBRARY_PATH"
               export GSETTINGS_SCHEMA_DIR="${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}/glib-2.0/schemas''${GSETTINGS_SCHEMA_DIR:+:$GSETTINGS_SCHEMA_DIR}"

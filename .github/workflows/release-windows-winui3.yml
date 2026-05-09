@@ -1,4 +1,4 @@
-name: Release Windows App
+name: Release Windows App (Legacy — manual only)
 
 permissions:
   contents: write
@@ -6,6 +6,9 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# Legacy WinUI3 app is in maintenance mode.
+# Automatic releases disabled — use manual dispatch for critical bugfixes only.
+# The Tauri-based linows app will replace this for Windows.
 on:
   workflow_dispatch:
     inputs:
@@ -13,13 +16,10 @@ on:
         description: "Release version (example: 1.0.0)"
         required: true
         type: string
-  push:
-    tags:
-      - "v*"
 
 jobs:
   build-release:
-    uses: ./.github/workflows/reusable-release-windows.yml
+    uses: ./.github/workflows/reusable-release-windows-winui3.yml
     with:
       release_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
       trigger_event: ${{ github.event_name }}

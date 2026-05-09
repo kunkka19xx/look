@@ -32,5 +32,38 @@
       }
     }
   },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ],
+    "category": "Utility",
+    "shortDescription": "Keyboard-first desktop launcher",
+    "longDescription": "Look is a keyboard-first, local-first desktop launcher. Find and open apps, files, folders, clipboard history, and run quick commands without leaving the keyboard.",
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libsoup-3.0-0",
+          "libglib2.0-0",
+          "libcairo2",
+          "libpango-1.0-0",
+          "libgdk-pixbuf-2.0-0",
+          "libharfbuzz0b",
+          "libdbus-1-3",
+          "libasound2",
+          "xdg-desktop-portal",
+          "xclip"
+        ],
+        "section": "utils",
+        "priority": "optional"
+      }
+    }
+  },
   "plugins": {}
 }

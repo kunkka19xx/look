@@ -22,7 +22,7 @@ Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings 
 
 **Windows:**
 
-The Windows port is in active development on the `big/windows-porting` branch. Install the latest release with one PowerShell line (no admin required):
+Install the latest release with one PowerShell line (no admin required):
 
 ```powershell
 iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/windows/install-look.ps1) }"
@@ -30,20 +30,38 @@ iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/wi
 
 The script auto-detects x64 vs ARM64, pulls the matching release zip, verifies its SHA256 against the published manifest, extracts to `%LOCALAPPDATA%\Programs\Look`, and creates Start menu + desktop shortcuts. The release bundle is self-contained (`<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>`) so no separate runtime install is needed.
 
-Pin a version, install from a fork, or uninstall:
+Uninstall:
 
 ```powershell
-# pin a version
-iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/windows/install-look.ps1) } -Version 1.0.0"
-
-# fork
-iex "& { $(irm https://raw.githubusercontent.com/<owner>/<fork>/main/scripts/windows/install-look.ps1) } -Repo <owner>/<fork>"
-
-# uninstall
 iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/windows/install-look.ps1) } -Uninstall"
 ```
 
 SmartScreen may warn on first run while reputation builds — click "More info → Run anyway". The launcher's global hotkey (`Alt+Space`) is configurable in Settings → Appearance.
+
+**Linux (under development):**
+
+Download `.deb` or `.AppImage` from [Releases](https://github.com/kunkka19xx/look/releases):
+
+```bash
+# Ubuntu/Debian
+sudo dpkg -i Look_*.deb
+
+# Any distro (AppImage)
+chmod +x Look_*.AppImage
+./Look_*.AppImage
+```
+
+Uninstall:
+
+```bash
+# Ubuntu/Debian
+sudo dpkg -r look-desktop
+
+# AppImage — just delete the file
+rm Look_*.AppImage
+```
+
+More install methods coming soon (AUR, NixOS flake). To build from source, see [apps/linows/BUILDING.md](apps/linows/BUILDING.md).
 
 <details>
 <summary>Other install options (curl, pin version, update/uninstall)</summary>

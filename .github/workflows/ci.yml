@@ -19,6 +19,7 @@ jobs:
       swift: ${{ steps.filter.outputs.swift }}
       rust: ${{ steps.filter.outputs.rust }}
       windows: ${{ steps.filter.outputs.windows }}
+      linows: ${{ steps.filter.outputs.linows }}
     steps:
       - uses: actions/checkout@v4
 
@@ -39,6 +40,10 @@ jobs:
               - 'bridge/ffi/**'
               - 'core/**'
               - 'scripts/windows/**'
+              - '.github/workflows/ci.yml'
+            linows:
+              - 'apps/linows/**'
+              - 'core/**'
               - '.github/workflows/ci.yml'
 
   lint:
@@ -204,11 +209,20 @@ jobs:
       - name: Build Look app (Debug)
         run: xcodebuild -project "apps/macos/LauncherApp/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build
 
-  windows-build:
-    name: Build Windows App (${{ matrix.platform }})
-    runs-on: windows-latest
+  # Legacy WinUI3 app — maintenance mode, CI disabled.
+  # Uncomment if a critical bugfix needs verification.
+  # windows-build:
+  #   name: Build Windows App (${{ matrix.platform }})
+  #   runs-on: windows-latest
+  #   needs: changes
+  #   if: needs.changes.outputs.windows == 'true'
+  windows-build-skip:
+    name: Windows build (skipped — maintenance mode)
+    runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.windows == 'true'
+    steps:
+      - run: echo "Legacy WinUI3 app is in maintenance mode. Skipping CI build."
     strategy:
       fail-fast: false
       matrix:
@@ -262,3 +276,42 @@ jobs:
           name: windows-msbuild-binlog-${{ matrix.platform }}
           path: msbuild.binlog
           retention-days: 7
+
+  linows-build:
+    name: Build linows (Tauri)
+    runs-on: ubuntu-22.04
+    needs: changes
+    if: needs.changes.outputs.linows == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libglib2.0-dev libcairo2-dev libpango1.0-dev \
+            libgdk-pixbuf-2.0-dev libharfbuzz-dev libdbus-1-dev \
+            libasound2-dev librsvg2-dev libssl-dev \
+            libappindicator3-dev pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            core
+            apps/linows/src-tauri
+
+      - name: Check formatting
+        run: cargo fmt --all --manifest-path apps/linows/src-tauri/Cargo.toml -- --check
+
+      - name: Run clippy
+        run: cargo clippy --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings
+
+      - name: Build (debug)
+        run: cargo build --manifest-path apps/linows/src-tauri/Cargo.toml

@@ -9,8 +9,12 @@ Guide for building Look locally and contributing to the project.
 ├── apps/
 │   ├── macos/
 │   │   └── LauncherApp/          # Swift macOS app (Xcode project)
+│   ├── linows/                   # Tauri v2 app — Linux + Windows (under development)
+│   │   ├── src-tauri/            #   Rust backend (commands, config, platform, etc.)
+│   │   ├── src/                  #   Frontend (vanilla HTML/CSS/JS, ES modules)
+│   │   └── flake.nix             #   NixOS dev shell
 │   └── windows/
-│       └── LauncherApp/          # WinUI 3 / .NET Windows app
+│       └── LauncherApp/          # WinUI 3 / .NET Windows app (maintenance mode)
 ├── core/
 │   ├── engine/                   # Query engine, search pipeline
 │   ├── indexing/                 # Candidate model, source traits
@@ -18,7 +22,7 @@ Guide for building Look locally and contributing to the project.
 │   ├── ranking/                  # Ranking heuristics
 │   └── storage/                  # SQLite-backed storage
 ├── bridge/
-│   └── ffi/                      # Rust FFI bridge (consumed by both apps)
+│   └── ffi/                      # Rust FFI bridge (consumed by macOS/Windows native apps)
 ├── docs/                         # User guide, architecture, design decisions
 ├── scripts/                      # Build, release, install scripts
 └── assets/                       # Icons, screenshots, demo GIF
@@ -60,6 +64,15 @@ Windows:
 > - `'true' is not recognized as an internal or external command` — you're running make from cmd/PowerShell, not Git Bash
 > - `/AppData/Local/...` (with empty leading path) instead of `/c/Users/<you>/AppData/Local/...` — same; switch to Git Bash so `$HOME` resolves
 
+Linux (linows — Tauri app):
+
+- Rust stable toolchain
+- `cargo-tauri` CLI (`cargo install tauri-cli --version "^2" --locked`)
+- System libraries vary by distro:
+  - **Ubuntu/Debian:** `libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libdbus-1-dev libasound2-dev librsvg2-dev libssl-dev libappindicator3-dev pkg-config` (and more — see [apps/linows/BUILDING.md](apps/linows/BUILDING.md))
+  - **Arch:** `webkit2gtk-4.1 gtk3 libsoup3 alsa-lib dbus openssl pkg-config`
+  - **NixOS:** `cd apps/linows && nix develop` (flake provides everything)
+
 ## Building and running
 
 Rust workspace checks:
@@ -78,7 +91,21 @@ cargo check
 cargo test
 ```
 
-Run the local dev app (from repo root):
+Linows (Tauri) dev run:
+
+```bash
+cd apps/linows
+cargo tauri dev                           # development build + hot reload
+cargo tauri build                         # release build (.deb + AppImage)
+```
+
+On NixOS:
+```bash
+cd apps/linows
+nix develop -c cargo tauri dev
+```
+
+Run the local dev app — macOS/Windows (from repo root):
 
 ```bash
 make app-run
@@ -153,6 +180,9 @@ Signing/notarization walkthrough: [docs/apple-developer-release-guide.md](docs/a
   ```bash
   cargo test --workspace --manifest-path core/Cargo.toml
   cargo test --manifest-path bridge/ffi/Cargo.toml
+  # if touching linows:
+  cargo clippy --manifest-path apps/linows/src-tauri/Cargo.toml
+  cargo fmt --all --manifest-path apps/linows/src-tauri/Cargo.toml -- --check
   ```
 - update docs when user-visible behavior changes
 - see [CONTRIBUTING.md](CONTRIBUTING.md) and the issue templates under [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/)
