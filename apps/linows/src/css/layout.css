@@ -1,4 +1,5 @@
 .launcher-window {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -14,6 +15,27 @@
   user-select: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Background image layer (behind tint) */
+.launcher-window::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--bg-image, none);
+  background-size: var(--bg-size, cover);
+  background-repeat: var(--bg-repeat, no-repeat);
+  background-position: center;
+  opacity: var(--bg-image-opacity, 0.62);
+  filter: blur(var(--bg-image-blur, 10px));
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Ensure content sits above bg image */
+.launcher-window > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* Linux font rendering: boost base weight to match macOS SF Pro appearance */

@@ -3,10 +3,10 @@
   /* Background tint — Catppuccin Mocha base #1e1e2e */
   --bg-tint: #1e1e2e;
 
-  /* Text hierarchy — cdd6f4 / bac2de / a6adc8 */
-  --font-color: #cdd6f4;
-  --font-secondary: #bac2de;
-  --font-muted: rgba(166, 173, 200, 0.78);
+  /* Text hierarchy */
+  --font-color: #dce0f5;
+  --font-secondary: #c8cee0;
+  --font-muted: rgba(180, 187, 210, 0.82);
 
   /* Border — surface2 #585b70 */
   --border-color: rgba(88, 91, 112, 0.28);

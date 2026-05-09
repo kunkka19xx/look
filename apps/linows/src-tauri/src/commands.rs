@@ -160,6 +160,11 @@ pub fn request_index_refresh(state: State<'_, AppState>) -> bool {
 }
 
 #[tauri::command]
+pub fn force_index_refresh(state: State<'_, AppState>) -> bool {
+    state.force_index_refresh()
+}
+
+#[tauri::command]
 pub fn toggle_window(window: tauri::WebviewWindow) {
     if window.is_visible().unwrap_or(false) {
         let _ = window.hide();

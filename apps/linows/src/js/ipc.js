@@ -25,6 +25,10 @@ export async function requestIndexRefresh() {
   return invoke('request_index_refresh');
 }
 
+export async function forceIndexRefresh() {
+  return invoke('force_index_refresh');
+}
+
 export async function hideWindow() {
   return invoke('hide_window');
 }
@@ -81,6 +85,10 @@ export async function pickFolder() {
   return invoke('pick_folder');
 }
 
+export async function pickImage() {
+  return invoke('pick_image');
+}
+
 export async function getClipboardHistory(query = '') {
   return invoke('get_clipboard_history', { query });
 }
@@ -91,6 +99,10 @@ export async function deleteClipboardEntry(index) {
 
 export async function copyToClipboard(text) {
   return invoke('copy_to_clipboard', { text });
+}
+
+export async function resetConfig() {
+  return invoke('reset_config');
 }
 
 export async function getPlatform() {

@@ -75,6 +75,13 @@ pub fn set_config(updates: Vec<ConfigUpdate>) -> Result<(), String> {
     std::fs::write(&path, output).map_err(|e| format!("Failed to write config: {e}"))
 }
 
+#[tauri::command]
+pub fn reset_config() -> Result<(), String> {
+    let path = config_file_path();
+    let default = include_str!("default_config.txt");
+    std::fs::write(&path, default).map_err(|e| format!("Failed to reset config: {e}"))
+}
+
 pub fn config_file_path() -> std::path::PathBuf {
     if let Ok(custom) = std::env::var("LOOK_CONFIG_PATH") {
         let trimmed = custom.trim();

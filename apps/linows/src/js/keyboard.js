@@ -11,9 +11,11 @@ let enterCommandModeFn = null;
 let settingsModule = null;
 let settingsContentArea = null;
 let settingsSearchBar = null;
+let helpScreen = null;
 
 export function init(inputEl) {
   queryInput = inputEl;
+  helpScreen = document.getElementById('help-screen');
 
   // Disable tab-focusability on everything except the search input
   // so WebKitGTK doesn't intercept Shift+Tab for focus cycling
@@ -60,10 +62,36 @@ function handleKeyDown(e) {
     return;
   }
 
+  // Ctrl+Shift+; reloads config from file (like Cmd+Shift+; on macOS)
+  if (e.ctrlKey && (e.shiftKey || shiftHeld) && (e.key === ';' || e.key === ':')) {
+    e.preventDefault();
+    if (settingsModule) settingsModule.reloadFromFile();
+    return;
+  }
+
+  // Ctrl+H toggles help screen (only outside command mode)
+  if (e.ctrlKey && !e.shiftKey && e.key === 'h') {
+    if (!commandMode?.isActive()) {
+      e.preventDefault();
+      toggleHelp();
+      return;
+    }
+  }
+
   // Delegate to settings if active
   if (settingsModule?.isActive()) {
     if (settingsModule.handleKey(e)) return;
     return;
+  }
+
+  // Help screen: Esc closes it
+  if (helpScreen && !helpScreen.hidden) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      helpScreen.hidden = true;
+      return;
+    }
+    return; // swallow all other keys while help is open
   }
 
   // Ctrl+/ toggles command mode
@@ -227,6 +255,11 @@ async function copyClipboardEntry() {
   } catch (err) {
     banner.show('Copy failed', 'error', 1.2);
   }
+}
+
+function toggleHelp() {
+  if (!helpScreen) return;
+  helpScreen.hidden = !helpScreen.hidden;
 }
 
 async function removeClipboardEntry() {

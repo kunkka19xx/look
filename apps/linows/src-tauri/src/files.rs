@@ -169,6 +169,21 @@ pub fn list_fonts() -> Vec<String> {
     fonts
 }
 
+#[tauri::command]
+pub async fn pick_image(app: tauri::AppHandle) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose Background Image")
+        .add_filter("Images", &["png", "jpg", "jpeg", "webp", "bmp", "gif", "svg"])
+        .pick_file(move |file| {
+            let result = file.map(|f| f.to_string());
+            let _ = tx.send(result);
+        });
+    rx.recv().ok().flatten()
+}
+
 fn resolve_in_path(bin: &str) -> Option<std::path::PathBuf> {
     let path_var = std::env::var("PATH").ok()?;
     for dir in path_var.split(':') {

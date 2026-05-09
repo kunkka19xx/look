@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await load('html/screens/search.html', app);
   await load('html/screens/commands/index.html', app);
   await load('html/screens/settings.html', app);
+  await load('html/screens/help.html', app);
 
   // Hint bar — always at bottom, shared by all screens
   app.insertAdjacentHTML('beforeend',
@@ -121,9 +122,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     results.render(items);
   });
 
+  // :cmd prefix → jump into command mode (e.g. :calc 2+2, :kill chrome)
+  const CMD_PREFIX_MAP = { calc: 'calc', pomo: 'pomo', kill: 'kill', shell: 'shell', sys: 'sys' };
+
+  function tryCommandPrefix(value) {
+    if (!value.startsWith(':')) return false;
+    const rest = value.slice(1);
+    const spaceIdx = rest.indexOf(' ');
+    const cmdName = spaceIdx >= 0 ? rest.slice(0, spaceIdx) : rest;
+    const cmdId = CMD_PREFIX_MAP[cmdName.toLowerCase()];
+    if (!cmdId) return false;
+    const input = spaceIdx >= 0 ? rest.slice(spaceIdx + 1) : '';
+    commands.enterById(cmdId);
+    enterCommandMode();
+    // Set the command input if there's text after the command name
+    const cmdInput = document.getElementById('cmd-input');
+    if (cmdInput && input) {
+      cmdInput.value = input;
+      cmdInput.dispatchEvent(new Event('input'));
+    }
+    queryInput.value = '';
+    return true;
+  }
+
   // Search on input
   queryInput.addEventListener('input', (e) => {
-    search.handleQueryInput(e.target.value);
+    const value = e.target.value;
+    if (tryCommandPrefix(value)) return;
+
+    search.handleQueryInput(value);
     const h = hintBar.querySelector('span');
     if (search.isTranslateMode()) {
       h.textContent = 'Enter translate \u2022 Esc clear';

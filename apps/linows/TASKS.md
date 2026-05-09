@@ -97,7 +97,7 @@ Based on macOS app as source of truth. Organized by phase.
   - [x] Appearance tab — theme, tint color, blur, font (name+size+autocomplete), font color, border
   - [x] Shortcuts tab — keyboard shortcut reference (read-only)
   - [x] Advanced tab — config path, index refresh, scan depth/limit
-- [ ] Help screen (Ctrl+H) — keyboard shortcuts
+- [x] Help screen (Ctrl+H) — 3 sections (navigation, commands, settings)
 
 ### Themes (CSS custom property sets)
 - [x] Catppuccin (default)
@@ -111,7 +111,7 @@ Based on macOS app as source of truth. Organized by phase.
 ### Features
 - [x] Theme switching via CSS custom properties on :root
 - [x] Theme presets drive slider values; editing any slider auto-switches to "Custom"
-- [ ] Background image support (CSS background-image + blur overlay)
+- [x] Background image support (pick image, layout modes, opacity, blur overlay)
 - [x] Blur material options (balanced, high_contrast, soft) — platform-aware
 - [x] Platform detection (get_platform) — OS + compositor detection
 - [x] Window effects (set_window_effect) — Mica/Acrylic on Windows, CSS backdrop-filter on Linux

@@ -240,6 +240,12 @@ impl AppState {
         }
     }
 
+    pub fn force_index_refresh(&self) -> bool {
+        // Mark dirty so lazy indexing check passes
+        self.index_change_version.fetch_add(1, Ordering::AcqRel);
+        self.request_index_refresh()
+    }
+
     fn is_index_dirty(&self) -> bool {
         self.index_change_version.load(Ordering::Acquire)
             != self.index_cleared_version.load(Ordering::Acquire)

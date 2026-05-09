@@ -56,6 +56,13 @@ export function isActive() {
   return active;
 }
 
+export function enterById(cmdId) {
+  const idx = COMMANDS.findIndex((c) => c.id === cmdId);
+  if (idx < 0) return false;
+  activeCommandId = cmdId;
+  return true;
+}
+
 export function enter() {
   active = true;
   selectedIndex = COMMANDS.findIndex((c) => c.id === activeCommandId);

@@ -173,37 +173,118 @@
       <!-- Shortcuts tab -->
       <div class="settings-tab-content" id="settings-tab-shortcuts" hidden>
         <div class="settings-shortcuts-list">
-          <div class="settings-shortcut"><kbd>Enter</kbd><span>Open selected item</span></div>
-          <div class="settings-shortcut"><kbd>Ctrl+Enter</kbd><span>Search web</span></div>
-          <div class="settings-shortcut"><kbd>Tab / Shift+Tab</kbd><span>Navigate results</span></div>
-          <div class="settings-shortcut"><kbd>Ctrl+F</kbd><span>Reveal in file manager</span></div>
-          <div class="settings-shortcut"><kbd>Ctrl+C</kbd><span>Copy path</span></div>
+          <!-- Core launcher -->
+          <div class="settings-shortcut-section">Core launcher</div>
+          <div class="settings-shortcut"><kbd>Tab</kbd><span>Select next result</span></div>
+          <div class="settings-shortcut"><kbd>Shift+Tab</kbd><span>Select previous result</span></div>
+          <div class="settings-shortcut"><kbd>Up / Down</kbd><span>Move selection</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+C</kbd><span>Copy selected file/folder to clipboard</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+F</kbd><span>Reveal selected item in file manager</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+Enter</kbd><span>Search query on Google</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+/</kbd><span>Enter command mode</span></div>
+          <div class="settings-shortcut"><kbd>:cmd</kbd><span>Jump to a command from home (e.g. :calc 2+2, :kill chrome, :sys, :pomo)</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+1..5</kbd><span>Switch directly to /calc, /pomo, /kill, /shell, /sys</span></div>
           <div class="settings-shortcut"><kbd>Ctrl+P</kbd><span>Pick / unpick item</span></div>
           <div class="settings-shortcut"><kbd>Ctrl+Shift+P</kbd><span>Clear all picks</span></div>
-          <div class="settings-shortcut"><kbd>Ctrl+/</kbd><span>Toggle command mode</span></div>
-          <div class="settings-shortcut"><kbd>Ctrl+1-5</kbd><span>Jump to command</span></div>
-          <div class="settings-shortcut"><kbd>Ctrl+Shift+,</kbd><span>Settings</span></div>
-          <div class="settings-shortcut"><kbd>Alt+Space</kbd><span>Toggle window</span></div>
-          <div class="settings-shortcut"><kbd>Escape</kbd><span>Hide window</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+Shift+,</kbd><span>Open/close settings panel</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+Shift+;</kbd><span>Reload .look.config</span></div>
+          <div class="settings-shortcut"><kbd>Esc</kbd><span>Back to app list (in command mode)</span></div>
+          <div class="settings-shortcut"><kbd>Alt+Space</kbd><span>Toggle launcher</span></div>
+
+          <!-- Search prefixes -->
+          <div class="settings-shortcut-section">Search prefixes</div>
+          <div class="settings-shortcut"><kbd>a"</kbd><span>Apps-only query</span></div>
+          <div class="settings-shortcut"><kbd>f"</kbd><span>Files-only query</span></div>
+          <div class="settings-shortcut"><kbd>d"</kbd><span>Folders-only query</span></div>
+          <div class="settings-shortcut"><kbd>r"</kbd><span>Regex query</span></div>
+          <div class="settings-shortcut"><kbd>c"</kbd><span>Clipboard history query</span></div>
+
+          <!-- Clipboard history -->
+          <div class="settings-shortcut-section">Clipboard history</div>
+          <div class="settings-shortcut"><kbd>Enter</kbd><span>Copy selected history item back to clipboard</span></div>
+          <div class="settings-shortcut"><kbd>Delete</kbd><span>Remove selected clipboard item from history</span></div>
+
+          <!-- Pomodoro -->
+          <div class="settings-shortcut-section">Pomodoro (/pomo)</div>
+          <div class="settings-shortcut"><kbd>Space</kbd><span>Start / pause the active session</span></div>
+          <div class="settings-shortcut"><kbd>R</kbd><span>Reset the timer back to idle</span></div>
+          <div class="settings-shortcut"><kbd>P</kbd><span>Toggle music play / pause</span></div>
+          <div class="settings-shortcut"><kbd>Mouse / key idle</kbd><span>After 5s, panel fades to clock-only standby; any input restores</span></div>
+
+          <!-- Panels -->
+          <div class="settings-shortcut-section">Panels</div>
+          <div class="settings-shortcut"><kbd>Ctrl+Shift+,</kbd><span>Open/close theme and docs panel</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+Shift+;</kbd><span>Reload .look.config</span></div>
+          <div class="settings-shortcut"><kbd>Save Config</kbd><span>Write current UI settings to .look.config</span></div>
+
+          <!-- Theme controls -->
+          <div class="settings-shortcut-section">Theme controls</div>
+          <div class="settings-shortcut"><kbd>Appearance tab</kbd><span>Tint, blur material, blur opacity</span></div>
+          <div class="settings-shortcut"><kbd>Advanced tab</kbd><span>Background, indexing, privacy, logging controls</span></div>
+          <div class="settings-shortcut"><kbd>Shortcuts tab</kbd><span>In-app keyboard documentation</span></div>
+
+          <!-- Footer texts -->
+          <div class="settings-shortcut-footer">This panel is intended as living documentation. We can add command and workflow docs here as features grow.</div>
+          <div class="settings-shortcut-footer">Tips: t"word for web EN/VI/JA translation | /kill to force quit apps</div>
         </div>
       </div>
 
       <!-- Advanced tab -->
       <div class="settings-tab-content" id="settings-tab-advanced" hidden>
+        <!-- Background -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Background</span></div>
         <div class="settings-section">
           <div class="settings-row">
-            <label class="settings-label">Config file</label>
-            <span class="settings-value-mono" id="settings-config-path">~/.look.config</span>
+            <label class="settings-label"></label>
+            <button class="settings-btn" id="settings-choose-bg">Choose Background Image</button>
+            <button class="settings-btn" id="settings-clear-bg">Clear</button>
           </div>
           <div class="settings-row">
-            <label class="settings-label">Scan depth</label>
-            <input type="range" class="settings-slider" id="settings-scan-depth" min="1" max="12" step="1" value="4" />
-            <span class="settings-slider-value" id="settings-scan-depth-value">4</span>
+            <label class="settings-label"></label>
+            <span class="settings-value-mono" id="settings-bg-path">No background image</span>
           </div>
           <div class="settings-row">
-            <label class="settings-label">File limit</label>
-            <input type="range" class="settings-slider" id="settings-file-limit" min="500" max="50000" step="500" value="8000" />
-            <span class="settings-slider-value" id="settings-file-limit-value">8000</span>
+            <label class="settings-label">Image Layout</label>
+            <div class="settings-dropdown" id="settings-bg-layout">
+              <button class="settings-dropdown-btn" type="button">
+                <span class="settings-dropdown-label">Fill</span>
+                <span class="settings-dropdown-arrow">&#9662;</span>
+              </button>
+              <div class="settings-dropdown-menu" hidden>
+                <div class="settings-dropdown-item" data-value="center">Center</div>
+                <div class="settings-dropdown-item settings-dropdown-active" data-value="fill">Fill</div>
+                <div class="settings-dropdown-item" data-value="stretch">Stretch</div>
+                <div class="settings-dropdown-item" data-value="duplicate">Duplicate</div>
+              </div>
+            </div>
+            <span class="settings-hint-text" id="settings-bg-layout-hint">Fill area and crop edges</span>
+          </div>
+          <div class="settings-row" data-key="ui_bg_opacity">
+            <label class="settings-label">Image Opacity</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.62" />
+            <span class="settings-slider-value">0.62</span>
+          </div>
+          <div class="settings-row" data-key="ui_bg_blur">
+            <label class="settings-label">Image Blur</label>
+            <input type="range" class="settings-slider" min="0" max="30" step="0.1" value="10.30" />
+            <span class="settings-slider-value">10.30</span>
+          </div>
+        </div>
+
+        <div class="settings-divider"></div>
+
+        <!-- Indexing -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Indexing</span></div>
+        <div class="settings-section">
+          <div class="settings-row">
+            <label class="settings-label">File Scan Depth</label>
+            <input type="text" class="settings-text-input settings-num-input" id="settings-scan-depth" value="4" inputmode="numeric" />
+            <span class="settings-hint-text">How many directory levels to index</span>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">File Scan Limit</label>
+            <input type="text" class="settings-text-input settings-num-input" id="settings-file-limit" value="8000" inputmode="numeric" />
+            <span class="settings-hint-text">Max files indexed per refresh</span>
           </div>
           <div class="settings-row">
             <label class="settings-label">Lazy indexing</label>
@@ -211,12 +292,70 @@
               <input type="checkbox" id="settings-lazy-indexing" checked />
               <span class="settings-toggle-track"></span>
             </label>
+            <span class="settings-hint-text">Refresh index automatically when file/app changes</span>
           </div>
           <div class="settings-row">
-            <label class="settings-label"></label>
-            <button class="settings-btn" id="settings-refresh-index">Refresh index</button>
+            <label class="settings-label">Extra Scan Dirs</label>
+            <button class="settings-btn" id="settings-add-scan-dir">Add Directory</button>
+          </div>
+          <div class="settings-dir-list" id="settings-extra-dirs"></div>
+          <div class="settings-row">
+            <label class="settings-label">Skip Folders</label>
+            <button class="settings-btn" id="settings-add-skip-dir">Add Folder</button>
+          </div>
+          <div class="settings-dir-list" id="settings-skip-dirs"></div>
+        </div>
+
+        <div class="settings-divider"></div>
+
+        <!-- Privacy & Logs -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Privacy &amp; Logs</span></div>
+        <div class="settings-section">
+          <div class="settings-row">
+            <label class="settings-label">Backend Log Level</label>
+            <div class="settings-dropdown" id="settings-log-level">
+              <button class="settings-dropdown-btn" type="button">
+                <span class="settings-dropdown-label">Error</span>
+                <span class="settings-dropdown-arrow">&#9662;</span>
+              </button>
+              <div class="settings-dropdown-menu" hidden>
+                <div class="settings-dropdown-item settings-dropdown-active" data-value="error">Error</div>
+                <div class="settings-dropdown-item" data-value="warn">Warn</div>
+                <div class="settings-dropdown-item" data-value="info">Info</div>
+                <div class="settings-dropdown-item" data-value="debug">Debug</div>
+              </div>
+            </div>
+            <span class="settings-hint-text">Error only by default; use Info/Debug for troubleshooting</span>
           </div>
         </div>
+
+        <div class="settings-divider"></div>
+
+        <!-- Startup -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Startup</span></div>
+        <div class="settings-section">
+          <div class="settings-row">
+            <label class="settings-label">Launch at login</label>
+            <label class="settings-toggle">
+              <input type="checkbox" id="settings-launch-login" />
+              <span class="settings-toggle-track"></span>
+            </label>
+            <span class="settings-hint-text">Start Look automatically when you sign in</span>
+          </div>
+        </div>
+
+        <div class="settings-divider"></div>
+
+        <!-- Config file -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Config File</span></div>
+        <div class="settings-section">
+          <div class="settings-row">
+            <label class="settings-label"></label>
+            <button class="settings-btn" id="settings-fresh-config">Create Fresh Config</button>
+            <span class="settings-hint-text">Regenerate a fresh default config file</span>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>

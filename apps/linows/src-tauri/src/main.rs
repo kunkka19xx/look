@@ -170,11 +170,13 @@ fn main() {
             commands::reveal_path,
             commands::reload_config,
             commands::request_index_refresh,
+            commands::force_index_refresh,
             commands::toggle_window,
             commands::hide_window,
             // Config
             config::get_config,
             config::set_config,
+            config::reset_config,
             // Files: meta, version, clipboard, music, folder
             files::get_file_meta,
             files::get_app_version,
@@ -183,6 +185,7 @@ fn main() {
             files::list_fonts,
             files::scan_music_folder,
             files::pick_folder,
+            files::pick_image,
             // Shell
             shell::run_shell_command,
             // Platform: icons, detection, window effects

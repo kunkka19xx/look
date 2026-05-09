@@ -1,4 +1,4 @@
-import { getConfig, setConfig, requestIndexRefresh, reloadConfig, listFonts } from '../ipc.js';
+import { getConfig, setConfig, forceIndexRefresh, reloadConfig, resetConfig, listFonts, pickFolder, pickImage } from '../ipc.js';
 import * as banner from '../components/banner.js';
 import * as platform from '../platform.js';
 
@@ -22,6 +22,12 @@ const CSS_MAP = {
   ui_tint_green: applytint,
   ui_tint_blue: applytint,
   ui_tint_opacity: applytint,
+  ui_bg_opacity: (v) => {
+    document.documentElement.style.setProperty('--bg-image-opacity', v);
+  },
+  ui_bg_blur: (v) => {
+    document.documentElement.style.setProperty('--bg-image-blur', parseFloat(v).toFixed(1) + 'px');
+  },
   ui_blur_radius: (v) => {
     // Use platform-aware blur (native on Windows, CSS on Linux)
     const style = getCurrentBlurStyle();
@@ -44,14 +50,13 @@ const CSS_MAP = {
   ui_border_opacity: applyBorderColor,
 };
 
-function switchToCustomTheme() {
+function markCustomTheme() {
   const dd = document.getElementById('settings-theme');
   const menu = dd.querySelector('.settings-dropdown-menu');
   dd.querySelector('.settings-dropdown-label').textContent = 'Custom';
   for (const el of menu.children) el.classList.remove('settings-dropdown-active');
   const customItem = menu.querySelector('[data-value="custom"]');
   if (customItem) customItem.classList.add('settings-dropdown-active');
-  saveConfig({ ui_theme: 'custom' });
 }
 
 function getCurrentBlurStyle() {
@@ -146,11 +151,6 @@ export function init(exitFn) {
     }
   });
 
-  // Close dropdowns when clicking outside
-  document.addEventListener('click', (e) => {
-    if (!themeDropdown.contains(e.target)) themeMenu.hidden = true;
-    if (!blurDropdown.contains(e.target)) blurMenu.hidden = true;
-  });
 
   // Keys that mark the theme as "Custom" when manually changed
   const THEME_KEYS = new Set([
@@ -173,32 +173,130 @@ export function init(exitFn) {
       if (CSS_MAP[key]) CSS_MAP[key](v);
     });
     slider.addEventListener('change', () => {
-      if (THEME_KEYS.has(key)) switchToCustomTheme();
-      saveConfig({ [key]: slider.value });
+      const updates = { [key]: slider.value };
+      if (THEME_KEYS.has(key)) {
+        markCustomTheme();
+        updates.ui_theme = 'custom';
+      }
+      saveConfig(updates);
     });
   }
 
   // Advanced tab controls
-  const depthSlider = document.getElementById('settings-scan-depth');
-  const depthValue = document.getElementById('settings-scan-depth-value');
-  depthSlider.addEventListener('input', () => { depthValue.textContent = depthSlider.value; });
-  depthSlider.addEventListener('change', () => { saveConfig({ file_scan_depth: depthSlider.value }); });
+  const depthInput = document.getElementById('settings-scan-depth');
+  depthInput.addEventListener('change', () => {
+    const v = parseInt(depthInput.value) || 4;
+    depthInput.value = Math.max(1, Math.min(12, v));
+    saveConfig({ file_scan_depth: depthInput.value });
+  });
 
-  const limitSlider = document.getElementById('settings-file-limit');
-  const limitValue = document.getElementById('settings-file-limit-value');
-  limitSlider.addEventListener('input', () => { limitValue.textContent = limitSlider.value; });
-  limitSlider.addEventListener('change', () => { saveConfig({ file_scan_limit: limitSlider.value }); });
+  const limitInput = document.getElementById('settings-file-limit');
+  limitInput.addEventListener('change', () => {
+    const v = parseInt(limitInput.value) || 8000;
+    limitInput.value = Math.max(500, Math.min(50000, v));
+    saveConfig({ file_scan_limit: limitInput.value });
+  });
 
   document.getElementById('settings-lazy-indexing').addEventListener('change', (e) => {
     saveConfig({ lazy_indexing_enabled: e.target.checked ? 'true' : 'false' });
   });
 
-  document.getElementById('settings-refresh-index').addEventListener('click', async () => {
+  // Extra scan dirs
+  const extraDirsList = document.getElementById('settings-extra-dirs');
+  extraDirsList.dataset.empty = 'No extra scan directories';
+  document.getElementById('settings-add-scan-dir').addEventListener('click', async () => {
+    const folder = await pickFolder();
+    if (!folder) return;
+    await addDirToConfig('file_scan_extra_roots', folder);
+    renderDirList(extraDirsList, 'file_scan_extra_roots');
+  });
+
+  // Skip folders (user-added only, not engine defaults)
+  const skipDirsList = document.getElementById('settings-skip-dirs');
+  skipDirsList.dataset.empty = 'No excluded folder paths yet';
+  document.getElementById('settings-add-skip-dir').addEventListener('click', async () => {
+    const folder = await pickFolder();
+    if (!folder) return;
+    await addDirToConfig('file_exclude_paths', folder);
+    renderDirList(skipDirsList, 'file_exclude_paths');
+  });
+
+  // Background image
+  document.getElementById('settings-choose-bg').addEventListener('click', async () => {
+    const file = await pickImage();
+    if (!file) return;
+    document.getElementById('settings-bg-path').textContent = file;
+    applyBackgroundImage(file);
+    saveConfig({ ui_bg_image: file });
+  });
+
+  document.getElementById('settings-clear-bg').addEventListener('click', () => {
+    document.getElementById('settings-bg-path').textContent = 'No background image';
+    clearBackgroundImage();
+    saveConfig({ ui_bg_image: '' });
+  });
+
+  // Background layout dropdown
+  const bgLayoutDD = document.getElementById('settings-bg-layout');
+  const bgLayoutBtn = bgLayoutDD.querySelector('.settings-dropdown-btn');
+  const bgLayoutMenu = bgLayoutDD.querySelector('.settings-dropdown-menu');
+  const bgLayoutHint = document.getElementById('settings-bg-layout-hint');
+  const BG_LAYOUT_HINTS = { center: 'Original size, centered', fill: 'Fill area and crop edges', stretch: 'Stretch to fill exactly', duplicate: 'Repeat as tiles' };
+
+  bgLayoutBtn.addEventListener('click', () => { bgLayoutMenu.hidden = !bgLayoutMenu.hidden; });
+  bgLayoutMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('.settings-dropdown-item');
+    if (!item) return;
+    const val = item.dataset.value;
+    bgLayoutDD.querySelector('.settings-dropdown-label').textContent = item.textContent;
+    for (const el of bgLayoutMenu.children) el.classList.remove('settings-dropdown-active');
+    item.classList.add('settings-dropdown-active');
+    bgLayoutMenu.hidden = true;
+    bgLayoutHint.textContent = BG_LAYOUT_HINTS[val] || '';
+    applyBgLayout(val);
+    saveConfig({ ui_bg_layout: val });
+  });
+
+  // Log level dropdown
+  const logDD = document.getElementById('settings-log-level');
+  const logBtn = logDD.querySelector('.settings-dropdown-btn');
+  const logMenu = logDD.querySelector('.settings-dropdown-menu');
+
+  logBtn.addEventListener('click', () => { logMenu.hidden = !logMenu.hidden; });
+  logMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('.settings-dropdown-item');
+    if (!item) return;
+    logDD.querySelector('.settings-dropdown-label').textContent = item.textContent;
+    for (const el of logMenu.children) el.classList.remove('settings-dropdown-active');
+    item.classList.add('settings-dropdown-active');
+    logMenu.hidden = true;
+    saveConfig({ log_level: item.dataset.value });
+  });
+
+  // Launch at login
+  document.getElementById('settings-launch-login').addEventListener('change', (e) => {
+    saveConfig({ launch_at_login: e.target.checked ? 'true' : 'false' });
+  });
+
+  // Fresh config
+  document.getElementById('settings-fresh-config').addEventListener('click', async () => {
     try {
+      await resetConfig();
       await reloadConfig();
-      await requestIndexRefresh();
-      banner.show('Index refresh started', 'success', 1.2);
-    } catch { banner.show('Refresh failed', 'error', 1.5); }
+      await loadConfig();
+      // Re-apply default theme (Catppuccin)
+      applyThemePreset('');
+      clearBackgroundImage();
+      banner.show('Config reset to defaults', 'success', 1.5);
+    } catch { banner.show('Reset failed', 'error', 1.5); }
+  });
+
+  // Close all dropdowns on outside click
+  document.addEventListener('click', (e) => {
+    if (!themeDropdown.contains(e.target)) themeMenu.hidden = true;
+    if (!blurDropdown.contains(e.target)) blurMenu.hidden = true;
+    if (!bgLayoutDD.contains(e.target)) bgLayoutMenu.hidden = true;
+    if (!logDD.contains(e.target)) logMenu.hidden = true;
   });
 
   // Font name input with autocomplete
@@ -287,10 +385,55 @@ export function init(exitFn) {
     if (name) applyFontName(name);
   });
 
-  // Save Config button
+  // Save Config button — grab all current UI values and write to .look.config
   document.getElementById('settings-save-btn').addEventListener('click', async () => {
     try {
+      const updates = {};
+
+      // Theme
+      const themeDD = document.getElementById('settings-theme');
+      const activeThemeItem = themeDD.querySelector('.settings-dropdown-active');
+      updates.ui_theme = activeThemeItem?.dataset.value ?? '';
+
+      // All data-key sliders (tint, font color, border, blur, bg opacity/blur)
+      for (const row of screen.querySelectorAll('.settings-row[data-key]')) {
+        const key = row.dataset.key;
+        const slider = row.querySelector('.settings-slider');
+        if (slider) updates[key] = slider.value;
+      }
+
+      // Blur style
+      const blurDD = document.getElementById('settings-blur-style');
+      const activeBlur = blurDD?.querySelector('.settings-dropdown-active');
+      if (activeBlur) updates.ui_blur_style = activeBlur.dataset.value;
+
+      // Font
+      updates.ui_font_name = document.getElementById('settings-font-name').value.trim() || 'system-ui';
+
+      // Background
+      const bgPath = document.getElementById('settings-bg-path').textContent;
+      updates.ui_bg_image = bgPath === 'No background image' ? '' : bgPath;
+      const bgLayoutDD = document.getElementById('settings-bg-layout');
+      const activeBgLayout = bgLayoutDD?.querySelector('.settings-dropdown-active');
+      if (activeBgLayout) updates.ui_bg_layout = activeBgLayout.dataset.value;
+
+      // Advanced: indexing
+      updates.file_scan_depth = document.getElementById('settings-scan-depth').value;
+      updates.file_scan_limit = document.getElementById('settings-file-limit').value;
+      updates.lazy_indexing_enabled = document.getElementById('settings-lazy-indexing').checked ? 'true' : 'false';
+
+      // Advanced: log level
+      const logDD = document.getElementById('settings-log-level');
+      const activeLog = logDD?.querySelector('.settings-dropdown-active');
+      if (activeLog) updates.log_level = activeLog.dataset.value;
+
+      // Advanced: launch at login
+      updates.launch_at_login = document.getElementById('settings-launch-login').checked ? 'true' : 'false';
+
+      await saveConfig(updates);
       await reloadConfig();
+      await forceIndexRefresh();
+
       const msg = document.getElementById('settings-save-msg');
       msg.textContent = 'Saved';
       setTimeout(() => { msg.textContent = ''; }, 1600);
@@ -305,13 +448,63 @@ export function init(exitFn) {
 
 export function isActive() { return active; }
 
+// Ctrl+Shift+; — reload all values from .look.config file into running app
+export async function reloadFromFile() {
+  try {
+    await reloadConfig();
+    const map = await loadConfigMap();
+
+    // Theme
+    const theme = map.ui_theme || '';
+    applyThemePreset(theme);
+    if (theme === 'custom') {
+      applyTintFromMap(map);
+      applyFontColorFromMap(map);
+      applyBorderFromMap(map);
+    }
+
+    // Font
+    if (map.ui_font_size) CSS_MAP.ui_font_size(map.ui_font_size);
+    if (map.ui_font_name) {
+      document.documentElement.style.setProperty('--font-family', `"${map.ui_font_name}", system-ui, sans-serif`);
+    }
+
+    // Border thickness
+    if (map.ui_border_thickness) CSS_MAP.ui_border_thickness(map.ui_border_thickness);
+
+    // Blur
+    if (map.ui_blur_radius) {
+      platform.applyBlur(parseFloat(map.ui_blur_radius), map.ui_blur_style || 'high_contrast');
+    }
+
+    // Background image
+    if (map.ui_bg_image) {
+      applyBackgroundImage(map.ui_bg_image);
+      if (map.ui_bg_layout) applyBgLayout(map.ui_bg_layout);
+      if (map.ui_bg_opacity) CSS_MAP.ui_bg_opacity(map.ui_bg_opacity);
+      if (map.ui_bg_blur) CSS_MAP.ui_bg_blur(map.ui_bg_blur);
+    } else {
+      clearBackgroundImage();
+    }
+
+    // If settings screen is open, refresh the UI sliders too
+    if (active) await loadConfig();
+
+    // Rebuild index with new config
+    await forceIndexRefresh();
+
+    banner.show('Config reloaded from file', 'success', 1.2);
+  } catch {
+    banner.show('Reload failed', 'error', 1.5);
+  }
+}
+
 export async function enter(contentArea, searchBar) {
   active = true;
   contentArea.style.display = 'none';
   searchBar.style.display = 'none';
   screen.style.display = '';
-  const hint = document.querySelector('#hint-bar span');
-  if (hint) hint.textContent = 'Tab switch tabs \u2022 Esc back';
+  updateSettingsHint();
   await loadConfig();
 }
 
@@ -363,14 +556,29 @@ export async function restoreOnStartup() {
       applyBorderFromMap(map);
     }
 
-    // Font name/size are always restored (not theme-dependent)
+    // Font
     if (map.ui_font_size) CSS_MAP.ui_font_size(map.ui_font_size);
     if (map.ui_font_name) {
       document.documentElement.style.setProperty('--font-family', `"${map.ui_font_name}", system-ui, sans-serif`);
     }
+
+    // Blur
     if (map.ui_blur_radius) {
       const blurStyle = map.ui_blur_style || 'high_contrast';
       platform.applyBlur(parseFloat(map.ui_blur_radius), blurStyle);
+    }
+
+    // Border thickness
+    if (map.ui_border_thickness) {
+      CSS_MAP.ui_border_thickness(map.ui_border_thickness);
+    }
+
+    // Background image
+    if (map.ui_bg_image) {
+      applyBackgroundImage(map.ui_bg_image);
+      if (map.ui_bg_layout) applyBgLayout(map.ui_bg_layout);
+      if (map.ui_bg_opacity) CSS_MAP.ui_bg_opacity(map.ui_bg_opacity);
+      if (map.ui_bg_blur) CSS_MAP.ui_bg_blur(map.ui_bg_blur);
     }
   } catch {
     // Config may not exist yet
@@ -389,6 +597,19 @@ function switchTab(tabId) {
     const panel = document.getElementById('settings-tab-' + tab);
     if (panel) panel.hidden = tab !== tabId;
   }
+  updateSettingsHint();
+}
+
+function updateSettingsHint() {
+  const hint = document.querySelector('#hint-bar span');
+  if (!hint) return;
+  if (activeTab === 'advanced') {
+    hint.textContent = 'Save Config applies changes immediately. Ctrl+Shift+; is only needed after editing .look.config manually.';
+  } else if (activeTab === 'shortcuts') {
+    hint.textContent = 'Tips: t"word for web EN/VI/JA translation \u2022 /kill to force quit apps';
+  } else {
+    hint.textContent = 'Tab switch tabs \u2022 Esc back';
+  }
 }
 
 async function loadConfigMap() {
@@ -401,7 +622,6 @@ async function loadConfigMap() {
 async function loadConfig() {
   try {
     const cfg = await getConfig();
-    document.getElementById('settings-config-path').textContent = cfg.path;
 
     const map = {};
     for (const entry of cfg.entries) map[entry.key] = entry.value;
@@ -452,15 +672,42 @@ async function loadConfig() {
     }
 
     // Advanced tab
-    const depth = map.file_scan_depth || '4';
-    document.getElementById('settings-scan-depth').value = depth;
-    document.getElementById('settings-scan-depth-value').textContent = depth;
-
-    const limit = map.file_scan_limit || '8000';
-    document.getElementById('settings-file-limit').value = limit;
-    document.getElementById('settings-file-limit-value').textContent = limit;
-
+    document.getElementById('settings-scan-depth').value = map.file_scan_depth || '4';
+    document.getElementById('settings-file-limit').value = map.file_scan_limit || '8000';
     document.getElementById('settings-lazy-indexing').checked = map.lazy_indexing_enabled !== 'false';
+
+    // Dir lists
+    configCache.file_scan_extra_roots = map.file_scan_extra_roots || '';
+    configCache.file_exclude_paths = map.file_exclude_paths || '';
+    renderDirList(document.getElementById('settings-extra-dirs'), 'file_scan_extra_roots');
+    renderDirList(document.getElementById('settings-skip-dirs'), 'file_exclude_paths');
+
+    // Background image
+    const bgPath = map.ui_bg_image || '';
+    document.getElementById('settings-bg-path').textContent = bgPath || 'No background image';
+
+    // Background layout
+    const bgLayout = map.ui_bg_layout || 'fill';
+    const bgLayoutDD = document.getElementById('settings-bg-layout');
+    const bgLayoutItem = bgLayoutDD.querySelector(`.settings-dropdown-item[data-value="${bgLayout}"]`);
+    if (bgLayoutItem) {
+      bgLayoutDD.querySelector('.settings-dropdown-label').textContent = bgLayoutItem.textContent;
+      for (const el of bgLayoutDD.querySelector('.settings-dropdown-menu').children) el.classList.remove('settings-dropdown-active');
+      bgLayoutItem.classList.add('settings-dropdown-active');
+    }
+
+    // Log level
+    const logLevel = map.log_level || 'error';
+    const logDD = document.getElementById('settings-log-level');
+    const logItem = logDD.querySelector(`.settings-dropdown-item[data-value="${logLevel}"]`);
+    if (logItem) {
+      logDD.querySelector('.settings-dropdown-label').textContent = logItem.textContent;
+      for (const el of logDD.querySelector('.settings-dropdown-menu').children) el.classList.remove('settings-dropdown-active');
+      logItem.classList.add('settings-dropdown-active');
+    }
+
+    // Launch at login
+    document.getElementById('settings-launch-login').checked = map.launch_at_login === 'true';
   } catch (err) {
     console.error('Failed to load config:', err);
   }
@@ -625,6 +872,25 @@ function applyBorderFromMap(map) {
 
 // --- Formatting ---
 
+// --- Background image ---
+
+function applyBackgroundImage(path) {
+  if (!path) return;
+  const url = `url("asset://localhost/${encodeURI(path)}")`;
+  document.documentElement.style.setProperty('--bg-image', url);
+}
+
+function clearBackgroundImage() {
+  document.documentElement.style.removeProperty('--bg-image');
+}
+
+function applyBgLayout(layout) {
+  const sizeMap = { center: 'auto', fill: 'cover', stretch: '100% 100%', duplicate: 'auto' };
+  const repeatMap = { center: 'no-repeat', fill: 'no-repeat', stretch: 'no-repeat', duplicate: 'repeat' };
+  document.documentElement.style.setProperty('--bg-size', sizeMap[layout] || 'cover');
+  document.documentElement.style.setProperty('--bg-repeat', repeatMap[layout] || 'no-repeat');
+}
+
 function formatValue(key, v) {
   if (key === 'ui_blur_radius') return Math.round(v).toString();
   return v.toFixed(2);
@@ -636,5 +902,49 @@ async function saveConfig(updates) {
     await setConfig(list);
   } catch (err) {
     console.error('Failed to save config:', err);
+  }
+}
+
+// --- Dir list helpers (extra scan dirs, skip folders) ---
+
+let configCache = {};
+
+async function addDirToConfig(key, folder) {
+  const map = await loadConfigMap();
+  const current = (map[key] || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (current.includes(folder)) return;
+  current.push(folder);
+  await saveConfig({ [key]: current.join(',') });
+  configCache[key] = current.join(',');
+}
+
+async function removeDirFromConfig(key, folder) {
+  const map = await loadConfigMap();
+  const current = (map[key] || '').split(',').map(s => s.trim()).filter(Boolean);
+  const updated = current.filter(d => d !== folder);
+  await saveConfig({ [key]: updated.join(',') });
+  configCache[key] = updated.join(',');
+}
+
+function renderDirList(container, configKey) {
+  const val = configCache[configKey] || '';
+  const dirs = val.split(',').map(s => s.trim()).filter(Boolean);
+  container.innerHTML = '';
+  for (const dir of dirs) {
+    const item = document.createElement('div');
+    item.className = 'settings-dir-item';
+    const path = document.createElement('span');
+    path.className = 'settings-dir-path';
+    path.textContent = dir;
+    const btn = document.createElement('button');
+    btn.className = 'settings-dir-remove';
+    btn.textContent = '✕';
+    btn.addEventListener('click', async () => {
+      await removeDirFromConfig(configKey, dir);
+      renderDirList(container, configKey);
+    });
+    item.appendChild(path);
+    item.appendChild(btn);
+    container.appendChild(item);
   }
 }
