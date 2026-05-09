@@ -210,72 +210,15 @@ jobs:
         run: xcodebuild -project "apps/macos/LauncherApp/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build
 
   # Legacy WinUI3 app — maintenance mode, CI disabled.
-  # Uncomment if a critical bugfix needs verification.
-  # windows-build:
-  #   name: Build Windows App (${{ matrix.platform }})
-  #   runs-on: windows-latest
-  #   needs: changes
-  #   if: needs.changes.outputs.windows == 'true'
+  # To re-enable for a critical bugfix, replace this with the original
+  # windows-build job from git history.
   windows-build-skip:
-    name: Windows build (skipped — maintenance mode)
+    name: Windows WinUI3 build (skipped — maintenance mode)
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.windows == 'true'
     steps:
       - run: echo "Legacy WinUI3 app is in maintenance mode. Skipping CI build."
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: x64
-            rid: win-x64
-            rust_target: x86_64-pc-windows-msvc
-          - platform: ARM64
-            rid: win-arm64
-            rust_target: aarch64-pc-windows-msvc
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up .NET 10 SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_target }}
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            core
-            bridge/ffi
-          key: ${{ matrix.rust_target }}
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-${{ matrix.platform }}-nuget-${{ hashFiles('apps/windows/LauncherApp/LauncherApp.csproj') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.platform }}-nuget-
-            ${{ runner.os }}-nuget-
-
-      - name: Restore
-        run: dotnet restore apps/windows/LauncherApp/LauncherApp.csproj -p:Platform=${{ matrix.platform }} -r ${{ matrix.rid }}
-
-      - name: Build (Debug)
-        run: dotnet build apps/windows/LauncherApp/LauncherApp.csproj -c Debug -p:Platform=${{ matrix.platform }} -r ${{ matrix.rid }} --no-restore /bl:msbuild.binlog
-
-      - name: Upload msbuild binlog on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-msbuild-binlog-${{ matrix.platform }}
-          path: msbuild.binlog
-          retention-days: 7
 
   linows-build:
     name: Build linows (Tauri)

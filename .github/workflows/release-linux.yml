@@ -71,6 +71,12 @@ jobs:
       - name: Install cargo-tauri
         run: cargo install tauri-cli --version "^2" --locked
 
+      - name: Set release version in tauri.conf.json
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cd apps/linows/src-tauri
+          sed -i "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" tauri.conf.json
+
       - name: Build Tauri app
         working-directory: apps/linows
         run: cargo tauri build
