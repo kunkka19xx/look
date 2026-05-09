@@ -111,13 +111,6 @@ impl QueryEngine {
         let runtime_config = RuntimeConfig::load();
         let store = SqliteStore::open(path)?;
         let candidates = store.load_candidates(None)?;
-        if candidates.is_empty() {
-            return Ok(Self::new_with_config(
-                Self::demo_candidates(),
-                &runtime_config,
-            ));
-        }
-
         Ok(Self::new_with_config(candidates, &runtime_config))
     }
 

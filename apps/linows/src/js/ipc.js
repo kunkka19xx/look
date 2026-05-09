@@ -133,6 +133,10 @@ export async function onWindowShown(callback) {
   return listen('window-shown', callback);
 }
 
+export async function onIndexReady(callback) {
+  return listen('index-ready', callback);
+}
+
 export async function musicPlay(path) {
   return invoke('music_play', { path });
 }

@@ -103,10 +103,14 @@ pub fn open_path(
             // D-Bus activation: works on GNOME, properly focuses the window.
             let dbus_ok = std::process::Command::new("gdbus")
                 .args([
-                    "call", "--session",
-                    "--dest", "org.gnome.Settings",
-                    "--object-path", "/org/gnome/Settings",
-                    "--method", "org.freedesktop.Application.ActivateAction",
+                    "call",
+                    "--session",
+                    "--dest",
+                    "org.gnome.Settings",
+                    "--object-path",
+                    "/org/gnome/Settings",
+                    "--method",
+                    "org.freedesktop.Application.ActivateAction",
                     "launch-panel",
                     &format!("[<'{panel}'>, <@av []>]"),
                     "{}",

@@ -90,7 +90,12 @@ fn find_window_by_class(wm_class: &str) -> Option<u32> {
 }
 
 fn get_client_list(conn: &impl Connection, root: Window) -> Option<Vec<Window>> {
-    let atom = conn.intern_atom(false, b"_NET_CLIENT_LIST").ok()?.reply().ok()?.atom;
+    let atom = conn
+        .intern_atom(false, b"_NET_CLIENT_LIST")
+        .ok()?
+        .reply()
+        .ok()?
+        .atom;
     let reply = conn
         .get_property(false, root, atom, AtomEnum::WINDOW, 0, 1024)
         .ok()?
@@ -107,14 +112,24 @@ fn wm_class_matches(conn: &impl Connection, wid: Window, target: &str) -> bool {
     let Ok(reply) = cookie.reply() else {
         return false;
     };
-    String::from_utf8_lossy(&reply.value).to_lowercase().contains(target)
+    String::from_utf8_lossy(&reply.value)
+        .to_lowercase()
+        .contains(target)
 }
 
 fn bump_user_time(conn: &impl Connection, root: Window, our_wid: Window) {
-    let Ok(time_cookie) = conn.intern_atom(false, b"_NET_WM_USER_TIME") else { return };
-    let Ok(time_atom) = time_cookie.reply() else { return };
-    let Ok(active_cookie) = conn.intern_atom(false, b"_NET_ACTIVE_WINDOW") else { return };
-    let Ok(active_atom) = active_cookie.reply() else { return };
+    let Ok(time_cookie) = conn.intern_atom(false, b"_NET_WM_USER_TIME") else {
+        return;
+    };
+    let Ok(time_atom) = time_cookie.reply() else {
+        return;
+    };
+    let Ok(active_cookie) = conn.intern_atom(false, b"_NET_ACTIVE_WINDOW") else {
+        return;
+    };
+    let Ok(active_atom) = active_cookie.reply() else {
+        return;
+    };
 
     let active_wid = conn
         .get_property(false, root, active_atom.atom, AtomEnum::WINDOW, 0, 1)
@@ -147,8 +162,12 @@ fn bump_user_time(conn: &impl Connection, root: Window, our_wid: Window) {
 }
 
 fn activate_window(conn: &impl Connection, root: Window, wid: Window) -> bool {
-    let Ok(cookie) = conn.intern_atom(false, b"_NET_ACTIVE_WINDOW") else { return false };
-    let Ok(atom) = cookie.reply() else { return false };
+    let Ok(cookie) = conn.intern_atom(false, b"_NET_ACTIVE_WINDOW") else {
+        return false;
+    };
+    let Ok(atom) = cookie.reply() else {
+        return false;
+    };
 
     let event = ClientMessageEvent::new(32, wid, atom.atom, [2u32, 0, 0, 0, 0]);
     let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
@@ -194,8 +213,12 @@ where
         );
         let _ = conn.flush();
 
-        let Ok(active_cookie) = conn.intern_atom(false, b"_NET_ACTIVE_WINDOW") else { return };
-        let Ok(active_atom) = active_cookie.reply() else { return };
+        let Ok(active_cookie) = conn.intern_atom(false, b"_NET_ACTIVE_WINDOW") else {
+            return;
+        };
+        let Ok(active_atom) = active_cookie.reply() else {
+            return;
+        };
 
         loop {
             // Process any pending X11 events

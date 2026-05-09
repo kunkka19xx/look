@@ -5,9 +5,12 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Mutex, RwLock, mpsc};
+use std::sync::{Mutex, OnceLock, RwLock, mpsc};
 use std::thread;
 use std::time::Instant;
+use tauri::{Emitter, Manager};
+
+static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 pub struct AppState {
     engine: RwLock<QueryEngine>,
@@ -20,7 +23,7 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         let path = default_db_path();
-        let engine = QueryEngine::from_sqlite(&path).unwrap_or_else(|_| QueryEngine::demo_seed());
+        let engine = QueryEngine::from_sqlite(&path).unwrap_or_else(|_| QueryEngine::new(vec![]));
 
         let state = Self {
             engine: RwLock::new(engine),
@@ -33,6 +36,10 @@ impl AppState {
         state.start_background_bootstrap();
         state.start_index_watchers();
         state
+    }
+
+    pub fn init_app_handle(app: &tauri::App) {
+        let _ = APP_HANDLE.set(app.handle().clone());
     }
 
     pub fn with_engine<T>(&self, f: impl FnOnce(&QueryEngine) -> T) -> T {
@@ -138,6 +145,11 @@ impl AppState {
                             "look: bootstrap ok elapsed_ms={}",
                             started_at.elapsed().as_millis()
                         );
+                        if let Some(handle) = APP_HANDLE.get() {
+                            if let Some(w) = handle.get_webview_window("main") {
+                                let _ = w.emit("index-ready", ());
+                            }
+                        }
                     }
                     Err(err) => {
                         change_version.fetch_add(1, Ordering::AcqRel);

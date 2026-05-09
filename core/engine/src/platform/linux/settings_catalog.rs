@@ -66,7 +66,7 @@ pub(crate) static SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
     },
     SettingsCatalogEntry {
         title: "Appearance",
-        target: "background",
+        target: "appearance",
         candidate_id_suffix: "appearance",
         aliases: "appearance theme dark light style color settings",
     },

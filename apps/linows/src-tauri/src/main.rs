@@ -83,6 +83,7 @@ fn main() {
         .manage(AppState::new())
         .manage(platform::IconCache::new())
         .setup(|app| {
+            AppState::init_app_handle(app);
             clipboard::start_monitor();
             let app_handle = app.handle().clone();
 

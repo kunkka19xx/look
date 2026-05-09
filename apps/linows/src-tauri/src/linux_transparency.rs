@@ -36,13 +36,7 @@ pub fn is_wayland() -> bool {
 #[cfg(target_os = "linux")]
 fn desktop_has_builtin_compositor() -> bool {
     const COMPOSITED_DESKTOPS: &[&str] = &[
-        "GNOME",
-        "KDE",
-        "Cinnamon",
-        "Deepin",
-        "Budgie",
-        "COSMIC",
-        "Pantheon",
+        "GNOME", "KDE", "Cinnamon", "Deepin", "Budgie", "COSMIC", "Pantheon",
     ];
 
     let desktop = match std::env::var("XDG_CURRENT_DESKTOP") {
@@ -53,7 +47,9 @@ fn desktop_has_builtin_compositor() -> bool {
     // XDG_CURRENT_DESKTOP can be colon-separated (e.g. "ubuntu:GNOME")
     desktop.split(':').any(|segment| {
         let s = segment.trim();
-        COMPOSITED_DESKTOPS.iter().any(|&d| s.eq_ignore_ascii_case(d))
+        COMPOSITED_DESKTOPS
+            .iter()
+            .any(|&d| s.eq_ignore_ascii_case(d))
     })
 }
 
@@ -62,9 +58,7 @@ fn desktop_has_builtin_compositor() -> bool {
 /// and `pgrep -x` fails to match.
 #[cfg(target_os = "linux")]
 fn x11_has_standalone_compositor() -> bool {
-    const COMPOSITORS: &[&str] = &[
-        "picom", "compton", "compiz", "xfwm4", "marco",
-    ];
+    const COMPOSITORS: &[&str] = &["picom", "compton", "compiz", "xfwm4", "marco"];
 
     for name in COMPOSITORS {
         let ok = std::process::Command::new("pgrep")
