@@ -25,6 +25,10 @@ use tauri::{Emitter, Manager, PhysicalPosition};
 
 /// Timestamp (ms) of last window show, used to debounce focus-loss auto-hide.
 static LAST_SHOWN_AT: AtomicU64 = AtomicU64::new(0);
+/// Timestamp (ms) of last auto-hide.  When Alt+Space fires and the window is
+/// already hidden, we check this to avoid re-showing a window that auto-hide
+/// just closed (the GNOME X11 race: Focused(false) fires before the shortcut).
+static LAST_AUTO_HIDDEN_AT: AtomicU64 = AtomicU64::new(0);
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -91,8 +95,14 @@ fn main() {
                     }
                     if let Some(window) = app_handle.get_webview_window("main") {
                         if window.is_visible().unwrap_or(false) {
+                            #[cfg(target_os = "linux")]
+                            linux_window_focus::notify_hidden();
                             let _ = window.hide();
-                        } else {
+                        } else if now_ms() - LAST_AUTO_HIDDEN_AT.load(Ordering::Relaxed) > 200 {
+                            // Only show if auto-hide didn't JUST fire.
+                            // On GNOME X11, Focused(false) races with this handler —
+                            // auto-hide hides the window before we run, so is_visible
+                            // is false.  The 200ms guard prevents re-showing.
                             LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
                             let _ = window.set_always_on_top(true);
                             let _ = window.show();
@@ -110,19 +120,30 @@ fn main() {
 
                             // On Linux, bypass Mutter's focus-stealing prevention
                             // by bumping _NET_WM_USER_TIME before activation.
-                            // Called directly (no idle callback) to avoid races
-                            // with a quick Alt+Space hide toggle.
                             #[cfg(target_os = "linux")]
-                            linux_window_focus::activate_self();
+                            {
+                                linux_window_focus::activate_self();
+                                linux_window_focus::notify_shown();
+                            }
 
                             let _ = window.set_focus();
                         }
                     }
                 })?;
 
-            // Cache Look's X11 window ID for later focus activation
+            // Cache Look's X11 window ID for later focus activation,
+            // and start monitoring _NET_ACTIVE_WINDOW for auto-hide.
             #[cfg(target_os = "linux")]
-            linux_window_focus::cache_self_window();
+            {
+                linux_window_focus::cache_self_window();
+                let w_monitor = app.get_webview_window("main").unwrap();
+                linux_window_focus::start_active_window_monitor(move || {
+                    if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
+                        LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
+                        let _ = w_monitor.hide();
+                    }
+                });
+            }
 
             // Scale window for current monitor on startup
             let window = app.get_webview_window("main").unwrap();
@@ -147,32 +168,19 @@ fn main() {
                     .eval("document.documentElement.setAttribute('data-transparent', 'false')");
             }
 
-            // On GNOME X11, the WM fires Focused(false) before the global
-            // shortcut handler runs, so auto-hide must be disabled there.
-            #[cfg(target_os = "linux")]
-            let gnome_x11 = {
-                let is_gnome = std::env::var("XDG_CURRENT_DESKTOP")
-                    .map(|v| v.split(':').any(|s| s.trim().eq_ignore_ascii_case("GNOME")))
-                    .unwrap_or(false);
-                is_gnome && !linux_transparency::is_wayland()
-            };
-            #[cfg(not(target_os = "linux"))]
-            let gnome_x11 = false;
-
             // Window event handler
             let w = window.clone();
             window.on_window_event(move |event| {
                 match event {
-                    // When the window gains focus, ensure the search input is focused.
                     tauri::WindowEvent::Focused(true) => {
                         let _ = w.eval("{ let q = document.getElementById('query'); if (q) { q.focus(); q.select(); } }");
                     }
-                    // Auto-hide on focus loss (click outside, Alt+Tab, etc.).
-                    // Disabled on GNOME X11: the WM fires Focused(false) BEFORE
-                    // the global shortcut handler runs, making Alt+Space toggle
-                    // impossible.  On i3 and other WMs this race doesn't exist.
-                    tauri::WindowEvent::Focused(false) if !gnome_x11 => {
+                    // On Linux, auto-hide is handled by the X11 active-window
+                    // monitor (more reliable than Focused events on GNOME).
+                    #[cfg(not(target_os = "linux"))]
+                    tauri::WindowEvent::Focused(false) => {
                         if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
+                            LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
                             let _ = w.hide();
                         }
                     }

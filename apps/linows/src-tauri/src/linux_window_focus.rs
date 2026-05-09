@@ -4,19 +4,43 @@
 //! `_NET_ACTIVE_WINDOW` client message to the window manager.
 //! Works on GNOME, KDE, and any EWMH-compliant WM — including NixOS
 //! where `xdotool` / `wmctrl` are typically not installed.
+//!
+//! Also provides a background monitor that:
+//! - Retries focus activation after show (handles GNOME's async mapping)
+//! - Auto-hides Look when another window becomes active
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 /// Cached X11 window ID for Look's own window, resolved once at startup.
 static SELF_WID: AtomicU32 = AtomicU32::new(0);
 
+/// Set to true when Look is shown and needs focus.
+/// The monitor thread will retry activation until focus is granted.
+static NEEDS_FOCUS: AtomicBool = AtomicBool::new(false);
+
+/// Set to true once Look has confirmed focus (via _NET_ACTIVE_WINDOW).
+/// Auto-hide only fires when this transitions from true → false.
+static HAS_FOCUS: AtomicBool = AtomicBool::new(false);
+
 /// Call once after the window is mapped to cache Look's X11 window ID.
 pub fn cache_self_window() {
     if let Some(wid) = find_window_by_class("look-desktop") {
-        SELF_WID.store(wid, Ordering::Relaxed);
+        SELF_WID.store(wid, Ordering::SeqCst);
     }
+}
+
+/// Notify that Look was just shown and needs focus activation.
+pub fn notify_shown() {
+    HAS_FOCUS.store(false, Ordering::SeqCst);
+    NEEDS_FOCUS.store(true, Ordering::SeqCst);
+}
+
+/// Notify that Look was hidden (cancel any pending focus retry).
+pub fn notify_hidden() {
+    NEEDS_FOCUS.store(false, Ordering::SeqCst);
+    HAS_FOCUS.store(false, Ordering::SeqCst);
 }
 
 /// Activate Look's own window, bypassing Mutter's focus-stealing prevention
@@ -32,10 +56,7 @@ pub fn activate_self() -> bool {
     };
     let root = conn.setup().roots[screen_num].root;
 
-    // Bypass focus-stealing prevention: set our _NET_WM_USER_TIME
-    // to be newer than the currently focused window's timestamp.
     bump_user_time(&conn, root, wid);
-
     activate_window(&conn, root, wid)
 }
 
@@ -89,17 +110,12 @@ fn wm_class_matches(conn: &impl Connection, wid: Window, target: &str) -> bool {
     String::from_utf8_lossy(&reply.value).to_lowercase().contains(target)
 }
 
-/// Read _NET_WM_USER_TIME from the currently active window and set ours
-/// to that value + 1.  This convinces Mutter that our window has had more
-/// recent user activity than the focused window, bypassing focus-stealing
-/// prevention.
 fn bump_user_time(conn: &impl Connection, root: Window, our_wid: Window) {
     let Ok(time_cookie) = conn.intern_atom(false, b"_NET_WM_USER_TIME") else { return };
     let Ok(time_atom) = time_cookie.reply() else { return };
     let Ok(active_cookie) = conn.intern_atom(false, b"_NET_ACTIVE_WINDOW") else { return };
     let Ok(active_atom) = active_cookie.reply() else { return };
 
-    // Get the currently active window
     let active_wid = conn
         .get_property(false, root, active_atom.atom, AtomEnum::WINDOW, 0, 1)
         .ok()
@@ -107,7 +123,6 @@ fn bump_user_time(conn: &impl Connection, root: Window, our_wid: Window) {
         .and_then(|r| r.value32().and_then(|mut v| v.next()))
         .unwrap_or(0);
 
-    // Read its _NET_WM_USER_TIME
     let their_time = if active_wid != 0 {
         conn.get_property(false, active_wid, time_atom.atom, AtomEnum::CARDINAL, 0, 1)
             .ok()
@@ -118,7 +133,6 @@ fn bump_user_time(conn: &impl Connection, root: Window, our_wid: Window) {
         1
     };
 
-    // Set our timestamp to theirs + 1
     let our_time = their_time.wrapping_add(1);
     let _ = conn.change_property(
         PropMode::REPLACE,
@@ -139,6 +153,94 @@ fn activate_window(conn: &impl Connection, root: Window, wid: Window) -> bool {
     let event = ClientMessageEvent::new(32, wid, atom.atom, [2u32, 0, 0, 0, 0]);
     let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
     let _ = conn.send_event(false, root, mask, event);
+    let _ = conn.set_input_focus(InputFocus::PARENT, wid, x11rb::CURRENT_TIME);
     let _ = conn.flush();
     true
+}
+
+fn read_active_window(conn: &impl Connection, root: Window, atom: Atom) -> u32 {
+    conn.get_property(false, root, atom, AtomEnum::WINDOW, 0, 1)
+        .ok()
+        .and_then(|c| c.reply().ok())
+        .and_then(|r| r.value32().and_then(|mut v| v.next()))
+        .unwrap_or(0)
+}
+
+// --- Active window monitor ---
+
+static MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// Start a background thread that:
+/// 1. Retries focus activation after show until focus is confirmed
+/// 2. Auto-hides Look when another window becomes active (focus lost)
+pub fn start_active_window_monitor<F>(on_lost_focus: F)
+where
+    F: Fn() + Send + 'static,
+{
+    if MONITOR_RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    std::thread::spawn(move || {
+        let Ok((conn, screen_num)) = x11rb::connect(None) else {
+            MONITOR_RUNNING.store(false, Ordering::SeqCst);
+            return;
+        };
+        let root = conn.setup().roots[screen_num].root;
+
+        let _ = conn.change_window_attributes(
+            root,
+            &ChangeWindowAttributesAux::new().event_mask(EventMask::PROPERTY_CHANGE),
+        );
+        let _ = conn.flush();
+
+        let Ok(active_cookie) = conn.intern_atom(false, b"_NET_ACTIVE_WINDOW") else { return };
+        let Ok(active_atom) = active_cookie.reply() else { return };
+
+        loop {
+            // Process any pending X11 events
+            while let Ok(Some(event)) = conn.poll_for_event() {
+                if let x11rb::protocol::Event::PropertyNotify(ev) = event {
+                    if ev.atom == active_atom.atom {
+                        handle_active_change(&conn, root, active_atom.atom, &on_lost_focus);
+                    }
+                }
+            }
+
+            // If Look was just shown and needs focus, retry activation
+            if NEEDS_FOCUS.load(Ordering::SeqCst) {
+                let our_wid = SELF_WID.load(Ordering::Relaxed);
+                let active = read_active_window(&conn, root, active_atom.atom);
+
+                if active == our_wid {
+                    // Focus confirmed — stop retrying
+                    NEEDS_FOCUS.store(false, Ordering::SeqCst);
+                    HAS_FOCUS.store(true, Ordering::SeqCst);
+                } else {
+                    // Retry activation
+                    bump_user_time(&conn, root, our_wid);
+                    activate_window(&conn, root, our_wid);
+                }
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    });
+}
+
+fn handle_active_change<F>(conn: &impl Connection, root: Window, atom: Atom, on_lost_focus: &F)
+where
+    F: Fn(),
+{
+    let our_wid = SELF_WID.load(Ordering::Relaxed);
+    let active = read_active_window(conn, root, atom);
+
+    if active == our_wid {
+        // We gained focus
+        NEEDS_FOCUS.store(false, Ordering::SeqCst);
+        HAS_FOCUS.store(true, Ordering::SeqCst);
+    } else if active != 0 && HAS_FOCUS.swap(false, Ordering::SeqCst) {
+        // We HAD focus and now lost it — auto-hide
+        on_lost_focus();
+    }
 }

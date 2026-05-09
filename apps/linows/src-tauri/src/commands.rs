@@ -151,7 +151,19 @@ pub fn open_path(
     } else {
         let _ = window.hide();
         std::thread::spawn(move || {
-            let _ = open::that(&path);
+            // Clear LD_LIBRARY_PATH so child processes use system libraries.
+            // On NixOS, the Tauri dev shell may set paths that conflict with
+            // system apps (glibc version mismatch).
+            // Clear LD_LIBRARY_PATH so child processes use system libraries.
+            // On NixOS, the Tauri dev shell may set paths that conflict with
+            // system apps (glibc version mismatch).
+            let _ = std::process::Command::new("xdg-open")
+                .arg(&path)
+                .env_remove("LD_LIBRARY_PATH")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
         });
         Ok(())
     }
