@@ -3,6 +3,8 @@
   flex-direction: column;
   height: 100vh;
   background: var(--bg-tint);
+  backdrop-filter: blur(var(--blur-radius, 0px));
+  -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
   border: var(--border-thickness) solid var(--border-color);
   border-radius: var(--corner-radius);
   overflow: hidden;
@@ -10,6 +12,14 @@
   font-size: var(--font-size);
   color: var(--font-color);
   user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Linux font rendering: boost base weight to match macOS SF Pro appearance */
+[data-os="linux"] .launcher-window {
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
 /* Search bar */
@@ -32,6 +42,7 @@
 #query {
   flex: 1;
   font-size: calc(var(--font-size) + 1px);
+  font-weight: 500;
   color: var(--font-color);
   caret-color: var(--accent-color);
 }

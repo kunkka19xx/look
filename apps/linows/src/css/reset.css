@@ -7,9 +7,14 @@
 html, body {
   height: 100%;
   overflow: hidden;
-  background: transparent;
+  background: var(--bg-tint);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Compositor-capable: transparent body so desktop shows through */
+[data-transparent="true"], [data-transparent="true"] body {
+  background: transparent;
 }
 
 input {

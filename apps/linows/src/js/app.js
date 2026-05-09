@@ -5,7 +5,9 @@ import * as preview from './components/preview.js';
 import * as picked from './components/picked.js';
 import * as banner from './components/banner.js';
 import * as commands from './screens/commands/index.js';
+import * as settings from './screens/settings.js';
 import * as translatePanel from './components/translate.js';
+import * as platform from './platform.js';
 import { load } from './html-loader.js';
 import {
   onWindowShown, getHomeDir, copyFilesToClipboard,
@@ -17,9 +19,13 @@ import {
 document.addEventListener('DOMContentLoaded', async () => {
   const app = document.getElementById('app');
 
+  // Detect platform early
+  await platform.init();
+
   // Load screen templates
   await load('html/screens/search.html', app);
   await load('html/screens/commands/index.html', app);
+  await load('html/screens/settings.html', app);
 
   // Hint bar — always at bottom, shared by all screens
   app.insertAdjacentHTML('beforeend',
@@ -64,6 +70,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     onGetIcon: getIcon,
   });
   translatePanel.init(contentArea);
+  settings.init(() => {
+    queryInput.value = '';
+    search.handleQueryInput('');
+    queryInput.focus();
+    hintBar.querySelector('span').textContent =
+      'Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide';
+  });
+  settings.restoreOnStartup();
 
   // Expose command mode toggle for keyboard.js
   keyboard.setCommandMode(commands);
@@ -284,6 +298,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Expose enterCommandMode for keyboard
+  // Expose enterCommandMode and settings for keyboard
   keyboard.setEnterCommandMode(enterCommandMode);
+  keyboard.setSettingsMode(settings, contentArea, queryInput.parentElement);
 });

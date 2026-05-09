@@ -4,9 +4,12 @@
 mod calc;
 mod clipboard;
 mod commands;
+mod config;
+mod files;
 mod music;
 mod platform;
 mod process;
+mod shell;
 mod state;
 mod sysinfo;
 mod translate;
@@ -53,6 +56,26 @@ fn supports_transparency() -> bool {
     }
 }
 
+const BASE_W: f64 = 860.0;
+const BASE_H: f64 = 580.0;
+
+/// Scale window size for larger monitors. Base at 1080p (1.0x), up to 1.3x max.
+/// 1440p → 1.2x, 4K → 1.3x (capped).
+fn scaled_window_size(screen_w: u32, screen_h: u32, scale: f64) -> (u32, u32) {
+    let logical_h = screen_h as f64 / scale;
+    let ratio = if logical_h <= 1080.0 {
+        1.0
+    } else {
+        // Linear from 1.0 at 1080 to 1.2 at 1440, capped at 1.3
+        let r = 1.0 + (logical_h - 1080.0) / (1440.0 - 1080.0) * 0.2;
+        r.min(1.3)
+    };
+    let _ = screen_w; // used only for centering
+    let w = (BASE_W * ratio * scale).round() as u32;
+    let h = (BASE_H * ratio * scale).round() as u32;
+    (w, h)
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -94,10 +117,10 @@ fn main() {
                             if let Ok(Some(monitor)) = window.current_monitor() {
                                 let screen = monitor.size();
                                 let scale = monitor.scale_factor();
-                                let win_w = 860.0 * scale;
-                                let win_h = 580.0 * scale;
-                                let x = ((screen.width as f64 - win_w) / 2.0) as i32;
-                                let y = ((screen.height as f64 - win_h) / 2.0) as i32;
+                                let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
+                                let _ = window.set_size(tauri::PhysicalSize::new(win_w, win_h));
+                                let x = ((screen.width as f64 - win_w as f64) / 2.0) as i32;
+                                let y = ((screen.height as f64 - win_h as f64) / 2.0) as i32;
                                 let _ = window.set_position(PhysicalPosition::new(x, y));
                             }
                             let _ = window.emit("window-shown", ());
@@ -105,9 +128,20 @@ fn main() {
                     }
                 })?;
 
+            // Scale window for current monitor on startup
+            let window = app.get_webview_window("main").unwrap();
+            if let Ok(Some(monitor)) = window.current_monitor() {
+                let screen = monitor.size();
+                let scale = monitor.scale_factor();
+                let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
+                let _ = window.set_size(tauri::PhysicalSize::new(win_w, win_h));
+                let x = ((screen.width as f64 - win_w as f64) / 2.0) as i32;
+                let y = ((screen.height as f64 - win_h as f64) / 2.0) as i32;
+                let _ = window.set_position(PhysicalPosition::new(x, y));
+            }
+
             // Detect display capabilities and tell the frontend
             let supports_transparency = supports_transparency();
-            let window = app.get_webview_window("main").unwrap();
 
             if supports_transparency {
                 let _ = window
@@ -129,6 +163,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Core: search, usage, open, reveal, window
             commands::search,
             commands::record_usage,
             commands::open_path,
@@ -136,24 +171,37 @@ fn main() {
             commands::reload_config,
             commands::request_index_refresh,
             commands::toggle_window,
-            commands::copy_files_to_clipboard,
-            commands::get_home_dir,
-            commands::run_shell_command,
             commands::hide_window,
-            commands::get_file_meta,
-            commands::get_app_version,
+            // Config
+            config::get_config,
+            config::set_config,
+            // Files: meta, version, clipboard, music, folder
+            files::get_file_meta,
+            files::get_app_version,
+            files::copy_files_to_clipboard,
+            files::get_home_dir,
+            files::list_fonts,
+            files::scan_music_folder,
+            files::pick_folder,
+            // Shell
+            shell::run_shell_command,
+            // Platform: icons, detection, window effects
+            platform::get_icon,
+            platform::get_platform,
+            platform::set_window_effect,
+            // Commands
             calc::eval_calc,
             sysinfo::get_system_info,
             process::list_processes,
             process::list_processes_on_port,
             process::kill_process,
-            platform::get_icon,
-            commands::scan_music_folder,
-            commands::pick_folder,
+            // Translation
             translate::translate,
+            // Clipboard
             clipboard::get_clipboard_history,
             clipboard::delete_clipboard_entry,
             clipboard::copy_to_clipboard,
+            // Music
             music::music_play,
             music::music_pause,
             music::music_resume,

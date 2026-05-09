@@ -3,7 +3,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px var(--content-padding);
+  padding: 8px var(--content-padding);
   min-height: var(--row-height);
   cursor: default;
   border-radius: var(--control-radius);
@@ -55,7 +55,7 @@
 }
 
 .result-title {
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

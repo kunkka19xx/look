@@ -1,26 +1,26 @@
-/* Catppuccin (Default Theme) */
+/* Catppuccin Mocha (Default Theme) */
 :root {
-  /* Background tint */
-  --bg-tint: rgb(30, 30, 46);
+  /* Background tint — Catppuccin Mocha base #1e1e2e */
+  --bg-tint: #1e1e2e;
 
-  /* Text hierarchy */
-  --font-color: rgba(242, 240, 250, 0.97);
-  --font-secondary: rgba(204, 214, 245, 1.0);
-  --font-muted: rgba(171, 178, 199, 0.78);
+  /* Text hierarchy — cdd6f4 / bac2de / a6adc8 */
+  --font-color: #cdd6f4;
+  --font-secondary: #bac2de;
+  --font-muted: rgba(166, 173, 200, 0.78);
 
-  /* Border */
-  --border-color: rgba(255, 255, 255, 0.12);
+  /* Border — surface2 #585b70 */
+  --border-color: rgba(88, 91, 112, 0.28);
   --border-thickness: 1px;
 
-  /* Surfaces */
-  --panel-fill: rgba(30, 28, 46, 0.34);
-  --control-fill: rgba(48, 51, 69, 0.34);
-  --divider-color: rgba(102, 102, 112, 0.28);
-  --selection-fill: rgba(148, 153, 178, 0.28);
+  /* Surfaces — surface0 #313244, surface1 #45475a, overlay0 #6c7086 */
+  --panel-fill: rgba(49, 50, 68, 0.50);
+  --control-fill: rgba(69, 71, 90, 0.50);
+  --divider-color: rgba(88, 91, 112, 0.32);
+  --selection-fill: rgba(88, 91, 112, 0.40);
 
-  /* Accent & semantic */
-  --accent-color: rgba(138, 181, 250, 1.0);
-  --on-accent-color: rgba(0, 0, 0, 0.90);
+  /* Accent & semantic — blue #89b4fa */
+  --accent-color: #89b4fa;
+  --on-accent-color: #1e1e2e;
   --color-success: #a6e3a1;
   --color-warning: #fab387;
   --color-danger: #f38ba8;
@@ -114,6 +114,6 @@
 
 /* Transparency-capable environments (macOS, Windows, Wayland, X11 with compositor) */
 [data-transparent="true"] {
-  --bg-tint: rgba(30, 30, 46, 0.55);
+  --bg-tint: rgba(30, 30, 46, 0.85);
   --corner-radius: 16px;
 }

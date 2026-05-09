@@ -8,6 +8,9 @@ let queryInput = null;
 let shiftHeld = false;
 let commandMode = null;
 let enterCommandModeFn = null;
+let settingsModule = null;
+let settingsContentArea = null;
+let settingsSearchBar = null;
 
 export function init(inputEl) {
   queryInput = inputEl;
@@ -37,7 +40,32 @@ export function setEnterCommandMode(fn) {
   enterCommandModeFn = fn;
 }
 
+export function setSettingsMode(mod, contentArea, searchBar) {
+  settingsModule = mod;
+  settingsContentArea = contentArea;
+  settingsSearchBar = searchBar;
+}
+
 function handleKeyDown(e) {
+  // Ctrl+Shift+, toggles settings
+  if (e.ctrlKey && (e.shiftKey || shiftHeld) && (e.key === ',' || e.key === '<')) {
+    e.preventDefault();
+    if (settingsModule?.isActive()) {
+      settingsModule.exit(settingsContentArea, settingsSearchBar);
+    } else {
+      // Exit command mode first if active
+      if (commandMode?.isActive()) commandMode.exit();
+      settingsModule.enter(settingsContentArea, settingsSearchBar);
+    }
+    return;
+  }
+
+  // Delegate to settings if active
+  if (settingsModule?.isActive()) {
+    if (settingsModule.handleKey(e)) return;
+    return;
+  }
+
   // Ctrl+/ toggles command mode
   if (e.ctrlKey && (e.key === '/' || e.key === '?')) {
     e.preventDefault();
@@ -106,8 +134,8 @@ function handleKeyDown(e) {
       e.preventDefault();
       if (search.isClipboardMode() || search.isTranslateMode()) {
         queryInput.value = '';
-        search.handleQueryInput('');
         translatePanel.hide();
+        queryInput.dispatchEvent(new Event('input'));
         queryInput.focus();
       } else {
         hideWindow();

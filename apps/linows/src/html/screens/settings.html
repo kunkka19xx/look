@@ -1,0 +1,223 @@
+<div class="content-area" id="settings-screen" style="display:none">
+  <div class="settings-panel">
+    <!-- Header -->
+    <div class="settings-header">
+      <span class="settings-title">Settings</span>
+      <span class="settings-save-msg" id="settings-save-msg"></span>
+      <button class="settings-header-btn" id="settings-save-btn">Save Config</button>
+      <span class="settings-header-hint">Esc or Ctrl+Shift+, to close</span>
+    </div>
+
+    <!-- Tabs -->
+    <div class="settings-tabs" id="settings-tabs">
+      <button class="settings-tab settings-tab-active" data-tab="appearance">Appearance</button>
+      <button class="settings-tab" data-tab="advanced">Advanced</button>
+      <button class="settings-tab" data-tab="shortcuts">Shortcuts</button>
+    </div>
+
+    <div class="settings-body" id="settings-body">
+      <!-- Appearance tab -->
+      <div class="settings-tab-content" id="settings-tab-appearance">
+        <!-- Theme -->
+        <div class="settings-section-header">
+          <span class="settings-section-arrow">&#9654;</span>
+          <span>Theme</span>
+          <div class="settings-dropdown" id="settings-theme">
+            <button class="settings-dropdown-btn" type="button">
+              <span class="settings-dropdown-label">Catppuccin</span>
+              <span class="settings-dropdown-arrow">&#9662;</span>
+            </button>
+            <div class="settings-dropdown-menu" hidden>
+              <div class="settings-dropdown-item settings-dropdown-active" data-value="">Catppuccin</div>
+              <div class="settings-dropdown-item" data-value="tokyo-night">Tokyo Night</div>
+              <div class="settings-dropdown-item" data-value="rose-pine">Rose Pine</div>
+              <div class="settings-dropdown-item" data-value="gruvbox">Gruvbox</div>
+              <div class="settings-dropdown-item" data-value="dracula">Dracula</div>
+              <div class="settings-dropdown-item" data-value="kanagawa">Kanagawa</div>
+              <div class="settings-dropdown-item" data-value="custom">Custom</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-divider"></div>
+
+        <!-- Tint Color -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Tint Color</span></div>
+        <div class="settings-section">
+          <div class="settings-row" data-key="ui_tint_red">
+            <label class="settings-label">Red</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.12" />
+            <span class="settings-slider-value">0.12</span>
+          </div>
+          <div class="settings-row" data-key="ui_tint_green">
+            <label class="settings-label">Green</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.12" />
+            <span class="settings-slider-value">0.12</span>
+          </div>
+          <div class="settings-row" data-key="ui_tint_blue">
+            <label class="settings-label">Blue</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.18" />
+            <span class="settings-slider-value">0.18</span>
+          </div>
+          <div class="settings-row" data-key="ui_tint_opacity">
+            <label class="settings-label">Tint Opacity</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.95" />
+            <span class="settings-slider-value">0.95</span>
+          </div>
+        </div>
+
+        <!-- Blur -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Blur</span></div>
+        <div class="settings-section">
+          <div class="settings-row" data-key="ui_blur_radius">
+            <label class="settings-label">Blur Radius</label>
+            <input type="range" class="settings-slider" min="0" max="40" step="1" value="0" />
+            <span class="settings-slider-value">0</span>
+          </div>
+          <div class="settings-row" data-key="ui_blur_opacity">
+            <label class="settings-label">Blur Opacity</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.95" />
+            <span class="settings-slider-value">0.95</span>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">Blur Style</label>
+            <div class="settings-dropdown" id="settings-blur-style">
+              <button class="settings-dropdown-btn" type="button">
+                <span class="settings-dropdown-label">High Contrast</span>
+                <span class="settings-dropdown-arrow">&#9662;</span>
+              </button>
+              <div class="settings-dropdown-menu" hidden>
+                <div class="settings-dropdown-item settings-dropdown-active" data-value="high_contrast">High Contrast</div>
+                <div class="settings-dropdown-item" data-value="balanced">Balanced</div>
+                <div class="settings-dropdown-item" data-value="soft">Soft</div>
+              </div>
+            </div>
+            <span class="settings-hint-text" id="settings-blur-style-hint">Darkest and most readable</span>
+          </div>
+        </div>
+
+        <!-- Font -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Font</span></div>
+        <div class="settings-section">
+          <div class="settings-row">
+            <label class="settings-label">Font Name</label>
+            <div class="settings-font-wrapper">
+              <input type="text" class="settings-text-input" id="settings-font-name" value="system-ui" spellcheck="false" autocomplete="off" />
+              <div class="settings-font-suggestions" id="settings-font-suggestions" hidden></div>
+            </div>
+            <span class="settings-hint-text">Installed font name</span>
+          </div>
+          <div class="settings-row" data-key="ui_font_size">
+            <label class="settings-label">Font Size</label>
+            <input type="range" class="settings-slider" min="10" max="28" step="1" value="14" />
+            <span class="settings-slider-value">14.00</span>
+          </div>
+        </div>
+
+        <!-- Font Color -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Font Color</span></div>
+        <div class="settings-section">
+          <div class="settings-row" data-key="ui_font_red">
+            <label class="settings-label">Text Red</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.81" />
+            <span class="settings-slider-value">0.81</span>
+          </div>
+          <div class="settings-row" data-key="ui_font_green">
+            <label class="settings-label">Text Green</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.80" />
+            <span class="settings-slider-value">0.80</span>
+          </div>
+          <div class="settings-row" data-key="ui_font_blue">
+            <label class="settings-label">Text Blue</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.90" />
+            <span class="settings-slider-value">0.90</span>
+          </div>
+          <div class="settings-row" data-key="ui_font_opacity">
+            <label class="settings-label">Text Opacity</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="1.00" />
+            <span class="settings-slider-value">1.00</span>
+          </div>
+        </div>
+
+        <!-- Border -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Border</span></div>
+        <div class="settings-section">
+          <div class="settings-row" data-key="ui_border_thickness">
+            <label class="settings-label">Border Thick</label>
+            <input type="range" class="settings-slider" min="0" max="6" step="0.5" value="1.0" />
+            <span class="settings-slider-value">1.00</span>
+          </div>
+          <div class="settings-row" data-key="ui_border_red">
+            <label class="settings-label">Border Red</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.58" />
+            <span class="settings-slider-value">0.58</span>
+          </div>
+          <div class="settings-row" data-key="ui_border_green">
+            <label class="settings-label">Border Green</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.58" />
+            <span class="settings-slider-value">0.58</span>
+          </div>
+          <div class="settings-row" data-key="ui_border_blue">
+            <label class="settings-label">Border Blue</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.65" />
+            <span class="settings-slider-value">0.65</span>
+          </div>
+          <div class="settings-row" data-key="ui_border_opacity">
+            <label class="settings-label">Border Opacity</label>
+            <input type="range" class="settings-slider" min="0" max="1" step="0.01" value="0.18" />
+            <span class="settings-slider-value">0.18</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Shortcuts tab -->
+      <div class="settings-tab-content" id="settings-tab-shortcuts" hidden>
+        <div class="settings-shortcuts-list">
+          <div class="settings-shortcut"><kbd>Enter</kbd><span>Open selected item</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+Enter</kbd><span>Search web</span></div>
+          <div class="settings-shortcut"><kbd>Tab / Shift+Tab</kbd><span>Navigate results</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+F</kbd><span>Reveal in file manager</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+C</kbd><span>Copy path</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+P</kbd><span>Pick / unpick item</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+Shift+P</kbd><span>Clear all picks</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+/</kbd><span>Toggle command mode</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+1-5</kbd><span>Jump to command</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+Shift+,</kbd><span>Settings</span></div>
+          <div class="settings-shortcut"><kbd>Alt+Space</kbd><span>Toggle window</span></div>
+          <div class="settings-shortcut"><kbd>Escape</kbd><span>Hide window</span></div>
+        </div>
+      </div>
+
+      <!-- Advanced tab -->
+      <div class="settings-tab-content" id="settings-tab-advanced" hidden>
+        <div class="settings-section">
+          <div class="settings-row">
+            <label class="settings-label">Config file</label>
+            <span class="settings-value-mono" id="settings-config-path">~/.look.config</span>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">Scan depth</label>
+            <input type="range" class="settings-slider" id="settings-scan-depth" min="1" max="12" step="1" value="4" />
+            <span class="settings-slider-value" id="settings-scan-depth-value">4</span>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">File limit</label>
+            <input type="range" class="settings-slider" id="settings-file-limit" min="500" max="50000" step="500" value="8000" />
+            <span class="settings-slider-value" id="settings-file-limit-value">8000</span>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">Lazy indexing</label>
+            <label class="settings-toggle">
+              <input type="checkbox" id="settings-lazy-indexing" checked />
+              <span class="settings-toggle-track"></span>
+            </label>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label"></label>
+            <button class="settings-btn" id="settings-refresh-index">Refresh index</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

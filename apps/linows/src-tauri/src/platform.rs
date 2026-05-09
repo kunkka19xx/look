@@ -346,6 +346,76 @@ fn detect_gtk_icon_theme() -> Option<String> {
     None
 }
 
+// --- Platform detection & window effects ---
+
+#[derive(Serialize)]
+pub struct PlatformInfo {
+    pub os: String,
+    pub has_compositor: bool,
+}
+
+#[tauri::command]
+pub fn get_platform() -> PlatformInfo {
+    let os = std::env::consts::OS.to_string();
+
+    #[cfg(target_os = "linux")]
+    let has_compositor = {
+        let is_wayland = std::env::var("XDG_SESSION_TYPE")
+            .map(|v| v == "wayland")
+            .unwrap_or(false);
+        if is_wayland {
+            true
+        } else {
+            std::process::Command::new("sh")
+                .args([
+                    "-c",
+                    "pgrep -x picom || pgrep -x compton || pgrep -x compiz || pgrep -x kwin || pgrep -x mutter",
+                ])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        }
+    };
+
+    #[cfg(not(target_os = "linux"))]
+    let has_compositor = true;
+
+    PlatformInfo { os, has_compositor }
+}
+
+#[tauri::command]
+pub fn set_window_effect(window: tauri::Window, effect: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use tauri::utils::config::WindowEffectsConfig;
+        use tauri::window::Effect;
+
+        let config: Option<WindowEffectsConfig> = match effect.as_str() {
+            "mica" => Some(WindowEffectsConfig {
+                effects: vec![Effect::Mica],
+                ..Default::default()
+            }),
+            "acrylic" => Some(WindowEffectsConfig {
+                effects: vec![Effect::Acrylic],
+                ..Default::default()
+            }),
+            "none" | "" => None,
+            _ => return Err(format!("Unknown effect: {effect}")),
+        };
+
+        window
+            .set_effects(config)
+            .map_err(|e| format!("Failed to set effect: {e}"))?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (window, effect);
+    }
+
+    Ok(())
+}
+
 // --- Read & encode icon files ---
 
 fn read_icon_file(path: &str) -> Option<String> {

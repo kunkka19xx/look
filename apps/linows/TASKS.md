@@ -93,10 +93,10 @@ Based on macOS app as source of truth. Organized by phase.
 ## Phase 4: Settings & Themes
 
 ### Screens
-- [ ] Settings panel (Ctrl+Shift+,) with 3 tabs:
-  - [ ] Appearance tab — colors, blur material, font scale, background image
-  - [ ] Shortcuts tab — keyboard shortcut reference (read-only)
-  - [ ] Advanced tab — config path, index refresh, scan depth/limit
+- [x] Settings panel (Ctrl+Shift+,) with 3 tabs:
+  - [x] Appearance tab — theme, tint color, blur, font (name+size+autocomplete), font color, border
+  - [x] Shortcuts tab — keyboard shortcut reference (read-only)
+  - [x] Advanced tab — config path, index refresh, scan depth/limit
 - [ ] Help screen (Ctrl+H) — keyboard shortcuts
 
 ### Themes (CSS custom property sets)
@@ -106,13 +106,19 @@ Based on macOS app as source of truth. Organized by phase.
 - [x] Gruvbox
 - [x] Dracula
 - [x] Kanagawa
+- [x] Custom (auto-switches when user edits sliders)
 
 ### Features
-- [ ] Theme switching via CSS custom properties on :root
+- [x] Theme switching via CSS custom properties on :root
+- [x] Theme presets drive slider values; editing any slider auto-switches to "Custom"
 - [ ] Background image support (CSS background-image + blur overlay)
-- [ ] Blur material options (balanced, high_contrast, soft)
-- [ ] Font scale control
-- [ ] Config file persistence (.look.config format, shared with macOS)
+- [x] Blur material options (balanced, high_contrast, soft) — platform-aware
+- [x] Platform detection (get_platform) — OS + compositor detection
+- [x] Window effects (set_window_effect) — Mica/Acrylic on Windows, CSS backdrop-filter on Linux
+- [x] Font name autocomplete from system fonts (fc-list on Linux)
+- [x] Font scale control (slider)
+- [x] Config file persistence (.look.config format, shared with macOS)
+- [x] Dynamic window scaling — 1.0x at 1080p, 1.2x at 1440p, 1.3x max
 - [ ] Auto-start registration (Windows registry, Linux .desktop autostart)
 - [ ] UWP app seeding (Windows — enumerate shell:AppsFolder via PowerShell)
 

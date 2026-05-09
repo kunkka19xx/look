@@ -93,6 +93,26 @@ export async function copyToClipboard(text) {
   return invoke('copy_to_clipboard', { text });
 }
 
+export async function getPlatform() {
+  return invoke('get_platform');
+}
+
+export async function setWindowEffect(effect) {
+  return invoke('set_window_effect', { effect });
+}
+
+export async function listFonts() {
+  return invoke('list_fonts');
+}
+
+export async function getConfig() {
+  return invoke('get_config');
+}
+
+export async function setConfig(updates) {
+  return invoke('set_config', { updates });
+}
+
 export async function translate(text, targetLang) {
   return invoke('translate', { text, targetLang });
 }
