@@ -99,14 +99,12 @@ fn xdg_data_dirs() -> Vec<String> {
 
 fn resolve_app_icon(exec_path: &str, id: Option<&str>) -> Option<String> {
     // Try direct .desktop lookup from id (most reliable)
-    if let Some(id) = id {
-        if let Some(desktop_path) = id.strip_prefix("app:") {
-            if let Some(icon_name) = parse_desktop_icon(desktop_path) {
-                if let Some(icon) = resolve_themed_icon(&icon_name) {
-                    return Some(icon);
-                }
-            }
-        }
+    if let Some(id) = id
+        && let Some(desktop_path) = id.strip_prefix("app:")
+        && let Some(icon_name) = parse_desktop_icon(desktop_path)
+        && let Some(icon) = resolve_themed_icon(&icon_name)
+    {
+        return Some(icon);
     }
 
     let first_token = exec_path.split_whitespace().next()?;
@@ -186,10 +184,10 @@ fn search_desktop_dir(dir: &str, bin_name: &str) -> Option<String> {
         if !path_str.ends_with(".desktop") {
             continue;
         }
-        if let Some(icon_name) = parse_desktop_icon_if_match(path_str, bin_name) {
-            if let Some(data_url) = resolve_themed_icon(&icon_name) {
-                return Some(data_url);
-            }
+        if let Some(icon_name) = parse_desktop_icon_if_match(path_str, bin_name)
+            && let Some(data_url) = resolve_themed_icon(&icon_name)
+        {
+            return Some(data_url);
         }
     }
     None

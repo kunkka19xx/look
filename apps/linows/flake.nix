@@ -2,10 +2,12 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
-    { nixpkgs, ... }:
+    { nixpkgs, rust-overlay, ... }:
     let
       systems = [
         "x86_64-linux"
@@ -19,14 +21,17 @@
       devShells = forAllSystems (
         system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ rust-overlay.overlays.default ];
+          };
+          rustToolchain = pkgs.rust-bin.stable."1.95.0".default;
         in
         {
           default = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [
               pkg-config
-              cargo
-              rustc
+              rustToolchain
               cargo-tauri
               xdg-desktop-portal
               xdg-desktop-portal-gtk

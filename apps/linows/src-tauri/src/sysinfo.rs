@@ -26,18 +26,17 @@ pub fn get_system_info() -> Vec<Vec<SysInfoEntry>> {
                 value: kernel,
             });
         }
-        if let Ok(release) = std::fs::read_to_string("/etc/os-release") {
-            if let Some(name) = release
+        if let Ok(release) = std::fs::read_to_string("/etc/os-release")
+            && let Some(name) = release
                 .lines()
                 .find(|l| l.starts_with("PRETTY_NAME="))
                 .and_then(|l| l.strip_prefix("PRETTY_NAME="))
                 .map(|v| v.trim_matches('"').to_string())
-            {
-                s.push(SysInfoEntry {
-                    label: "OS".into(),
-                    value: name,
-                });
-            }
+        {
+            s.push(SysInfoEntry {
+                label: "OS".into(),
+                value: name,
+            });
         }
         if !s.is_empty() {
             sections.push(s);
@@ -56,10 +55,10 @@ pub fn get_system_info() -> Vec<Vec<SysInfoEntry>> {
                     total = parse_kb(val);
                 } else if let Some(val) = line.strip_prefix("MemAvailable:") {
                     available = parse_kb(val);
-                } else if let Some(val) = line.strip_prefix("Cached:") {
-                    if cached == 0 {
-                        cached = parse_kb(val);
-                    }
+                } else if let Some(val) = line.strip_prefix("Cached:")
+                    && cached == 0
+                {
+                    cached = parse_kb(val);
                 }
             }
             if total > 0 {
@@ -104,23 +103,23 @@ pub fn get_system_info() -> Vec<Vec<SysInfoEntry>> {
                     value: format!("{}", cores),
                 });
             }
-            if let Ok(stat) = std::fs::read_to_string("/proc/stat") {
-                if let Some(line) = stat.lines().find(|l| l.starts_with("cpu ")) {
-                    let vals: Vec<u64> = line
-                        .split_whitespace()
-                        .skip(1)
-                        .filter_map(|v| v.parse().ok())
-                        .collect();
-                    if vals.len() >= 4 {
-                        let total: u64 = vals.iter().sum();
-                        let idle = vals[3];
-                        if total > 0 {
-                            let usage = ((total - idle) as f64 / total as f64) * 100.0;
-                            s.push(SysInfoEntry {
-                                label: "Usage".into(),
-                                value: format!("{:.1}%", usage),
-                            });
-                        }
+            if let Ok(stat) = std::fs::read_to_string("/proc/stat")
+                && let Some(line) = stat.lines().find(|l| l.starts_with("cpu "))
+            {
+                let vals: Vec<u64> = line
+                    .split_whitespace()
+                    .skip(1)
+                    .filter_map(|v| v.parse().ok())
+                    .collect();
+                if vals.len() >= 4 {
+                    let total: u64 = vals.iter().sum();
+                    let idle = vals[3];
+                    if total > 0 {
+                        let usage = ((total - idle) as f64 / total as f64) * 100.0;
+                        s.push(SysInfoEntry {
+                            label: "Usage".into(),
+                            value: format!("{:.1}%", usage),
+                        });
                     }
                 }
             }
@@ -156,24 +155,23 @@ pub fn get_system_info() -> Vec<Vec<SysInfoEntry>> {
     // Section 5: Uptime
     {
         let mut s = Vec::new();
-        if let Ok(uptime) = std::fs::read_to_string("/proc/uptime") {
-            if let Some(secs_str) = uptime.split_whitespace().next() {
-                if let Ok(secs) = secs_str.parse::<f64>() {
-                    let total_secs = secs as u64;
-                    let days = total_secs / 86400;
-                    let hours = (total_secs % 86400) / 3600;
-                    let mins = (total_secs % 3600) / 60;
-                    let val = if days > 0 {
-                        format!("{}d {}h {}m", days, hours, mins)
-                    } else {
-                        format!("{}h {}m", hours, mins)
-                    };
-                    s.push(SysInfoEntry {
-                        label: "Time".into(),
-                        value: val,
-                    });
-                }
-            }
+        if let Ok(uptime) = std::fs::read_to_string("/proc/uptime")
+            && let Some(secs_str) = uptime.split_whitespace().next()
+            && let Ok(secs) = secs_str.parse::<f64>()
+        {
+            let total_secs = secs as u64;
+            let days = total_secs / 86400;
+            let hours = (total_secs % 86400) / 3600;
+            let mins = (total_secs % 3600) / 60;
+            let val = if days > 0 {
+                format!("{}d {}h {}m", days, hours, mins)
+            } else {
+                format!("{}h {}m", hours, mins)
+            };
+            s.push(SysInfoEntry {
+                label: "Time".into(),
+                value: val,
+            });
         }
         if !s.is_empty() {
             sections.push(s);

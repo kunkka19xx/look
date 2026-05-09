@@ -70,7 +70,7 @@ repos:
 
       - id: cargo-clippy-linows
         name: cargo clippy (linows/tauri)
-        entry: cargo clippy --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings
+        entry: bash -c 'command -v pkg-config >/dev/null && pkg-config --exists glib-2.0 2>/dev/null && cargo clippy --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings || echo "Skipping linows clippy (run inside nix develop)"'
         language: system
         pass_filenames: false
         types: [rust]

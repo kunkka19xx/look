@@ -109,7 +109,7 @@ pub fn list_processes() -> Vec<RunningApp> {
     }
 
     // Sort alphabetically by name
-    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    apps.sort_by_key(|a| a.name.to_lowercase());
     apps
 }
 
@@ -131,14 +131,12 @@ pub fn list_processes_on_port(port: u16) -> Vec<RunningApp> {
                     continue;
                 }
                 // local_address is hex IP:PORT
-                if let Some(port_hex) = fields[1].split(':').nth(1) {
-                    if let Ok(p) = u16::from_str_radix(port_hex, 16) {
-                        if p == port {
-                            if let Ok(inode) = fields[9].parse::<u64>() {
-                                inodes.insert(inode);
-                            }
-                        }
-                    }
+                if let Some(port_hex) = fields[1].split(':').nth(1)
+                    && let Ok(p) = u16::from_str_radix(port_hex, 16)
+                    && p == port
+                    && let Ok(inode) = fields[9].parse::<u64>()
+                {
+                    inodes.insert(inode);
                 }
             }
         }
@@ -177,20 +175,16 @@ pub fn list_processes_on_port(port: u16) -> Vec<RunningApp> {
             let fd_dir = format!("/proc/{pid}/fd");
             if let Ok(fds) = fs::read_dir(&fd_dir) {
                 for fd in fds.flatten() {
-                    if let Ok(link) = fs::read_link(fd.path()) {
-                        let link_str = link.to_string_lossy().to_string();
-                        // socket:[inode]
-                        if let Some(inode_str) = link_str
+                    if let Ok(link) = fs::read_link(fd.path())
+                        && let Some(inode_str) = link
+                            .to_string_lossy()
                             .strip_prefix("socket:[")
                             .and_then(|s| s.strip_suffix(']'))
-                        {
-                            if let Ok(inode) = inode_str.parse::<u64>() {
-                                if inodes.contains(&inode) {
-                                    pids.push(pid);
-                                    break;
-                                }
-                            }
-                        }
+                        && let Ok(inode) = inode_str.parse::<u64>()
+                        && inodes.contains(&inode)
+                    {
+                        pids.push(pid);
+                        break;
                     }
                 }
             }
