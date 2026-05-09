@@ -132,6 +132,7 @@ Based on macOS app as source of truth. Organized by phase.
   - Detect via `XDG_CURRENT_DESKTOP`, `DESKTOP_SESSION`, or presence of `gnome-control-center`
 - [ ] Some DBUS single-instance apps (blueman-manager, fcitx5-config) fail to launch — known limitation
 - [ ] macOS: dynamic window scaling based on monitor resolution (match linows — 1.0x at 1080p, 1.2x at 1440p, 1.3x max)
+- [ ] Configurable global hotkey — let users change the toggle shortcut (default Alt+Space) via settings
 
 ---
 
