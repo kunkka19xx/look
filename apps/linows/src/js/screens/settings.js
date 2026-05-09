@@ -270,7 +270,7 @@ export function init(exitFn) {
     for (const el of logMenu.children) el.classList.remove('settings-dropdown-active');
     item.classList.add('settings-dropdown-active');
     logMenu.hidden = true;
-    saveConfig({ log_level: item.dataset.value });
+    saveConfig({ backend_log_level: item.dataset.value });
   });
 
   // Launch at login
@@ -283,8 +283,8 @@ export function init(exitFn) {
     try {
       await resetConfig();
       await reloadConfig();
+      await forceIndexRefresh();
       await loadConfig();
-      // Re-apply default theme (Catppuccin)
       applyThemePreset('');
       clearBackgroundImage();
       banner.show('Config reset to defaults', 'success', 1.5);
@@ -425,7 +425,7 @@ export function init(exitFn) {
       // Advanced: log level
       const logDD = document.getElementById('settings-log-level');
       const activeLog = logDD?.querySelector('.settings-dropdown-active');
-      if (activeLog) updates.log_level = activeLog.dataset.value;
+      if (activeLog) updates.backend_log_level = activeLog.dataset.value;
 
       // Advanced: launch at login
       updates.launch_at_login = document.getElementById('settings-launch-login').checked ? 'true' : 'false';
@@ -697,7 +697,7 @@ async function loadConfig() {
     }
 
     // Log level
-    const logLevel = map.log_level || 'error';
+    const logLevel = map.backend_log_level || 'error';
     const logDD = document.getElementById('settings-log-level');
     const logItem = logDD.querySelector(`.settings-dropdown-item[data-value="${logLevel}"]`);
     if (logItem) {
@@ -909,26 +909,52 @@ async function saveConfig(updates) {
 
 let configCache = {};
 
+// Escape/unescape commas in CSV config values
+function csvEscape(s) { return s.replace(/,/g, '\\,'); }
+function csvSplit(raw) {
+  if (!raw) return [];
+  const parts = [];
+  let current = '';
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === '\\' && raw[i + 1] === ',') {
+      current += ',';
+      i++;
+    } else if (raw[i] === ',') {
+      const trimmed = current.trim();
+      if (trimmed) parts.push(trimmed);
+      current = '';
+    } else {
+      current += raw[i];
+    }
+  }
+  const trimmed = current.trim();
+  if (trimmed) parts.push(trimmed);
+  return parts;
+}
+function csvJoin(arr) { return arr.map(csvEscape).join(','); }
+
 async function addDirToConfig(key, folder) {
   const map = await loadConfigMap();
-  const current = (map[key] || '').split(',').map(s => s.trim()).filter(Boolean);
+  const current = csvSplit(map[key] || '');
   if (current.includes(folder)) return;
   current.push(folder);
-  await saveConfig({ [key]: current.join(',') });
-  configCache[key] = current.join(',');
+  const joined = csvJoin(current);
+  await saveConfig({ [key]: joined });
+  configCache[key] = joined;
 }
 
 async function removeDirFromConfig(key, folder) {
   const map = await loadConfigMap();
-  const current = (map[key] || '').split(',').map(s => s.trim()).filter(Boolean);
+  const current = csvSplit(map[key] || '');
   const updated = current.filter(d => d !== folder);
-  await saveConfig({ [key]: updated.join(',') });
-  configCache[key] = updated.join(',');
+  const joined = csvJoin(updated);
+  await saveConfig({ [key]: joined });
+  configCache[key] = joined;
 }
 
 function renderDirList(container, configKey) {
   const val = configCache[configKey] || '';
-  const dirs = val.split(',').map(s => s.trim()).filter(Boolean);
+  const dirs = csvSplit(val);
   container.innerHTML = '';
   for (const dir of dirs) {
     const item = document.createElement('div');
