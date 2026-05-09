@@ -131,6 +131,7 @@ Based on macOS app as source of truth. Organized by phase.
   - Minimal (i3/sway/X11 bare): map to standalone tools (pavucontrol, arandr, blueman-manager, etc.) or hide settings entries
   - Detect via `XDG_CURRENT_DESKTOP`, `DESKTOP_SESSION`, or presence of `gnome-control-center`
 - [ ] Some DBUS single-instance apps (blueman-manager, fcitx5-config) fail to launch — known limitation
+- [ ] macOS: dynamic window scaling based on monitor resolution (match linows — 1.0x at 1080p, 1.2x at 1440p, 1.3x max)
 
 ---
 

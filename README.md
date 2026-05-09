@@ -2,9 +2,9 @@
 
 <img src="assets/icon.png" alt="look icon" width="96" />
 
-A keyboard-first, local-first launcher for macOS and Windows. Open apps, files, folders, clipboard history, and quick commands without leaving the keyboard.
+A keyboard-first, local-first launcher for macOS, Windows, and Linux. Open apps, files, folders, clipboard history, and quick commands without leaving the keyboard.
 
-![Platform](https://img.shields.io/badge/platform-macOS%2015%2B%20%7C%20Windows%2010%2B-lightgrey)
+![Platform](https://img.shields.io/badge/platform-macOS%2015%2B%20%7C%20Windows%2010%2B%20%7C%20Linux-lightgrey)
 📘 [Docs](https://noah-code.com/docs/look) · 📖 [User guide](docs/user-guide.md) · 🎬 [Demo video](https://www.youtube.com/watch?v=4Twb4We3PIs)
 
 https://github.com/user-attachments/assets/176a929d-edbe-46a0-a0c5-229eb9b31c1c
@@ -163,7 +163,17 @@ Out of scope for v1:
 - semantic/vector search
 - full content indexing (names and metadata only)
 
-Platform direction: macOS shipped (SwiftUI, native). Windows + Linux moving to a shared Tauri app (`apps/linows/`) — the current WinUI3 app (`apps/windows/`) will be archived once the Tauri migration reaches feature parity.
+### Platform direction
+
+- **macOS** — shipped and stable (SwiftUI, native). This is the design source of truth.
+- **Windows + Linux** — a new shared Tauri v2 app (`apps/linows/`) is under active development. It targets both platforms with a single codebase (Rust backend, vanilla HTML/CSS/JS frontend). Current status:
+  - Core search, preview, multi-pick, clipboard history, translation — done
+  - Command mode (calc, pomo, kill, shell, sys) — done
+  - Settings screen (appearance, themes, blur, font autocomplete) — done
+  - Platform-aware blur (Mica/Acrylic on Windows, CSS backdrop-filter on Linux)
+  - Dynamic window scaling based on monitor resolution
+  - 6 built-in themes + Custom
+- **Windows (WinUI3)** — the current `apps/windows/` WinUI3/C# app is in maintenance mode (bug fixes only). It will be archived once the Tauri app reaches feature parity.
 
 ## License
 
