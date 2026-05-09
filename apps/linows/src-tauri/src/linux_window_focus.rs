@@ -189,6 +189,12 @@ fn read_active_window(conn: &impl Connection, root: Window, atom: Atom) -> u32 {
 
 static MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
 
+/// Returns true when the X11 active-window monitor is running.
+/// Used to skip Tauri's `Focused(false)` handler on X11 (unreliable on GNOME).
+pub fn is_monitor_running() -> bool {
+    MONITOR_RUNNING.load(Ordering::SeqCst)
+}
+
 /// Start a background thread that:
 /// 1. Retries focus activation after show until focus is confirmed
 /// 2. Auto-hides Look when another window becomes active (focus lost)
