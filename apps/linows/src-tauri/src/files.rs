@@ -70,14 +70,9 @@ pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), String> {
             let encoded: String = p
                 .bytes()
                 .map(|b| match b {
-                    b'A'..=b'Z'
-                    | b'a'..=b'z'
-                    | b'0'..=b'9'
-                    | b'-'
-                    | b'.'
-                    | b'_'
-                    | b'~'
-                    | b'/' => (b as char).to_string(),
+                    b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                        (b as char).to_string()
+                    }
                     _ => format!("%{b:02X}"),
                 })
                 .collect();
@@ -109,9 +104,7 @@ pub fn get_home_dir() -> Option<String> {
     std::env::var("HOME").ok()
 }
 
-const AUDIO_EXTENSIONS: &[&str] = &[
-    "mp3", "m4a", "wav", "aac", "flac", "ogg", "aiff", "alac",
-];
+const AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "wav", "aac", "flac", "ogg", "aiff", "alac"];
 
 #[tauri::command]
 pub fn scan_music_folder(folder: String) -> Vec<String> {
@@ -176,7 +169,10 @@ pub async fn pick_image(app: tauri::AppHandle) -> Option<String> {
     app.dialog()
         .file()
         .set_title("Choose Background Image")
-        .add_filter("Images", &["png", "jpg", "jpeg", "webp", "bmp", "gif", "svg"])
+        .add_filter(
+            "Images",
+            &["png", "jpg", "jpeg", "webp", "bmp", "gif", "svg"],
+        )
         .pick_file(move |file| {
             let result = file.map(|f| f.to_string());
             let _ = tx.send(result);

@@ -110,10 +110,7 @@ fn resolve_app_icon(exec_path: &str, id: Option<&str>) -> Option<String> {
     }
 
     let first_token = exec_path.split_whitespace().next()?;
-    let bin_name = Path::new(first_token)
-        .file_name()?
-        .to_str()?
-        .to_lowercase();
+    let bin_name = Path::new(first_token).file_name()?.to_str()?.to_lowercase();
 
     // Try binary name as icon name
     if let Some(icon) = resolve_themed_icon(&bin_name) {
@@ -243,8 +240,8 @@ fn resolve_file_icon(path: &str) -> Option<String> {
 
 fn mime_icon_name(ext: &str) -> &str {
     match ext {
-        "txt" | "md" | "log" | "csv" | "json" | "xml" | "yaml" | "yml" | "toml" | "ini"
-        | "cfg" | "conf" => "text-x-generic",
+        "txt" | "md" | "log" | "csv" | "json" | "xml" | "yaml" | "yml" | "toml" | "ini" | "cfg"
+        | "conf" => "text-x-generic",
         "rs" | "py" | "js" | "ts" | "c" | "cpp" | "h" | "hpp" | "java" | "go" | "rb" | "sh"
         | "bash" | "zsh" | "fish" | "lua" | "php" | "cs" | "swift" | "kt" | "scala" | "zig"
         | "nix" | "html" | "css" | "scss" | "less" | "jsx" | "tsx" | "vue" | "svelte" => {
@@ -292,7 +289,9 @@ fn build_icon_search_dirs() -> Vec<String> {
     let theme = detect_gtk_icon_theme().unwrap_or_else(|| "Adwaita".to_string());
     let data_dirs = xdg_data_dirs();
 
-    let sizes = ["scalable", "256x256", "128x128", "96x96", "72x72", "64x64", "48x48"];
+    let sizes = [
+        "scalable", "256x256", "128x128", "96x96", "72x72", "64x64", "48x48",
+    ];
     let categories = ["apps", "mimetypes", "places", "devices", "actions"];
 
     // Search active theme in all data dirs, then hicolor fallback

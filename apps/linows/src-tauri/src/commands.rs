@@ -50,7 +50,11 @@ pub fn search(state: State<'_, AppState>, query: String, limit: u32) -> SearchPa
 }
 
 #[tauri::command]
-pub fn record_usage(state: State<'_, AppState>, candidate_id: String, action: String) -> UsageResult {
+pub fn record_usage(
+    state: State<'_, AppState>,
+    candidate_id: String,
+    action: String,
+) -> UsageResult {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)

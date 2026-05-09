@@ -38,8 +38,7 @@ pub fn list_processes() -> Vec<RunningApp> {
             if proc_uid != my_uid {
                 continue;
             }
-            let proc_name = parse_status_field(&status, "Name:")
-                .unwrap_or_default();
+            let proc_name = parse_status_field(&status, "Name:").unwrap_or_default();
             let rss = parse_status_field(&status, "VmRSS:")
                 .and_then(|v| v.parse::<u64>().ok())
                 .unwrap_or(0);
@@ -56,7 +55,10 @@ pub fn list_processes() -> Vec<RunningApp> {
     let mut norm_procs: HashMap<String, Vec<(u32, u64)>> = HashMap::new();
     for (proc_name, pids) in &procs {
         // Original name
-        norm_procs.entry(proc_name.to_lowercase()).or_default().extend(pids);
+        norm_procs
+            .entry(proc_name.to_lowercase())
+            .or_default()
+            .extend(pids);
         // Strip NixOS wrapper: ".firefox-wrappe" → "firefox", ".DiscordPTB-wra" → "DiscordPTB"
         // The /proc/status Name field is truncated to 15 chars, so "-wrapped" may
         // appear as "-wrappe", "-wrapp", "-wrap", "-wra", "-wr" etc.
@@ -73,7 +75,10 @@ pub fn list_processes() -> Vec<RunningApp> {
             stripped
         };
         if !base.is_empty() && base != proc_name {
-            norm_procs.entry(base.to_lowercase()).or_default().extend(pids);
+            norm_procs
+                .entry(base.to_lowercase())
+                .or_default()
+                .extend(pids);
         }
     }
 
@@ -175,7 +180,10 @@ pub fn list_processes_on_port(port: u16) -> Vec<RunningApp> {
                     if let Ok(link) = fs::read_link(fd.path()) {
                         let link_str = link.to_string_lossy().to_string();
                         // socket:[inode]
-                        if let Some(inode_str) = link_str.strip_prefix("socket:[").and_then(|s| s.strip_suffix(']')) {
+                        if let Some(inode_str) = link_str
+                            .strip_prefix("socket:[")
+                            .and_then(|s| s.strip_suffix(']'))
+                        {
                             if let Ok(inode) = inode_str.parse::<u64>() {
                                 if inodes.contains(&inode) {
                                     pids.push(pid);
@@ -193,18 +201,24 @@ pub fn list_processes_on_port(port: u16) -> Vec<RunningApp> {
     pids.dedup();
 
     // Build RunningApp entries
-    pids.iter().map(|&pid| {
-        let name = fs::read_to_string(format!("/proc/{pid}/comm"))
-            .unwrap_or_default()
-            .trim()
-            .to_string();
-        RunningApp {
-            name: if name.is_empty() { format!("PID {pid}") } else { name },
-            pid,
-            desktop_id: None,
-            exec: None,
-        }
-    }).collect()
+    pids.iter()
+        .map(|&pid| {
+            let name = fs::read_to_string(format!("/proc/{pid}/comm"))
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            RunningApp {
+                name: if name.is_empty() {
+                    format!("PID {pid}")
+                } else {
+                    name
+                },
+                pid,
+                desktop_id: None,
+                exec: None,
+            }
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -241,7 +255,9 @@ fn scan_desktop_files() -> Vec<DesktopEntry> {
 }
 
 fn scan_desktop_dir(dir: &str, entries: &mut Vec<DesktopEntry>) {
-    let Ok(read_dir) = fs::read_dir(dir) else { return };
+    let Ok(read_dir) = fs::read_dir(dir) else {
+        return;
+    };
     for entry in read_dir.flatten() {
         let path = entry.path();
         if path.is_dir() {
@@ -250,7 +266,9 @@ fn scan_desktop_dir(dir: &str, entries: &mut Vec<DesktopEntry>) {
             }
             continue;
         }
-        let Some(path_str) = path.to_str() else { continue };
+        let Some(path_str) = path.to_str() else {
+            continue;
+        };
         if !path_str.ends_with(".desktop") {
             continue;
         }
@@ -359,7 +377,8 @@ fn read_my_uid() -> u32 {
 }
 
 fn parse_status_field(status: &str, prefix: &str) -> Option<String> {
-    status.lines()
+    status
+        .lines()
         .find(|l| l.starts_with(prefix))
         .and_then(|l| l.split_whitespace().nth(1))
         .map(|s| s.to_string())

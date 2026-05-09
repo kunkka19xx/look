@@ -61,7 +61,7 @@ pub fn translate(text: String, target_lang: String) -> TranslateResult {
                     original: text,
                     translated: String::new(),
                     error: Some("Response decode failed".into()),
-                }
+                };
             }
         },
         _ => {
@@ -69,7 +69,7 @@ pub fn translate(text: String, target_lang: String) -> TranslateResult {
                 original: text,
                 translated: String::new(),
                 error: Some("Translation request failed".into()),
-            }
+            };
         }
     };
 
@@ -80,7 +80,7 @@ pub fn translate(text: String, target_lang: String) -> TranslateResult {
                 original: text,
                 translated: String::new(),
                 error: Some("Response parse failed".into()),
-            }
+            };
         }
     };
 

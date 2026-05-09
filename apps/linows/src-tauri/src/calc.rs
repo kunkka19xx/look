@@ -109,8 +109,8 @@ fn tokenize(expr: &str) -> Result<Vec<Token>, String> {
                 match lower.as_str() {
                     "pi" => tokens.push(Token::Num(consts::PI)),
                     "e" => tokens.push(Token::Num(consts::E)),
-                    "sqrt" | "abs" | "round" | "floor" | "ceil"
-                    | "sin" | "cos" | "tan" | "log" | "ln" => {
+                    "sqrt" | "abs" | "round" | "floor" | "ceil" | "sin" | "cos" | "tan" | "log"
+                    | "ln" => {
                         tokens.push(Token::Func(lower));
                     }
                     // v/V prefix as sqrt shorthand: v16 → sqrt(16)
@@ -359,11 +359,7 @@ fn format_with_commas_int(n: i64) -> String {
     }
     result.reverse();
     let s = String::from_utf8(result).unwrap();
-    if neg {
-        format!("-{s}")
-    } else {
-        s
-    }
+    if neg { format!("-{s}") } else { s }
 }
 
 #[cfg(test)]
