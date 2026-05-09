@@ -5,7 +5,7 @@ const MAX_FACTORIAL: u64 = 170;
 
 #[tauri::command]
 pub fn eval_calc(expr: String) -> Result<String, String> {
-    eval_expression(&expr).map(|v| format_number(v))
+    eval_expression(&expr).map(format_number)
 }
 
 fn eval_expression(expr: &str) -> Result<f64, String> {

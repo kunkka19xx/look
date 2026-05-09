@@ -53,14 +53,13 @@ pub fn set_config(updates: Vec<ConfigUpdate>) -> Result<(), String> {
         let mut found = false;
         for line in &mut lines {
             let trimmed = line.trim();
-            if !trimmed.starts_with('#') {
-                if let Some((k, _)) = trimmed.split_once('=') {
-                    if k.trim() == update.key {
-                        *line = new_line.clone();
-                        found = true;
-                        break;
-                    }
-                }
+            if !trimmed.starts_with('#')
+                && let Some((k, _)) = trimmed.split_once('=')
+                && k.trim() == update.key
+            {
+                *line = new_line.clone();
+                found = true;
+                break;
             }
         }
         if !found {

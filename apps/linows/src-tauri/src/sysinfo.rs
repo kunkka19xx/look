@@ -205,8 +205,7 @@ pub fn get_system_info() -> Vec<Vec<SysInfoEntry>> {
 }
 
 fn parse_kb(s: &str) -> u64 {
-    s.trim()
-        .split_whitespace()
+    s.split_whitespace()
         .next()
         .and_then(|v| v.parse().ok())
         .unwrap_or(0)

@@ -150,10 +150,10 @@ fn main() {
                 // Auto-hide on focus loss (works on macOS/Windows/Wayland)
                 let w = window.clone();
                 window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Focused(false) = event {
-                        if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
-                            let _ = w.hide();
-                        }
+                    if let tauri::WindowEvent::Focused(false) = event
+                        && now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300
+                    {
+                        let _ = w.hide();
                     }
                 });
             } else {

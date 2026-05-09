@@ -191,18 +191,17 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
         .and_then(find_desktop_file);
 
     if let Some(ref real_path) = desktop_file {
-        if let Some(wm_class) = parse_desktop_field(real_path, "StartupWMClass") {
-            if try_focus_window(&wm_class) {
-                return Ok(());
-            }
+        if let Some(wm_class) = parse_desktop_field(real_path, "StartupWMClass")
+            && try_focus_window(&wm_class)
+        {
+            return Ok(());
         }
         if let Some(name) = std::path::Path::new(real_path)
             .file_stem()
             .and_then(|f| f.to_str())
+            && try_focus_window(name)
         {
-            if try_focus_window(name) {
-                return Ok(());
-            }
+            return Ok(());
         }
     }
 
