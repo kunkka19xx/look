@@ -1,4 +1,8 @@
 target/
 gen/
-icons/
 ~/
+icons/android/
+icons/ios/
+icons/Square*
+icons/StoreLogo.png
+icons/icon.icns
