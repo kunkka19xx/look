@@ -135,6 +135,7 @@ Based on macOS app as source of truth. Organized by phase.
 - [ ] macOS: dynamic window scaling based on monitor resolution (match linows — 1.0x at 1080p, 1.2x at 1440p, 1.3x max)
 - [ ] Configurable global hotkey — let users change the toggle shortcut (default Alt+Space) via settings
 - [ ] Structured logging — wire up Backend Log Level setting (error/warn/info/debug) to control output; replace `eprintln!` with proper log macros
+- [ ] Tests — add unit/integration tests for backend modules (calc, config, autostart, process, sysinfo, clipboard, shell)
 
 ---
 

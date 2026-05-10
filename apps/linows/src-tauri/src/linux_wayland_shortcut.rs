@@ -10,6 +10,10 @@
 //! This is the same approach used by other launchers (ulauncher, etc.) on GNOME Wayland.
 
 use std::process::Command;
+use std::sync::Mutex;
+
+/// Saved original value of activate-window-menu before Look disabled it.
+static SAVED_WM_BINDING: Mutex<Option<String>> = Mutex::new(None);
 
 const DBUS_NAME: &str = "com.look.Desktop";
 const DBUS_PATH: &str = "/com/look/Desktop";
@@ -87,9 +91,13 @@ fn ensure_gnome_keybinding() {
     );
     gsettings_set(MEDIA_KEYS_SCHEMA, "custom-keybindings", &new_value);
 
-    // Disable GNOME's default Alt+Space (window menu) so it doesn't shadow ours
+    // Disable GNOME's default Alt+Space (window menu) so it doesn't shadow ours.
+    // Save the original value so we can restore it on exit.
     let wm_binding = gsettings_get("org.gnome.desktop.wm.keybindings", "activate-window-menu");
     if wm_binding.contains("<Alt>space") {
+        if let Ok(mut saved) = SAVED_WM_BINDING.lock() {
+            *saved = Some(wm_binding);
+        }
         gsettings_set(
             "org.gnome.desktop.wm.keybindings",
             "activate-window-menu",
@@ -122,12 +130,15 @@ pub fn cleanup_gnome_keybinding() {
     };
     gsettings_set(MEDIA_KEYS_SCHEMA, "custom-keybindings", &new_value);
 
-    // Restore GNOME's default Alt+Space (window menu)
-    gsettings_set(
-        "org.gnome.desktop.wm.keybindings",
-        "activate-window-menu",
-        "['<Alt>space']",
-    );
+    // Restore the original activate-window-menu binding
+    let original = SAVED_WM_BINDING.lock().ok().and_then(|guard| guard.clone());
+    if let Some(val) = original {
+        gsettings_set(
+            "org.gnome.desktop.wm.keybindings",
+            "activate-window-menu",
+            &val,
+        );
+    }
 
     eprintln!("[look] Removed GNOME keybinding for Alt+Space");
 }
