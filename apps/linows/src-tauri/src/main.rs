@@ -285,6 +285,14 @@ fn main() {
             music::music_stop,
             music::music_is_finished,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running look desktop");
+        .build(tauri::generate_context!())
+        .expect("error while building look desktop")
+        .run(|_app, event| {
+            #[cfg(target_os = "linux")]
+            if let tauri::RunEvent::Exit = event
+                && is_wayland()
+            {
+                linux_wayland_shortcut::cleanup_gnome_keybinding();
+            }
+        });
 }

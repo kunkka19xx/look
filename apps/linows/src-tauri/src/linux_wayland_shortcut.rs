@@ -15,7 +15,8 @@ const DBUS_NAME: &str = "com.look.Desktop";
 const DBUS_PATH: &str = "/com/look/Desktop";
 const DBUS_IFACE: &str = "com.look.Desktop";
 
-const KEYBINDING_PATH: &str = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/look-toggle/";
+const KEYBINDING_PATH: &str =
+    "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/look-toggle/";
 const KEYBINDING_SCHEMA: &str = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding";
 const MEDIA_KEYS_SCHEMA: &str = "org.gnome.settings-daemon.plugins.media-keys";
 
@@ -46,8 +47,7 @@ fn ensure_gnome_keybinding() {
     let existing = gsettings_get(MEDIA_KEYS_SCHEMA, "custom-keybindings");
     if existing.contains(KEYBINDING_PATH) {
         // Already registered, verify the binding is still correct
-        let current_binding =
-            gsettings_get_at(KEYBINDING_SCHEMA, "binding", KEYBINDING_PATH);
+        let current_binding = gsettings_get_at(KEYBINDING_SCHEMA, "binding", KEYBINDING_PATH);
         if current_binding.contains("<Alt>space") {
             return;
         }
@@ -59,8 +59,18 @@ fn ensure_gnome_keybinding() {
     );
 
     gsettings_set_at(KEYBINDING_SCHEMA, "name", "'Look Toggle'", KEYBINDING_PATH);
-    gsettings_set_at(KEYBINDING_SCHEMA, "command", &format!("'{toggle_cmd}'"), KEYBINDING_PATH);
-    gsettings_set_at(KEYBINDING_SCHEMA, "binding", "'<Alt>space'", KEYBINDING_PATH);
+    gsettings_set_at(
+        KEYBINDING_SCHEMA,
+        "command",
+        &format!("'{toggle_cmd}'"),
+        KEYBINDING_PATH,
+    );
+    gsettings_set_at(
+        KEYBINDING_SCHEMA,
+        "binding",
+        "'<Alt>space'",
+        KEYBINDING_PATH,
+    );
 
     // Add our path to the custom-keybindings list
     let mut paths: Vec<String> = parse_gsettings_array(&existing);
@@ -77,6 +87,29 @@ fn ensure_gnome_keybinding() {
     );
     gsettings_set(MEDIA_KEYS_SCHEMA, "custom-keybindings", &new_value);
     eprintln!("[look] Registered GNOME keybinding: Alt+Space → Look toggle");
+}
+
+/// Remove the GNOME custom keybinding registered by Look.
+pub fn cleanup_gnome_keybinding() {
+    let existing = gsettings_get(MEDIA_KEYS_SCHEMA, "custom-keybindings");
+    let paths: Vec<String> = parse_gsettings_array(&existing)
+        .into_iter()
+        .filter(|p| p != KEYBINDING_PATH)
+        .collect();
+    let new_value = if paths.is_empty() {
+        "@as []".to_string()
+    } else {
+        format!(
+            "[{}]",
+            paths
+                .iter()
+                .map(|p| format!("'{p}'"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    gsettings_set(MEDIA_KEYS_SCHEMA, "custom-keybindings", &new_value);
+    eprintln!("[look] Removed GNOME keybinding for Alt+Space");
 }
 
 /// Run a D-Bus service that listens for Toggle method calls.

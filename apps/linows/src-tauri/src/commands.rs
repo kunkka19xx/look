@@ -263,9 +263,7 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
                     .file_name()
                     .and_then(|f| f.to_str())
                     .unwrap_or("");
-                if !desktop_id.is_empty()
-                    && crate::linux_gnome_ext::try_focus_app(desktop_id)
-                {
+                if !desktop_id.is_empty() && crate::linux_gnome_ext::try_focus_app(desktop_id) {
                     return Ok(());
                 }
             }
@@ -352,7 +350,6 @@ fn try_focus_window(wm_class: &str) -> bool {
 
     false
 }
-
 
 fn parse_desktop_field(path: &str, field: &str) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
