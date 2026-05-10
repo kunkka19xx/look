@@ -29,7 +29,7 @@ static HAS_FOCUS: AtomicBool = AtomicBool::new(false);
 
 /// Call once after the window is mapped to cache Look's X11 window ID.
 pub fn cache_self_window() {
-    if let Some(wid) = find_window_by_class("look-desktop") {
+    if let Some(wid) = find_window_by_class("lookapp") {
         SELF_WID.store(wid, Ordering::SeqCst);
     }
 }

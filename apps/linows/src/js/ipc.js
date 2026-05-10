@@ -156,3 +156,11 @@ export async function musicStopBackend() {
 export async function musicIsFinished() {
   return invoke('music_is_finished');
 }
+
+export async function setAutostart(enabled) {
+  return invoke('set_autostart', { enabled });
+}
+
+export async function getAutostart() {
+  return invoke('get_autostart');
+}

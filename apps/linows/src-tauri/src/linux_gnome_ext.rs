@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-const EXT_UUID: &str = "look-integration@look-desktop";
+const EXT_UUID: &str = "look-integration@lookapp";
 const DBUS_NAME: &str = "com.look.ShellIntegration";
 const DBUS_PATH: &str = "/com/look/ShellIntegration";
 const DBUS_IFACE: &str = "com.look.ShellIntegration";
@@ -22,8 +22,9 @@ pub fn ensure_installed() {
 
     // Check if already installed with current version
     let needs_install = if metadata_path.exists() && extension_path.exists() {
-        let existing = std::fs::read_to_string(&extension_path).unwrap_or_default();
-        existing != EXTENSION_JS
+        let existing_ext = std::fs::read_to_string(&extension_path).unwrap_or_default();
+        let existing_meta = std::fs::read_to_string(&metadata_path).unwrap_or_default();
+        existing_ext != EXTENSION_JS || existing_meta != METADATA_JSON
     } else {
         true
     };

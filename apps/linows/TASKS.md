@@ -119,7 +119,7 @@ Based on macOS app as source of truth. Organized by phase.
 - [x] Font scale control (slider)
 - [x] Config file persistence (.look.config format, shared with macOS)
 - [x] Dynamic window scaling — 1.0x at 1080p, 1.2x at 1440p, 1.3x max
-- [ ] Auto-start registration (Windows registry, Linux .desktop autostart)
+- [x] Auto-start registration (Linux .desktop autostart, enabled by default on first launch)
 - [ ] UWP app seeding (Windows — enumerate shell:AppsFolder via PowerShell)
 
 ---
@@ -131,6 +131,7 @@ Based on macOS app as source of truth. Organized by phase.
   - Minimal (i3/sway/X11 bare): map to standalone tools (pavucontrol, arandr, blueman-manager, etc.) or hide settings entries
   - Detect via `XDG_CURRENT_DESKTOP`, `DESKTOP_SESSION`, or presence of `gnome-control-center`
 - [ ] Some DBUS single-instance apps (blueman-manager, fcitx5-config) fail to launch — known limitation
+- [ ] D-Bus activated apps (Ptyxis/Terminal on Ubuntu 26.04) need 2x `gio launch` — first call registers service, second opens window. Workaround: retry `gio launch` if no window appears within ~500ms
 - [ ] macOS: dynamic window scaling based on monitor resolution (match linows — 1.0x at 1080p, 1.2x at 1440p, 1.3x max)
 - [ ] Configurable global hotkey — let users change the toggle shortcut (default Alt+Space) via settings
 

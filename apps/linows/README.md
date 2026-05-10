@@ -65,6 +65,55 @@ cargo tauri dev       # development
 cargo tauri build     # production
 ```
 
+**NixOS dev shell** (uses flake.nix):
+
+```bash
+nix develop
+cargo tauri dev
+cargo tauri build --bundles deb    # build .deb package
+```
+
+## Testing on Ubuntu VM (virt-manager)
+
+**Build .deb on NixOS host:**
+
+```bash
+nix develop --command cargo tauri build --bundles deb
+# Output: src-tauri/target/release/bundle/deb/Look_*.deb
+```
+
+**Get VM IP** (on the VM):
+
+```bash
+ip addr | grep inet
+# Look for 192.168.122.x on enp1s0
+```
+
+**Copy .deb to VM** (from host):
+
+```bash
+scp -O src-tauri/target/release/bundle/deb/Look_*.deb ubuntu@192.168.122.x:/tmp/
+```
+
+**Install on VM:**
+
+```bash
+sudo dpkg -r look                          # remove old version
+sudo apt install -f                        # install missing deps (xclip etc.)
+sudo dpkg -i /tmp/Look_*.deb              # install new version
+```
+
+**NixOS-built binaries need patching** (NixOS linker path doesn't exist on Ubuntu):
+
+```bash
+sudo patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 /usr/bin/lookapp
+```
+
+**VM without GPU** (no `/dev/dri`): the app auto-detects this and sets
+`WEBKIT_DISABLE_GPU=1` + `WEBKIT_DISABLE_DMABUF_RENDERER=1` to prevent WebKitGTK segfaults.
+
+**GNOME Shell extension** requires log out/in after first install to load.
+
 **For dev in VM (nixos)**
 
 ```bash

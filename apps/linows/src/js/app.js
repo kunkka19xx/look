@@ -10,7 +10,7 @@ import * as translatePanel from './components/translate.js';
 import * as platform from './platform.js';
 import { load } from './html-loader.js';
 import {
-  onWindowShown, onIndexReady, getHomeDir, copyFilesToClipboard,
+  onWindowShown, onIndexReady, requestIndexRefresh, getHomeDir, copyFilesToClipboard,
   evalCalc, runShellCommand, getSystemInfo,
   listProcesses, listProcessesOnPort, killProcess, getIcon,
   copyToClipboard, deleteClipboardEntry,
@@ -184,6 +184,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   onWindowShown(() => {
     queryInput.focus();
     queryInput.select();
+    requestIndexRefresh();
   });
 
   onIndexReady(() => {

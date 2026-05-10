@@ -86,6 +86,18 @@ fn ensure_gnome_keybinding() {
             .join(", ")
     );
     gsettings_set(MEDIA_KEYS_SCHEMA, "custom-keybindings", &new_value);
+
+    // Disable GNOME's default Alt+Space (window menu) so it doesn't shadow ours
+    let wm_binding = gsettings_get("org.gnome.desktop.wm.keybindings", "activate-window-menu");
+    if wm_binding.contains("<Alt>space") {
+        gsettings_set(
+            "org.gnome.desktop.wm.keybindings",
+            "activate-window-menu",
+            "['']",
+        );
+        eprintln!("[look] Disabled GNOME default Alt+Space (window menu) to avoid conflict");
+    }
+
     eprintln!("[look] Registered GNOME keybinding: Alt+Space → Look toggle");
 }
 
@@ -109,6 +121,14 @@ pub fn cleanup_gnome_keybinding() {
         )
     };
     gsettings_set(MEDIA_KEYS_SCHEMA, "custom-keybindings", &new_value);
+
+    // Restore GNOME's default Alt+Space (window menu)
+    gsettings_set(
+        "org.gnome.desktop.wm.keybindings",
+        "activate-window-menu",
+        "['<Alt>space']",
+    );
+
     eprintln!("[look] Removed GNOME keybinding for Alt+Space");
 }
 

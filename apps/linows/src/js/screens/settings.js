@@ -1,4 +1,4 @@
-import { getConfig, setConfig, forceIndexRefresh, reloadConfig, resetConfig, listFonts, pickFolder, pickImage } from '../ipc.js';
+import { getConfig, setConfig, forceIndexRefresh, reloadConfig, resetConfig, listFonts, pickFolder, pickImage, setAutostart, getAutostart } from '../ipc.js';
 import * as banner from '../components/banner.js';
 import * as platform from '../platform.js';
 
@@ -269,7 +269,9 @@ export function init(exitFn) {
 
   // Launch at login
   document.getElementById('settings-launch-login').addEventListener('change', (e) => {
-    saveConfig({ launch_at_login: e.target.checked ? 'true' : 'false' });
+    const enabled = e.target.checked;
+    saveConfig({ launch_at_login: enabled ? 'true' : 'false' });
+    setAutostart(enabled).catch(() => {});
   });
 
   // Fresh config
@@ -690,8 +692,13 @@ async function loadConfig() {
       logItem.classList.add('settings-dropdown-active');
     }
 
-    // Launch at login
-    document.getElementById('settings-launch-login').checked = map.launch_at_login === 'true';
+    // Launch at login — read actual system state
+    try {
+      const autostartEnabled = await getAutostart();
+      document.getElementById('settings-launch-login').checked = autostartEnabled;
+    } catch {
+      document.getElementById('settings-launch-login').checked = map.launch_at_login === 'true';
+    }
   } catch (err) {
     console.error('Failed to load config:', err);
   }

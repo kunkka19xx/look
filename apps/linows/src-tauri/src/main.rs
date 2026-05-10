@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod autostart;
 mod calc;
 mod clipboard;
 mod commands;
@@ -122,6 +123,26 @@ fn main() {
     if std::env::args().any(|a| a == "--version" || a == "-V") {
         println!("lookapp {}", env!("APP_VERSION"));
         return;
+    }
+
+    // Disable WebKitGTK GPU rendering in environments without GPU (VMs, containers).
+    // Without this, WebKitGTK segfaults when no DRI device is available.
+    // SAFETY: Called at startup before any threads are spawned.
+    #[cfg(target_os = "linux")]
+    if !std::path::Path::new("/dev/dri").exists() {
+        unsafe {
+            std::env::set_var("WEBKIT_DISABLE_GPU", "1");
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+    }
+
+    // Enable autostart on first launch (only if user hasn't explicitly configured it)
+    {
+        let config_path = config::config_file_path();
+        let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
+        if !config_content.contains("launch_at_login") {
+            let _ = autostart::set_autostart(true);
+        }
     }
 
     let mut builder = tauri::Builder::default()
@@ -289,6 +310,9 @@ fn main() {
             music::music_resume,
             music::music_stop,
             music::music_is_finished,
+            // Autostart
+            autostart::set_autostart,
+            autostart::get_autostart,
         ])
         .build(tauri::generate_context!())
         .expect("error while building look desktop")
