@@ -54,7 +54,7 @@ The WinUI3 app remains in `apps/windows/` (bug fixes only) until this migration 
 |----------------|-----------|
 | GNOME Xorg     | Testing   |
 | i3 X11         | Testing   |
-| GNOME Wayland  | Untested  |
+| GNOME Wayland  | Testing   |
 | Sway           | Untested  |
 
 ## Build

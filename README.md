@@ -61,9 +61,25 @@ sudo dpkg -r look-desktop
 rm Look_*.AppImage
 ```
 
-> **NixOS:** AppImage does not work on NixOS due to the non-FHS filesystem layout. Build from source instead: `cd apps/linows && nix develop -c cargo tauri build`. A flake package (`nix run`) is planned.
+**NixOS (flake):**
 
-More install methods coming soon (AUR, NixOS flake). To build from source, see [apps/linows/BUILDING.md](apps/linows/BUILDING.md).
+```bash
+# Run directly
+nix run github:kunkka19xx/look?dir=apps/linows
+
+# Install to profile
+nix profile install github:kunkka19xx/look?dir=apps/linows
+```
+
+Declarative (in your NixOS/Home Manager flake):
+
+```nix
+inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
+# then in config:
+environment.systemPackages = [ inputs.look.packages.${system}.default ];
+```
+
+More install methods coming soon (AUR). To build from source, see [apps/linows/BUILDING.md](apps/linows/BUILDING.md).
 
 <details>
 <summary>Other install options (curl, pin version, update/uninstall)</summary>

@@ -108,15 +108,38 @@ Steps to implement:
 
 ### NixOS (flake)
 
-**Target:** `nix run github:kunkka19xx/look#look-desktop`
+**Status:** Available now.
 
-Steps to implement:
-1. Extend `flake.nix` with `packages.default` output
-2. Use `rustPlatform.buildRustPackage` with `cargoLock.lockFile`
-3. Use `wrapGAppsHook` for GTK runtime wrapping
-4. Filter source to `core/` + `apps/linows/` (monorepo path deps)
-5. `postInstall`: install .desktop file + icon
-6. Test: `nix build .#default` from `apps/linows/`
+```bash
+# Run directly
+nix run github:kunkka19xx/look?dir=apps/linows
+
+# Install to profile
+nix profile install github:kunkka19xx/look?dir=apps/linows
+
+# Build locally
+cd apps/linows
+nix build .#default
+./result/bin/look-desktop
+```
+
+**Declarative install** (NixOS configuration or Home Manager):
+
+```nix
+# flake.nix — add to inputs
+inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
+
+# Option A: use package directly
+environment.systemPackages = [ inputs.look.packages.${system}.default ];
+
+# Option B: use overlay
+nixpkgs.overlays = [ inputs.look.overlays.default ];
+environment.systemPackages = [ pkgs.look-desktop ];
+```
+
+The package uses `wrapGAppsHook3` to wrap the binary with all GTK/GIO runtime deps and CLI tools (`gsettings`, `xdg-open`, `fc-list`, `curl`, etc.) in PATH.
+
+**Build speed note:** First build compiles all dependencies from source (~5-10 min). Subsequent builds with unchanged `Cargo.lock` use the cached vendor derivation and only recompile the app code. For CI, use `cachix` or `attic` to push build artifacts so users get pre-built binaries.
 
 ### AppImage (universal)
 
