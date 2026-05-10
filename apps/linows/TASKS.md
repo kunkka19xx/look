@@ -134,6 +134,7 @@ Based on macOS app as source of truth. Organized by phase.
 - [ ] D-Bus activated apps (Ptyxis/Terminal on Ubuntu 26.04) need 2x `gio launch` — first call registers service, second opens window. Workaround: retry `gio launch` if no window appears within ~500ms
 - [ ] macOS: dynamic window scaling based on monitor resolution (match linows — 1.0x at 1080p, 1.2x at 1440p, 1.3x max)
 - [ ] Configurable global hotkey — let users change the toggle shortcut (default Alt+Space) via settings
+- [ ] Structured logging — wire up Backend Log Level setting (error/warn/info/debug) to control output; replace `eprintln!` with proper log macros
 
 ---
 
