@@ -1,0 +1,7 @@
+{
+  "name": "Look Desktop Integration",
+  "description": "Allows Look launcher to focus existing app windows on GNOME Wayland",
+  "uuid": "look-integration@look-desktop",
+  "shell-version": ["45", "46", "47", "48"],
+  "url": ""
+}

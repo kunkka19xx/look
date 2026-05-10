@@ -247,18 +247,42 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
         .and_then(|id| id.strip_prefix("app:"))
         .and_then(find_desktop_file);
 
+    // Try to focus an existing window before launching a new instance.
+    #[cfg(target_os = "linux")]
+    let is_wayland = crate::linux_transparency::is_wayland();
+    #[cfg(not(target_os = "linux"))]
+    let is_wayland = false;
+
     if let Some(ref real_path) = desktop_file {
-        if let Some(wm_class) = parse_desktop_field(real_path, "StartupWMClass")
-            && try_focus_window(&wm_class)
-        {
-            return Ok(());
-        }
-        if let Some(name) = std::path::Path::new(real_path)
-            .file_stem()
-            .and_then(|f| f.to_str())
-            && try_focus_window(name)
-        {
-            return Ok(());
+        if is_wayland {
+            // Wayland: use GNOME Shell extension to focus existing windows.
+            // Same mechanism GNOME's own Activities search uses internally.
+            #[cfg(target_os = "linux")]
+            {
+                let desktop_id = std::path::Path::new(real_path)
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .unwrap_or("");
+                if !desktop_id.is_empty()
+                    && crate::linux_gnome_ext::try_focus_app(desktop_id)
+                {
+                    return Ok(());
+                }
+            }
+        } else {
+            // X11: focus by WM_CLASS via x11rb
+            if let Some(wm_class) = parse_desktop_field(real_path, "StartupWMClass")
+                && try_focus_window(&wm_class)
+            {
+                return Ok(());
+            }
+            if let Some(name) = std::path::Path::new(real_path)
+                .file_stem()
+                .and_then(|f| f.to_str())
+                && try_focus_window(name)
+            {
+                return Ok(());
+            }
         }
     }
 
@@ -328,6 +352,7 @@ fn try_focus_window(wm_class: &str) -> bool {
 
     false
 }
+
 
 fn parse_desktop_field(path: &str, field: &str) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
