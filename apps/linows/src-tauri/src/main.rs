@@ -9,6 +9,8 @@ mod files;
 #[cfg(target_os = "linux")]
 mod linux_transparency;
 #[cfg(target_os = "linux")]
+mod linux_wayland_shortcut;
+#[cfg(target_os = "linux")]
 mod linux_window_focus;
 mod music;
 mod platform;
@@ -69,8 +71,53 @@ fn scaled_window_size(screen_w: u32, screen_h: u32, scale: f64) -> (u32, u32) {
     (w, h)
 }
 
+/// Toggle the main window: hide if visible, show (centered) if hidden.
+fn toggle_window(app_handle: &tauri::AppHandle) {
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return;
+    };
+    if window.is_visible().unwrap_or(false) {
+        #[cfg(target_os = "linux")]
+        linux_window_focus::notify_hidden();
+        let _ = window.hide();
+    } else if now_ms() - LAST_AUTO_HIDDEN_AT.load(Ordering::Relaxed) > 200 {
+        // Only show if auto-hide didn't JUST fire.
+        // On GNOME X11, Focused(false) races with this handler —
+        // auto-hide hides the window before we run, so is_visible
+        // is false.  The 200ms guard prevents re-showing.
+        LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
+        let _ = window.set_always_on_top(true);
+        let _ = window.show();
+        if let Ok(Some(monitor)) = window.current_monitor() {
+            let screen = monitor.size();
+            let scale = monitor.scale_factor();
+            let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
+            let _ = window.set_size(tauri::PhysicalSize::new(win_w, win_h));
+            let x = ((screen.width as f64 - win_w as f64) / 2.0) as i32;
+            let y = ((screen.height as f64 - win_h as f64) / 2.0) as i32;
+            let _ = window.set_position(PhysicalPosition::new(x, y));
+        }
+        let _ = window.emit("window-shown", ());
+
+        // On Linux/X11, bypass Mutter's focus-stealing prevention
+        // by bumping _NET_WM_USER_TIME before activation.
+        #[cfg(target_os = "linux")]
+        if !linux_transparency::is_wayland() {
+            linux_window_focus::activate_self();
+            linux_window_focus::notify_shown();
+        }
+
+        let _ = window.set_focus();
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn is_wayland() -> bool {
+    linux_transparency::is_wayland()
+}
+
 fn main() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the main window when a second instance is launched
             if let Some(window) = app.get_webview_window("main") {
@@ -78,64 +125,55 @@ fn main() {
                 let _ = window.set_focus();
             }
         }))
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
-        .manage(platform::IconCache::new())
-        .setup(|app| {
+        .manage(platform::IconCache::new());
+
+    // On X11 (or non-Linux), register the global shortcut plugin.
+    // On Wayland, we use the XDG Desktop Portal instead (set up in .setup()).
+    #[cfg(target_os = "linux")]
+    let use_wayland = is_wayland();
+    #[cfg(not(target_os = "linux"))]
+    let use_wayland = false;
+
+    if !use_wayland {
+        builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
+    }
+
+    builder
+        .setup(move |app| {
             AppState::init_app_handle(app);
             clipboard::start_monitor();
             let app_handle = app.handle().clone();
 
-            // Register Alt+Space global hotkey
-            use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            app.global_shortcut()
-                .on_shortcut("Alt+Space", move |_app, _shortcut, event| {
-                    if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        return;
-                    }
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        if window.is_visible().unwrap_or(false) {
-                            #[cfg(target_os = "linux")]
-                            linux_window_focus::notify_hidden();
-                            let _ = window.hide();
-                        } else if now_ms() - LAST_AUTO_HIDDEN_AT.load(Ordering::Relaxed) > 200 {
-                            // Only show if auto-hide didn't JUST fire.
-                            // On GNOME X11, Focused(false) races with this handler —
-                            // auto-hide hides the window before we run, so is_visible
-                            // is false.  The 200ms guard prevents re-showing.
-                            LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
-                            let _ = window.set_always_on_top(true);
-                            let _ = window.show();
-                            if let Ok(Some(monitor)) = window.current_monitor() {
-                                let screen = monitor.size();
-                                let scale = monitor.scale_factor();
-                                let (win_w, win_h) =
-                                    scaled_window_size(screen.width, screen.height, scale);
-                                let _ = window.set_size(tauri::PhysicalSize::new(win_w, win_h));
-                                let x = ((screen.width as f64 - win_w as f64) / 2.0) as i32;
-                                let y = ((screen.height as f64 - win_h as f64) / 2.0) as i32;
-                                let _ = window.set_position(PhysicalPosition::new(x, y));
-                            }
-                            let _ = window.emit("window-shown", ());
-
-                            // On Linux, bypass Mutter's focus-stealing prevention
-                            // by bumping _NET_WM_USER_TIME before activation.
-                            #[cfg(target_os = "linux")]
-                            {
-                                linux_window_focus::activate_self();
-                                linux_window_focus::notify_shown();
-                            }
-
-                            let _ = window.set_focus();
+            if use_wayland {
+                // Wayland: register Alt+Space via XDG Desktop Portal
+                #[cfg(target_os = "linux")]
+                {
+                    let handle = app_handle.clone();
+                    linux_wayland_shortcut::start(move || {
+                        toggle_window(&handle);
+                    });
+                }
+            } else {
+                // X11 / macOS / Windows: use tauri-plugin-global-shortcut
+                let handle = app_handle.clone();
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                app.global_shortcut()
+                    .on_shortcut("Alt+Space", move |_app, _shortcut, event| {
+                        if event.state
+                            != tauri_plugin_global_shortcut::ShortcutState::Pressed
+                        {
+                            return;
                         }
-                    }
-                })?;
+                        toggle_window(&handle);
+                    })?;
+            }
 
             // Cache Look's X11 window ID for later focus activation,
             // and start monitoring _NET_ACTIVE_WINDOW for auto-hide.
             #[cfg(target_os = "linux")]
-            {
+            if !use_wayland {
                 linux_window_focus::cache_self_window();
                 let w_monitor = app.get_webview_window("main").expect("main window missing");
                 linux_window_focus::start_active_window_monitor(move || {
