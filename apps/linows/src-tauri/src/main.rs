@@ -119,6 +119,11 @@ fn is_wayland() -> bool {
 }
 
 fn main() {
+    if std::env::args().any(|a| a == "--version" || a == "-V") {
+        println!("lookapp {}", env!("APP_VERSION"));
+        return;
+    }
+
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the main window when a second instance is launched

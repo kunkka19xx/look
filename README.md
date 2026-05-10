@@ -55,7 +55,7 @@ Uninstall:
 
 ```bash
 # Ubuntu/Debian
-sudo dpkg -r look-desktop
+sudo dpkg -r lookapp
 
 # AppImage — just delete the file
 rm Look_*.AppImage
@@ -71,12 +71,17 @@ nix run github:kunkka19xx/look?dir=apps/linows
 nix profile install github:kunkka19xx/look?dir=apps/linows
 ```
 
-Declarative (in your NixOS/Home Manager flake):
+Declarative (NixOS flake):
 
 ```nix
+# flake.nix
 inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
-# then in config:
-environment.systemPackages = [ inputs.look.packages.${system}.default ];
+
+# In your nixosConfigurations modules list:
+modules = [
+  look.nixosModules.default
+  { programs.lookapp.enable = true; }
+];
 ```
 
 More install methods coming soon (AUR). To build from source, see [apps/linows/BUILDING.md](apps/linows/BUILDING.md).

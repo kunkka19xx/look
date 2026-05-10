@@ -26,8 +26,10 @@
         }
       );
 
+      nixosModules.default = import ./nix/module.nix;
+
       overlays.default = final: _prev: {
-        look-desktop = final.callPackage ./nix/package.nix { };
+        lookapp = final.callPackage ./nix/package.nix { };
       };
 
       devShells = forAllSystems (

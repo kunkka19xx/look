@@ -23,7 +23,7 @@
 }:
 
 rustPlatform.buildRustPackage {
-  pname = "look-desktop";
+  pname = "lookapp";
   version = "0.1.0";
 
   src = lib.cleanSourceWith {
@@ -79,16 +79,16 @@ rustPlatform.buildRustPackage {
   postInstall = ''
     # Desktop file
     mkdir -p $out/share/applications
-    cat > $out/share/applications/look-desktop.desktop <<EOF
-    [Desktop Entry]
-    Name=Look
-    Comment=Keyboard-first desktop launcher
-    Exec=look-desktop
-    Icon=look
-    Type=Application
-    Categories=Utility;
-    StartupWMClass=Look
-    EOF
+    cat > $out/share/applications/lookapp.desktop <<'EOF'
+[Desktop Entry]
+Name=Look
+Comment=Keyboard-first desktop launcher
+Exec=lookapp
+Icon=look
+Type=Application
+Categories=Utility;
+StartupWMClass=Look
+EOF
 
     # Icons
     for size in 32 128 256; do
@@ -104,6 +104,6 @@ rustPlatform.buildRustPackage {
     description = "Keyboard-first desktop launcher";
     license = lib.licenses.mit;
     platforms = lib.platforms.linux;
-    mainProgram = "look-desktop";
+    mainProgram = "lookapp";
   };
 }
