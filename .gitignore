@@ -9,6 +9,7 @@ dist/
 
 target/
 **/target/
+result
 
 .env
 .env.*
