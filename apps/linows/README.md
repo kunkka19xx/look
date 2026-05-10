@@ -106,13 +106,23 @@ sudo dpkg -i /tmp/Look_*.deb              # install new version
 **NixOS-built binaries need patching** (NixOS linker path doesn't exist on Ubuntu):
 
 ```bash
+sudo apt install patchelf
 sudo patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 /usr/bin/lookapp
 ```
+
+> **Why?** NixOS builds link against `/nix/store/.../ld-linux-x86-64.so.2` which doesn't
+> exist on Ubuntu/Debian. `patchelf` rewrites it to the standard `/lib64/ld-linux-x86-64.so.2`.
+> Without this, the binary shows `cannot execute: required file not found`.
+> For proper release builds, use Ubuntu/Debian CI or add a patchelf step to the build script.
 
 **VM without GPU** (no `/dev/dri`): the app auto-detects this and sets
 `WEBKIT_DISABLE_GPU=1` + `WEBKIT_DISABLE_DMABUF_RENDERER=1` to prevent WebKitGTK segfaults.
 
 **GNOME Shell extension** requires log out/in after first install to load.
+
+**Known issues on Ubuntu:**
+- D-Bus activated apps (e.g. Ptyxis terminal) may need 2 launch attempts — first call registers the D-Bus service, second opens the window
+- GNOME's default Alt+Space (window menu) is auto-disabled by Look on Wayland; restored when Look exits
 
 **For dev in VM (nixos)**
 
