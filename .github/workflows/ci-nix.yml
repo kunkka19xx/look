@@ -26,3 +26,6 @@ jobs:
 
       - name: Build
         run: nix build ./apps/linows#default
+
+      - name: Verify version
+        run: ./result/bin/lookapp --version

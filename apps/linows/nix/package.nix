@@ -24,7 +24,7 @@
 
 rustPlatform.buildRustPackage {
   pname = "lookapp";
-  version = "0.1.0";
+  version = (builtins.fromJSON (builtins.readFile ../src-tauri/tauri.conf.json)).version;
 
   src = lib.cleanSourceWith {
     src = ../../..;

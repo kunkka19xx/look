@@ -108,3 +108,29 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+
+  nix-build:
+    name: Build and push Nix package to Cachix
+    runs-on: ubuntu-latest
+    needs: build-release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version in tauri.conf.json
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          sed -i "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" apps/linows/src-tauri/tauri.conf.json
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: cachix/cachix-action@v15
+        with:
+          name: look
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build
+        run: nix build ./apps/linows#default
+
+      - name: Verify version
+        run: ./result/bin/lookapp --version
