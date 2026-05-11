@@ -20,8 +20,8 @@ Based on macOS app as source of truth. Organized by phase.
 - [x] `commands.rs` — reload_config(), request_index_refresh()
 - [x] `commands.rs` — get_file_meta(path), get_app_version(path), get_home_dir()
 - [x] `platform.rs` — Icon extraction (freedesktop theme + XDG_DATA_DIRS, .desktop Icon= parsing)
-- [x] App launching — gio launch → gtk-launch → direct spawn, focus existing window via i3-msg/xdotool
-- [x] Settings URL handling — settings:// paths routed through xdg-open
+- [x] App launching — gtk-launch → gio launch → direct spawn, focus existing window via i3-msg/x11rb/GNOME ext
+- [x] Settings URL handling — settings:// paths routed through gnome-control-center (D-Bus + fallback)
 
 ### Frontend (HTML/CSS/JS)
 - [x] `index.html` — Main window structure
@@ -55,7 +55,7 @@ Based on macOS app as source of truth. Organized by phase.
 ### Features
 - [x] Quick folders (Desktop, Documents, Downloads, Pictures, Videos, Music)
 - [x] Multi-pick (Ctrl+P toggle, Ctrl+Shift+P clear all)
-- [x] Clipboard write — Ctrl+C copies file/folder (pasteable in file managers), auto-copy on pick
+- [x] Clipboard write — Ctrl+C copies file/folder (wl-copy/xclip, pasteable in file managers), auto-copy on pick
 - [x] Reveal in file manager (Ctrl+F)
 - [x] Hint bar (bottom status text)
 - [x] Web search (Ctrl+Enter) — opens Google search in default browser
@@ -120,18 +120,20 @@ Based on macOS app as source of truth. Organized by phase.
 - [x] Config file persistence (.look.config format, shared with macOS)
 - [x] Dynamic window scaling — 1.0x at 1080p, 1.2x at 1440p, 1.3x max
 - [x] Auto-start registration (Linux .desktop autostart, enabled by default on first launch)
+- [x] Quit shortcut (Alt+Shift+Q) — works on both X11 and Wayland
+- [x] Lazy indexing — file watcher auto-refresh (2s debounce) + always refresh on window-show
+- [x] System settings detection — only show settings entries when gnome-control-center is available
 - [ ] UWP app seeding (Windows — enumerate shell:AppsFolder via PowerShell)
 
 ---
 
 ## Backlog / Improvements
 
-- [ ] Linux settings handling — detect DE (GNOME/KDE/minimal):
-  - GNOME/KDE: `settings://` URLs work via `gnome-control-center` / `systemsettings`
-  - Minimal (i3/sway/X11 bare): map to standalone tools (pavucontrol, arandr, blueman-manager, etc.) or hide settings entries
-  - Detect via `XDG_CURRENT_DESKTOP`, `DESKTOP_SESSION`, or presence of `gnome-control-center`
+- [x] Linux settings handling — detect `gnome-control-center` at index time; skip settings on i3/sway/minimal
+- [ ] KDE settings support — detect `systemsettings` and add KDE-specific settings catalog
+- [ ] Minimal DE settings — map to standalone tools (pavucontrol, arandr, blueman-manager) on i3/sway
 - [ ] Some DBUS single-instance apps (blueman-manager, fcitx5-config) fail to launch — known limitation
-- [ ] D-Bus activated apps (Ptyxis/Terminal on Ubuntu 26.04) need 2x `gio launch` — first call registers service, second opens window. Workaround: retry `gio launch` if no window appears within ~500ms
+- [ ] GNOME Wayland: dock icon visible while Look is open — Tauri sets skip_taskbar_hint async (too late). Contributions welcome.
 - [ ] macOS: dynamic window scaling based on monitor resolution (match linows — 1.0x at 1080p, 1.2x at 1440p, 1.3x max)
 - [ ] Configurable global hotkey — let users change the toggle shortcut (default Alt+Space) via settings
 - [ ] Structured logging — wire up Backend Log Level setting (error/warn/info/debug) to control output; replace `eprintln!` with proper log macros

@@ -50,18 +50,23 @@ The WinUI3 app remains in `apps/windows/` (bug fixes only) until this migration 
 
 ## Linux Desktop Environments
 
-| Environment    | Status    |
-|----------------|-----------|
-| GNOME Xorg     | Testing   |
-| i3 X11         | Testing   |
-| GNOME Wayland  | Testing   |
-| Sway           | Untested  |
+| Environment   | Distro | Status   | Notes                                                   |
+| ------------- | ------ | -------- | ------------------------------------------------------- |
+| GNOME Xorg    | NixOS  | Testing  | Full support                                            |
+| GNOME Wayland | Ubuntu | Testing  | Dock icon visible while Look is open (see Known Issues) |
+| GNOME Wayland | NixOS  | Testing  | Full support                                            |
+| i3 X11        | NixOS  | Testing  | No system settings entries                              |
+| Sway          |        | Untested | No system settings entries                              |
+| KDE Plasma    |        | Untested |                                                         |
+
+**System settings** (Appearance, Wi-Fi, Sound, etc.) are only shown when `gnome-control-center`
+is detected. On i3, sway, or minimal distros without GNOME, these entries are skipped.
 
 ## Optional Dependencies
 
-| Package | Used for | Fallback |
-|---------|----------|----------|
-| `xclip` | Copy files to clipboard (X11) | Shows "Copy failed" banner |
+| Package        | Used for                          | Fallback                   |
+| -------------- | --------------------------------- | -------------------------- |
+| `xclip`        | Copy files to clipboard (X11)     | Shows "Copy failed" banner |
 | `wl-clipboard` | Copy files to clipboard (Wayland) | Shows "Copy failed" banner |
 
 Text clipboard (copy path, clipboard history) works without any external tools.
@@ -144,7 +149,19 @@ lookapp                                    # launch from terminal to see logs
 
 **GNOME Shell extension** requires log out/in after first install to load.
 
+**Keyboard shortcuts:**
+
+| Shortcut     | Action                  |
+| ------------ | ----------------------- |
+| Alt+Space    | Toggle Look window      |
+| Esc          | Hide Look               |
+| Alt+Shift+Q  | Quit Look               |
+| Ctrl+Shift+, | Open settings           |
+| Ctrl+Shift+; | Reload config from file |
+| Ctrl+H       | Help screen             |
+
 **Known issues on Ubuntu:**
+
 - GNOME's default Alt+Space (window menu) is auto-disabled by Look on Wayland; restored when Look exits
 - **GNOME Wayland: dock icon visible while Look is open.** Tauri sets `skip_taskbar_hint`
   asynchronously after the GTK window is mapped, so GNOME's dock ignores it. Native GTK apps
