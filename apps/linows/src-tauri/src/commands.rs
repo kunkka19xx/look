@@ -226,6 +226,12 @@ pub fn force_index_refresh(state: State<'_, AppState>) -> bool {
 }
 
 #[tauri::command]
+pub fn quit_app(app: tauri::AppHandle) {
+    eprintln!("look: quit via Alt+Shift+Q");
+    app.exit(0);
+}
+
+#[tauri::command]
 pub fn toggle_window(window: tauri::WebviewWindow) {
     if window.is_visible().unwrap_or(false) {
         let _ = window.hide();
@@ -284,46 +290,80 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
         }
     }
 
-    if let Some(ref real_path) = desktop_file {
-        let result = std::process::Command::new("gio")
-            .args(["launch", real_path])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
-        if result.is_ok() {
-            return Ok(());
-        }
-    }
-
-    if let Some(desktop_name) = id
+    // Build the launch chain: gtk-launch → gio launch → direct exec.
+    // gtk-launch is preferred because gio launch uses D-Bus activation
+    // which can silently fail to show a window on first invocation.
+    let desktop_path = desktop_file.clone();
+    let desktop_name = id
         .and_then(|id| id.strip_prefix("app:"))
         .and_then(|p| std::path::Path::new(p).file_name())
         .and_then(|f| f.to_str())
         .and_then(|f| f.strip_suffix(".desktop"))
-    {
-        let result = std::process::Command::new("gtk-launch")
-            .arg(desktop_name)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
-        if result.is_ok() {
-            return Ok(());
+        .map(String::from);
+    let exec_cmd = exec.to_string();
+
+    std::thread::spawn(move || {
+        if let Some(ref name) = desktop_name {
+            eprintln!("[launch] trying gtk-launch {name}");
+            let result = std::process::Command::new("gtk-launch")
+                .arg(name)
+                .env_remove("LD_LIBRARY_PATH")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .output();
+            match &result {
+                Ok(output) if output.status.success() => {
+                    eprintln!("[launch] gtk-launch succeeded");
+                    return;
+                }
+                Ok(output) => {
+                    let err = String::from_utf8_lossy(&output.stderr);
+                    eprintln!("[launch] gtk-launch failed (exit {}): {err}", output.status);
+                }
+                Err(e) => eprintln!("[launch] gtk-launch not found: {e}"),
+            }
         }
-    }
 
-    let mut parts = exec.split_whitespace();
-    let cmd = parts.next().ok_or("Empty exec command")?;
-    let args: Vec<&str> = parts.filter(|s| !s.starts_with('%')).collect();
+        if let Some(ref real_path) = desktop_path {
+            eprintln!("[launch] trying gio launch {real_path}");
+            let result = std::process::Command::new("gio")
+                .args(["launch", real_path])
+                .env_remove("LD_LIBRARY_PATH")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .output();
+            match &result {
+                Ok(output) if output.status.success() => {
+                    eprintln!("[launch] gio launch succeeded");
+                    return;
+                }
+                Ok(output) => {
+                    let err = String::from_utf8_lossy(&output.stderr);
+                    eprintln!("[launch] gio launch failed (exit {}): {err}", output.status);
+                }
+                Err(e) => eprintln!("[launch] gio not found: {e}"),
+            }
+        }
 
-    std::process::Command::new(cmd)
-        .args(&args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Failed to launch {cmd}: {e}"))?;
+        let mut parts = exec_cmd.split_whitespace();
+        if let Some(cmd) = parts.next() {
+            let args: Vec<&str> = parts.filter(|s| !s.starts_with('%')).collect();
+            eprintln!("[launch] trying direct exec: {cmd} {}", args.join(" "));
+            match std::process::Command::new(cmd)
+                .args(&args)
+                .env_remove("LD_LIBRARY_PATH")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+            {
+                Ok(_) => eprintln!("[launch] direct exec spawned"),
+                Err(e) => eprintln!("[launch] direct exec failed: {e}"),
+            }
+        }
+    });
 
     Ok(())
 }

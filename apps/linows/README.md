@@ -57,6 +57,30 @@ The WinUI3 app remains in `apps/windows/` (bug fixes only) until this migration 
 | GNOME Wayland  | Testing   |
 | Sway           | Untested  |
 
+## Optional Dependencies
+
+| Package | Used for | Fallback |
+|---------|----------|----------|
+| `xclip` | Copy files to clipboard (X11) | Shows "Copy failed" banner |
+| `wl-clipboard` | Copy files to clipboard (Wayland) | Shows "Copy failed" banner |
+
+Text clipboard (copy path, clipboard history) works without any external tools.
+File clipboard (copy a file to paste into a file manager) needs one of the above.
+
+```bash
+# Debian/Ubuntu
+sudo apt install xclip              # X11
+sudo apt install wl-clipboard       # Wayland
+
+# Fedora
+sudo dnf install xclip              # X11
+sudo dnf install wl-clipboard       # Wayland
+
+# Arch
+sudo pacman -S xclip                # X11
+sudo pacman -S wl-clipboard         # Wayland
+```
+
 ## Build
 
 ```bash
@@ -89,25 +113,25 @@ ip addr | grep inet
 # Look for 192.168.122.x on enp1s0
 ```
 
-**Copy .deb to VM** (from host):
+**Prerequisites on VM** (first time only):
 
 ```bash
-scp -O src-tauri/target/release/bundle/deb/Look_*.deb ubuntu@192.168.122.x:/tmp/
+sudo apt install openssh-server patchelf
+```
+
+**Deploy** (from host, run as one script):
+
+```bash
+scp -O apps/linows/src-tauri/target/release/bundle/deb/Look_*.deb kunkka@192.168.122.x:/tmp/
 ```
 
 **Install on VM:**
 
 ```bash
-sudo dpkg -r look                          # remove old version
-sudo apt install -f                        # install missing deps
-sudo dpkg -i /tmp/Look_*.deb              # install new version
-```
-
-**NixOS-built binaries need patching** (NixOS linker path doesn't exist on Ubuntu):
-
-```bash
-sudo apt install patchelf
+pkill lookapp                              # stop running instance
+sudo dpkg -r look && sudo dpkg -i /tmp/Look_*.deb
 sudo patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 /usr/bin/lookapp
+lookapp                                    # launch from terminal to see logs
 ```
 
 > **Why?** NixOS builds link against `/nix/store/.../ld-linux-x86-64.so.2` which doesn't
@@ -121,8 +145,25 @@ sudo patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 /usr/bin/lookapp
 **GNOME Shell extension** requires log out/in after first install to load.
 
 **Known issues on Ubuntu:**
-- D-Bus activated apps (e.g. Ptyxis terminal) may need 2 launch attempts — first call registers the D-Bus service, second opens the window
 - GNOME's default Alt+Space (window menu) is auto-disabled by Look on Wayland; restored when Look exits
+- **GNOME Wayland: dock icon visible while Look is open.** Tauri sets `skip_taskbar_hint`
+  asynchronously after the GTK window is mapped, so GNOME's dock ignores it. Native GTK apps
+  like Ulauncher set this hint in the constructor (before mapping), which works. On X11, the
+  hint works correctly. The icon disappears when Look is hidden (Esc / Alt+Space).
+  **Contributions welcome** — if you know a way to set GTK hints before Tauri maps the window,
+  please open a PR!
+
+  **Workaround — hide running app indicators from the dock:**
+
+  ```bash
+  # Ubuntu Dock
+  gsettings set org.gnome.shell.extensions.ubuntu-dock show-running false
+
+  # Dash to Dock
+  gsettings set org.gnome.shell.extensions.dash-to-dock show-running false
+
+  # Undo: replace 'false' with 'true'
+  ```
 
 **For dev in VM (nixos)**
 

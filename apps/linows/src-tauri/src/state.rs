@@ -64,10 +64,6 @@ impl AppState {
     }
 
     pub fn request_index_refresh(&self) -> bool {
-        let config = RuntimeConfig::load();
-        if config.lazy_indexing_enabled && !self.is_index_dirty() {
-            return false;
-        }
         if !self.try_acquire_refresh_slot() {
             return false;
         }
@@ -216,10 +212,16 @@ impl AppState {
         }
 
         let change_version = &self.index_change_version as *const AtomicU64;
+        let cleared_version = &self.index_cleared_version as *const AtomicU64;
+        let in_progress = &self.index_refresh_in_progress as *const AtomicBool;
+        let engine_lock = &self.engine as *const RwLock<QueryEngine>;
 
         // SAFETY: AppState lives for the app's lifetime.
         unsafe {
             let change_version = &*change_version;
+            let cleared_version = &*cleared_version;
+            let in_progress = &*in_progress;
+            let engine_lock = &*engine_lock;
 
             thread::spawn(move || {
                 let (event_tx, event_rx) = mpsc::channel::<notify::Result<Event>>();
@@ -234,23 +236,75 @@ impl AppState {
                 };
 
                 for root in &active_roots {
-                    let _ = watcher.watch(Path::new(root), RecursiveMode::Recursive);
+                    match watcher.watch(Path::new(root), RecursiveMode::Recursive) {
+                        Ok(()) => eprintln!("[watcher] watching: {root}"),
+                        Err(e) => eprintln!("[watcher] failed to watch {root}: {e}"),
+                    }
                 }
+
+                let debounce = std::time::Duration::from_secs(2);
+                let mut last_dirty_at: Option<Instant> = None;
 
                 loop {
                     if stop_rx.try_recv().is_ok() {
                         break;
                     }
 
-                    match event_rx.recv_timeout(std::time::Duration::from_secs(1)) {
+                    match event_rx.recv_timeout(std::time::Duration::from_millis(500)) {
                         Ok(Ok(event)) => {
                             if should_mark_dirty(&event) {
-                                change_version.fetch_add(1, Ordering::AcqRel);
+                                let v = change_version.fetch_add(1, Ordering::AcqRel);
+                                eprintln!(
+                                    "[watcher] dirty! v={} {:?} {:?}",
+                                    v + 1,
+                                    event.kind,
+                                    event.paths
+                                );
+                                last_dirty_at = Some(Instant::now());
                             }
                         }
                         Ok(Err(_)) => {}
                         Err(mpsc::RecvTimeoutError::Timeout) => {}
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+
+                    // Auto-refresh after debounce period
+                    if let Some(t) = last_dirty_at {
+                        if t.elapsed() >= debounce
+                            && in_progress
+                                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                                .is_ok()
+                        {
+                            last_dirty_at = None;
+                            let dirty_snapshot = change_version.load(Ordering::Acquire);
+                            let db_path = default_db_path();
+                            eprintln!("[watcher] auto-refreshing index...");
+
+                            match QueryEngine::bootstrap_sqlite(&db_path) {
+                                Ok(()) => {
+                                    if let Ok(new_engine) = QueryEngine::from_sqlite(&db_path) {
+                                        let mut guard = engine_lock
+                                            .write()
+                                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                                        *guard = new_engine;
+                                    }
+                                    if change_version.load(Ordering::Acquire) == dirty_snapshot {
+                                        cleared_version.store(dirty_snapshot, Ordering::Release);
+                                    }
+                                    eprintln!("[watcher] auto-refresh done");
+                                    if let Some(handle) = APP_HANDLE.get()
+                                        && let Some(w) = handle.get_webview_window("main")
+                                    {
+                                        let _ = w.emit("index-ready", ());
+                                    }
+                                }
+                                Err(err) => {
+                                    change_version.fetch_add(1, Ordering::AcqRel);
+                                    eprintln!("[watcher] auto-refresh failed: {err}");
+                                }
+                            }
+                            in_progress.store(false, Ordering::Release);
+                        }
                     }
                 }
             });
@@ -261,11 +315,6 @@ impl AppState {
         // Mark dirty so lazy indexing check passes
         self.index_change_version.fetch_add(1, Ordering::AcqRel);
         self.request_index_refresh()
-    }
-
-    fn is_index_dirty(&self) -> bool {
-        self.index_change_version.load(Ordering::Acquire)
-            != self.index_cleared_version.load(Ordering::Acquire)
     }
 
     fn try_acquire_refresh_slot(&self) -> bool {

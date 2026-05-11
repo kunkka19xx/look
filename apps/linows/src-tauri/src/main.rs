@@ -200,6 +200,16 @@ fn main() {
                         }
                         toggle_window(&handle);
                     })?;
+                app.global_shortcut()
+                    .on_shortcut("Alt+Shift+Q", |app, _shortcut, event| {
+                        if event.state
+                            != tauri_plugin_global_shortcut::ShortcutState::Pressed
+                        {
+                            return;
+                        }
+                        eprintln!("look: quit via Alt+Shift+Q");
+                        app.exit(0);
+                    })?;
             }
 
             // Cache Look's X11 window ID for later focus activation,
@@ -274,6 +284,7 @@ fn main() {
             commands::force_index_refresh,
             commands::toggle_window,
             commands::hide_window,
+            commands::quit_app,
             // Config
             config::get_config,
             config::set_config,

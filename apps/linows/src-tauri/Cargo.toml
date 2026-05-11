@@ -5,7 +5,7 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
+tauri = { version = "2.11.1", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 look-engine = { path = "../../../core/engine" }
@@ -24,7 +24,7 @@ tauri-plugin-dialog = "2"
 [target.'cfg(target_os = "linux")'.dependencies]
 x11rb = { version = "0.13", features = ["allow-unsafe-code"] }
 zbus = "5"
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "1.52.3", features = ["rt"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

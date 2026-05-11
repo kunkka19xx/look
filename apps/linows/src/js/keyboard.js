@@ -49,6 +49,13 @@ export function setSettingsMode(mod, contentArea, searchBar) {
 }
 
 function handleKeyDown(e) {
+  // Alt+Shift+Q quits the app
+  if (e.altKey && (e.shiftKey || shiftHeld) && (e.key === 'Q' || e.key === 'q')) {
+    e.preventDefault();
+    import('./ipc.js').then(m => m.quitApp());
+    return;
+  }
+
   // Ctrl+Shift+, toggles settings
   if (e.ctrlKey && (e.shiftKey || shiftHeld) && (e.key === ',' || e.key === '<')) {
     e.preventDefault();

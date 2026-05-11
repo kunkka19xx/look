@@ -64,13 +64,60 @@ pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), String> {
         return Ok(());
     }
     crate::clipboard::mark_self_write();
-    let path_refs: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
-    let mut clipboard = arboard::Clipboard::new().map_err(|e| format!("Failed to copy: {e}"))?;
-    clipboard
-        .set()
-        .file_list(&path_refs)
-        .map_err(|e| format!("Failed to copy: {e}"))?;
-    Ok(())
+    let uris: Vec<String> = paths
+        .iter()
+        .map(|p| {
+            let encoded: String = p
+                .bytes()
+                .map(|b| match b {
+                    b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                        (b as char).to_string()
+                    }
+                    _ => format!("%{b:02X}"),
+                })
+                .collect();
+            format!("file://{encoded}")
+        })
+        .collect();
+    let payload = format!("copy\n{}", uris.join("\n"));
+    let mime = "x-special/gnome-copied-files";
+
+    // Try wl-copy (Wayland) first, then xclip (X11) — no hard dependency on either
+    let result = std::process::Command::new("wl-copy")
+        .args(["-t", mime])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(ref mut stdin) = child.stdin {
+                stdin.write_all(payload.as_bytes())?;
+            }
+            child.wait()
+        });
+
+    if result.is_ok() {
+        return Ok(());
+    }
+
+    let result = std::process::Command::new("xclip")
+        .args(["-selection", "clipboard", "-t", mime])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(ref mut stdin) = child.stdin {
+                stdin.write_all(payload.as_bytes())?;
+            }
+            child.wait()
+        });
+
+    result
+        .map(|_| ())
+        .map_err(|e| format!("Failed to copy files: {e}. Install xclip or wl-clipboard."))
 }
 
 #[tauri::command]

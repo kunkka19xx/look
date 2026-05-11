@@ -33,6 +33,10 @@ export async function hideWindow() {
   return invoke('hide_window');
 }
 
+export async function quitApp() {
+  return invoke('quit_app');
+}
+
 export async function getIcon(kind, path, id) {
   return invoke('get_icon', { kind, path, id });
 }

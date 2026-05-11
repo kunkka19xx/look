@@ -27,11 +27,45 @@ static NEEDS_FOCUS: AtomicBool = AtomicBool::new(false);
 /// Auto-hide only fires when this transitions from true → false.
 static HAS_FOCUS: AtomicBool = AtomicBool::new(false);
 
-/// Call once after the window is mapped to cache Look's X11 window ID.
+/// Call once after the window is mapped to cache Look's X11 window ID
+/// and hide from GNOME dock/taskbar.
 pub fn cache_self_window() {
     if let Some(wid) = find_window_by_class("lookapp") {
         SELF_WID.store(wid, Ordering::SeqCst);
+        set_skip_taskbar(wid);
     }
+}
+
+/// Set _NET_WM_STATE_SKIP_TASKBAR so Look doesn't appear in the GNOME dock.
+fn set_skip_taskbar(wid: Window) {
+    let Ok((conn, screen_num)) = x11rb::connect(None) else {
+        return;
+    };
+    let root = conn.setup().roots[screen_num].root;
+
+    let Ok(state_cookie) = conn.intern_atom(false, b"_NET_WM_STATE") else {
+        return;
+    };
+    let Ok(skip_cookie) = conn.intern_atom(false, b"_NET_WM_STATE_SKIP_TASKBAR") else {
+        return;
+    };
+    let Ok(state_atom) = state_cookie.reply() else {
+        return;
+    };
+    let Ok(skip_atom) = skip_cookie.reply() else {
+        return;
+    };
+
+    // Send _NET_WM_STATE client message: action=1 (add), atom=SKIP_TASKBAR
+    let data = ClientMessageData::from([1u32, skip_atom.atom, 0, 0, 0]);
+    let event = ClientMessageEvent::new(32, wid, state_atom.atom, data);
+    let _ = conn.send_event(
+        false,
+        root,
+        EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
+        event,
+    );
+    let _ = conn.flush();
 }
 
 /// Notify that Look was just shown and needs focus activation.
