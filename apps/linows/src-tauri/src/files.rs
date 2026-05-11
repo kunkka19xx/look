@@ -64,38 +64,12 @@ pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), String> {
         return Ok(());
     }
     crate::clipboard::mark_self_write();
-    let uris: Vec<String> = paths
-        .iter()
-        .map(|p| {
-            let encoded: String = p
-                .bytes()
-                .map(|b| match b {
-                    b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
-                        (b as char).to_string()
-                    }
-                    _ => format!("%{b:02X}"),
-                })
-                .collect();
-            format!("file://{encoded}")
-        })
-        .collect();
-    let uri = format!("copy\n{}", uris.join("\n"));
-
-    let script = format!(
-        "echo -n '{}' | xclip -selection clipboard -t x-special/gnome-copied-files 2>/dev/null || \
-         echo -n '{}' | wl-copy -t x-special/gnome-copied-files 2>/dev/null",
-        uri.replace('\'', "'\\''"),
-        uri.replace('\'', "'\\''"),
-    );
-
-    let result = std::process::Command::new("setsid")
-        .args(["sh", "-c", &script])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
-
-    result.map_err(|e| format!("Failed to copy: {e}"))?;
+    let path_refs: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| format!("Failed to copy: {e}"))?;
+    clipboard
+        .set()
+        .file_list(&path_refs)
+        .map_err(|e| format!("Failed to copy: {e}"))?;
     Ok(())
 }
 

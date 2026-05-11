@@ -57,8 +57,7 @@
           "libharfbuzz0b",
           "libdbus-1-3",
           "libasound2",
-          "xdg-desktop-portal",
-          "xclip"
+          "xdg-desktop-portal"
         ],
         "section": "utils",
         "priority": "optional"

@@ -65,7 +65,6 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 cargo tauri dev
 | dbus               | System bus                      |
 | ALSA (libasound)   | Audio playback (Pomodoro music) |
 | xdg-desktop-portal | File picker dialogs             |
-| xclip / wl-copy    | Clipboard file copy             |
 
 ---
 
@@ -102,7 +101,7 @@ Steps to implement:
 
 1. Create `apps/linows/packaging/PKGBUILD` (source build from GitHub tarball)
 2. `makedepends`: rust, cargo, cargo-tauri, pkg-config, openssl, librsvg
-3. `depends`: webkit2gtk-4.1, gtk3, libsoup3, alsa-lib, dbus, xdg-desktop-portal, xclip
+3. `depends`: webkit2gtk-4.1, gtk3, libsoup3, alsa-lib, dbus, xdg-desktop-portal
 4. Build step: `cargo tauri build --bundles none` (binary only, pacman handles install)
 5. Install: binary → `/usr/bin/`, .desktop → `/usr/share/applications/`, icon → `/usr/share/icons/`
 6. Generate `.SRCINFO` and push to AUR git repo

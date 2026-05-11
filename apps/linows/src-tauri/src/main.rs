@@ -171,6 +171,7 @@ fn main() {
     builder
         .setup(move |app| {
             AppState::init_app_handle(app);
+            app.state::<AppState>().start_bootstrap();
             clipboard::start_monitor();
             let app_handle = app.handle().clone();
 

@@ -99,7 +99,7 @@ scp -O src-tauri/target/release/bundle/deb/Look_*.deb ubuntu@192.168.122.x:/tmp/
 
 ```bash
 sudo dpkg -r look                          # remove old version
-sudo apt install -f                        # install missing deps (xclip etc.)
+sudo apt install -f                        # install missing deps
 sudo dpkg -i /tmp/Look_*.deb              # install new version
 ```
 

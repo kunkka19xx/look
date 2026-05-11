@@ -33,13 +33,18 @@ impl AppState {
             watcher_control: Mutex::new(None),
         };
 
-        state.start_background_bootstrap();
         state.start_index_watchers();
         state
     }
 
     pub fn init_app_handle(app: &tauri::App) {
         let _ = APP_HANDLE.set(app.handle().clone());
+    }
+
+    /// Must be called after `init_app_handle` so the `index-ready` event
+    /// can be emitted once the bootstrap finishes.
+    pub fn start_bootstrap(&self) {
+        self.start_background_bootstrap();
     }
 
     pub fn with_engine<T>(&self, f: impl FnOnce(&QueryEngine) -> T) -> T {
