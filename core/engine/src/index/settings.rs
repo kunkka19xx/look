@@ -5,6 +5,11 @@ use look_indexing::{Candidate, CandidateKind};
 use std::sync::mpsc;
 
 pub fn discover_system_settings_entries(tx: mpsc::SyncSender<Candidate>) {
+    // Only emit settings if the settings app is available on this system.
+    // e.g. gnome-control-center on GNOME, skip on i3/sway/minimal distros.
+    if !platform::has_settings_app() {
+        return;
+    }
     for entry in platform::settings_catalog() {
         let mut candidate = Candidate::new(
             &candidate_id(entry),
@@ -123,7 +128,11 @@ mod tests {
         let discovered: Vec<Candidate> = rx.into_iter().collect();
         producer.join().expect("settings discovery thread panicked");
 
-        assert_eq!(discovered.len(), platform::settings_catalog().len());
+        if platform::has_settings_app() {
+            assert_eq!(discovered.len(), platform::settings_catalog().len());
+        } else {
+            assert_eq!(discovered.len(), 0);
+        }
 
         for candidate in discovered {
             assert_eq!(candidate.kind, CandidateKind::App);

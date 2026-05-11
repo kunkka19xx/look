@@ -59,16 +59,10 @@ pub(crate) static SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
     },
     // Personalization
     SettingsCatalogEntry {
-        title: "Background",
-        target: "background",
-        candidate_id_suffix: "background",
-        aliases: "wallpaper background desktop picture settings",
-    },
-    SettingsCatalogEntry {
         title: "Appearance",
-        target: "appearance",
+        target: "background",
         candidate_id_suffix: "appearance",
-        aliases: "appearance theme dark light style color settings",
+        aliases: "appearance theme dark light style color accent wallpaper background desktop picture settings",
     },
     SettingsCatalogEntry {
         title: "Notifications",
@@ -151,5 +145,25 @@ pub(crate) static SETTINGS_CATALOG: &[SettingsCatalogEntry] = &[
         target: "wellbeing",
         candidate_id_suffix: "wellbeing",
         aliases: "wellbeing screen time break reminder digital health settings",
+    },
+    // Ubuntu-specific
+    SettingsCatalogEntry {
+        title: "Ubuntu Desktop",
+        target: "ubuntu",
+        candidate_id_suffix: "ubuntu",
+        aliases: "ubuntu desktop dock appearance theme dark light style icons settings",
+    },
+    // Devices (optional)
+    SettingsCatalogEntry {
+        title: "Wacom",
+        target: "wacom",
+        candidate_id_suffix: "wacom",
+        aliases: "wacom tablet pen stylus drawing pressure settings",
+    },
+    SettingsCatalogEntry {
+        title: "Mobile Broadband",
+        target: "wwan",
+        candidate_id_suffix: "wwan",
+        aliases: "mobile broadband cellular data sim card wwan settings",
     },
 ];

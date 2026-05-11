@@ -64,3 +64,27 @@ pub(crate) fn settings_subtitle_prefix() -> &'static str {
 pub(crate) fn settings_catalog() -> &'static [SettingsCatalogEntry] {
     platform_impl::SETTINGS_CATALOG
 }
+
+/// Check if the system has a settings app (e.g. gnome-control-center).
+/// Returns false on i3, sway, or minimal distros without a DE settings app.
+pub(crate) fn has_settings_app() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        true // macOS always has System Settings
+    }
+    #[cfg(target_os = "windows")]
+    {
+        true // Windows always has Settings
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        Command::new("which")
+            .arg("gnome-control-center")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+}
