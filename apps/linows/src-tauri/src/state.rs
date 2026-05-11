@@ -269,42 +269,41 @@ impl AppState {
                     }
 
                     // Auto-refresh after debounce period
-                    if let Some(t) = last_dirty_at {
-                        if t.elapsed() >= debounce
-                            && in_progress
-                                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                                .is_ok()
-                        {
-                            last_dirty_at = None;
-                            let dirty_snapshot = change_version.load(Ordering::Acquire);
-                            let db_path = default_db_path();
-                            eprintln!("[watcher] auto-refreshing index...");
+                    if let Some(t) = last_dirty_at
+                        && t.elapsed() >= debounce
+                        && in_progress
+                            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                            .is_ok()
+                    {
+                        last_dirty_at = None;
+                        let dirty_snapshot = change_version.load(Ordering::Acquire);
+                        let db_path = default_db_path();
+                        eprintln!("[watcher] auto-refreshing index...");
 
-                            match QueryEngine::bootstrap_sqlite(&db_path) {
-                                Ok(()) => {
-                                    if let Ok(new_engine) = QueryEngine::from_sqlite(&db_path) {
-                                        let mut guard = engine_lock
-                                            .write()
-                                            .unwrap_or_else(|poisoned| poisoned.into_inner());
-                                        *guard = new_engine;
-                                    }
-                                    if change_version.load(Ordering::Acquire) == dirty_snapshot {
-                                        cleared_version.store(dirty_snapshot, Ordering::Release);
-                                    }
-                                    eprintln!("[watcher] auto-refresh done");
-                                    if let Some(handle) = APP_HANDLE.get()
-                                        && let Some(w) = handle.get_webview_window("main")
-                                    {
-                                        let _ = w.emit("index-ready", ());
-                                    }
+                        match QueryEngine::bootstrap_sqlite(&db_path) {
+                            Ok(()) => {
+                                if let Ok(new_engine) = QueryEngine::from_sqlite(&db_path) {
+                                    let mut guard = engine_lock
+                                        .write()
+                                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                                    *guard = new_engine;
                                 }
-                                Err(err) => {
-                                    change_version.fetch_add(1, Ordering::AcqRel);
-                                    eprintln!("[watcher] auto-refresh failed: {err}");
+                                if change_version.load(Ordering::Acquire) == dirty_snapshot {
+                                    cleared_version.store(dirty_snapshot, Ordering::Release);
+                                }
+                                eprintln!("[watcher] auto-refresh done");
+                                if let Some(handle) = APP_HANDLE.get()
+                                    && let Some(w) = handle.get_webview_window("main")
+                                {
+                                    let _ = w.emit("index-ready", ());
                                 }
                             }
-                            in_progress.store(false, Ordering::Release);
+                            Err(err) => {
+                                change_version.fetch_add(1, Ordering::AcqRel);
+                                eprintln!("[watcher] auto-refresh failed: {err}");
+                            }
                         }
+                        in_progress.store(false, Ordering::Release);
                     }
                 }
             });
