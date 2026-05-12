@@ -42,12 +42,13 @@ cargo tauri dev
 ### NixOS
 
 ```bash
-cd apps/linows
-nix develop
+nix develop --accept-flake-config ./apps/linows/
 cargo tauri dev
 ```
 
-The `flake.nix` provides all dependencies automatically. For i3/X11 without compositor:
+The `flake.nix` provides all dependencies automatically. Pass `--accept-flake-config` to trust the Cachix substituter, or add `trusted-substituters = https://look.cachix.org` to your `~/.config/nix/nix.conf` to avoid the prompt.
+
+For i3/X11 without compositor:
 
 ```bash
 WEBKIT_DISABLE_COMPOSITING_MODE=1 cargo tauri dev

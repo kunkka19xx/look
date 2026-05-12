@@ -78,6 +78,17 @@ pub(crate) fn has_settings_app() -> bool {
     }
     #[cfg(target_os = "linux")]
     {
+        // Settings catalog targets gnome-control-center panels.
+        // Only show them on DEs that actually use it (GNOME, Budgie, etc.),
+        // not on standalone WMs (sway, Hyprland, i3) where it may be
+        // installed as a dependency but doesn't integrate properly.
+        let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+        let on_gnome_de = desktop
+            .split(':')
+            .any(|s| matches!(s.trim(), "GNOME" | "Budgie" | "Cinnamon" | "Unity" | "Pantheon"));
+        if !on_gnome_de {
+            return false;
+        }
         use std::process::Command;
         Command::new("which")
             .arg("gnome-control-center")

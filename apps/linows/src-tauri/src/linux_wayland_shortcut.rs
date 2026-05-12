@@ -1,13 +1,13 @@
-//! Wayland global shortcut via GNOME custom keybinding + D-Bus service.
+//! Wayland global shortcut via D-Bus service + compositor-specific keybinding.
 //!
 //! On Wayland, apps cannot grab global hotkeys directly (unlike X11).
-//! The XDG GlobalShortcuts portal is not yet fully functional on GNOME 48.
 //!
-//! Instead, we:
+//! We:
 //! 1. Register a D-Bus service (`com.look.Desktop`) that listens for `Toggle` calls
-//! 2. Set up a GNOME custom keybinding (Alt+Space) that calls our D-Bus service
-//!
-//! This is the same approach used by other launchers (ulauncher, etc.) on GNOME Wayland.
+//! 2. Register a keybinding in the running compositor that calls our D-Bus service:
+//!    - GNOME: custom keybinding via gsettings
+//!    - Sway: `swaymsg bindsym ...`
+//!    - Hyprland: `hyprctl keyword bind ...`
 
 use std::process::Command;
 use std::sync::Mutex;
@@ -17,21 +17,60 @@ static SAVED_WM_BINDING: Mutex<Option<String>> = Mutex::new(None);
 
 const DBUS_NAME: &str = "com.look.Desktop";
 const DBUS_PATH: &str = "/com/look/Desktop";
-const DBUS_IFACE: &str = "com.look.Desktop";
-
 const KEYBINDING_PATH: &str =
     "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/look-toggle/";
 const KEYBINDING_SCHEMA: &str = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding";
 const MEDIA_KEYS_SCHEMA: &str = "org.gnome.settings-daemon.plugins.media-keys";
 
+const TOGGLE_CMD: &str = concat!(
+    "dbus-send --session --type=method_call",
+    " --dest=com.look.Desktop /com/look/Desktop com.look.Desktop.Toggle"
+);
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Compositor {
+    Gnome,
+    Sway,
+    Hyprland,
+    Other,
+}
+
+fn detect_compositor() -> Compositor {
+    if std::env::var("SWAYSOCK").is_ok() {
+        return Compositor::Sway;
+    }
+    if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
+        return Compositor::Hyprland;
+    }
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    if desktop
+        .split(':')
+        .any(|s| s.trim().eq_ignore_ascii_case("GNOME"))
+    {
+        return Compositor::Gnome;
+    }
+    Compositor::Other
+}
+
 /// Start a background thread that:
-/// 1. Registers a D-Bus service to listen for Toggle calls
-/// 2. Ensures a GNOME custom keybinding exists for Alt+Space
+/// 1. Registers a compositor-specific keybinding for Alt+Space
+/// 2. Registers a D-Bus service to listen for Toggle calls
 pub fn start<F>(on_toggle: F)
 where
     F: Fn() + Send + Sync + 'static,
 {
-    ensure_gnome_keybinding();
+    let compositor = detect_compositor();
+    match compositor {
+        Compositor::Gnome => ensure_gnome_keybinding(),
+        Compositor::Sway => ensure_sway_keybinding(),
+        Compositor::Hyprland => ensure_hyprland_keybinding(),
+        Compositor::Other => {
+            eprintln!(
+                "[look] Unknown Wayland compositor — Alt+Space must be bound manually.\n\
+                 [look] Bind your hotkey to run: {TOGGLE_CMD}"
+            );
+        }
+    }
 
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -44,6 +83,65 @@ where
         }
     });
 }
+
+// ---------------------------------------------------------------------------
+// Sway
+// ---------------------------------------------------------------------------
+
+fn ensure_sway_keybinding() {
+    // Add window rule: float + no border
+    let _ = Command::new("swaymsg")
+        .args(["for_window", "[app_id=\"lookapp\"]", "floating", "enable,", "border", "none"])
+        .output();
+
+    // Bind Alt+Space to toggle Look via D-Bus
+    let _ = Command::new("swaymsg")
+        .arg(format!("bindsym Alt+space exec {TOGGLE_CMD}"))
+        .output();
+
+    eprintln!("[look] Registered Sway keybinding: Alt+Space → Look toggle");
+}
+
+fn cleanup_sway_keybinding() {
+    let _ = Command::new("swaymsg").arg("unbindsym Alt+space").output();
+    eprintln!("[look] Removed Sway keybinding for Alt+Space");
+}
+
+// ---------------------------------------------------------------------------
+// Hyprland
+// ---------------------------------------------------------------------------
+
+fn ensure_hyprland_keybinding() {
+    // Float + no border
+    let _ = Command::new("hyprctl")
+        .args(["keyword", "windowrulev2", "float, class:lookapp"])
+        .output();
+    let _ = Command::new("hyprctl")
+        .args(["keyword", "windowrulev2", "noborder, class:lookapp"])
+        .output();
+
+    // Bind Alt+Space
+    let _ = Command::new("hyprctl")
+        .args([
+            "keyword",
+            "bind",
+            &format!("ALT,space,exec,{TOGGLE_CMD}"),
+        ])
+        .output();
+
+    eprintln!("[look] Registered Hyprland keybinding: Alt+Space → Look toggle");
+}
+
+fn cleanup_hyprland_keybinding() {
+    let _ = Command::new("hyprctl")
+        .args(["keyword", "unbind", "ALT,space"])
+        .output();
+    eprintln!("[look] Removed Hyprland keybinding for Alt+Space");
+}
+
+// ---------------------------------------------------------------------------
+// GNOME
+// ---------------------------------------------------------------------------
 
 /// Register a GNOME custom keybinding for Alt+Space → dbus-send to our service.
 fn ensure_gnome_keybinding() {
@@ -58,15 +156,11 @@ fn ensure_gnome_keybinding() {
     }
 
     // Set up the custom keybinding
-    let toggle_cmd = format!(
-        "dbus-send --session --type=method_call --dest={DBUS_NAME} {DBUS_PATH} {DBUS_IFACE}.Toggle"
-    );
-
     gsettings_set_at(KEYBINDING_SCHEMA, "name", "'Look Toggle'", KEYBINDING_PATH);
     gsettings_set_at(
         KEYBINDING_SCHEMA,
         "command",
-        &format!("'{toggle_cmd}'"),
+        &format!("'{TOGGLE_CMD}'"),
         KEYBINDING_PATH,
     );
     gsettings_set_at(
@@ -110,7 +204,7 @@ fn ensure_gnome_keybinding() {
 }
 
 /// Remove the GNOME custom keybinding registered by Look.
-pub fn cleanup_gnome_keybinding() {
+fn cleanup_gnome_keybinding() {
     let existing = gsettings_get(MEDIA_KEYS_SCHEMA, "custom-keybindings");
     let paths: Vec<String> = parse_gsettings_array(&existing)
         .into_iter()
@@ -142,6 +236,23 @@ pub fn cleanup_gnome_keybinding() {
 
     eprintln!("[look] Removed GNOME keybinding for Alt+Space");
 }
+
+// ---------------------------------------------------------------------------
+// Cleanup dispatcher (called on exit from main.rs)
+// ---------------------------------------------------------------------------
+
+pub fn cleanup_keybinding() {
+    match detect_compositor() {
+        Compositor::Gnome => cleanup_gnome_keybinding(),
+        Compositor::Sway => cleanup_sway_keybinding(),
+        Compositor::Hyprland => cleanup_hyprland_keybinding(),
+        Compositor::Other => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
+// D-Bus service
+// ---------------------------------------------------------------------------
 
 /// Run a D-Bus service that listens for Toggle method calls.
 async fn run_dbus_service<F>(on_toggle: F) -> Result<(), Box<dyn std::error::Error>>

@@ -214,11 +214,17 @@ fn main() {
             let app_handle = app.handle().clone();
 
             if use_wayland {
-                // Wayland: register Alt+Space via GNOME custom keybinding + D-Bus
+                // Wayland: register Alt+Space via compositor-specific keybinding + D-Bus
                 #[cfg(target_os = "linux")]
                 {
-                    // Install GNOME Shell extension for window focusing
-                    linux_gnome_ext::ensure_installed();
+                    // Install GNOME Shell extension for window focusing (GNOME only)
+                    if std::env::var("XDG_CURRENT_DESKTOP")
+                        .unwrap_or_default()
+                        .split(':')
+                        .any(|s| s.trim().eq_ignore_ascii_case("GNOME"))
+                    {
+                        linux_gnome_ext::ensure_installed();
+                    }
 
                     let handle = app_handle.clone();
                     linux_wayland_shortcut::start(move || {
@@ -372,7 +378,7 @@ fn main() {
             if let tauri::RunEvent::Exit = event
                 && is_wayland()
             {
-                linux_wayland_shortcut::cleanup_gnome_keybinding();
+                linux_wayland_shortcut::cleanup_keybinding();
             }
         });
 }

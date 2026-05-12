@@ -253,41 +253,14 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
         .and_then(|id| id.strip_prefix("app:"))
         .and_then(find_desktop_file);
 
-    // Try to focus an existing window before launching a new instance.
-    #[cfg(target_os = "linux")]
-    let is_wayland = crate::linux_transparency::is_wayland();
-    #[cfg(not(target_os = "linux"))]
-    let is_wayland = false;
+    eprintln!("[launch] id={id:?} desktop_file={desktop_file:?}");
 
-    if let Some(ref real_path) = desktop_file {
-        if is_wayland {
-            // Wayland: use GNOME Shell extension to focus existing windows.
-            // Same mechanism GNOME's own Activities search uses internally.
-            #[cfg(target_os = "linux")]
-            {
-                let desktop_id = std::path::Path::new(real_path)
-                    .file_name()
-                    .and_then(|f| f.to_str())
-                    .unwrap_or("");
-                if !desktop_id.is_empty() && crate::linux_gnome_ext::try_focus_app(desktop_id) {
-                    return Ok(());
-                }
-            }
-        } else {
-            // X11: focus by WM_CLASS via x11rb
-            if let Some(wm_class) = parse_desktop_field(real_path, "StartupWMClass")
-                && try_focus_window(&wm_class)
-            {
-                return Ok(());
-            }
-            if let Some(name) = std::path::Path::new(real_path)
-                .file_stem()
-                .and_then(|f| f.to_str())
-                && try_focus_window(name)
-            {
-                return Ok(());
-            }
-        }
+    // Try to focus an existing window before launching a new instance.
+    if let Some(ref real_path) = desktop_file
+        && try_focus_existing(real_path)
+    {
+        eprintln!("[launch] focused existing window for {real_path}");
+        return Ok(());
     }
 
     // Build the launch chain: gtk-launch → gio launch → direct exec.
@@ -388,6 +361,87 @@ fn try_focus_window(wm_class: &str) -> bool {
         return true;
     }
 
+    false
+}
+
+/// Try to focus an existing window for a desktop file.
+/// Dispatches to the appropriate method based on display server / compositor.
+fn try_focus_existing(desktop_path: &str) -> bool {
+    let wm_class = parse_desktop_field(desktop_path, "StartupWMClass");
+    let stem = std::path::Path::new(desktop_path)
+        .file_stem()
+        .and_then(|f| f.to_str())
+        .map(String::from);
+
+    // Collect candidate identifiers to try (WM_CLASS first, then filename stem)
+    let candidates: Vec<&str> = [wm_class.as_deref(), stem.as_deref()]
+        .into_iter()
+        .flatten()
+        .collect();
+
+    #[cfg(target_os = "linux")]
+    if crate::linux_transparency::is_wayland() {
+        return try_focus_wayland(desktop_path, &candidates);
+    }
+
+    // X11 / i3
+    for id in &candidates {
+        if try_focus_window(id) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Wayland focus: dispatch to the active compositor's IPC.
+#[cfg(target_os = "linux")]
+fn try_focus_wayland(desktop_path: &str, candidates: &[&str]) -> bool {
+    if std::env::var("SWAYSOCK").is_ok() {
+        return candidates.iter().any(|id| try_focus_sway(id));
+    }
+    if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
+        return candidates.iter().any(|id| try_focus_hyprland(id));
+    }
+    // GNOME Wayland: use GNOME Shell extension
+    let desktop_id = std::path::Path::new(desktop_path)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or("");
+    !desktop_id.is_empty() && crate::linux_gnome_ext::try_focus_app(desktop_id)
+}
+
+fn try_focus_sway(app_id: &str) -> bool {
+    for criteria in [
+        format!("[app_id=\"(?i){app_id}\"] focus"),
+        format!("[class=\"(?i){app_id}\"] focus"),
+    ] {
+        eprintln!("[focus-sway] trying: swaymsg {criteria}");
+        if let Ok(output) = std::process::Command::new("swaymsg")
+            .arg(&criteria)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            eprintln!("[focus-sway] result: {stdout}");
+            if stdout.contains("\"success\": true") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn try_focus_hyprland(class: &str) -> bool {
+    if let Ok(output) = std::process::Command::new("hyprctl")
+        .args(["dispatch", "focuswindow", &format!("class:{class}")])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return stdout.trim() == "ok";
+    }
     false
 }
 

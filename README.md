@@ -105,21 +105,20 @@ sudo nixos-rebuild switch --flake /path/to/your/flake#hostname
 
 > **Note:** On GNOME desktops, log out and log back in after the first install so the GNOME Shell extension (used for window focusing and hotkey on Wayland) can load.
 
-**Window manager users (i3, sway, Hyprland, etc.):** Autostart via `.desktop` files only works on full DEs (GNOME, KDE). On standalone WMs, add Look to your config manually:
+**Window manager users (i3, sway, Hyprland, etc.):** Autostart via `.desktop` files only works on full DEs (GNOME, KDE). On standalone WMs, add Look to your config manually. The `Alt+Space` hotkey and window rules (float, no border) are registered automatically at runtime — you only need the autostart line:
 
 ```bash
 # i3: ~/.config/i3/config
 exec --no-startup-id lookapp
-for_window [class="lookapp"] floating enable, border none
+# (Alt+Space works via X11 global shortcut plugin)
 
 # sway: ~/.config/sway/config
 exec lookapp
-for_window [app_id="lookapp"] floating enable, border none
+# (Alt+Space, float, and border rules are injected automatically via swaymsg)
 
 # Hyprland: ~/.config/hypr/hyprland.conf
 exec-once = lookapp
-windowrulev2 = float, class:lookapp
-windowrulev2 = noborder, class:lookapp
+# (Alt+Space, float, and border rules are injected automatically via hyprctl)
 ```
 
 More install methods coming soon (AUR). To build from source, see [apps/linows/BUILDING.md](apps/linows/BUILDING.md).
