@@ -27,11 +27,6 @@ jobs:
 
       - uses: DeterminateSystems/nix-installer-action@main
 
-      - uses: cachix/cachix-action@v15
-        with:
-          name: look
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-
       - name: Build
         run: nix build ./apps/linows#default
 
