@@ -83,9 +83,12 @@ pub(crate) fn has_settings_app() -> bool {
         // not on standalone WMs (sway, Hyprland, i3) where it may be
         // installed as a dependency but doesn't integrate properly.
         let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-        let on_gnome_de = desktop
-            .split(':')
-            .any(|s| matches!(s.trim(), "GNOME" | "Budgie" | "Cinnamon" | "Unity" | "Pantheon"));
+        let on_gnome_de = desktop.split(':').any(|s| {
+            matches!(
+                s.trim(),
+                "GNOME" | "Budgie" | "Cinnamon" | "Unity" | "Pantheon"
+            )
+        });
         if !on_gnome_de {
             return false;
         }
