@@ -308,7 +308,7 @@ macOS (SwiftUI) is the design source of truth. This table documents what each pl
 | Vibrancy materials | ✅ hudWindow, sidebar, menu | ⚠️ Mica/Acrylic (fewer options) | ❌ Faked with rgba tint | ❌ Solid dark background |
 | Native file dialog | ✅ NSOpenPanel | ✅ Win32 dialog | ✅ xdg-desktop-portal | ⚠️ Needs portal service running |
 | Audio playback | ✅ AVFoundation | ✅ WASAPI via rodio | ✅ ALSA via rodio (PulseAudio/PipeWire compat) | ✅ Same |
-| Global hotkey | ✅ NSEvent | ✅ RegisterHotKey | ✅ X11 grab | ⚠️ Works on X11; Wayland limited |
+| Global hotkey | ✅ NSEvent | ✅ RegisterHotKey | ✅ X11 grab | ✅ D-Bus + swaymsg/hyprctl |
 | Tray icon | ✅ NSStatusBar | ✅ Shell_NotifyIcon | ✅ libappindicator | ⚠️ Depends on tray support |
 
 ### Unsolvable Gaps
@@ -329,7 +329,7 @@ These are platform limitations that cannot be fixed in app code:
 - **Windows (Win10):** Use `"effects": ["acrylic"]` — less refined but still translucent.
 - **Linux (GNOME on Wayland):** Enable transparency in tauri.conf.json. No blur but transparent tint works.
 - **Linux (KDE):** KDE compositor supports blur hints — may work with additional config.
-- **Linux (i3/sway):** Solid background mode. Add picom for X11 transparency. No blur possible.
+- **Linux (i3/sway/Hyprland):** Solid background mode. Add picom for X11 transparency. No blur possible. Hotkey and window rules auto-injected on sway/Hyprland.
 
 ---
 

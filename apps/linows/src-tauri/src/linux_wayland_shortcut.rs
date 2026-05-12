@@ -91,7 +91,14 @@ where
 fn ensure_sway_keybinding() {
     // Add window rule: float + no border
     let _ = Command::new("swaymsg")
-        .args(["for_window", "[app_id=\"lookapp\"]", "floating", "enable,", "border", "none"])
+        .args([
+            "for_window",
+            "[app_id=\"lookapp\"]",
+            "floating",
+            "enable,",
+            "border",
+            "none",
+        ])
         .output();
 
     // Bind Alt+Space to toggle Look via D-Bus
@@ -122,11 +129,7 @@ fn ensure_hyprland_keybinding() {
 
     // Bind Alt+Space
     let _ = Command::new("hyprctl")
-        .args([
-            "keyword",
-            "bind",
-            &format!("ALT,space,exec,{TOGGLE_CMD}"),
-        ])
+        .args(["keyword", "bind", &format!("ALT,space,exec,{TOGGLE_CMD}")])
         .output();
 
     eprintln!("[look] Registered Hyprland keybinding: Alt+Space → Look toggle");

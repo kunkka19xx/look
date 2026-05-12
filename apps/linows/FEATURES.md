@@ -237,7 +237,7 @@ Appear in results when query matches folder name or when browsing:
 | App | `app:` | `app:firefox`, `app:vscode` |
 | File | `file:` or `file.` | `file:readme`, `file.notes` |
 | Folder | `folder:` or `folder.` | `folder:docs`, `folder.projects` |
-| Setting | `setting:` | `setting:display`, `setting:network` |
+| Setting | `setting:` | `setting:display`, `setting:network` (GNOME DEs only) |
 
 ---
 
@@ -310,7 +310,7 @@ Set `alias_<keyword>=` (empty value) to remove a default alias.
 ### Global (system-wide)
 | Shortcut | Action |
 |----------|--------|
-| Alt+Space | Toggle window visibility |
+| Alt+Space | Toggle window visibility (X11: global shortcut plugin; Wayland: D-Bus + compositor IPC) |
 | Alt+Shift+Q | Quit application |
 
 ### Search Mode

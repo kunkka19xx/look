@@ -253,13 +253,10 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
         .and_then(|id| id.strip_prefix("app:"))
         .and_then(find_desktop_file);
 
-    eprintln!("[launch] id={id:?} desktop_file={desktop_file:?}");
-
     // Try to focus an existing window before launching a new instance.
     if let Some(ref real_path) = desktop_file
         && try_focus_existing(real_path)
     {
-        eprintln!("[launch] focused existing window for {real_path}");
         return Ok(());
     }
 
@@ -415,7 +412,6 @@ fn try_focus_sway(app_id: &str) -> bool {
         format!("[app_id=\"(?i){app_id}\"] focus"),
         format!("[class=\"(?i){app_id}\"] focus"),
     ] {
-        eprintln!("[focus-sway] trying: swaymsg {criteria}");
         if let Ok(output) = std::process::Command::new("swaymsg")
             .arg(&criteria)
             .stdout(std::process::Stdio::piped())
@@ -423,7 +419,6 @@ fn try_focus_sway(app_id: &str) -> bool {
             .output()
         {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            eprintln!("[focus-sway] result: {stdout}");
             if stdout.contains("\"success\": true") {
                 return true;
             }

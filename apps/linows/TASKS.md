@@ -20,8 +20,8 @@ Based on macOS app as source of truth. Organized by phase.
 - [x] `commands.rs` — reload_config(), request_index_refresh()
 - [x] `commands.rs` — get_file_meta(path), get_app_version(path), get_home_dir()
 - [x] `platform.rs` — Icon extraction (freedesktop theme + XDG_DATA_DIRS, .desktop Icon= parsing)
-- [x] App launching — gtk-launch → gio launch → direct spawn, focus existing window via i3-msg/x11rb/GNOME ext
-- [x] Settings URL handling — settings:// paths routed through gnome-control-center (D-Bus + fallback)
+- [x] App launching — gtk-launch → gio launch → direct spawn, focus existing window via swaymsg/hyprctl/i3-msg/x11rb/GNOME ext
+- [x] Settings URL handling — settings:// paths routed through gnome-control-center (D-Bus + fallback); hidden on non-GNOME DEs
 
 ### Frontend (HTML/CSS/JS)
 - [x] `index.html` — Main window structure
@@ -38,11 +38,12 @@ Based on macOS app as source of truth. Organized by phase.
 - [x] `js/keyboard.js` — Arrow/Tab/Shift+Tab navigation, Enter/Ctrl+Enter, Escape, wrap-around
 
 ### Window & System
-- [x] Global hotkey (Alt+Space) via tauri-plugin-global-shortcut
+- [x] Global hotkey (Alt+Space) via tauri-plugin-global-shortcut (X11), D-Bus + compositor IPC (Wayland)
 - [x] Single instance via tauri-plugin-single-instance
 - [x] Transparency detection (Wayland/compositor → transparent + rounded corners, X11 bare → solid + square)
 - [x] Auto-hide on focus loss (transparent-capable platforms only)
 - [x] i3/tiling WM support (floating rule, manual centering)
+- [x] Sway/Hyprland support (auto-inject keybinding + window rules via swaymsg/hyprctl at runtime)
 
 ---
 
@@ -122,14 +123,14 @@ Based on macOS app as source of truth. Organized by phase.
 - [x] Auto-start registration (Linux .desktop autostart, enabled by default on first launch)
 - [x] Quit shortcut (Alt+Shift+Q) — works on both X11 and Wayland
 - [x] Lazy indexing — file watcher auto-refresh (2s debounce) + always refresh on window-show
-- [x] System settings detection — only show settings entries when gnome-control-center is available
+- [x] System settings detection — only show settings entries on GNOME-based DEs with gnome-control-center
 - [ ] UWP app seeding (Windows — enumerate shell:AppsFolder via PowerShell)
 
 ---
 
 ## Backlog / Improvements
 
-- [x] Linux settings handling — detect `gnome-control-center` at index time; skip settings on i3/sway/minimal
+- [x] Linux settings handling — detect GNOME DE + `gnome-control-center` at index time; skip settings on sway/Hyprland/i3/minimal
 - [ ] KDE settings support — detect `systemsettings` and add KDE-specific settings catalog
 - [ ] Minimal DE settings — map to standalone tools (pavucontrol, arandr, blueman-manager) on i3/sway
 - [ ] Some DBUS single-instance apps (blueman-manager, fcitx5-config) fail to launch — known limitation
@@ -156,8 +157,9 @@ Based on macOS app as source of truth. Organized by phase.
 - Apps: .desktop file scanning in /usr/share/applications, ~/.local/share/applications
 - Auto-start: ~/.config/autostart/look.desktop
 - DB path: ~/.local/share/look/look.db
-- Global hotkey: Works on X11; Wayland support may be limited
-- i3/tiling WMs: needs `for_window [title="Look"] floating enable, border none` in config
+- Global hotkey: X11 via tauri-plugin-global-shortcut; Wayland via D-Bus service + compositor-specific keybinding (GNOME gsettings, Sway swaymsg, Hyprland hyprctl)
+- Window focus: Sway via swaymsg [app_id], Hyprland via hyprctl dispatch, GNOME via Shell extension, X11 via x11rb/i3-msg
+- i3/tiling WMs: needs `exec lookapp` in config; sway/Hyprland auto-inject window rules at runtime
 - Audio: rodio → cpal → ALSA (works on all distros, PulseAudio/PipeWire provide ALSA compat)
 - Folder picker: tauri-plugin-dialog (uses xdg-desktop-portal on portal-enabled desktops, GTK fallback)
 - NixOS: needs alsa-lib in buildInputs, xdg-desktop-portal-gtk for folder picker
