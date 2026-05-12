@@ -49,6 +49,10 @@ export async function getAppVersion(path) {
   return invoke('get_app_version', { path });
 }
 
+export async function isDevBuild() {
+  return invoke('is_dev_build');
+}
+
 export async function copyFilesToClipboard(paths) {
   return invoke('copy_files_to_clipboard', { paths });
 }

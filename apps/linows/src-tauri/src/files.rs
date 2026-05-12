@@ -59,6 +59,11 @@ pub fn get_app_version(path: String) -> Option<String> {
 }
 
 #[tauri::command]
+pub fn is_dev_build() -> bool {
+    cfg!(debug_assertions)
+}
+
+#[tauri::command]
 pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), String> {
     if paths.is_empty() {
         return Ok(());

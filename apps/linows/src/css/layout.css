@@ -46,6 +46,7 @@
 
 /* Search bar */
 .search-bar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -126,4 +127,18 @@
 .hint-bar-link:hover {
   color: var(--accent-color);
   text-decoration: underline;
+}
+
+.dev-badge {
+  position: absolute;
+  top: 50%;
+  right: var(--content-padding);
+  transform: translateY(-50%);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fff;
+  background: #e05252;
+  padding: 1px 5px;
+  border-radius: 3px;
 }

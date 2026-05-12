@@ -9,6 +9,7 @@ let selectedIndex = -1;
 let container = null;
 let onSelectionChange = null;
 let onPickChange = null;
+let mouseSelectEnabled = true;
 
 export function init(containerEl) {
   container = containerEl;
@@ -61,7 +62,9 @@ export function selectPrev() {
   select((selectedIndex - 1 + currentResults.length) % currentResults.length);
 }
 
-export function select(index) {
+export function select(index, { fromMouse = false } = {}) {
+  if (index === selectedIndex && fromMouse) return;
+
   const prev = container.querySelector('.result-row.selected');
   if (prev) prev.classList.remove('selected');
 
@@ -70,7 +73,12 @@ export function select(index) {
   const rows = container.querySelectorAll('.result-row');
   if (rows[index]) {
     rows[index].classList.add('selected');
-    rows[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (!fromMouse) {
+      // Keyboard-driven: scroll into view but suppress mouseenter during scroll
+      mouseSelectEnabled = false;
+      rows[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      requestAnimationFrame(() => { mouseSelectEnabled = true; });
+    }
   }
 
   if (onSelectionChange) {
@@ -192,6 +200,10 @@ function createRow(result, index) {
     el.innerHTML = checkIcon;
     row.appendChild(el);
   }
+
+  row.addEventListener('mouseenter', () => {
+    if (mouseSelectEnabled) select(index, { fromMouse: true });
+  });
 
   row.addEventListener('click', () => {
     select(index);

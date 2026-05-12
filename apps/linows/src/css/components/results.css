@@ -15,10 +15,6 @@
   border-top: var(--border-thickness) solid var(--divider-color);
 }
 
-.result-row:hover {
-  background: var(--selection-fill);
-}
-
 .result-row.selected {
   background: var(--selection-fill);
 }

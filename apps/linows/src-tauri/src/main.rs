@@ -125,6 +125,44 @@ fn main() {
         return;
     }
 
+    // Dev mode: use separate config and database so dev doesn't pollute production.
+    // SAFETY: Called at startup before any threads are spawned.
+    #[cfg(debug_assertions)]
+    {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        if std::env::var("LOOK_CONFIG_PATH")
+            .unwrap_or_default()
+            .trim()
+            .is_empty()
+        {
+            unsafe {
+                std::env::set_var(
+                    "LOOK_CONFIG_PATH",
+                    std::path::PathBuf::from(&home).join(".look.dev.config"),
+                );
+            }
+        }
+        if std::env::var("LOOK_DB_PATH")
+            .unwrap_or_default()
+            .trim()
+            .is_empty()
+        {
+            let db_dir = std::env::var("XDG_DATA_HOME")
+                .map(|d| std::path::PathBuf::from(d))
+                .unwrap_or_else(|_| std::path::PathBuf::from(&home).join(".local").join("share"))
+                .join("look");
+            let _ = std::fs::create_dir_all(&db_dir);
+            unsafe {
+                std::env::set_var("LOOK_DB_PATH", db_dir.join("look.dev.db"));
+            }
+        }
+        eprintln!(
+            "[dev] config={} db={}",
+            std::env::var("LOOK_CONFIG_PATH").unwrap_or_default(),
+            std::env::var("LOOK_DB_PATH").unwrap_or_default(),
+        );
+    }
+
     // Disable WebKitGTK GPU rendering in environments without GPU (VMs, containers).
     // Without this, WebKitGTK segfaults when no DRI device is available.
     // SAFETY: Called at startup before any threads are spawned.
@@ -292,6 +330,7 @@ fn main() {
             // Files: meta, version, clipboard, music, folder
             files::get_file_meta,
             files::get_app_version,
+            files::is_dev_build,
             files::copy_files_to_clipboard,
             files::get_home_dir,
             files::list_fonts,

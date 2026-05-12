@@ -13,7 +13,7 @@ import {
   onWindowShown, onIndexReady, requestIndexRefresh, getHomeDir, copyFilesToClipboard,
   evalCalc, runShellCommand, getSystemInfo,
   listProcesses, listProcessesOnPort, killProcess, getIcon,
-  copyToClipboard, deleteClipboardEntry,
+  copyToClipboard, deleteClipboardEntry, isDevBuild,
 } from './ipc.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -79,6 +79,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       'Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide';
   });
   settings.restoreOnStartup();
+
+  // Show DEV badge when running in dev mode (cargo tauri dev)
+  isDevBuild().then((isDev) => {
+    if (isDev) {
+      const badge = document.createElement('span');
+      badge.className = 'dev-badge';
+      badge.textContent = 'DEV';
+      document.getElementById('search-bar').appendChild(badge);
+    }
+  });
 
   // Expose command mode toggle for keyboard.js
   keyboard.setCommandMode(commands);
