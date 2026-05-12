@@ -163,14 +163,48 @@ fn main() {
         );
     }
 
-    // Disable WebKitGTK GPU rendering in environments without GPU (VMs, containers).
-    // Without this, WebKitGTK segfaults when no DRI device is available.
+    // Disable WebKitGTK GPU rendering in environments without a usable GPU.
+    // Covers VMs (virtio-gpu, QXL, etc.) and containers where EGL init fails.
     // SAFETY: Called at startup before any threads are spawned.
     #[cfg(target_os = "linux")]
-    if !std::path::Path::new("/dev/dri").exists() {
-        unsafe {
-            std::env::set_var("WEBKIT_DISABLE_GPU", "1");
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    {
+        let disable_gpu = if !std::path::Path::new("/dev/dri").exists() {
+            true
+        } else {
+            // /dev/dri exists but the driver may not support EGL (common in VMs).
+            // Check for known virtual GPU drivers via /dev/dri/card* sysfs.
+            std::fs::read_dir("/sys/class/drm")
+                .map(|entries| {
+                    entries.filter_map(Result::ok).any(|e| {
+                        let driver = e.path().join("device/driver");
+                        if let Ok(target) = std::fs::read_link(&driver) {
+                            let name = target
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string();
+                            matches!(
+                                name.as_str(),
+                                "virtio-pci"
+                                    | "virtio_gpu"
+                                    | "qxl"
+                                    | "bochs-drm"
+                                    | "vmwgfx"
+                                    | "vboxvideo"
+                                    | "cirrus"
+                            )
+                        } else {
+                            false
+                        }
+                    })
+                })
+                .unwrap_or(false)
+        };
+        if disable_gpu {
+            unsafe {
+                std::env::set_var("WEBKIT_DISABLE_GPU", "1");
+                std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+            }
         }
     }
 

@@ -93,46 +93,59 @@ fn extension_dir() -> PathBuf {
 }
 
 fn enable_extension() {
-    // Read current enabled extensions
-    let output = std::process::Command::new("gsettings")
-        .args(["get", "org.gnome.shell", "enabled-extensions"])
+    // Use gnome-extensions CLI which properly handles enabled/disabled state.
+    // Raw gsettings manipulation misses the disabled-extensions list and
+    // other state that GNOME tracks internally.
+    let result = std::process::Command::new("gnome-extensions")
+        .args(["enable", EXT_UUID])
         .output();
 
-    let current = output
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .unwrap_or_default();
-    let current = current.trim();
+    match &result {
+        Ok(output) if output.status.success() => {
+            eprintln!("[look] Enabled extension via gnome-extensions CLI");
+        }
+        _ => {
+            // Fallback: raw gsettings for older GNOME or minimal installs
+            let output = std::process::Command::new("gsettings")
+                .args(["get", "org.gnome.shell", "enabled-extensions"])
+                .output();
 
-    if current.contains(EXT_UUID) {
-        return; // Already enabled
+            let current = output
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .unwrap_or_default();
+            let current = current.trim();
+
+            if current.contains(EXT_UUID) {
+                return;
+            }
+
+            let mut extensions: Vec<String> = if current == "@as []" || current == "[]" {
+                Vec::new()
+            } else {
+                current
+                    .trim_start_matches('[')
+                    .trim_end_matches(']')
+                    .split(',')
+                    .map(|s| s.trim().trim_matches('\'').trim_matches('"').to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            };
+
+            extensions.push(EXT_UUID.to_string());
+
+            let new_value = format!(
+                "[{}]",
+                extensions
+                    .iter()
+                    .map(|e| format!("'{e}'"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            let _ = std::process::Command::new("gsettings")
+                .args(["set", "org.gnome.shell", "enabled-extensions", &new_value])
+                .output();
+        }
     }
-
-    // Parse and add our extension
-    let mut extensions: Vec<String> = if current == "@as []" || current == "[]" {
-        Vec::new()
-    } else {
-        current
-            .trim_start_matches('[')
-            .trim_end_matches(']')
-            .split(',')
-            .map(|s| s.trim().trim_matches('\'').trim_matches('"').to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
-    };
-
-    extensions.push(EXT_UUID.to_string());
-
-    let new_value = format!(
-        "[{}]",
-        extensions
-            .iter()
-            .map(|e| format!("'{e}'"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-
-    let _ = std::process::Command::new("gsettings")
-        .args(["set", "org.gnome.shell", "enabled-extensions", &new_value])
-        .output();
 }
