@@ -148,7 +148,7 @@ fn main() {
             .is_empty()
         {
             let db_dir = std::env::var("XDG_DATA_HOME")
-                .map(|d| std::path::PathBuf::from(d))
+                .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| std::path::PathBuf::from(&home).join(".local").join("share"))
                 .join("look");
             let _ = std::fs::create_dir_all(&db_dir);
