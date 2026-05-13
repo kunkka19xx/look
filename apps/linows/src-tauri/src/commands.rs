@@ -428,15 +428,25 @@ fn try_focus_sway(app_id: &str) -> bool {
 }
 
 fn try_focus_hyprland(class: &str) -> bool {
+    // Try `hyprctl dispatch focuswindow` (works on Hyprland < v0.55).
+    // On v0.55+ the Lua parser breaks dispatch — returns "ok" without focusing.
+    // We verify by checking if the active window actually changed.
     if let Ok(output) = std::process::Command::new("hyprctl")
         .args(["dispatch", "focuswindow", &format!("class:{class}")])
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .output()
     {
         let stdout = String::from_utf8_lossy(&output.stdout);
-        return stdout.trim() == "ok";
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Old Hyprland: returns "ok" and actually focuses
+        // New Hyprland (v0.55+): stderr contains "syntax might need to be updated"
+        if stdout.trim() == "ok" && !stderr.contains("syntax might need to be updated") {
+            return true;
+        }
     }
+    // v0.55+ with Lua parser: hl.dsp.focus({window=...}) is broken (returns ok, does nothing).
+    // Fall through to normal app launch.
     false
 }
 

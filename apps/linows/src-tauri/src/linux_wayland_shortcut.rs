@@ -119,26 +119,51 @@ fn cleanup_sway_keybinding() {
 // ---------------------------------------------------------------------------
 
 fn ensure_hyprland_keybinding() {
-    // Float + no border
-    let _ = Command::new("hyprctl")
-        .args(["keyword", "windowrulev2", "float, class:lookapp"])
-        .output();
-    let _ = Command::new("hyprctl")
-        .args(["keyword", "windowrulev2", "noborder, class:lookapp"])
-        .output();
+    // Hyprland v0.55+ uses Lua config — `hyprctl eval` with hl.* API.
+    // Older versions use `hyprctl keyword bind ...` (INI-style parser).
+    let lua = format!(
+        r#"hl.window_rule({{ name = "look-float", match = {{ class = "lookapp" }}, float = true }})
+hl.window_rule({{ name = "look-noborder", match = {{ class = "lookapp" }}, border_size = 0 }})
+hl.bind("ALT + space", hl.dsp.exec_cmd("{TOGGLE_CMD}"))"#
+    );
 
-    // Bind Alt+Space
-    let _ = Command::new("hyprctl")
-        .args(["keyword", "bind", &format!("ALT,space,exec,{TOGGLE_CMD}")])
-        .output();
+    let result = Command::new("hyprctl").args(["eval", &lua]).output();
+
+    let used_lua = result
+        .as_ref()
+        .map(|o| o.status.success() && !String::from_utf8_lossy(&o.stdout).contains("error"))
+        .unwrap_or(false);
+
+    if !used_lua {
+        // Fallback: legacy keyword syntax for older Hyprland
+        let _ = Command::new("hyprctl")
+            .args(["keyword", "windowrulev2", "float, class:lookapp"])
+            .output();
+        let _ = Command::new("hyprctl")
+            .args(["keyword", "windowrulev2", "noborder, class:lookapp"])
+            .output();
+        let _ = Command::new("hyprctl")
+            .args(["keyword", "bind", &format!("ALT,space,exec,{TOGGLE_CMD}")])
+            .output();
+    }
 
     eprintln!("[look] Registered Hyprland keybinding: Alt+Space → Look toggle");
 }
 
 fn cleanup_hyprland_keybinding() {
-    let _ = Command::new("hyprctl")
-        .args(["keyword", "unbind", "ALT,space"])
+    // Try Lua first, then legacy
+    let result = Command::new("hyprctl")
+        .args(["eval", r#"hl.unbind("ALT + space")"#])
         .output();
+
+    let used_lua = result.as_ref().map(|o| o.status.success()).unwrap_or(false);
+
+    if !used_lua {
+        let _ = Command::new("hyprctl")
+            .args(["keyword", "unbind", "ALT,space"])
+            .output();
+    }
+
     eprintln!("[look] Removed Hyprland keybinding for Alt+Space");
 }
 

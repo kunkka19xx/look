@@ -131,6 +131,8 @@ Based on macOS app as source of truth. Organized by phase.
 ## Backlog / Improvements
 
 - [x] Linux settings handling — detect GNOME DE + `gnome-control-center` at index time; skip settings on sway/Hyprland/i3/minimal
+- [] Hyrpland gnome alt-space toggle
+- [] Arch gnome startup issue: EGL_BAD_PARAMETER
 - [ ] KDE settings support — detect `systemsettings` and add KDE-specific settings catalog
 - [ ] Minimal DE settings — map to standalone tools (pavucontrol, arandr, blueman-manager) on i3/sway
 - [ ] Some DBUS single-instance apps (blueman-manager, fcitx5-config) fail to launch — known limitation

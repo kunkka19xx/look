@@ -25,6 +25,7 @@ tauri-plugin-dialog = "2"
 x11rb = { version = "0.13", features = ["allow-unsafe-code"] }
 zbus = "5"
 tokio = { version = "1.52.3", features = ["rt"] }
+webkit2gtk = "2.0"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

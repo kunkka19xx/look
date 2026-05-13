@@ -91,15 +91,7 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
         let _ = window.set_always_on_top(true);
         let _ = window.show();
-        if let Ok(Some(monitor)) = window.current_monitor() {
-            let screen = monitor.size();
-            let scale = monitor.scale_factor();
-            let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
-            let _ = window.set_size(tauri::PhysicalSize::new(win_w, win_h));
-            let x = ((screen.width as f64 - win_w as f64) / 2.0) as i32;
-            let y = ((screen.height as f64 - win_h as f64) / 2.0) as i32;
-            let _ = window.set_position(PhysicalPosition::new(x, y));
-        }
+        center_and_scale_window(&window);
         let _ = window.emit("window-shown", ());
 
         // On Linux/X11, bypass Mutter's focus-stealing prevention
@@ -114,9 +106,230 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
     }
 }
 
+/// Center and scale a window to fit the current monitor.
+fn center_and_scale_window(window: &tauri::WebviewWindow) {
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let screen = monitor.size();
+        let scale = monitor.scale_factor();
+        let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
+        let _ = window.set_size(tauri::PhysicalSize::new(win_w, win_h));
+        let x = ((screen.width as f64 - win_w as f64) / 2.0) as i32;
+        let y = ((screen.height as f64 - win_h as f64) / 2.0) as i32;
+        let _ = window.set_position(PhysicalPosition::new(x, y));
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn is_wayland() -> bool {
     linux_transparency::is_wayland()
+}
+
+/// Set dev-mode config and database paths so dev doesn't pollute production.
+/// SAFETY: Must be called at startup before any threads are spawned.
+#[cfg(debug_assertions)]
+fn setup_dev_env() {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    if std::env::var("LOOK_CONFIG_PATH")
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+    {
+        unsafe {
+            std::env::set_var(
+                "LOOK_CONFIG_PATH",
+                std::path::PathBuf::from(&home).join(".look.dev.config"),
+            );
+        }
+    }
+    if std::env::var("LOOK_DB_PATH")
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+    {
+        let db_dir = std::env::var("XDG_DATA_HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::path::PathBuf::from(&home).join(".local").join("share"))
+            .join("look");
+        let _ = std::fs::create_dir_all(&db_dir);
+        unsafe {
+            std::env::set_var("LOOK_DB_PATH", db_dir.join("look.dev.db"));
+        }
+    }
+    eprintln!(
+        "[dev] config={} db={}",
+        std::env::var("LOOK_CONFIG_PATH").unwrap_or_default(),
+        std::env::var("LOOK_DB_PATH").unwrap_or_default(),
+    );
+}
+
+/// Detect if running inside a VM with a virtual GPU that doesn't support EGL.
+/// Returns true if GPU acceleration should be disabled.
+/// SAFETY: Sets env vars — must be called before any threads are spawned.
+#[cfg(target_os = "linux")]
+fn detect_and_disable_virtual_gpu() -> bool {
+    let detected = if !std::path::Path::new("/dev/dri").exists() {
+        true
+    } else {
+        // /dev/dri exists but the driver may not support EGL (common in VMs).
+        // Check for known virtual GPU drivers via /dev/dri/card* sysfs.
+        std::fs::read_dir("/sys/class/drm")
+            .map(|entries| {
+                entries.filter_map(Result::ok).any(|e| {
+                    let driver = e.path().join("device/driver");
+                    if let Ok(target) = std::fs::read_link(&driver) {
+                        let name = target
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string();
+                        matches!(
+                            name.as_str(),
+                            "virtio-pci"
+                                | "virtio_gpu"
+                                | "qxl"
+                                | "bochs-drm"
+                                | "vmwgfx"
+                                | "vboxvideo"
+                                | "cirrus"
+                        )
+                    } else {
+                        false
+                    }
+                })
+            })
+            .unwrap_or(false)
+    };
+    if detected {
+        unsafe {
+            std::env::set_var("WEBKIT_DISABLE_GPU", "1");
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+    }
+    detected
+}
+
+/// Disable hardware acceleration via WebKitGTK API for VM GPUs.
+/// Env vars (WEBKIT_DISABLE_GPU) are ignored by newer WebKitGTK versions,
+/// so we set the policy at the API level before the first render.
+#[cfg(target_os = "linux")]
+fn disable_gpu_acceleration(app: &tauri::App) {
+    if let Some(webview) = app.get_webview_window("main") {
+        let _ = webview.with_webview(|wv| {
+            use webkit2gtk::SettingsExt;
+            let inner = wv.inner();
+            if let Some(settings) = webkit2gtk::WebViewExt::settings(&inner) {
+                settings.set_hardware_acceleration_policy(
+                    webkit2gtk::HardwareAccelerationPolicy::Never,
+                );
+            }
+        });
+    }
+}
+
+/// Enable autostart on first launch (only if user hasn't explicitly configured it).
+fn enable_autostart_on_first_launch() {
+    let config_path = config::config_file_path();
+    let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
+    if !config_content.contains("launch_at_login") {
+        let _ = autostart::set_autostart(true);
+    }
+}
+
+/// Register global shortcuts (Alt+Space to toggle, Alt+Shift+Q to quit).
+/// Uses compositor-specific keybinding on Wayland, tauri-plugin on X11/macOS/Windows.
+fn register_shortcuts(
+    app: &tauri::App,
+    use_wayland: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let app_handle = app.handle().clone();
+
+    if use_wayland {
+        #[cfg(target_os = "linux")]
+        {
+            // Install GNOME Shell extension for window focusing (GNOME only)
+            if std::env::var("XDG_CURRENT_DESKTOP")
+                .unwrap_or_default()
+                .split(':')
+                .any(|s| s.trim().eq_ignore_ascii_case("GNOME"))
+            {
+                linux_gnome_ext::ensure_installed();
+            }
+
+            let handle = app_handle.clone();
+            linux_wayland_shortcut::start(move || {
+                toggle_window(&handle);
+            });
+        }
+    } else {
+        use tauri_plugin_global_shortcut::GlobalShortcutExt;
+        let handle = app_handle.clone();
+        app.global_shortcut()
+            .on_shortcut("Alt+Space", move |_app, _shortcut, event| {
+                if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                    return;
+                }
+                toggle_window(&handle);
+            })?;
+        app.global_shortcut()
+            .on_shortcut("Alt+Shift+Q", |app, _shortcut, event| {
+                if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                    return;
+                }
+                eprintln!("look: quit via Alt+Shift+Q");
+                app.exit(0);
+            })?;
+    }
+
+    Ok(())
+}
+
+/// Cache Look's X11 window ID and start monitoring _NET_ACTIVE_WINDOW for auto-hide.
+#[cfg(target_os = "linux")]
+fn setup_x11_focus_monitor(app: &tauri::App) {
+    linux_window_focus::cache_self_window();
+    let window = app.get_webview_window("main").expect("main window missing");
+    linux_window_focus::start_active_window_monitor(move || {
+        if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
+            LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
+            let _ = window.hide();
+        }
+    });
+}
+
+/// Set the data-transparent attribute so CSS can adapt to compositor capabilities.
+fn apply_transparency(window: &tauri::WebviewWindow) {
+    let value = if supports_transparency() {
+        "true"
+    } else {
+        "false"
+    };
+    let _ = window.eval(&format!(
+        "document.documentElement.setAttribute('data-transparent', '{value}')"
+    ));
+}
+
+/// Set up window event handlers (focus input on focus, auto-hide on blur).
+fn setup_window_events(window: &tauri::WebviewWindow) {
+    let w = window.clone();
+    window.on_window_event(move |event| {
+        match event {
+            tauri::WindowEvent::Focused(true) => {
+                let _ = w.eval("{ let q = document.getElementById('query'); if (q) { q.focus(); q.select(); } }");
+            }
+            // On Linux, Focused(false) fires on mouse-leave (GNOME/Mutter
+            // with undecorated always-on-top windows), so auto-hide is
+            // handled entirely by the X11 active-window monitor instead.
+            // TODO: add Wayland auto-hide when Wayland support is added.
+            #[cfg(not(target_os = "linux"))]
+            tauri::WindowEvent::Focused(false) => {
+                if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
+                    LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
+                    let _ = w.hide();
+                }
+            }
+            _ => {}
+        }
+    });
 }
 
 fn main() {
@@ -125,101 +338,16 @@ fn main() {
         return;
     }
 
-    // Dev mode: use separate config and database so dev doesn't pollute production.
-    // SAFETY: Called at startup before any threads are spawned.
     #[cfg(debug_assertions)]
-    {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        if std::env::var("LOOK_CONFIG_PATH")
-            .unwrap_or_default()
-            .trim()
-            .is_empty()
-        {
-            unsafe {
-                std::env::set_var(
-                    "LOOK_CONFIG_PATH",
-                    std::path::PathBuf::from(&home).join(".look.dev.config"),
-                );
-            }
-        }
-        if std::env::var("LOOK_DB_PATH")
-            .unwrap_or_default()
-            .trim()
-            .is_empty()
-        {
-            let db_dir = std::env::var("XDG_DATA_HOME")
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|_| std::path::PathBuf::from(&home).join(".local").join("share"))
-                .join("look");
-            let _ = std::fs::create_dir_all(&db_dir);
-            unsafe {
-                std::env::set_var("LOOK_DB_PATH", db_dir.join("look.dev.db"));
-            }
-        }
-        eprintln!(
-            "[dev] config={} db={}",
-            std::env::var("LOOK_CONFIG_PATH").unwrap_or_default(),
-            std::env::var("LOOK_DB_PATH").unwrap_or_default(),
-        );
-    }
+    setup_dev_env();
 
-    // Disable WebKitGTK GPU rendering in environments without a usable GPU.
-    // Covers VMs (virtio-gpu, QXL, etc.) and containers where EGL init fails.
-    // SAFETY: Called at startup before any threads are spawned.
     #[cfg(target_os = "linux")]
-    {
-        let disable_gpu = if !std::path::Path::new("/dev/dri").exists() {
-            true
-        } else {
-            // /dev/dri exists but the driver may not support EGL (common in VMs).
-            // Check for known virtual GPU drivers via /dev/dri/card* sysfs.
-            std::fs::read_dir("/sys/class/drm")
-                .map(|entries| {
-                    entries.filter_map(Result::ok).any(|e| {
-                        let driver = e.path().join("device/driver");
-                        if let Ok(target) = std::fs::read_link(&driver) {
-                            let name = target
-                                .file_name()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .to_string();
-                            matches!(
-                                name.as_str(),
-                                "virtio-pci"
-                                    | "virtio_gpu"
-                                    | "qxl"
-                                    | "bochs-drm"
-                                    | "vmwgfx"
-                                    | "vboxvideo"
-                                    | "cirrus"
-                            )
-                        } else {
-                            false
-                        }
-                    })
-                })
-                .unwrap_or(false)
-        };
-        if disable_gpu {
-            unsafe {
-                std::env::set_var("WEBKIT_DISABLE_GPU", "1");
-                std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-            }
-        }
-    }
+    let disable_gpu = detect_and_disable_virtual_gpu();
 
-    // Enable autostart on first launch (only if user hasn't explicitly configured it)
-    {
-        let config_path = config::config_file_path();
-        let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
-        if !config_content.contains("launch_at_login") {
-            let _ = autostart::set_autostart(true);
-        }
-    }
+    enable_autostart_on_first_launch();
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // Focus the main window when a second instance is launched
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
@@ -242,112 +370,26 @@ fn main() {
 
     builder
         .setup(move |app| {
+            #[cfg(target_os = "linux")]
+            if disable_gpu {
+                disable_gpu_acceleration(app);
+            }
+
             AppState::init_app_handle(app);
             app.state::<AppState>().start_bootstrap();
             clipboard::start_monitor();
-            let app_handle = app.handle().clone();
 
-            if use_wayland {
-                // Wayland: register Alt+Space via compositor-specific keybinding + D-Bus
-                #[cfg(target_os = "linux")]
-                {
-                    // Install GNOME Shell extension for window focusing (GNOME only)
-                    if std::env::var("XDG_CURRENT_DESKTOP")
-                        .unwrap_or_default()
-                        .split(':')
-                        .any(|s| s.trim().eq_ignore_ascii_case("GNOME"))
-                    {
-                        linux_gnome_ext::ensure_installed();
-                    }
+            register_shortcuts(app, use_wayland)?;
 
-                    let handle = app_handle.clone();
-                    linux_wayland_shortcut::start(move || {
-                        toggle_window(&handle);
-                    });
-                }
-            } else {
-                // X11 / macOS / Windows: use tauri-plugin-global-shortcut
-                let handle = app_handle.clone();
-                use tauri_plugin_global_shortcut::GlobalShortcutExt;
-                app.global_shortcut()
-                    .on_shortcut("Alt+Space", move |_app, _shortcut, event| {
-                        if event.state
-                            != tauri_plugin_global_shortcut::ShortcutState::Pressed
-                        {
-                            return;
-                        }
-                        toggle_window(&handle);
-                    })?;
-                app.global_shortcut()
-                    .on_shortcut("Alt+Shift+Q", |app, _shortcut, event| {
-                        if event.state
-                            != tauri_plugin_global_shortcut::ShortcutState::Pressed
-                        {
-                            return;
-                        }
-                        eprintln!("look: quit via Alt+Shift+Q");
-                        app.exit(0);
-                    })?;
-            }
-
-            // Cache Look's X11 window ID for later focus activation,
-            // and start monitoring _NET_ACTIVE_WINDOW for auto-hide.
             #[cfg(target_os = "linux")]
             if !use_wayland {
-                linux_window_focus::cache_self_window();
-                let w_monitor = app.get_webview_window("main").expect("main window missing");
-                linux_window_focus::start_active_window_monitor(move || {
-                    if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
-                        LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
-                        let _ = w_monitor.hide();
-                    }
-                });
+                setup_x11_focus_monitor(app);
             }
 
-            // Scale window for current monitor on startup
             let window = app.get_webview_window("main").expect("main window missing");
-            if let Ok(Some(monitor)) = window.current_monitor() {
-                let screen = monitor.size();
-                let scale = monitor.scale_factor();
-                let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
-                let _ = window.set_size(tauri::PhysicalSize::new(win_w, win_h));
-                let x = ((screen.width as f64 - win_w as f64) / 2.0) as i32;
-                let y = ((screen.height as f64 - win_h as f64) / 2.0) as i32;
-                let _ = window.set_position(PhysicalPosition::new(x, y));
-            }
-
-            // Detect display capabilities and tell the frontend
-            let supports_transparency = supports_transparency();
-
-            if supports_transparency {
-                let _ = window
-                    .eval("document.documentElement.setAttribute('data-transparent', 'true')");
-            } else {
-                let _ = window
-                    .eval("document.documentElement.setAttribute('data-transparent', 'false')");
-            }
-
-            // Window event handler
-            let w = window.clone();
-            window.on_window_event(move |event| {
-                match event {
-                    tauri::WindowEvent::Focused(true) => {
-                        let _ = w.eval("{ let q = document.getElementById('query'); if (q) { q.focus(); q.select(); } }");
-                    }
-                    // On Linux, Focused(false) fires on mouse-leave (GNOME/Mutter
-                    // with undecorated always-on-top windows), so auto-hide is
-                    // handled entirely by the X11 active-window monitor instead.
-                    // TODO: add Wayland auto-hide when Wayland support is added.
-                    #[cfg(not(target_os = "linux"))]
-                    tauri::WindowEvent::Focused(false) => {
-                        if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
-                            LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
-                            let _ = w.hide();
-                        }
-                    }
-                    _ => {}
-                }
-            });
+            center_and_scale_window(&window);
+            apply_transparency(&window);
+            setup_window_events(&window);
 
             Ok(())
         })
