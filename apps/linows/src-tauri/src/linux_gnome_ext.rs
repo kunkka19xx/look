@@ -30,6 +30,15 @@ pub fn ensure_installed() {
     };
 
     if needs_install {
+        // Use `gnome-extensions install` with a zip so GNOME Shell picks up
+        // the extension immediately — no re-login required on Wayland.
+        if install_via_gnome_extensions() {
+            eprintln!("[look] Installed GNOME Shell extension via gnome-extensions install");
+            enable_extension();
+            return;
+        }
+
+        // Fallback: write files manually (needs re-login on Wayland)
         if let Err(e) = std::fs::create_dir_all(&ext_dir) {
             eprintln!("[look] Failed to create extension dir: {e}");
             return;
@@ -42,13 +51,53 @@ pub fn ensure_installed() {
             eprintln!("[look] Failed to write extension.js: {e}");
             return;
         }
-        eprintln!("[look] Installed GNOME Shell extension: {EXT_UUID}");
-
-        // Enable the extension via gsettings
+        eprintln!("[look] Installed GNOME Shell extension: {EXT_UUID} (manual, needs re-login)");
         enable_extension();
-
-        eprintln!("[look] Extension will activate on next GNOME Shell restart (or log out/in)");
     }
+}
+
+/// Build a zip of the extension in /tmp and install via `gnome-extensions install --force`.
+fn install_via_gnome_extensions() -> bool {
+    let zip_path = std::env::temp_dir().join("look-gnome-ext.zip");
+    if let Err(e) = build_extension_zip(&zip_path) {
+        eprintln!("[look] Failed to create extension zip: {e}");
+        return false;
+    }
+    let result = std::process::Command::new("gnome-extensions")
+        .args(["install", "--force"])
+        .arg(&zip_path)
+        .output();
+    let _ = std::fs::remove_file(&zip_path);
+    match result {
+        Ok(output) if output.status.success() => true,
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!("[look] gnome-extensions install failed: {stderr}");
+            false
+        }
+        Err(e) => {
+            eprintln!("[look] gnome-extensions not found: {e}");
+            false
+        }
+    }
+}
+
+fn build_extension_zip(path: &std::path::Path) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let file = std::fs::File::create(path)?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    zip.start_file("metadata.json", options)?;
+    zip.write_all(METADATA_JSON.as_bytes())?;
+
+    zip.start_file("extension.js", options)?;
+    zip.write_all(EXTENSION_JS.as_bytes())?;
+
+    zip.finish()?;
+    Ok(())
 }
 
 /// Try to focus an app by its desktop file ID using the GNOME Shell extension.

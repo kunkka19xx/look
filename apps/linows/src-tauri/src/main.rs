@@ -303,7 +303,7 @@ fn apply_transparency(window: &tauri::WebviewWindow) {
     } else {
         "false"
     };
-    let _ = window.eval(&format!(
+    let _ = window.eval(format!(
         "document.documentElement.setAttribute('data-transparent', '{value}')"
     ));
 }
