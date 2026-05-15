@@ -370,18 +370,19 @@ fn try_focus_existing(desktop_path: &str) -> bool {
         .and_then(|f| f.to_str())
         .map(String::from);
 
-    // Collect candidate identifiers to try (WM_CLASS first, then filename stem)
     let candidates: Vec<&str> = [wm_class.as_deref(), stem.as_deref()]
         .into_iter()
         .flatten()
         .collect();
+    eprintln!(
+        "[focus] try_focus_existing desktop={desktop_path} candidates={candidates:?}"
+    );
 
     #[cfg(target_os = "linux")]
     if crate::linux_transparency::is_wayland() {
         return try_focus_wayland(desktop_path, &candidates);
     }
 
-    // X11 / i3
     for id in &candidates {
         if try_focus_window(id) {
             return true;
@@ -408,6 +409,12 @@ fn try_focus_wayland(desktop_path: &str, candidates: &[&str]) -> bool {
 }
 
 fn try_focus_sway(app_id: &str) -> bool {
+    // Try the native wlr-foreign-toplevel protocol first (works for any
+    // wlroots compositor); fall back to sway IPC if the protocol isn't
+    // available.
+    if crate::linux_wlr_focus::try_focus(app_id) {
+        return true;
+    }
     for criteria in [
         format!("[app_id=\"(?i){app_id}\"] focus"),
         format!("[class=\"(?i){app_id}\"] focus"),
@@ -428,31 +435,75 @@ fn try_focus_sway(app_id: &str) -> bool {
 }
 
 fn try_focus_hyprland(class: &str) -> bool {
-    // Try Lua dispatcher first (Hyprland v0.55+).
-    if let Ok(output) = std::process::Command::new("hyprctl")
-        .args([
-            "eval",
-            &format!("hl.dsp.focus({{window = \"class:{class}\"}})"),
-        ])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-    {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if stdout.trim() == "ok" {
-            return true;
-        }
+    eprintln!("[focus] hyprland try class={class}");
+    // Primary path: native wlr-foreign-toplevel-management. Works regardless
+    // of the broken hyprctl dispatcher on v0.55+.
+    if crate::linux_wlr_focus::try_focus(class) {
+        eprintln!("[focus] hyprland focus via wlr-foreign-toplevel succeeded");
+        return true;
     }
-    // Legacy fallback (Hyprland < v0.55).
-    if let Ok(output) = std::process::Command::new("hyprctl")
+    // Fallback for Hyprland < v0.55 where the legacy dispatcher still works
+    // (and the wlr protocol may not be advertised).
+    if !hyprland_has_client(class) {
+        return false;
+    }
+    let _ = std::process::Command::new("hyprctl")
         .args(["dispatch", "focuswindow", &format!("class:{class}")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+    if hyprland_active_class_matches(class) {
+        eprintln!("[focus] hyprland legacy dispatcher worked");
+        return true;
+    }
+    eprintln!("[focus] hyprland focus failed for class={class}, falling through to launch chain");
+    false
+}
+
+fn hyprland_has_client(class: &str) -> bool {
+    let Ok(output) = std::process::Command::new("hyprctl")
+        .args(["clients", "-j"])
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
         .output()
-    {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if stdout.trim() == "ok" {
-            return true;
+    else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    json_has_class(&String::from_utf8_lossy(&output.stdout), class)
+}
+
+fn hyprland_active_class_matches(class: &str) -> bool {
+    let Ok(output) = std::process::Command::new("hyprctl")
+        .args(["activewindow", "-j"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+    else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    json_has_class(&String::from_utf8_lossy(&output.stdout), class)
+}
+
+fn json_has_class(json: &str, class: &str) -> bool {
+    let json = json.to_lowercase();
+    let needle = class.to_lowercase();
+    for key in ["\"class\":", "\"initialclass\":"] {
+        let mut rest = json.as_str();
+        while let Some(idx) = rest.find(key) {
+            rest = &rest[idx + key.len()..];
+            let trimmed = rest.trim_start();
+            if let Some(after_quote) = trimmed.strip_prefix('"')
+                && let Some(end) = after_quote.find('"')
+                && after_quote[..end] == needle
+            {
+                return true;
+            }
         }
     }
     false

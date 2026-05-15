@@ -15,6 +15,8 @@ mod linux_transparency;
 mod linux_wayland_shortcut;
 #[cfg(target_os = "linux")]
 mod linux_window_focus;
+#[cfg(target_os = "linux")]
+mod linux_wlr_focus;
 mod music;
 mod platform;
 mod process;

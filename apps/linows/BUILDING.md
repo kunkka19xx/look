@@ -31,13 +31,19 @@ cargo tauri dev
 ### Arch Linux
 
 ```bash
-sudo pacman -S \
+sudo pacman -S --needed \
+  base-devel rustup \
   webkit2gtk-4.1 gtk3 libsoup3 glib2 cairo pango \
   gdk-pixbuf2 harfbuzz dbus alsa-lib librsvg openssl pkg-config
+
+rustup default stable
+cargo install tauri-cli --version "^2" --locked
 
 cd apps/linows
 cargo tauri dev
 ```
+
+> `base-devel` provides `gcc` / `cc` — without it the Rust build fails with `error: linker 'cc' not found` on a fresh Arch install.
 
 ### NixOS
 
