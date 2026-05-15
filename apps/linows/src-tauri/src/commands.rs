@@ -406,10 +406,11 @@ fn try_focus_existing(desktop_path: &str) -> bool {
         }
     });
 
-    let candidates: Vec<&str> = [wm_class.as_deref(), stem.as_deref(), short_name.as_deref()]
+    let mut candidates: Vec<&str> = [wm_class.as_deref(), stem.as_deref(), short_name.as_deref()]
         .into_iter()
         .flatten()
         .collect();
+    candidates.dedup();
     eprintln!("[focus] try_focus_existing desktop={desktop_path} candidates={candidates:?}");
 
     #[cfg(target_os = "linux")]
