@@ -91,14 +91,24 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         // auto-hide hides the window before we run, so is_visible
         // is false.  The 200ms guard prevents re-showing.
         LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
-        // Re-center on each toggle (handles monitor changes) but don't resize:
-        // calling set_size() on toggle triggers a visible Wayland configure
-        // cycle — the window paints at its previous size, then snaps to the
-        // new one ("zoom out" flicker). The size is set once at startup in
-        // center_and_scale_window() and persists across hide/show cycles.
-        recenter_window(&window);
+
+        // Tiling WMs (i3, sway, Hyprland) ignore set_position on unmapped
+        // windows — they apply their own placement on map. So we must
+        // recenter AFTER show. Desktop environments (GNOME, KDE, …) work
+        // best with recenter BEFORE show to avoid a visible jump.
+        #[cfg(target_os = "linux")]
+        let tiling = platform::is_tiling_wm();
+        #[cfg(not(target_os = "linux"))]
+        let tiling = false;
+
+        if !tiling {
+            recenter_window(&window);
+        }
         let _ = window.set_always_on_top(true);
         let _ = window.show();
+        if tiling {
+            recenter_window(&window);
+        }
         let _ = window.emit("window-shown", ());
 
         // On Linux/X11, bypass Mutter's focus-stealing prevention
@@ -136,16 +146,20 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) {
 /// Re-center the window on the current monitor without changing its size.
 /// Used on each toggle so the window follows the user across monitors but
 /// doesn't trigger a Wayland configure-cycle resize.
+///
+/// Note: we recalculate the expected size via `scaled_window_size` instead of
+/// querying `outer_size()` because the window is still hidden when this runs,
+/// and on some X11 WMs (e.g. i3) a hidden window reports stale/zero sizes,
+/// causing the position to drift downward on each toggle.
 fn recenter_window(window: &tauri::WebviewWindow) {
     let Ok(Some(monitor)) = window.current_monitor() else {
         return;
     };
-    let Ok(size) = window.outer_size() else {
-        return;
-    };
     let screen = monitor.size();
-    let x = ((screen.width as f64 - size.width as f64) / 2.0) as i32;
-    let y = ((screen.height as f64 - size.height as f64) / 2.0) as i32;
+    let scale = monitor.scale_factor();
+    let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
+    let x = ((screen.width as f64 - win_w as f64) / 2.0) as i32;
+    let y = ((screen.height as f64 - win_h as f64) / 2.0) as i32;
     let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 

@@ -339,7 +339,32 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
 }
 
 fn try_focus_window(wm_class: &str) -> bool {
-    // i3 window manager
+    // i3 window manager — use i3-msg exclusively (i3 ignores raw X11
+    // _NET_ACTIVE_WINDOW messages, so the x11rb fallback would report
+    // success without actually focusing).  Try both class and instance
+    // criteria: GTK apps often set instance to the reverse-DNS app ID
+    // (e.g. "org.pwmt.zathura") while class is the short name ("Zathura").
+    if std::env::var("I3SOCK").is_ok() {
+        for criterion in [
+            format!("[class=\"(?i){wm_class}\"] focus"),
+            format!("[instance=\"(?i){wm_class}\"] focus"),
+        ] {
+            if let Ok(output) = std::process::Command::new("i3-msg")
+                .arg(&criterion)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if stdout.contains("\"success\":true") {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Non-i3: try i3-msg anyway (might be running), then x11rb fallback.
     if let Ok(output) = std::process::Command::new("i3-msg")
         .arg(format!("[class=\"(?i){wm_class}\"] focus"))
         .stdout(std::process::Stdio::piped())
@@ -352,7 +377,7 @@ fn try_focus_window(wm_class: &str) -> bool {
         }
     }
 
-    // Linux: xdotool → wmctrl → xprop (covers GNOME, KDE, NixOS, etc.)
+    // Linux: x11rb _NET_ACTIVE_WINDOW (covers GNOME, KDE, etc.)
     #[cfg(target_os = "linux")]
     if crate::linux_window_focus::try_focus(wm_class) {
         return true;
@@ -370,7 +395,18 @@ fn try_focus_existing(desktop_path: &str) -> bool {
         .and_then(|f| f.to_str())
         .map(String::from);
 
-    let candidates: Vec<&str> = [wm_class.as_deref(), stem.as_deref()]
+    // For reverse-DNS stems like "org.pwmt.zathura", also try the last
+    // segment ("zathura") — many apps use the short name as WM_CLASS even
+    // when the desktop file uses the full reverse-DNS ID.
+    let short_name = stem.as_deref().and_then(|s| {
+        if s.contains('.') {
+            s.rsplit('.').next().map(String::from)
+        } else {
+            None
+        }
+    });
+
+    let candidates: Vec<&str> = [wm_class.as_deref(), stem.as_deref(), short_name.as_deref()]
         .into_iter()
         .flatten()
         .collect();
