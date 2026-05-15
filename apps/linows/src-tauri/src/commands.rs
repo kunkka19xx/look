@@ -374,9 +374,7 @@ fn try_focus_existing(desktop_path: &str) -> bool {
         .into_iter()
         .flatten()
         .collect();
-    eprintln!(
-        "[focus] try_focus_existing desktop={desktop_path} candidates={candidates:?}"
-    );
+    eprintln!("[focus] try_focus_existing desktop={desktop_path} candidates={candidates:?}");
 
     #[cfg(target_os = "linux")]
     if crate::linux_transparency::is_wayland() {

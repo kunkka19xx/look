@@ -91,9 +91,14 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         // auto-hide hides the window before we run, so is_visible
         // is false.  The 200ms guard prevents re-showing.
         LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
+        // Re-center on each toggle (handles monitor changes) but don't resize:
+        // calling set_size() on toggle triggers a visible Wayland configure
+        // cycle — the window paints at its previous size, then snaps to the
+        // new one ("zoom out" flicker). The size is set once at startup in
+        // center_and_scale_window() and persists across hide/show cycles.
+        recenter_window(&window);
         let _ = window.set_always_on_top(true);
         let _ = window.show();
-        center_and_scale_window(&window);
         let _ = window.emit("window-shown", ());
 
         // On Linux/X11, bypass Mutter's focus-stealing prevention
@@ -109,16 +114,39 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
 }
 
 /// Center and scale a window to fit the current monitor.
+/// Called once at startup. Avoid calling on toggle — see toggle_window.
 fn center_and_scale_window(window: &tauri::WebviewWindow) {
     if let Ok(Some(monitor)) = window.current_monitor() {
         let screen = monitor.size();
         let scale = monitor.scale_factor();
         let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
-        let _ = window.set_size(tauri::PhysicalSize::new(win_w, win_h));
+        let size = tauri::PhysicalSize::new(win_w, win_h);
+        let _ = window.set_size(size);
+        // Lock min/max to the scaled size: on Wayland, hide()/show() can
+        // otherwise revert to tauri.conf's default (860×580) on remap,
+        // producing a visible "big rectangle then snap" on toggle.
+        let _ = window.set_min_size(Some(tauri::Size::Physical(size)));
+        let _ = window.set_max_size(Some(tauri::Size::Physical(size)));
         let x = ((screen.width as f64 - win_w as f64) / 2.0) as i32;
         let y = ((screen.height as f64 - win_h as f64) / 2.0) as i32;
         let _ = window.set_position(PhysicalPosition::new(x, y));
     }
+}
+
+/// Re-center the window on the current monitor without changing its size.
+/// Used on each toggle so the window follows the user across monitors but
+/// doesn't trigger a Wayland configure-cycle resize.
+fn recenter_window(window: &tauri::WebviewWindow) {
+    let Ok(Some(monitor)) = window.current_monitor() else {
+        return;
+    };
+    let Ok(size) = window.outer_size() else {
+        return;
+    };
+    let screen = monitor.size();
+    let x = ((screen.width as f64 - size.width as f64) / 2.0) as i32;
+    let y = ((screen.height as f64 - size.height as f64) / 2.0) as i32;
+    let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 
 #[cfg(target_os = "linux")]
@@ -389,6 +417,16 @@ fn main() {
             }
 
             let window = app.get_webview_window("main").expect("main window missing");
+            // On transparency-capable Linux compositors, force the GTK window
+            // background to transparent. Without this, GTK paints its theme
+            // background (opaque, square corners) on the surface before WebKit
+            // commits the HTML — visible as a brief "big rectangle without
+            // corners" flash before the rounded launcher appears.
+            // On X11 bare (no compositor), keep GTK's solid bg as a fallback.
+            #[cfg(target_os = "linux")]
+            if supports_transparency() {
+                let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+            }
             center_and_scale_window(&window);
             apply_transparency(&window);
             setup_window_events(&window);

@@ -128,7 +128,7 @@ fn ensure_hyprland_keybinding() {
     let lua = format!(
         r#"pcall(hl.unbind, "ALT + space")
 hl.window_rule({{ name = "look-float", match = {{ class = "lookapp" }}, float = true }})
-hl.window_rule({{ name = "look-noborder", match = {{ class = "lookapp" }}, border_size = 0 }})
+hl.window_rule({{ name = "look-noborder", match = {{ class = "lookapp" }}, border_size = 0, rounding = 0, no_shadow = true }})
 hl.bind("ALT + space", hl.dsp.exec_cmd("{TOGGLE_CMD}"))"#
     );
 

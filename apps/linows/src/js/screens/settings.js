@@ -798,6 +798,13 @@ function applytint() {
     document.documentElement.style.setProperty('--bg-tint', `rgb(${r}, ${g}, ${b})`);
     return;
   }
+  // Hyprland: backdrop-filter is disabled (CSS) due to WebKitGTK ghosting.
+  // Force a near-opaque alpha so themes still pick the color while the
+  // window stays readable without blur.
+  if (platform.compositor() === 'hyprland') {
+    document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, 0.97)`);
+    return;
+  }
   const tintA = getSliderVal('ui_tint_opacity');
   const blurA = getSliderVal('ui_blur_opacity') || 0.95;
   const settingsBlur = active ? (getSliderVal('settings_blur_multiplier') || 0.5) : 1.0;
@@ -833,6 +840,10 @@ function applyTintFromMap(map) {
   const b = Math.round((parseFloat(map.ui_tint_blue ?? 0.18)) * 255);
   if (!platform.hasCompositor()) {
     document.documentElement.style.setProperty('--bg-tint', `rgb(${r}, ${g}, ${b})`);
+    return;
+  }
+  if (platform.compositor() === 'hyprland') {
+    document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, 0.97)`);
     return;
   }
   const tintA = parseFloat(map.ui_tint_opacity ?? 0.95);

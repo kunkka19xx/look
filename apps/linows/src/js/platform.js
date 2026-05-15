@@ -6,9 +6,12 @@ export async function init() {
   try {
     info = await getPlatform();
   } catch {
-    info = { os: 'linux', has_compositor: false };
+    info = { os: 'linux', has_compositor: false, compositor: null };
   }
   document.documentElement.setAttribute('data-os', info.os);
+  if (info.compositor) {
+    document.documentElement.setAttribute('data-compositor', info.compositor);
+  }
 }
 
 export function os() {
@@ -17,6 +20,10 @@ export function os() {
 
 export function hasCompositor() {
   return info?.has_compositor ?? false;
+}
+
+export function compositor() {
+  return info?.compositor || null;
 }
 
 export function isWindows() {

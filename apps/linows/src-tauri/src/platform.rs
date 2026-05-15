@@ -349,6 +349,10 @@ fn detect_gtk_icon_theme() -> Option<String> {
 pub struct PlatformInfo {
     pub os: String,
     pub has_compositor: bool,
+    /// Compositor name when known ("hyprland", "sway", "gnome", "kde", ...).
+    /// Exposed to the frontend so CSS can branch on compositor-specific bugs
+    /// (e.g. WebKitGTK backdrop-filter glitches on Hyprland).
+    pub compositor: Option<String>,
 }
 
 #[tauri::command]
@@ -361,7 +365,45 @@ pub fn get_platform() -> PlatformInfo {
     #[cfg(not(target_os = "linux"))]
     let has_compositor = true;
 
-    PlatformInfo { os, has_compositor }
+    #[cfg(target_os = "linux")]
+    let compositor = detect_compositor();
+
+    #[cfg(not(target_os = "linux"))]
+    let compositor: Option<String> = None;
+
+    PlatformInfo {
+        os,
+        has_compositor,
+        compositor,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn detect_compositor() -> Option<String> {
+    if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
+        return Some("hyprland".into());
+    }
+    if std::env::var("SWAYSOCK").is_ok() {
+        return Some("sway".into());
+    }
+    // XDG_CURRENT_DESKTOP can be colon-separated ("ubuntu:GNOME", "pop:GNOME").
+    // Prefer a recognised desktop name over distro prefixes.
+    const KNOWN: &[&str] = &[
+        "gnome", "kde", "cinnamon", "xfce", "lxqt", "mate", "budgie", "deepin", "pantheon",
+        "cosmic",
+    ];
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    for seg in desktop.split(':') {
+        let s = seg.trim().to_ascii_lowercase();
+        if KNOWN.iter().any(|&k| k == s) {
+            return Some(s);
+        }
+    }
+    // Fallback: first non-empty segment.
+    desktop.split(':').find_map(|s| {
+        let t = s.trim();
+        (!t.is_empty()).then(|| t.to_ascii_lowercase())
+    })
 }
 
 #[tauri::command]

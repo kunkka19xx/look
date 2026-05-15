@@ -323,6 +323,14 @@ These are platform limitations that cannot be fixed in app code:
 
 4. **Rounded window mask on X11** — CSS `border-radius` rounds the content, but the actual window shape remains rectangular on X11. A thin gap may be visible at corners. Wayland compositors handle this better.
 
+5. **No blur on Hyprland** — WebKitGTK fails to invalidate the `backdrop-filter` compositor layer when a scrollable child (e.g. `.settings-body`) updates, producing ghosted/doubled rendering. `backdrop-filter` is disabled and replaced with a near-opaque tint (alpha forced to `0.97` in `applytint`) when `HYPRLAND_INSTANCE_SIGNATURE` is set. The frontend detects this via the `data-compositor="hyprland"` attribute injected by `platform.js`.
+
+### Window Lifecycle (Linux/Wayland)
+
+- **GTK background**: explicitly set to `Color(0,0,0,0)` at startup on transparency-capable compositors. Without this, GTK paints its theme background (opaque, square corners) on the surface before WebKit commits the HTML, producing a one-frame "big rectangle without rounded corners" flash on show.
+- **Size lock**: `set_min_size` / `set_max_size` are pinned to the scaled startup size. On Wayland, a plain `hide()`/`show()` cycle would otherwise let the window remap at `tauri.conf`'s 860×580 default before resizing to the scaled size — visible as a zoom-out on each toggle.
+- **Toggle**: only re-centers (`recenter_window`), never resizes. Re-resizing on show triggers a Wayland configure cycle that paints the window briefly at the old size. Trade-off: window size does not follow monitor DPI changes mid-session — a restart picks up the new monitor's scale.
+
 ### Recommendations per Platform
 
 - **Windows (Win11):** Enable `"effects": ["mica"]` in tauri.conf.json for near-macOS appearance.
@@ -330,6 +338,7 @@ These are platform limitations that cannot be fixed in app code:
 - **Linux (GNOME on Wayland):** Enable transparency in tauri.conf.json. No blur but transparent tint works.
 - **Linux (KDE):** KDE compositor supports blur hints — may work with additional config.
 - **Linux (i3/sway/Hyprland):** Solid background mode. Add picom for X11 transparency. No blur possible. Hotkey and window rules auto-injected on sway/Hyprland.
+- **Linux (Hyprland):** `backdrop-filter` is disabled (WebKitGTK rendering bug); tint runs at fixed `0.97` alpha. Theme RGB still applies, only the alpha slider is overridden.
 
 ---
 

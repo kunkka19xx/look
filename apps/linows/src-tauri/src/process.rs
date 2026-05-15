@@ -94,7 +94,18 @@ pub fn list_processes() -> Vec<RunningApp> {
             if matched_keys.contains(&key) {
                 continue;
             }
-            if let Some(pids) = norm_procs.get(&key) {
+            // /proc/<pid>/comm is limited to TASK_COMM_LEN-1 == 15 chars, so
+            // `gnome-text-editor` shows up as `gnome-text-edit`. Match the
+            // truncated form too when the desktop Exec is longer.
+            let pids = norm_procs.get(&key).or_else(|| {
+                let trunc: String = key.chars().take(15).collect();
+                if trunc.len() < key.len() {
+                    norm_procs.get(&trunc)
+                } else {
+                    None
+                }
+            });
+            if let Some(pids) = pids {
                 matched_keys.insert(key);
                 let &(pid, _) = pids.iter().max_by_key(|(_, rss)| *rss).unwrap();
                 apps.push(RunningApp {

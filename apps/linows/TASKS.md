@@ -133,6 +133,10 @@ Based on macOS app as source of truth. Organized by phase.
 - [x] Linux settings handling — detect GNOME DE + `gnome-control-center` at index time; skip settings on sway/Hyprland/i3/minimal
 - [] Hyrpland gnome alt-space toggle
 - [] Arch gnome startup issue: EGL_BAD_PARAMETER
+- [x] Hyprland: ghosted/doubled rendering in Settings — disable `backdrop-filter` and force near-opaque tint when `HYPRLAND_INSTANCE_SIGNATURE` is set
+- [x] Hyprland/Wayland: toggle flicker ("big rect without corners → snap to smaller with corners") — set GTK window bg to transparent and lock `min_size`/`max_size` so hide/show doesn't revert to `tauri.conf` default
+- [ ] Multi-monitor: toggle no longer rescales to the current monitor's DPI mid-session (resize was removed from the toggle path to avoid Wayland configure-cycle jank). Add a monitor-change listener to re-scale on demand if this becomes a real-world issue.
+- [ ] Sway/wlroots: monitor whether the same WebKitGTK backdrop-filter ghosting affects Sway; extend the Hyprland CSS workaround to `[data-compositor="sway"]` if reported.
 - [ ] KDE settings support — detect `systemsettings` and add KDE-specific settings catalog
 - [ ] Minimal DE settings — map to standalone tools (pavucontrol, arandr, blueman-manager) on i3/sway
 - [ ] Some DBUS single-instance apps (blueman-manager, fcitx5-config) fail to launch — known limitation
