@@ -406,6 +406,7 @@ fn try_focus_wayland(desktop_path: &str, candidates: &[&str]) -> bool {
     !desktop_id.is_empty() && crate::linux_gnome_ext::try_focus_app(desktop_id)
 }
 
+#[cfg(target_os = "linux")]
 fn try_focus_sway(app_id: &str) -> bool {
     // Try the native wlr-foreign-toplevel protocol first (works for any
     // wlroots compositor); fall back to sway IPC if the protocol isn't
@@ -432,6 +433,7 @@ fn try_focus_sway(app_id: &str) -> bool {
     false
 }
 
+#[cfg(target_os = "linux")]
 fn try_focus_hyprland(class: &str) -> bool {
     eprintln!("[focus] hyprland try class={class}");
     // Primary path: native wlr-foreign-toplevel-management. Works regardless
@@ -458,6 +460,7 @@ fn try_focus_hyprland(class: &str) -> bool {
     false
 }
 
+#[cfg(target_os = "linux")]
 fn hyprland_has_client(class: &str) -> bool {
     let Ok(output) = std::process::Command::new("hyprctl")
         .args(["clients", "-j"])
@@ -473,6 +476,7 @@ fn hyprland_has_client(class: &str) -> bool {
     json_has_class(&String::from_utf8_lossy(&output.stdout), class)
 }
 
+#[cfg(target_os = "linux")]
 fn hyprland_active_class_matches(class: &str) -> bool {
     let Ok(output) = std::process::Command::new("hyprctl")
         .args(["activewindow", "-j"])
@@ -488,6 +492,7 @@ fn hyprland_active_class_matches(class: &str) -> bool {
     json_has_class(&String::from_utf8_lossy(&output.stdout), class)
 }
 
+#[cfg(target_os = "linux")]
 fn json_has_class(json: &str, class: &str) -> bool {
     let json = json.to_lowercase();
     let needle = class.to_lowercase();
