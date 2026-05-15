@@ -125,3 +125,46 @@ jobs:
 
       - name: Verify version
         run: ./result/bin/lookapp --version
+
+  publish-aur:
+    name: Publish look-bin to AUR
+    needs: build-release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download .deb from release
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          curl -fSL -o "Look_${VERSION}_amd64.deb" \
+            "https://github.com/kunkka19xx/look/releases/download/v${VERSION}/Look_${VERSION}_amd64.deb"
+          SHA256=$(sha256sum "Look_${VERSION}_amd64.deb" | awk '{print $1}')
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+        id: artifact
+
+      - name: Template PKGBUILD
+        run: |
+          mkdir -p aur-staging
+          sed \
+            -e "s/__VERSION__/${{ steps.version.outputs.version }}/g" \
+            -e "s/__SHA256__/${{ steps.artifact.outputs.sha256 }}/g" \
+            packaging/aur/PKGBUILD > aur-staging/PKGBUILD
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v2.7.2
+        with:
+          pkgname: look-bin
+          pkgbuild: aur-staging/PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: nobita079x@gmail.com
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ steps.version.outputs.version }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519
