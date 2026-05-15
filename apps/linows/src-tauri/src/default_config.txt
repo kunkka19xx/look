@@ -10,5 +10,13 @@ file_exclude_paths=
 lazy_indexing_enabled=true
 skip_dir_names=node_modules,target,build,dist,.git,vendor,out,coverage,tmp,cache,venv
 
+# Arch (and other affected stacks) — workarounds for WebKitGTK ghost rendering
+# arch_disable_gpu=true forces HardwareAccelerationPolicy::Never on the webview;
+# arch_disable_blur=true drops backdrop-filter and forces an opaque tint (same
+# behavior as the Hyprland fallback). Both default off; flip if you see slider
+# trails or overlapping popovers. arch_disable_gpu requires restart.
+arch_disable_gpu=false
+arch_disable_blur=false
+
 # UI theme
 ui_theme=

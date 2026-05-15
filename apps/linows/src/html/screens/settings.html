@@ -356,6 +356,29 @@
           </div>
         </div>
 
+        <div class="settings-divider"></div>
+
+        <!-- Arch — workarounds for WebKitGTK ghost rendering -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Arch</span></div>
+        <div class="settings-section">
+          <div class="settings-row">
+            <label class="settings-label">Disable GPU compositing</label>
+            <label class="settings-toggle">
+              <input type="checkbox" id="settings-arch-disable-gpu" />
+              <span class="settings-toggle-track"></span>
+            </label>
+            <span class="settings-hint-text">Fixes ghost slider trails on Arch. Requires restart.</span>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label">Disable blur effect</label>
+            <label class="settings-toggle">
+              <input type="checkbox" id="settings-arch-disable-blur" />
+              <span class="settings-toggle-track"></span>
+            </label>
+            <span class="settings-hint-text">Fallback if GPU toggle doesn't help. Drops blur, keeps tint.</span>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>

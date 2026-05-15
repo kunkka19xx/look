@@ -134,9 +134,11 @@ Based on macOS app as source of truth. Organized by phase.
 - [] Hyrpland gnome alt-space toggle
 - [] Arch gnome startup issue: EGL_BAD_PARAMETER
 - [x] Hyprland: ghosted/doubled rendering in Settings — disable `backdrop-filter` and force near-opaque tint when `HYPRLAND_INSTANCE_SIGNATURE` is set
+- [x] Arch GNOME 50 + webkit 2.52.3: same ghost rendering as Hyprland, but Ubuntu 26.04 / NixOS 2.50.6 on identical webkit are unaffected → can't auto-detect. Added two opt-in toggles under Advanced > Arch: `arch_disable_gpu` (keeps blur, sets `HardwareAccelerationPolicy::Never`, needs restart) and `arch_disable_blur` (live; Hyprland-style fallback). Both default off.
 - [x] Hyprland/Wayland: toggle flicker ("big rect without corners → snap to smaller with corners") — set GTK window bg to transparent and lock `min_size`/`max_size` so hide/show doesn't revert to `tauri.conf` default
 - [ ] Multi-monitor: toggle no longer rescales to the current monitor's DPI mid-session (resize was removed from the toggle path to avoid Wayland configure-cycle jank). Add a monitor-change listener to re-scale on demand if this becomes a real-world issue.
 - [ ] Sway/wlroots: monitor whether the same WebKitGTK backdrop-filter ghosting affects Sway; extend the Hyprland CSS workaround to `[data-compositor="sway"]` if reported.
+- [ ] Identify what specifically in Arch's stack triggers the webkit ghost bug (GTK 3.24.49? mutter 50? mesa version?) by collecting a second Arch-with-ghost report and diffing component versions vs unaffected stacks (Ubuntu 26.04, NixOS 2.50.6). If pinpointed, auto-enable the relevant Arch toggle for affected combinations.
 - [ ] KDE settings support — detect `systemsettings` and add KDE-specific settings catalog
 - [ ] Minimal DE settings — map to standalone tools (pavucontrol, arandr, blueman-manager) on i3/sway
 - [ ] Some DBUS single-instance apps (blueman-manager, fcitx5-config) fail to launch — known limitation

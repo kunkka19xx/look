@@ -268,6 +268,21 @@ export function init(exitFn) {
   });
 
   // Launch at login
+  document.getElementById('settings-arch-disable-gpu').addEventListener('change', (e) => {
+    saveConfig({ arch_disable_gpu: e.target.checked ? 'true' : 'false' });
+  });
+
+  document.getElementById('settings-arch-disable-blur').addEventListener('change', (e) => {
+    const on = e.target.checked;
+    if (on) {
+      document.documentElement.setAttribute('data-disable-blur', '');
+    } else {
+      document.documentElement.removeAttribute('data-disable-blur');
+    }
+    saveConfig({ arch_disable_blur: on ? 'true' : 'false' });
+    applytint();
+  });
+
   document.getElementById('settings-launch-login').addEventListener('change', (e) => {
     const enabled = e.target.checked;
     saveConfig({ launch_at_login: enabled ? 'true' : 'false' });
@@ -536,6 +551,12 @@ export async function restoreOnStartup() {
   try {
     const map = await loadConfigMap();
 
+    // Apply Arch blur-disable BEFORE first tint pass so initial render is
+    // already opaque if the user toggled it.
+    if (map.arch_disable_blur === 'true') {
+      document.documentElement.setAttribute('data-disable-blur', '');
+    }
+
     // Restore theme preset — preset values drive tint/font/border
     const theme = map.ui_theme || '';
     applyThemePreset(theme);
@@ -661,6 +682,13 @@ async function loadConfig() {
     document.getElementById('settings-scan-depth').value = map.file_scan_depth || '4';
     document.getElementById('settings-file-limit').value = map.file_scan_limit || '8000';
     document.getElementById('settings-lazy-indexing').checked = map.lazy_indexing_enabled !== 'false';
+    document.getElementById('settings-arch-disable-gpu').checked = map.arch_disable_gpu === 'true';
+    document.getElementById('settings-arch-disable-blur').checked = map.arch_disable_blur === 'true';
+    if (map.arch_disable_blur === 'true') {
+      document.documentElement.setAttribute('data-disable-blur', '');
+    } else {
+      document.documentElement.removeAttribute('data-disable-blur');
+    }
 
     // Dir lists
     configCache.file_scan_extra_roots = map.file_scan_extra_roots || '';
@@ -798,10 +826,11 @@ function applytint() {
     document.documentElement.style.setProperty('--bg-tint', `rgb(${r}, ${g}, ${b})`);
     return;
   }
-  // Hyprland: backdrop-filter is disabled (CSS) due to WebKitGTK ghosting.
-  // Force a near-opaque alpha so themes still pick the color while the
-  // window stays readable without blur.
-  if (platform.compositor() === 'hyprland') {
+  // Hyprland (auto) and Arch toggle (manual): backdrop-filter is disabled
+  // (CSS) due to WebKitGTK ghosting. Force a near-opaque alpha so themes
+  // still pick the color while the window stays readable without blur.
+  if (platform.compositor() === 'hyprland'
+      || document.documentElement.hasAttribute('data-disable-blur')) {
     document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, 0.97)`);
     return;
   }
@@ -842,7 +871,8 @@ function applyTintFromMap(map) {
     document.documentElement.style.setProperty('--bg-tint', `rgb(${r}, ${g}, ${b})`);
     return;
   }
-  if (platform.compositor() === 'hyprland') {
+  if (platform.compositor() === 'hyprland'
+      || document.documentElement.hasAttribute('data-disable-blur')) {
     document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, 0.97)`);
     return;
   }

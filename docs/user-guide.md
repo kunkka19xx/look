@@ -287,6 +287,13 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - translation requires network; check connectivity and retry
 - corporate proxies and VPNs can block the translation endpoint
 
+**Linux only — ghost slider trails or overlapping popovers in Settings.**
+
+- observed on Arch GNOME 50 + webkit2gtk 2.52.3; Ubuntu 26.04 and NixOS 2.50.6 on identical webkit are unaffected, so this is a stack-interaction bug we can't auto-detect
+- open **Settings > Advanced > Arch** and flip one toggle:
+  - **Disable GPU compositing** — keeps blur, fixes the ghost. Requires restart.
+  - **Disable blur effect** — drops blur, keeps tint. Takes effect immediately.
+
 **I want to reset everything to defaults.**
 
 - `Settings > Advanced > Create Fresh Config` rewrites `~/.look.config` from the latest defaults (with a confirmation prompt)

@@ -252,6 +252,30 @@ fn detect_and_disable_virtual_gpu() -> bool {
     detected
 }
 
+/// Read the `arch_disable_gpu` config key. User-opt-in workaround for
+/// the WebKitGTK ghost-rendering bug observed on Arch GNOME 50 + webkit
+/// 2.52.3 (other stacks with same webkit version, e.g. Ubuntu 26.04, are
+/// unaffected, so we don't auto-detect — toggle lives in Advanced settings).
+#[cfg(target_os = "linux")]
+fn arch_disable_gpu_from_config() -> bool {
+    let path = config::config_file_path();
+    let Ok(contents) = std::fs::read_to_string(&path) else {
+        return false;
+    };
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.starts_with('#') {
+            continue;
+        }
+        if let Some((k, v)) = line.split_once('=')
+            && k.trim() == "arch_disable_gpu"
+        {
+            return v.trim().eq_ignore_ascii_case("true");
+        }
+    }
+    false
+}
+
 /// Disable hardware acceleration via WebKitGTK API for VM GPUs.
 /// Env vars (WEBKIT_DISABLE_GPU) are ignored by newer WebKitGTK versions,
 /// so we set the policy at the API level before the first render.
@@ -386,7 +410,7 @@ fn main() {
     setup_dev_env();
 
     #[cfg(target_os = "linux")]
-    let disable_gpu = detect_and_disable_virtual_gpu();
+    let disable_gpu = detect_and_disable_virtual_gpu() || arch_disable_gpu_from_config();
 
     enable_autostart_on_first_launch();
 

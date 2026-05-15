@@ -323,7 +323,11 @@ These are platform limitations that cannot be fixed in app code:
 
 4. **Rounded window mask on X11** — CSS `border-radius` rounds the content, but the actual window shape remains rectangular on X11. A thin gap may be visible at corners. Wayland compositors handle this better.
 
-5. **No blur on Hyprland** — WebKitGTK fails to invalidate the `backdrop-filter` compositor layer when a scrollable child (e.g. `.settings-body`) updates, producing ghosted/doubled rendering. `backdrop-filter` is disabled and replaced with a near-opaque tint (alpha forced to `0.97` in `applytint`) when `HYPRLAND_INSTANCE_SIGNATURE` is set. The frontend detects this via the `data-compositor="hyprland"` attribute injected by `platform.js`.
+5. **WebKitGTK backdrop-filter ghost rendering** — On some Linux stacks (Hyprland universally; reported on Arch GNOME 50 + webkit2gtk 2.52.3) WebKitGTK miscomputes damage regions under `backdrop-filter` when a scrollable child (e.g. `.settings-body`) repaints, leaving ghosted slider thumbs and overlapped popovers. Same webkit version on Ubuntu 26.04 and NixOS 2.50.6 is unaffected, so the bug is a webkit × GTK/mutter/mesa interaction we can't reliably auto-detect. Workarounds:
+   - **Hyprland**: automatic — when `HYPRLAND_INSTANCE_SIGNATURE` is set, `data-compositor="hyprland"` is injected by `platform.js` and CSS drops `backdrop-filter`; `applytint` forces alpha to `0.97`.
+   - **Arch (or any other affected stack)**: opt-in via Advanced > Arch in settings. Two toggles, both default off:
+     - `arch_disable_gpu` — sets `HardwareAccelerationPolicy::Never` on the webview (same API path VMs already use). Keeps blur. Requires restart.
+     - `arch_disable_blur` — adds `data-disable-blur` on documentElement, dropping `backdrop-filter` and forcing the same opaque-tint behavior as the Hyprland branch. Live, no restart.
 
 ### Window Lifecycle (Linux/Wayland)
 
@@ -339,6 +343,7 @@ These are platform limitations that cannot be fixed in app code:
 - **Linux (KDE):** KDE compositor supports blur hints — may work with additional config.
 - **Linux (i3/sway/Hyprland):** Solid background mode. Add picom for X11 transparency. No blur possible. Hotkey and window rules auto-injected on sway/Hyprland.
 - **Linux (Hyprland):** `backdrop-filter` is disabled (WebKitGTK rendering bug); tint runs at fixed `0.97` alpha. Theme RGB still applies, only the alpha slider is overridden.
+- **Linux (Arch GNOME with ghost rendering):** If sliders leave ghost trails, open Advanced > Arch and flip either `arch_disable_gpu` (keeps blur, needs restart) or `arch_disable_blur` (drops blur, live).
 
 ---
 

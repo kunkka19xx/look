@@ -187,3 +187,19 @@ lookapp                                    # launch from terminal to see logs
 ```bash
 WEBKIT_DISABLE_COMPOSITING_MODE=1 cargo tauri dev
 ```
+
+**Known issue on Arch — ghost slider trails / overlapping popovers:**
+
+On some Arch installs (observed on GNOME 50 + webkit2gtk 2.52.3 + GTK 3.24.49), dragging a
+slider in Settings leaves a trail of past thumb positions, and the theme dropdown shows old
+text under the new label. Same webkit version on Ubuntu 26.04 / NixOS 2.50.6 doesn't show
+this, so it's some webkit × GTK/mutter/mesa interaction we can't auto-detect yet.
+
+If you hit it, open **Settings > Advanced > Arch** and flip one of:
+
+- **Disable GPU compositing** — keeps blur, fixes the ghost via the same API path VMs already
+  use. Requires restart.
+- **Disable blur effect** — drops `backdrop-filter`, keeps tint. Live; no restart.
+
+If neither helps, please open an issue with: `pacman -Q webkit2gtk-4.1 gtk3 mutter mesa`,
+`lspci -nn | grep VGA`, and `echo $XDG_SESSION_TYPE`.
