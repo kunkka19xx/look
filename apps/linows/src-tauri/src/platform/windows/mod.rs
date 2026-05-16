@@ -1,2 +1,4 @@
-// Windows-specific platform modules land here as M1–M4 progress.
-// For Step 1 (restructure), this file is intentionally empty.
+pub mod autostart;
+pub mod clipboard;
+pub mod effects;
+pub mod process;

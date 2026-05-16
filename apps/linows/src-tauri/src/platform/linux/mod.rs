@@ -1,5 +1,10 @@
+pub mod autostart;
+pub mod clipboard;
 pub mod gnome_ext;
+pub mod icons;
+pub mod process;
 pub mod transparency;
 pub mod wayland_shortcut;
 pub mod window_focus;
 pub mod wlr_focus;
+pub mod wm;

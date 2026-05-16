@@ -87,7 +87,7 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         // recenter AFTER show. Desktop environments (GNOME, KDE, …) work
         // best with recenter BEFORE show to avoid a visible jump.
         #[cfg(target_os = "linux")]
-        let tiling = platform::is_tiling_wm();
+        let tiling = platform::linux::wm::is_tiling_wm();
         #[cfg(not(target_os = "linux"))]
         let tiling = false;
 

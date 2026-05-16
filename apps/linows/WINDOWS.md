@@ -150,11 +150,25 @@ src-tauri/src/
 
 ## Status
 
-- [ ] Step 0 — verify Windows toolchain + `cargo check`
-- [ ] Step 1 — restructure to `platform/{linux,windows,shared}/`
+- [x] Step 0 — verify Windows toolchain + `cargo check` (passes on `x86_64-pc-windows-msvc` under VS 2022 BT `vcvarsall.bat x64`)
+- [x] Step 1 — restructure to `platform/{linux,windows,shared}/`
+  - Phase A (committed): 5 `linux_*.rs` → `platform/linux/*.rs`, old `platform.rs` → `platform/mod.rs`, 17 call sites updated
+  - Phase B (pending Linux verification + commit): split `platform/mod.rs` into `linux/icons.rs` + `linux/wm.rs` + `windows/effects.rs` + `shared.rs`; split `autostart.rs`, `process.rs` into platform-dispatched shells; extract clipboard file-copy from `files.rs` to `platform/{linux,windows}/clipboard.rs`. Windows stubs return safe defaults (Vec::new / Ok(()) / Err) marked `TODO(M3)` or `TODO(M4)`. cargo check green on Windows in 1.62s.
 - [ ] Step 2 M1 — runnable Windows build (window + search + open)
 - [ ] Step 2 M2 — icons
 - [ ] Step 2 M3 — autostart + window focus
 - [ ] Step 2 M4 — process + clipboard file copy
 - [ ] Step 2 M5 — NSIS packaging + CI
 - [ ] Step 3 — Windows UI scoping (as needed)
+
+### Linux verification needed for Phase B
+
+Phase B was developed on a Windows host. Linux compilation was not verified locally. Before merging, run on a Linux dev machine:
+
+```bash
+cd apps/linows
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo tauri dev    # smoke test: launcher opens, search/open/reveal/clipboard/autostart still work
+```
+
+If anything Linux-only breaks, the most likely culprits are stale `crate::linux_*` paths that grep missed (none expected — grep was clean), or visibility issues with `pub(crate)` vs the old default `pub`.
