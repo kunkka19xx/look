@@ -35,14 +35,14 @@ fn now_ms() -> u64 {
 }
 
 fn supports_transparency() -> bool {
-    #[cfg(not(target_os = "linux"))]
-    {
-        return true;
-    }
-
     #[cfg(target_os = "linux")]
     {
         platform::linux::transparency::has_compositor()
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
     }
 }
 
@@ -379,11 +379,11 @@ fn setup_window_events(window: &tauri::WebviewWindow) {
             // handled entirely by the X11 active-window monitor instead.
             // TODO: add Wayland auto-hide when Wayland support is added.
             #[cfg(not(target_os = "linux"))]
-            tauri::WindowEvent::Focused(false) => {
-                if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
-                    LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
-                    let _ = w.hide();
-                }
+            tauri::WindowEvent::Focused(false)
+                if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 =>
+            {
+                LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
+                let _ = w.hide();
             }
             _ => {}
         }
@@ -517,9 +517,9 @@ fn main() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building look desktop")
-        .run(|_app, event| {
+        .run(|_app, _event| {
             #[cfg(target_os = "linux")]
-            if let tauri::RunEvent::Exit = event
+            if let tauri::RunEvent::Exit = _event
                 && is_wayland()
             {
                 platform::linux::wayland_shortcut::cleanup_keybinding();

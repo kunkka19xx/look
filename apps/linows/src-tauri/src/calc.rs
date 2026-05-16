@@ -367,7 +367,7 @@ mod tests {
     use super::*;
 
     fn eval(expr: &str) -> Result<String, String> {
-        eval_expression(expr).map(|v| format_number(v))
+        eval_expression(expr).map(format_number)
     }
 
     #[test]
