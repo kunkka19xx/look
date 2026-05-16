@@ -1,3 +1,19 @@
+//! Platform-specific code.
+//!
+//! For Step 1 of the Windows port, this file still holds the legacy `platform.rs`
+//! contents (icon resolution, freedesktop lookup, window-effect command). Phase B
+//! will split this into `platform/linux/icons.rs`, `platform/windows/effects.rs`,
+//! and `platform/shared.rs`. The structure (sub-mods below) is in place now so
+//! callers can target the final paths.
+
+#[cfg(target_os = "linux")]
+pub mod linux;
+
+#[cfg(target_os = "windows")]
+pub mod windows;
+
+pub mod shared;
+
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
@@ -360,7 +376,7 @@ pub fn get_platform() -> PlatformInfo {
     let os = std::env::consts::OS.to_string();
 
     #[cfg(target_os = "linux")]
-    let has_compositor = crate::linux_transparency::has_compositor();
+    let has_compositor = crate::platform::linux::transparency::has_compositor();
 
     #[cfg(not(target_os = "linux"))]
     let has_compositor = true;

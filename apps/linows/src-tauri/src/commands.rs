@@ -379,7 +379,7 @@ fn try_focus_window(wm_class: &str) -> bool {
 
     // Linux: x11rb _NET_ACTIVE_WINDOW (covers GNOME, KDE, etc.)
     #[cfg(target_os = "linux")]
-    if crate::linux_window_focus::try_focus(wm_class) {
+    if crate::platform::linux::window_focus::try_focus(wm_class) {
         return true;
     }
 
@@ -414,7 +414,7 @@ fn try_focus_existing(desktop_path: &str) -> bool {
     eprintln!("[focus] try_focus_existing desktop={desktop_path} candidates={candidates:?}");
 
     #[cfg(target_os = "linux")]
-    if crate::linux_transparency::is_wayland() {
+    if crate::platform::linux::transparency::is_wayland() {
         return try_focus_wayland(desktop_path, &candidates);
     }
 
@@ -440,7 +440,7 @@ fn try_focus_wayland(desktop_path: &str, candidates: &[&str]) -> bool {
         .file_name()
         .and_then(|f| f.to_str())
         .unwrap_or("");
-    !desktop_id.is_empty() && crate::linux_gnome_ext::try_focus_app(desktop_id)
+    !desktop_id.is_empty() && crate::platform::linux::gnome_ext::try_focus_app(desktop_id)
 }
 
 #[cfg(target_os = "linux")]
@@ -448,7 +448,7 @@ fn try_focus_sway(app_id: &str) -> bool {
     // Try the native wlr-foreign-toplevel protocol first (works for any
     // wlroots compositor); fall back to sway IPC if the protocol isn't
     // available.
-    if crate::linux_wlr_focus::try_focus(app_id) {
+    if crate::platform::linux::wlr_focus::try_focus(app_id) {
         return true;
     }
     for criteria in [
@@ -475,7 +475,7 @@ fn try_focus_hyprland(class: &str) -> bool {
     eprintln!("[focus] hyprland try class={class}");
     // Primary path: native wlr-foreign-toplevel-management. Works regardless
     // of the broken hyprctl dispatcher on v0.55+.
-    if crate::linux_wlr_focus::try_focus(class) {
+    if crate::platform::linux::wlr_focus::try_focus(class) {
         eprintln!("[focus] hyprland focus via wlr-foreign-toplevel succeeded");
         return true;
     }
