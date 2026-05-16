@@ -11,8 +11,8 @@ const DBUS_NAME: &str = "com.look.ShellIntegration";
 const DBUS_PATH: &str = "/com/look/ShellIntegration";
 const DBUS_IFACE: &str = "com.look.ShellIntegration";
 
-const METADATA_JSON: &str = include_str!("gnome-shell-extension/metadata.json");
-const EXTENSION_JS: &str = include_str!("gnome-shell-extension/extension.js");
+const METADATA_JSON: &str = include_str!("../../gnome-shell-extension/metadata.json");
+const EXTENSION_JS: &str = include_str!("../../gnome-shell-extension/extension.js");
 
 /// Install the GNOME Shell extension if not already present, then enable it.
 pub fn ensure_installed() {
