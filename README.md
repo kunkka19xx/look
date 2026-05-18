@@ -22,6 +22,8 @@ Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings 
 
 ### Linux
 
+Released artifacts are **x86_64 only**. ARM builds aren't published; if you need one, please open an issue.
+
 **Arch Linux (AUR):**
 
 ```bash
@@ -133,6 +135,8 @@ exec-once = lookapp
 To build from source, see [apps/linows/BUILDING.md](apps/linows/BUILDING.md).
 
 ### Windows
+
+Released artifacts are **x86_64 only**. Windows on ARM (Surface Pro X / Snapdragon X) can run the x64 build under emulation; native ARM builds aren't published — open an issue if you need one.
 
 One PowerShell line, no admin required:
 

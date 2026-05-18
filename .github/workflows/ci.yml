@@ -291,12 +291,14 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # Swatinem/rust-cache@v2 crashed silently in "Restoring cache..." on the
+      # windows-2025-vs2026 runner with the multi-workspace config. Single
+      # workspace pointing at the Tauri crate is enough — its target/ holds
+      # everything including the path-dep core crates.
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            core
-            apps/linows/src-tauri
+          workspaces: apps/linows/src-tauri
 
       - name: Check formatting
         run: cargo fmt --all --manifest-path apps/linows/src-tauri/Cargo.toml -- --check

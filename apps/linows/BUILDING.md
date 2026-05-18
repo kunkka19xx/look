@@ -2,6 +2,14 @@
 
 Build instructions for the Look desktop app (Linux + Windows target via Tauri v2).
 
+## Architecture support
+
+**Released builds target x86_64 (x64) only** on both Linux and Windows.
+
+- ARM64 builds aren't shipped. Windows on ARM (Surface Pro X, Snapdragon X laptops) is still <2% of the install base; users there can run the x64 build under Windows' x64 emulation with a small perf hit. Linux on ARM is rarely a desktop target.
+- The workspace `.cargo/config.toml` already declares `+crt-static` for both `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`, so adding an ARM matrix to the release workflow later is mechanical (rustup target + `cargo tauri build --target`).
+- If you have a real ARM machine and want native builds, please open an issue — the project will add an ARM track when there's demand.
+
 ---
 
 ## Prerequisites
