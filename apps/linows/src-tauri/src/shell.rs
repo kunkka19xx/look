@@ -1,12 +1,22 @@
 #[tauri::command]
 pub fn run_shell_command(cmd: String) -> Result<String, String> {
-    let mut child = std::process::Command::new("sh")
+    // sh on Unix, cmd /C on Windows. The frontend doesn't know which it's on
+    // and lets the user type whatever fits their muscle memory.
+    #[cfg(target_os = "windows")]
+    let spawned = std::process::Command::new("cmd")
+        .args(["/C", &cmd])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+    #[cfg(not(target_os = "windows"))]
+    let spawned = std::process::Command::new("sh")
         .args(["-c", &cmd])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to run: {e}"))?;
+        .spawn();
+    let mut child = spawned.map_err(|e| format!("Failed to run: {e}"))?;
 
     let timeout = std::time::Duration::from_secs(10);
     let start = std::time::Instant::now();

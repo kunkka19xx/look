@@ -81,7 +81,7 @@ pub(crate) fn list() -> Vec<RunningApp> {
 
     let mut seen: HashSet<u32> = HashSet::new();
     apps.retain(|a| seen.insert(a.pid));
-    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    apps.sort_by_key(|a| a.name.to_lowercase());
     apps
 }
 
@@ -355,7 +355,7 @@ fn derive_name_from_window_title(title: &str) -> Option<String> {
 fn is_good_display_segment(value: &str) -> bool {
     let n = value.trim();
     let chars = n.chars().count();
-    if chars < 3 || chars > 64 {
+    if !(3..=64).contains(&chars) {
         return false;
     }
     if n.contains('\\') || n.contains('/') || n.contains('|') {

@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicoverbruggen/tauri-v2-schema/main/schema.json",
   "productName": "Look",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "identifier": "com.look.desktop",
   "build": {
     "frontendDist": "../src",
@@ -47,12 +47,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage"],
+    "targets": ["deb", "appimage", "nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.png"
+      "icons/icon.png",
+      "icons/icon.ico"
     ],
     "category": "Utility",
     "shortDescription": "Keyboard-first desktop launcher",
@@ -74,6 +75,17 @@
         ],
         "section": "utils",
         "priority": "optional"
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "displayLanguageSelector": false,
+        "languages": ["English"]
+      },
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
       }
     }
   },

@@ -1,14 +1,15 @@
 <#
 .SYNOPSIS
-  Installs Look (Windows) from a GitHub release zip into a per-user location.
+  Installs Look (Windows, Tauri) from a GitHub release via the NSIS installer.
 
 .DESCRIPTION
-  Mirrors scripts/install-look.sh on macOS. Downloads the published release zip
-  from kunkka19xx/look, verifies SHA256 against the release manifest, extracts
-  to %LOCALAPPDATA%\Programs\Look, and drops Start menu + desktop shortcuts.
-  Per-user install — no admin required, no PATH mutation.
+  Resolves the latest release on kunkka19xx/look, downloads
+  Look_<version>_x64-setup.exe, verifies its SHA256 against the published
+  checksums file, and runs the installer silently. The installer drops a
+  per-user install under %LOCALAPPDATA%\Programs\Look with Start menu entries.
+  No admin rights required.
 
-  Targets Windows PowerShell 5.1 (default on Win10/11), no PS7-only syntax.
+  Targets Windows PowerShell 5.1 (default on Win10/11). Avoids PS7-only syntax.
 
 .PARAMETER Version
   Pin a specific version (e.g. "1.0.0"). When omitted, queries the GitHub API
@@ -18,18 +19,18 @@
   Override the source repo (e.g. for forks). Default: kunkka19xx/look.
 
 .PARAMETER Url
-  Direct URL to a zip artifact, bypassing version resolution. Skips SHA256
-  verification because there's no associated manifest file.
+  Direct URL to a setup .exe, bypassing version resolution. Skips SHA256
+  verification because there's no associated checksums file.
 
 .PARAMETER InstallDir
   Custom install directory. Default: %LOCALAPPDATA%\Programs\Look.
 
 .PARAMETER Launch
-  Launch LauncherApp.exe after install. Default: $true. Pass -Launch:$false
+  Launch lookapp.exe after install. Default: $true. Pass -Launch:$false
   to skip.
 
 .PARAMETER Uninstall
-  Stop the app, remove the install directory, and delete shortcuts.
+  Run the bundled NSIS uninstaller silently.
 
 .EXAMPLE
   # Install latest from a fresh shell
@@ -62,11 +63,8 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) {
 }
 
 $AppName = "Look"
-$ExeName = "LauncherApp.exe"
-$ProcessName = "LauncherApp"
-$StartMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
-$StartMenuShortcut = Join-Path $StartMenuDir "$AppName.lnk"
-$DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "$AppName.lnk"
+$ExeName = "lookapp.exe"
+$ProcessName = "lookapp"
 
 function Write-Step($msg) {
     Write-Host "==> $msg" -ForegroundColor Cyan
@@ -78,20 +76,6 @@ function Write-Ok($msg) {
 
 function Write-Warn($msg) {
     Write-Host "    $msg" -ForegroundColor Yellow
-}
-
-function Detect-Arch {
-    # PROCESSOR_ARCHITECTURE on x64 host running 32-bit PowerShell would be x86,
-    # so prefer PROCESSOR_ARCHITEW6432 when present (set under WoW64).
-    $arch = $env:PROCESSOR_ARCHITEW6432
-    if ([string]::IsNullOrWhiteSpace($arch)) {
-        $arch = $env:PROCESSOR_ARCHITECTURE
-    }
-    switch -Regex ($arch) {
-        "ARM64" { return "arm64" }
-        "AMD64" { return "x64" }
-        default { throw "Unsupported architecture: $arch (only x64 and ARM64 are released)" }
-    }
 }
 
 function Resolve-LatestVersion($repo) {
@@ -131,22 +115,27 @@ function Download-File($url, $dest) {
     }
 }
 
-function Verify-Sha256($filePath, $manifestPath) {
-    # All three failure modes (missing file, empty manifest, hash mismatch) throw —
-    # a release path that calls into here has implicitly opted into integrity
-    # checking, so falling back to "warn and continue" would defeat the point.
-    if (-not (Test-Path $manifestPath)) {
-        throw "Manifest file not present at $manifestPath; cannot verify zip integrity."
+function Verify-Sha256($filePath, $checksumsPath, $expectedFileName) {
+    # Failing closed: any of (missing checksums, no match for the filename, hash
+    # mismatch) throws. The -Url path bypasses this entirely by passing $null.
+    if (-not (Test-Path $checksumsPath)) {
+        throw "Checksums file not present at $checksumsPath; cannot verify integrity."
     }
     $expected = $null
-    foreach ($line in Get-Content $manifestPath) {
-        if ($line -match "^sha256=(.+)$") {
-            $expected = $matches[1].Trim().ToLower()
+    foreach ($line in Get-Content $checksumsPath) {
+        $line = $line.Trim()
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        # Standard `sha256sum` format: "<hash>  <filename>" (two spaces).
+        $parts = $line -split '\s+', 2
+        if ($parts.Count -ne 2) { continue }
+        $name = $parts[1].Trim().TrimStart('*')
+        if ($name -eq $expectedFileName) {
+            $expected = $parts[0].Trim().ToLower()
             break
         }
     }
     if ([string]::IsNullOrWhiteSpace($expected)) {
-        throw "Manifest at $manifestPath has no 'sha256=' line; cannot verify zip integrity."
+        throw "Checksums file has no entry for '$expectedFileName'; cannot verify."
     }
     $actual = (Get-FileHash -Path $filePath -Algorithm SHA256).Hash.ToLower()
     if ($actual -ne $expected) {
@@ -155,83 +144,57 @@ function Verify-Sha256($filePath, $manifestPath) {
     Write-Ok "SHA256 verified."
 }
 
-function New-Shortcut($shortcutPath, $targetExe, $description) {
-    $dir = Split-Path -Parent $shortcutPath
-    if (-not (Test-Path $dir)) {
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    }
-    $shell = New-Object -ComObject WScript.Shell
-    $sc = $shell.CreateShortcut($shortcutPath)
-    $sc.TargetPath = $targetExe
-    $sc.WorkingDirectory = Split-Path -Parent $targetExe
-    $sc.Description = $description
-    $sc.IconLocation = "$targetExe,0"
-    $sc.Save()
-}
-
 function Invoke-Install {
     if (-not [string]::IsNullOrWhiteSpace($Url)) {
-        $zipUrl = $Url
-        $manifestUrl = $null
+        $setupUrl = $Url
+        $checksumsUrl = $null
         $resolvedVersion = "(custom)"
+        $setupFileName = Split-Path -Leaf $Url
     } else {
         if ([string]::IsNullOrWhiteSpace($Version)) {
             $Version = Resolve-LatestVersion $Repo
         }
         $resolvedVersion = $Version
-        $arch = Detect-Arch
-        Write-Step "Architecture: $arch"
+        # NSIS installer naming from tauri-cli is `<ProductName>_<version>_x64-setup.exe`.
+        $setupFileName = "Look_${Version}_x64-setup.exe"
         $base = "https://github.com/$Repo/releases/download/v$Version"
-        $zipUrl = "$base/Look-$Version-windows-$arch.zip"
-        $manifestUrl = "$base/Look-$Version-windows-$arch-manifest.txt"
+        $setupUrl = "$base/$setupFileName"
+        $checksumsUrl = "$base/Look-$Version-windows-checksums.txt"
     }
 
     $tmp = Join-Path $env:TEMP "look-install-$(Get-Random)"
     New-Item -ItemType Directory -Path $tmp -Force | Out-Null
     try {
-        $zipPath = Join-Path $tmp "look.zip"
-        Download-File $zipUrl $zipPath
+        $setupPath = Join-Path $tmp $setupFileName
+        Download-File $setupUrl $setupPath
 
-        if ($manifestUrl) {
-            # For the normal release path (resolved version + GitHub release), the
-            # manifest is the only integrity check we have on the zip we just
-            # downloaded. Silently skipping verification on download/parse failure
-            # would let a blocked or tampered manifest pass through and install an
-            # unverified zip. Fail closed instead. The -Url custom path explicitly
-            # sets $manifestUrl to $null and bypasses this branch when the user
-            # has accepted that they're installing without checksum coverage.
-            $manifestPath = Join-Path $tmp "look-manifest.txt"
-            Download-File $manifestUrl $manifestPath
-            Verify-Sha256 $zipPath $manifestPath
+        if ($checksumsUrl) {
+            $checksumsPath = Join-Path $tmp "look-checksums.txt"
+            Download-File $checksumsUrl $checksumsPath
+            Verify-Sha256 $setupPath $checksumsPath $setupFileName
         }
 
         Stop-LookProcess
 
-        if (Test-Path $InstallDir) {
-            Write-Step "Removing previous install at $InstallDir"
-            Remove-Item -Path $InstallDir -Recurse -Force
+        Write-Step "Running NSIS installer silently"
+        # /S = silent; /D=<dir> = install directory (must be the LAST argument
+        # and unquoted per NSIS convention, even if the path contains spaces).
+        $args = @("/S", "/D=$InstallDir")
+        $proc = Start-Process -FilePath $setupPath -ArgumentList $args -PassThru -Wait
+        if ($proc.ExitCode -ne 0) {
+            throw "Installer exited with code $($proc.ExitCode)"
         }
-
-        Write-Step "Extracting to $InstallDir"
-        New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-        Expand-Archive -Path $zipPath -DestinationPath $InstallDir -Force
 
         $exePath = Join-Path $InstallDir $ExeName
         if (-not (Test-Path $exePath)) {
-            throw "Extraction did not produce $ExeName at $exePath"
+            throw "Install completed but $ExeName not found at $exePath"
         }
-
-        Write-Step "Creating shortcuts"
-        New-Shortcut $StartMenuShortcut $exePath "Keyboard-first launcher"
-        New-Shortcut $DesktopShortcut $exePath "Keyboard-first launcher"
-        Write-Ok "Start menu: $StartMenuShortcut"
-        Write-Ok "Desktop:    $DesktopShortcut"
+        Write-Ok "Installed to $InstallDir"
 
         Write-Host ""
-        Write-Host "Look $resolvedVersion installed to $InstallDir" -ForegroundColor Green
-        Write-Host "  - Press Alt+Space to summon (configurable in Settings -> Appearance)" -ForegroundColor Green
-        Write-Host "  - On first run, Windows SmartScreen may show a warning." -ForegroundColor Green
-        Write-Host "    Click 'More info' -> 'Run anyway'. Reputation builds with installs." -ForegroundColor Green
+        Write-Host "Look $resolvedVersion installed." -ForegroundColor Green
+        Write-Host "  - Press Alt+Space to summon (hotkey is fixed for now)" -ForegroundColor Green
+        Write-Host "  - Uninstall later: rerun this script with -Uninstall" -ForegroundColor Green
         Write-Host ""
 
         if ($Launch) {
@@ -246,22 +209,27 @@ function Invoke-Install {
 function Invoke-Uninstall {
     Stop-LookProcess
 
-    if (Test-Path $InstallDir) {
-        Write-Step "Removing $InstallDir"
-        Remove-Item -Path $InstallDir -Recurse -Force
+    # Tauri's NSIS template emits `uninstall.exe` at the install root.
+    $uninstaller = Join-Path $InstallDir "uninstall.exe"
+    if (Test-Path $uninstaller) {
+        Write-Step "Running uninstaller: $uninstaller"
+        $proc = Start-Process -FilePath $uninstaller -ArgumentList "/S" -PassThru -Wait
+        if ($proc.ExitCode -ne 0) {
+            Write-Warn "Uninstaller exited with code $($proc.ExitCode)"
+        }
     } else {
-        Write-Warn "Install directory not found: $InstallDir"
-    }
-
-    foreach ($sc in @($StartMenuShortcut, $DesktopShortcut)) {
-        if (Test-Path $sc) {
-            Remove-Item -Path $sc -Force
-            Write-Ok "Removed $sc"
+        Write-Warn "No uninstall.exe at $InstallDir — was Look installed via NSIS?"
+        if (Test-Path $InstallDir) {
+            Write-Step "Removing $InstallDir manually"
+            Remove-Item -Path $InstallDir -Recurse -Force
         }
     }
 
     Write-Host ""
     Write-Host "Look uninstalled." -ForegroundColor Green
+    Write-Host "  - User data under %LOCALAPPDATA%\look is left in place." -ForegroundColor Green
+    Write-Host "    Run: Remove-Item -Recurse `"`$env:LOCALAPPDATA\look`" to wipe it." -ForegroundColor Green
+    Write-Host ""
 }
 
 if ($Uninstall) {

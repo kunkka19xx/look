@@ -134,13 +134,13 @@ To build from source, see [apps/linows/BUILDING.md](apps/linows/BUILDING.md).
 
 ### Windows
 
-Install the latest release with one PowerShell line (no admin required):
+One PowerShell line, no admin required:
 
 ```powershell
 iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/windows/install-look.ps1) }"
 ```
 
-The script auto-detects x64 vs ARM64, pulls the matching release zip, verifies its SHA256 against the published manifest, extracts to `%LOCALAPPDATA%\Programs\Look`, and creates Start menu + desktop shortcuts. The release bundle is self-contained (`<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>`) so no separate runtime install is needed.
+The script resolves the latest release, downloads the NSIS installer, verifies its SHA256 against the published checksums, and runs it silently into `%LOCALAPPDATA%\Programs\Look`. SmartScreen will warn on the first download while reputation builds — click "More info → Run anyway" if Windows blocks the script itself.
 
 Uninstall:
 
@@ -148,7 +148,7 @@ Uninstall:
 iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/windows/install-look.ps1) } -Uninstall"
 ```
 
-SmartScreen may warn on first run while reputation builds — click "More info → Run anyway". The launcher's global hotkey (`Alt+Space`) is configurable in Settings → Appearance.
+The launcher's global hotkey is `Alt+Space` (not user-configurable yet — if it conflicts with another app you use, remap that one). For manual install (download from [Releases](https://github.com/kunkka19xx/look/releases/latest)) and checksum verification, see [docs/windows-install.md](docs/windows-install.md).
 
 <details>
 <summary>Other install options (curl, pin version, update/uninstall)</summary>

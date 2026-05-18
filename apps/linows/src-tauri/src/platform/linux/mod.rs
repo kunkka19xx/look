@@ -4,6 +4,7 @@ pub mod fonts;
 pub mod gnome_ext;
 pub mod icons;
 pub mod process;
+pub mod sysinfo;
 pub mod transparency;
 pub mod version;
 pub mod wayland_shortcut;

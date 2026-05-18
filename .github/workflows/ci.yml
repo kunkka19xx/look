@@ -20,6 +20,8 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       windows: ${{ steps.filter.outputs.windows }}
       linows: ${{ steps.filter.outputs.linows }}
+      linows_linux: ${{ steps.filter.outputs.linows_linux }}
+      linows_windows: ${{ steps.filter.outputs.linows_windows }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,6 +47,17 @@ jobs:
               - 'apps/linows/**'
               - 'core/**'
               - '.github/workflows/ci.yml'
+            linows_linux:
+              - 'apps/linows/**'
+              - 'core/**'
+              - '.github/workflows/ci.yml'
+              - '!apps/linows/src-tauri/src/platform/windows/**'
+            linows_windows:
+              - 'apps/linows/**'
+              - 'core/**'
+              - '.github/workflows/ci.yml'
+              - '!apps/linows/src-tauri/src/platform/linux/**'
+              - '!apps/linows/nix/**'
 
   lint:
     name: lint
@@ -227,10 +240,10 @@ jobs:
       - run: echo "Legacy WinUI3 app is in maintenance mode. Skipping CI build."
 
   linows-build:
-    name: Build linows (Tauri)
+    name: Build linows (Tauri, Linux)
     runs-on: ubuntu-22.04
     needs: changes
-    if: needs.changes.outputs.linows == 'true'
+    if: needs.changes.outputs.linows_linux == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -243,6 +256,35 @@ jobs:
             libgdk-pixbuf-2.0-dev libharfbuzz-dev libdbus-1-dev \
             libasound2-dev librsvg2-dev libssl-dev \
             libappindicator3-dev pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            core
+            apps/linows/src-tauri
+
+      - name: Check formatting
+        run: cargo fmt --all --manifest-path apps/linows/src-tauri/Cargo.toml -- --check
+
+      - name: Run clippy
+        run: cargo clippy --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings
+
+      - name: Build (debug)
+        run: cargo build --manifest-path apps/linows/src-tauri/Cargo.toml
+
+  linows-build-windows:
+    name: Build linows (Tauri, Windows)
+    runs-on: windows-latest
+    needs: changes
+    if: needs.changes.outputs.linows_windows == 'true'
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
