@@ -148,7 +148,7 @@ Uninstall:
 iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/windows/install-look.ps1) } -Uninstall"
 ```
 
-The launcher's global hotkey is `Alt+Space` (not user-configurable yet — if it conflicts with another app you use, remap that one). For manual install (download from [Releases](https://github.com/kunkka19xx/look/releases/latest)) and checksum verification, see [docs/windows-install.md](docs/windows-install.md).
+The launcher's global hotkey is `Alt+Space` (not user-configurable yet — if it conflicts with another app you use, remap that one). For a manual install: download `Look_<version>_x64-setup.exe` from [Releases](https://github.com/kunkka19xx/look/releases/latest), verify the SHA256 against the published `Look-<version>-windows-checksums.txt`, then run. Uninstall via Settings → Apps or `%LOCALAPPDATA%\Programs\Look\uninstall.exe`. To wipe user data: `Remove-Item -Recurse "$env:LOCALAPPDATA\look"`.
 
 <details>
 <summary>Other install options (curl, pin version, update/uninstall)</summary>

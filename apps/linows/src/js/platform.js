@@ -37,7 +37,7 @@ export function isLinux() {
 // Windows blur styles map to CSS backdrop-filter radii. We deliberately do
 // NOT use native Mica/Acrylic via tauri's `set_effects` — that path
 // reconfigures DWM and brings back the sharp rectangular outline outside
-// the CSS-clipped rounded silhouette (see WINDOWS.md "Rounded corners").
+// the CSS-clipped rounded silhouette (DWM can't round transparent windows).
 // CSS backdrop-filter is supported in WebView2 and respects our border-radius.
 const WINDOWS_BLUR_RADIUS = {
   high_contrast: 30,

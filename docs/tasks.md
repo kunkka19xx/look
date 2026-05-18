@@ -97,12 +97,12 @@ Recently completed (current optimization cycle):
 
 ## Milestone W: Windows port (separate track)
 
-Reference: `docs/windows-port-plan.md`
+Historical record for the WinUI3 effort at `apps/windows/`. That app is in maintenance mode — forward Windows work happens in `apps/linows/` (Tauri). See the "linows (Tauri Windows + Linux)" section below for current open items.
 
 **Rust backend work (DONE):**
-- [x] draft Windows shell source structure in `docs/windows-port-plan.md`
-- [x] draft Rust platform refactor/change plan in `docs/windows-port-plan.md`
-- [x] define Windows v1 parity checklist from current macOS behavior (`README.md`, `docs/user-guide.md`) -> `docs/windows-v1-parity-checklist.md`
+- [x] draft Windows shell source structure
+- [x] draft Rust platform refactor/change plan
+- [x] define Windows v1 parity checklist from current macOS behavior
 - [x] split engine indexing into platform adapters (macOS/Windows) without changing ranking/search core
 - [x] implement Windows app discovery sources (Start Menu + install roots fallback)
 - [x] implement curated Windows Settings catalog (`ms-settings:` targets)
@@ -272,6 +272,36 @@ Window + reliability:
 - [ ] **Browser bookmark + history suggestions**: index the user's default browser (Safari/Chrome/Arc/Brave/Edge/Firefox) and surface bookmarks + recent pages as ranked launcher results. Internal spec: `specs/browser-suggestions.md` (maintainer-only, gitignored)
 - [ ] **Homebrew release**: Package app for homebrew installation
 - [x] **Build script**: Create release build and curl installer script
+
+## linows (Tauri Windows + Linux) — open items
+
+Forward work for the Tauri app at `apps/linows/`. Build/dev guide: `apps/linows/BUILDING.md`. Linux UI is the parity baseline among non-macOS; Windows-only tweaks must be platform-scoped.
+
+### Linux desktop environments
+- [ ] Hyprland: GNOME alt-space toggle interaction
+- [ ] Arch GNOME startup: `EGL_BAD_PARAMETER` issue
+- [ ] Multi-monitor: add monitor-change listener to re-scale on demand (resize was removed from the toggle path to avoid Wayland configure-cycle jank)
+- [ ] Sway/wlroots: check whether WebKitGTK backdrop-filter ghosting reproduces; extend the Hyprland CSS workaround to `[data-compositor="sway"]` if reported
+- [ ] Identify Arch webkit ghost root cause (GTK 3.24.49? mutter 50? mesa?) and auto-enable the relevant Arch toggle when matched
+- [ ] KDE settings catalog (`systemsettings` detection + KDE-specific entries)
+- [ ] Minimal DE settings — map to standalone tools (pavucontrol, arandr, blueman-manager) on i3/sway
+- [ ] Some D-Bus single-instance apps (blueman-manager, fcitx5-config) fail to launch — known limitation
+- [ ] GNOME Wayland: dock icon visible while Look is open (Tauri sets `skip_taskbar_hint` after window map — too late for the dock)
+
+### Commands & features
+- [ ] Banner notifications (animated toast messages)
+- [ ] `/kill` by port on Linux (`:3000` syntax) — Windows already has this via `GetExtendedTcpTable`
+- [ ] Configurable global hotkey (let users change the toggle shortcut via settings; today `Alt+Space` is hardcoded; non-trivial because Wayland sway/Hyprland/GNOME each have separate keybinding-injection paths)
+- [ ] Structured logging — wire the Backend Log Level setting (error/warn/info/debug) to control output; replace `eprintln!` with `log` macros
+- [ ] Unit/integration tests for backend modules (calc, config, autostart, process, sysinfo, clipboard, shell)
+
+### Windows polish
+- [ ] `file_scan_drives_dismissed` config key is dead — honor it or drop it from `default_config.txt`
+- [ ] Kill-list display names are coarse for some processes (`SystemSettings` shows as `SystemSettings` instead of "Settings"; UWP frame-hosted apps show as the exe basename). Port the WinUI3 FileDescription + Start-Menu `.lnk` → display-name index if users notice
+- [ ] High-integrity processes appear without icon/exe path (`PROCESS_QUERY_LIMITED_INFORMATION` denied). Surface a clearer error when `PROCESS_TERMINATE` is also denied
+
+### macOS
+- [ ] Dynamic window scaling based on monitor resolution (match linows — 1.0x at 1080p, 1.2x at 1440p, 1.3x max)
 
 ## Evergreen: Search quality and performance (always-on)
 

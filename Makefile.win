@@ -21,7 +21,7 @@ APP_PROCESS   := lookapp
 
 # Every cargo invocation must run under VS 2022 BT vcvarsall x64 env, otherwise
 # rustc picks up VS 2026 Community's cl.exe (no Windows SDK) and link/build
-# scripts fail with LNK1104 / missing stdarg.h. See apps/linows/WINDOWS.md.
+# scripts fail with LNK1104 / missing stdarg.h. See apps/linows/BUILDING.md.
 WITH_VCVARS := scripts\windows\with-vcvars.bat
 
 REAL_DB_PATH := $(USERPROFILE)\AppData\Local\look\look.db

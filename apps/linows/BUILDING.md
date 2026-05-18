@@ -60,6 +60,41 @@ For i3/X11 without compositor:
 WEBKIT_DISABLE_COMPOSITING_MODE=1 cargo tauri dev
 ```
 
+### Windows
+
+**Prerequisites:**
+
+- Rust stable + cargo-tauri (as above)
+- **Visual Studio 2022 Build Tools** (Desktop development with C++ workload — provides both `link.exe` and the Windows SDK)
+- WebView2 runtime (ships with Windows 11; for older Win10 the NSIS installer fetches it automatically via the embedded bootstrapper)
+
+**Why VS 2022 Build Tools specifically:** the MSVC linker needs both `link.exe` *and* the Windows SDK. VS 2026 Community ships `link.exe` but no SDK by default — without it, `cargo build` fails with `LNK1104: cannot open file 'msvcrt.lib'`. Same applies to `cargo install tauri-cli`.
+
+**Running cargo under vcvars:** every cargo invocation must run inside a `vcvarsall.bat x64` shell so the linker can find the SDK. The repo provides a wrapper:
+
+```cmd
+scripts\windows\with-vcvars.bat cargo tauri dev
+scripts\windows\with-vcvars.bat cargo tauri build
+```
+
+The Makefile dispatches to `Makefile.win` on Windows and wraps every target with this:
+
+```bash
+make app-run    # cargo tauri dev under vcvars
+make build      # cargo build --release
+make fmt        # cargo fmt --check
+make clippy     # cargo clippy -D warnings
+```
+
+**Dev paths:** in dev mode, Look writes to `%LOCALAPPDATA%\look\look.dev.db` and `%USERPROFILE%\.look.dev.config`. Production builds use `%LOCALAPPDATA%\look\` for both.
+
+**Hot reload caveats:**
+
+- Tauri dev watches `apps/linows/src-tauri/` only. Changes under `core/engine/` need a touch of any `src-tauri/` file to trigger rebuild.
+- Frontend HTML/CSS/JS changes need a manual `Ctrl+R` in the webview — no HMR (`beforeDevCommand` is intentionally empty since `frontendDist` is static).
+
+**Installer output:** `apps\linows\src-tauri\target\release\bundle\nsis\Look_<version>_x64-setup.exe`. The MSVC C runtime is static-linked via the workspace-root `.cargo/config.toml`, so the installer runs on a clean Windows 10/11 install without the VC++ redistributable.
+
 ---
 
 ## Runtime Dependencies

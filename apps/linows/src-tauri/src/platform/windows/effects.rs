@@ -5,7 +5,6 @@
 //! (per MS's "Apply rounded corners" doc — per-pixel-alpha layered windows
 //! are excluded). Corners are achieved via CSS `border-radius` on
 //! `.launcher-window` scoped under `[data-os="windows"]` in `layout.css`.
-//! See `WINDOWS.md` for the full rationale.
 
 use tauri::utils::config::WindowEffectsConfig;
 use tauri::window::Effect;

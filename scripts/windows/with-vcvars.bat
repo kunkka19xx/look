@@ -2,7 +2,7 @@
 rem Wraps a command in the VS 2022 Build Tools x64 environment.
 rem Required because rustc auto-detects VS 2026 Community's cl.exe but that
 rem install lacks the Windows SDK, so linker can't find msvcrt.lib / stdarg.h.
-rem See apps/linows/WINDOWS.md decisions log (2026-05-16).
+rem See apps/linows/BUILDING.md (Windows section).
 rem
 rem Usage:   scripts\windows\with-vcvars.bat <command> [args...]
 rem Override path: set VCVARSALL=...\vcvarsall.bat
