@@ -9,23 +9,42 @@ its look, feel, and feature set using web technologies.
 
 ```
 apps/linows/
-  src-tauri/           Rust backend (Tauri commands, state, platform logic)
+  src-tauri/             Rust backend (Tauri commands, state, platform logic)
     src/
-      main.rs          Entry point, plugin registration, global hotkey
-      commands.rs      #[tauri::command] handlers (search, open, shell, etc.)
-      state.rs         AppState (engine cache, file watchers, index refresh)
-      platform.rs      Icon extraction (freedesktop, XDG_DATA_DIRS, .desktop)
-      process.rs       Running apps list (match .desktop vs /proc) + kill
-      sysinfo.rs       System info (OS, memory, CPU, battery, uptime, disk)
-      calc.rs          Calculator (functions, constants, !, %, commas)
-      music.rs         Background music player (rodio, ALSA)
+      main.rs            Entry point, plugin registration, global hotkey
+      commands.rs        Search, open, reveal, window, quit
+      state.rs           AppState (engine cache, file watchers, index refresh)
+      config.rs          Config get/set (.look.config persistence)
+      files.rs           File meta, version, clipboard copy, music scan, folder pick
+      clipboard.rs       Clipboard history monitor
+      shell.rs           Shell command execution
+      calc.rs            Calculator (functions, constants, !, %, commas)
+      music.rs           Background music player (rodio, ALSA)
+      process.rs         Running apps list + kill
+      sysinfo.rs         System info (OS, memory, CPU, battery, uptime, disk)
+      translate.rs       Translation
+      autostart.rs       Autostart management
+      platform/          Platform-specific code
+        linux/           Icons, WM detection, Wayland shortcuts, GNOME ext, …
+        windows/         Icons, effects, drives, known folders, …
+        shared.rs        Shared platform helpers
     capabilities/
-      default.json     Tauri v2 permissions (events, dialog)
-  src/                 Vanilla frontend (served by Tauri webview)
+      default.json       Tauri v2 permissions (events, dialog)
+  src/                   Vanilla frontend (served by Tauri webview)
     index.html
-    css/
+    css/                 reset.css, layout.css, theme.css
     js/
-    assets/
+      app.js             Main controller, mode switching
+      keyboard.js        Keyboard handling
+      search.js          Query input, search modes (clipboard, translate)
+      ipc.js             All Tauri invoke wrappers
+      platform.js        Platform detection
+      icons.js           Icon resolution
+      html-loader.js     Dynamic HTML template loader
+      components/        results, preview, picked, banner, translate
+      screens/           settings, commands (calc, kill, pomo, shell, sys)
+    html/screens/        HTML templates (search, settings, help, commands)
+    assets/              Icons
 ```
 
 ## Why This Exists
@@ -52,11 +71,13 @@ The WinUI3 app remains in `apps/windows/` (bug fixes only) until this migration 
 
 | Environment   | Distro | Status   | Notes                                                   |
 | ------------- | ------ | -------- | ------------------------------------------------------- |
-| GNOME Xorg    | NixOS  | Testing  | Full support                                            |
-| GNOME Wayland | Ubuntu | Testing  | Dock icon visible while Look is open (see Known Issues) |
-| GNOME Wayland | NixOS  | Testing  | Full support                                            |
-| i3 X11        | NixOS  | Testing  | No system settings entries                              |
-| Sway          |        | Untested | No system settings entries                              |
+| GNOME Xorg    | NixOS  | Tested   | Full support                                            |
+| GNOME Wayland | Ubuntu | Tested   | Dock icon visible while Look is open (see Known Issues) |
+| GNOME Wayland | NixOS  | Tested   | Full support                                            |
+| GNOME Wayland | Arch   | Tested   | Full support                                            |
+| i3 X11        | NixOS  | Tested   | No system settings entries                              |
+| Sway          | NixOS  | Tested   | No system settings entries                              |
+| Hyprland      | Arch   | Tested   | No system settings entries                              |
 | KDE Plasma    |        | Untested |                                                         |
 
 **System settings** (Appearance, Wi-Fi, Sound, etc.) are only shown when `gnome-control-center`
@@ -144,21 +165,29 @@ lookapp                                    # launch from terminal to see logs
 > Without this, the binary shows `cannot execute: required file not found`.
 > For proper release builds, use Ubuntu/Debian CI or add a patchelf step to the build script.
 
-**VM without GPU** (no `/dev/dri`): the app auto-detects this and sets
-`WEBKIT_DISABLE_GPU=1` + `WEBKIT_DISABLE_DMABUF_RENDERER=1` to prevent WebKitGTK segfaults.
+**VM without GPU** (no `/dev/dri` or virtual GPU driver): the app auto-detects this and
+disables hardware acceleration via the WebKitGTK API (`set_hardware_acceleration_policy(Never)`).
 
 **GNOME Shell extension** requires log out/in after first install to load.
 
 **Keyboard shortcuts:**
 
-| Shortcut     | Action                  |
-| ------------ | ----------------------- |
-| Alt+Space    | Toggle Look window      |
-| Esc          | Hide Look               |
-| Alt+Shift+Q  | Quit Look               |
-| Ctrl+Shift+, | Open settings           |
-| Ctrl+Shift+; | Reload config from file |
-| Ctrl+H       | Help screen             |
+| Shortcut      | Action                  |
+| ------------- | ----------------------- |
+| Alt+Space     | Toggle Look window      |
+| Esc           | Hide Look               |
+| Alt+Shift+Q   | Quit Look               |
+| Tab/Shift+Tab | Navigate results        |
+| Enter         | Open selected           |
+| Ctrl+Enter    | Search web              |
+| Ctrl+C        | Copy path to clipboard  |
+| Ctrl+F        | Reveal in file manager  |
+| Ctrl+P        | Pick (multi-select)     |
+| Ctrl+Shift+P  | Clear all picks         |
+| Ctrl+/        | Toggle command mode     |
+| Ctrl+Shift+,  | Open settings           |
+| Ctrl+Shift+;  | Reload config from file |
+| Ctrl+H        | Help screen             |
 
 **Known issues on Ubuntu:**
 

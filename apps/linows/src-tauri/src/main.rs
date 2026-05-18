@@ -120,40 +120,71 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
 /// Center and scale a window to fit the current monitor.
 /// Called once at startup. Avoid calling on toggle — see toggle_window.
 fn center_and_scale_window(window: &tauri::WebviewWindow) {
-    if let Ok(Some(monitor)) = window.current_monitor() {
-        let screen = monitor.size();
-        let scale = monitor.scale_factor();
-        let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
-        let size = tauri::PhysicalSize::new(win_w, win_h);
-        let _ = window.set_size(size);
-        // Lock min/max to the scaled size: on Wayland, hide()/show() can
-        // otherwise revert to tauri.conf's default (860×580) on remap,
-        // producing a visible "big rectangle then snap" on toggle.
-        let _ = window.set_min_size(Some(tauri::Size::Physical(size)));
-        let _ = window.set_max_size(Some(tauri::Size::Physical(size)));
-        let x = ((screen.width as f64 - win_w as f64) / 2.0) as i32;
-        let y = ((screen.height as f64 - win_h as f64) / 2.0) as i32;
-        let _ = window.set_position(PhysicalPosition::new(x, y));
-    }
+    let Some(monitor) = monitor_at_cursor(window) else {
+        return;
+    };
+    let pos = monitor.position();
+    let screen = monitor.size();
+    let scale = monitor.scale_factor();
+    let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
+    let size = tauri::PhysicalSize::new(win_w, win_h);
+    let _ = window.set_size(size);
+    // Lock min/max to the scaled size: on Wayland, hide()/show() can
+    // otherwise revert to tauri.conf's default (860×580) on remap,
+    // producing a visible "big rectangle then snap" on toggle.
+    let _ = window.set_min_size(Some(tauri::Size::Physical(size)));
+    let _ = window.set_max_size(Some(tauri::Size::Physical(size)));
+    let x = pos.x + ((screen.width as f64 - win_w as f64) / 2.0) as i32;
+    let y = pos.y + ((screen.height as f64 - win_h as f64) / 2.0) as i32;
+    let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 
-/// Re-center the window on the current monitor without changing its size.
-/// Used on each toggle so the window follows the user across monitors but
-/// doesn't trigger a Wayland configure-cycle resize.
+/// Find the monitor that contains the cursor. Falls back to the window's
+/// current monitor, then the first available monitor.
+fn monitor_at_cursor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
+    if let Ok(cursor) = window.cursor_position() {
+        if let Ok(monitors) = window.available_monitors() {
+            let cx = cursor.x as i32;
+            let cy = cursor.y as i32;
+            for m in &monitors {
+                let pos = m.position();
+                let size = m.size();
+                let mx = pos.x;
+                let my = pos.y;
+                let mw = size.width as i32;
+                let mh = size.height as i32;
+                if cx >= mx && cx < mx + mw && cy >= my && cy < my + mh {
+                    return Some(m.clone());
+                }
+            }
+        }
+    }
+    // Fallback: window's current monitor
+    window.current_monitor().ok().flatten()
+}
+
+/// Re-center the window on the monitor where the cursor is.
+/// Used on each toggle so the window follows the user across monitors.
 ///
 /// Note: we recalculate the expected size via `scaled_window_size` instead of
 /// querying `outer_size()` because the window is still hidden when this runs,
 /// and on some X11 WMs (e.g. i3) a hidden window reports stale/zero sizes,
 /// causing the position to drift downward on each toggle.
 fn recenter_window(window: &tauri::WebviewWindow) {
-    let Ok(Some(monitor)) = window.current_monitor() else {
+    let Some(monitor) = monitor_at_cursor(window) else {
         return;
     };
+    let pos = monitor.position();
     let screen = monitor.size();
     let scale = monitor.scale_factor();
     let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
-    let x = ((screen.width as f64 - win_w as f64) / 2.0) as i32;
-    let y = ((screen.height as f64 - win_h as f64) / 2.0) as i32;
+    // Update size constraints if scale changed (different DPI monitors)
+    let size = tauri::PhysicalSize::new(win_w, win_h);
+    let _ = window.set_size(size);
+    let _ = window.set_min_size(Some(tauri::Size::Physical(size)));
+    let _ = window.set_max_size(Some(tauri::Size::Physical(size)));
+    let x = pos.x + ((screen.width as f64 - win_w as f64) / 2.0) as i32;
+    let y = pos.y + ((screen.height as f64 - win_h as f64) / 2.0) as i32;
     let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 

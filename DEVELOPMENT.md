@@ -174,8 +174,8 @@ Signing/notarization walkthrough: [docs/apple-developer-release-guide.md](docs/a
 
 ## Contribution flow
 
-- branch from `dev` and open PRs into `dev`
-- PRs to `main` are reserved for maintainer-coordinated hotfix and release work
+- maintainer PRs target `main` directly
+- external contributions: branch from `dev` and open PRs into `dev`
 - run local checks before opening a PR:
   ```bash
   cargo test --workspace --manifest-path core/Cargo.toml
@@ -191,5 +191,9 @@ Signing/notarization walkthrough: [docs/apple-developer-release-guide.md](docs/a
 
 - [docs/architecture.md](docs/architecture.md) — canonical architecture reference
 - [docs/backend-guide.md](docs/backend-guide.md) — backend edit targets and verification
+- [docs/user-guide.md](docs/user-guide.md) — user guide
 - [docs/features.md](docs/features.md) — feature status
 - [docs/tasks.md](docs/tasks.md) — task breakdown
+- [docs/roadmap.md](docs/roadmap.md) — roadmap
+- [docs/decisions/](docs/decisions/) — architecture decision records
+- [apps/linows/BUILDING.md](apps/linows/BUILDING.md) — linows build, packaging, and install methods
