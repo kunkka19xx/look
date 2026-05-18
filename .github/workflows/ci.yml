@@ -291,14 +291,17 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      # Swatinem/rust-cache@v2 crashed silently in "Restoring cache..." on the
-      # windows-2025-vs2026 runner with the multi-workspace config. Single
-      # workspace pointing at the Tauri crate is enough — its target/ holds
-      # everything including the path-dep core crates.
+      # On windows-2025-vs2026, the rust-cache post-step's `tar` call hangs/
+      # crashes when archiving the full `target/` dir (no error surfaced, job
+      # ends FAILURE even though the build itself passes). Skipping target
+      # caching keeps registry/git caching — the win that matters for cargo
+      # fetch — while sidestepping the tar issue. Target rebuild on Windows
+      # in this job is ~2 min, acceptable.
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/linows/src-tauri
+          cache-targets: false
 
       - name: Check formatting
         run: cargo fmt --all --manifest-path apps/linows/src-tauri/Cargo.toml -- --check

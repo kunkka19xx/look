@@ -24,6 +24,13 @@ jobs:
     concurrency:
       group: release-windows-tauri-${{ github.ref }}
       cancel-in-progress: true
+    # Hoisted to job scope so `if: env.WINDOWS_PFX_BASE64 != ''` on the signing
+    # step can actually see the value — step-level `env:` is applied AFTER the
+    # `if:` is evaluated, so a step-scoped env block never triggers the gate.
+    env:
+      WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+      WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+      WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -89,10 +96,6 @@ jobs:
 
       - name: Sign installer (optional)
         if: env.WINDOWS_PFX_BASE64 != ''
-        env:
-          WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
-          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
-          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
         shell: pwsh
         run: |
           $tsUrl = if ($env:WINDOWS_TIMESTAMP_URL) { $env:WINDOWS_TIMESTAMP_URL } else { "http://timestamp.digicert.com" }
@@ -132,7 +135,9 @@ jobs:
       - name: Release security summary
         shell: bash
         run: |
-          if [[ -n "${{ secrets.WINDOWS_PFX_BASE64 }}" ]]; then
+          # Read the job-level env (same value the signing step gated on) so
+          # the summary can't drift from what actually happened.
+          if [[ -n "$WINDOWS_PFX_BASE64" ]]; then
             echo "### Windows signing: ✅ signed" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "### Windows signing: ⚠️ unsigned (no WINDOWS_PFX_BASE64 secret)" >> "$GITHUB_STEP_SUMMARY"
