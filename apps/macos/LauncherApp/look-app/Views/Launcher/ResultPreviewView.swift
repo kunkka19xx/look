@@ -7,7 +7,6 @@ struct ResultPreviewView: View {
     let result: LauncherResult
     var onDeleteClipboard: (() -> Void)? = nil
 
-    private let imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "heic", "webp", "svg", "ico", "pdf"]
     private static let modifiedDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -20,16 +19,6 @@ struct ResultPreviewView: View {
         formatter.timeStyle = .medium
         return formatter
     }()
-
-    private var isImageFile: Bool {
-        let ext = (result.path as NSString).pathExtension.lowercased()
-        return imageExtensions.contains(ext)
-    }
-
-    private var previewImage: NSImage? {
-        guard isImageFile else { return nil }
-        return NSImage(contentsOfFile: result.path)
-    }
 
     private var clipboardIcon: NSImage {
         NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
@@ -122,15 +111,11 @@ struct ResultPreviewView: View {
                     Spacer()
                 }
 
-                if isImageFile, let image = previewImage {
-                    HStack {
-                        Spacer()
-                        Image(nsImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxHeight: 180)
-                            .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-                        Spacer()
+                if result.kind == .file {
+                    if QuickLookPreviewService.isTextFile(path: result.path) {
+                        TextFilePreview(path: result.path, maxHeight: .infinity)
+                    } else {
+                        QuickLookPreviewImage(path: result.path, maxHeight: .infinity)
                     }
                 }
 
@@ -154,7 +139,9 @@ struct ResultPreviewView: View {
                     InfoRow(label: "Modified", value: modified)
                 }
 
-                Spacer()
+                if result.kind != .file {
+                    Spacer()
+                }
             }
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
