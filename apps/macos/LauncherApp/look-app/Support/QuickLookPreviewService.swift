@@ -53,7 +53,9 @@ actor QuickLookPreviewService {
         }
         guard fileSize <= Self.sizeCap(forPath: path) else { return nil }
 
-        let key = "\(path)|\(Int(mtime.timeIntervalSince1970))|\(fileSize)|\(Int(size.width))x\(Int(size.height))@\(scale)" as NSString
+        // Full sub-second mtime precision: truncating to Int seconds
+        // collides on rapid save/resave + same byte size.
+        let key = "\(path)|\(mtime.timeIntervalSince1970)|\(fileSize)|\(Int(size.width))x\(Int(size.height))@\(scale)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
 
         let request = QLThumbnailGenerator.Request(

@@ -13,7 +13,9 @@ nonisolated enum HighlightedTextCache {
     }()
 
     static func key(path: String, mtime: Date, size: Int64) -> String {
-        "\(path)|\(Int(mtime.timeIntervalSince1970))|\(size)"
+        // Use full sub-second precision; truncating to Int seconds
+        // collides on rapid save/resave + same byte size.
+        "\(path)|\(mtime.timeIntervalSince1970)|\(size)"
     }
 
     static func get(_ key: String) -> NSAttributedString? {
