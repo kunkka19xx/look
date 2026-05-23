@@ -286,7 +286,7 @@ Out of scope for v1:
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+GPLv3 — see [LICENSE](LICENSE).
 
 ## Contributors
 

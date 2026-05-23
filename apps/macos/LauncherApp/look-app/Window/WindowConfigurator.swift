@@ -45,6 +45,10 @@ struct WindowConfigurator: NSViewRepresentable {
         window.setContentBorderThickness(0, for: .maxY)
         window.collectionBehavior.insert(.moveToActiveSpace)
         window.collectionBehavior.insert(.fullScreenAuxiliary)
+        // Float above other apps so dragging the launcher onto a screen
+        // where another app has a window in front does not bury it.
+        // Matches the Linux/Windows build's set_always_on_top(true).
+        window.level = .floating
         window.standardWindowButton(.closeButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
@@ -60,6 +64,22 @@ struct WindowConfigurator: NSViewRepresentable {
             contentView.wantsLayer = true
             contentView.layer?.cornerRadius = cornerRadius
             contentView.layer?.masksToBounds = true
+        }
+
+        if let screen = window.screen ?? NSScreen.main {
+            window.setFrame(WindowAutoScale.centeredFrame(on: screen), display: true)
+        }
+
+        // Re-apply scaling when the window crosses to a different display.
+        // Position is preserved (top-left anchor) — only size changes,
+        // since the macOS launcher is user-draggable.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeScreenNotification,
+            object: window,
+            queue: .main
+        ) { note in
+            guard let w = note.object as? NSWindow else { return }
+            WindowAutoScale.scheduleResize(for: w)
         }
     }
 }

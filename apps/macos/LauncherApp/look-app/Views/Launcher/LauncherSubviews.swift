@@ -178,7 +178,7 @@ struct ResultsListView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 4) {
                     ForEach(results) { result in
                         LauncherRowView(
