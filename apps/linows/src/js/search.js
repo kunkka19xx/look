@@ -2,6 +2,8 @@ import { search as ipcSearch, getClipboardHistory } from './ipc.js';
 
 const DEBOUNCE_MS = 70;
 const MIN_QUICK_FOLDER_PREFIX = 2;
+const SEARCH_LIMIT = 40;
+const CLIPBOARD_TITLE_MAX_CHARS = 80;
 let debounceTimer = null;
 let onResultsCallback = null;
 let homeDir = null;
@@ -72,7 +74,7 @@ export function handleQueryInput(query) {
 
 async function performSearch(query) {
   try {
-    const payload = await ipcSearch(query, 40);
+    const payload = await ipcSearch(query, SEARCH_LIMIT);
     const results = prependQuickFolders(payload.results, query);
     if (onResultsCallback) {
       onResultsCallback(results, query);
@@ -113,7 +115,7 @@ async function performClipboardSearch(filter) {
     const entries = await getClipboardHistory(filter);
     const results = entries.map((e, i) => {
       // Title: first 80 chars, newlines → spaces
-      const title = e.text.replace(/\n/g, '  ').slice(0, 80) || '(empty)';
+      const title = e.text.replace(/\n/g, '  ').slice(0, CLIPBOARD_TITLE_MAX_CHARS) || '(empty)';
       const shortDate = formatShortDate(e.timestamp);
       const subtitle = `Clipboard  \u2022  ${e.char_count} chars  \u2022  ${e.line_count} lines  \u2022  ${shortDate}`;
       return {

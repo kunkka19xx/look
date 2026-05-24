@@ -254,11 +254,15 @@ pub async fn pick_image(app: tauri::AppHandle) -> Option<String> {
     rx.recv().ok().flatten()
 }
 
+const SECS_PER_DAY: u64 = 86400;
+const SECS_PER_HOUR: u64 = 3600;
+const SECS_PER_MINUTE: u64 = 60;
+
 fn time_from_unix(secs: u64) -> String {
-    let days = secs / 86400;
-    let time_secs = secs % 86400;
-    let hours = time_secs / 3600;
-    let minutes = (time_secs % 3600) / 60;
+    let days = secs / SECS_PER_DAY;
+    let time_secs = secs % SECS_PER_DAY;
+    let hours = time_secs / SECS_PER_HOUR;
+    let minutes = (time_secs % SECS_PER_HOUR) / SECS_PER_MINUTE;
 
     let (year, month, day) = civil_from_days(days as i64);
     format!("{year:04}-{month:02}-{day:02} {hours:02}:{minutes:02}")

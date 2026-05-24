@@ -17,6 +17,7 @@ const DEFAULT_SESSIONS = [
 
 const ENDING_SOON_SECS = 10;
 const IDLE_FADE_SECS = 5;
+const TICK_INTERVAL_MS = 500;
 
 // --- Persistence ---
 const STORAGE_KEY_SESSIONS = 'pomo_sessions';
@@ -247,7 +248,7 @@ function advanceSession() {
 
 function startTick() {
   stopTick();
-  tickTimer = setInterval(tick, 500);
+  tickTimer = setInterval(tick, TICK_INTERVAL_MS);
 }
 
 function stopTick() {

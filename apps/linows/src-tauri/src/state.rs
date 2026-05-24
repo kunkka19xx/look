@@ -10,6 +10,9 @@ use std::thread;
 use std::time::Instant;
 use tauri::{Emitter, Manager};
 
+const WATCHER_DEBOUNCE_SECS: u64 = 2;
+const WATCHER_POLL_MS: u64 = 500;
+
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 pub struct AppState {
@@ -147,9 +150,9 @@ impl AppState {
                             started_at.elapsed().as_millis()
                         );
                         if let Some(handle) = APP_HANDLE.get()
-                            && let Some(w) = handle.get_webview_window("main")
+                            && let Some(w) = handle.get_webview_window(crate::consts::MAIN_WINDOW)
                         {
-                            let _ = w.emit("index-ready", ());
+                            let _ = w.emit(crate::consts::EVENT_INDEX_READY, ());
                         }
                     }
                     Err(err) => {
@@ -242,7 +245,7 @@ impl AppState {
                     }
                 }
 
-                let debounce = std::time::Duration::from_secs(2);
+                let debounce = std::time::Duration::from_secs(WATCHER_DEBOUNCE_SECS);
                 let mut last_dirty_at: Option<Instant> = None;
 
                 loop {
@@ -250,7 +253,7 @@ impl AppState {
                         break;
                     }
 
-                    match event_rx.recv_timeout(std::time::Duration::from_millis(500)) {
+                    match event_rx.recv_timeout(std::time::Duration::from_millis(WATCHER_POLL_MS)) {
                         Ok(Ok(event)) => {
                             if should_mark_dirty(&event) {
                                 let v = change_version.fetch_add(1, Ordering::AcqRel);
@@ -293,9 +296,10 @@ impl AppState {
                                 }
                                 eprintln!("[watcher] auto-refresh done");
                                 if let Some(handle) = APP_HANDLE.get()
-                                    && let Some(w) = handle.get_webview_window("main")
+                                    && let Some(w) =
+                                        handle.get_webview_window(crate::consts::MAIN_WINDOW)
                                 {
-                                    let _ = w.emit("index-ready", ());
+                                    let _ = w.emit(crate::consts::EVENT_INDEX_READY, ());
                                 }
                             }
                             Err(err) => {
@@ -323,8 +327,12 @@ impl AppState {
     }
 }
 
+pub const ENV_DB_PATH: &str = "LOOK_DB_PATH";
+const APP_DIR: &str = "look";
+const DB_FILE: &str = "look.db";
+
 pub fn default_db_path() -> PathBuf {
-    if let Ok(custom) = env::var("LOOK_DB_PATH") {
+    if let Ok(custom) = env::var(ENV_DB_PATH) {
         let trimmed = custom.trim();
         if !trimmed.is_empty() {
             return PathBuf::from(trimmed);
@@ -336,7 +344,7 @@ pub fn default_db_path() -> PathBuf {
         if let Ok(base) = env::var("LOCALAPPDATA") {
             let trimmed = base.trim();
             if !trimmed.is_empty() {
-                return PathBuf::from(trimmed).join("look").join("look.db");
+                return PathBuf::from(trimmed).join(APP_DIR).join(DB_FILE);
             }
         }
     }
@@ -346,15 +354,15 @@ pub fn default_db_path() -> PathBuf {
         if let Ok(data_home) = env::var("XDG_DATA_HOME") {
             let trimmed = data_home.trim();
             if !trimmed.is_empty() {
-                return PathBuf::from(trimmed).join("look").join("look.db");
+                return PathBuf::from(trimmed).join(APP_DIR).join(DB_FILE);
             }
         }
         if let Ok(home) = env::var("HOME") {
             return PathBuf::from(home)
                 .join(".local")
                 .join("share")
-                .join("look")
-                .join("look.db");
+                .join(APP_DIR)
+                .join(DB_FILE);
         }
     }
 
@@ -362,7 +370,7 @@ pub fn default_db_path() -> PathBuf {
     let home = env::var("HOME")
         .or_else(|_| env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".look").join("look.db")
+    PathBuf::from(home).join(".look").join(DB_FILE)
 }
 
 fn should_mark_dirty(event: &Event) -> bool {

@@ -16,6 +16,14 @@ import {
   copyToClipboard, deleteClipboardEntry, isDevBuild,
 } from './ipc.js';
 
+const HINT_MAIN = 'Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide';
+const HINT_TRANSLATE = 'Enter translate \u2022 Esc clear';
+const HINT_CLIPBOARD = 'Enter copy \u2022 Delete remove \u2022 Esc clear';
+const BANNER_DURATION_SHORT = 1.0;
+const BANNER_DURATION_MEDIUM = 1.2;
+const BANNER_DURATION_LONG = 1.5;
+const KILL_FEEDBACK_DELAY_MS = 300;
+
 document.addEventListener('DOMContentLoaded', async () => {
   const app = document.getElementById('app');
 
@@ -30,7 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Hint bar — always at bottom, shared by all screens
   app.insertAdjacentHTML('beforeend',
-    '<div class="hint-bar" id="hint-bar"><span>Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide</span><span class="hint-bar-copy">\u00A9 2026 by <a class="hint-bar-link" href="#">Kunkka</a></span></div>');
+    `<div class="hint-bar" id="hint-bar"><span>${HINT_MAIN}</span><span class="hint-bar-copy">\u00A9 2026 by <a class="hint-bar-link" href="#">Kunkka</a></span></div>`);
 
   // Load command panels into cmd-main
   const cmdMain = document.getElementById('cmd-main');
@@ -75,8 +83,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     queryInput.value = '';
     search.handleQueryInput('');
     queryInput.focus();
-    hintBar.querySelector('span').textContent =
-      'Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide';
+    hintBar.querySelector('span').textContent = HINT_MAIN;
   });
   settings.restoreOnStartup();
 
@@ -116,10 +123,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         .map((i) => i.path);
       if (paths.length > 0) {
         copyFilesToClipboard(paths)
-          .then(() => banner.show(`Picked ${pickedItems.length} item(s)`, 'success', 1.0))
-          .catch(() => banner.show('Pick failed', 'error', 1.2));
+          .then(() => banner.show(`Picked ${pickedItems.length} item(s)`, 'success', BANNER_DURATION_SHORT))
+          .catch(() => banner.show('Pick failed', 'error', BANNER_DURATION_MEDIUM));
       } else {
-        banner.show(`Picked ${pickedItems.length} item(s)`, 'success', 1.0);
+        banner.show(`Picked ${pickedItems.length} item(s)`, 'success', BANNER_DURATION_SHORT);
       }
     } else {
       picked.update([]);
@@ -163,16 +170,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     search.handleQueryInput(value);
     const h = hintBar.querySelector('span');
     if (search.isTranslateMode()) {
-      h.textContent = 'Enter translate \u2022 Esc clear';
+      h.textContent = HINT_TRANSLATE;
       resultsList.hidden = true;
       previewPanel.hidden = true;
       if (!translatePanel.isActive()) translatePanel.showPlaceholder();
     } else if (search.isClipboardMode()) {
-      h.textContent = 'Enter copy \u2022 Delete remove \u2022 Esc clear';
+      h.textContent = HINT_CLIPBOARD;
       resultsList.hidden = false;
       translatePanel.hide();
     } else {
-      h.textContent = 'Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide';
+      h.textContent = HINT_MAIN;
       resultsList.hidden = false;
       translatePanel.hide();
     }
@@ -259,8 +266,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     queryInput.parentElement.style.display = '';
     resultsList.hidden = false;
     previewPanel.hidden = false;
-    hintBar.querySelector('span').textContent =
-      'Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide';
+    hintBar.querySelector('span').textContent = HINT_MAIN;
     queryInput.value = '';
     search.handleQueryInput('');
     queryInput.focus();
@@ -304,12 +310,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!pid) return;
       try {
         const msg = await killProcess(pid);
-        banner.show(msg, 'success', 1.2);
-        await new Promise((r) => setTimeout(r, 300));
+        banner.show(msg, 'success', BANNER_DURATION_MEDIUM);
+        await new Promise((r) => setTimeout(r, KILL_FEEDBACK_DELAY_MS));
         const procs = await listProcesses();
         commands.setProcessList(procs);
       } catch (err) {
-        banner.show(err || 'Kill failed', 'error', 1.5);
+        banner.show(err || 'Kill failed', 'error', BANNER_DURATION_LONG);
       }
       return;
     }
@@ -331,7 +337,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const result = await evalCalc(input);
           commands.showFeedback(result);
           await navigator.clipboard.writeText(result);
-          banner.show('Result copied', 'success', 1.0);
+          banner.show('Result copied', 'success', BANNER_DURATION_SHORT);
         } catch (err) {
           commands.showFeedback(err || 'Invalid expression', true);
         }

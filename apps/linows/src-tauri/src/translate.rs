@@ -52,11 +52,10 @@ pub fn translate(text: String, target_lang: String) -> TranslateResult {
     ])
     .arg(&url);
 
-    // Hide the console window that Windows creates for child processes.
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.creation_flags(crate::consts::CREATE_NO_WINDOW);
     }
 
     let output = cmd.output();

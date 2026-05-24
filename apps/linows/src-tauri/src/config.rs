@@ -81,8 +81,11 @@ pub fn reset_config() -> Result<(), String> {
     std::fs::write(&path, default).map_err(|e| format!("Failed to reset config: {e}"))
 }
 
+pub const ENV_CONFIG_PATH: &str = "LOOK_CONFIG_PATH";
+const CONFIG_FILE: &str = ".look.config";
+
 pub fn config_file_path() -> std::path::PathBuf {
-    if let Ok(custom) = std::env::var("LOOK_CONFIG_PATH") {
+    if let Ok(custom) = std::env::var(ENV_CONFIG_PATH) {
         let trimmed = custom.trim();
         if !trimmed.is_empty() {
             return std::path::PathBuf::from(trimmed);
@@ -91,5 +94,5 @@ pub fn config_file_path() -> std::path::PathBuf {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".to_string());
-    std::path::PathBuf::from(home).join(".look.config")
+    std::path::PathBuf::from(home).join(CONFIG_FILE)
 }

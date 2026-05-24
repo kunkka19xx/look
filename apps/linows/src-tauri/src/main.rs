@@ -6,6 +6,7 @@ mod calc;
 mod clipboard;
 mod commands;
 mod config;
+mod consts;
 mod files;
 mod music;
 mod platform;
@@ -52,6 +53,11 @@ fn supports_transparency() -> bool {
 
 const BASE_W: f64 = 860.0;
 const BASE_H: f64 = 580.0;
+/// Grace period (ms) after show — ignore focus-loss within this window.
+const AUTO_HIDE_GRACE_MS: u64 = 300;
+/// Guard (ms) to prevent re-showing after auto-hide (GNOME X11 race).
+const AUTO_HIDE_RESHOW_GUARD_MS: u64 = 200;
+const EVENT_WINDOW_SHOWN: &str = "window-shown";
 
 /// Scale window size for larger monitors. Base at 1080p (1.0x), up to 1.3x max.
 /// 1440p → 1.2x, 4K → 1.3x (capped).
@@ -72,14 +78,14 @@ fn scaled_window_size(screen_w: u32, screen_h: u32, scale: f64) -> (u32, u32) {
 
 /// Toggle the main window: hide if visible, show (centered) if hidden.
 fn toggle_window(app_handle: &tauri::AppHandle) {
-    let Some(window) = app_handle.get_webview_window("main") else {
+    let Some(window) = app_handle.get_webview_window(consts::MAIN_WINDOW) else {
         return;
     };
     if window.is_visible().unwrap_or(false) {
         #[cfg(target_os = "linux")]
         platform::linux::window_focus::notify_hidden();
         let _ = window.hide();
-    } else if now_ms() - LAST_AUTO_HIDDEN_AT.load(Ordering::Relaxed) > 200 {
+    } else if now_ms() - LAST_AUTO_HIDDEN_AT.load(Ordering::Relaxed) > AUTO_HIDE_RESHOW_GUARD_MS {
         // Only show if auto-hide didn't JUST fire.
         // On GNOME X11, Focused(false) races with this handler —
         // auto-hide hides the window before we run, so is_visible
@@ -103,7 +109,7 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         if tiling {
             recenter_window(&window);
         }
-        let _ = window.emit("window-shown", ());
+        let _ = window.emit(EVENT_WINDOW_SHOWN, ());
 
         // On Linux/X11, bypass Mutter's focus-stealing prevention
         // by bumping _NET_WM_USER_TIME before activation.
@@ -206,19 +212,19 @@ fn setup_dev_env() {
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| ".".to_string());
 
-    if std::env::var("LOOK_CONFIG_PATH")
+    if std::env::var(config::ENV_CONFIG_PATH)
         .unwrap_or_default()
         .trim()
         .is_empty()
     {
         unsafe {
             std::env::set_var(
-                "LOOK_CONFIG_PATH",
+                config::ENV_CONFIG_PATH,
                 std::path::PathBuf::from(&home).join(".look.dev.config"),
             );
         }
     }
-    if std::env::var("LOOK_DB_PATH")
+    if std::env::var(state::ENV_DB_PATH)
         .unwrap_or_default()
         .trim()
         .is_empty()
@@ -243,13 +249,13 @@ fn setup_dev_env() {
 
         let _ = std::fs::create_dir_all(&db_dir);
         unsafe {
-            std::env::set_var("LOOK_DB_PATH", db_dir.join("look.dev.db"));
+            std::env::set_var(state::ENV_DB_PATH, db_dir.join("look.dev.db"));
         }
     }
     eprintln!(
         "[dev] config={} db={}",
-        std::env::var("LOOK_CONFIG_PATH").unwrap_or_default(),
-        std::env::var("LOOK_DB_PATH").unwrap_or_default(),
+        std::env::var(config::ENV_CONFIG_PATH).unwrap_or_default(),
+        std::env::var(state::ENV_DB_PATH).unwrap_or_default(),
     );
 }
 
@@ -328,7 +334,7 @@ fn arch_disable_gpu_from_config() -> bool {
 /// so we set the policy at the API level before the first render.
 #[cfg(target_os = "linux")]
 fn disable_gpu_acceleration(app: &tauri::App) {
-    if let Some(webview) = app.get_webview_window("main") {
+    if let Some(webview) = app.get_webview_window(consts::MAIN_WINDOW) {
         let _ = webview.with_webview(|wv| {
             use webkit2gtk::SettingsExt;
             let inner = wv.inner();
@@ -347,17 +353,28 @@ fn disable_gpu_acceleration(app: &tauri::App) {
 /// On subsequent launches — re-sync the registry/desktop-entry with the current
 /// exe path so it stays valid after updates or reinstalls (matches WinUI3 behavior).
 fn sync_autostart() {
+    const KEY: &str = "launch_at_login";
+
     let config_path = config::config_file_path();
     let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
 
-    let enabled = if config_content.contains("launch_at_login") {
-        config_content
-            .lines()
-            .any(|l| l.trim().starts_with("launch_at_login") && l.contains("true"))
+    let config_value = config_content.lines().find_map(|l| {
+        let l = l.trim();
+        if !l.starts_with('#') {
+            l.split_once('=')
+                .filter(|(k, _)| k.trim() == KEY)
+                .map(|(_, v)| v.trim() == "true")
+        } else {
+            None
+        }
+    });
+
+    let enabled = if let Some(val) = config_value {
+        val
     } else {
         // First launch — enable by default and persist.
         let _ = config::set_config(vec![config::ConfigUpdate {
-            key: "launch_at_login".into(),
+            key: KEY.into(),
             value: "true".into(),
         }]);
         true
@@ -418,12 +435,14 @@ fn register_shortcuts(
 #[cfg(target_os = "linux")]
 fn setup_x11_focus_monitor(app: &tauri::App) {
     platform::linux::window_focus::cache_self_window();
-    let window = app.get_webview_window("main").expect("main window missing");
+    let window = app
+        .get_webview_window(consts::MAIN_WINDOW)
+        .expect("main window missing");
     platform::linux::window_focus::start_active_window_monitor(move || {
         if PICKING_FILE.load(Ordering::Relaxed) {
             return;
         }
-        if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 {
+        if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > AUTO_HIDE_GRACE_MS {
             LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
             let _ = window.hide();
         }
@@ -457,7 +476,7 @@ fn setup_window_events(window: &tauri::WebviewWindow) {
             #[cfg(not(target_os = "linux"))]
             tauri::WindowEvent::Focused(false)
                 if !PICKING_FILE.load(Ordering::Relaxed)
-                    && now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > 300 =>
+                    && now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > AUTO_HIDE_GRACE_MS =>
             {
                 LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
                 let _ = w.hide();
@@ -483,7 +502,7 @@ fn main() {
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_webview_window(consts::MAIN_WINDOW) {
                 let _ = window.show();
                 let _ = window.set_focus();
             }
@@ -521,7 +540,9 @@ fn main() {
                 setup_x11_focus_monitor(app);
             }
 
-            let window = app.get_webview_window("main").expect("main window missing");
+            let window = app
+                .get_webview_window(consts::MAIN_WINDOW)
+                .expect("main window missing");
             // On transparency-capable Linux compositors, force the GTK window
             // background to transparent. Without this, GTK paints its theme
             // background (opaque, square corners) on the surface before WebKit

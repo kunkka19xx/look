@@ -1,3 +1,7 @@
+const TIMEOUT_SECS: u64 = 10;
+const MAX_OUTPUT_BYTES: usize = 800;
+const POLL_INTERVAL_MS: u64 = 50;
+
 #[tauri::command]
 pub fn run_shell_command(cmd: String) -> Result<String, String> {
     // sh on Unix, cmd /C on Windows. The frontend doesn't know which it's on
@@ -10,7 +14,7 @@ pub fn run_shell_command(cmd: String) -> Result<String, String> {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .creation_flags(crate::consts::CREATE_NO_WINDOW)
             .spawn()
     };
     #[cfg(not(target_os = "windows"))]
@@ -22,7 +26,7 @@ pub fn run_shell_command(cmd: String) -> Result<String, String> {
         .spawn();
     let mut child = spawned.map_err(|e| format!("Failed to run: {e}"))?;
 
-    let timeout = std::time::Duration::from_secs(10);
+    let timeout = std::time::Duration::from_secs(TIMEOUT_SECS);
     let start = std::time::Instant::now();
     loop {
         match child.try_wait() {
@@ -31,9 +35,9 @@ pub fn run_shell_command(cmd: String) -> Result<String, String> {
                 if start.elapsed() > timeout {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return Ok("(timed out after 10s)".to_string());
+                    return Ok(format!("(timed out after {TIMEOUT_SECS}s)"));
                 }
-                std::thread::sleep(std::time::Duration::from_millis(50));
+                std::thread::sleep(std::time::Duration::from_millis(POLL_INTERVAL_MS));
             }
             Err(e) => return Err(format!("Wait error: {e}")),
         }
@@ -56,8 +60,8 @@ pub fn run_shell_command(cmd: String) -> Result<String, String> {
         result.push_str(&stderr);
     }
 
-    if result.len() > 800 {
-        result.truncate(800);
+    if result.len() > MAX_OUTPUT_BYTES {
+        result.truncate(MAX_OUTPUT_BYTES);
         result.push_str("\n... (truncated)");
     }
 

@@ -25,9 +25,16 @@ pub struct UsageResult {
     pub error: Option<String>,
 }
 
+const DEFAULT_SEARCH_LIMIT: u32 = 40;
+const MAX_SEARCH_LIMIT: u32 = 100;
+
 #[tauri::command]
 pub fn search(state: State<'_, AppState>, query: String, limit: u32) -> SearchPayload {
-    let max = if limit == 0 { 40 } else { limit.min(100) } as usize;
+    let max = if limit == 0 {
+        DEFAULT_SEARCH_LIMIT
+    } else {
+        limit.min(MAX_SEARCH_LIMIT)
+    } as usize;
 
     let scored = state.with_engine(|engine| engine.search_scored(&query, max));
 

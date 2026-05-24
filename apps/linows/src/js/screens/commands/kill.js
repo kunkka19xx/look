@@ -1,3 +1,6 @@
+const MAX_PORT = 65535;
+const PORT_DEBOUNCE_MS = 200;
+
 let panel = null;
 let input = null;
 let feedback = null;
@@ -132,11 +135,11 @@ function filterProcesses(query) {
     filteredProcesses = [];
     selectedIndex = 0;
     const port = parseInt(query.slice(1));
-    if (port > 0 && port <= 65535) {
+    if (port > 0 && port <= MAX_PORT) {
       clearTimeout(portDebounce);
       portDebounce = setTimeout(() => {
         if (onExecute) onExecute('kill-port', String(port));
-      }, 200);
+      }, PORT_DEBOUNCE_MS);
     }
     return;
   } else {
