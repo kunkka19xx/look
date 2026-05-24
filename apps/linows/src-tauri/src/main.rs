@@ -341,13 +341,29 @@ fn disable_gpu_acceleration(app: &tauri::App) {
     }
 }
 
-/// Enable autostart on first launch (only if user hasn't explicitly configured it).
-fn enable_autostart_on_first_launch() {
+/// Sync autostart registration with config on every launch.
+///
+/// On first launch (no `launch_at_login` key yet) — enable autostart and persist.
+/// On subsequent launches — re-sync the registry/desktop-entry with the current
+/// exe path so it stays valid after updates or reinstalls (matches WinUI3 behavior).
+fn sync_autostart() {
     let config_path = config::config_file_path();
     let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
-    if !config_content.contains("launch_at_login") {
-        let _ = autostart::set_autostart(true);
-    }
+
+    let enabled = if config_content.contains("launch_at_login") {
+        config_content
+            .lines()
+            .any(|l| l.trim().starts_with("launch_at_login") && l.contains("true"))
+    } else {
+        // First launch — enable by default and persist.
+        let _ = config::set_config(vec![config::ConfigUpdate {
+            key: "launch_at_login".into(),
+            value: "true".into(),
+        }]);
+        true
+    };
+
+    let _ = autostart::set_autostart(enabled);
 }
 
 /// Register global shortcuts (Alt+Space to toggle, Alt+Shift+Q to quit).
@@ -463,7 +479,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     let disable_gpu = detect_and_disable_virtual_gpu() || arch_disable_gpu_from_config();
 
-    enable_autostart_on_first_launch();
+    sync_autostart();
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {

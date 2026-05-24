@@ -10,6 +10,7 @@ let selectedIndex = -1;
 let container = null;
 let onSelectionChange = null;
 let onPickChange = null;
+
 export function init(containerEl) {
   container = containerEl;
 }

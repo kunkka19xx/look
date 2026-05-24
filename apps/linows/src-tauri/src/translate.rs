@@ -39,19 +39,27 @@ pub fn translate(text: String, target_lang: String) -> TranslateResult {
     let encoded = percent_encode(&text);
     let url = format!("{TRANSLATE_URL_PREFIX}{target_lang}{TRANSLATE_URL_MIDDLE}{encoded}");
 
-    let output = std::process::Command::new("curl")
-        .args([
-            "-s",
-            "-m",
-            "3",
-            "--user-agent",
-            CURL_USER_AGENT,
-            "--tlsv1.2",
-            "-H",
-            "Accept-Language: en-US,en;q=0.9",
-        ])
-        .arg(&url)
-        .output();
+    let mut cmd = std::process::Command::new("curl");
+    cmd.args([
+        "-s",
+        "-m",
+        "3",
+        "--user-agent",
+        CURL_USER_AGENT,
+        "--tlsv1.2",
+        "-H",
+        "Accept-Language: en-US,en;q=0.9",
+    ])
+    .arg(&url);
+
+    // Hide the console window that Windows creates for child processes.
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let output = cmd.output();
 
     let body = match output {
         Ok(out) if out.status.success() => match String::from_utf8(out.stdout) {

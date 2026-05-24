@@ -3,12 +3,16 @@ pub fn run_shell_command(cmd: String) -> Result<String, String> {
     // sh on Unix, cmd /C on Windows. The frontend doesn't know which it's on
     // and lets the user type whatever fits their muscle memory.
     #[cfg(target_os = "windows")]
-    let spawned = std::process::Command::new("cmd")
-        .args(["/C", &cmd])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn();
+    let spawned = {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("cmd")
+            .args(["/C", &cmd])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .spawn()
+    };
     #[cfg(not(target_os = "windows"))]
     let spawned = std::process::Command::new("sh")
         .args(["-c", &cmd])
