@@ -142,20 +142,20 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) {
 /// Find the monitor that contains the cursor. Falls back to the window's
 /// current monitor, then the first available monitor.
 fn monitor_at_cursor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
-    if let Ok(cursor) = window.cursor_position() {
-        if let Ok(monitors) = window.available_monitors() {
-            let cx = cursor.x as i32;
-            let cy = cursor.y as i32;
-            for m in &monitors {
-                let pos = m.position();
-                let size = m.size();
-                let mx = pos.x;
-                let my = pos.y;
-                let mw = size.width as i32;
-                let mh = size.height as i32;
-                if cx >= mx && cx < mx + mw && cy >= my && cy < my + mh {
-                    return Some(m.clone());
-                }
+    if let Ok(cursor) = window.cursor_position()
+        && let Ok(monitors) = window.available_monitors()
+    {
+        let cx = cursor.x as i32;
+        let cy = cursor.y as i32;
+        for m in &monitors {
+            let pos = m.position();
+            let size = m.size();
+            let mx = pos.x;
+            let my = pos.y;
+            let mw = size.width as i32;
+            let mh = size.height as i32;
+            if cx >= mx && cx < mx + mw && cy >= my && cy < my + mh {
+                return Some(m.clone());
             }
         }
     }
