@@ -19,10 +19,6 @@
   border-radius: 6px;
 }
 
-.cmd-row:hover {
-  background: var(--selection-fill);
-}
-
 .cmd-row-active {
   background: var(--selection-fill);
 }
@@ -198,10 +194,6 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: var(--font-size);
-}
-
-.cmd-proc-row:hover {
-  background: var(--selection-fill);
 }
 
 .cmd-proc-row-active {
