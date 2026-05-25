@@ -4,6 +4,11 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 14px;
+  flex-shrink: 0;
+}
+
+.preview-slot {
+  min-height: 0;
 }
 
 .preview-icon {
@@ -71,6 +76,7 @@
   display: flex;
   flex-direction: column;
   gap: 0;
+  flex-shrink: 0;
 }
 
 .preview-info-row {
@@ -102,7 +108,7 @@
 
 .preview-image img {
   max-width: 100%;
-  max-height: 320px;
+  max-height: calc(100vh - 260px);
   border-radius: 6px;
   object-fit: contain;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -124,7 +130,7 @@
   word-break: break-word;
   margin: 0;
   padding: 10px;
-  max-height: 320px;
+  max-height: calc(100vh - 260px);
   overflow-y: auto;
   user-select: text;
   line-height: 1.5;
@@ -153,7 +159,7 @@
   background: var(--control-fill);
   border-radius: 8px;
   overflow-y: auto;
-  max-height: 280px;
+  max-height: calc(100vh - 260px);
   padding: 4px;
   position: relative;
 }

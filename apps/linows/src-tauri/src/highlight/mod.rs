@@ -21,7 +21,7 @@ const TEXT_EXTENSIONS: &[&str] = &[
     "ts", "tsx", "jsx", "py", "rb", "go", "rs", "swift", "c", "cc", "cpp", "cxx", "h", "hh", "hpp",
     "hxx", "m", "mm", "java", "kt", "kts", "scala", "groovy", "sh", "bash", "zsh", "fish", "sql",
     "lua", "php", "pl", "r", "clj", "ex", "exs", "erl", "hs", "ml", "fs", "fsx", "dart", "vue",
-    "svelte",
+    "svelte", "zig", "nim", "v", "odin",
 ];
 
 /// Size caps — matches macOS `QuickLookPreviewService`.

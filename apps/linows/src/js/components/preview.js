@@ -83,6 +83,7 @@ export function update(result) {
 
   // Preview placeholder — sits between header and metadata (matches macOS order)
   const previewSlot = document.createElement('div');
+  previewSlot.className = 'preview-slot';
   panel.appendChild(previewSlot);
 
   // Metadata rows
