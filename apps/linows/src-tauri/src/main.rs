@@ -110,7 +110,10 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         let monitors = window.available_monitors().unwrap_or_default();
         let monitor_key = (
             monitors.len(),
-            monitors.first().map(|m| m.scale_factor().to_bits()).unwrap_or(0),
+            monitors
+                .first()
+                .map(|m| m.scale_factor().to_bits())
+                .unwrap_or(0),
         );
         let setup_changed = {
             let mut last = LAST_MONITOR_KEY.lock().unwrap();
@@ -149,7 +152,10 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) {
     if let Ok(monitors) = window.available_monitors() {
         let key = (
             monitors.len(),
-            monitors.first().map(|m| m.scale_factor().to_bits()).unwrap_or(0),
+            monitors
+                .first()
+                .map(|m| m.scale_factor().to_bits())
+                .unwrap_or(0),
         );
         *LAST_MONITOR_KEY.lock().unwrap() = key;
     }
@@ -164,9 +170,7 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) {
     let logical_screen_h = screen.height as f64 / scale;
     eprintln!(
         "[look:scale] monitor={}x{} scale={} logical_screen={}x{} → window={}x{}",
-        screen.width, screen.height, scale,
-        logical_screen_w, logical_screen_h,
-        win_w, win_h,
+        screen.width, screen.height, scale, logical_screen_w, logical_screen_h, win_w, win_h,
     );
     let size = tauri::LogicalSize::new(win_w as f64, win_h as f64);
     let _ = window.set_size(size);

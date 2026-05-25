@@ -26,10 +26,8 @@ fn dbus_runtime() -> &'static tokio::runtime::Runtime {
 /// Cached D-Bus session connection.
 fn dbus_conn() -> Option<&'static zbus::Connection> {
     static CONN: OnceLock<Option<zbus::Connection>> = OnceLock::new();
-    CONN.get_or_init(|| {
-        dbus_runtime().block_on(async { zbus::Connection::session().await.ok() })
-    })
-    .as_ref()
+    CONN.get_or_init(|| dbus_runtime().block_on(async { zbus::Connection::session().await.ok() }))
+        .as_ref()
 }
 
 const METADATA_JSON: &str = include_str!("../../gnome-shell-extension/metadata.json");
@@ -149,7 +147,9 @@ pub fn get_pointer() -> Option<(i32, i32)> {
 /// Uses zbus to call directly from Look's process (which has focus),
 /// so GNOME trusts the activation request without showing a "ready" popup.
 pub fn try_focus_app(desktop_id: &str) -> bool {
-    let Some(conn) = dbus_conn() else { return false };
+    let Some(conn) = dbus_conn() else {
+        return false;
+    };
     let id = desktop_id.to_string();
     dbus_runtime()
         .block_on(async {
