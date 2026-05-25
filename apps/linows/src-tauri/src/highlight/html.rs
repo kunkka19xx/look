@@ -21,9 +21,7 @@ fn css_class(token: TokenType) -> &'static str {
 /// Plain text (not covered by any span) is HTML-escaped and emitted as-is.
 /// Token spans are wrapped in `<span class="...">`.
 pub fn render(source: &[u8], spans: &[Span]) -> String {
-    let text = String::from_utf8_lossy(source);
-    let bytes = text.as_bytes();
-    let len = bytes.len();
+    let len = source.len();
 
     // Pre-allocate: HTML is typically ~1.3x the source size.
     let mut out = String::with_capacity(len + len / 3);
@@ -32,14 +30,14 @@ pub fn render(source: &[u8], spans: &[Span]) -> String {
     for span in spans {
         // Emit plain text before this span
         if span.start > pos {
-            escape_into(&text[pos..span.start], &mut out);
+            escape_into(&String::from_utf8_lossy(&source[pos..span.start]), &mut out);
         }
 
         // Emit the highlighted span
         out.push_str("<span class=\"");
         out.push_str(css_class(span.token));
         out.push_str("\">");
-        escape_into(&text[span.start..span.end], &mut out);
+        escape_into(&String::from_utf8_lossy(&source[span.start..span.end]), &mut out);
         out.push_str("</span>");
 
         pos = span.end;
@@ -47,7 +45,7 @@ pub fn render(source: &[u8], spans: &[Span]) -> String {
 
     // Emit trailing plain text
     if pos < len {
-        escape_into(&text[pos..], &mut out);
+        escape_into(&String::from_utf8_lossy(&source[pos..]), &mut out);
     }
 
     out

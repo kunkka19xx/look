@@ -550,12 +550,21 @@ fn main() {
             // commits the HTML — visible as a brief "big rectangle without
             // corners" flash before the rounded launcher appears.
             // On X11 bare (no compositor), keep GTK's solid bg as a fallback.
+            //
+            // Hide the window first so the opaque frame never appears — the
+            // race between GTK's first paint and set_background_color causes
+            // intermittent sharp-cornered flashes on GNOME.
             #[cfg(target_os = "linux")]
             if supports_transparency() {
+                let _ = window.hide();
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
             }
             center_and_scale_window(&window);
             apply_transparency(&window);
+            #[cfg(target_os = "linux")]
+            if supports_transparency() {
+                let _ = window.show();
+            }
             #[cfg(target_os = "windows")]
             {
                 // WebView2 defaults to an opaque background. With the window
