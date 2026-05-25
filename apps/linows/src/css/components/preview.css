@@ -108,6 +108,42 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
+/* Code/text file preview */
+.preview-code {
+  margin-top: 12px;
+  background: var(--control-fill);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.preview-code-text {
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size) - 1px);
+  color: var(--font-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  padding: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  user-select: text;
+  line-height: 1.5;
+}
+
+.preview-code-truncated {
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--font-muted);
+  text-align: center;
+  padding: 4px 0 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Syntax token colors — matches macOS SyntaxHighlighter palette */
+.tk-kw  { color: var(--syntax-keyword, #d17dc9); }
+.tk-str { color: var(--syntax-string, #e8a86b); }
+.tk-cm  { color: var(--syntax-comment, #737873); }
+.tk-num { color: var(--syntax-number, #8cc7d6); }
+
 /* Clipboard preview */
 .preview-path {
   font-size: calc(var(--font-size) - 2px);

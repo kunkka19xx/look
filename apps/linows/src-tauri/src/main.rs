@@ -8,6 +8,7 @@ mod commands;
 mod config;
 mod consts;
 mod files;
+mod highlight;
 mod music;
 mod platform;
 mod process;
@@ -627,6 +628,8 @@ fn main() {
             // Autostart
             autostart::set_autostart,
             autostart::get_autostart,
+            // Highlight
+            highlight::highlight_file_cmd,
         ])
         .build(tauri::generate_context!())
         .expect("error while building look desktop")

@@ -1,9 +1,10 @@
-import { getIcon, getFileMeta, getAppVersion, deleteClipboardEntry } from '../ipc.js';
+import { getIcon, getFileMeta, getAppVersion, deleteClipboardEntry, highlightFile } from '../ipc.js';
 import { clipboard as clipboardIcon, trash as trashIcon, appIcon, fileIcon, folderIcon, settingIcon } from '../icons.js';
 
 let panel = null;
 let currentPath = null;
 let onClipDelete = null;
+let highlightTimer = null;
 
 export function init(panelEl) {
   panel = panelEl;
@@ -25,6 +26,7 @@ export function update(result) {
   if (currentPath === cacheKey) return;
   currentPath = cacheKey;
 
+  if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
   panel.hidden = false;
   panel.innerHTML = '';
 
@@ -79,6 +81,10 @@ export function update(result) {
   header.appendChild(headerText);
   panel.appendChild(header);
 
+  // Preview placeholder — sits between header and metadata (matches macOS order)
+  const previewSlot = document.createElement('div');
+  panel.appendChild(previewSlot);
+
   // Metadata rows
   const metaWrap = document.createElement('div');
   metaWrap.className = 'preview-meta';
@@ -87,7 +93,7 @@ export function update(result) {
   if (result.kind === 'app') {
     renderAppMeta(metaWrap, result, headerSub);
   } else {
-    renderFileMeta(metaWrap, result, headerSub);
+    renderFileMeta(metaWrap, previewSlot, result, headerSub);
   }
 }
 
@@ -180,9 +186,12 @@ function renderAppMeta(metaWrap, result, headerSub) {
   metaWrap.appendChild(infoRow('Path', result.path));
 }
 
-function renderFileMeta(metaWrap, result, headerSub) {
+function renderFileMeta(metaWrap, previewSlot, result, headerSub) {
+  const cacheKey = result.path;
+
+  // Metadata: size (in header), then Kind → Path → Modified (matches macOS order)
   getFileMeta(result.path).then((meta) => {
-    if (currentPath !== result.path) return;
+    if (currentPath !== cacheKey) return;
 
     if (meta.size != null) {
       const sizeSpan = document.createElement('span');
@@ -191,14 +200,14 @@ function renderFileMeta(metaWrap, result, headerSub) {
       headerSub.appendChild(sizeSpan);
     }
 
+    metaWrap.appendChild(infoRow('Kind', result.kind === 'folder' ? 'Folder' : 'File'));
+    metaWrap.appendChild(infoRow('Path', result.path));
+
     if (meta.modified) {
       metaWrap.appendChild(infoRow('Modified', meta.modified));
     }
 
-    metaWrap.appendChild(infoRow('Kind', result.kind === 'folder' ? 'Folder' : 'File'));
-    metaWrap.appendChild(infoRow('Path', result.path));
-
-    // Image preview
+    // Image preview — inserted into previewSlot (between header and metadata)
     if (meta.is_image) {
       const preview = document.createElement('div');
       preview.className = 'preview-image';
@@ -207,9 +216,36 @@ function renderFileMeta(metaWrap, result, headerSub) {
       img.alt = result.title;
       img.onerror = () => preview.remove();
       preview.appendChild(img);
-      panel.appendChild(preview);
+      previewSlot.appendChild(preview);
     }
   });
+
+  // Text/code file preview with syntax highlighting.
+  // 150ms debounce so rapid arrow-key navigation skips intermediate files
+  // (matches macOS TextFilePreview dwell behavior).
+  // Inserted into previewSlot (between header and metadata).
+  if (result.kind === 'file') {
+    if (highlightTimer) clearTimeout(highlightTimer);
+    highlightTimer = setTimeout(() => {
+      if (currentPath !== cacheKey) return;
+      highlightFile(result.path).then((res) => {
+        if (!res || currentPath !== cacheKey) return;
+        const codeWrap = document.createElement('div');
+        codeWrap.className = 'preview-code';
+        const pre = document.createElement('pre');
+        pre.className = 'preview-code-text';
+        pre.innerHTML = res.html;
+        codeWrap.appendChild(pre);
+        if (res.truncated) {
+          const hint = document.createElement('div');
+          hint.className = 'preview-code-truncated';
+          hint.textContent = 'File truncated at 64 KB';
+          codeWrap.appendChild(hint);
+        }
+        previewSlot.appendChild(codeWrap);
+      });
+    }, 150);
+  }
 }
 
 export function clear() {
