@@ -304,7 +304,9 @@ function renderFileMeta(metaWrap, previewSlot, result, headerSub) {
         // File extension color hints (#2)
         if (!item.is_dir) {
           const ext = item.name.includes('.') ? item.name.split('.').pop().toLowerCase() : '';
-          if (ext) icon.classList.add(`ext-${ext}`);
+          // Only add class for safe extensions (alphanumeric) — classList.add
+          // throws InvalidCharacterError on names with spaces or special chars
+          if (ext && /^[a-z0-9]+$/.test(ext)) icon.classList.add(`ext-${ext}`);
         }
         icon.innerHTML = item.is_dir ? folderIcon : fileIcon;
         row.appendChild(icon);
