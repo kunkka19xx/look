@@ -37,7 +37,10 @@ pub fn render(source: &[u8], spans: &[Span]) -> String {
         out.push_str("<span class=\"");
         out.push_str(css_class(span.token));
         out.push_str("\">");
-        escape_into(&String::from_utf8_lossy(&source[span.start..span.end]), &mut out);
+        escape_into(
+            &String::from_utf8_lossy(&source[span.start..span.end]),
+            &mut out,
+        );
         out.push_str("</span>");
 
         pos = span.end;
