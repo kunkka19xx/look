@@ -6,7 +6,6 @@
 ///   .tk-str → string    (--syntax-string)
 ///   .tk-cm  → comment   (--syntax-comment)
 ///   .tk-num → number    (--syntax-number)
-
 use super::tokenizer::{Span, TokenType};
 
 fn css_class(token: TokenType) -> &'static str {

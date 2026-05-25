@@ -592,6 +592,7 @@ fn main() {
             // Files: meta, version, clipboard, music, folder
             files::get_file_meta,
             files::get_app_version,
+            files::list_folder,
             files::is_dev_build,
             files::copy_files_to_clipboard,
             files::get_home_dir,

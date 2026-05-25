@@ -1,4 +1,4 @@
-import { getIcon, getFileMeta, getAppVersion, deleteClipboardEntry, highlightFile } from '../ipc.js';
+import { getIcon, getFileMeta, getAppVersion, deleteClipboardEntry, highlightFile, listFolder, openPath } from '../ipc.js';
 import { clipboard as clipboardIcon, trash as trashIcon, appIcon, fileIcon, folderIcon, settingIcon } from '../icons.js';
 
 let panel = null;
@@ -245,6 +245,93 @@ function renderFileMeta(metaWrap, previewSlot, result, headerSub) {
         previewSlot.appendChild(codeWrap);
       });
     }, 150);
+  }
+
+  // Folder content listing — flat list with counts, clickable items.
+  if (result.kind === 'folder') {
+    listFolder(result.path).then((listing) => {
+      if (!listing || currentPath !== cacheKey) return;
+
+      // Consolidate item count into header badge area (#6)
+      const total = listing.folder_count + listing.file_count;
+      const countParts = [];
+      if (listing.folder_count > 0) countParts.push(`${listing.folder_count} folder${listing.folder_count !== 1 ? 's' : ''}`);
+      if (listing.file_count > 0) countParts.push(`${listing.file_count} file${listing.file_count !== 1 ? 's' : ''}`);
+      if (countParts.length > 0) {
+        const countSpan = document.createElement('span');
+        countSpan.className = 'preview-size';
+        countSpan.textContent = countParts.join(', ');
+        headerSub.appendChild(countSpan);
+      }
+
+      const wrap = document.createElement('div');
+      wrap.className = 'preview-folder';
+
+      // Empty folder state (#8)
+      if (total === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'preview-folder-empty';
+        empty.textContent = 'Empty folder';
+        wrap.appendChild(empty);
+        previewSlot.appendChild(wrap);
+        return;
+      }
+
+      // Item list
+      const list = document.createElement('div');
+      list.className = 'preview-folder-list';
+      if (listing.truncated) list.classList.add('is-truncated');
+
+      const pathSep = result.path.includes('\\') ? '\\' : '/';
+      let foldersDone = false;
+      for (const item of listing.items) {
+        // Separator between folders and files (#1)
+        if (!item.is_dir && !foldersDone && listing.folder_count > 0) {
+          foldersDone = true;
+          const sep = document.createElement('div');
+          sep.className = 'preview-folder-separator';
+          list.appendChild(sep);
+        }
+
+        const row = document.createElement('div');
+        row.className = 'preview-folder-item';
+        row.setAttribute('role', 'button');
+        row.tabIndex = -1;
+
+        const icon = document.createElement('span');
+        icon.className = 'preview-folder-item-icon';
+        // File extension color hints (#2)
+        if (!item.is_dir) {
+          const ext = item.name.includes('.') ? item.name.split('.').pop().toLowerCase() : '';
+          if (ext) icon.classList.add(`ext-${ext}`);
+        }
+        icon.innerHTML = item.is_dir ? folderIcon : fileIcon;
+        row.appendChild(icon);
+
+        const name = document.createElement('span');
+        name.className = 'preview-folder-item-name';
+        name.textContent = item.name;
+        name.title = item.name;
+        row.appendChild(name);
+
+        // Inline file size (#5)
+        if (!item.is_dir && item.size != null) {
+          const size = document.createElement('span');
+          size.className = 'preview-folder-item-size';
+          size.textContent = formatSize(item.size);
+          row.appendChild(size);
+        }
+
+        const itemPath = result.path + pathSep + item.name;
+        const itemKind = item.is_dir ? 'folder' : 'file';
+        row.addEventListener('click', () => openPath(itemPath, itemKind, ''));
+
+        list.appendChild(row);
+      }
+      wrap.appendChild(list);
+
+      previewSlot.appendChild(wrap);
+    });
   }
 }
 

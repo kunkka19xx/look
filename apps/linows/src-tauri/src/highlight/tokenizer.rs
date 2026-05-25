@@ -1,6 +1,5 @@
 /// Tokenizer that produces spans from source text.
 /// Ported from macOS `SyntaxHighlighter.swift` — same logic, same token rules.
-
 use super::lang::Language;
 use std::collections::HashSet;
 
@@ -35,36 +34,44 @@ pub fn tokenize(source: &[u8], lang: Language) -> Vec<Span> {
 
     while i < len {
         // Line comment
-        if let Some(pfx) = line_cmt {
-            if source[i..].starts_with(pfx.as_bytes()) {
-                let start = i;
-                i += pfx.len();
-                while i < len && source[i] != b'\n' {
-                    i += 1;
-                }
-                spans.push(Span { start, end: i, token: TokenType::Comment });
-                continue;
+        if let Some(pfx) = line_cmt
+            && source[i..].starts_with(pfx.as_bytes())
+        {
+            let start = i;
+            i += pfx.len();
+            while i < len && source[i] != b'\n' {
+                i += 1;
             }
+            spans.push(Span {
+                start,
+                end: i,
+                token: TokenType::Comment,
+            });
+            continue;
         }
 
         // Block comment
-        if let Some((open, close)) = block_cmt {
-            if source[i..].starts_with(open.as_bytes()) {
-                let start = i;
-                i += open.len();
-                loop {
-                    if i >= len {
-                        break;
-                    }
-                    if source[i..].starts_with(close.as_bytes()) {
-                        i += close.len();
-                        break;
-                    }
-                    i += 1;
+        if let Some((open, close)) = block_cmt
+            && source[i..].starts_with(open.as_bytes())
+        {
+            let start = i;
+            i += open.len();
+            loop {
+                if i >= len {
+                    break;
                 }
-                spans.push(Span { start, end: i, token: TokenType::Comment });
-                continue;
+                if source[i..].starts_with(close.as_bytes()) {
+                    i += close.len();
+                    break;
+                }
+                i += 1;
             }
+            spans.push(Span {
+                start,
+                end: i,
+                token: TokenType::Comment,
+            });
+            continue;
         }
 
         let c = source[i];
@@ -88,7 +95,11 @@ pub fn tokenize(source: &[u8], lang: Language) -> Vec<Span> {
                 }
                 i += 1;
             }
-            spans.push(Span { start, end: i, token: TokenType::String });
+            spans.push(Span {
+                start,
+                end: i,
+                token: TokenType::String,
+            });
             continue;
         }
 
@@ -101,15 +112,19 @@ pub fn tokenize(source: &[u8], lang: Language) -> Vec<Span> {
                     || k == b'.'
                     || k == b'_'
                     || k == b'x'
-                    || (k >= b'a' && k <= b'f')
-                    || (k >= b'A' && k <= b'F')
+                    || (b'a'..=b'f').contains(&k)
+                    || (b'A'..=b'F').contains(&k)
                 {
                     i += 1;
                 } else {
                     break;
                 }
             }
-            spans.push(Span { start, end: i, token: TokenType::Number });
+            spans.push(Span {
+                start,
+                end: i,
+                token: TokenType::Number,
+            });
             continue;
         }
 
@@ -121,7 +136,11 @@ pub fn tokenize(source: &[u8], lang: Language) -> Vec<Span> {
             }
             let word = std::str::from_utf8(&source[start..i]).unwrap_or("");
             if keywords.contains(word) {
-                spans.push(Span { start, end: i, token: TokenType::Keyword });
+                spans.push(Span {
+                    start,
+                    end: i,
+                    token: TokenType::Keyword,
+                });
             }
             continue;
         }
