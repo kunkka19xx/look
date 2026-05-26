@@ -27,22 +27,22 @@ impl From<(&Candidate, i64)> for LaunchResult {
     fn from((candidate, score): (&Candidate, i64)) -> Self {
         let action = match candidate.kind {
             CandidateKind::App => LaunchResultAction::Open {
-                path: candidate.path.clone(),
+                path: candidate.path.to_string(),
             },
             CandidateKind::File => LaunchResultAction::Open {
-                path: candidate.path.clone(),
+                path: candidate.path.to_string(),
             },
             CandidateKind::Folder => LaunchResultAction::OpenFolder {
-                path: candidate.path.clone(),
+                path: candidate.path.to_string(),
             },
         };
 
         Self {
-            id: candidate.id.clone(),
+            id: candidate.id.to_string(),
             kind: candidate.kind.to_string(),
-            title: candidate.title.clone(),
-            subtitle: candidate.subtitle.clone(),
-            path: candidate.path.clone(),
+            title: candidate.title.to_string(),
+            subtitle: candidate.subtitle.as_deref().map(str::to_string),
+            path: candidate.path.to_string(),
             score,
             action,
         }

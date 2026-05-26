@@ -1,0 +1,340 @@
+name: Reusable macOS Release
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_call:
+    inputs:
+      release_ref:
+        description: "Raw version input or ref name"
+        required: true
+        type: string
+      trigger_event:
+        description: "Original triggering event name"
+        required: true
+        type: string
+      attach_release:
+        description: "Attach assets to GitHub release"
+        required: true
+        type: boolean
+      concurrency_ref:
+        description: "Ref key used for concurrency grouping"
+        required: true
+        type: string
+    secrets:
+      APPLE_DEVELOPER_ID_CERT_BASE64:
+        required: false
+      APPLE_DEVELOPER_ID_CERT_PASSWORD:
+        required: false
+      APPLE_KEYCHAIN_PASSWORD:
+        required: false
+      APPLE_DEVELOPER_ID_APPLICATION:
+        required: false
+      APPLE_NOTARY_APPLE_ID:
+        required: false
+      APPLE_NOTARY_APP_PASSWORD:
+        required: false
+      APPLE_NOTARY_TEAM_ID:
+        required: false
+
+jobs:
+  build-release:
+    name: Build macOS release artifact
+    runs-on: macos-latest
+    concurrency:
+      group: release-macos-${{ inputs.concurrency_ref }}
+      cancel-in-progress: true
+    env:
+      # Match the dev toolchain (Xcode 26.3) — runner default 16.4 has
+      # stricter Swift 6 diagnostics that current dev machines don't see.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release version
+        id: version
+        run: |
+          if [[ "${{ inputs.trigger_event }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.release_ref }}"
+          else
+            VERSION="${{ inputs.release_ref }}"
+            VERSION="${VERSION#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve strict mode
+        id: strict
+        run: |
+          SOURCE="${{ inputs.release_ref }}"
+          SOURCE_LOWER="$(printf '%s' "$SOURCE" | tr '[:upper:]' '[:lower:]')"
+          STRICT_MODE="false"
+          if [[ "$SOURCE_LOWER" == *"strict"* ]]; then
+            STRICT_MODE="true"
+          fi
+
+          echo "strict_mode=$STRICT_MODE" >> "$GITHUB_OUTPUT"
+          echo "strict_source=$SOURCE" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release security prerequisites (strict mode)
+        if: steps.strict.outputs.strict_mode == 'true'
+        env:
+          APPLE_DEVELOPER_ID_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_BASE64 }}
+          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_NOTARY_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_APP_PASSWORD }}
+          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
+        run: |
+          missing=0
+
+          for name in \
+            APPLE_DEVELOPER_ID_CERT_BASE64 \
+            APPLE_DEVELOPER_ID_CERT_PASSWORD \
+            APPLE_KEYCHAIN_PASSWORD \
+            APPLE_DEVELOPER_ID_APPLICATION \
+            APPLE_NOTARY_APPLE_ID \
+            APPLE_NOTARY_APP_PASSWORD \
+            APPLE_NOTARY_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing required secret in strict mode: $name" >&2
+              missing=1
+            fi
+          done
+
+          if [[ "$missing" -ne 0 ]]; then
+            echo "Strict mode enabled by ref/input '${{ steps.strict.outputs.strict_source }}'; aborting unsigned release." >&2
+            exit 1
+          fi
+
+      - name: Build release zip + manifest
+        run: ./scripts/build-release.sh "${{ steps.version.outputs.version }}"
+
+      - name: Configure macOS signing keychain (optional)
+        env:
+          APPLE_DEVELOPER_ID_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_BASE64 }}
+          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+        run: |
+          if [[ -z "${APPLE_DEVELOPER_ID_CERT_BASE64}" ]]; then
+            if [[ "${{ steps.strict.outputs.strict_mode }}" == "true" ]]; then
+              echo "Strict mode requires APPLE_DEVELOPER_ID_CERT_BASE64." >&2
+              exit 1
+            fi
+            echo "No Developer ID certificate secret configured; skipping signing setup."
+            exit 0
+          fi
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/developer-id.p12"
+
+          echo -n "$APPLE_DEVELOPER_ID_CERT_BASE64" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$APPLE_DEVELOPER_ID_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Codesign app bundle (optional)
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          APP_PATH=".build/release-macos/DerivedData/Build/Products/Release/Look.app"
+          ZIP_PATH="dist/Look-${VERSION}-macOS.zip"
+          MANIFEST_PATH="dist/Look-${VERSION}-manifest.txt"
+
+          if [[ -z "${APPLE_DEVELOPER_ID_APPLICATION}" ]]; then
+            if [[ "${{ steps.strict.outputs.strict_mode }}" == "true" ]]; then
+              echo "Strict mode requires APPLE_DEVELOPER_ID_APPLICATION." >&2
+              exit 1
+            fi
+            echo "No Developer ID identity configured; skipping codesign."
+            exit 0
+          fi
+
+          if [[ ! -d "$APP_PATH" ]]; then
+            echo "App bundle missing at $APP_PATH" >&2
+            exit 1
+          fi
+
+          codesign --force --deep --options runtime --timestamp \
+            --sign "$APPLE_DEVELOPER_ID_APPLICATION" "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+          rm -f "$ZIP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
+          SHA256="$(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
+          cat > "$MANIFEST_PATH" <<EOF
+          version=${VERSION}
+          artifact=$(basename "$ZIP_PATH")
+          sha256=${SHA256}
+          EOF
+
+      - name: Notarize release zip (optional)
+        id: notarize
+        timeout-minutes: 35
+        env:
+          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_NOTARY_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_APP_PASSWORD }}
+          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP_PATH="dist/Look-${VERSION}-macOS.zip"
+          MANIFEST_PATH="dist/Look-${VERSION}-manifest.txt"
+
+          if [[ -z "${APPLE_NOTARY_APPLE_ID}" || -z "${APPLE_NOTARY_APP_PASSWORD}" || -z "${APPLE_NOTARY_TEAM_ID}" ]]; then
+            if [[ "${{ steps.strict.outputs.strict_mode }}" == "true" ]]; then
+              echo "Strict mode requires notary credentials." >&2
+              exit 1
+            fi
+            echo "Notary credentials not configured; skipping notarization."
+            echo "result=skipped_missing_credentials" >> "$GITHUB_OUTPUT"
+            echo "submission_id=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SUBMIT_JSON="$(xcrun notarytool submit "$ZIP_PATH" \
+            --apple-id "$APPLE_NOTARY_APPLE_ID" \
+            --password "$APPLE_NOTARY_APP_PASSWORD" \
+            --team-id "$APPLE_NOTARY_TEAM_ID" \
+            --output-format json)"
+
+          SUBMISSION_ID="$(printf '%s' "$SUBMIT_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))')"
+
+          if [[ -z "$SUBMISSION_ID" ]]; then
+            echo "Failed to parse notarization submission id." >&2
+            echo "$SUBMIT_JSON"
+            exit 1
+          fi
+
+          echo "Notarization submission id: $SUBMISSION_ID"
+          echo "submission_id=$SUBMISSION_ID" >> "$GITHUB_OUTPUT"
+
+          NOTARY_STATUS="In Progress"
+          for _ in {1..90}; do
+            INFO_JSON="$(xcrun notarytool info "$SUBMISSION_ID" \
+              --apple-id "$APPLE_NOTARY_APPLE_ID" \
+              --password "$APPLE_NOTARY_APP_PASSWORD" \
+              --team-id "$APPLE_NOTARY_TEAM_ID" \
+              --output-format json)"
+
+            NOTARY_STATUS="$(printf '%s' "$INFO_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))')"
+
+            echo "Current notary status: $NOTARY_STATUS"
+
+            if [[ "$NOTARY_STATUS" == "Accepted" ]]; then
+              break
+            fi
+
+            if [[ "$NOTARY_STATUS" == "Invalid" || "$NOTARY_STATUS" == "Rejected" ]]; then
+              xcrun notarytool log "$SUBMISSION_ID" \
+                --apple-id "$APPLE_NOTARY_APPLE_ID" \
+                --password "$APPLE_NOTARY_APP_PASSWORD" \
+                --team-id "$APPLE_NOTARY_TEAM_ID"
+              if [[ "${{ steps.strict.outputs.strict_mode }}" == "true" ]]; then
+                exit 1
+              fi
+
+              echo "Notarization status '$NOTARY_STATUS' in non-strict mode; keeping signed artifact without stapling." >&2
+              NOTARY_STATUS_LOWER="$(printf '%s' "$NOTARY_STATUS" | tr '[:upper:]' '[:lower:]')"
+              echo "result=${NOTARY_STATUS_LOWER}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            sleep 20
+          done
+
+          if [[ "$NOTARY_STATUS" != "Accepted" ]]; then
+            echo "Timed out waiting for notarization result (last status: $NOTARY_STATUS)." >&2
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --apple-id "$APPLE_NOTARY_APPLE_ID" \
+              --password "$APPLE_NOTARY_APP_PASSWORD" \
+              --team-id "$APPLE_NOTARY_TEAM_ID" || true
+            if [[ "${{ steps.strict.outputs.strict_mode }}" == "true" ]]; then
+              exit 1
+            fi
+
+            echo "Notarization timed out in non-strict mode; keeping signed artifact without stapling." >&2
+            echo "result=timeout" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          WORK_DIR="$RUNNER_TEMP/notary"
+          rm -rf "$WORK_DIR"
+          mkdir -p "$WORK_DIR"
+          ditto -x -k "$ZIP_PATH" "$WORK_DIR"
+          xcrun stapler staple "$WORK_DIR/Look.app"
+          xcrun stapler validate "$WORK_DIR/Look.app"
+          spctl -a -vv "$WORK_DIR/Look.app"
+
+          rm -f "$ZIP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$WORK_DIR/Look.app" "$ZIP_PATH"
+          SHA256="$(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
+          cat > "$MANIFEST_PATH" <<EOF
+          version=${VERSION}
+          artifact=$(basename "$ZIP_PATH")
+          sha256=${SHA256}
+          EOF
+          echo "result=accepted" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: look-macos-${{ steps.version.outputs.version }}
+          path: |
+            dist/Look-${{ steps.version.outputs.version }}-macOS.zip
+            dist/Look-${{ steps.version.outputs.version }}-manifest.txt
+          retention-days: 14
+
+      - name: Attach assets to GitHub release (tag pushes only)
+        if: inputs.attach_release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Look-${{ steps.version.outputs.version }}-macOS.zip
+            dist/Look-${{ steps.version.outputs.version }}-manifest.txt
+
+      - name: Release security summary
+        if: always()
+        env:
+          APPLE_DEVELOPER_ID_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_BASE64 }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_NOTARY_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_APP_PASSWORD }}
+          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
+        run: |
+          SIGNING_READY="false"
+          NOTARY_READY="false"
+
+          if [[ -n "${APPLE_DEVELOPER_ID_CERT_BASE64}" && -n "${APPLE_DEVELOPER_ID_APPLICATION}" ]]; then
+            SIGNING_READY="true"
+          fi
+
+          if [[ -n "${APPLE_NOTARY_APPLE_ID}" && -n "${APPLE_NOTARY_APP_PASSWORD}" && -n "${APPLE_NOTARY_TEAM_ID}" ]]; then
+            NOTARY_READY="true"
+          fi
+
+          {
+            echo "## Release Security Summary"
+            echo "- Strict mode: ${{ steps.strict.outputs.strict_mode }} (source: ${{ steps.strict.outputs.strict_source }})"
+            echo "- Codesign configured: ${SIGNING_READY}"
+            echo "- Notarization configured: ${NOTARY_READY}"
+            echo "- Notarization result: ${{ steps.notarize.outputs.result || 'not_run' }}"
+            if [[ -n "${{ steps.notarize.outputs.submission_id }}" ]]; then
+              echo "- Notary submission id: ${{ steps.notarize.outputs.submission_id }}"
+            fi
+            if [[ "${SIGNING_READY}" != "true" || "${NOTARY_READY}" != "true" ]]; then
+              echo "- This release is likely unsigned and/or not notarized."
+              echo "- Users may need first-run Gatekeeper bypass (Open Anyway / right-click Open)."
+            fi
+            if [[ "${{ steps.strict.outputs.strict_mode }}" != "true" && "${{ steps.notarize.outputs.result || '' }}" == "timeout" ]]; then
+              echo "- Non-strict run timed out in notarization queue; rerun later for stapled notarized artifact."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

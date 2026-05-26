@@ -98,7 +98,7 @@ enum BackendLogLevel: String, CaseIterable, Codable, Identifiable {
     }
 }
 
-struct ThemeSettings: Codable {
+struct ThemeSettings: Codable, Equatable {
     var tintRed: Double = 0.08
     var tintGreen: Double = 0.10
     var tintBlue: Double = 0.12
@@ -116,14 +116,23 @@ struct ThemeSettings: Codable {
     var borderGreen: Double = 1.0
     var borderBlue: Double = 1.0
     var borderOpacity: Double = 0.12
+
+    var themeName: String = ""
+    var uiTheme: BuiltinThemePreset = .catppuccin
+
+    // Background image
     var backgroundImagePath: String?
     var backgroundImageBookmark: Data?
     var backgroundImageMode: BackgroundImageMode = .fill
     var backgroundImageOpacity: Double = 0.35
     var backgroundImageBlur: Double = 8
+
+    // Settings
+    var settingsBlurMultiplier: Double = 0.5
+
     var fileScanDepth: Int = 4
-    var fileScanLimit: Int = 8000
-    var translateAllowNetwork: Bool = false
+    var fileScanLimit: Int = 4000
+    var lazyIndexingEnabled: Bool = true
     var backendLogLevel: BackendLogLevel = .error
     var launchAtLogin: Bool = true
 

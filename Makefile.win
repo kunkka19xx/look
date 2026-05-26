@@ -1,0 +1,135 @@
+# Tauri Windows build (apps/linows/, replacing the legacy WinUI3 app under
+# apps/windows/). Included by the top-level Makefile on Windows hosts, so
+# `make <target>` from the repo root runs the right thing.
+#
+# Legacy WinUI3 targets moved to Makefile.winui3 — run with
+#     make -f Makefile.winui3 <target>
+#
+# Recipes are cmd.exe-compatible (no `|| true`, `2>/dev/null`, `[ -f ]`,
+# `$$(...)`), so this works whether your `make` defaults to cmd or bash.
+# Cross-shell file ops use powershell for portability.
+
+.DEFAULT_GOAL := help
+
+# Override config: CONFIG=Release
+# Override vcvarsall location: set VCVARSALL=...\vcvarsall.bat in your env
+CONFIG ?= Debug
+
+TAURI_DIR     := apps/linows/src-tauri
+CARGO_TARGET  := x86_64-pc-windows-msvc
+APP_PROCESS   := lookapp
+
+# Every cargo invocation must run under VS 2022 BT vcvarsall x64 env, otherwise
+# rustc picks up VS 2026 Community's cl.exe (no Windows SDK) and link/build
+# scripts fail with LNK1104 / missing stdarg.h. See apps/linows/BUILDING.md.
+WITH_VCVARS := scripts\windows\with-vcvars.bat
+
+REAL_DB_PATH := $(USERPROFILE)\AppData\Local\look\look.db
+DEV_DB_PATH  := $(USERPROFILE)\AppData\Local\look\look.dev.db
+
+.PHONY: help core-check ffi-check ffi-build ffi-build-release \
+        app-check app-build app-build-release app-run app-run-release \
+        app-stop \
+        db-path db-status db-shell db-reset db-refresh \
+        dev-db-path dev-db-status dev-db-shell dev-db-reset
+
+help:
+	@echo look developer tasks (Windows / Tauri)
+	@echo.
+	@echo build/check
+	@echo   make core-check          - cargo check core workspace
+	@echo   make ffi-check           - cargo check ffi crate
+	@echo   make ffi-build           - build look_ffi.dll (debug)
+	@echo   make ffi-build-release   - build look_ffi.dll (release)
+	@echo   make app-check           - cargo check the Tauri app
+	@echo   make app-build           - cargo build (debug)
+	@echo   make app-build-release   - cargo build (release)
+	@echo.
+	@echo run app
+	@echo   make app-stop            - stop running $(APP_PROCESS).exe
+	@echo   make app-run             - cargo tauri dev (hot-reload)
+	@echo   make app-run-release     - cargo tauri build
+	@echo.
+	@echo database  (needs sqlite3 on PATH: winget install sqlite.sqlite)
+	@echo   make db-path             - print prod db path
+	@echo   make db-status           - inspect candidates/usage in prod db
+	@echo   make db-shell            - sqlite shell against prod db
+	@echo   make db-reset            - delete prod db file
+	@echo   make db-refresh          - delete prod db then rebuild app
+	@echo   make dev-db-path         - print dev db path (cargo tauri dev)
+	@echo   make dev-db-status       - inspect candidates/usage in dev db
+	@echo   make dev-db-shell        - sqlite shell against dev db
+	@echo   make dev-db-reset        - delete dev db file
+	@echo.
+	@echo overrides
+	@echo   CONFIG=Release           (default: Debug)
+	@echo   VCVARSALL=^<path^>         (default: VS 2022 BuildTools x64)
+	@echo.
+	@echo WinUI3 legacy: make -f Makefile.winui3 ^<target^>
+
+core-check:
+	$(WITH_VCVARS) cargo check --workspace --manifest-path core\Cargo.toml
+
+ffi-check:
+	$(WITH_VCVARS) cargo check --manifest-path bridge\ffi\Cargo.toml
+
+ffi-build:
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\build-ffi.ps1 -ManifestPath bridge\ffi\Cargo.toml -Arch x64
+
+ffi-build-release:
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\build-ffi.ps1 -ManifestPath bridge\ffi\Cargo.toml -Arch x64 -Release
+
+app-check:
+	$(WITH_VCVARS) cargo check --manifest-path $(TAURI_DIR)\Cargo.toml --target $(CARGO_TARGET)
+
+app-build:
+	$(WITH_VCVARS) cargo build --manifest-path $(TAURI_DIR)\Cargo.toml --target $(CARGO_TARGET)
+
+app-build-release:
+	$(WITH_VCVARS) cargo build --manifest-path $(TAURI_DIR)\Cargo.toml --target $(CARGO_TARGET) --release
+
+app-stop:
+	@echo Stopping any running $(APP_PROCESS).exe
+	-@taskkill /F /IM $(APP_PROCESS).exe >NUL 2>NUL
+
+# cargo-tauri reads tauri.conf.json from CWD/src-tauri; run from apps/linows.
+app-run: app-stop
+	@echo Launching cargo tauri dev under vcvarsall x64
+	cd apps\linows && ..\..\$(WITH_VCVARS) cargo tauri dev
+
+app-run-release: app-stop
+	@echo Building release bundle under vcvarsall x64
+	cd apps\linows && ..\..\$(WITH_VCVARS) cargo tauri build
+
+db-path:
+	@echo $(REAL_DB_PATH)
+
+db-status:
+	@sqlite3 "$(REAL_DB_PATH)" "SELECT id,title,use_count,last_used_at_unix_s FROM candidates ORDER BY use_count DESC, title ASC LIMIT 20;"
+	@echo ---
+	@sqlite3 "$(REAL_DB_PATH)" "SELECT candidate_id,action,used_at_unix_s FROM usage_events ORDER BY id DESC LIMIT 20;"
+
+db-shell:
+	sqlite3 "$(REAL_DB_PATH)"
+
+db-reset:
+	@powershell -NoProfile -Command "if (Test-Path '$(REAL_DB_PATH)') { Remove-Item -Force '$(REAL_DB_PATH)' }"
+	@echo Removed: $(REAL_DB_PATH)
+
+db-refresh: db-reset app-build
+	@echo DB refreshed and app rebuilt
+
+dev-db-path:
+	@echo $(DEV_DB_PATH)
+
+dev-db-status:
+	@sqlite3 "$(DEV_DB_PATH)" "SELECT id,title,use_count,last_used_at_unix_s FROM candidates ORDER BY use_count DESC, title ASC LIMIT 20;"
+	@echo ---
+	@sqlite3 "$(DEV_DB_PATH)" "SELECT candidate_id,action,used_at_unix_s FROM usage_events ORDER BY id DESC LIMIT 20;"
+
+dev-db-shell:
+	sqlite3 "$(DEV_DB_PATH)"
+
+dev-db-reset:
+	@powershell -NoProfile -Command "if (Test-Path '$(DEV_DB_PATH)') { Remove-Item -Force '$(DEV_DB_PATH)' }"
+	@echo Removed: $(DEV_DB_PATH)

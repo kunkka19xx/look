@@ -1,86 +1,79 @@
-# Features Plan
+# Feature Status
 
-This page defines the near-term feature scope for `look` and how each feature maps to backend responsibilities.
+This document tracks what `look` supports today and what is planned next.
 
 ## Product pillars
 
-- keyboard-first, low-latency launcher
-- local-first indexing and ranking
-- command utilities integrated in the same query flow
-- predictable behavior with clear safety cues
-- extensible roadmap guided by practical user feedback
+- keyboard-first launcher UX
+- low-latency local search
+- practical ranking and personalization
+- focused built-in tools (not plugin-first)
+- predictable behavior with clear controls
 
-## Feature tracks
+## Available now
 
-## 1) Core launcher search
+### Core search and launch
 
-### Current
+- app/file/folder search from one input
+- scoped query prefixes: `a"`, `f"`, `d"`, `r"`
+- path-fragment friendly matching (slash-biased queries)
+- open with `Enter`, reveal in Finder with `Cmd+F`
+- copy selected file/folder path/content handle with `Cmd+C`
+- multi-pick files/folders with `Cmd+P` (toggle); picked set is mirrored to the system pasteboard for paste anywhere. `Cmd+Shift+P` clears the set
+- preview pane: text/image file previews, plus folder previews listing the immediate children (folders first, capped at 30, click to open)
 
-- app search UI
-- command mode (`calc`, `shell`, `kill`, `sys`)
-- settings panel and theme customization
-- SQLite-backed candidate persistence and usage tracking
-- dynamic app/settings/file indexing from backend sources
-- query prefixes: `a"` apps, `f"` files, `d"` folders, `r"` regex
-- slash-path query bias (example: `git/books-pc`)
+### Clipboard and translation
 
-### Next
+- clipboard history mode with `c"` prefix
+- in-memory clipboard history (latest text clips); file/folder copies are excluded
+- quick translation with `t"...`
+- dictionary lookup panel with `tw"...`
 
-- unified result model and action execution
-- deeper settings sub-page coverage and quality filtering
+### Command mode
 
-## 2) Command mode
+- `Cmd+/` command mode entry, or inline `:cmdid` shortcut from the home screen (e.g. `:calc 2+2`, `:kill chrome`, `:pomo`); space after a known command id triggers a live switch with args pre-filled
+- built-in commands: `calc`, `shell`, `kill`, `sys`, `pomo`
+- `pomo`: pomodoro focus timer with editable session list, three timer styles (Modern Ring / Vintage Dial / Minimal Text), shuffled background-music folder, menu-bar mini-timer, 5s standby fade, "ending soon" alert at 10s remaining
+- calc parser supports exponent (`^`), factorial (`!`), constants (`pi`, `e`), math functions (`sqrt`, `abs`, `round`, `floor`, `ceil`), and `%` shorthand while keeping modulo
+- kill flow with explicit confirmation and process-by-port lookup (`:3000` / `port 3000`)
+- warning cue when shell input contains `sudo`
 
-### Current
+### Settings and runtime config
 
-- `Cmd+/` to enter command mode
-- `calc`, `shell`, `kill`, and `sys`
-- live calculator preview and quick copy result behavior
-- `Esc` exits command mode to app list
-- `Shift+Esc` hides launcher
+- in-app settings panel (`Cmd+Shift+,`)
+- local config file `~/.look.config`
+- runtime reload (`Cmd+Shift+;`)
+- 7 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Custom)
+- query alias presets in `~/.look.config` for app + System Settings intent expansion (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`)
+- in-app config reset (`Settings > Advanced > Create Fresh Config`) with confirmation popup
+- semantic color system with auto-derived text colors in Custom mode
+- indexing, UI, privacy/logging, launch-at-login controls
+- immediate validation feedback for invalid settings input
+- advanced extra scan directory controls (`file_scan_extra_roots`) with overlap/risky-root validation
 
-### Next
+### Backend and persistence
 
-- command registry in backend
-- safer shell execution policy (warning + confirmation path)
-- richer built-in commands (`open`, `help`, `theme`, etc.)
+- SQLite-backed candidate + usage storage
+- startup/index refresh pipeline for apps/files/settings
+- dirty-aware incremental indexing via file-system events (`Cmd+Space` refresh-on-dirty)
+- usage-event feedback loop for ranking updates
+- Rust core + FFI bridge to Swift app shell
 
-## 3) Ranking and personalization
+## In progress / near-term
 
-### Next
+- better coverage for deeper System Settings pages
+- safer shell policy controls (more explicit execution guardrails)
+- richer benchmark reporting (p50/p95/p99) for query/index paths
+- tighter ranking calibration across title/subtitle/path signals
 
-- usage event logging
-- recency + frequency scoring
-- per-query behavior tuning
+## Planned direction
 
-## 4) Settings and persistence
+- optional extension/plugin injection model (without bloating base UX)
+- broader platform support after macOS quality stabilizes (Windows first)
 
-### Current
+## Out of scope for v1
 
-- settings persisted to `~/.look.config`
-- advanced controls for indexing, translation privacy, backend log level, and launch-at-login
-
-### Next
-
-- indexing roots and exclude rules
-- command/security preferences
-- backend-driven settings persistence
-
-## 5) Performance and reliability
-
-### Next
-
-- in-memory top-N query path
-- incremental indexing updates
-- benchmark suite for query/index latency
-- structured error handling across backend and bridge
-- focused test coverage for ranking/indexing/ffi behavior
-- development-friendly logging and diagnostics
-
-## 6) Extensibility roadmap
-
-### Planned
-
-- accept and evaluate community feature proposals continuously
-- add plugin/extension injection path for developer customization
-- keep extension model optional so base launcher remains simple and fast
+- cloud-first workflows
+- semantic/vector retrieval
+- full content indexing of file bodies
+- mandatory plugin ecosystem for core workflow

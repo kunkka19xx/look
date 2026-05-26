@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="LauncherApp.Views.CommandPanels.CommandPanelsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:cmd="using:LauncherApp.Views.CommandPanels"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid ColumnSpacing="8">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="3*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Style="{StaticResource LauncherSurfaceBorderStyle}" BorderThickness="0" BorderBrush="Transparent" Padding="8">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="4">
+                    <cmd:CommandCardView x:Name="ShellCard" Title="/shell" Subtitle="Run shell command  (Ctrl+1)" Click="CommandCard_OnClick" />
+                    <cmd:CommandCardView x:Name="CalcCard" Title="/calc" Subtitle="Evaluate expression  (Ctrl+2)" Click="CommandCard_OnClick" />
+                    <cmd:CommandCardView x:Name="KillCard" Title="/kill" Subtitle="Terminate process  (Ctrl+3)" Click="CommandCard_OnClick" />
+                    <cmd:CommandCardView x:Name="SysCard" Title="/sys" Subtitle="System info panel  (Ctrl+4)" Click="CommandCard_OnClick" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <Border Grid.Column="1" Style="{StaticResource LauncherSurfaceBorderStyle}" BorderThickness="0" BorderBrush="Transparent" Padding="10">
+            <Grid RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid x:Name="CommandInputHost">
+                    <!-- Capsule wrapper mirrors MainWindow.xaml's SearchBarHost: rounded
+                         tint + border so the input bar reads as a distinct "input pill"
+                         visually separated from the output area below, instead of the
+                         text floating directly above the result. -->
+                    <Border
+                        CornerRadius="10"
+                        Background="{StaticResource LauncherPanelAltBrush}"
+                        BorderBrush="{StaticResource LauncherBorderBrush}"
+                        BorderThickness="1">
+                        <Grid>
+                            <TextBox
+                                x:Name="CommandInputBox"
+                                Padding="34,10,12,10"
+                                FontSize="14"
+                                PlaceholderText="Type command arguments"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="{StaticResource LauncherTextBrush}"
+                                SelectionHighlightColor="{StaticResource LauncherAccentBrush}"
+                                PreviewKeyDown="CommandInputBox_OnPreviewKeyDown"
+                                TextChanged="CommandInputBox_OnTextChanged">
+                                <!-- Mirrors MainWindow QueryInput's TextBox.Resources: pin every
+                                     TextControl* visual state to the launcher palette so the
+                                     command input doesn't fall back to system theme greys. -->
+                                <TextBox.Resources>
+                                    <StaticResource x:Key="TextControlForeground" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlForegroundPointerOver" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlForegroundFocused" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlPlaceholderForeground" ResourceKey="LauncherMutedTextBrush" />
+                                    <StaticResource x:Key="TextControlPlaceholderForegroundPointerOver" ResourceKey="LauncherMutedTextBrush" />
+                                    <StaticResource x:Key="TextControlPlaceholderForegroundFocused" ResourceKey="LauncherMutedTextBrush" />
+                                    <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent" />
+                                    <StaticResource x:Key="TextControlButtonForeground" ResourceKey="LauncherMutedTextBrush" />
+                                    <StaticResource x:Key="TextControlButtonForegroundPointerOver" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlButtonForegroundPressed" ResourceKey="LauncherTextBrush" />
+                                    <SolidColorBrush x:Key="TextControlButtonBackground" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlButtonBackgroundPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlButtonBackgroundPressed" Color="Transparent" />
+                                </TextBox.Resources>
+                            </TextBox>
+                            <TextBlock
+                                Margin="12,0,0,0"
+                                FontFamily="Segoe MDL2 Assets"
+                                FontSize="13"
+                                VerticalAlignment="Center"
+                                Foreground="{StaticResource LauncherMutedTextBrush}"
+                                Text="&#xE70F;"
+                                IsHitTestVisible="False" />
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Border Grid.Row="1" Background="Transparent" CornerRadius="8" Padding="8">
+                    <Grid RowSpacing="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0">
+                            <ScrollViewer x:Name="CommandOutputHost" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MinHeight="280">
+                                <StackPanel Spacing="6">
+                                    <TextBlock x:Name="CommandTitleText" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="calc" />
+                                    <!-- Command result content sits in the primary tier on macOS
+                                         (KillCommand.swift:168, SystemInfoCommand.swift:27 use
+                                         fontColor()); muted/secondary are reserved for labels
+                                         and hints, not the answer the user asked for. -->
+                                    <TextBlock
+                                        x:Name="CommandOutputText"
+                                        FontFamily="Consolas"
+                                        Foreground="{StaticResource LauncherTextBrush}"
+                                        Text=""
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </ScrollViewer>
+
+                            <ListView
+                                x:Name="KillCandidatesList"
+                                Visibility="Collapsed"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                SelectionMode="Single"
+                                IsItemClickEnabled="True"
+                                ItemClick="KillCandidatesList_OnItemClick"
+                                SelectionChanged="KillCandidatesList_OnSelectionChanged">
+                                <ListView.Resources>
+                                    <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#26364C" />
+                                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#2A3C55" />
+                                    <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#1D2A3A" />
+                                    <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#2A3C55" />
+                                </ListView.Resources>
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="Padding" Value="0" />
+                                        <Setter Property="Margin" Value="0,0,0,4" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="MinHeight" Value="0" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Padding="8,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Grid.Column="0" Width="24" Height="24" Margin="0,0,10,0">
+                                                <Grid>
+                                                    <TextBlock
+                                                        FontFamily="Segoe MDL2 Assets"
+                                                        FontSize="15"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        Foreground="{StaticResource LauncherMutedTextBrush}"
+                                                        Text="{Binding IconGlyph}" />
+                                                    <Image Width="24" Height="24" Source="{Binding Icon}" />
+                                                </Grid>
+                                            </Border>
+
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock
+                                                    FontSize="13"
+                                                    FontWeight="SemiBold"
+                                                    Foreground="{StaticResource LauncherTextBrush}"
+                                                    Text="{Binding DisplayName}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Foreground="{StaticResource LauncherMutedTextBrush}"
+                                                    Text="{Binding Detail}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+
+                                            <TextBlock
+                                                Grid.Column="2"
+                                                FontSize="11"
+                                                VerticalAlignment="Center"
+                                                Foreground="{StaticResource LauncherMutedTextBrush}"
+                                                Text="Enter" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+
+                            <TextBlock
+                                x:Name="KillEmptyText"
+                                Visibility="Collapsed"
+                                Margin="8,6,8,0"
+                                VerticalAlignment="Top"
+                                FontSize="12"
+                                Foreground="{StaticResource LauncherMutedTextBrush}"
+                                Text="No running apps"
+                                TextWrapping="Wrap" />
+                        </Grid>
+
+                        <Border
+                            x:Name="KillConfirmBar"
+                            Grid.Row="1"
+                            Visibility="Collapsed"
+                            Background="#2B1B24"
+                            BorderBrush="#71414D"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="10,8">
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border Grid.Column="0" Width="24" Height="24" VerticalAlignment="Center">
+                                    <Grid>
+                                        <TextBlock
+                                            x:Name="KillConfirmGlyph"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            FontSize="15"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Foreground="{StaticResource LauncherMutedTextBrush}"
+                                            Text="&#xE71D;" />
+                                        <Image x:Name="KillConfirmIcon" Width="24" Height="24" />
+                                    </Grid>
+                                </Border>
+
+                                <StackPanel Grid.Column="1" Spacing="1">
+                                    <TextBlock x:Name="KillConfirmTitleText" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource LauncherTextBrush}" Text="Kill app?" />
+                                    <TextBlock x:Name="KillConfirmDetailText" FontSize="11" Foreground="{StaticResource LauncherMutedTextBrush}" Text="Press Y to confirm, N to cancel" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <Button Content="Y / Yes" Click="KillConfirmYes_OnClick" Style="{StaticResource LauncherDangerButtonStyle}" />
+                                    <Button Content="N / No" Click="KillConfirmNo_OnClick" Style="{StaticResource LauncherSecondaryButtonStyle}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

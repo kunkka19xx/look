@@ -5,7 +5,6 @@ use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RuntimeConfig {
-    pub(crate) translate_allow_network: bool,
     pub(crate) log_level: LogLevel,
 }
 
@@ -29,8 +28,8 @@ pub(crate) fn reload_runtime_config() {
     }
 }
 
-pub(crate) fn network_translation_allowed() -> bool {
-    with_runtime_config(|cfg| cfg.translate_allow_network)
+pub(crate) fn is_debug_enabled() -> bool {
+    current_log_level() >= LogLevel::Debug
 }
 
 pub(crate) fn log_debug(message: &str) {
@@ -57,7 +56,7 @@ fn current_log_level() -> LogLevel {
 
 fn with_runtime_config<T>(f: impl FnOnce(&RuntimeConfig) -> T) -> T {
     let lock = runtime_config();
-    let guard = lock.lock().expect("runtime config lock poisoned");
+    let guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     f(&guard)
 }
 
@@ -81,14 +80,6 @@ fn load_runtime_config() -> RuntimeConfig {
         }
     }
 
-    let translate_allow_network = env_bool("LOOK_TRANSLATE_ALLOW_NETWORK")
-        .or_else(|| {
-            from_file
-                .get("translate_allow_network")
-                .and_then(|v| parse_bool(v))
-        })
-        .unwrap_or(false);
-
     let log_level = env::var("LOOK_LOG_LEVEL")
         .ok()
         .and_then(|v| parse_log_level(&v))
@@ -99,10 +90,7 @@ fn load_runtime_config() -> RuntimeConfig {
         })
         .unwrap_or(LogLevel::Error);
 
-    RuntimeConfig {
-        translate_allow_network,
-        log_level,
-    }
+    RuntimeConfig { log_level }
 }
 
 fn default_config_path() -> PathBuf {
@@ -112,20 +100,31 @@ fn default_config_path() -> PathBuf {
         return PathBuf::from(custom);
     }
 
+    #[cfg(target_os = "windows")]
+    if let Some(path) = windows_default_config_path() {
+        return path;
+    }
+
+    legacy_default_config_path()
+}
+
+fn legacy_default_config_path() -> PathBuf {
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(home).join(".look.config")
 }
 
-fn env_bool(name: &str) -> Option<bool> {
-    env::var(name).ok().and_then(|value| parse_bool(&value))
-}
-
-fn parse_bool(value: &str) -> Option<bool> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "1" | "true" | "yes" | "on" => Some(true),
-        "0" | "false" | "no" | "off" => Some(false),
-        _ => None,
+#[cfg(target_os = "windows")]
+fn windows_default_config_path() -> Option<PathBuf> {
+    if let Ok(user_profile) = env::var("USERPROFILE")
+        && !user_profile.trim().is_empty()
+    {
+        return Some(PathBuf::from(user_profile).join(".look.config"));
     }
+
+    env::var("APPDATA")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(|base| PathBuf::from(base).join("look").join("config"))
 }
 
 fn parse_log_level(value: &str) -> Option<LogLevel> {
@@ -134,5 +133,33 @@ fn parse_log_level(value: &str) -> Option<LogLevel> {
         "info" => Some(LogLevel::Info),
         "error" => Some(LogLevel::Error),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LogLevel, legacy_default_config_path, parse_log_level};
+
+    #[test]
+    fn parse_log_level_accepts_known_values() {
+        assert_eq!(parse_log_level("debug"), Some(LogLevel::Debug));
+        assert_eq!(parse_log_level("INFO"), Some(LogLevel::Info));
+        assert_eq!(parse_log_level("error"), Some(LogLevel::Error));
+        assert_eq!(parse_log_level("trace"), None);
+    }
+
+    #[test]
+    fn legacy_config_path_points_to_dot_config() {
+        let path = legacy_default_config_path();
+        assert!(path.to_string_lossy().ends_with(".look.config"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_config_path_shape_is_stable_when_present() {
+        if let Some(path) = super::windows_default_config_path() {
+            let path_str = path.to_string_lossy().to_ascii_lowercase();
+            assert!(path_str.contains("look") || path_str.ends_with(".look.config"));
+        }
     }
 }

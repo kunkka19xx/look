@@ -1,413 +1,329 @@
 # look User Guide
 
-look is a fast, keyboard-first launcher for macOS.
+`look` is a keyboard-first launcher for macOS, Windows, and Linux focused on fast local actions.
 
-It helps you do three things quickly in one window:
+> **Cross-platform shortcut note.** Examples are written with macOS modifiers (`Cmd+...`). On Windows and Linux, read `Cmd` as `Ctrl` — except the launcher toggle, which is `Alt+Space` (since `Win+Space` / `Super+Space` are reserved by the OS or desktop environment).
+>
+> | macOS           | Windows / Linux  |
+> | --------------- | ---------------- |
+> | `Cmd+Space`     | `Alt+Space`      |
+> | `Cmd+Enter`     | `Ctrl+Enter`     |
+> | `Cmd+F`         | `Ctrl+F`         |
+> | `Cmd+C`         | `Ctrl+C`         |
+> | `Cmd+/`         | `Ctrl+/`         |
+> | `Cmd+0`         | `Ctrl+0`         |
+> | `Cmd+1`…`Cmd+5` | `Ctrl+1`…`Ctrl+5`|
+> | `Cmd+P`         | `Ctrl+P`         |
+> | `Cmd+Shift+P`   | `Ctrl+Shift+P`   |
+> | `Cmd+Shift+,`   | `Ctrl+Shift+,`   |
+> | `Cmd+Shift+;`   | `Ctrl+Shift+;`   |
+>
+> "Reveal in Finder" reads as "Reveal in Explorer" on Windows and "Show in Files" on Linux.
 
-- launch installed apps
-- search local files and folders by name
-- run quick commands (calculator, shell, kill, and system info)
+## First run
 
-The interface is local-first, lightweight, and designed for low-friction daily use.
-
-## Installation
-
-Compatibility:
-
-- currently targets macOS `15.0+`
-
-### Homebrew tap (recommended once release is published)
+Install with Homebrew (see [README](../README.md#install) for alternatives):
 
 ```bash
 brew tap kunkka19xx/tap
 brew install --cask look
 ```
 
-Update and reinstall via Homebrew:
+On first launch, Look will index your apps, files, and folders in the background. You can start using it immediately — results appear as indexing completes.
 
-```bash
-brew update
-brew upgrade --cask look
-```
+To bind `Cmd+Space` to Look, disable Spotlight's default shortcut: `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`.
 
-Unsigned release behavior:
+## Permissions
 
-- if the distributed app is not Developer ID signed/notarized, macOS may block first launch
-- open once via Finder with right-click `Open` and confirm, or use `System Settings` -> `Privacy & Security` -> `Open Anyway`
+Look is designed to need as few macOS permissions as possible:
 
-### Curl installer
+- **No Accessibility permission** is required.
+- **No Full Disk Access** is required. Look indexes standard user directories (`~`, `/Applications`, `~/Documents`, `~/Downloads`, etc.). To index a directory outside those defaults, add it via `file_scan_extra_roots` in `~/.look.config`.
+- **No Screen Recording** is required.
+- **Network access** is used only for explicit actions: `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search. The local search and indexing paths make no network calls.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/install-look.sh | bash
-```
+If macOS prompts for permission during an action you didn't trigger, that's a bug — please [file an issue](https://github.com/kunkka19xx/look/issues).
 
-Install a specific release version with curl installer:
+## Core workflow
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/install-look.sh | bash -s -- --version 1.0.0 --repo kunkka19xx/look
-```
+In the main input, type to search and press `Enter` to open.
 
-### Installer options
+Default search sources:
 
-- choose version: `--version <version>` or env `LOOK_VERSION=<version>`
-- choose repository: `--repo kunkka19xx/look` or env `LOOK_REPO=kunkka19xx/look`
-- use a direct zip URL: `--url <release-zip-url>` or env `LOOK_DOWNLOAD_URL=<release-zip-url>`
+- installed apps
+- local files/folders (from configured roots)
+- curated System Settings entries
 
-Signing and notarization (optional):
+Useful actions:
 
-- requires paid Apple Developer Program membership
-- when not configured, look can still be installed and used (with first-run Gatekeeper confirmation)
+- `Cmd+F`: reveal selected app/file/folder in Finder
+- `Cmd+C`: copy selected file/folder
+- `Cmd+P`: toggle pick on the selected file/folder (multi-select); the picked set is written to the system pasteboard so you can paste them anywhere in Finder
+- `Cmd+Shift+P`: clear all picked items
+- `Cmd+Enter`: web search current query (Google)
 
-Install target:
+When at least one item is picked, the right panel switches to the **Picked** list — each row has an `X` to remove a single item, plus a **Clear all** button. File/folder copies (both `Cmd+C` and `Cmd+P`) are excluded from clipboard history.
 
-- installs to `/Applications` when writable
-- otherwise installs to `~/Applications`
+## Query prefixes
 
-### Verify installation
+- `a"term` -> apps only
+- `f"term` -> files only
+- `d"term` -> folders only
+- `r"pattern` -> regex search (case-insensitive)
+- `c"term` -> clipboard history search
+- `t"text` -> quick translation panel
+- `tw"text` -> dictionary lookup panel
 
-- app path is usually `/Applications/Look.app` or `~/Applications/Look.app`
-- run `which lookapp` to verify CLI shim is installed and available on PATH
-- macOS already includes `/usr/bin/look`; use `lookapp` for this project CLI command
-- launch once from Finder or Spotlight, then test global hotkey (`Cmd+Space`, if available)
-- if app does not open from hotkey, check the Spotlight conflict section below
+Path-like queries (for example `git/project/readme`) are also supported and bias path matches.
 
-### Enable `Cmd+Space` for look
+## Clipboard and translation
 
-- open `System Settings` -> `Keyboard` -> `Keyboard Shortcuts...` -> `Spotlight`
-- disable `Show Spotlight search` or rebind it to another shortcut
-- relaunch look and test `Cmd+Space`
-- optional: enable `launch_at_login=true` (Advanced tab) so look is ready after sign-in
+Clipboard mode (`c"`):
 
-If look is fully quit and Spotlight shortcut is disabled, relaunch from Terminal:
+- stores recent text clips for the running app session,
+- `Enter` on a clipboard row copies that content back to clipboard.
 
-```bash
-open "/Applications/Look.app"
-```
+Translation mode (`t"`/`tw"`):
 
-### Uninstall
+- supports EN/VI/JA result sections,
+- translation uses network requests.
 
-Homebrew install:
+## Command mode
+
+Enter command mode with `Cmd+/`, or jump straight to a specific command from the home screen with the `:` prefix:
+
+- `:calc` then `Enter` — open `/calc` with empty input
+- `:calc 2+2` — opens `/calc` with `2+2` already typed (the space after the command id is the trigger; you can keep typing without pressing Enter)
+- Same pattern for `:shell`, `:kill`, `:sys`
+
+The `:` prefix only triggers when the word right after it is a known command id (`calc`, `shell`, `kill`, `sys`); anything else (`:foo`, `:Users/me/...`) stays in normal search.
+
+Built-in commands:
+
+- `calc`: evaluate expressions (supports `^`, `!`, constants `pi`/`e`, functions `sqrt`/`abs`/`round`/`floor`/`ceil`, plus `%` shorthand)
+- `shell`: run shell command text
+- `kill`: force-kill a running app/process (with confirmation), supports port queries like `:3000` or `port 3000`
+- `sys`: show system information
+- `pomo`: pomodoro focus timer with editable session list, three timer styles (Modern Ring / Vintage Dial / Minimal Text), background-music folder, menu-bar mini-timer, and a 5-second standby fade
+
+`calc` quick examples:
+
+- `2^3` -> `8`
+- `-2^2` -> `-4`
+- `4!` -> `24`
+- `2*pi` -> `6.2832`
+- `200*15%` -> `30`
+- `10%3` -> `1` (`%` remains modulo when used between operands)
+
+`pomo` quick reference:
+
+- Edit the **Session List** to plan focus + break blocks; the timer auto-advances through them and loops the music folder while running
+- `Space` start/pause the active session • `R` reset • `P` toggle music play/pause
+- Pick a folder of audio files (mp3/m4a/wav/aac/flac/ogg/aiff/alac); tracks are played one at a time, shuffled per launch
+- A "session ending soon" alert fires 10s before each block ends — both as a menu-bar popover and (when granted) a macOS notification with chime
+- Menu-bar mini-timer shows remaining time even when the launcher is hidden; click to jump back into `/pomo`
+
+Behavior:
+
+- `Escape`: leave command mode
+- `Shift+Escape`: hide launcher
+- `Tab` / `Shift+Tab`: switch commands while staying in command mode
+- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4` / `Cmd+5`: jump to specific command (`shell`, `calc`, `kill`, `sys`, `pomo`)
+- `Up` / `Down`: in `kill`, navigate process/app results
+- shell text containing `sudo` shows an orange warning cue
+
+## Settings and config
+
+Open settings with `Cmd+Shift+,`.
+
+### Appearance / Themes
+
+The Appearance tab controls:
+
+- **Tint Color** - accent color for UI highlights (RGB + opacity)
+- **Blur** - blur material and opacity for the launcher window
+- **Font** - name and size for launcher text
+- **Font Color** - text color (RGB + opacity)
+- **Border** - border thickness and color
+
+Built-in theme presets are available:
+
+| Theme       | Description                       |
+| ----------- | --------------------------------- |
+| Catppuccin  | Warm pastels (Mocha variant)      |
+| Tokyo Night | Dark with vibrant accents         |
+| Rose Pine   | Soft pink-tinted dark theme       |
+| Gruvbox     | Retro warm tones                  |
+| Dracula     | Classic purple-accented dark      |
+| Kanagawa    | Japanese-inspired dark theme      |
+| Custom      | Your own colors derived from tint |
+
+Theme is saved as `ui_theme=<name>` in config.
+
+### Indexing Settings
+
+Default values:
+
+- **File Scan Depth**: 4 (range: 1-12)
+- **File Scan Limit**: 4000 (range: 500-50000)
+- **Lazy indexing**: On
+
+Advanced controls:
+
+- **Extra Scan Dirs**: add user-specific directories to index on top of default roots
+- overlap and risky-root validation is enforced for extra scan dirs
+
+These control how deeply and how many files are indexed for search.
+
+Lazy indexing behavior:
+
+- when **On**, Look listens for file/app create/remove/rename events and marks the index dirty,
+- pressing `Cmd+Space` triggers background reindex only when dirty,
+- when **Off**, pressing `Cmd+Space` always triggers background reindex.
+
+### Other Settings
+
+- settings-only blur multiplier (`Settings Blur`) for readability when settings is open
+- translation privacy and backend log level
+- launch at login
+
+Runtime config file:
+
+- path: `~/.look.config`
+- optional override: `LOOK_CONFIG_PATH=/path/to/config`
+- reload after manual edits: `Cmd+Shift+;`
+- reset to fresh defaults from UI: `Settings -> Advanced -> Create Fresh Config` (confirmation popup)
+
+Backend-related keys:
+
+- `app_scan_roots`, `app_scan_depth`, `app_exclude_paths`, `app_exclude_names`
+- `file_scan_roots`, `file_scan_extra_roots`, `file_scan_depth`, `file_scan_limit`, `file_exclude_paths`
+- `lazy_indexing_enabled`
+- `skip_dir_names`
+- `alias_<keyword>` (for app + System Settings query aliases, for example `alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq`)
+- `backend_log_level`, `launch_at_login`
+
+Alias note:
+
+- aliases do not create synthetic results; they only boost existing indexed app/System Settings entries
+- if an aliased app is not installed, there is no error and no result is added
+- keep alias lists short (around 5-10 targets per keyword) to avoid noisy ranking
+
+Default alias presets (fresh config files):
+
+- `alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq`
+- `alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed`
+- `alias_term=Terminal|iTerm|iTerm2|Ghostty|WezTerm|Alacritty|Kitty|Warp`
+- `alias_chat=Slack|Discord|Telegram|Messages`
+- `alias_music=Spotify|Apple Music|Music`
+- `alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave`
+
+Preset update behavior:
+
+- presets are written automatically only when `~/.look.config` is created for the first time
+- app updates do not rewrite an existing config file, so existing users should add new `alias_*` keys manually
+
+Fresh config reset behavior:
+
+- `Create Fresh Config` replaces the current config file with the latest default template
+- reset uses the active config path (`LOOK_CONFIG_PATH` when set, otherwise `~/.look.config`)
+- existing custom values are replaced during this reset flow (use manual edit + `Cmd+Shift+;` if you only want partial changes)
+
+UI-related keys include the `ui_*` group (tint/blur/font/border values).
+
+Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not written to `~/.look.config`.
+
+## Keyboard shortcuts (quick reference)
+
+- `Enter`: open selected result / run command
+- `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
+- `Up` / `Down`: move selection (and in `kill`, move process selection)
+- `Cmd+/`: command mode
+- `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:pomo`): jump to a command directly from the home screen
+- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4` / `Cmd+5`: direct command switch (`shell`, `calc`, `kill`, `sys`, `pomo`)
+- `Space` / `R` / `P` (inside `/pomo`): start/pause session, reset, toggle music play/pause
+- `Escape`: back/close (context dependent)
+- `Shift+Escape`: hide launcher
+- `Cmd+Enter`: web search
+- `Cmd+F`: reveal in Finder
+- `Cmd+C`: copy selected file/folder
+- `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
+- `Cmd+Shift+,`: toggle settings panel
+- `Cmd+Shift+;`: reload config
+- `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
+
+## Troubleshooting
+
+**Results seem stale or a newly installed app is missing.**
+
+- reload config with `Cmd+Shift+;`
+- if lazy indexing is Off, Look reindexes on every launcher open; if On, it reindexes only when filesystem changes are detected
+- check scan roots, depth, and limits in `~/.look.config`
+- add user-specific directories via `file_scan_extra_roots`
+
+**`Cmd+Space` does not open Look.**
+
+- confirm Spotlight's `Cmd+Space` is disabled or rebound (`System Settings > Keyboard > Keyboard Shortcuts > Spotlight`)
+- relaunch Look (`open "/Applications/Look.app"`) after changing the Spotlight binding
+- if you previously ran a dev/side-by-side build, make sure only one Look instance is running
+
+**The launcher opens behind another window.**
+
+- this is usually a focus-handoff timing issue; hide the launcher (`Escape`) and open it again
+- if it reproduces consistently, please file an issue with your macOS version
+
+**High CPU or slow first launch.**
+
+- the initial index scan is a one-time cost on first run; subsequent launches use the cached SQLite index
+- you can lower `file_scan_depth` and `file_scan_limit` in `~/.look.config` if you have very large user directories
+
+**A config change was ignored.**
+
+- Look reads `~/.look.config` at launch. After editing manually, reload with `Cmd+Shift+;` or restart Look.
+- confirm you edited the active config path (`LOOK_CONFIG_PATH` overrides `~/.look.config` when set)
+
+**Translation (`t"` / `tw"`) returns no results.**
+
+- translation requires network; check connectivity and retry
+- corporate proxies and VPNs can block the translation endpoint
+
+**Linux only — ghost slider trails or overlapping popovers in Settings.**
+
+- observed on Arch GNOME 50 + webkit2gtk 2.52.3; Ubuntu 26.04 and NixOS 2.50.6 on identical webkit are unaffected, so this is a stack-interaction bug we can't auto-detect
+- open **Settings > Advanced > Arch** and flip one toggle:
+  - **Disable GPU compositing** — keeps blur, fixes the ghost. Requires restart.
+  - **Disable blur effect** — drops blur, keeps tint. Takes effect immediately.
+
+**I want to reset everything to defaults.**
+
+- `Settings > Advanced > Create Fresh Config` rewrites `~/.look.config` from the latest defaults (with a confirmation prompt)
+
+## Uninstall
+
+Homebrew:
 
 ```bash
 brew uninstall --cask look
-brew untap kunkka19xx/tap  # optional, only if you no longer use this tap
+brew untap kunkka19xx/tap   # optional
 ```
 
-Curl/manual install:
+Manual install:
 
 ```bash
 rm -rf "/Applications/Look.app"
-rm -rf "$HOME/Applications/Look.app"
 ```
 
-Optional cleanup of local data/config:
+Remove local state (optional — includes config, index, and usage history):
 
 ```bash
 rm -f "$HOME/.look.config"
-rm -f "$HOME/Library/Application Support/look/look.db"
+rm -rf "$HOME/Library/Application Support/look"
 ```
 
-Note: optional cleanup removes your indexed data, usage history, and custom settings.
-
-## What makes look different
-
-- one focused launcher window instead of many utility apps
-- keyboard-first workflow with instant mode switching
-- transparent, blur-based UI that can be themed
-- optional command mode for utility tasks without leaving context
-
-## How look compares
-
-Compared with broader launcher platforms (for example Raycast and similar tools), look intentionally emphasizes:
-
-- simplicity over large extension/plugin ecosystems
-- lightweight local-first behavior
-- open-source development model
-- free usage without paid feature tiers
-
-look is best for users who want a fast, minimal, predictable launcher rather than a large all-in-one productivity platform.
-
-## Core usage
-
-### 1) Launch apps and find files
-
-Type in the main search bar to filter results.
-
-This includes:
-
-- installed apps
-- local files/folders (Desktop/Documents/Downloads)
-- curated System Settings entries (for example display, network, bluetooth)
-
-- press `Tab` to move down the list
-- press `Shift+Tab` to move up the list
-- press `Up` / `Down` to move selection
-- press `Enter` to open the selected result
-- click a row to open it
-
-If results look stale or missing after config/indexing changes:
-
-- press `Cmd+Shift+;` to reload config and refresh backend index
-- check `file_scan_roots`, `file_scan_depth`, and `file_scan_limit` in `~/.look.config`
-
-Path-style query is supported directly in normal search:
-
-- type path fragments like `git/books-pc`, `git/books-pc/readme`, or deeper segments to bias matches toward path hits
-
-Quick prefix action in the same input:
-
-- type `a"term`: search apps only
-- type `f"term`: search files only
-- type `d"term`: search folders only
-- type `r"pattern`: search by regex (case-insensitive)
-
-Translation privacy control:
-
-- translation network access is disabled by default
-- `translate_allow_network` controls whether translation requests are allowed
-- optional env override: `LOOK_TRANSLATE_ALLOW_NETWORK=true`
-- recommended default: keep this disabled for a local-first workflow
-
-### 2) Web search handoff
-
-If you want to search the web from the same query:
-
-- press `Cmd+Enter`
-
-Current default provider: Google.
-
-### 3) Command mode
-
-To enter command mode:
-
-- press `Cmd+/`
-
-Command mode starts with `calc` selected by default.
-
-In command mode:
-
-- `Tab` switches to next command
-- `Cmd+1` / `Cmd+2` / `Cmd+3` selects command directly
-- `Enter` runs the current command input
-- `Escape` exits command mode back to app list
-- `Shift+Escape` hides launcher
-- `Cmd+Escape` returns to command list on `calc`
-
-Spotlight-style behavior:
-
-- launcher hides on `Escape` from normal app/file list
-- launcher also hides automatically when app loses focus
-- launcher runs as accessory app (hidden from `Cmd+Tab` app switcher)
-
-Available commands:
-
-- `calc`: evaluate math expressions
-- `shell`: run shell commands
-- `kill`: force kill a running app (see Kill command shortcuts above)
-- `sys`: show system info (model, macOS, memory, CPU usage, battery, uptime, disk)
-
-Examples:
-
-- `2/5` -> `0.4000`
-- `v9` -> `3.0000` (`v` maps to sqrt)
-- `2 x 5` -> `10.0000` (`x` maps to `*`)
-
-Math output formatting:
-
-- 4 digits after decimal
-- grouped thousands (example: `1,000,000.0000`)
-
-Safety cues:
-
-- shell input containing `sudo` shows an orange warning border
-
-## Settings and customization
-
-To open settings:
-
-- press `Cmd+Shift+,`
-
-Settings are shown inside the same launcher window and include:
-
-- appearance: tint color, blur style, blur opacity, font family/size, text color, border style
-- advanced: background, indexing, privacy/logging, and startup controls (`file_scan_depth`, `file_scan_limit`, `translate_allow_network`, `backend_log_level`, `launch_at_login`)
-- shortcuts: built-in documentation tab
-
-Global hotkey:
-
-- launcher hotkey is `Cmd+Space` (Spotlight-style toggle)
-- configure Spotlight conflict in the Installation section above
-
-Hotkey behavior notes:
-
-- `Cmd+Space` only works when Spotlight is not bound to the same shortcut
-- window managers (for example tiling tools) may alter focus behavior; if focus looks stuck, press the hotkey again or click inside the launcher to refocus
-
-Troubleshooting first-run launch block (Gatekeeper):
-
-- if macOS says the app cannot be opened, right-click `Look.app` in Finder -> `Open` -> confirm
-- or use `System Settings` -> `Privacy & Security` -> `Open Anyway`
-- this is expected for unsigned/not-notarized builds
-
-Other settings UX:
-
-- **Save Config** writes current UI values back into `~/.look.config`
-- font name field supports installed-font suggestions in a dropdown
-
-Background image modes:
-
-- `Center`
-- `Fill`
-- `Stretch`
-- `Duplicate`
-
-You can also configure backend indexing behavior with a user config file:
-
-- path: `~/.look.config`
-- optional override path: `LOOK_CONFIG_PATH=/path/to/custom.config`
-- first launch creates this file automatically with defaults if it does not exist
-- live reload: press `Cmd+Shift+;` after editing the file
-
-Supported config keys (`key=value`):
-
-Backend indexing keys:
-
-- `app_scan_roots`: comma-separated app roots to scan (absolute paths); default: `/Applications,/System/Applications,/System/Applications/Utilities`
-- `app_scan_depth`: recursion depth for app scanning (positive integer); default: `3`
-- `app_exclude_paths`: comma-separated paths to exclude from app indexing (supports `~/...`, absolute paths, and home-relative names); default: empty
-- `app_exclude_names`: comma-separated app display names to exclude (case-insensitive, `.app` suffix optional); default: empty
-- `file_scan_roots`: comma-separated file roots to scan; supports `~/...`, absolute paths, and home-relative names like `Documents`; default: `Desktop,Documents,Downloads`
-- `file_scan_depth`: recursion depth for file scanning (positive integer); default: `4`
-- `file_scan_limit`: max indexed files per refresh (positive integer); default: `8000`
-- `file_exclude_paths`: comma-separated paths to exclude from file/folder indexing (supports `~/...`, absolute paths, and home-relative names); default: empty
-- `translate_allow_network`: allow network translation requests (`true`/`false`); default: `false`
-- `backend_log_level`: backend log verbosity (`error`/`info`/`debug`); default: `error`
-- `launch_at_login`: auto-start look after user sign-in (`true`/`false`); default: `true`
-- `skip_dir_names`: comma-separated directory names to ignore during file scan (case-insensitive); default: `node_modules,target,build,dist,library,applications,old firefox data`
-
-UI keys:
-
-- `ui_tint_red`: launcher tint red channel (`0..1`); default: `0.08`
-- `ui_tint_green`: launcher tint green channel (`0..1`); default: `0.10`
-- `ui_tint_blue`: launcher tint blue channel (`0..1`); default: `0.12`
-- `ui_tint_opacity`: launcher tint opacity (`0..1`); default: `0.55`
-- `ui_blur_material`: blur material (`hudWindow`, `sidebar`, `menu`, `underWindowBackground`); default: `hudWindow`
-- `ui_blur_opacity`: blur layer opacity (`0..1`); default: `0.95`
-- `ui_font_name`: macOS installed font family/name (example: `SF Pro Text`, `Menlo`); default: `SF Pro Text`
-- `ui_font_size`: base UI font size (positive number); default: `14`
-- `ui_font_red`: text red channel (`0..1`); default: `0.96`
-- `ui_font_green`: text green channel (`0..1`); default: `0.96`
-- `ui_font_blue`: text blue channel (`0..1`); default: `0.98`
-- `ui_font_opacity`: text opacity (`0..1`); default: `0.96`
-- `ui_border_thickness`: launcher border thickness (positive number); default: `1.0`
-- `ui_border_red`: border red channel (`0..1`); default: `1.0`
-- `ui_border_green`: border green channel (`0..1`); default: `1.0`
-- `ui_border_blue`: border blue channel (`0..1`); default: `1.0`
-- `ui_border_opacity`: border opacity (`0..1`); default: `0.12`
-
-Config behavior:
-
-- unknown keys are ignored
-- invalid values are ignored and existing/default values are kept
-- `#` starts a comment on a line
-
-Logging privacy:
-
-- default log level is `error`
-- set `LOOK_LOG_LEVEL=info` or `LOOK_LOG_LEVEL=debug` only for local troubleshooting
-- debug logs avoid raw query text and candidate IDs/actions
-
-Example:
-
-```text
-# ~/.look.config
-# Backend indexing
-app_scan_roots=/Applications,/System/Applications,/System/Applications/Utilities
-app_scan_depth=3
-app_exclude_paths=
-app_exclude_names=
-file_scan_roots=Desktop,Documents,Downloads
-file_scan_depth=4
-file_scan_limit=8000
-file_exclude_paths=
-translate_allow_network=false
-backend_log_level=error
-launch_at_login=true
-skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data
-
-# UI theme
-ui_tint_red=0.08
-ui_tint_green=0.10
-ui_tint_blue=0.12
-ui_tint_opacity=0.55
-ui_blur_material=hudWindow
-ui_blur_opacity=0.95
-ui_font_name=SF Pro Text
-ui_font_size=14
-ui_font_red=0.96
-ui_font_green=0.96
-ui_font_blue=0.98
-ui_font_opacity=0.96
-ui_border_thickness=1.0
-ui_border_red=1.0
-ui_border_green=1.0
-ui_border_blue=1.0
-ui_border_opacity=0.12
-```
-
-## Keyboard shortcuts reference
-
-- `Tab`: next result / next command
-- `Shift+Tab`: previous result / previous command
-- `Enter`: open selected result, run command, or confirm kill
-- `a"`: apps-only search prefix
-- `f"`: files-only search prefix
-- `d"`: folders-only search prefix
-- `r"`: regex search prefix
-- `Cmd+/`: enter command mode
-- `Escape`: back to app list (in command mode), otherwise hide launcher
-- `Shift+Escape`: hide launcher
-- `Cmd+Enter`: search query on Google
-- `Cmd+Escape`: back to command list (`calc`) while staying in command mode
-- `Cmd+Q`: hide launcher
-- `Cmd+Option+Q`: quit app
-- `Cmd+Shift+,`: open/close settings panel
-- `Cmd+Shift+;`: reload `.look.config`
-- `Cmd+-`: zoom out (temporary UI scale)
-- `Cmd+=` (`Cmd++`): zoom in (temporary UI scale)
-- `Cmd+0`: reset temporary UI scale
-
-### Kill command shortcuts
-
-- `Up` / `Down`: navigate app list
-- `Cmd+1` / `Cmd+2` / `Cmd+3`: switch command
-- `Enter`: select app (shows confirmation)
-- `Y` / click "Yes": confirm kill
-- `N` / click "No": cancel
-- `Cmd+Escape`: back to command list (calc)
-
-## What look is for
-
-look is built for:
-
-- users who prefer keyboard navigation
-- fast app/file lookup without distractions
-- quick command-style utility actions in one place
-
-It is not trying to be a full plugin ecosystem or cloud assistant. The core goal is speed, clarity, and predictable local behavior.
-
-## Roadmap style:
-
-- look will continue to add features that keep the launcher simple, fast, and local-first
-- user ideas are encouraged; strong proposals can be added to upcoming milestones
-- near-future direction includes plugin/extension injection support for developer workflows
-
-## Platform roadmap
-
-- current focus: macOS
-- planned next platform: Windows
-- Linux is not a near-term target; existing Linux launcher tooling (for example `rofi`) already serves similar use cases well
-
-## Author
-
-- Kunkka
+## Related docs
+
+- Architecture guide: `docs/architecture.md`
+- Feature status: `docs/features.md`
+- Backend contributor guide: `docs/backend-guide.md`
+- Tech blog (EN): `docs/tech-blog-core-algorithms.md`
+- Tech blog (VI): `docs/tech-blog-core-algorithms.vi.md`

@@ -1,0 +1,194 @@
+name: Release Linux App
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (example: 1.0.0)"
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-release:
+    name: Build Linux release artifacts
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: release-linux-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libsoup-3.0-dev \
+            libglib2.0-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libharfbuzz-dev \
+            libdbus-1-dev \
+            libasound2-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libappindicator3-dev \
+            pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            core
+            apps/linows/src-tauri
+
+      - name: Install cargo-tauri
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Verify version matches tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CONF_VERSION=$(grep '"version"' apps/linows/src-tauri/tauri.conf.json | head -1 | sed 's/.*"\([0-9][^"]*\)".*/\1/')
+          if [[ "$VERSION" != "$CONF_VERSION" ]]; then
+            echo "::error::Version mismatch! Tag=$VERSION but tauri.conf.json=$CONF_VERSION. Update tauri.conf.json before tagging."
+            exit 1
+          fi
+
+      - name: Build Tauri app
+        working-directory: apps/linows
+        run: cargo tauri build
+
+      - name: Collect artifacts
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p dist
+          cp apps/linows/src-tauri/target/release/bundle/deb/*.deb dist/ 2>/dev/null || true
+          cp apps/linows/src-tauri/target/release/bundle/appimage/*.AppImage dist/ 2>/dev/null || true
+          cd dist && sha256sum * > "Look-${VERSION}-linux-checksums.txt"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: look-linux-${{ steps.version.outputs.version }}
+          path: dist/
+          retention-days: 14
+
+      - name: Attach to GitHub release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
+  nix-build:
+    name: Build and push Nix package to Cachix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - uses: cachix/cachix-action@v15
+        with:
+          name: look
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build
+        run: nix build ./apps/linows#default
+
+      - name: Verify version
+        run: ./result/bin/lookapp --version
+
+  publish-aur:
+    name: Publish look-bin to AUR
+    needs: build-release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    container: archlinux:base
+    steps:
+      - name: Install dependencies
+        run: pacman -Syu --noconfirm git openssh pacman-contrib
+
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download .deb and compute checksum
+        id: artifact
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          curl -fSL -o "Look_${VERSION}_amd64.deb" \
+            "https://github.com/kunkka19xx/look/releases/download/v${VERSION}/Look_${VERSION}_amd64.deb"
+          SHA256=$(sha256sum "Look_${VERSION}_amd64.deb" | awk '{print $1}')
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Template PKGBUILD
+        run: |
+          mkdir -p aur-staging
+          sed \
+            -e "s/__VERSION__/${{ steps.version.outputs.version }}/g" \
+            -e "s/__SHA256__/${{ steps.artifact.outputs.sha256 }}/g" \
+            packaging/aur/PKGBUILD > aur-staging/PKGBUILD
+
+      - name: Publish to AUR
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_USERNAME: ${{ secrets.AUR_USERNAME }}
+        run: |
+          # Setup SSH
+          mkdir -p /root/.ssh
+          chmod 700 /root/.ssh
+          echo "$AUR_SSH_KEY" > /root/.ssh/aur
+          chmod 600 /root/.ssh/aur
+          ssh-keyscan -t rsa,ecdsa,ed25519 aur.archlinux.org >> /root/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i /root/.ssh/aur -o StrictHostKeyChecking=accept-new"
+          git config --global safe.directory '*'
+
+          # Clone AUR repo
+          git clone ssh://aur@aur.archlinux.org/look-bin.git /tmp/aur-repo
+          cp aur-staging/PKGBUILD /tmp/aur-repo/PKGBUILD
+
+          # Generate .SRCINFO (makepkg can't run as root)
+          useradd -m builder
+          chown -R builder:builder /tmp/aur-repo
+          su builder -c 'cd /tmp/aur-repo && makepkg --printsrcinfo > .SRCINFO'
+
+          # Commit and push
+          cd /tmp/aur-repo
+          git config user.name "$AUR_USERNAME"
+          git config user.email "nobita079x@gmail.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update to ${{ steps.version.outputs.version }}"
+          git push

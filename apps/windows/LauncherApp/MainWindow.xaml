@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="LauncherApp.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:views="using:LauncherApp.Views"
+    xmlns:commandPanels="using:LauncherApp.Views.CommandPanels"
+    xmlns:settingsViews="using:LauncherApp.Views.Settings"
+    mc:Ignorable="d"
+    Title="Look - Minimal App Launcher">
+    <Window.SystemBackdrop>
+        <MicaBackdrop Kind="BaseAlt" />
+    </Window.SystemBackdrop>
+    <Grid Background="Transparent">
+
+        <!-- Mirrors macOS LauncherView+Background.swift layering: BlurLayer
+             samples only what's behind the window (desktop + system tint), so
+             the Appearance "Blur" slider never gaussian-blurs the user's BG
+             image. BG image sharpness is controlled solely by its own
+             "Background Image Blur" setting (ui_background_image_blur). -->
+        <Grid x:Name="BlurLayer" IsHitTestVisible="False" />
+
+        <Image
+            x:Name="BackgroundImage"
+            Stretch="UniformToFill"
+            Opacity="0"
+            IsHitTestVisible="False" />
+
+        <Border
+            x:Name="BannerHost"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Margin="0,0,0,48"
+            Padding="14,7"
+            CornerRadius="14"
+            Background="#6B2ECC71"
+            Visibility="Collapsed"
+            Canvas.ZIndex="10"
+            IsHitTestVisible="False">
+            <TextBlock
+                x:Name="BannerText"
+                FontSize="12"
+                FontWeight="SemiBold"
+                Foreground="White"
+                Text="Copied clipboard item" />
+        </Border>
+
+        <Border
+            x:Name="LauncherSurface"
+            Margin="0"
+            Padding="2"
+            CornerRadius="0"
+            BorderBrush="{StaticResource LauncherBorderBrush}"
+            BorderThickness="{ThemeResource LauncherBorderThickness}"
+            Background="{StaticResource LauncherPanelBrush}">
+            <Grid RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid x:Name="SearchBarHost" Grid.Row="0" Margin="4,4,4,0">
+                    <!-- macOS-style capsule: rounded tint fill so the command line reads as a
+                         distinct "input pill" rather than a bare text field. Subtle panel-alt
+                         fill plus border picks up the current theme automatically. -->
+                    <Border
+                        CornerRadius="10"
+                        Background="{StaticResource LauncherPanelAltBrush}"
+                        BorderBrush="{StaticResource LauncherBorderBrush}"
+                        BorderThickness="1">
+                        <Grid>
+                            <TextBox
+                                x:Name="QueryInput"
+                                Padding="38,10,12,10"
+                                FontSize="14"
+                                PlaceholderText="Search apps"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="{StaticResource LauncherTextBrush}"
+                                SelectionHighlightColor="{StaticResource LauncherAccentBrush}"
+                                Loaded="QueryInput_OnLoaded"
+                                TextChanged="QueryInput_OnTextChanged"
+                                PreviewKeyDown="QueryInput_OnPreviewKeyDown"
+                                KeyDown="QueryInput_OnKeyDown">
+                                <TextBox.Resources>
+                                    <StaticResource x:Key="TextControlForeground" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlForegroundPointerOver" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlForegroundFocused" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlPlaceholderForeground" ResourceKey="LauncherMutedTextBrush" />
+                                    <StaticResource x:Key="TextControlPlaceholderForegroundPointerOver" ResourceKey="LauncherMutedTextBrush" />
+                                    <StaticResource x:Key="TextControlPlaceholderForegroundFocused" ResourceKey="LauncherMutedTextBrush" />
+                                    <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent" />
+                                    <StaticResource x:Key="TextControlButtonForeground" ResourceKey="LauncherMutedTextBrush" />
+                                    <StaticResource x:Key="TextControlButtonForegroundPointerOver" ResourceKey="LauncherTextBrush" />
+                                    <StaticResource x:Key="TextControlButtonForegroundPressed" ResourceKey="LauncherTextBrush" />
+                                    <SolidColorBrush x:Key="TextControlButtonBackground" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlButtonBackgroundPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlButtonBackgroundPressed" Color="Transparent" />
+                                </TextBox.Resources>
+                            </TextBox>
+                            <TextBlock
+                                Margin="14,0,0,0"
+                                FontFamily="Segoe MDL2 Assets"
+                                FontSize="14"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Foreground="{StaticResource LauncherAccentBrush}"
+                                Text="&#xE721;"
+                                IsHitTestVisible="False" />
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Grid x:Name="ResultsHost" Grid.Row="1" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <ListView
+                x:Name="ResultsList"
+                Background="Transparent"
+                BorderThickness="0"
+                IsItemClickEnabled="True"
+                ItemClick="ResultsList_OnItemClick"
+                KeyDown="ResultsList_OnKeyDown"
+                SelectionChanged="ResultsList_OnSelectionChanged"
+                SelectionMode="Single">
+                        <ListView.Resources>
+                            <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#26364C" />
+                            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#2A3C55" />
+                            <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#1D2A3A" />
+                            <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#2A3C55" />
+                        </ListView.Resources>
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="Margin" Value="0,0,0,4" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="MinHeight" Value="0" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <views:LauncherResultRowView />
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <Rectangle
+                x:Name="PreviewDivider"
+                Grid.Column="1"
+                Width="1"
+                Fill="#263243"
+                Visibility="Collapsed" />
+
+                    <views:ResultPreviewView
+                x:Name="ResultPreviewPanel"
+                Grid.Column="2"
+                Visibility="Collapsed" />
+
+                    <views:PickedItemsPanelView
+                x:Name="PickedItemsPanel"
+                Grid.Column="2"
+                Visibility="Collapsed" />
+
+                    <commandPanels:CommandPanelsView
+                x:Name="CommandPanelsPanel"
+                Grid.Column="0"
+                Grid.ColumnSpan="3"
+                Visibility="Collapsed" />
+
+                    <views:HelpScreenView
+                x:Name="HelpScreenPanel"
+                Grid.Column="0"
+                Grid.ColumnSpan="3"
+                Visibility="Collapsed" />
+
+                    <views:TranslatePanelView
+                x:Name="TranslatePanel"
+                Grid.Column="0"
+                Grid.ColumnSpan="3"
+                Visibility="Collapsed" />
+                </Grid>
+
+                <Grid
+                    x:Name="SettingsHost"
+                    Grid.Row="0"
+                    Grid.RowSpan="3"
+                    Visibility="Collapsed">
+                </Grid>
+
+                <StackPanel x:Name="HintBarHost" Grid.Row="2" Orientation="Vertical" Spacing="3">
+                    <TextBlock
+                    x:Name="HintText"
+                    FontSize="11"
+                    Foreground="{StaticResource LauncherMutedTextBrush}"
+                    Text="Enter open  •  Ctrl+F reveal  •  Ctrl+C copy  •  Ctrl+Enter web" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border
+            x:Name="DevHintBadge"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Margin="0,8,10,0"
+            Padding="10,5"
+            CornerRadius="999"
+            Background="#59000000"
+            Visibility="Collapsed"
+            Canvas.ZIndex="20"
+            IsHitTestVisible="False">
+            <TextBlock
+                Text="TEST APP"
+                FontSize="11"
+                FontWeight="Bold"
+                Foreground="#F2FF3B30" />
+        </Border>
+
+        <!-- Mirrors macOS LauncherView.swift bottomTrailing Link overlay: small
+             attribution + GitHub link in 50%-opacity primary text color, anchored
+             10/8 from the bottom-right window edge. -->
+        <HyperlinkButton
+            x:Name="GitHubLink"
+            NavigateUri="https://github.com/kunkka19xx"
+            Content="© 2026 by Kunkka"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Margin="0,0,10,8"
+            Padding="0"
+            MinHeight="0"
+            FontSize="10"
+            Opacity="0.5"
+            Foreground="{StaticResource LauncherTextBrush}"
+            Background="Transparent"
+            BorderThickness="0"
+            Canvas.ZIndex="20" />
+
+    </Grid>
+</Window>

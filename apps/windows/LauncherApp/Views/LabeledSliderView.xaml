@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="LauncherApp.Views.LabeledSliderView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid ColumnSpacing="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="LabelColumn" Width="170" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="64" />
+        </Grid.ColumnDefinitions>
+        <TextBlock
+            x:Name="LabelText"
+            Grid.Column="0"
+            VerticalAlignment="Center"
+            Foreground="{StaticResource LauncherMutedTextBrush}" />
+        <Slider
+            x:Name="InnerSlider"
+            Grid.Column="1"
+            VerticalAlignment="Center"
+            Foreground="#9FC0F8"
+            Background="#263243" />
+        <TextBlock
+            Grid.Column="2"
+            VerticalAlignment="Center"
+            HorizontalAlignment="Right"
+            Foreground="{StaticResource LauncherTextBrush}"
+            Text="{Binding ElementName=InnerSlider, Path=Value}" />
+    </Grid>
+</UserControl>

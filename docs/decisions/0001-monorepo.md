@@ -16,7 +16,7 @@ Use one repository with clear module boundaries:
 - `core/*`
 - `bridge/ffi`
 - `docs`
-- `benchmarks`
+- crate-local examples/bench entrypoints (for example `core/engine/examples`)
 
 ## Consequences
 

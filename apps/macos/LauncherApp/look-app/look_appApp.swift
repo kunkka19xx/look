@@ -14,7 +14,6 @@ struct look_appApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appUIState = AppUIState()
     @StateObject private var themeStore = ThemeStore()
-    private let hotKeyManager = GlobalHotKeyManager()
 
     init() {
         if let exitCode = handleCLIFlags() {
@@ -22,7 +21,7 @@ struct look_appApp: App {
             exit(exitCode)
         }
 
-        hotKeyManager.registerToggleHotKey()
+        ConfigPathResolver.applyDefaultConfigEnvironmentIfNeeded()
     }
 
     private func handleCLIFlags() -> Int32? {
@@ -93,7 +92,8 @@ struct look_appApp: App {
         if size > 0 {
             var buffer = [CChar](repeating: 0, count: Int(size))
             if _NSGetExecutablePath(&buffer, &size) == 0 {
-                let path = String(cString: buffer)
+                let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+                let path = String(decoding: bytes, as: UTF8.self)
                 return URL(fileURLWithPath: path).resolvingSymlinksInPath()
             }
         }
@@ -124,15 +124,17 @@ struct look_appApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             ContentView()
-                .frame(minWidth: 620, minHeight: 600)
+                .frame(minWidth: 860, minHeight: 580)
                 .background(WindowConfigurator())
                 .environmentObject(appUIState)
                 .environmentObject(themeStore)
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(replacing: .newItem) {}
+
             CommandGroup(replacing: .appTermination) {
                 Button("Hide Look") {
                     NotificationCenter.default.post(name: .lookHideLauncherRequested, object: nil)
@@ -147,33 +149,39 @@ struct look_appApp: App {
 
             CommandGroup(after: .appSettings) {
                 Button("Theme Settings") {
-                    appUIState.showsThemeSettings.toggle()
+                    DispatchQueue.main.async {
+                        appUIState.showsThemeSettings.toggle()
+                    }
                 }
                 .keyboardShortcut(",", modifiers: [.command, .shift])
 
                 Button("Reload Config") {
-                    NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
-                    NotificationCenter.default.post(name: .lookRefocusInputRequested, object: nil)
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
+                    }
                 }
                 .keyboardShortcut(";", modifiers: [.command, .shift])
 
                 Divider()
 
                 Button("Zoom In") {
-                    themeStore.zoomIn()
-                    NotificationCenter.default.post(name: .lookRefocusInputRequested, object: nil)
+                    DispatchQueue.main.async {
+                        themeStore.zoomIn()
+                    }
                 }
                 .keyboardShortcut("=", modifiers: [.command])
 
                 Button("Zoom Out") {
-                    themeStore.zoomOut()
-                    NotificationCenter.default.post(name: .lookRefocusInputRequested, object: nil)
+                    DispatchQueue.main.async {
+                        themeStore.zoomOut()
+                    }
                 }
                 .keyboardShortcut("-", modifiers: [.command])
 
                 Button("Actual Size") {
-                    themeStore.resetZoom()
-                    NotificationCenter.default.post(name: .lookRefocusInputRequested, object: nil)
+                    DispatchQueue.main.async {
+                        themeStore.resetZoom()
+                    }
                 }
                 .keyboardShortcut("0", modifiers: [.command])
             }

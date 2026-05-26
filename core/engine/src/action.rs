@@ -1,5 +1,15 @@
+use look_indexing::UsageAction;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+
+const ACTION_OPEN_APP: &str = UsageAction::OPEN_APP;
+const ACTION_OPEN_FILE: &str = UsageAction::OPEN_FILE;
+const ACTION_OPEN_FOLDER: &str = UsageAction::OPEN_FOLDER;
+const ACTION_OPEN_URL: &str = UsageAction::OPEN_URL;
+const ACTION_REVEAL: &str = "reveal";
+const ACTION_EXECUTE: &str = UsageAction::EXECUTE;
+const ACTION_WEB_SEARCH: &str = UsageAction::WEB_SEARCH;
+const ACTION_TRANSLATE: &str = "translate";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ActionKind {
@@ -16,14 +26,14 @@ pub enum ActionKind {
 impl ActionKind {
     pub fn as_str(&self) -> &'static str {
         match self {
-            ActionKind::OpenApp => "open_app",
-            ActionKind::OpenFile => "open_file",
-            ActionKind::OpenFolder => "open_folder",
-            ActionKind::OpenUrl => "open_url",
-            ActionKind::RevealInFinder => "reveal",
-            ActionKind::ExecuteCommand => "execute",
-            ActionKind::WebSearch => "web_search",
-            ActionKind::Translate => "translate",
+            ActionKind::OpenApp => ACTION_OPEN_APP,
+            ActionKind::OpenFile => ACTION_OPEN_FILE,
+            ActionKind::OpenFolder => ACTION_OPEN_FOLDER,
+            ActionKind::OpenUrl => ACTION_OPEN_URL,
+            ActionKind::RevealInFinder => ACTION_REVEAL,
+            ActionKind::ExecuteCommand => ACTION_EXECUTE,
+            ActionKind::WebSearch => ACTION_WEB_SEARCH,
+            ActionKind::Translate => ACTION_TRANSLATE,
         }
     }
 }
@@ -33,14 +43,14 @@ impl FromStr for ActionKind {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "open_app" => Ok(ActionKind::OpenApp),
-            "open_file" => Ok(ActionKind::OpenFile),
-            "open_folder" => Ok(ActionKind::OpenFolder),
-            "open_url" => Ok(ActionKind::OpenUrl),
-            "reveal" => Ok(ActionKind::RevealInFinder),
-            "execute" => Ok(ActionKind::ExecuteCommand),
-            "web_search" => Ok(ActionKind::WebSearch),
-            "translate" => Ok(ActionKind::Translate),
+            ACTION_OPEN_APP => Ok(ActionKind::OpenApp),
+            ACTION_OPEN_FILE => Ok(ActionKind::OpenFile),
+            ACTION_OPEN_FOLDER => Ok(ActionKind::OpenFolder),
+            ACTION_OPEN_URL => Ok(ActionKind::OpenUrl),
+            ACTION_REVEAL => Ok(ActionKind::RevealInFinder),
+            ACTION_EXECUTE => Ok(ActionKind::ExecuteCommand),
+            ACTION_WEB_SEARCH => Ok(ActionKind::WebSearch),
+            ACTION_TRANSLATE => Ok(ActionKind::Translate),
             _ => Err(()),
         }
     }

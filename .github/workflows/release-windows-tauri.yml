@@ -1,0 +1,158 @@
+name: Release Windows App (Tauri)
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (example: 1.0.0)"
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-release:
+    name: Build Windows release artifacts
+    runs-on: windows-latest
+    concurrency:
+      group: release-windows-tauri-${{ github.ref }}
+      cancel-in-progress: true
+    # Hoisted to job scope so `if: env.WINDOWS_PFX_BASE64 != ''` on the signing
+    # step can actually see the value — step-level `env:` is applied AFTER the
+    # `if:` is evaluated, so a step-scoped env block never triggers the gate.
+    env:
+      WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+      WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+      WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            core
+            apps/linows/src-tauri
+
+      - name: Install cargo-tauri
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Verify version matches tag
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CONF_VERSION=$(grep '"version"' apps/linows/src-tauri/tauri.conf.json | head -1 | sed 's/.*"\([0-9][^"]*\)".*/\1/')
+          if [[ "$VERSION" != "$CONF_VERSION" ]]; then
+            echo "::error::Version mismatch! Tag=$VERSION but tauri.conf.json=$CONF_VERSION. Update tauri.conf.json before tagging."
+            exit 1
+          fi
+
+      - name: Build Tauri app
+        working-directory: apps/linows
+        run: cargo tauri build
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Force dist | Out-Null
+
+          # NSIS installer — Tauri bundles lookapp.exe, WebView2Loader.dll, and
+          # the WebView2 bootstrapper into this single .exe. Nothing else to
+          # ship: the C runtime is static-linked via .cargo/config.toml.
+          Get-ChildItem apps/linows/src-tauri/target/release/bundle/nsis/*.exe `
+            | Copy-Item -Destination dist/ -Force
+
+          # Checksums
+          Push-Location dist
+          Get-ChildItem -File | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.Name).Hash.ToLower()
+            "$hash  $($_.Name)"
+          } | Set-Content -Encoding ascii "Look-$version-windows-checksums.txt"
+          Pop-Location
+
+      - name: Sign installer (optional)
+        if: env.WINDOWS_PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          $tsUrl = if ($env:WINDOWS_TIMESTAMP_URL) { $env:WINDOWS_TIMESTAMP_URL } else { "http://timestamp.digicert.com" }
+          $pfxBytes = [System.Convert]::FromBase64String($env:WINDOWS_PFX_BASE64)
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [System.IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
+
+          # Locate signtool from the latest Windows SDK on the runner.
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" `
+            -ErrorAction SilentlyContinue `
+            | Sort-Object FullName -Descending `
+            | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) {
+            Write-Error "signtool.exe not found in Windows SDK"
+            exit 1
+          }
+
+          Get-ChildItem dist/*.exe | ForEach-Object {
+            & $signtool sign /f $pfxPath /p $env:WINDOWS_PFX_PASSWORD `
+              /fd SHA256 /tr $tsUrl /td SHA256 $_.FullName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $signtool verify /pa /v $_.FullName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+          Remove-Item $pfxPath -Force
+
+          # Refresh checksums after signing (signed bytes differ).
+          Push-Location dist
+          $version = "${{ steps.version.outputs.version }}"
+          Get-ChildItem -File -Exclude "*-checksums.txt" | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.Name).Hash.ToLower()
+            "$hash  $($_.Name)"
+          } | Set-Content -Encoding ascii "Look-$version-windows-checksums.txt"
+          Pop-Location
+
+      - name: Release security summary
+        shell: bash
+        run: |
+          # Read the job-level env (same value the signing step gated on) so
+          # the summary can't drift from what actually happened.
+          if [[ -n "$WINDOWS_PFX_BASE64" ]]; then
+            echo "### Windows signing: ✅ signed" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Windows signing: ⚠️ unsigned (no WINDOWS_PFX_BASE64 secret)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Users will see Windows SmartScreen on first run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: look-windows-${{ steps.version.outputs.version }}
+          path: dist/
+          retention-days: 14
+
+      - name: Attach to GitHub release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

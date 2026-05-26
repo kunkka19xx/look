@@ -6,4 +6,4 @@ version = "0.1.0"
 
 [dependencies]
 look-indexing = { path = "../indexing" }
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled"] }

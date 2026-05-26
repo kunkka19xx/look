@@ -1,106 +1,115 @@
 use crate::config::RuntimeConfig;
+use crate::index::{FILE_CANDIDATE_ID_PREFIX, FOLDER_CANDIDATE_ID_PREFIX};
+use crate::platform::paths::{candidate_id_path_component, path_is_same_or_child};
+use ignore::WalkBuilder;
 use look_indexing::{Candidate, CandidateKind};
-use std::collections::HashSet;
-use std::fs;
+use std::sync::mpsc;
 
-pub fn discover_local_files_and_folders(
-    config: &RuntimeConfig,
-    seen: &mut HashSet<String>,
-    out: &mut Vec<Candidate>,
-) {
-    let roots = &config.file_scan_roots;
+pub fn discover_local_files_and_folders(config: &RuntimeConfig, tx: mpsc::SyncSender<Candidate>) {
+    let mut roots = config.file_scan_roots.clone();
+    roots.extend(config.file_scan_extra_roots.iter().cloned());
+    roots.sort();
+    roots.dedup();
 
     let mut file_count = 0usize;
-    for root in roots {
-        walk_files(
-            root,
-            config.file_scan_depth,
-            seen,
-            out,
-            &mut file_count,
-            config.file_scan_limit,
-            &config.file_exclude_paths,
-            &config.skip_dir_names,
-        );
+    for root in &roots {
+        walk_files(root, config, &tx, &mut file_count);
+        if file_count >= config.file_scan_limit {
+            break;
+        }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn walk_files(
     path: &str,
-    depth: usize,
-    seen: &mut HashSet<String>,
-    out: &mut Vec<Candidate>,
+    config: &RuntimeConfig,
+    tx: &mpsc::SyncSender<Candidate>,
     file_count: &mut usize,
-    file_limit: usize,
-    file_exclude_paths: &[String],
-    skip_dir_names: &[String],
 ) {
-    if should_exclude_path(path, file_exclude_paths) {
+    if should_exclude_path(path, &config.file_exclude_paths) {
         return;
     }
 
-    if depth == 0 || *file_count >= file_limit {
-        return;
-    }
+    let mut walker = WalkBuilder::new(path);
+    let root_path = path.to_string();
+    let exclude_paths = config.file_exclude_paths.clone();
+    let skip_dir_names = config.skip_dir_names.clone();
+    walker
+        .hidden(false)
+        .git_ignore(false)
+        .git_global(false)
+        .git_exclude(false)
+        .parents(false)
+        .max_depth(Some(config.file_scan_depth))
+        .filter_entry(move |entry| {
+            let path_buf = entry.path();
+            let Some(path_str) = path_buf.to_str() else {
+                return false;
+            };
 
-    let Ok(entries) = fs::read_dir(path) else {
-        return;
-    };
+            if path_str == root_path {
+                return true;
+            }
 
-    for entry in entries.flatten() {
-        if *file_count >= file_limit {
-            return;
+            if should_exclude_path(path_str, &exclude_paths) {
+                return false;
+            }
+
+            let Some(name) = path_buf.file_name().and_then(|value| value.to_str()) else {
+                return false;
+            };
+
+            if name.starts_with('.') {
+                return false;
+            }
+
+            // Name-based skip applies to anything (dir, file, junction).
+            // walkdir's `file_type` doesn't follow Windows reparse points, so
+            // gating on `is_dir()` here lets `Documents\My Music` (a junction
+            // to `~\Music`) leak through and become a duplicate folder result.
+            if name.ends_with(".app") || should_skip_dir(name, &skip_dir_names) {
+                return false;
+            }
+
+            true
+        });
+
+    for entry in walker.build().flatten() {
+        if *file_count >= config.file_scan_limit {
+            break;
         }
 
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        let path_buf = entry.path();
+        let path_buf = entry.into_path();
         let Some(path_str) = path_buf.to_str() else {
             continue;
         };
-        if should_exclude_path(path_str, file_exclude_paths) {
+        if path_str == path {
             continue;
         }
+
         let Some(name) = path_buf.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
-        if name.starts_with('.') {
+        if path_buf.is_dir() {
+            let key = format!(
+                "{FOLDER_CANDIDATE_ID_PREFIX}{}",
+                candidate_id_path_component(path_str)
+            );
+            let mut candidate = Candidate::new(&key, CandidateKind::Folder, name, path_str);
+            candidate.subtitle = Some(CandidateKind::Folder.as_str().into());
+            let _ = tx.send(candidate);
             continue;
         }
 
-        if file_type.is_dir() {
-            if !name.ends_with(".app") {
-                if should_skip_dir(name, skip_dir_names) {
-                    continue;
-                }
-
-                let key = format!("folder:{}", path_str.to_lowercase());
-                if seen.insert(key.clone()) {
-                    let mut c = Candidate::new(&key, CandidateKind::Folder, name, path_str);
-                    c.subtitle = Some("folder".to_string());
-                    out.push(c);
-                }
-                walk_files(
-                    path_str,
-                    depth - 1,
-                    seen,
-                    out,
-                    file_count,
-                    file_limit,
-                    file_exclude_paths,
-                    skip_dir_names,
-                );
-            }
-        } else if file_type.is_file() {
+        if path_buf.is_file() {
             *file_count += 1;
-            let key = format!("file:{}", path_str.to_lowercase());
-            if seen.insert(key.clone()) {
-                let mut c = Candidate::new(&key, CandidateKind::File, name, path_str);
-                c.subtitle = Some("file".to_string());
-                out.push(c);
-            }
+            let key = format!(
+                "{FILE_CANDIDATE_ID_PREFIX}{}",
+                candidate_id_path_component(path_str)
+            );
+            let mut candidate = Candidate::new(&key, CandidateKind::File, name, path_str);
+            candidate.subtitle = Some(CandidateKind::File.as_str().into());
+            let _ = tx.send(candidate);
         }
     }
 }
@@ -111,14 +120,12 @@ fn should_skip_dir(name: &str, skip_dir_names: &[String]) -> bool {
 }
 
 fn should_exclude_path(path: &str, file_exclude_paths: &[String]) -> bool {
-    let normalized_path = path.trim_end_matches('/');
     file_exclude_paths.iter().any(|entry| {
-        let normalized_exclude = entry.trim().trim_end_matches('/');
+        let normalized_exclude = entry.trim();
         if normalized_exclude.is_empty() {
             return false;
         }
-        normalized_path == normalized_exclude
-            || normalized_path.starts_with(&format!("{normalized_exclude}/"))
+        path_is_same_or_child(path, normalized_exclude)
     })
 }
 
@@ -163,5 +170,15 @@ mod tests {
     fn path_prefix_is_boundary_aware() {
         let excludes = vec!["/Users/demo/Down".to_string()];
         assert!(!should_exclude_path("/Users/demo/Downloads", &excludes));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn exclude_path_matching_supports_windows_style_separators() {
+        let excludes = vec!["C:\\Users\\demo\\Downloads".to_string()];
+        assert!(should_exclude_path(
+            "C:/Users/demo/Downloads/cache/a.txt",
+            &excludes
+        ));
     }
 }

@@ -12,5 +12,5 @@ Planned shell responsibilities:
 - global hotkey registration
 - launcher window lifecycle
 - keyboard-first result navigation
-- action dispatch (open, reveal, copy path)
+- action dispatch (open, reveal in Finder, clipboard history copy/delete)
 - settings UI for hotkey/indexed paths/exclusions

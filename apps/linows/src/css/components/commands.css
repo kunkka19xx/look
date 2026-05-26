@@ -1,0 +1,742 @@
+/* Command mode layout */
+
+/* Sidebar */
+.cmd-sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.cmd-row-active {
+  background: var(--selection-fill);
+}
+
+.cmd-row-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-color);
+}
+
+.cmd-row-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cmd-row-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cmd-row-label {
+  font-size: calc(var(--font-size) - 1px);
+  font-weight: 600;
+  color: var(--font-color);
+}
+
+.cmd-row-shortcut {
+  font-weight: 400;
+  color: var(--font-secondary);
+  font-size: calc(var(--font-size) - 2px);
+}
+
+.cmd-row-detail {
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--font-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Divider */
+.cmd-divider {
+  width: 1px;
+  background: var(--divider-color);
+  margin: 2px 0;
+  flex-shrink: 0;
+}
+
+/* Right content area */
+.cmd-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cmd-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cmd-panel[hidden] {
+  display: none !important;
+}
+
+/* Input bar */
+.cmd-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--control-fill);
+  border-radius: 10px;
+  margin: 8px 8px 0;
+}
+
+.cmd-input-bar-icon {
+  color: var(--accent-color);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.cmd-input-bar-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cmd-input-bar input {
+  flex: 1;
+  font-size: var(--font-size);
+  color: var(--font-color);
+  caret-color: var(--accent-color);
+  background: none;
+  border: none;
+  outline: none;
+  font: inherit;
+}
+
+.cmd-input-bar input::placeholder {
+  color: var(--font-muted);
+}
+
+.cmd-pill {
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size) - 1px);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--selection-fill);
+  color: var(--font-color);
+  flex-shrink: 0;
+}
+
+/* Header bar for read-only commands */
+.cmd-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--control-fill);
+  border-radius: 10px;
+  margin: 8px 8px 0;
+}
+
+.cmd-header-bar .cmd-subtitle {
+  flex: 1;
+  font-size: var(--font-size);
+  color: var(--font-secondary);
+}
+
+/* Feedback/output */
+.cmd-content {
+  flex: 1;
+  padding: 10px;
+  margin: 0 8px 8px;
+  overflow-y: auto;
+}
+
+.cmd-feedback {
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size) + 4px);
+  font-weight: 600;
+  color: var(--font-color);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.cmd-feedback-error {
+  color: var(--color-danger);
+}
+
+/* Process list (kill) */
+.cmd-process-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cmd-proc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: var(--font-size);
+}
+
+.cmd-proc-row-active {
+  background: var(--selection-fill);
+}
+
+.cmd-proc-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.cmd-proc-name {
+  flex: 1;
+  font-weight: 600;
+  color: var(--font-color);
+}
+
+.cmd-proc-pid {
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size) - 1px);
+  color: var(--font-secondary);
+}
+
+.cmd-proc-enter {
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+/* Kill confirm bar — pinned to bottom of cmd-main */
+.cmd-confirm-bar[hidden] {
+  display: none;
+}
+
+.cmd-confirm-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  margin-top: auto;
+  border-top: 1px solid var(--divider-color);
+  flex-shrink: 0;
+}
+
+.cmd-confirm-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cmd-confirm-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cmd-confirm-title {
+  font-size: var(--font-size);
+  font-weight: 600;
+  color: var(--font-color);
+}
+
+.cmd-confirm-pid {
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--font-secondary);
+}
+
+.cmd-confirm-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cmd-confirm-yes {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: calc(var(--font-size) - 1px);
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--color-danger, #e55);
+  color: #fff;
+}
+
+.cmd-confirm-no {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: calc(var(--font-size) - 1px);
+  color: var(--font-secondary);
+}
+
+/* System info table */
+.cmd-sys-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.cmd-sys-spacer {
+  height: 14px;
+}
+
+.cmd-sys-row {
+  display: flex;
+  align-items: baseline;
+  padding: 2px 0;
+  font-size: var(--font-size);
+}
+
+.cmd-sys-label {
+  width: 80px;
+  flex-shrink: 0;
+  color: var(--font-secondary);
+  font-size: calc(var(--font-size) - 1px);
+}
+
+.cmd-sys-value {
+  color: var(--font-color);
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+/* Pomo */
+.cmd-pomo-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0 8px;
+  gap: 8px;
+  transition: opacity 0.4s ease-in-out;
+}
+
+.cmd-pomo-session-name {
+  font-size: var(--font-size);
+  font-weight: 600;
+  color: var(--font-color);
+  min-height: 1.2em;
+}
+
+.cmd-pomo-timer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cmd-pomo-timer canvas {
+  width: 180px;
+  height: 180px;
+}
+
+/* Controls */
+.cmd-pomo-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 12px;
+  transition: opacity 0.4s ease-in-out;
+}
+
+.cmd-pomo-btn {
+  font-size: calc(var(--font-size) - 1px);
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  background: var(--accent-color);
+}
+
+.cmd-pomo-btn:hover {
+  filter: brightness(1.1);
+}
+
+.cmd-pomo-btn-toggle.pomo-running {
+  background: var(--color-warning, #e09020);
+}
+
+.cmd-pomo-btn-toggle.pomo-paused {
+  background: var(--color-success, #3a3);
+}
+
+.cmd-pomo-btn-skip {
+  background: var(--control-fill);
+  color: var(--font-color);
+}
+
+.cmd-pomo-btn-reset {
+  background: var(--color-danger, #e55);
+}
+
+.cmd-pomo-btn-settings {
+  background: var(--control-fill);
+  color: var(--font-secondary);
+  padding: 5px 8px;
+  display: flex;
+  align-items: center;
+}
+
+.cmd-pomo-btn-settings svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Settings panel */
+.cmd-pomo-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin: 0 8px;
+  background: var(--control-fill);
+  border-radius: 8px;
+}
+
+.cmd-pomo-settings-label {
+  font-size: calc(var(--font-size) - 1px);
+  color: var(--font-secondary);
+}
+
+.cmd-pomo-style-btn {
+  font-size: calc(var(--font-size) - 1px);
+  padding: 3px 10px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--font-color);
+}
+
+.cmd-pomo-style-btn:hover {
+  background: var(--selection-fill);
+}
+
+.cmd-pomo-style-btn.active {
+  background: var(--accent-color);
+  color: #fff;
+}
+
+/* Music player — pinned to bottom */
+.cmd-pomo-music {
+  padding: 10px;
+  margin: 0 8px 8px;
+  background: var(--control-fill);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.cmd-pomo-music-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: calc(var(--font-size) - 1px);
+}
+
+.cmd-pomo-music-icon {
+  color: var(--accent-color);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.cmd-pomo-music-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cmd-pomo-music-track {
+  flex: 1;
+  min-width: 0;
+  color: var(--font-color);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmd-pomo-music-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.cmd-pomo-music-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--font-secondary);
+  padding: 2px 5px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.cmd-pomo-music-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cmd-pomo-music-btn:hover {
+  color: var(--font-color);
+  background: var(--selection-fill);
+}
+
+.cmd-pomo-music-folder-row {
+  font-size: calc(var(--font-size) - 2px);
+  gap: 6px;
+}
+
+.cmd-pomo-music-folder-path {
+  flex: 1;
+  min-width: 0;
+  color: var(--font-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.cmd-pomo-music-folder-btn {
+  font-size: calc(var(--font-size) - 2px);
+  font-weight: 600;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  background: none;
+  color: var(--accent-color);
+  flex-shrink: 0;
+}
+
+.cmd-pomo-music-folder-btn:hover {
+  text-decoration: underline;
+}
+
+.cmd-pomo-music-clear {
+  color: var(--color-danger, #e55);
+}
+
+/* Session list */
+.cmd-pomo-sessions {
+  margin-top: auto;
+  padding: 4px 12px 0;
+  flex-shrink: 0;
+  transition: opacity 0.4s ease-in-out;
+}
+
+.cmd-pomo-sessions-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: calc(var(--font-size) - 1px);
+  font-weight: 600;
+  color: var(--font-secondary);
+  padding: 4px 0;
+  user-select: none;
+}
+
+.cmd-pomo-sessions-header .cmd-pomo-sessions-actions {
+  margin-left: auto;
+}
+
+.cmd-pomo-chevron {
+  display: flex;
+  align-items: center;
+  transition: transform 0.2s;
+}
+
+.cmd-pomo-chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
+.cmd-pomo-chevron.open {
+  transform: rotate(90deg);
+}
+
+.cmd-pomo-sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.cmd-pomo-session-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: calc(var(--font-size) - 1px);
+}
+
+.cmd-pomo-session-row:hover {
+  background: var(--selection-fill);
+}
+
+.cmd-pomo-session-row.past {
+  opacity: 0.45;
+}
+
+.cmd-pomo-session-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cmd-pomo-session-dot.focus {
+  background: var(--color-danger, #e55);
+}
+
+.cmd-pomo-session-dot.break {
+  background: var(--color-success, #3a3);
+}
+
+.cmd-pomo-session-name-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--font-color);
+  font: inherit;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.cmd-pomo-session-name-input:focus {
+  background: var(--control-fill);
+}
+
+.cmd-pomo-session-dur {
+  width: 36px;
+  text-align: center;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--font-secondary);
+  font: inherit;
+  font-family: var(--font-mono);
+  padding: 2px;
+  border-radius: 3px;
+}
+
+.cmd-pomo-session-dur-wrap {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.cmd-pomo-session-dur-unit {
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--font-muted);
+}
+
+.cmd-pomo-session-dur:focus {
+  background: var(--control-fill);
+}
+
+.cmd-pomo-session-dur::-webkit-inner-spin-button,
+.cmd-pomo-session-dur::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.cmd-pomo-session-type-btn {
+  font-size: calc(var(--font-size) - 2px);
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--divider-color);
+  cursor: pointer;
+  background: none;
+  color: var(--font-secondary);
+}
+
+.cmd-pomo-session-del {
+  font-size: 12px;
+  padding: 0 4px;
+  cursor: pointer;
+  color: var(--font-secondary);
+  background: none;
+  border: none;
+  border-radius: 3px;
+  opacity: 0;
+}
+
+.cmd-pomo-session-row:hover .cmd-pomo-session-del {
+  opacity: 1;
+}
+
+.cmd-pomo-sessions-actions {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.cmd-pomo-add-btn {
+  font-size: calc(var(--font-size) - 1px);
+  padding: 3px 10px;
+  border-radius: 5px;
+  border: 1px dashed var(--divider-color);
+  cursor: pointer;
+  background: none;
+  color: var(--font-secondary);
+}
+
+.cmd-pomo-add-btn:hover {
+  background: var(--selection-fill);
+  color: var(--font-color);
+}
+
+/* Idle fade */
+.cmd-pomo-fade-out {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* In standby, the panel fills the full width and centers the timer */
+.cmd-panel.pomo-standby {
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.cmd-pomo-card.pomo-idle-expanded {
+  padding-top: 0;
+}
+
+.cmd-pomo-card.pomo-idle-expanded canvas {
+  width: 240px;
+  height: 240px;
+}

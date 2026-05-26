@@ -1,0 +1,162 @@
+/* Translation panel */
+.translate-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Placeholder (before Enter) */
+.translate-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.translate-placeholder-icon {
+  font-size: 36px;
+  opacity: 0.4;
+}
+
+.translate-placeholder-text {
+  font-size: var(--font-size);
+  color: var(--font-muted);
+  text-align: center;
+}
+
+/* Source header */
+.translate-source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--divider-color);
+  margin-bottom: 2px;
+}
+
+.translate-source-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.translate-source-text {
+  font-size: calc(var(--font-size) + 2px);
+  font-weight: 700;
+  color: var(--font-color);
+  word-break: break-word;
+}
+
+.translate-web-badge {
+  font-size: calc(var(--font-size) - 3px);
+  font-weight: 700;
+  color: var(--accent-color);
+  letter-spacing: 0.5px;
+}
+
+/* Language sections */
+.translate-section {
+  border-bottom: 1px solid var(--divider-color);
+  padding: 8px 0;
+}
+
+.translate-section:last-of-type {
+  border-bottom: none;
+}
+
+.translate-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.translate-lang-label {
+  font-size: calc(var(--font-size) - 2px);
+  font-weight: 700;
+  color: var(--font-secondary);
+  letter-spacing: 0.5px;
+}
+
+.translate-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.translate-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--font-secondary);
+  opacity: 0.7;
+}
+
+.translate-icon-btn:hover:not(:disabled) {
+  opacity: 1;
+  background: var(--selection-fill);
+}
+
+.translate-icon-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.translate-section-body {
+  font-size: var(--font-size);
+  color: var(--font-muted);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.translate-section-body.translate-success {
+  color: var(--font-color);
+}
+
+.translate-section-body.translate-error {
+  color: var(--color-danger);
+  font-style: italic;
+}
+
+/* Footer: Open in Browser — pinned to bottom */
+.translate-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--divider-color);
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.translate-footer:hover {
+  background: var(--selection-fill);
+}
+
+.translate-footer-icon {
+  color: var(--accent-color);
+  font-size: 14px;
+}
+
+.translate-footer-text {
+  font-size: calc(var(--font-size) - 1px);
+  font-weight: 600;
+  color: var(--accent-color);
+  flex: 1;
+}
+
+.translate-footer-arrow {
+  color: var(--font-muted);
+  font-size: 14px;
+}

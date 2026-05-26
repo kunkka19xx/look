@@ -1,0 +1,117 @@
+/* Result row */
+.result-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px var(--content-padding);
+  min-height: var(--row-height);
+  cursor: default;
+  border-radius: var(--control-radius);
+  margin: 0 6px;
+  transition: background 120ms ease-out;
+}
+
+.result-row + .result-row {
+  border-top: var(--border-thickness) solid var(--divider-color);
+}
+
+.result-row.selected {
+  background: var(--selection-fill);
+}
+
+/* Icon */
+.result-icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-accent-color);
+  background: var(--accent-color);
+}
+
+.result-icon img {
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+/* Inline Lucide SVGs render at their authored 16px, which looks shrunken next
+ * to <img> icons that fill the 32px result-icon box. Scale them up to match
+ * (slightly under 100% so the stroke has breathing room). */
+.result-icon svg {
+  width: 72%;
+  height: 72%;
+}
+
+/* Text content */
+.result-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.result-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--font-color);
+}
+
+.result-path {
+  font-size: calc(var(--font-size) - 2px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--accent-color);
+  opacity: 0.8;
+}
+
+/* Kind badge */
+.result-badge {
+  font-size: calc(var(--font-size) - 4px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--panel-fill);
+}
+
+.result-badge.kind-app { color: var(--accent-color); }
+.result-badge.kind-file { color: var(--color-success); }
+.result-badge.kind-folder { color: var(--color-warning); }
+.result-badge.kind-setting { color: var(--color-info); }
+
+/* Pick checkmark */
+.pick-check {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 11px;
+  color: var(--on-accent-color);
+  background: var(--accent-color);
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--font-muted);
+  font-size: calc(var(--font-size) - 1px);
+}

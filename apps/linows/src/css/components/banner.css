@@ -1,0 +1,26 @@
+/* Banner notifications */
+.banner {
+  padding: 8px var(--content-padding);
+  border-bottom: var(--border-thickness) solid var(--divider-color);
+  flex-shrink: 0;
+  animation: banner-in 200ms ease-out;
+}
+
+.banner-text {
+  font-size: calc(var(--font-size) - 1px);
+  font-weight: 500;
+}
+
+.banner-success { background: rgba(166, 227, 161, 0.12); }
+.banner-success .banner-text { color: var(--color-success); }
+
+.banner-error { background: rgba(243, 139, 168, 0.12); }
+.banner-error .banner-text { color: var(--color-danger); }
+
+.banner-info { background: rgba(137, 180, 250, 0.12); }
+.banner-info .banner-text { color: var(--color-info); }
+
+@keyframes banner-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

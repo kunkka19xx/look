@@ -1,9 +1,19 @@
 use look_indexing::{Candidate, CandidateKind};
 use rusqlite::{Connection, params};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+const SEARCH_ENGINE_DUCKDUCKGO: &str = "duckduckgo";
+const SEARCH_ENGINE_GOOGLE: &str = "google";
+const SEARCH_ENGINE_BING: &str = "bing";
+const MAX_CANDIDATE_PREALLOC: usize = 10_000;
+
+const SETTINGS_KEY_WEB_SEARCH_ENABLED: &str = "web_search_enabled";
+const SETTINGS_KEY_WEB_SEARCH_ENGINE: &str = "web_search_engine";
+const SETTINGS_TRUE: &str = "true";
+const SETTINGS_FALSE: &str = "false";
 
 #[derive(Default)]
 pub struct InMemorySettingsStore {
@@ -57,23 +67,23 @@ pub enum SearchEngine {
 impl SearchEngine {
     pub fn key(self) -> &'static str {
         match self {
-            SearchEngine::DuckDuckGo => "duckduckgo",
-            SearchEngine::Google => "google",
-            SearchEngine::Bing => "bing",
+            SearchEngine::DuckDuckGo => SEARCH_ENGINE_DUCKDUCKGO,
+            SearchEngine::Google => SEARCH_ENGINE_GOOGLE,
+            SearchEngine::Bing => SEARCH_ENGINE_BING,
         }
     }
 
     pub fn from_key(value: &str) -> Self {
         match value {
-            "duckduckgo" => SearchEngine::DuckDuckGo,
-            "google" => SearchEngine::Google,
-            "bing" => SearchEngine::Bing,
+            SEARCH_ENGINE_DUCKDUCKGO => SearchEngine::DuckDuckGo,
+            SEARCH_ENGINE_GOOGLE => SearchEngine::Google,
+            SEARCH_ENGINE_BING => SearchEngine::Bing,
             _ => SearchEngine::Google,
         }
     }
 
     pub fn build_search_url(self, query: &str) -> String {
-        let encoded = percent_encode_query(query);
+        let encoded = form_encode_query(query);
         match self {
             SearchEngine::DuckDuckGo => format!("https://duckduckgo.com/?q={encoded}"),
             SearchEngine::Google => format!("https://www.google.com/search?q={encoded}"),
@@ -108,10 +118,13 @@ impl InMemorySettingsStore {
 
     pub fn search_settings(&self) -> SearchSettings {
         let enabled = self
-            .get("web_search_enabled")
-            .map(|value| value == "true")
+            .get(SETTINGS_KEY_WEB_SEARCH_ENABLED)
+            .map(|value| value == SETTINGS_TRUE)
             .unwrap_or(true);
-        let engine = SearchEngine::from_key(self.get("web_search_engine").unwrap_or("google"));
+        let engine = SearchEngine::from_key(
+            self.get(SETTINGS_KEY_WEB_SEARCH_ENGINE)
+                .unwrap_or(SEARCH_ENGINE_GOOGLE),
+        );
         SearchSettings {
             web_search_enabled: enabled,
             web_search_engine: engine,
@@ -120,14 +133,17 @@ impl InMemorySettingsStore {
 
     pub fn set_search_settings(&mut self, settings: SearchSettings) {
         self.set(
-            "web_search_enabled",
+            SETTINGS_KEY_WEB_SEARCH_ENABLED,
             if settings.web_search_enabled {
-                "true"
+                SETTINGS_TRUE
             } else {
-                "false"
+                SETTINGS_FALSE
             },
         );
-        self.set("web_search_engine", settings.web_search_engine.key());
+        self.set(
+            SETTINGS_KEY_WEB_SEARCH_ENGINE,
+            settings.web_search_engine.key(),
+        );
     }
 }
 
@@ -167,16 +183,20 @@ impl SqliteStore {
             None => stmt.query([])?,
         };
 
-        let mut out = Vec::new();
+        let mut out = match limit {
+            Some(max) => Vec::with_capacity(max.min(MAX_CANDIDATE_PREALLOC)),
+            None => Vec::new(),
+        };
         while let Some(row) = rows.next()? {
             let kind_raw: String = row.get(1)?;
+            let use_count_raw: i64 = row.get(5)?;
             out.push(Candidate {
-                id: row.get(0)?,
+                id: row.get::<_, String>(0)?.into_boxed_str(),
                 kind: parse_kind(&kind_raw)?,
-                title: row.get(2)?,
-                subtitle: row.get(3)?,
-                path: row.get(4)?,
-                use_count: row.get(5)?,
+                title: row.get::<_, String>(2)?.into_boxed_str(),
+                subtitle: row.get::<_, Option<String>>(3)?.map(String::into_boxed_str),
+                path: row.get::<_, String>(4)?.into_boxed_str(),
+                use_count: to_use_count(use_count_raw)?,
                 last_used_at_unix_s: row.get(6)?,
             });
         }
@@ -185,27 +205,38 @@ impl SqliteStore {
     }
 
     pub fn upsert_candidates(&mut self, candidates: &[Candidate]) -> StorageResult<()> {
+        self.upsert_candidates_indexed(candidates, Some(current_unix_s()?))
+    }
+
+    pub fn upsert_candidates_indexed(
+        &mut self,
+        candidates: &[Candidate],
+        indexed_at_unix_s: Option<i64>,
+    ) -> StorageResult<()> {
         let tx = self.conn.transaction()?;
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s, indexed_at_unix_s)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                  ON CONFLICT(id) DO UPDATE SET
                    kind = excluded.kind,
                    title = excluded.title,
                    subtitle = excluded.subtitle,
-                    path = excluded.path",
+                     path = excluded.path,
+                    indexed_at_unix_s = excluded.indexed_at_unix_s",
             )?;
 
             for candidate in candidates {
+                let use_count = from_use_count(candidate.use_count)?;
                 stmt.execute(params![
-                    candidate.id,
+                    candidate.id.as_ref(),
                     kind_key(&candidate.kind),
-                    candidate.title,
-                    candidate.subtitle,
-                    candidate.path,
-                    candidate.use_count,
+                    candidate.title.as_ref(),
+                    candidate.subtitle.as_deref(),
+                    candidate.path.as_ref(),
+                    use_count,
                     candidate.last_used_at_unix_s,
+                    indexed_at_unix_s,
                 ])?;
             }
         }
@@ -220,19 +251,21 @@ impl SqliteStore {
 
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s, indexed_at_unix_s)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             )?;
 
             for candidate in candidates {
+                let use_count = from_use_count(candidate.use_count)?;
                 stmt.execute(params![
-                    candidate.id,
+                    candidate.id.as_ref(),
                     kind_key(&candidate.kind),
-                    candidate.title,
-                    candidate.subtitle,
-                    candidate.path,
-                    candidate.use_count,
+                    candidate.title.as_ref(),
+                    candidate.subtitle.as_deref(),
+                    candidate.path.as_ref(),
+                    use_count,
                     candidate.last_used_at_unix_s,
+                    None::<i64>,
                 ])?;
             }
         }
@@ -243,16 +276,21 @@ impl SqliteStore {
 
     pub fn load_search_settings(&self) -> StorageResult<SearchSettings> {
         let mut settings = SearchSettings::default();
-        let mut stmt = self
-            .conn
-            .prepare("SELECT key, value FROM settings WHERE key IN ('web_search_enabled', 'web_search_engine')")?;
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT key, value FROM settings WHERE key IN ('{}', '{}')",
+            SETTINGS_KEY_WEB_SEARCH_ENABLED, SETTINGS_KEY_WEB_SEARCH_ENGINE
+        ))?;
         let mut rows = stmt.query([])?;
         while let Some(row) = rows.next()? {
             let key: String = row.get(0)?;
             let value: String = row.get(1)?;
             match key.as_str() {
-                "web_search_enabled" => settings.web_search_enabled = value == "true",
-                "web_search_engine" => settings.web_search_engine = SearchEngine::from_key(&value),
+                SETTINGS_KEY_WEB_SEARCH_ENABLED => {
+                    settings.web_search_enabled = value == SETTINGS_TRUE
+                }
+                SETTINGS_KEY_WEB_SEARCH_ENGINE => {
+                    settings.web_search_engine = SearchEngine::from_key(&value)
+                }
                 _ => {}
             }
         }
@@ -266,18 +304,21 @@ impl SqliteStore {
             "INSERT INTO settings(key, value) VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             params![
-                "web_search_enabled",
+                SETTINGS_KEY_WEB_SEARCH_ENABLED,
                 if settings.web_search_enabled {
-                    "true"
+                    SETTINGS_TRUE
                 } else {
-                    "false"
+                    SETTINGS_FALSE
                 }
             ],
         )?;
         tx.execute(
             "INSERT INTO settings(key, value) VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params!["web_search_engine", settings.web_search_engine.key()],
+            params![
+                SETTINGS_KEY_WEB_SEARCH_ENGINE,
+                settings.web_search_engine.key()
+            ],
         )?;
         tx.commit()?;
         Ok(())
@@ -289,16 +330,102 @@ impl SqliteStore {
             .map_err(|err| StorageError::Data(format!("system time error: {err}")))?
             .as_secs() as i64;
 
-        self.conn.execute(
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "INSERT INTO usage_events(candidate_id, action, used_at_unix_s) VALUES (?1, ?2, ?3)",
             params![candidate_id, action, now],
         )?;
-
-        self.conn.execute(
+        tx.execute(
             "UPDATE candidates SET use_count = use_count + 1, last_used_at_unix_s = ?2 WHERE id = ?1",
             params![candidate_id, now],
         )?;
+        tx.commit()?;
         Ok(())
+    }
+
+    pub fn delete_stale_candidates(&mut self, older_than_unix_s: i64) -> StorageResult<usize> {
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "DELETE FROM usage_events
+             WHERE candidate_id IN (
+               SELECT id FROM candidates
+               WHERE indexed_at_unix_s IS NULL OR indexed_at_unix_s < ?1
+             )",
+            params![older_than_unix_s],
+        )?;
+        let removed = tx.execute(
+            "DELETE FROM candidates
+             WHERE indexed_at_unix_s IS NULL OR indexed_at_unix_s < ?1",
+            params![older_than_unix_s],
+        )?;
+        tx.commit()?;
+        Ok(removed)
+    }
+
+    /// Deletes every candidate whose `id` starts with `prefix` and is NOT in `keep_ids`,
+    /// along with its usage_events rows. Returned value is the number of candidate rows
+    /// removed. Used by the UWP seed path (bridge/ffi/src/seed_api.rs) to age out apps
+    /// that disappeared from `shell:AppsFolder` between runs — those rows can't be
+    /// pruned by `delete_stale_candidates` because they're written with
+    /// `indexed_at_unix_s = i64::MAX` to survive the regular index-refresh sweep.
+    pub fn delete_candidates_by_prefix_except(
+        &mut self,
+        prefix: &str,
+        keep_ids: &HashSet<&str>,
+    ) -> StorageResult<usize> {
+        let tx = self.conn.transaction()?;
+        let like_pattern = format!("{}%", prefix.replace('\\', "\\\\").replace('%', "\\%"));
+
+        let stale_ids: Vec<String> = {
+            let mut stmt = tx.prepare("SELECT id FROM candidates WHERE id LIKE ?1 ESCAPE '\\'")?;
+            let rows = stmt.query_map(params![like_pattern], |row| row.get::<_, String>(0))?;
+            let mut out = Vec::new();
+            for row in rows {
+                let id = row?;
+                if !keep_ids.contains(id.as_str()) {
+                    out.push(id);
+                }
+            }
+            out
+        };
+
+        for id in &stale_ids {
+            tx.execute(
+                "DELETE FROM usage_events WHERE candidate_id = ?1",
+                params![id],
+            )?;
+            tx.execute("DELETE FROM candidates WHERE id = ?1", params![id])?;
+        }
+        tx.commit()?;
+        Ok(stale_ids.len())
+    }
+
+    pub fn prune_usage_events_older_than(&mut self, cutoff_unix_s: i64) -> StorageResult<usize> {
+        let removed = self.conn.execute(
+            "DELETE FROM usage_events WHERE used_at_unix_s < ?1",
+            params![cutoff_unix_s],
+        )?;
+        Ok(removed)
+    }
+
+    pub fn prune_usage_events_to_max(&mut self, max_rows: usize) -> StorageResult<usize> {
+        let total: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM usage_events", [], |row| row.get(0))?;
+        let total = total.max(0) as usize;
+        if total <= max_rows {
+            return Ok(0);
+        }
+
+        let overflow = total - max_rows;
+        let removed = self.conn.execute(
+            "DELETE FROM usage_events
+             WHERE id IN (
+               SELECT id FROM usage_events ORDER BY used_at_unix_s ASC, id ASC LIMIT ?1
+             )",
+            params![overflow as i64],
+        )?;
+        Ok(removed)
     }
 
     fn migrate(&self) -> StorageResult<()> {
@@ -318,8 +445,9 @@ impl SqliteStore {
                  subtitle TEXT,
                  path TEXT NOT NULL,
                  use_count INTEGER NOT NULL DEFAULT 0,
-                 last_used_at_unix_s INTEGER
-             );
+                 last_used_at_unix_s INTEGER,
+                 indexed_at_unix_s INTEGER
+              );
 
              CREATE INDEX IF NOT EXISTS idx_candidates_title ON candidates(title);
              CREATE INDEX IF NOT EXISTS idx_candidates_kind ON candidates(kind);
@@ -332,18 +460,83 @@ impl SqliteStore {
                  FOREIGN KEY(candidate_id) REFERENCES candidates(id)
              );
 
-             CREATE TABLE IF NOT EXISTS index_state (
-                 source TEXT PRIMARY KEY,
-                 last_indexed_at_unix_s INTEGER NOT NULL
-             );",
+              CREATE TABLE IF NOT EXISTS index_state (
+                  source TEXT PRIMARY KEY,
+                  last_indexed_at_unix_s INTEGER NOT NULL
+              );",
+        )?;
+
+        ensure_column_exists(&self.conn, "candidates", "indexed_at_unix_s", "INTEGER")?;
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_candidates_indexed_at ON candidates(indexed_at_unix_s)",
+            [],
         )?;
 
         Ok(())
     }
 }
 
-fn percent_encode_query(value: &str) -> String {
-    let mut out = String::new();
+fn ensure_column_exists(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    column_type: &str,
+) -> StorageResult<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        if name == column {
+            return Ok(());
+        }
+    }
+
+    conn.execute(
+        &format!("ALTER TABLE {table} ADD COLUMN {column} {column_type}"),
+        [],
+    )?;
+    Ok(())
+}
+
+fn current_unix_s() -> StorageResult<i64> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| StorageError::Data(format!("system time error: {err}")))
+        .map(|d| d.as_secs() as i64)
+}
+
+fn to_use_count(value: i64) -> StorageResult<u64> {
+    u64::try_from(value)
+        .map_err(|_| StorageError::Data(format!("invalid use_count in sqlite: {value}")))
+}
+
+fn from_use_count(value: u64) -> StorageResult<i64> {
+    i64::try_from(value)
+        .map_err(|_| StorageError::Data(format!("use_count overflow for sqlite: {value}")))
+}
+
+/// RFC 3986 percent-encoding: unreserved characters are passed through,
+/// everything else (including spaces) is encoded as `%XX`.
+const HEX_CHARS: &[u8; 16] = b"0123456789ABCDEF";
+
+pub fn percent_encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push('%');
+            out.push(HEX_CHARS[(byte >> 4) as usize] as char);
+            out.push(HEX_CHARS[(byte & 0x0F) as usize] as char);
+        }
+    }
+    out
+}
+
+/// Form-style encoding for search query parameters: same as [`percent_encode`]
+/// but encodes spaces as `+` instead of `%20`.
+fn form_encode_query(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
             out.push(byte as char);
@@ -351,29 +544,20 @@ fn percent_encode_query(value: &str) -> String {
             out.push('+');
         } else {
             out.push('%');
-            out.push_str(&format!("{byte:02X}"));
+            out.push(HEX_CHARS[(byte >> 4) as usize] as char);
+            out.push(HEX_CHARS[(byte & 0x0F) as usize] as char);
         }
     }
     out
 }
 
 fn kind_key(kind: &CandidateKind) -> &'static str {
-    match kind {
-        CandidateKind::App => "app",
-        CandidateKind::File => "file",
-        CandidateKind::Folder => "folder",
-    }
+    kind.as_str()
 }
 
 fn parse_kind(value: &str) -> StorageResult<CandidateKind> {
-    match value {
-        "app" => Ok(CandidateKind::App),
-        "file" => Ok(CandidateKind::File),
-        "folder" => Ok(CandidateKind::Folder),
-        other => Err(StorageError::Data(format!(
-            "unknown candidate kind: {other}"
-        ))),
-    }
+    CandidateKind::from_key(value)
+        .ok_or_else(|| StorageError::Data(format!("unknown candidate kind: {value}")))
 }
 
 #[cfg(test)]
@@ -382,14 +566,46 @@ mod tests {
 
     fn candidate(id: &str, title: &str, path: &str) -> Candidate {
         Candidate {
-            id: id.to_string(),
+            id: id.into(),
             kind: CandidateKind::App,
-            title: title.to_string(),
-            subtitle: Some("test subtitle".to_string()),
-            path: path.to_string(),
+            title: title.into(),
+            subtitle: Some("test subtitle".into()),
+            path: path.into(),
             use_count: 0,
             last_used_at_unix_s: None,
         }
+    }
+
+    #[test]
+    fn percent_encode_leaves_unreserved_chars_intact() {
+        assert_eq!(percent_encode("hello"), "hello");
+        assert_eq!(percent_encode("a-b_c.d~e"), "a-b_c.d~e");
+        assert_eq!(percent_encode("ABC123"), "ABC123");
+    }
+
+    #[test]
+    fn percent_encode_encodes_spaces_and_special_chars() {
+        assert_eq!(percent_encode("hello world"), "hello%20world");
+        assert_eq!(percent_encode("a&b=c"), "a%26b%3Dc");
+        assert_eq!(percent_encode("foo/bar"), "foo%2Fbar");
+    }
+
+    #[test]
+    fn percent_encode_handles_unicode() {
+        let encoded = percent_encode("café");
+        assert!(encoded.starts_with("caf%"));
+        assert!(!encoded.contains('é'));
+    }
+
+    #[test]
+    fn percent_encode_handles_empty_string() {
+        assert_eq!(percent_encode(""), "");
+    }
+
+    #[test]
+    fn form_encode_query_encodes_spaces_as_plus() {
+        assert_eq!(form_encode_query("hello world"), "hello+world");
+        assert_eq!(form_encode_query("a&b"), "a%26b");
     }
 
     #[test]
@@ -416,9 +632,9 @@ mod tests {
 
         let loaded = store.load_candidates(None).expect("load candidates");
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].id, "app:test");
-        assert_eq!(loaded[0].title, "Test App");
-        assert_eq!(loaded[0].path, "/Applications/Test.app");
+        assert_eq!(loaded[0].id.as_ref(), "app:test");
+        assert_eq!(loaded[0].title.as_ref(), "Test App");
+        assert_eq!(loaded[0].path.as_ref(), "/Applications/Test.app");
         assert_eq!(loaded[0].use_count, 0);
         assert_eq!(loaded[0].last_used_at_unix_s, None);
     }
@@ -441,11 +657,11 @@ mod tests {
         assert!(after_usage[0].last_used_at_unix_s.is_some());
 
         let updated = Candidate {
-            id: "app:test".to_string(),
+            id: "app:test".into(),
             kind: CandidateKind::App,
-            title: "Renamed App".to_string(),
-            subtitle: Some("updated subtitle".to_string()),
-            path: "/Applications/Renamed.app".to_string(),
+            title: "Renamed App".into(),
+            subtitle: Some("updated subtitle".into()),
+            path: "/Applications/Renamed.app".into(),
             use_count: 0,
             last_used_at_unix_s: None,
         };
@@ -456,8 +672,8 @@ mod tests {
 
         let final_rows = store.load_candidates(None).expect("load final candidates");
         assert_eq!(final_rows.len(), 1);
-        assert_eq!(final_rows[0].title, "Renamed App");
-        assert_eq!(final_rows[0].path, "/Applications/Renamed.app");
+        assert_eq!(final_rows[0].title.as_ref(), "Renamed App");
+        assert_eq!(final_rows[0].path.as_ref(), "/Applications/Renamed.app");
         assert_eq!(final_rows[0].use_count, 1);
         assert!(final_rows[0].last_used_at_unix_s.is_some());
 
@@ -466,5 +682,169 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM usage_events", [], |row| row.get(0))
             .expect("count usage events");
         assert_eq!(usage_count, 1);
+    }
+
+    #[test]
+    fn delete_stale_candidates_removes_older_rows() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let old = candidate("app:old", "Old", "/Applications/Old.app");
+        let fresh = candidate("app:fresh", "Fresh", "/Applications/Fresh.app");
+
+        store
+            .upsert_candidates_indexed(&[old], Some(100))
+            .expect("insert old");
+        store
+            .upsert_candidates_indexed(&[fresh], Some(200))
+            .expect("insert fresh");
+
+        let removed = store
+            .delete_stale_candidates(150)
+            .expect("delete stale candidates");
+        assert_eq!(removed, 1);
+
+        let loaded = store.load_candidates(None).expect("load candidates");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id.as_ref(), "app:fresh");
+    }
+
+    #[test]
+    fn delete_stale_candidates_also_cleans_null_indexed_rows() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let old_style = candidate("app:null", "Null Indexed", "/Applications/Null.app");
+        store
+            .upsert_candidates_indexed(&[old_style], None)
+            .expect("insert null-indexed row");
+
+        let removed = store
+            .delete_stale_candidates(1)
+            .expect("delete stale including null");
+        assert_eq!(removed, 1);
+
+        let loaded = store.load_candidates(None).expect("load candidates");
+        assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn delete_candidates_by_prefix_except_removes_vanished_rows_and_preserves_kept() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let kept = candidate(
+            "app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
+            "Terminal",
+            "shell:AppsFolder\\Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
+        );
+        let stale = candidate(
+            "app:uwp:Old.PackageThatGotUninstalled_abc!App",
+            "Old App",
+            "shell:AppsFolder\\Old.PackageThatGotUninstalled_abc!App",
+        );
+        let win32 = candidate(
+            "app:edge_c:/programdata/microsoft/windows/start menu/programs/microsoft edge.lnk",
+            "Microsoft Edge",
+            "C:/ProgramData/Microsoft/Windows/Start Menu/Programs/Microsoft Edge.lnk",
+        );
+
+        store
+            .upsert_candidates_indexed(&[kept, stale.clone(), win32], Some(i64::MAX))
+            .expect("seed candidates");
+
+        // Record usage on the stale row so we can verify usage_events are also removed.
+        store
+            .record_usage_event(stale.id.as_ref(), "open_app")
+            .expect("record stale usage");
+
+        let mut keep_set = HashSet::new();
+        keep_set.insert("app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App");
+
+        let removed = store
+            .delete_candidates_by_prefix_except("app:uwp:", &keep_set)
+            .expect("prune");
+        assert_eq!(removed, 1);
+
+        let loaded = store.load_candidates(None).expect("load");
+        let ids: Vec<&str> = loaded.iter().map(|c| c.id.as_ref()).collect();
+        assert!(ids.contains(&"app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App"));
+        assert!(!ids.contains(&"app:uwp:Old.PackageThatGotUninstalled_abc!App"));
+        // The non-uwp `app:` row must be untouched even though it shares the broader
+        // `app:` prefix — only `app:uwp:` rows are eligible for this sweep.
+        assert!(ids.contains(
+            &"app:edge_c:/programdata/microsoft/windows/start menu/programs/microsoft edge.lnk"
+        ));
+
+        // usage_events for the deleted candidate should also be cleaned up.
+        let usage_count: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM usage_events WHERE candidate_id = ?1",
+                params![stale.id.as_ref()],
+                |row| row.get(0),
+            )
+            .expect("count usage events");
+        assert_eq!(usage_count, 0);
+    }
+
+    #[test]
+    fn delete_candidates_by_prefix_except_is_noop_when_all_kept() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let cand = candidate(
+            "app:uwp:Microsoft.Notepad_8wekyb3d8bbwe!App",
+            "Notepad",
+            "shell:AppsFolder\\Microsoft.Notepad_8wekyb3d8bbwe!App",
+        );
+        store
+            .upsert_candidates_indexed(&[cand], Some(i64::MAX))
+            .expect("seed");
+
+        let mut keep_set = HashSet::new();
+        keep_set.insert("app:uwp:Microsoft.Notepad_8wekyb3d8bbwe!App");
+
+        let removed = store
+            .delete_candidates_by_prefix_except("app:uwp:", &keep_set)
+            .expect("prune");
+        assert_eq!(removed, 0);
+    }
+
+    #[test]
+    fn prune_usage_events_applies_age_and_count_limits() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let first = candidate("app:test", "Test App", "/Applications/Test.app");
+        store.upsert_candidates(&[first]).expect("insert candidate");
+
+        store
+            .conn
+            .execute(
+                "INSERT INTO usage_events(candidate_id, action, used_at_unix_s) VALUES (?1, ?2, ?3)",
+                params!["app:test", "open", 100_i64],
+            )
+            .expect("insert old usage");
+        store
+            .conn
+            .execute(
+                "INSERT INTO usage_events(candidate_id, action, used_at_unix_s) VALUES (?1, ?2, ?3)",
+                params!["app:test", "open", 200_i64],
+            )
+            .expect("insert usage 2");
+        store
+            .conn
+            .execute(
+                "INSERT INTO usage_events(candidate_id, action, used_at_unix_s) VALUES (?1, ?2, ?3)",
+                params!["app:test", "open", 300_i64],
+            )
+            .expect("insert usage 3");
+
+        let removed_old = store
+            .prune_usage_events_older_than(150)
+            .expect("prune old usage");
+        assert_eq!(removed_old, 1);
+
+        let removed_overflow = store
+            .prune_usage_events_to_max(1)
+            .expect("prune usage overflow");
+        assert_eq!(removed_overflow, 1);
+
+        let remaining: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM usage_events", [], |row| row.get(0))
+            .expect("count remaining usage");
+        assert_eq!(remaining, 1);
     }
 }

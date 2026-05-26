@@ -1,0 +1,40 @@
+name: CI Nix Build
+
+on:
+  pull_request:
+    paths:
+      - "core/**"
+      - "apps/linows/src-tauri/**"
+      - "apps/linows/src/**"
+      - "apps/linows/nix/**"
+      - "apps/linows/flake.nix"
+      - "apps/linows/flake.lock"
+  push:
+    branches: [main]
+    paths:
+      - "core/**"
+      - "apps/linows/src-tauri/**"
+      - "apps/linows/src/**"
+      - "apps/linows/nix/**"
+      - "apps/linows/flake.nix"
+      - "apps/linows/flake.lock"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - uses: cachix/cachix-action@v15
+        with:
+          name: look
+
+      - name: Build
+        run: nix build ./apps/linows#default
+
+      - name: Verify version
+        run: ./result/bin/lookapp --version
