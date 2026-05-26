@@ -627,6 +627,13 @@ struct LauncherView: View {
         .onReceive(
             NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
         ) { _ in
+            // User clicked into another app — dismiss the launcher so it
+            // doesn't linger floating above whatever they switched to.
+            // Pass restorePreviousApp: false because the user already
+            // chose the new frontmost app themselves.
+            if launcherWindow()?.isVisible == true {
+                hideLauncherWindow(restorePreviousApp: false)
+            }
             refreshClipboardMonitoringMode()
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in
