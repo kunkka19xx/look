@@ -177,7 +177,13 @@ struct ResultPreviewView: View {
                     return
                 }
                 folderListing = nil
-                folderListing = await FolderListingService.list(path: result.path)
+                let path = result.path
+                let listing = await FolderListingService.list(path: path)
+                // .task(id:) cancels this closure when the result changes,
+                // but the detached worker keeps running — guard against
+                // stale assignment when the user moved on to another folder.
+                if Task.isCancelled { return }
+                folderListing = listing
             }
         }
     }
