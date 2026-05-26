@@ -303,11 +303,17 @@ pub(crate) fn free_json_allocation(ptr: *mut c_char) {
     }
 }
 
+/// SAFETY: `ptr` must point to a valid null-terminated C string or be null.
+/// The caller (Swift/C#/C) is responsible for ensuring the pointer is valid
+/// and properly null-terminated. This is inherently unsafe but required for
+/// the FFI boundary. Null pointers are handled gracefully.
 pub(crate) fn cstr_to_string(ptr: *const c_char) -> String {
     if ptr.is_null() {
         return String::new();
     }
 
+    // Safety: CStr::from_ptr requires a valid pointer to a NUL-terminated C
+    // string. All FFI entry points in lib.rs wrap calls in catch_unwind.
     unsafe { CStr::from_ptr(ptr) }
         .to_string_lossy()
         .into_owned()

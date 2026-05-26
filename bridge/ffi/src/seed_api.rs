@@ -28,9 +28,14 @@ struct UwpAppPayload {
 // `delete_stale_candidates(run_started_at)` sweep (core/engine/src/lib.rs:163) leaves
 // these rows alone — the Rust app discovery stream never produces UWP entries, so
 // without the MAX sentinel they'd be pruned on every index refresh.
+const MAX_SEED_JSON_BYTES: usize = 512 * 1024; // 512 KiB
+
 pub(crate) fn look_seed_uwp_apps_json_impl(json: *const c_char) -> bool {
     let json = cstr_to_string(json);
     if json.trim().is_empty() {
+        return false;
+    }
+    if json.len() > MAX_SEED_JSON_BYTES {
         return false;
     }
 

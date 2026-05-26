@@ -248,12 +248,21 @@ fn config_path() -> Option<PathBuf> {
 }
 
 fn ensure_default_config_file(path: &Path) {
-    if path.exists() {
-        append_missing_default_config_entries(path);
-        return;
-    }
+    // Use OpenOptions with create_new to atomically create the file only if it
+    // doesn't exist yet. This avoids the TOCTOU race between checking existence
+    // and writing (the previous if-exists-else-write pattern).
+    let _ = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .and_then(|mut file| {
+            std::io::Write::write_all(&mut file, default_config_contents().as_bytes())
+        });
 
-    let _ = std::fs::write(path, default_config_contents());
+    // Whether we created the file or it already existed, ensure missing entries
+    // are appended. This is safe because we never overwrite the existing config,
+    // only append new key=value lines that aren't already present.
+    append_missing_default_config_entries(path);
 }
 
 fn append_missing_default_config_entries(path: &Path) {

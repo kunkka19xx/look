@@ -162,7 +162,18 @@ fn is_windows_reserved_name(name: &str) -> bool {
 }
 
 pub(crate) fn path_is_same_or_child(path: &str, parent: &str) -> bool {
-    PathPolicy::current().is_same_or_child(path, parent)
+    // Best-effort canonicalization to resolve symlinks and .. components.
+    // Falls back to string comparison when canonicalization fails (e.g. path
+    // doesn't exist yet, which shouldn't happen for exclusion checks since
+    // paths come from the filesystem walk).
+    let canon_path = std::fs::canonicalize(path)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.to_string());
+    let canon_parent = std::fs::canonicalize(parent)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| parent.to_string());
+
+    PathPolicy::current().is_same_or_child(&canon_path, &canon_parent)
 }
 
 pub(crate) fn candidate_id_path_component(path: &str) -> String {
