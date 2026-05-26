@@ -32,8 +32,6 @@ static LAST_AUTO_HIDDEN_AT: AtomicU64 = AtomicU64::new(0);
 /// focus, and without this guard Focused(false) auto-hide would dismiss Look
 /// while the user is still picking.
 pub static PICKING_FILE: AtomicBool = AtomicBool::new(false);
-/// Tracks monitor count + primary scale so we re-scale when monitors change.
-static LAST_MONITOR_KEY: std::sync::Mutex<(usize, u64)> = std::sync::Mutex::new((0, 0));
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -105,30 +103,12 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         #[cfg(not(target_os = "linux"))]
         let tiling = false;
 
-        // Recenter when multiple monitors (cursor may have moved to a
-        // different screen) or when the monitor setup changed (plug/unplug).
-        let monitors = window.available_monitors().unwrap_or_default();
-        let monitor_key = (
-            monitors.len(),
-            monitors
-                .first()
-                .map(|m| m.scale_factor().to_bits())
-                .unwrap_or(0),
-        );
-        let setup_changed = {
-            let mut last = LAST_MONITOR_KEY.lock().unwrap();
-            let changed = *last != monitor_key;
-            *last = monitor_key;
-            changed
-        };
-        let need_recenter = monitors.len() > 1 || setup_changed;
-
-        if need_recenter && !tiling {
+        if !tiling {
             recenter_window(&window);
         }
         let _ = window.set_always_on_top(true);
         let _ = window.show();
-        if need_recenter && tiling {
+        if tiling {
             recenter_window(&window);
         }
         let _ = window.emit(EVENT_WINDOW_SHOWN, ());
@@ -148,17 +128,6 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
 /// Center and scale a window to fit the current monitor.
 /// Called once at startup. Avoid calling on toggle — see toggle_window.
 fn center_and_scale_window(window: &tauri::WebviewWindow) {
-    // Seed the monitor key so the first toggle doesn't needlessly recenter.
-    if let Ok(monitors) = window.available_monitors() {
-        let key = (
-            monitors.len(),
-            monitors
-                .first()
-                .map(|m| m.scale_factor().to_bits())
-                .unwrap_or(0),
-        );
-        *LAST_MONITOR_KEY.lock().unwrap() = key;
-    }
     let Some(monitor) = monitor_at_cursor(window) else {
         return;
     };
