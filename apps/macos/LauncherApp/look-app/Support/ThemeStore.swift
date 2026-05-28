@@ -848,14 +848,22 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
             return decoded
         }
 
+        // Backfill keys added after the first release so existing UserDefaults blobs
+        // (which won't contain new non-optional Codable properties) still decode
+        // instead of falling back to .default and wiping the user's customizations.
         guard
-            var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-            object["lazyIndexingEnabled"] == nil
+            var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else {
             return .default
         }
 
-        object["lazyIndexingEnabled"] = true
+        if object["lazyIndexingEnabled"] == nil {
+            object["lazyIndexingEnabled"] = true
+        }
+        if object["runningAppsPlacement"] == nil {
+            object["runningAppsPlacement"] = ThemeSettings.default.runningAppsPlacement.rawValue
+        }
+
         guard
             let migratedData = try? JSONSerialization.data(withJSONObject: object),
             let migrated = try? decoder.decode(ThemeSettings.self, from: migratedData)

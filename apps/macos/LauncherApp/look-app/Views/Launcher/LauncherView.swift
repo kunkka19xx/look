@@ -81,12 +81,29 @@ struct LauncherView: View {
 
     @discardableResult
     func activateRunningApp(at index: Int) -> Bool {
-        guard runningAppsPlacement != .none,
-              !isCommandMode,
-              !appUIState.showsThemeSettings,
-              index >= 0,
-              index < runningAppsService.items.count
-        else { return false }
+        let log = RunningAppsLog.logger
+        let itemNames = runningAppsService.items.map(\.name).joined(separator: ", ")
+        log.debug("activateRunningApp(at: \(index, privacy: .public)) — placement=\(runningAppsPlacement.rawValue, privacy: .public) isCommandMode=\(isCommandMode, privacy: .public) showsSettings=\(appUIState.showsThemeSettings, privacy: .public) items=[\(itemNames, privacy: .public)]")
+
+        guard runningAppsPlacement != .none else {
+            log.debug("  -> declined: placement is .none")
+            return false
+        }
+        guard !isCommandMode else {
+            log.debug("  -> declined: in command mode")
+            return false
+        }
+        guard !appUIState.showsThemeSettings else {
+            log.debug("  -> declined: settings open")
+            return false
+        }
+        guard index >= 0, index < runningAppsService.items.count else {
+            log.debug("  -> declined: index \(index, privacy: .public) out of range (count=\(runningAppsService.items.count, privacy: .public))")
+            return false
+        }
+
+        let target = runningAppsService.items[index]
+        log.debug("  -> activating slot \(index, privacy: .public): \(target.name, privacy: .public) (pid=\(target.id, privacy: .public), bundle=\(target.bundleIdentifier ?? "nil", privacy: .public))")
         runningAppsService.activate(index: index)
         hideLauncherWindow(restorePreviousApp: false)
         return true
@@ -508,7 +525,18 @@ struct LauncherView: View {
             NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
         ) { _ in
             if launcherWindow()?.isVisible == true {
-                hideLauncherWindow(restorePreviousApp: false)
+                let log = Logger(subsystem: "noah-code.Look", category: "window-resize")
+                // Dragging the launcher across screens triggers a
+                // programmatic resize, which briefly drops Look's frontmost
+                // status and fires this notification. Ignore the auto-hide
+                // when that just happened — the user is still interacting
+                // with the launcher, not switching to another app.
+                if WindowAutoScale.didProgrammaticallyResizeRecently() {
+                    log.debug("didResignActiveNotification ignored (within \(WindowAutoScale.resizeSettleWindow, privacy: .public)s of a programmatic resize)")
+                } else {
+                    log.debug("didResignActiveNotification -> hideLauncherWindow(restorePreviousApp: false)")
+                    hideLauncherWindow(restorePreviousApp: false)
+                }
             }
             refreshClipboardMonitoringMode()
         }
@@ -567,7 +595,6 @@ struct LauncherView: View {
             copyright: { copyrightOverlay },
             killBar: { killConfirmationOverlay }
         ))
-        .frame(maxWidth: AppConstants.Launcher.Panel.width, maxHeight: AppConstants.Launcher.Panel.height)
         .layoutPriority(1)
     }
 
@@ -743,17 +770,19 @@ struct LauncherView: View {
 
     @ViewBuilder
     private func reservedStrip(axis: Axis) -> some View {
-        if axis == .vertical {
-            Color.clear
-                .frame(width: AppConstants.Launcher.RunningAppsStrip.width)
-                .overlay { stripOverlay(axis: axis) }
-                .allowsHitTesting(shouldShowRunningAppsStrip)
-        } else {
-            Color.clear
-                .frame(height: AppConstants.Launcher.RunningAppsStrip.width)
-                .overlay { stripOverlay(axis: axis) }
-                .allowsHitTesting(shouldShowRunningAppsStrip)
+        ZStack {
+            // Back layer: an empty NSView that returns
+            // mouseDownCanMoveWindow=true so the strip's spacing/padding
+            // becomes a window drag handle. Strip icons sit on top and
+            // keep their tap/hover behavior.
+            WindowDragArea()
+            stripOverlay(axis: axis)
         }
+        .frame(
+            width: axis == .vertical ? AppConstants.Launcher.RunningAppsStrip.width : nil,
+            height: axis == .horizontal ? AppConstants.Launcher.RunningAppsStrip.width : nil
+        )
+        .allowsHitTesting(shouldShowRunningAppsStrip)
     }
 
     @ViewBuilder

@@ -133,15 +133,19 @@ final class KeyboardSelectionMonitor {
                 if let index = mappedIndex {
                     if inCommandMode() {
                         if index <= 5 {
+                            Self.logger.debug("⌘+\(index, privacy: .public) -> command catalog (index \(index, privacy: .public))")
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                                 onSelectCommandByIndex(index)
                             }
                             return nil
                         }
+                        Self.logger.debug("⌘+\(index, privacy: .public) ignored (in command mode, only 1-5 mapped)")
                     } else {
+                        Self.logger.debug("⌘+\(index, privacy: .public) -> running-apps switcher (slot \(index - 1, privacy: .public))")
                         if onActivateRunningApp(index - 1) {
                             return nil
                         }
+                        Self.logger.debug("⌘+\(index, privacy: .public) running-apps activation declined (no slot or placement=.none), falling through")
                     }
                 }
             }

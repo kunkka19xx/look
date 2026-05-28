@@ -1,6 +1,11 @@
 import AppKit
 import Combine
 import Foundation
+import OSLog
+
+enum RunningAppsLog {
+    static let logger = Logger(subsystem: "noah-code.Look", category: "running-apps")
+}
 
 struct RunningAppItem: Identifiable, Equatable {
     let id: pid_t
@@ -52,11 +57,22 @@ final class RunningAppsService: ObservableObject {
     }
 
     func activate(index: Int) {
-        guard index >= 0, index < items.count else { return }
+        let log = RunningAppsLog.logger
+        guard index >= 0, index < items.count else {
+            log.debug("activate(index: \(index, privacy: .public)) — out of range (count=\(self.items.count, privacy: .public))")
+            return
+        }
         let item = items[index]
-        guard let app = NSRunningApplication(processIdentifier: item.id) else { return }
-        guard !app.isTerminated else { return }
-        _ = app.activate()
+        guard let app = NSRunningApplication(processIdentifier: item.id) else {
+            log.debug("activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) — NSRunningApplication lookup returned nil (process gone?)")
+            return
+        }
+        guard !app.isTerminated else {
+            log.debug("activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) — already terminated")
+            return
+        }
+        let result = app.activate()
+        log.debug("activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) — NSRunningApplication.activate() returned \(result, privacy: .public)")
     }
 
     private func attachNotifications() {
