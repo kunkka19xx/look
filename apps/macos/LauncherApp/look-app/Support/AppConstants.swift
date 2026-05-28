@@ -104,6 +104,21 @@ enum AppConstants {
         static let commandResultFontSize: CGFloat = 18
         static let calcMaxMagnitude = 1_000_000_000_000.0
 
+        enum Panel {
+            static let width: CGFloat = 860
+            static let height: CGFloat = 580
+        }
+
+        enum RunningAppsStrip {
+            static let iconSize: CGFloat = 34
+            static let horizontalPadding: CGFloat = 6
+            static let verticalPadding: CGFloat = 10
+            static let panelGap: CGFloat = 8
+            static let maxItems = 9
+
+            static var width: CGFloat { iconSize + horizontalPadding * 2 + 8 }
+        }
+
         static let commandCatalog: [AppCommand] = [
             AppCommand(id: Command.calc, title: "calc (⌘1)", detail: "Evaluate math expression", placeholder: "Type math expression"),
             AppCommand(id: Command.pomo, title: "pomo (⌘2)", detail: "Pomodoro focus timer", placeholder: "Manage focus sessions"),

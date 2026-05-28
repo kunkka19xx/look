@@ -124,9 +124,19 @@ struct look_appApp: App {
     }
 
     var body: some Scene {
-        WindowGroup(id: "main") {
+        let windowWidth: CGFloat = AppConstants.Launcher.Panel.width
+            + AppConstants.Launcher.RunningAppsStrip.width
+            + AppConstants.Launcher.RunningAppsStrip.panelGap
+        let windowHeight: CGFloat = AppConstants.Launcher.Panel.height
+
+        return WindowGroup(id: "main") {
             ContentView()
-                .frame(minWidth: 860, minHeight: 580)
+                .frame(
+                    minWidth: windowWidth,
+                    maxWidth: windowWidth,
+                    minHeight: windowHeight,
+                    maxHeight: windowHeight
+                )
                 .background(WindowConfigurator())
                 .environmentObject(appUIState)
                 .environmentObject(themeStore)

@@ -35,6 +35,7 @@ final class KeyboardSelectionMonitor {
         onToggleHelp: @escaping @MainActor () -> Void,
         onDismissHelpIfVisible: @escaping @MainActor () -> Bool,
         onSelectCommandByIndex: @escaping @MainActor (Int) -> Void,
+        onActivateRunningApp: @escaping @MainActor (Int) -> Bool = { _ in false },
         onConfirmKill: (@MainActor () -> Void)? = nil,
         onCancelKill: (@MainActor () -> Void)? = nil,
         killConfirmationActive: @escaping @MainActor () -> Bool = { false }
@@ -115,7 +116,7 @@ final class KeyboardSelectionMonitor {
             }
 
             if event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control) && !event.modifierFlags.contains(.option) {
-                // macOS digit keyCodes are not contiguous: 1=18, 2=19, 3=20, 4=21, 5=23.
+                // macOS digit keyCodes are not contiguous: 1=18, 2=19, 3=20, 4=21, 5=23, 6=22, 7=26, 8=28, 9=25.
                 let mappedIndex: Int?
                 switch event.keyCode {
                 case 18: mappedIndex = 1
@@ -123,13 +124,25 @@ final class KeyboardSelectionMonitor {
                 case 20: mappedIndex = 3
                 case 21: mappedIndex = 4
                 case 23: mappedIndex = 5
+                case 22: mappedIndex = 6
+                case 26: mappedIndex = 7
+                case 28: mappedIndex = 8
+                case 25: mappedIndex = 9
                 default: mappedIndex = nil
                 }
                 if let index = mappedIndex {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                        onSelectCommandByIndex(index)
+                    if inCommandMode() {
+                        if index <= 5 {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                                onSelectCommandByIndex(index)
+                            }
+                            return nil
+                        }
+                    } else {
+                        if onActivateRunningApp(index - 1) {
+                            return nil
+                        }
                     }
-                    return nil
                 }
             }
 

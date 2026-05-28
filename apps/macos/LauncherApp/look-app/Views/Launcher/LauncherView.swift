@@ -65,6 +65,26 @@ struct LauncherView: View {
     @State var focusRequestToken: UInt64 = 0
     @State var lookupDefinition: LookupDefinition?
     @State var pidToRestoreOnHide: pid_t?
+    @StateObject var runningAppsService = RunningAppsService()
+
+    var shouldShowRunningAppsStrip: Bool {
+        !isCommandMode
+            && !appUIState.showsThemeSettings
+            && !showsHelpScreen
+            && !runningAppsService.items.isEmpty
+    }
+
+    @discardableResult
+    func activateRunningApp(at index: Int) -> Bool {
+        guard !isCommandMode,
+              !appUIState.showsThemeSettings,
+              index >= 0,
+              index < runningAppsService.items.count
+        else { return false }
+        runningAppsService.activate(index: index)
+        hideLauncherWindow(restorePreviousApp: false)
+        return true
+    }
 
     static let postHideActivationDelay: TimeInterval = 0.01
     static let postOpenActivationDelay: TimeInterval = 0.05
@@ -382,6 +402,7 @@ struct LauncherView: View {
         let contentSpacing: CGFloat = isCommandMode ? 8 : 12
         let contentPadding: CGFloat = isCommandMode ? 10 : 14
 
+        HStack(alignment: .center, spacing: AppConstants.Launcher.RunningAppsStrip.panelGap) {
         ZStack {
             themedBackground
 
@@ -551,12 +572,33 @@ struct LauncherView: View {
                 .padding(.bottom, 24)
             }
         }
+        .frame(maxWidth: AppConstants.Launcher.Panel.width, maxHeight: AppConstants.Launcher.Panel.height)
+        .layoutPriority(1)
+
+            Color.clear
+                .frame(width: AppConstants.Launcher.RunningAppsStrip.width)
+                .overlay {
+                    if shouldShowRunningAppsStrip {
+                        RunningAppsStripView(
+                            service: runningAppsService,
+                            themeStore: themeStore,
+                            onActivate: { index in
+                                _ = activateRunningApp(at: index)
+                            }
+                        )
+                        .transition(.opacity)
+                    }
+                }
+                .allowsHitTesting(shouldShowRunningAppsStrip)
+        }
         .ignoresSafeArea()
         .onAppear {
             refreshSearchResults()
             startKeyboardNavigationIfNeeded()
             focusActiveInput()
             refreshClipboardMonitoringMode()
+            runningAppsService.refresh()
+            runningAppsService.startPolling()
         }
         .onDisappear {
             invalidateSearchRequests()
@@ -564,6 +606,7 @@ struct LauncherView: View {
             lookupPreviewTask?.cancel()
             keyboardMonitor.stop()
             clipboardStore.setMonitoringMode(.background)
+            runningAppsService.stopPolling()
         }
         .onChange(of: query) { _, _ in
             if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
@@ -623,6 +666,7 @@ struct LauncherView: View {
         ) { _ in
             focusActiveInput()
             refreshClipboardMonitoringMode()
+            runningAppsService.refresh()
         }
         .onReceive(
             NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
