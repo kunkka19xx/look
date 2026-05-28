@@ -5,7 +5,8 @@ extension ThemeSettingsView {
     var appearanceTab: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 10) {
-                sectionHeaderWithPicker("Theme") {
+                HStack(spacing: 14) {
+                    inlinePickerLabel("Theme")
                     Picker("Theme", selection: $settings.uiTheme) {
                         ForEach(BuiltinThemePreset.allCases) { preset in
                             Text(preset.title).tag(preset)
@@ -17,6 +18,20 @@ extension ThemeSettingsView {
                     .onChange(of: settings.uiTheme) { _, newValue in
                         themeStore.applyBuiltinTheme(newValue)
                     }
+
+                    Spacer().frame(width: 40)
+
+                    inlinePickerLabel("Running Apps")
+                    Picker("Running Apps", selection: $settings.runningAppsPlacement) {
+                        ForEach(RunningAppsPlacement.allCases) { placement in
+                            Text(placement.title).tag(placement)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(width: AppConstants.ThemeUI.pickerWidth)
+
+                    Spacer(minLength: 0)
                 }
 
                 Divider()
@@ -175,6 +190,18 @@ extension ThemeSettingsView {
                 .stroke(.white.opacity(0.12), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
+    }
+
+    @ViewBuilder
+    func inlinePickerLabel(_ title: String) -> some View {
+        HStack(spacing: 6) {
+            Text("▶")
+                .font(.system(size: CGFloat(settings.fontSize - 2)))
+                .foregroundStyle(themeStore.secondaryTextColor())
+            Text(title)
+                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
+                .foregroundStyle(themeStore.secondaryTextColor())
+        }
     }
 
     func placeCaretAtEndOfFontField() {

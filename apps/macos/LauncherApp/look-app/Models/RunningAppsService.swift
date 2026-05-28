@@ -19,26 +19,12 @@ final class RunningAppsService: ObservableObject {
     @Published private(set) var activePID: pid_t?
 
     private let ownPID = ProcessInfo.processInfo.processIdentifier
-    private var timer: Timer?
-    private var observers: [NSObjectProtocol] = []
     // Most-recently-active first. Bundle ID preferred; falls back to pid for apps without one.
     private var recencyOrder: [String] = []
 
     init() {
         attachNotifications()
         refresh()
-    }
-
-    func startPolling(interval: TimeInterval = 2.5) {
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
-        }
-    }
-
-    func stopPolling() {
-        timer?.invalidate()
-        timer = nil
     }
 
     func refresh() {
@@ -76,7 +62,7 @@ final class RunningAppsService: ObservableObject {
     private func attachNotifications() {
         let nc = NSWorkspace.shared.notificationCenter
 
-        let activated = nc.addObserver(
+        nc.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
@@ -92,7 +78,7 @@ final class RunningAppsService: ObservableObject {
             }
         }
 
-        let launched = nc.addObserver(
+        nc.addObserver(
             forName: NSWorkspace.didLaunchApplicationNotification,
             object: nil,
             queue: .main
@@ -100,15 +86,13 @@ final class RunningAppsService: ObservableObject {
             Task { @MainActor in self?.refresh() }
         }
 
-        let terminated = nc.addObserver(
+        nc.addObserver(
             forName: NSWorkspace.didTerminateApplicationNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
-
-        observers = [activated, launched, terminated]
     }
 
     private func recencyKey(for item: RunningAppItem) -> String {

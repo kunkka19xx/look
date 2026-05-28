@@ -233,6 +233,9 @@ final class ThemeStore: ObservableObject {
         // Settings blur multiplier
         upsertConfigLine(&lines, key: "settings_blur_multiplier", value: String(format: "%.2f", settings.settingsBlurMultiplier))
 
+        // Running apps switcher
+        upsertConfigLine(&lines, key: "running_apps_placement", value: settings.runningAppsPlacement.rawValue)
+
         let payload = lines.joined(separator: "\n") + "\n"
         do {
             try payload.write(to: path, atomically: true, encoding: .utf8)
@@ -523,6 +526,10 @@ final class ThemeStore: ObservableObject {
             case "settings_blur_multiplier":
                 if let parsed = parseUnitDouble(value) {
                     settings.settingsBlurMultiplier = parsed
+                }
+            case "running_apps_placement":
+                if let placement = RunningAppsPlacement(rawValue: value.lowercased()) {
+                    settings.runningAppsPlacement = placement
                 }
             default:
                 continue
@@ -818,6 +825,9 @@ ui_border_red=1.0
 ui_border_green=1.0
 ui_border_blue=1.0
 ui_border_opacity=0.12
+
+# Running apps switcher: none, top, right, bottom
+running_apps_placement=right
 
 # Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3
 alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq

@@ -6,35 +6,43 @@ struct RunningAppsStripView: View {
 
     @ObservedObject var service: RunningAppsService
     let themeStore: ThemeStore
+    let axis: Axis
     let onActivate: (Int) -> Void
 
     @State private var hoveredIndex: Int?
 
     var body: some View {
-        VStack(spacing: gap) {
-            ForEach(0..<service.items.count, id: \.self) { index in
-                let item = service.items[index]
-                RunningAppIconItem(
-                    item: item,
-                    shortcutNumber: index + 1,
-                    isActive: service.activePID == item.id,
-                    isHovered: hoveredIndex == index,
-                    themeStore: themeStore,
-                    onTap: { onActivate(index) },
-                    onHoverChange: { hovering in
-                        hoveredIndex = hovering ? index : (hoveredIndex == index ? nil : hoveredIndex)
-                    }
-                )
-            }
+        if axis == .vertical {
+            VStack(spacing: Layout.itemGap) { iconStack }
+                .padding(.vertical, Layout.verticalPadding)
+                .padding(.horizontal, Layout.horizontalPadding)
+                .frame(width: Layout.width)
+                .frame(maxHeight: .infinity)
+        } else {
+            HStack(spacing: Layout.itemGap) { iconStack }
+                .padding(.horizontal, Layout.verticalPadding)
+                .padding(.vertical, Layout.horizontalPadding)
+                .frame(height: Layout.width)
+                .frame(maxWidth: .infinity)
         }
-        .padding(.vertical, Layout.verticalPadding)
-        .padding(.horizontal, Layout.horizontalPadding)
-        .frame(width: Layout.width)
-        .frame(maxHeight: .infinity)
     }
 
-    private var gap: CGFloat {
-        Layout.iconSize < 26 ? 6 : 8
+    @ViewBuilder
+    private var iconStack: some View {
+        ForEach(0..<service.items.count, id: \.self) { index in
+            let item = service.items[index]
+            RunningAppIconItem(
+                item: item,
+                shortcutNumber: index + 1,
+                isActive: service.activePID == item.id,
+                isHovered: hoveredIndex == index,
+                themeStore: themeStore,
+                onTap: { onActivate(index) },
+                onHoverChange: { hovering in
+                    hoveredIndex = hovering ? index : (hoveredIndex == index ? nil : hoveredIndex)
+                }
+            )
+        }
     }
 }
 
