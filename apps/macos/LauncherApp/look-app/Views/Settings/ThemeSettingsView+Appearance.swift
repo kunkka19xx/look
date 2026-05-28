@@ -121,7 +121,7 @@ extension ThemeSettingsView {
                 LabeledSlider(title: "Border Thick", value: $settings.borderThickness, range: 0...6)
                 LabeledSlider(title: "Border Red", value: $settings.borderRed, range: 0...1)
                 LabeledSlider(title: "Border Green", value: $settings.borderGreen, range: 0...1)
-                LabeledSlider(title: "Border Blue", value: $settings.fontBlue, range: 0...1)
+                LabeledSlider(title: "Border Blue", value: $settings.borderBlue, range: 0...1)
                 LabeledSlider(title: "Border Opacity", value: $settings.borderOpacity, range: 0...1)
             }
             .onAppear {
