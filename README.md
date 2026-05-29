@@ -42,7 +42,7 @@ If you want a launcher that stays out of your way and does exactly what you aske
 | Platform        | macOS · Windows · Linux | macOS only | macOS · Win (beta) | macOS only   | Linux only | Linux only |
 | Open source     | ✅ GPLv3                | ❌         | ❌                 | ❌           | ✅         | ✅         |
 | Local-first     | ✅                      | ✅         | ❌ cloud sync      | ✅           | ✅         | ✅         |
-| No Electron)    | ✅                      | ✅         | ❌                 | ✅           | ✅         | ✅         |
+| No Electron     | ✅                      | ✅         | ❌                 | ✅           | ✅         | ✅         |
 | No plugin store | ✅                      | ✅         | ❌                 | ❌ Powerpack | ✅         | ✅         |
 
 > If this is useful, ⭐ star the repo — it's the single biggest signal that helps the project keep shipping.
