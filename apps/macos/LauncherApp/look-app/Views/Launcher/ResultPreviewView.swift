@@ -7,6 +7,19 @@ struct ResultPreviewView: View {
     let result: LauncherResult
     var onDeleteClipboard: (() -> Void)? = nil
 
+    @State private var folderListing: FolderListing?
+
+    private func folderCountText(_ listing: FolderListing) -> String? {
+        var parts: [String] = []
+        if listing.folderCount > 0 {
+            parts.append("\(listing.folderCount) folder\(listing.folderCount == 1 ? "" : "s")")
+        }
+        if listing.fileCount > 0 {
+            parts.append("\(listing.fileCount) file\(listing.fileCount == 1 ? "" : "s")")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
     private static let modifiedDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -103,9 +116,18 @@ struct ResultPreviewView: View {
 
                         HStack(spacing: 6) {
                             KindBadge(kind: result.kind.rawValue)
-                            Text(info.size)
-                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
-                                .foregroundStyle(themeStore.secondaryTextColor())
+                            if result.kind == .folder {
+                                if let listing = folderListing,
+                                   let counts = folderCountText(listing) {
+                                    Text(counts)
+                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                        .foregroundStyle(themeStore.secondaryTextColor())
+                                }
+                            } else {
+                                Text(info.size)
+                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                    .foregroundStyle(themeStore.secondaryTextColor())
+                            }
                         }
                     }
                     Spacer()
@@ -117,6 +139,10 @@ struct ResultPreviewView: View {
                     } else {
                         QuickLookPreviewImage(path: result.path, maxHeight: .infinity)
                     }
+                }
+
+                if result.kind == .folder {
+                    FolderPreviewView(path: result.path, listing: folderListing)
                 }
 
                 if let version = info.version {
@@ -139,12 +165,26 @@ struct ResultPreviewView: View {
                     InfoRow(label: "Modified", value: modified)
                 }
 
-                if result.kind != .file {
+                if result.kind != .file && result.kind != .folder {
                     Spacer()
                 }
             }
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .task(id: result.kind == .folder ? result.path : "") {
+                guard result.kind == .folder else {
+                    folderListing = nil
+                    return
+                }
+                folderListing = nil
+                let path = result.path
+                let listing = await FolderListingService.list(path: path)
+                // .task(id:) cancels this closure when the result changes,
+                // but the detached worker keeps running — guard against
+                // stale assignment when the user moved on to another folder.
+                if Task.isCancelled { return }
+                folderListing = listing
+            }
         }
     }
 

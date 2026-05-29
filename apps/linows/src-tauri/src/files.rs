@@ -254,6 +254,84 @@ pub async fn pick_image(app: tauri::AppHandle) -> Option<String> {
     rx.recv().ok().flatten()
 }
 
+/// List the contents of a directory for folder preview.
+/// Returns items (folders first, then files, alphabetically), capped at 30.
+const LIST_FOLDER_CAP: usize = 30;
+
+#[derive(Serialize)]
+pub struct FolderEntry {
+    pub name: String,
+    pub is_dir: bool,
+    pub size: Option<u64>,
+}
+
+#[derive(Serialize)]
+pub struct FolderListing {
+    pub items: Vec<FolderEntry>,
+    pub file_count: usize,
+    pub folder_count: usize,
+    pub truncated: bool,
+}
+
+#[tauri::command]
+pub fn list_folder(path: String) -> Option<FolderListing> {
+    let entries = std::fs::read_dir(&path).ok()?;
+
+    let mut folders: Vec<String> = Vec::new();
+    let mut files: Vec<String> = Vec::new();
+
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            folders.push(name);
+        } else {
+            files.push(name);
+        }
+    }
+
+    folders.sort_by_key(|a| a.to_ascii_lowercase());
+    files.sort_by_key(|a| a.to_ascii_lowercase());
+
+    let folder_count = folders.len();
+    let file_count = files.len();
+    let total = folder_count + file_count;
+
+    let mut items: Vec<FolderEntry> = Vec::with_capacity(total.min(LIST_FOLDER_CAP));
+    for name in &folders {
+        if items.len() >= LIST_FOLDER_CAP {
+            break;
+        }
+        items.push(FolderEntry {
+            name: name.clone(),
+            is_dir: true,
+            size: None,
+        });
+    }
+    for name in &files {
+        if items.len() >= LIST_FOLDER_CAP {
+            break;
+        }
+        let file_size = std::fs::metadata(std::path::Path::new(&path).join(name))
+            .ok()
+            .map(|m| m.len());
+        items.push(FolderEntry {
+            name: name.clone(),
+            is_dir: false,
+            size: file_size,
+        });
+    }
+
+    Some(FolderListing {
+        truncated: total > LIST_FOLDER_CAP,
+        items,
+        file_count,
+        folder_count,
+    })
+}
+
 const SECS_PER_DAY: u64 = 86400;
 const SECS_PER_HOUR: u64 = 3600;
 const SECS_PER_MINUTE: u64 = 60;

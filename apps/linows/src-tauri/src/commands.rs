@@ -492,7 +492,7 @@ fn try_focus_existing(desktop_path: &str) -> bool {
 /// Wayland focus: dispatch to the active compositor's IPC.
 #[cfg(target_os = "linux")]
 fn try_focus_wayland(desktop_path: &str, candidates: &[&str]) -> bool {
-    if std::env::var("SWAYSOCK").is_ok() {
+    if crate::platform::linux::wm::is_sway() {
         return candidates.iter().any(|id| try_focus_sway(id));
     }
     if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {

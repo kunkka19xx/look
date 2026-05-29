@@ -20,6 +20,7 @@ This document tracks what `look` supports today and what is planned next.
 - open with `Enter`, reveal in Finder with `Cmd+F`
 - copy selected file/folder path/content handle with `Cmd+C`
 - multi-pick files/folders with `Cmd+P` (toggle); picked set is mirrored to the system pasteboard for paste anywhere. `Cmd+Shift+P` clears the set
+- preview pane: text/image file previews, plus folder previews listing the immediate children (folders first, capped at 30, click to open)
 
 ### Clipboard and translation
 

@@ -1,10 +1,17 @@
 //! Linux window-manager / compositor detection.
 
+/// Returns true if Sway is actually running (socket exists).
+pub fn is_sway() -> bool {
+    std::env::var("SWAYSOCK")
+        .map(|s| std::path::Path::new(&s).exists())
+        .unwrap_or(false)
+}
+
 pub(crate) fn detect_compositor() -> Option<String> {
     if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
         return Some("hyprland".into());
     }
-    if std::env::var("SWAYSOCK").is_ok() {
+    if is_sway() {
         return Some("sway".into());
     }
     if std::env::var("I3SOCK").is_ok() {
@@ -34,6 +41,6 @@ pub(crate) fn detect_compositor() -> Option<String> {
 /// hidden/unmapped window is ignored — the WM applies its own placement on map.
 pub fn is_tiling_wm() -> bool {
     std::env::var("I3SOCK").is_ok()
-        || std::env::var("SWAYSOCK").is_ok()
+        || is_sway()
         || std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok()
 }

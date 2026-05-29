@@ -266,6 +266,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     queryInput.parentElement.style.display = '';
     resultsList.hidden = false;
     previewPanel.hidden = false;
+    translatePanel.hide();
     hintBar.querySelector('span').textContent = HINT_MAIN;
     queryInput.value = '';
     search.handleQueryInput('');

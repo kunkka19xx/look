@@ -36,7 +36,7 @@ enum Compositor {
 }
 
 fn detect_compositor() -> Compositor {
-    if std::env::var("SWAYSOCK").is_ok() {
+    if super::wm::is_sway() {
         return Compositor::Sway;
     }
     if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {

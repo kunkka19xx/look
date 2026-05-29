@@ -4,6 +4,11 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 14px;
+  flex-shrink: 0;
+}
+
+.preview-slot {
+  min-height: 0;
 }
 
 .preview-icon {
@@ -71,6 +76,7 @@
   display: flex;
   flex-direction: column;
   gap: 0;
+  flex-shrink: 0;
 }
 
 .preview-info-row {
@@ -102,10 +108,152 @@
 
 .preview-image img {
   max-width: 100%;
-  max-height: 320px;
+  max-height: calc(100vh - 260px);
   border-radius: 6px;
   object-fit: contain;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Code/text file preview */
+.preview-code {
+  margin-top: 12px;
+  background: var(--control-fill);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.preview-code-text {
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size) - 1px);
+  color: var(--font-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  padding: 10px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+  user-select: text;
+  line-height: 1.5;
+}
+
+.preview-code-truncated {
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--font-muted);
+  text-align: center;
+  padding: 4px 0 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Syntax token colors — matches macOS SyntaxHighlighter palette */
+.tk-kw  { color: var(--syntax-keyword, #d17dc9); }
+.tk-str { color: var(--syntax-string, #e8a86b); }
+.tk-cm  { color: var(--syntax-comment, #737873); }
+.tk-num { color: var(--syntax-number, #8cc7d6); }
+
+/* Folder content listing */
+.preview-folder {
+  margin-top: 12px;
+}
+
+.preview-folder-list {
+  background: var(--control-fill);
+  border-radius: 8px;
+  overflow-y: auto;
+  max-height: calc(100vh - 260px);
+  padding: 4px;
+  position: relative;
+}
+
+.preview-folder-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.preview-folder-item:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.preview-folder-item:hover {
+  background: var(--selection-fill);
+}
+
+/* Separator between folders and files */
+.preview-folder-separator {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 4px 8px;
+}
+
+.preview-folder-item-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--font-muted);
+}
+
+.preview-folder-item-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* File extension color hints */
+.preview-folder-item-icon.ext-md,
+.preview-folder-item-icon.ext-txt,
+.preview-folder-item-icon.ext-doc { color: var(--color-info, #6cb6ff); }
+.preview-folder-item-icon.ext-js,
+.preview-folder-item-icon.ext-ts,
+.preview-folder-item-icon.ext-jsx,
+.preview-folder-item-icon.ext-tsx { color: #e8d44d; }
+.preview-folder-item-icon.ext-rs,
+.preview-folder-item-icon.ext-py,
+.preview-folder-item-icon.ext-rb { color: #e57a6b; }
+.preview-folder-item-icon.ext-css,
+.preview-folder-item-icon.ext-scss,
+.preview-folder-item-icon.ext-html { color: #d17dc9; }
+.preview-folder-item-icon.ext-json,
+.preview-folder-item-icon.ext-toml,
+.preview-folder-item-icon.ext-yaml,
+.preview-folder-item-icon.ext-yml { color: #8cc7d6; }
+.preview-folder-item-icon.ext-png,
+.preview-folder-item-icon.ext-jpg,
+.preview-folder-item-icon.ext-jpeg,
+.preview-folder-item-icon.ext-gif,
+.preview-folder-item-icon.ext-svg,
+.preview-folder-item-icon.ext-webp { color: var(--color-success, #7bc77b); }
+
+.preview-folder-item-name {
+  font-size: calc(var(--font-size) - 1px);
+  color: var(--font-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.preview-folder-item-size {
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--font-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Fade-out gradient for truncated lists */
+.preview-folder-list.is-truncated {
+  -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+}
+
+/* Empty folder state */
+.preview-folder-empty {
+  font-size: calc(var(--font-size) - 1px);
+  color: var(--font-muted);
+  text-align: center;
+  padding: 24px 0;
 }
 
 /* Clipboard preview */

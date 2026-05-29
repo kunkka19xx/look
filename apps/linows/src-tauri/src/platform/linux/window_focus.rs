@@ -231,7 +231,7 @@ fn is_focus_follows_mouse_wm() -> bool {
         return true;
     }
     // SWAYSOCK for sway
-    if std::env::var("SWAYSOCK").is_ok() {
+    if super::wm::is_sway() {
         return true;
     }
     false

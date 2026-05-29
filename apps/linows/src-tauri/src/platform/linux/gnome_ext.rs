@@ -5,11 +5,30 @@
 //! windows — the same mechanism GNOME's own Activities search uses.
 
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 const EXT_UUID: &str = "look-integration@lookapp";
 const DBUS_NAME: &str = "com.look.ShellIntegration";
 const DBUS_PATH: &str = "/com/look/ShellIntegration";
 const DBUS_IFACE: &str = "com.look.ShellIntegration";
+
+/// Shared tokio runtime for D-Bus calls — avoids creating a new one each call.
+fn dbus_runtime() -> &'static tokio::runtime::Runtime {
+    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to create D-Bus tokio runtime")
+    })
+}
+
+/// Cached D-Bus session connection.
+fn dbus_conn() -> Option<&'static zbus::Connection> {
+    static CONN: OnceLock<Option<zbus::Connection>> = OnceLock::new();
+    CONN.get_or_init(|| dbus_runtime().block_on(async { zbus::Connection::session().await.ok() }))
+        .as_ref()
+}
 
 const METADATA_JSON: &str = include_str!("../../gnome-shell-extension/metadata.json");
 const EXTENSION_JS: &str = include_str!("../../gnome-shell-extension/extension.js");
@@ -100,38 +119,56 @@ fn build_extension_zip(path: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Try to focus an app by its desktop file ID using the GNOME Shell extension.
-/// Returns true if the app was focused (had existing windows).
-///
-/// Uses zbus to call directly from Look's process (which has focus),
-/// so GNOME trusts the activation request without showing a "ready" popup.
-pub fn try_focus_app(desktop_id: &str) -> bool {
-    // Build the tokio runtime inline — this is called from a sync context
-    // and needs to complete quickly.
-    let id = desktop_id.to_string();
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build();
-    let Ok(rt) = rt else { return false };
-
-    rt.block_on(async {
-        let conn = zbus::Connection::session().await.ok()?;
-        let reply: (bool,) = conn
+/// Get the cursor position via the GNOME Shell extension's GetPointer D-Bus method.
+/// Works on Wayland where Tauri's cursor_position() is unavailable.
+pub fn get_pointer() -> Option<(i32, i32)> {
+    let conn = dbus_conn()?;
+    dbus_runtime().block_on(async {
+        let reply: (i32, i32) = conn
             .call_method(
                 Some(DBUS_NAME),
                 DBUS_PATH,
                 Some(DBUS_IFACE),
-                "FocusApp",
-                &id,
+                "GetPointer",
+                &(),
             )
             .await
             .ok()?
             .body()
             .deserialize()
             .ok()?;
-        Some(reply.0)
+        Some(reply)
     })
-    .unwrap_or(false)
+}
+
+/// Try to focus an app by its desktop file ID using the GNOME Shell extension.
+/// Returns true if the app was focused (had existing windows).
+///
+/// Uses zbus to call directly from Look's process (which has focus),
+/// so GNOME trusts the activation request without showing a "ready" popup.
+pub fn try_focus_app(desktop_id: &str) -> bool {
+    let Some(conn) = dbus_conn() else {
+        return false;
+    };
+    let id = desktop_id.to_string();
+    dbus_runtime()
+        .block_on(async {
+            let reply: (bool,) = conn
+                .call_method(
+                    Some(DBUS_NAME),
+                    DBUS_PATH,
+                    Some(DBUS_IFACE),
+                    "FocusApp",
+                    &id,
+                )
+                .await
+                .ok()?
+                .body()
+                .deserialize()
+                .ok()?;
+            Some(reply.0)
+        })
+        .unwrap_or(false)
 }
 
 fn extension_dir() -> PathBuf {

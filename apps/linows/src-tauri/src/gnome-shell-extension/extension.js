@@ -9,6 +9,10 @@ const IFACE = `
       <arg type="s" direction="in" name="desktop_id"/>
       <arg type="b" direction="out" name="success"/>
     </method>
+    <method name="GetPointer">
+      <arg type="i" direction="out" name="x"/>
+      <arg type="i" direction="out" name="y"/>
+    </method>
   </interface>
 </node>`;
 
@@ -33,6 +37,11 @@ export default class LookIntegration extends Extension {
             Gio.bus_unown_name(this._owner);
             this._owner = null;
         }
+    }
+
+    GetPointer() {
+        const [x, y] = global.get_pointer();
+        return [x, y];
     }
 
     FocusApp(desktop_id) {

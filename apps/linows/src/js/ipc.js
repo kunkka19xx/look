@@ -180,3 +180,11 @@ export async function setAutostart(enabled) {
 export async function getAutostart() {
   return invoke('get_autostart');
 }
+
+export async function highlightFile(path) {
+  return invoke('highlight_file_cmd', { path });
+}
+
+export async function listFolder(path) {
+  return invoke('list_folder', { path });
+}
