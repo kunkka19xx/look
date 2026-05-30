@@ -3,28 +3,8 @@ name: CI
 on:
   push:
     branches: [main, dev]
-    # Skip the whole workflow for pushes that touch ONLY these files —
-    # nothing in the build/test matrix can be affected by them. Per-job
-    # path filters below still gate the platform-specific builds for
-    # the remaining cases.
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'blogs/**'
-      - 'assets/**'
-      - 'LICENSE'
-      - '.gitignore'
-      - '.editorconfig'
   pull_request:
     branches: [main, dev]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'blogs/**'
-      - 'assets/**'
-      - 'LICENSE'
-      - '.gitignore'
-      - '.editorconfig'
 
 # Cancel any prior in-progress run for the same branch / PR when a new
 # push comes in. Stops the slow linows build from keeping a stale
