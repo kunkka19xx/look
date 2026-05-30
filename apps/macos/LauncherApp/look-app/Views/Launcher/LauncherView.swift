@@ -104,9 +104,18 @@ struct LauncherView: View {
 
         let target = runningAppsService.items[index]
         log.debug("  -> activating slot \(index, privacy: .public): \(target.name, privacy: .public) (pid=\(target.id, privacy: .public), bundle=\(target.bundleIdentifier ?? "nil", privacy: .public))")
-        runningAppsService.activate(index: index)
-        hideLauncherWindow(restorePreviousApp: false)
-        return true
+        let activated = runningAppsService.activate(index: index)
+        // Only hide the launcher if the target actually came forward.
+        // If activate failed (process gone, denied, etc.), leave the
+        // launcher visible so the user can see something went wrong
+        // and pick a different slot instead of getting a confusing
+        // "flash" with no app switch.
+        if activated {
+            hideLauncherWindow(restorePreviousApp: false)
+        } else {
+            log.debug("  -> activation returned false, keeping launcher visible")
+        }
+        return activated
     }
 
     static let postHideActivationDelay: TimeInterval = 0.01
