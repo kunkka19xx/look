@@ -82,9 +82,11 @@ struct LauncherView: View {
     /// Activates the strip icon assigned to Cmd+`key`. The key is mapped
     /// to a visual position via the ergonomic layout in
     /// `AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey:total:)`.
-    /// Returns true when the target app actually came forward; the
-    /// launcher only auto-hides on success so a silent failure (process
-    /// gone, denied) leaves the strip visible for another attempt.
+    /// On success the launcher is *not* hidden here — instead we let
+    /// `didResignActiveNotification` close it, which only fires after
+    /// macOS has handed key-window status to the target app. Hiding
+    /// synchronously raced that handoff and left the keyboard focused
+    /// nowhere visible.
     @discardableResult
     func activateRunningApp(forKey key: Int) -> Bool {
         let log = RunningAppsLog.logger
@@ -102,9 +104,8 @@ struct LauncherView: View {
         let target = runningAppsService.items[position]
         let activated = runningAppsService.activate(index: position)
         log.debug("⌘+\(key, privacy: .public) -> position \(position, privacy: .public) \(target.name, privacy: .public) (activated=\(activated, privacy: .public))")
-        if activated {
-            hideLauncherWindow(restorePreviousApp: false)
-        }
+        // If activate failed (process gone, denied, etc.) didResignActive
+        // won't fire and the launcher stays visible for another attempt.
         return activated
     }
 
