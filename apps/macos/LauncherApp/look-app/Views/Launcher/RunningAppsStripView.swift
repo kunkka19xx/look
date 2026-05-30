@@ -29,15 +29,17 @@ struct RunningAppsStripView: View {
 
     @ViewBuilder
     private var iconStack: some View {
-        ForEach(0..<service.items.count, id: \.self) { index in
+        let total = service.items.count
+        ForEach(0..<total, id: \.self) { index in
             let item = service.items[index]
+            let shortcutNumber = Layout.ergonomicKey(forVisualPosition: index, total: total)
             RunningAppIconItem(
                 item: item,
-                shortcutNumber: index + 1,
+                shortcutNumber: shortcutNumber,
                 isActive: service.activePID == item.id,
                 isHovered: hoveredIndex == index,
                 themeStore: themeStore,
-                onTap: { onActivate(index) },
+                onTap: { onActivate(shortcutNumber) },
                 onHoverChange: { hovering in
                     hoveredIndex = hovering ? index : (hoveredIndex == index ? nil : hoveredIndex)
                 }

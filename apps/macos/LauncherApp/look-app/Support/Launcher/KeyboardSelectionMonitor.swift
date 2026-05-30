@@ -117,35 +117,35 @@ final class KeyboardSelectionMonitor {
 
             if event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control) && !event.modifierFlags.contains(.option) {
                 // macOS digit keyCodes are not contiguous: 1=18, 2=19, 3=20, 4=21, 5=23, 6=22, 7=26, 8=28, 9=25.
-                let mappedIndex: Int?
+                let cmdNumberKey: Int?
                 switch event.keyCode {
-                case 18: mappedIndex = 1
-                case 19: mappedIndex = 2
-                case 20: mappedIndex = 3
-                case 21: mappedIndex = 4
-                case 23: mappedIndex = 5
-                case 22: mappedIndex = 6
-                case 26: mappedIndex = 7
-                case 28: mappedIndex = 8
-                case 25: mappedIndex = 9
-                default: mappedIndex = nil
+                case 18: cmdNumberKey = 1
+                case 19: cmdNumberKey = 2
+                case 20: cmdNumberKey = 3
+                case 21: cmdNumberKey = 4
+                case 23: cmdNumberKey = 5
+                case 22: cmdNumberKey = 6
+                case 26: cmdNumberKey = 7
+                case 28: cmdNumberKey = 8
+                case 25: cmdNumberKey = 9
+                default: cmdNumberKey = nil
                 }
-                if let index = mappedIndex {
+                if let key = cmdNumberKey {
                     if inCommandMode() {
-                        if index <= 5 {
-                            Self.logger.debug("⌘+\(index, privacy: .public) -> command catalog (index \(index, privacy: .public))")
+                        if key <= 5 {
+                            Self.logger.debug("⌘+\(key, privacy: .public) -> command catalog")
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                                onSelectCommandByIndex(index)
+                                onSelectCommandByIndex(key)
                             }
                             return nil
                         }
-                        Self.logger.debug("⌘+\(index, privacy: .public) ignored (in command mode, only 1-5 mapped)")
+                        Self.logger.debug("⌘+\(key, privacy: .public) ignored (command mode only maps 1-5)")
                     } else {
-                        Self.logger.debug("⌘+\(index, privacy: .public) -> running-apps switcher (slot \(index - 1, privacy: .public))")
-                        if onActivateRunningApp(index - 1) {
+                        Self.logger.debug("⌘+\(key, privacy: .public) -> running-apps switcher")
+                        if onActivateRunningApp(key) {
                             return nil
                         }
-                        Self.logger.debug("⌘+\(index, privacy: .public) running-apps activation declined (no slot or placement=.none), falling through")
+                        Self.logger.debug("⌘+\(key, privacy: .public) running-apps activation declined, falling through")
                     }
                 }
             }

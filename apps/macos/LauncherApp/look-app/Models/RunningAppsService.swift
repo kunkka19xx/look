@@ -24,8 +24,6 @@ final class RunningAppsService: ObservableObject {
     @Published private(set) var activePID: pid_t?
 
     private let ownPID = ProcessInfo.processInfo.processIdentifier
-    // Most-recently-active first. Bundle ID preferred; falls back to pid for apps without one.
-    private var recencyOrder: [String] = []
 
     init() {
         attachNotifications()
@@ -47,12 +45,16 @@ final class RunningAppsService: ObservableObject {
             )
         }
 
-        let sorted = sortByRecency(snapshot)
+        // Alphabetical, stable. Reordering on activation was forcing the
+        // user to re-scan the strip after every switch — keep positions
+        // fixed so the Cmd+N key for "Discord" stays the same.
+        let sorted = snapshot.sorted { lhs, rhs in
+            lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
         items = Array(sorted.prefix(AppConstants.Launcher.RunningAppsStrip.maxItems))
 
         if let frontmost, frontmost != ownPID {
             activePID = frontmost
-            promote(pid: frontmost)
         }
     }
 
@@ -125,51 +127,20 @@ final class RunningAppsService: ObservableObject {
             let activatedPID = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
             Task { @MainActor in
                 guard let self else { return }
-                if let pid = activatedPID {
-                    self.promote(pid: pid)
-                    self.activePID = pid
-                }
+                // Track which app is frontmost (for the accent ring) but
+                // do NOT reorder items — positions are kept stable.
+                if let pid = activatedPID { self.activePID = pid }
                 self.refresh()
             }
         }
 
-        nc.addObserver(
-            forName: NSWorkspace.didLaunchApplicationNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
-        }
-
-        nc.addObserver(
-            forName: NSWorkspace.didTerminateApplicationNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
-        }
-    }
-
-    private func recencyKey(for item: RunningAppItem) -> String {
-        item.bundleIdentifier ?? "pid:\(item.id)"
-    }
-
-    private func promote(pid: pid_t) {
-        guard let app = NSRunningApplication(processIdentifier: pid) else { return }
-        let key = app.bundleIdentifier ?? "pid:\(pid)"
-        recencyOrder.removeAll { $0 == key }
-        recencyOrder.insert(key, at: 0)
-    }
-
-    private func sortByRecency(_ items: [RunningAppItem]) -> [RunningAppItem] {
-        let order = recencyOrder
-        return items.sorted { lhs, rhs in
-            let lk = recencyKey(for: lhs)
-            let rk = recencyKey(for: rhs)
-            let li = order.firstIndex(of: lk) ?? Int.max
-            let ri = order.firstIndex(of: rk) ?? Int.max
-            if li != ri { return li < ri }
-            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        for name in [
+            NSWorkspace.didLaunchApplicationNotification,
+            NSWorkspace.didTerminateApplicationNotification,
+        ] {
+            nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.refresh() }
+            }
         }
     }
 }

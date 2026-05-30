@@ -79,41 +79,31 @@ struct LauncherView: View {
             && !runningAppsService.items.isEmpty
     }
 
+    /// Activates the strip icon assigned to Cmd+`key`. The key is mapped
+    /// to a visual position via the ergonomic layout in
+    /// `AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey:total:)`.
+    /// Returns true when the target app actually came forward; the
+    /// launcher only auto-hides on success so a silent failure (process
+    /// gone, denied) leaves the strip visible for another attempt.
     @discardableResult
-    func activateRunningApp(at index: Int) -> Bool {
+    func activateRunningApp(forKey key: Int) -> Bool {
         let log = RunningAppsLog.logger
-        let itemNames = runningAppsService.items.map(\.name).joined(separator: ", ")
-        log.debug("activateRunningApp(at: \(index, privacy: .public)) — placement=\(runningAppsPlacement.rawValue, privacy: .public) isCommandMode=\(isCommandMode, privacy: .public) showsSettings=\(appUIState.showsThemeSettings, privacy: .public) items=[\(itemNames, privacy: .public)]")
+        let total = runningAppsService.items.count
 
-        guard runningAppsPlacement != .none else {
-            log.debug("  -> declined: placement is .none")
+        if runningAppsPlacement == .none || isCommandMode || appUIState.showsThemeSettings {
+            log.debug("⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public))")
             return false
         }
-        guard !isCommandMode else {
-            log.debug("  -> declined: in command mode")
-            return false
-        }
-        guard !appUIState.showsThemeSettings else {
-            log.debug("  -> declined: settings open")
-            return false
-        }
-        guard index >= 0, index < runningAppsService.items.count else {
-            log.debug("  -> declined: index \(index, privacy: .public) out of range (count=\(runningAppsService.items.count, privacy: .public))")
+        guard let position = AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey: key, total: total) else {
+            log.debug("⌘+\(key, privacy: .public) declined (no slot for this key, items=\(total, privacy: .public))")
             return false
         }
 
-        let target = runningAppsService.items[index]
-        log.debug("  -> activating slot \(index, privacy: .public): \(target.name, privacy: .public) (pid=\(target.id, privacy: .public), bundle=\(target.bundleIdentifier ?? "nil", privacy: .public))")
-        let activated = runningAppsService.activate(index: index)
-        // Only hide the launcher if the target actually came forward.
-        // If activate failed (process gone, denied, etc.), leave the
-        // launcher visible so the user can see something went wrong
-        // and pick a different slot instead of getting a confusing
-        // "flash" with no app switch.
+        let target = runningAppsService.items[position]
+        let activated = runningAppsService.activate(index: position)
+        log.debug("⌘+\(key, privacy: .public) -> position \(position, privacy: .public) \(target.name, privacy: .public) (activated=\(activated, privacy: .public))")
         if activated {
             hideLauncherWindow(restorePreviousApp: false)
-        } else {
-            log.debug("  -> activation returned false, keeping launcher visible")
         }
         return activated
     }
@@ -801,8 +791,8 @@ struct LauncherView: View {
                 service: runningAppsService,
                 themeStore: themeStore,
                 axis: axis,
-                onActivate: { index in
-                    _ = activateRunningApp(at: index)
+                onActivate: { key in
+                    _ = activateRunningApp(forKey: key)
                 }
             )
             .transition(.opacity)
