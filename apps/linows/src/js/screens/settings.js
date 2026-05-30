@@ -17,6 +17,47 @@ const BLUR_PRESETS = {
   soft: { ui_blur_opacity: 0.60 },
 };
 
+// UI zoom — mirrors macOS ThemeStore.zoomIn/zoomOut/resetZoom
+// (apps/macos/.../Support/ThemeStore.swift:270). The effective `--font-size`
+// is `baseFontSize * uiScale`; baseFontSize tracks the slider value, uiScale
+// is the user's Ctrl+= / Ctrl+- / Ctrl+0 multiplier. Persisted in localStorage
+// (not .look.config) so the config file stays scoped to declarative settings.
+const UI_SCALE_MIN = 0.7;
+const UI_SCALE_MAX = 1.8;
+const UI_SCALE_STEP = 0.1;
+const UI_SCALE_KEY = 'look.uiScale';
+let baseFontSizePx = 14;
+let uiScale = clampUiScale(parseFloat(localStorage.getItem(UI_SCALE_KEY)) || 1);
+
+function clampUiScale(v) {
+  return Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Math.round(v * 10) / 10));
+}
+
+function applyFontSize() {
+  const px = Math.round(baseFontSizePx * uiScale);
+  document.documentElement.style.setProperty('--font-size', px + 'px');
+}
+
+applyFontSize();
+
+export function zoomIn() {
+  uiScale = clampUiScale(uiScale + UI_SCALE_STEP);
+  localStorage.setItem(UI_SCALE_KEY, String(uiScale));
+  applyFontSize();
+}
+
+export function zoomOut() {
+  uiScale = clampUiScale(uiScale - UI_SCALE_STEP);
+  localStorage.setItem(UI_SCALE_KEY, String(uiScale));
+  applyFontSize();
+}
+
+export function resetZoom() {
+  uiScale = 1;
+  localStorage.setItem(UI_SCALE_KEY, String(uiScale));
+  applyFontSize();
+}
+
 const CSS_MAP = {
   ui_tint_red: applytint,
   ui_tint_green: applytint,
@@ -31,7 +72,8 @@ const CSS_MAP = {
   ui_blur_opacity: applyBlurOpacity,
   settings_blur_multiplier: applyBlurOpacity,
   ui_font_size: (v) => {
-    document.documentElement.style.setProperty('--font-size', Math.round(parseFloat(v)) + 'px');
+    baseFontSizePx = Math.round(parseFloat(v));
+    applyFontSize();
   },
   ui_font_red: applyFontColor,
   ui_font_green: applyFontColor,
@@ -628,7 +670,7 @@ function updateSettingsHint() {
   } else if (activeTab === 'shortcuts') {
     hint.textContent = 'Tips: t"word for web EN/VI/JA translation \u2022 /kill to force quit apps';
   } else {
-    hint.textContent = 'Tab switch tabs \u2022 Esc back';
+    hint.innerHTML = 'Tab: Switch tabs <span class="hint-sep">\u2022</span> Esc: Back';
   }
 }
 

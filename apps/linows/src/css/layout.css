@@ -144,6 +144,15 @@ html[data-os="windows"] .launcher-window {
   color: var(--font-muted);
 }
 
+.hint-bar .hint-sep {
+  color: var(--accent-color);
+  font-weight: 700;
+  font-size: 1.25em;
+  line-height: 1;
+  vertical-align: middle;
+  margin: 0 3px;
+}
+
 .hint-bar-copy {
   font-size: calc(var(--font-size) - 3px);
   color: var(--font-muted);

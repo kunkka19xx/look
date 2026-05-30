@@ -16,9 +16,20 @@ import {
   copyToClipboard, deleteClipboardEntry, isDevBuild,
 } from './ipc.js';
 
-const HINT_MAIN = 'Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide';
-const HINT_TRANSLATE = 'Enter translate \u2022 Esc clear';
-const HINT_CLIPBOARD = 'Enter copy \u2022 Delete remove \u2022 Esc clear';
+// Item count and structure mirror the macOS app's `LauncherView.hintItems`
+// (apps/macos/.../LauncherView.swift:302) so both platforms surface the same
+// shortcuts in the same modes. Style stays per-platform: linows uses the
+// colon + bold-bullet format, macOS keeps its space-separated form.
+const HINT_MAIN = 'Enter: Open \u2022 Ctrl+F: Reveal \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+const HINT_TRANSLATE = 'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Delete: Remove clip \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+
+// Hint constants are static, authored in code \u2014 safe to set as innerHTML so
+// each bullet renders through `.hint-sep` (accent color, bold) for clearer
+// visual separation between key/action pairs.
+function setHint(el, text) {
+  el.innerHTML = text.split(' \u2022 ').join(' <span class="hint-sep">\u2022</span> ');
+}
 const BANNER_DURATION_SHORT = 1.0;
 const BANNER_DURATION_MEDIUM = 1.2;
 const BANNER_DURATION_LONG = 1.5;
@@ -38,7 +49,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Hint bar — always at bottom, shared by all screens
   app.insertAdjacentHTML('beforeend',
-    `<div class="hint-bar" id="hint-bar"><span>${HINT_MAIN}</span><span class="hint-bar-copy">\u00A9 2026 by <a class="hint-bar-link" href="#">Kunkka</a></span></div>`);
+    `<div class="hint-bar" id="hint-bar"><span></span><span class="hint-bar-copy">\u00A9 2026 by <a class="hint-bar-link" href="#">Kunkka</a></span></div>`);
 
   // Load command panels into cmd-main
   const cmdMain = document.getElementById('cmd-main');
@@ -55,7 +66,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const resultsList = document.getElementById('results-list');
   const previewPanel = document.getElementById('preview-panel');
   const hintBar = document.getElementById('hint-bar');
+  const hintMessage = hintBar.querySelector('span');
   const contentArea = document.getElementById('search-content');
+  setHint(hintMessage, HINT_MAIN);
 
   hintBar.querySelector('.hint-bar-link').addEventListener('click', (e) => {
     e.preventDefault();
@@ -83,7 +96,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     queryInput.value = '';
     search.handleQueryInput('');
     queryInput.focus();
-    hintBar.querySelector('span').textContent = HINT_MAIN;
+    setHint(hintMessage, HINT_MAIN);
   });
   settings.restoreOnStartup();
 
@@ -168,18 +181,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (tryCommandPrefix(value)) return;
 
     search.handleQueryInput(value);
-    const h = hintBar.querySelector('span');
     if (search.isTranslateMode()) {
-      h.textContent = HINT_TRANSLATE;
+      setHint(hintMessage, HINT_TRANSLATE);
       resultsList.hidden = true;
       previewPanel.hidden = true;
       if (!translatePanel.isActive()) translatePanel.showPlaceholder();
     } else if (search.isClipboardMode()) {
-      h.textContent = HINT_CLIPBOARD;
+      setHint(hintMessage, HINT_CLIPBOARD);
       resultsList.hidden = false;
       translatePanel.hide();
     } else {
-      h.textContent = HINT_MAIN;
+      setHint(hintMessage, HINT_MAIN);
       resultsList.hidden = false;
       translatePanel.hide();
     }
@@ -240,25 +252,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function updateCommandHintBar() {
     const cmd = commands.getActiveCommand();
-    const h = hintBar.querySelector('span');
     if (cmd === 'pomo') {
-      h.textContent =
-        'Space start/pause \u2022 R reset \u2022 P music \u2022 Esc back \u2022 Tab/Ctrl+1-5 switch';
+      setHint(hintMessage,
+        'Space: Start/pause \u2022 R: Reset \u2022 P: Music \u2022 Esc: Back \u2022 Tab/Ctrl+1-5: Switch');
     } else if (cmd === 'kill') {
-      h.textContent =
-        'Y confirm \u2022 N cancel \u2022 Tab/Ctrl+1-5 switch \u2022 Esc back';
+      setHint(hintMessage,
+        'Y: Confirm \u2022 N: Cancel \u2022 Tab/Ctrl+1-5: Switch \u2022 Esc: Back');
     } else if (cmd === 'sys') {
-      h.textContent =
-        'Esc back \u2022 Tab/Ctrl+1-5 switch';
+      setHint(hintMessage,
+        'Esc: Back \u2022 Tab/Ctrl+1-5: Switch \u2022 Ctrl+/: Command mode \u2022 Ctrl+Shift+,: Settings');
     } else if (cmd === 'calc') {
-      h.textContent =
-        'Enter evaluate \u2022 Tab/Ctrl+1-5 switch \u2022 Esc back';
+      setHint(hintMessage,
+        'Enter: Evaluate \u2022 Tab: Select \u2022 Ctrl+1-5: Switch \u2022 Esc: Back');
     } else if (cmd === 'shell') {
-      h.textContent =
-        'Enter run \u2022 Tab/Ctrl+1-5 switch \u2022 Esc back';
+      setHint(hintMessage,
+        'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-5: Switch \u2022 Esc: Back');
     } else {
-      h.textContent =
-        'Tab/Ctrl+1-5 switch \u2022 Esc back';
+      setHint(hintMessage,
+        'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-5: Switch \u2022 Esc: Back');
     }
   }
 
@@ -267,7 +278,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     resultsList.hidden = false;
     previewPanel.hidden = false;
     translatePanel.hide();
-    hintBar.querySelector('span').textContent = HINT_MAIN;
+    setHint(hintMessage, HINT_MAIN);
     queryInput.value = '';
     search.handleQueryInput('');
     queryInput.focus();
