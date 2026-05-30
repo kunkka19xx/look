@@ -35,6 +35,7 @@ final class KeyboardSelectionMonitor {
         onToggleHelp: @escaping @MainActor () -> Void,
         onDismissHelpIfVisible: @escaping @MainActor () -> Bool,
         onSelectCommandByIndex: @escaping @MainActor (Int) -> Void,
+        onActivateRunningApp: @escaping @MainActor (Int) -> Bool = { _ in false },
         onConfirmKill: (@MainActor () -> Void)? = nil,
         onCancelKill: (@MainActor () -> Void)? = nil,
         killConfirmationActive: @escaping @MainActor () -> Bool = { false }
@@ -115,21 +116,37 @@ final class KeyboardSelectionMonitor {
             }
 
             if event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control) && !event.modifierFlags.contains(.option) {
-                // macOS digit keyCodes are not contiguous: 1=18, 2=19, 3=20, 4=21, 5=23.
-                let mappedIndex: Int?
+                // macOS digit keyCodes are not contiguous: 1=18, 2=19, 3=20, 4=21, 5=23, 6=22, 7=26, 8=28, 9=25.
+                let cmdNumberKey: Int?
                 switch event.keyCode {
-                case 18: mappedIndex = 1
-                case 19: mappedIndex = 2
-                case 20: mappedIndex = 3
-                case 21: mappedIndex = 4
-                case 23: mappedIndex = 5
-                default: mappedIndex = nil
+                case 18: cmdNumberKey = 1
+                case 19: cmdNumberKey = 2
+                case 20: cmdNumberKey = 3
+                case 21: cmdNumberKey = 4
+                case 23: cmdNumberKey = 5
+                case 22: cmdNumberKey = 6
+                case 26: cmdNumberKey = 7
+                case 28: cmdNumberKey = 8
+                case 25: cmdNumberKey = 9
+                default: cmdNumberKey = nil
                 }
-                if let index = mappedIndex {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                        onSelectCommandByIndex(index)
+                if let key = cmdNumberKey {
+                    if inCommandMode() {
+                        if key <= 5 {
+                            Self.logger.debug("⌘+\(key, privacy: .public) -> command catalog")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                                onSelectCommandByIndex(key)
+                            }
+                            return nil
+                        }
+                        Self.logger.debug("⌘+\(key, privacy: .public) ignored (command mode only maps 1-5)")
+                    } else {
+                        Self.logger.debug("⌘+\(key, privacy: .public) -> running-apps switcher")
+                        if onActivateRunningApp(key) {
+                            return nil
+                        }
+                        Self.logger.debug("⌘+\(key, privacy: .public) running-apps activation declined, falling through")
                     }
-                    return nil
                 }
             }
 

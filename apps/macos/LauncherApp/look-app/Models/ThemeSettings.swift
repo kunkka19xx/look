@@ -82,6 +82,33 @@ enum BackgroundImageMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+enum RunningAppsPlacement: String, CaseIterable, Codable, Identifiable {
+    case none
+    case top
+    case right
+    case bottom
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .none: return "None"
+        case .top: return "Top"
+        case .right: return "Right"
+        case .bottom: return "Bottom"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .none: return "Hide the strip and disable ⌘+number switching"
+        case .top: return "Horizontal row above the launcher"
+        case .right: return "Vertical column to the right"
+        case .bottom: return "Horizontal row below the launcher"
+        }
+    }
+}
+
 enum BackendLogLevel: String, CaseIterable, Codable, Identifiable {
     case error
     case info
@@ -135,6 +162,8 @@ struct ThemeSettings: Codable, Equatable {
     var lazyIndexingEnabled: Bool = true
     var backendLogLevel: BackendLogLevel = .error
     var launchAtLogin: Bool = true
+
+    var runningAppsPlacement: RunningAppsPlacement = .right
 
     static let `default` = ThemeSettings()
 }

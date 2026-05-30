@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main, dev]
 
+# Cancel any prior in-progress run for the same branch / PR when a new
+# push comes in. Stops the slow linows build from keeping a stale
+# commit's lane busy after you've already force-pushed an update.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -101,11 +108,10 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-binstall
-        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-
       - name: Install cargo-audit
-        run: cargo binstall cargo-audit --no-confirm
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
 
       - name: Audit dependencies (core workspace)
         run: cargo audit --file core/Cargo.lock

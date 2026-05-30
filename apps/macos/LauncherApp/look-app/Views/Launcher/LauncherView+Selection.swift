@@ -193,6 +193,9 @@ extension LauncherView {
                 commandFeedback = "Selected /\(command.id)"
                 requestCommandInputFocusIfNeeded()
             },
+            onActivateRunningApp: { [self] key in
+                activateRunningApp(forKey: key)
+            },
             onConfirmKill: { [self] in
                 if let pendingKillCandidate {
                     runKillCommand(candidate: pendingKillCandidate)

@@ -1,7 +1,14 @@
 import AppKit
+import OSLog
 import SwiftUI
 
 struct WindowConfigurator: NSViewRepresentable {
+    let placement: RunningAppsPlacement
+
+    init(placement: RunningAppsPlacement = .none) {
+        self.placement = placement
+    }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
@@ -15,12 +22,33 @@ struct WindowConfigurator: NSViewRepresentable {
     // update was causing visible flicker during drag: setting styleMask,
     // isOpaque, layer.cornerRadius, masksToBounds, etc. on a moving window
     // forces CALayer recomposition mid-drag. Window properties here are
-    // all constant, so we only configure once (when the window first
-    // attaches) — subsequent updates are a no-op.
+    // all constant, so we only run that block once. The running-apps
+    // placement is the one thing that needs to react — resize the window
+    // when the user picks a new placement.
     func updateNSView(_ nsView: NSView, context: Context) {
+        let placement = self.placement
         DispatchQueue.main.async {
             configureWindow(from: nsView, force: false)
+            guard let window = nsView.window else { return }
+            // AppKit re-shows the standard window buttons whenever the
+            // window is resized / restyled, so re-hide them on every
+            // update. Cheap (sets three NSView.isHidden flags) and
+            // prevents the title-bar buttons from flashing back when the
+            // user changes running-apps placement in Settings.
+            hideStandardButtons(in: window)
+            let last = lastAppliedPlacement[ObjectIdentifier(window)]
+            if last != placement {
+                lastAppliedPlacement[ObjectIdentifier(window)] = placement
+                WindowAutoScale.resizeKeepingTopLeft(window, placement: placement)
+                hideStandardButtons(in: window)
+            }
         }
+    }
+
+    private func hideStandardButtons(in window: NSWindow) {
+        window.standardWindowButton(.closeButton)?.isHidden = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
     }
 
     private func configureWindow(from view: NSView, force: Bool) {
@@ -67,22 +95,29 @@ struct WindowConfigurator: NSViewRepresentable {
         }
 
         if let screen = window.screen ?? NSScreen.main {
-            window.setFrame(WindowAutoScale.centeredFrame(on: screen), display: true)
+            window.setFrame(WindowAutoScale.centeredFrame(on: screen, placement: placement), display: true)
         }
+        lastAppliedPlacement[ObjectIdentifier(window)] = placement
 
         // Re-apply scaling when the window crosses to a different display.
         // Position is preserved (top-left anchor) — only size changes,
         // since the macOS launcher is user-draggable.
+        let currentPlacement = placement
         NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeScreenNotification,
             object: window,
             queue: .main
         ) { note in
             guard let w = note.object as? NSWindow else { return }
-            WindowAutoScale.scheduleResize(for: w)
+            let p = lastAppliedPlacement[ObjectIdentifier(w)] ?? currentPlacement
+            Logger(subsystem: "noah-code.Look", category: "window-resize")
+                .debug("didChangeScreenNotification fired — placement=\(p.rawValue, privacy: .public), scheduling resize")
+            WindowAutoScale.scheduleResize(for: w, placement: p)
         }
     }
 }
+
+@MainActor private var lastAppliedPlacement: [ObjectIdentifier: RunningAppsPlacement] = [:]
 
 // One-shot guard so configureWindow runs exactly once per NSWindow.
 // Only ever read/written on the main actor (configureWindow is invoked
