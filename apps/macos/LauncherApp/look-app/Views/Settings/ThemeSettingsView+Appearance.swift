@@ -22,14 +22,13 @@ extension ThemeSettingsView {
                     Spacer().frame(width: 40)
 
                     inlinePickerLabel("Running Apps")
-                    Picker("Running Apps", selection: $settings.runningAppsPlacement) {
-                        ForEach(RunningAppsPlacement.allCases) { placement in
-                            Text(placement.title).tag(placement)
-                        }
-                    }
-                    .pickerStyle(.menu)
+                    Toggle("Show running apps", isOn: Binding(
+                        get: { settings.runningAppsPlacement != .none },
+                        set: { settings.runningAppsPlacement = $0 ? .right : .none }
+                    ))
+                    .toggleStyle(.switch)
                     .labelsHidden()
-                    .frame(width: AppConstants.ThemeUI.pickerWidth)
+                    .help("Show running apps in the right half of the search bar (⌘1–9 to switch)")
 
                     Spacer(minLength: 0)
                 }

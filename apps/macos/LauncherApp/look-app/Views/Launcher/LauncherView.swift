@@ -424,30 +424,10 @@ struct LauncherView: View {
         let contentSpacing: CGFloat = isCommandMode ? 8 : 12
         let contentPadding: CGFloat = isCommandMode ? 10 : 14
 
-        let placement = runningAppsPlacement
-        let gap = AppConstants.Launcher.RunningAppsStrip.panelGap
-
-        Group {
-            switch placement {
-            case .none:
-                borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
-            case .right:
-                HStack(alignment: .center, spacing: gap) {
-                    borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
-                    reservedStrip(axis: .vertical)
-                }
-            case .top:
-                VStack(alignment: .center, spacing: gap) {
-                    reservedStrip(axis: .horizontal)
-                    borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
-                }
-            case .bottom:
-                VStack(alignment: .center, spacing: gap) {
-                    borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
-                    reservedStrip(axis: .horizontal)
-                }
-            }
-        }
+        // Running apps render inside the search bar (see panelContent), not as a
+        // floating strip that grows the window. The launcher is always a single
+        // fixed-size panel regardless of the running-apps toggle.
+        borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
         .ignoresSafeArea()
         .onAppear {
             refreshSearchResults()
@@ -578,7 +558,11 @@ struct LauncherView: View {
             VStack(alignment: .leading, spacing: contentSpacing) {
                 panelContent
             }
-            .padding(contentPadding)
+            // Tighter top inset so the search bar sits closer to the window's
+            // top edge; keep the original padding on the other three sides.
+            .padding(.top, max(4, contentPadding - 8))
+            .padding(.horizontal, contentPadding)
+            .padding(.bottom, contentPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .font(themeStore.uiFont())
             .foregroundStyle(themeStore.fontColor())
@@ -598,20 +582,41 @@ struct LauncherView: View {
     }
 
     @ViewBuilder
+    private var searchInputBar: some View {
+        SearchInputBar(
+            text: $query,
+            isCommandMode: $isCommandMode,
+            isQueryFocused: $isQueryFocused,
+            activeCommand: activeCommand,
+            themeStore: themeStore,
+            onSubmit: handleSubmit,
+            onExitCommandMode: exitCommandMode
+        )
+    }
+
+    @ViewBuilder
     private var panelContent: some View {
         if appUIState.showsThemeSettings {
             ThemeSettingsView(settings: $themeStore.settings)
         } else {
             if !isCommandMode {
-                SearchInputBar(
-                    text: $query,
-                    isCommandMode: $isCommandMode,
-                    isQueryFocused: $isQueryFocused,
-                    activeCommand: activeCommand,
-                    themeStore: themeStore,
-                    onSubmit: handleSubmit,
-                    onExitCommandMode: exitCommandMode
-                )
+                if shouldShowRunningAppsStrip {
+                    // Split the search-bar row in half: search field on the
+                    // left, running-apps icons on the right. No floating strip,
+                    // no window resize — toggled via Settings → Running Apps.
+                    HStack(alignment: .center, spacing: 10) {
+                        searchInputBar
+                            .frame(maxWidth: .infinity)
+                        RunningAppsStripView(
+                            service: runningAppsService,
+                            themeStore: themeStore,
+                            onActivate: { key in _ = activateRunningApp(forKey: key) }
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                } else {
+                    searchInputBar
+                }
             }
 
             if let bannerMessage {
@@ -767,37 +772,6 @@ struct LauncherView: View {
         }
     }
 
-    @ViewBuilder
-    private func reservedStrip(axis: Axis) -> some View {
-        ZStack {
-            // Back layer: an empty NSView that returns
-            // mouseDownCanMoveWindow=true so the strip's spacing/padding
-            // becomes a window drag handle. Strip icons sit on top and
-            // keep their tap/hover behavior.
-            WindowDragArea()
-            stripOverlay(axis: axis)
-        }
-        .frame(
-            width: axis == .vertical ? AppConstants.Launcher.RunningAppsStrip.width : nil,
-            height: axis == .horizontal ? AppConstants.Launcher.RunningAppsStrip.width : nil
-        )
-        .allowsHitTesting(shouldShowRunningAppsStrip)
-    }
-
-    @ViewBuilder
-    private func stripOverlay(axis: Axis) -> some View {
-        if shouldShowRunningAppsStrip {
-            RunningAppsStripView(
-                service: runningAppsService,
-                themeStore: themeStore,
-                axis: axis,
-                onActivate: { key in
-                    _ = activateRunningApp(forKey: key)
-                }
-            )
-            .transition(.opacity)
-        }
-    }
 
 }
 

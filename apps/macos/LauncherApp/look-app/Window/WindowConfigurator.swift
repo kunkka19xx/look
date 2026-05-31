@@ -3,16 +3,13 @@ import OSLog
 import SwiftUI
 
 struct WindowConfigurator: NSViewRepresentable {
-    let placement: RunningAppsPlacement
-
-    init(placement: RunningAppsPlacement = .none) {
-        self.placement = placement
-    }
-
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
             configureWindow(from: view, force: true)
+            if let window = view.window {
+                suppressTitlebarHairline(in: window)
+            }
         }
         return view
     }
@@ -21,27 +18,18 @@ struct WindowConfigurator: NSViewRepresentable {
     // containing WindowConfigurator. Re-running configureWindow on every
     // update was causing visible flicker during drag: setting styleMask,
     // isOpaque, layer.cornerRadius, masksToBounds, etc. on a moving window
-    // forces CALayer recomposition mid-drag. Window properties here are
-    // all constant, so we only run that block once. The running-apps
-    // placement is the one thing that needs to react — resize the window
-    // when the user picks a new placement.
+    // forces CALayer recomposition mid-drag. Window properties here are all
+    // constant, so we only run that block once and just re-assert the things
+    // AppKit resets on its own (window buttons, titlebar separator).
     func updateNSView(_ nsView: NSView, context: Context) {
-        let placement = self.placement
         DispatchQueue.main.async {
             configureWindow(from: nsView, force: false)
             guard let window = nsView.window else { return }
-            // AppKit re-shows the standard window buttons whenever the
-            // window is resized / restyled, so re-hide them on every
-            // update. Cheap (sets three NSView.isHidden flags) and
-            // prevents the title-bar buttons from flashing back when the
-            // user changes running-apps placement in Settings.
+            // AppKit re-shows the standard window buttons whenever the window
+            // is resized / restyled, so re-hide them on every update. Cheap
+            // (sets three NSView.isHidden flags).
             hideStandardButtons(in: window)
-            let last = lastAppliedPlacement[ObjectIdentifier(window)]
-            if last != placement {
-                lastAppliedPlacement[ObjectIdentifier(window)] = placement
-                WindowAutoScale.resizeKeepingTopLeft(window, placement: placement)
-                hideStandardButtons(in: window)
-            }
+            suppressTitlebarHairline(in: window)
         }
     }
 
@@ -49,6 +37,49 @@ struct WindowConfigurator: NSViewRepresentable {
         window.standardWindowButton(.closeButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
+    }
+
+    // macOS Sequoia draws a 1px titlebar separator on the first paint even
+    // though `titlebarSeparatorStyle = .none` is set in configureWindow.
+    // The style is only honored after a *real* frame change — re-assigning
+    // `.none` alone does nothing. Reproduce that frame change here: once the
+    // window has painted, apply a 1px round-trip resize. It's imperceptible
+    // but forces AppKit to re-evaluate the separator and drop the hairline.
+    // As a fallback, also hide AppKit's private separator subview if it
+    // re-materializes.
+    private func suppressTitlebarHairline(in window: NSWindow) {
+        window.titlebarSeparatorStyle = .none
+        hideTitlebarSeparatorSubviews(in: window)
+
+        // The frame change must actually persist for one runloop pass before
+        // being reverted — growing and restoring in the same tick gets
+        // coalesced by AppKit into a net no-op, so `.none` never re-applies.
+        // Grow now, restore on the next tick.
+        let original = window.frame
+        var grown = original
+        grown.size.height += 1
+        window.setFrame(grown, display: true)
+
+        DispatchQueue.main.async {
+            window.setFrame(original, display: true)
+            window.titlebarSeparatorStyle = .none
+            hideTitlebarSeparatorSubviews(in: window)
+        }
+    }
+
+    // Fallback: AppKit's titlebar separator is a private view nested in the
+    // theme frame (NSTitlebarContainerView → NSTitlebarView → separator).
+    // Walk the whole hierarchy and hide anything that looks like it.
+    private func hideTitlebarSeparatorSubviews(in window: NSWindow) {
+        guard let root = window.contentView?.superview else { return }
+        func walk(_ view: NSView) {
+            let name = String(describing: type(of: view))
+            if name.contains("TitlebarSeparator") || name.contains("NSTitlebarDecorationView") {
+                view.isHidden = true
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(root)
     }
 
     private func configureWindow(from view: NSView, force: Bool) {
@@ -64,11 +95,8 @@ struct WindowConfigurator: NSViewRepresentable {
         window.styleMask.insert(.fullSizeContentView)
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        // Known issue (macOS Sequoia): AppKit draws a 1px hairline at the
-        // top of the content area on the first paint even with `.none` here
-        // — the setting is honored only after the first real frame resize.
-        // Toggling running-apps placement (Settings → Running Apps) clears
-        // it for the session. Parked in docs/tasks.md "Parked: known issues".
+        // macOS Sequoia honors `.none` only after the first real frame resize;
+        // suppressTitlebarHairline() forces that on first show. See its comment.
         window.titlebarSeparatorStyle = .none
         window.toolbar = nil
         window.isOpaque = false
@@ -100,29 +128,24 @@ struct WindowConfigurator: NSViewRepresentable {
         }
 
         if let screen = window.screen ?? NSScreen.main {
-            window.setFrame(WindowAutoScale.centeredFrame(on: screen, placement: placement), display: true)
+            window.setFrame(WindowAutoScale.centeredFrame(on: screen), display: true)
         }
-        lastAppliedPlacement[ObjectIdentifier(window)] = placement
 
         // Re-apply scaling when the window crosses to a different display.
         // Position is preserved (top-left anchor) — only size changes,
         // since the macOS launcher is user-draggable.
-        let currentPlacement = placement
         NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeScreenNotification,
             object: window,
             queue: .main
         ) { note in
             guard let w = note.object as? NSWindow else { return }
-            let p = lastAppliedPlacement[ObjectIdentifier(w)] ?? currentPlacement
             Logger(subsystem: "noah-code.Look", category: "window-resize")
-                .debug("didChangeScreenNotification fired — placement=\(p.rawValue, privacy: .public), scheduling resize")
-            WindowAutoScale.scheduleResize(for: w, placement: p)
+                .debug("didChangeScreenNotification fired — scheduling resize")
+            WindowAutoScale.scheduleResize(for: w)
         }
     }
 }
-
-@MainActor private var lastAppliedPlacement: [ObjectIdentifier: RunningAppsPlacement] = [:]
 
 // One-shot guard so configureWindow runs exactly once per NSWindow.
 // Only ever read/written on the main actor (configureWindow is invoked

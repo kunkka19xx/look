@@ -6,25 +6,23 @@ struct RunningAppsStripView: View {
 
     @ObservedObject var service: RunningAppsService
     let themeStore: ThemeStore
-    let axis: Axis
     let onActivate: (Int) -> Void
 
     @State private var hoveredIndex: Int?
 
     var body: some View {
-        if axis == .vertical {
-            VStack(spacing: Layout.itemGap) { iconStack }
-                .padding(.vertical, Layout.verticalPadding)
-                .padding(.horizontal, Layout.horizontalPadding)
-                .frame(width: Layout.width)
-                .frame(maxHeight: .infinity)
-        } else {
-            HStack(spacing: Layout.itemGap) { iconStack }
-                .padding(.horizontal, Layout.verticalPadding)
-                .padding(.vertical, Layout.horizontalPadding)
-                .frame(height: Layout.width)
-                .frame(maxWidth: .infinity)
+        // A single horizontal row living in the right half of the search bar.
+        // Right-aligned: icons hug the right edge and grow leftward as more apps
+        // appear. The leading Spacer pushes them right; itemGap keeps the
+        // inter-icon spacing.
+        HStack(spacing: Layout.itemGap) {
+            Spacer(minLength: 0)
+            iconStack
         }
+        .padding(.horizontal, Layout.verticalPadding)
+        .padding(.vertical, Layout.horizontalPadding)
+        .frame(height: Layout.width)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder

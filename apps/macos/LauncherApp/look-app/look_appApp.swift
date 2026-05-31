@@ -112,8 +112,8 @@ struct look_appApp: App {
     /// Minimum SwiftUI content size. The actual window size is set by
     /// WindowAutoScale (screen-ratio aware) via WindowConfigurator; this is
     /// just a floor so SwiftUI never asks for a smaller window.
-    private func baseMinSize(for placement: RunningAppsPlacement) -> (CGFloat, CGFloat) {
-        let size = WindowAutoScale.baseSize(for: placement)
+    private func baseMinSize() -> (CGFloat, CGFloat) {
+        let size = WindowAutoScale.baseSize()
         return (size.width, size.height)
     }
 
@@ -133,11 +133,10 @@ struct look_appApp: App {
 
     var body: some Scene {
         WindowGroup(id: "main") {
-            let placement = themeStore.settings.runningAppsPlacement
-            let (minW, minH) = baseMinSize(for: placement)
+            let (minW, minH) = baseMinSize()
             ContentView()
                 .frame(minWidth: minW, minHeight: minH)
-                .background(WindowConfigurator(placement: placement))
+                .background(WindowConfigurator())
                 .environmentObject(appUIState)
                 .environmentObject(themeStore)
         }
