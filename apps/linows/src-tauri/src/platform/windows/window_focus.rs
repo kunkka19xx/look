@@ -365,10 +365,10 @@ fn find_main_window_for_pids(pids: &[u32]) -> Option<HWND> {
 
         // Owned windows are dialogs/popups, not the app's main frame.
         let owner = unsafe { GetWindow(hwnd, GW_OWNER) };
-        if let Ok(o) = owner {
-            if !o.0.is_null() {
-                return TRUE;
-            }
+        if let Ok(o) = owner
+            && !o.0.is_null()
+        {
+            return TRUE;
         }
         // WS_EX_TOOLWINDOW = floating palette, not the main frame.
         let exstyle = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) } as u32;
