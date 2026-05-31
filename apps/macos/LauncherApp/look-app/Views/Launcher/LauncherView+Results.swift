@@ -12,14 +12,17 @@ extension LauncherView {
 
         switch selected.kind {
         case .app:
+            guard ensureTargetExists(selected) else { return }
             launchApp(at: selected.path)
             recordOpen(selected, action: "open_app")
             hideLauncherWindow(restorePreviousApp: false)
         case .file:
+            guard ensureTargetExists(selected) else { return }
             openTargetAsync(selected.path)
             recordOpen(selected, action: "open_file")
             hideLauncherWindow(restorePreviousApp: false)
         case .folder:
+            guard ensureTargetExists(selected) else { return }
             openTargetAsync(selected.path)
             // Quick-folder entries are ephemeral filesystem suggestions, not
             // ranked candidates — they aren't in the usage index.
@@ -110,6 +113,34 @@ extension LauncherView {
         if let error = bridge.recordUsage(candidateID: selected.id, action: action) {
             showBanner(error.userFacingMessage, style: .info, duration: 1.4)
         }
+    }
+
+    /// Guards against opening a target that no longer exists on disk.
+    ///
+    /// A candidate can linger in the index after its bundle/file is removed
+    /// (an app uninstalled but still indexed, a file moved or deleted). Opening
+    /// it would fail silently in the async completion handler, and — because we
+    /// record usage on intent — would also boost a dead entry, so it keeps
+    /// surfacing and keeps failing. When the target is gone we surface it to the
+    /// user, kick off a background reindex so the stale candidate gets pruned,
+    /// and skip the open/record/hide. Recording usage is reserved for targets
+    /// that actually exist; intent for a thing that no longer exists isn't a
+    /// signal worth keeping.
+    ///
+    /// Returns `true` when the target is openable.
+    private func ensureTargetExists(_ selected: LauncherResult) -> Bool {
+        // URL-scheme targets (settings panes, custom schemes) aren't filesystem
+        // paths and can't be stat'd — treat them as openable.
+        if isURLScheme(selected.path) { return true }
+        if FileManager.default.fileExists(atPath: selected.path) { return true }
+
+        showBanner(
+            "This \(selected.kind.rawValue) no longer exists — refreshing index",
+            style: .error,
+            duration: 1.6
+        )
+        _ = bridge.requestIndexRefresh()
+        return false
     }
 
     func revealSelectedInFinder() {
