@@ -448,6 +448,18 @@ fn try_focus_window(wm_class: &str) -> bool {
     false
 }
 
+/// Public wrapper for process::activate_running_app.
+#[cfg(target_os = "linux")]
+pub fn try_focus_existing_pub(desktop_path: &str) -> bool {
+    try_focus_existing(desktop_path)
+}
+
+/// Public wrapper for process::activate_running_app.
+#[cfg(target_os = "linux")]
+pub fn try_focus_window_pub(wm_class: &str) -> bool {
+    try_focus_window(wm_class)
+}
+
 /// Try to focus an existing window for a desktop file.
 /// Dispatches to the appropriate method based on display server / compositor.
 #[cfg(target_os = "linux")]

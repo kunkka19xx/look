@@ -6,6 +6,7 @@ let screen = null;
 let active = false;
 let activeTab = 'appearance';
 let onExit = null;
+let onConfigReloadFn = null;
 
 const TABS = ['appearance', 'shortcuts', 'advanced'];
 
@@ -101,6 +102,10 @@ function getCurrentBlurStyle() {
   const dd = document.getElementById('settings-blur-style');
   const active = dd?.querySelector('.settings-dropdown-active');
   return active?.dataset.value || 'high_contrast';
+}
+
+export function setOnConfigReload(fn) {
+  onConfigReloadFn = fn;
 }
 
 export function init(exitFn) {
@@ -551,6 +556,7 @@ export async function reloadFromFile() {
     // Rebuild index with new config
     await forceIndexRefresh();
 
+    if (onConfigReloadFn) onConfigReloadFn(map);
     banner.show('Config reloaded from file', 'success', 1.2);
   } catch {
     banner.show('Reload failed', 'error', 1.5);

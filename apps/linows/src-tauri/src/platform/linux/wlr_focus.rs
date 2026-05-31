@@ -19,6 +19,44 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_manager_v1::{self as wlr_manager, ZwlrForeignToplevelManagerV1},
 };
 
+/// Collect app_ids of all visible toplevels on wlroots-based compositors.
+/// Returns an empty set if the protocol isn't available.
+pub fn list_toplevel_app_ids() -> std::collections::HashSet<String> {
+    let mut ids = std::collections::HashSet::new();
+    let Ok(conn) = Connection::connect_to_env() else {
+        return ids;
+    };
+    let mut queue = conn.new_event_queue::<State>();
+    let qh = queue.handle();
+    let _registry = conn.display().get_registry(&qh, ());
+
+    let mut state = State {
+        target: String::new(),
+        seat: None,
+        manager_bound: false,
+        toplevels: Vec::new(),
+    };
+
+    if queue.roundtrip(&mut state).is_err() || !state.manager_bound {
+        return ids;
+    }
+    let deadline = Instant::now() + Duration::from_millis(500);
+    while Instant::now() < deadline {
+        if !state.toplevels.is_empty() && state.toplevels.iter().all(|t| t.done) {
+            break;
+        }
+        if queue.roundtrip(&mut state).is_err() {
+            break;
+        }
+    }
+    for tl in &state.toplevels {
+        if let Some(id) = &tl.app_id {
+            ids.insert(id.to_lowercase());
+        }
+    }
+    ids
+}
+
 /// Try to activate an existing toplevel whose `app_id` matches (case-insensitive).
 /// Returns true if a match was found and the activate request was sent.
 pub fn try_focus(app_id: &str) -> bool {

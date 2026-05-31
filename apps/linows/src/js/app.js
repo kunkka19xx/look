@@ -7,6 +7,7 @@ import * as banner from './components/banner.js';
 import * as commands from './screens/commands/index.js';
 import * as settings from './screens/settings.js';
 import * as translatePanel from './components/translate.js';
+import * as runningApps from './components/running-apps.js';
 import * as platform from './platform.js';
 import { load } from './html-loader.js';
 import {
@@ -14,6 +15,7 @@ import {
   evalCalc, runShellCommand, getSystemInfo,
   listProcesses, listProcessesOnPort, killProcess, getIcon,
   copyToClipboard, deleteClipboardEntry, isDevBuild,
+  getConfig,
 } from './ipc.js';
 
 // Item count and structure mirror the macOS app's `LauncherView.hintItems`
@@ -99,6 +101,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     setHint(hintMessage, HINT_MAIN);
   });
   settings.restoreOnStartup();
+
+  // Running apps strip
+  runningApps.init(document.getElementById('running-apps-strip'));
+  getConfig().then((cfg) => {
+    const placement = cfg.entries.find((e) => e.key === 'running_apps_placement');
+    const on = !placement || placement.value !== 'none';
+    runningApps.setEnabled(on);
+    if (on) runningApps.refresh();
+  });
 
   // Show DEV badge when running in dev mode (cargo tauri dev)
   isDevBuild().then((isDev) => {
@@ -214,6 +225,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     queryInput.focus();
     queryInput.select();
     requestIndexRefresh();
+    runningApps.refresh();
   });
 
   onIndexReady(() => {
@@ -371,6 +383,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         break;
     }
   }
+
+  // Sync running apps strip when config is reloaded from file
+  settings.setOnConfigReload((map) => {
+    const on = (map.running_apps_placement || 'right') !== 'none';
+    runningApps.setEnabled(on);
+    if (on) runningApps.refresh();
+  });
 
   // Expose enterCommandMode and settings for keyboard
   keyboard.setEnterCommandMode(enterCommandMode);

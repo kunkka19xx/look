@@ -682,6 +682,8 @@ fn main() {
             process::list_processes,
             process::list_processes_on_port,
             process::kill_process,
+            process::list_running_apps,
+            process::activate_running_app,
             // Translation
             translate::translate,
             // Clipboard

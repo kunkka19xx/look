@@ -117,6 +117,139 @@ pub(crate) fn list() -> Vec<RunningApp> {
     apps
 }
 
+/// Like `list()`, but filtered to only GUI apps with visible windows.
+/// On X11: uses `_NET_CLIENT_LIST` + `_NET_WM_PID` to get windowed PIDs.
+/// On Wayland: uses `wlr-foreign-toplevel-management` app_ids, then falls
+/// back to GNOME Shell (which doesn't expose PIDs, so we match by desktop stem).
+pub(crate) fn list_gui() -> Vec<RunningApp> {
+    let my_pid = std::process::id();
+    let all: Vec<RunningApp> = list()
+        .into_iter()
+        .filter(|app| {
+            if app.pid == my_pid {
+                return false;
+            }
+            // Filter out Look itself by binary name
+            if let Some(ref exec) = app.exec {
+                let bin = exec.split_whitespace().next().unwrap_or("");
+                let stem = Path::new(bin)
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .unwrap_or("");
+                if stem == "lookapp" {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect();
+    if all.is_empty() {
+        return all;
+    }
+
+    if super::transparency::is_wayland() {
+        // Wayland: get app_ids from wlr-foreign-toplevel
+        let app_ids = super::wlr_focus::list_toplevel_app_ids();
+        if !app_ids.is_empty() {
+            return all
+                .into_iter()
+                .filter(|app| {
+                    // Match desktop file stem (e.g. "org.mozilla.firefox" or "firefox")
+                    // against toplevel app_ids
+                    if let Some(ref id) = app.desktop_id {
+                        let stem = id
+                            .strip_prefix("app:")
+                            .and_then(|p| {
+                                std::path::Path::new(p).file_stem().and_then(|f| f.to_str())
+                            })
+                            .unwrap_or("");
+                        let stem_lower = stem.to_lowercase();
+                        // Try full stem and last segment (for reverse-DNS like org.mozilla.firefox)
+                        let short = stem_lower.rsplit('.').next().unwrap_or("");
+                        app_ids.contains(&stem_lower)
+                            || (!short.is_empty() && app_ids.contains(short))
+                    } else {
+                        false
+                    }
+                })
+                .collect();
+        }
+        // wlr unavailable (GNOME Wayland) — fall back to desktop file heuristics
+        return filter_by_desktop_hints(all);
+    }
+
+    // X11: filter by PIDs that own visible windows
+    let windowed_pids = super::window_focus::pids_with_visible_windows();
+    if windowed_pids.is_empty() {
+        // Fallback if X11 query failed
+        return filter_by_desktop_hints(all);
+    }
+
+    // For multi-process apps, also include parent PIDs. A process may spawn
+    // children that own the window while the parent is what we matched.
+    let mut expanded_pids = windowed_pids.clone();
+    for &pid in &windowed_pids {
+        // Walk up parent chain
+        if let Ok(status) = fs::read_to_string(format!("/proc/{pid}/status")) {
+            if let Some(ppid) =
+                parse_status_field(&status, "PPid:").and_then(|v| v.parse::<u32>().ok())
+            {
+                expanded_pids.insert(ppid);
+            }
+        }
+    }
+
+    all.into_iter()
+        .filter(|app| expanded_pids.contains(&app.pid))
+        .collect()
+}
+
+/// Heuristic filter for GNOME Wayland (no wlr, no X11 window list).
+/// Checks desktop file for Terminal=true and known non-GUI categories.
+fn filter_by_desktop_hints(apps: Vec<RunningApp>) -> Vec<RunningApp> {
+    apps.into_iter()
+        .filter(|app| {
+            let Some(ref id) = app.desktop_id else {
+                return false;
+            };
+            let Some(path) = id.strip_prefix("app:") else {
+                return false;
+            };
+            !is_terminal_or_background(path)
+        })
+        .collect()
+}
+
+/// Check if a desktop file is a terminal app or background service.
+fn is_terminal_or_background(path: &str) -> bool {
+    let Ok(content) = fs::read_to_string(path) else {
+        return false;
+    };
+    let mut in_desktop_entry = false;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_desktop_entry = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_desktop_entry {
+            continue;
+        }
+        if let Some(val) = line.strip_prefix("Terminal=") {
+            if val.trim().eq_ignore_ascii_case("true") {
+                return true;
+            }
+        }
+        if let Some(val) = line.strip_prefix("Categories=") {
+            let lower = val.to_lowercase();
+            if lower.contains("inputmethod") || lower.contains("monitor") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub(crate) fn list_on_port(port: u16) -> Vec<RunningApp> {
     // Parse /proc/net/tcp and /proc/net/tcp6 to find listening sockets on the given port
     let mut pids: Vec<u32> = Vec::new();

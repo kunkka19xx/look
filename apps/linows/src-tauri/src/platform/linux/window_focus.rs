@@ -219,6 +219,36 @@ fn read_active_window(conn: &impl Connection, root: Window, atom: Atom) -> u32 {
         .unwrap_or(0)
 }
 
+/// Collect PIDs of all windows in `_NET_CLIENT_LIST`.
+/// Returns an empty set on failure (Wayland, no X11, etc.).
+pub fn pids_with_visible_windows() -> std::collections::HashSet<u32> {
+    let mut pids = std::collections::HashSet::new();
+    let Ok((conn, screen_num)) = x11rb::connect(None) else {
+        return pids;
+    };
+    let root = conn.setup().roots[screen_num].root;
+    let Some(windows) = get_client_list(&conn, root) else {
+        return pids;
+    };
+    let pid_atom = conn
+        .intern_atom(false, b"_NET_WM_PID")
+        .ok()
+        .and_then(|c| c.reply().ok())
+        .map(|r| r.atom);
+    let Some(pid_atom) = pid_atom else {
+        return pids;
+    };
+    for wid in windows {
+        if let Ok(cookie) = conn.get_property(false, wid, pid_atom, AtomEnum::CARDINAL, 0, 1)
+            && let Ok(reply) = cookie.reply()
+            && let Some(pid) = reply.value32().and_then(|mut v| v.next())
+        {
+            pids.insert(pid);
+        }
+    }
+    pids
+}
+
 // --- Active window monitor ---
 
 static MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
