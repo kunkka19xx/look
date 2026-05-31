@@ -178,6 +178,8 @@ Strip behavior:
 
 Saved as `running_apps_placement=<value>` in `~/.look.config`. New keys are auto-appended to existing config files on next Save Config.
 
+> **Known cosmetic issue (macOS Sequoia)**: a faint 1px line may appear at the top of the launcher window on the very first show. It's a macOS-side titlebar artifact, not your config. Toggling the **Running Apps** placement once (e.g. switch to a different option and back) clears it for the rest of the session. We're tracking a permanent fix.
+
 ### Indexing Settings
 
 Default values:

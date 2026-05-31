@@ -168,29 +168,6 @@ extension LauncherView {
         refreshClipboardMonitoringMode()
     }
 
-    func bringOpenedAppToFront(appBundlePath: String) {
-        let appURL = URL(fileURLWithPath: appBundlePath)
-        guard let bundle = Bundle(url: appURL),
-              let bundleID = bundle.bundleIdentifier
-        else {
-            return
-        }
-
-        let ownPID = ProcessInfo.processInfo.processIdentifier
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.postOpenActivationDelay) {
-            // Skip if the user has since switched to a different app — don't steal focus back.
-            if let frontmost = NSWorkspace.shared.frontmostApplication,
-               frontmost.processIdentifier != ownPID,
-               frontmost.bundleIdentifier != bundleID {
-                return
-            }
-            let candidates = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-            if let app = candidates.first(where: { !$0.isTerminated }) ?? candidates.first {
-                _ = app.activate()
-            }
-        }
-    }
-
     func captureFrontmostAppForRestoreIfNeeded() {
         guard let frontmost = NSWorkspace.shared.frontmostApplication else {
             pidToRestoreOnHide = nil

@@ -1,5 +1,8 @@
 import AppKit
+import OSLog
 import SwiftUI
+
+private let openLaunchLog = Logger(subsystem: "noah-code.Look", category: "open")
 
 extension LauncherView {
     func openSelectedApp() {
@@ -9,29 +12,21 @@ extension LauncherView {
 
         switch selected.kind {
         case .app:
-            if openTarget(selected.path) {
-                bringOpenedAppToFront(appBundlePath: selected.path)
-                if let error = bridge.recordUsage(candidateID: selected.id, action: "open_app") {
-                    showBanner(error.userFacingMessage, style: .info, duration: 1.4)
-                }
-                hideLauncherWindow(restorePreviousApp: false)
-            }
+            launchApp(at: selected.path)
+            recordOpen(selected, action: "open_app")
+            hideLauncherWindow(restorePreviousApp: false)
         case .file:
-            if openTarget(selected.path) {
-                if let error = bridge.recordUsage(candidateID: selected.id, action: "open_file") {
-                    showBanner(error.userFacingMessage, style: .info, duration: 1.4)
-                }
-                hideLauncherWindow(restorePreviousApp: false)
-            }
+            openTargetAsync(selected.path)
+            recordOpen(selected, action: "open_file")
+            hideLauncherWindow(restorePreviousApp: false)
         case .folder:
-            if openTarget(selected.path) {
-                if !selected.id.hasPrefix(AppConstants.Launcher.QuickFolder.idPrefix),
-                    let error = bridge.recordUsage(candidateID: selected.id, action: "open_folder")
-                {
-                    showBanner(error.userFacingMessage, style: .info, duration: 1.4)
-                }
-                hideLauncherWindow(restorePreviousApp: false)
+            openTargetAsync(selected.path)
+            // Quick-folder entries are ephemeral filesystem suggestions, not
+            // ranked candidates — they aren't in the usage index.
+            if !selected.id.hasPrefix(AppConstants.Launcher.QuickFolder.idPrefix) {
+                recordOpen(selected, action: "open_folder")
             }
+            hideLauncherWindow(restorePreviousApp: false)
         case .clipboard:
             guard let content = selected.clipboardContent, !content.isEmpty else { return }
             NSPasteboard.general.clearContents()
@@ -44,26 +39,77 @@ extension LauncherView {
         }
     }
 
-    @discardableResult
-    func openTarget(_ target: String) -> Bool {
-        if target.contains(":") && !target.hasPrefix("/") {
-            if let url = URL(string: target) {
-                if NSWorkspace.shared.open(url) {
-                    return true
+    func openTargetAsync(_ target: String) {
+        if isURLScheme(target) {
+            openURLScheme(target)
+        } else {
+            openFilePath(target)
+        }
+    }
+
+    private func launchApp(at path: String) {
+        // Settings entries arrive as .app with URL-scheme paths
+        // (x-apple.systempreferences:…); dispatch those via LaunchServices
+        // rather than openApplication(at:), which only understands app bundles.
+        if isURLScheme(path) {
+            openURLScheme(path)
+            return
+        }
+
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: config) { runningApp, error in
+            DispatchQueue.main.async {
+                if let error {
+                    openLaunchLog.error("openApplication failed for \(path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    return
                 }
-                showBanner("Could not open this item right now", style: .error, duration: 1.2)
-                return false
+                guard let runningApp else { return }
+                // Heavy apps (Slack, Discord) can take seconds to finish
+                // launching. If the user has since moved to a different app,
+                // don't steal focus back.
+                if let frontmost = NSWorkspace.shared.frontmostApplication,
+                   frontmost.processIdentifier != ownPID,
+                   frontmost.processIdentifier != runningApp.processIdentifier {
+                    return
+                }
+                runningApp.activate()
             }
+        }
+    }
+
+    private func openURLScheme(_ target: String) {
+        // The legacy open(URL) API non-blockingly hands custom schemes
+        // (x-apple.systempreferences:, https:, …) to LaunchServices. The
+        // configuration-based async variant misroutes non-file URLs to Finder.
+        guard let url = URL(string: target) else {
             showBanner("Invalid target URL", style: .error, duration: 1.2)
-            return false
+            return
         }
-
-        if NSWorkspace.shared.open(URL(fileURLWithPath: target)) {
-            return true
+        if !NSWorkspace.shared.open(url) {
+            openLaunchLog.error("open failed for URL \(target, privacy: .public)")
         }
+    }
 
-        showBanner("Could not open this path", style: .error, duration: 1.2)
-        return false
+    private func openFilePath(_ target: String) {
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.open(URL(fileURLWithPath: target), configuration: config) { _, error in
+            if let error {
+                openLaunchLog.error("open failed for \(target, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    private func isURLScheme(_ target: String) -> Bool {
+        target.contains(":") && !target.hasPrefix("/")
+    }
+
+    private func recordOpen(_ selected: LauncherResult, action: String) {
+        if let error = bridge.recordUsage(candidateID: selected.id, action: action) {
+            showBanner(error.userFacingMessage, style: .info, duration: 1.4)
+        }
     }
 
     func revealSelectedInFinder() {

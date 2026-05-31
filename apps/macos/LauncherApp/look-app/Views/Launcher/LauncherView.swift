@@ -110,7 +110,6 @@ struct LauncherView: View {
     }
 
     static let postHideActivationDelay: TimeInterval = 0.01
-    static let postOpenActivationDelay: TimeInterval = 0.05
     @FocusState var isQueryFocused: Bool
 
     let bridge = EngineBridge.shared

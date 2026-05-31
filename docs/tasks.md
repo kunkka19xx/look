@@ -27,3 +27,7 @@ Suggested guardrails (adjust as project evolves):
 Escalation rule:
 
 - if any guardrail regresses by >10% week-over-week, open a focused perf/quality issue before merging unrelated polish work
+
+## Parked: known issues
+
+- **macOS titlebar hairline on first show**: a 1px line appears at the top of the launcher window on the very first paint, because macOS Sequoia honors `titlebarSeparatorStyle = .none` only after the first real frame resize. Confirmed workaround for users: open Settings → Running Apps and toggle the placement once (e.g. Top → Right, or back to Top). After any real resize the line goes away permanently for that session. Tried — and reverted — fixes: hiding `NSThemeFrame` subviews (line is drawn by the parent, not a subview), dropping `frameView.layer.cornerRadius` (artifact persists), forcing a deferred 1px frame bump on first show (works but felt fragile). Likely real fix lives in window-class territory (NSPanel swap with `canBecomeKey` override); deferred until we can verify the swap doesn't regress the `didResignActive` auto-hide path.

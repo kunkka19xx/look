@@ -64,6 +64,11 @@ struct WindowConfigurator: NSViewRepresentable {
         window.styleMask.insert(.fullSizeContentView)
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
+        // Known issue (macOS Sequoia): AppKit draws a 1px hairline at the
+        // top of the content area on the first paint even with `.none` here
+        // — the setting is honored only after the first real frame resize.
+        // Toggling running-apps placement (Settings → Running Apps) clears
+        // it for the session. Parked in docs/tasks.md "Parked: known issues".
         window.titlebarSeparatorStyle = .none
         window.toolbar = nil
         window.isOpaque = false
