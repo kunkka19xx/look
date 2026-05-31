@@ -29,7 +29,6 @@ struct WindowConfigurator: NSViewRepresentable {
             // is resized / restyled, so re-hide them on every update. Cheap
             // (sets three NSView.isHidden flags).
             hideStandardButtons(in: window)
-            suppressTitlebarHairline(in: window)
         }
     }
 
@@ -47,7 +46,17 @@ struct WindowConfigurator: NSViewRepresentable {
     // but forces AppKit to re-evaluate the separator and drop the hairline.
     // As a fallback, also hide AppKit's private separator subview if it
     // re-materializes.
+    //
+    // ONE-SHOT per window. The setFrame grow/restore must NOT run on every
+    // updateNSView (typing, hover, running-app notifications all trigger it),
+    // or the window would visibly resize twice per state change — flicker, and
+    // the same transient deactivation that WindowAutoScale suppresses only for
+    // its own resizes. Runs once, on first show, from makeNSView.
     private func suppressTitlebarHairline(in window: NSWindow) {
+        let id = ObjectIdentifier(window)
+        guard !hairlineSuppressedWindowIDs.contains(id) else { return }
+        hairlineSuppressedWindowIDs.insert(id)
+
         window.titlebarSeparatorStyle = .none
         hideTitlebarSeparatorSubviews(in: window)
 
@@ -152,3 +161,8 @@ struct WindowConfigurator: NSViewRepresentable {
 // from SwiftUI's main-actor view-update path), but the global is
 // otherwise unprotected — declare its isolation explicitly for Swift 6.
 @MainActor private var configuredWindowIDs: Set<ObjectIdentifier> = []
+
+// Windows whose first-show titlebar-hairline workaround has already run, so the
+// 1px setFrame round-trip happens exactly once per window and never on routine
+// updateNSView passes. Main-actor only, like configuredWindowIDs above.
+@MainActor private var hairlineSuppressedWindowIDs: Set<ObjectIdentifier> = []
