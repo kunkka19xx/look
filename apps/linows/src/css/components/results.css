@@ -1,18 +1,32 @@
 /* Result row */
 .result-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px var(--content-padding);
+  padding: 8px var(--input-padding-x);
   min-height: var(--row-height);
   cursor: default;
   border-radius: var(--control-radius);
-  margin: 0 6px;
+  margin: 0 var(--content-padding) 4px;
   transition: background 120ms ease-out;
 }
 
-.result-row + .result-row {
-  border-top: var(--border-thickness) solid var(--divider-color);
+/* Clean horizontal divider drawn as a pseudo-element so it ignores the
+ * row's border-radius (which only shapes the selection background). */
+.result-row::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: -2px;
+  height: 1px;
+  background: var(--divider-color);
+  opacity: 0.8;
+}
+
+.result-row:last-child::after {
+  display: none;
 }
 
 .result-row.selected {

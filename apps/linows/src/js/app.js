@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     onExecuteCommand: executeCommand,
     onGetIcon: getIcon,
   });
-  translatePanel.init(contentArea);
+  translatePanel.init(document.querySelector('.results-pane'));
   settings.init(() => {
     queryInput.value = '';
     search.handleQueryInput('');
@@ -196,14 +196,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       setHint(hintMessage, HINT_TRANSLATE);
       resultsList.hidden = true;
       previewPanel.hidden = true;
+      runningApps.setSuspended(true);
       if (!translatePanel.isActive()) translatePanel.showPlaceholder();
     } else if (search.isClipboardMode()) {
       setHint(hintMessage, HINT_CLIPBOARD);
       resultsList.hidden = false;
+      runningApps.setSuspended(false);
+      if (runningApps.isEnabled()) runningApps.refresh();
       translatePanel.hide();
     } else {
       setHint(hintMessage, HINT_MAIN);
       resultsList.hidden = false;
+      runningApps.setSuspended(false);
+      if (runningApps.isEnabled()) runningApps.refresh();
       translatePanel.hide();
     }
   });
@@ -257,6 +262,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function enterCommandMode() {
     resultsList.hidden = true;
     previewPanel.hidden = true;
+    runningApps.setSuspended(true);
     updateCommandHintBar();
     commands.enter();
     commands.setOnCommandChange(updateCommandHintBar);
@@ -294,6 +300,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     queryInput.value = '';
     search.handleQueryInput('');
     queryInput.focus();
+    runningApps.setSuspended(false);
+    if (runningApps.isEnabled()) runningApps.refresh();
   }
 
   async function executeCommand(cmdId, input) {

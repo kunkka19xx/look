@@ -144,7 +144,7 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) {
     let size = tauri::LogicalSize::new(win_w as f64, win_h as f64);
     let _ = window.set_size(size);
     // Lock min/max to the scaled size: on Wayland, hide()/show() can
-    // otherwise revert to tauri.conf's default (860×580) on remap,
+    // otherwise revert to tauri.conf's default (860×600) on remap,
     // producing a visible "big rectangle then snap" on toggle.
     let _ = window.set_min_size(Some(tauri::Size::Logical(size)));
     let _ = window.set_max_size(Some(tauri::Size::Logical(size)));

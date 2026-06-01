@@ -1,11 +1,13 @@
-/* Running apps strip — right side of search bar */
+/* Running apps strip — top of the .preview-pane (right column).
+ * Aligned vertically with the search bar in the left column. */
 .running-apps-strip {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: var(--content-padding) var(--content-padding) 12px;
+  min-height: calc(var(--input-padding-y) * 2 + 16px);
   flex-shrink: 0;
-  margin-left: auto;
-  padding-left: 8px;
 }
 
 .running-app-item {
@@ -23,7 +25,6 @@
   width: 30px;
   height: 30px;
   border-radius: 22%;
-  background: var(--control-fill);
   color: var(--font-muted);
   display: flex;
   align-items: center;

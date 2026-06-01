@@ -77,14 +77,18 @@ html[data-os="windows"] .launcher-window {
   -webkit-backdrop-filter: none !important;
 }
 
-/* Search bar */
+/* Search bar — sits inside .results-pane so its width tracks the result
+ * rows' column (full window when no preview, left half when preview shown).
+ * Asymmetric vertical margin matches macOS panel insets (top 6, bottom 12). */
 .search-bar {
   position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: var(--input-padding-y) var(--content-padding);
-  border-bottom: var(--border-thickness) solid var(--divider-color);
+  margin: var(--content-padding) var(--content-padding) 12px;
+  padding: var(--input-padding-y) var(--input-padding-x);
+  background: var(--control-fill);
+  border-radius: var(--control-radius);
   flex-shrink: 0;
 }
 
@@ -107,10 +111,20 @@ html[data-os="windows"] .launcher-window {
   color: var(--font-muted);
 }
 
-/* Content area */
+/* Content area: results column (left) + preview panel (right) */
 .content-area {
   display: flex;
   flex: 1;
+  overflow: hidden;
+}
+
+/* Results pane wraps search-row + banner + results-list so the search row
+ * is bound to the same column width as the result rows. */
+.results-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -119,12 +133,33 @@ html[data-os="windows"] .launcher-window {
   min-width: 0;
   overflow-y: auto;
   padding: var(--row-spacing) 0;
+  scrollbar-width: none;
+}
+
+.results-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* Preview pane wraps running-apps strip (top) + preview panel (bottom),
+ * mirroring the results-pane structure on the right side. */
+.preview-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: var(--border-thickness) solid var(--divider-color);
+  overflow: hidden;
+}
+
+/* Collapse the right column when both its children are hidden — the
+ * results-pane (with search bar) then takes the full window width. */
+.preview-pane:has(.running-apps-strip[hidden]):has(.preview-panel[hidden]) {
+  display: none;
 }
 
 .preview-panel {
   flex: 1;
   min-width: 0;
-  border-left: var(--border-thickness) solid var(--divider-color);
   padding: var(--content-padding);
   overflow-y: auto;
 }
@@ -135,12 +170,11 @@ html[data-os="windows"] .launcher-window {
   align-items: center;
   justify-content: space-between;
   padding: 6px var(--content-padding);
-  border-top: var(--border-thickness) solid var(--divider-color);
   flex-shrink: 0;
 }
 
 .hint-bar span {
-  font-size: calc(var(--font-size) - 3px);
+  font-size: calc(var(--font-size) - 1px);
   color: var(--font-muted);
 }
 
@@ -154,7 +188,7 @@ html[data-os="windows"] .launcher-window {
 }
 
 .hint-bar-copy {
-  font-size: calc(var(--font-size) - 3px);
+  font-size: calc(var(--font-size) - 1px);
   color: var(--font-muted);
   opacity: 0.6;
   flex-shrink: 0;

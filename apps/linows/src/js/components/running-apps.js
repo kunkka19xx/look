@@ -10,6 +10,7 @@ const iconCache = new Map();
 let container = null;
 let apps = []; // sorted alphabetically, max 9
 let enabled = true;
+let suspended = false; // temporarily hidden (e.g. command mode, settings)
 
 export function init(containerEl) {
   container = containerEl;
@@ -17,16 +18,23 @@ export function init(containerEl) {
 
 export function setEnabled(on) {
   enabled = on;
-  if (container) container.hidden = !on;
+  if (container) container.hidden = !on || suspended;
 }
 
 export function isEnabled() {
   return enabled;
 }
 
+/** Temporarily hide the strip without changing the user's enabled preference.
+ *  Used when entering non-main screens (command mode, settings, help). */
+export function setSuspended(on) {
+  suspended = on;
+  if (container && on) container.hidden = true;
+}
+
 /** Refresh the running apps list from backend. */
 export async function refresh() {
-  if (!enabled || !container) return;
+  if (!enabled || suspended || !container) return;
 
   try {
     const procs = await listRunningApps();

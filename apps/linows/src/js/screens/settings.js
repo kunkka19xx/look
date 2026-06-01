@@ -196,12 +196,13 @@ export function init(exitFn) {
   });
 
 
-  // Keys that mark the theme as "Custom" when manually changed
+  // Keys that mark the theme as "Custom" when manually changed.
+  // Opacities and thickness are user-controlled and should not flip the
+  // theme to Custom — they are preserved across theme switches separately.
   const THEME_KEYS = new Set([
-    'ui_tint_red', 'ui_tint_green', 'ui_tint_blue', 'ui_tint_opacity',
-    'ui_font_red', 'ui_font_green', 'ui_font_blue', 'ui_font_opacity',
-    'ui_border_red', 'ui_border_green', 'ui_border_blue', 'ui_border_opacity',
-    'ui_border_thickness',
+    'ui_tint_red', 'ui_tint_green', 'ui_tint_blue',
+    'ui_font_red', 'ui_font_green', 'ui_font_blue',
+    'ui_border_red', 'ui_border_green', 'ui_border_blue',
   ]);
 
   // All data-key sliders: live preview + save on release
@@ -722,7 +723,9 @@ async function loadConfig() {
     document.getElementById('settings-font-name').value = fontName;
 
     // Populate all data-key sliders
-    // If a built-in theme is active, use preset values for theme keys
+    // If a built-in theme is active, use preset values for theme keys —
+    // but keep the user's value for user-controlled keys (opacities,
+    // border thickness) so they survive theme switches.
     const activeTheme = map.ui_theme || '';
     const preset = (activeTheme && activeTheme !== 'custom') ? THEME_PRESETS[activeTheme] : null;
     for (const row of screen.querySelectorAll('.settings-row[data-key]')) {
@@ -732,7 +735,13 @@ async function loadConfig() {
       if (!slider) continue;
 
       const presetVal = preset?.[key];
-      const val = presetVal !== undefined ? presetVal : map[key];
+      const userVal = map[key];
+      // User-controlled keys: prefer the user's saved value, fall back to
+      // preset if they haven't set anything yet. Other keys: theme preset
+      // wins so the colors switch with the theme.
+      const val = USER_CONTROLLED_KEYS.has(key)
+        ? (userVal !== undefined ? userVal : presetVal)
+        : (presetVal !== undefined ? presetVal : userVal);
       if (val !== undefined) {
         slider.value = val;
         valueEl.textContent = formatValue(key, parseFloat(val));
@@ -837,6 +846,15 @@ const THEME_PRESETS = {
   },
 };
 
+// Keys that belong to the user, not the theme — preserved when switching
+// themes so the user doesn't lose their custom transparency / border tweaks.
+const USER_CONTROLLED_KEYS = new Set([
+  'ui_tint_opacity',
+  'ui_font_opacity',
+  'ui_border_opacity',
+  'ui_border_thickness',
+]);
+
 function applyThemePreset(themeId) {
   // "custom" = user-modified values, don't override anything
   if (themeId === 'custom') return;
@@ -850,9 +868,12 @@ function applyThemePreset(themeId) {
   const preset = THEME_PRESETS[themeId];
   if (!preset) return;
 
-  // Update slider DOMs first (so getSliderVal reads correct values)
+  // Update slider DOMs first (so getSliderVal reads correct values).
+  // Skip user-controlled keys so the user's existing values survive a
+  // theme switch.
   for (const row of screen.querySelectorAll('.settings-row[data-key]')) {
     const key = row.dataset.key;
+    if (USER_CONTROLLED_KEYS.has(key)) continue;
     if (preset[key] !== undefined) {
       const slider = row.querySelector('.settings-slider');
       const valueEl = row.querySelector('.settings-slider-value');
@@ -868,7 +889,6 @@ function applyThemePreset(themeId) {
   applyFontColor();
   applyBorderColor();
   if (preset.ui_font_size !== undefined) CSS_MAP.ui_font_size(preset.ui_font_size);
-  if (preset.ui_border_thickness !== undefined) CSS_MAP.ui_border_thickness(preset.ui_border_thickness);
 }
 
 // --- CSS application ---
