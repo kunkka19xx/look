@@ -214,12 +214,11 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
     let mut expanded_pids = windowed_pids.clone();
     for &pid in &windowed_pids {
         // Walk up parent chain
-        if let Ok(status) = fs::read_to_string(format!("/proc/{pid}/status")) {
-            if let Some(ppid) =
+        if let Ok(status) = fs::read_to_string(format!("/proc/{pid}/status"))
+            && let Some(ppid) =
                 parse_status_field(&status, "PPid:").and_then(|v| v.parse::<u32>().ok())
-            {
-                expanded_pids.insert(ppid);
-            }
+        {
+            expanded_pids.insert(ppid);
         }
     }
 
@@ -259,10 +258,10 @@ fn is_terminal_or_background(path: &str) -> bool {
         if !in_desktop_entry {
             continue;
         }
-        if let Some(val) = line.strip_prefix("Terminal=") {
-            if val.trim().eq_ignore_ascii_case("true") {
-                return true;
-            }
+        if let Some(val) = line.strip_prefix("Terminal=")
+            && val.trim().eq_ignore_ascii_case("true")
+        {
+            return true;
         }
         if let Some(val) = line.strip_prefix("Categories=") {
             let lower = val.to_lowercase();

@@ -86,13 +86,12 @@ pub fn activate_running_app(
     #[cfg(target_os = "linux")]
     {
         // Try focus via desktop file metadata (WM_CLASS, app_id, etc.)
-        if let Some(ref id) = desktop_id {
-            if let Some(desktop_path) = id.strip_prefix("app:") {
-                if crate::commands::try_focus_existing_pub(desktop_path) {
-                    let _ = window.hide();
-                    return Ok(true);
-                }
-            }
+        if let Some(ref id) = desktop_id
+            && let Some(desktop_path) = id.strip_prefix("app:")
+            && crate::commands::try_focus_existing_pub(desktop_path)
+        {
+            let _ = window.hide();
+            return Ok(true);
         }
         // Fallback: try focusing by exec binary name
         if let Some(ref exec_str) = exec {
