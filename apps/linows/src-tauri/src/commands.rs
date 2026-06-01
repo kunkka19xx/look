@@ -326,8 +326,12 @@ fn user_session_cmd(prog: &str) -> std::process::Command {
     use std::sync::OnceLock;
     static SYSTEMD_RUN: OnceLock<bool> = OnceLock::new();
     let available = *SYSTEMD_RUN.get_or_init(|| {
+        // Exercise the actual `--user` path (a no-op transient unit) — checking
+        // only `systemd-run --version` succeeds on systems that have the binary
+        // but no usable per-user manager (containers, minimal installs), and
+        // would route every launch through a wrapper that then fails.
         std::process::Command::new("systemd-run")
-            .arg("--version")
+            .args(["--user", "--quiet", "--wait", "--collect", "--", "true"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()

@@ -238,12 +238,23 @@ fn filter_by_desktop_hints(apps: Vec<RunningApp>) -> Vec<RunningApp> {
             let Some(path) = id.strip_prefix("app:") else {
                 return false;
             };
-            !is_terminal_or_background(path)
+            if is_terminal_or_background(path) {
+                return false;
+            }
+            // Background daemons launched by GNOME at login (gnome-calendar,
+            // evolution, gnome-control-center, …) run with this flag and only
+            // become foreground when the user activates them. Without a
+            // compositor window list we can't tell which one currently owns a
+            // window, so treat the daemon mode as "not a running app".
+            if is_gapp_service_daemon(app.pid) {
+                return false;
+            }
+            true
         })
         .collect()
 }
 
-/// Check if a desktop file is a terminal app or background service.
+/// Check if a desktop file is a terminal app, background service, or input method.
 fn is_terminal_or_background(path: &str) -> bool {
     let Ok(content) = fs::read_to_string(path) else {
         return false;
@@ -269,8 +280,24 @@ fn is_terminal_or_background(path: &str) -> bool {
                 return true;
             }
         }
+        // fcitx5/ibus desktop files have Categories=System;Utility (no
+        // InputMethod), but their unlocalized GenericName is "Input Method".
+        if let Some(val) = line.strip_prefix("GenericName=")
+            && val.to_lowercase().contains("input method")
+        {
+            return true;
+        }
     }
     false
+}
+
+fn is_gapp_service_daemon(pid: u32) -> bool {
+    let Ok(cmdline) = fs::read_to_string(format!("/proc/{pid}/cmdline")) else {
+        return false;
+    };
+    cmdline
+        .split('\0')
+        .any(|arg| arg == "--gapplication-service")
 }
 
 pub(crate) fn list_on_port(port: u16) -> Vec<RunningApp> {

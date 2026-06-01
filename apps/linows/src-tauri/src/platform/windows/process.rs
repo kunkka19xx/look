@@ -25,7 +25,8 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GW_OWNER, GWL_EXSTYLE, GetShellWindow, GetWindow, GetWindowLongW,
-    GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, WS_EX_TOOLWINDOW,
+    GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+    WS_EX_TOOLWINDOW,
 };
 use windows::core::{BOOL, PWSTR};
 

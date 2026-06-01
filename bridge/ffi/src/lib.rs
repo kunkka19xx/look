@@ -149,11 +149,6 @@ mod tests {
         look_free_cstring(ptr);
 
         let payload: serde_json::Value = serde_json::from_str(&raw).expect("valid search payload");
-        let count = payload
-            .get("count")
-            .and_then(|value| value.as_u64())
-            .unwrap_or(0);
-        assert!(count >= 1);
 
         let mut has_smoke = payload
             .get("results")
@@ -167,8 +162,9 @@ mod tests {
             });
 
         if !has_smoke {
-            // Background bootstrap refresh can replace the in-memory cache during tests.
-            // Re-seed the sqlite fixture and refresh cache once before asserting.
+            // Background bootstrap refresh can replace the in-memory cache during tests
+            // (including racing the cache to empty before the first search). Re-seed the
+            // sqlite fixture and refresh the cache before asserting.
             let mut store = SqliteStore::open(&db_path).expect("re-open sqlite store");
             store
                 .upsert_candidates(&[smoke_candidate()])
