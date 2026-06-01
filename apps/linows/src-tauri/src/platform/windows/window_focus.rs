@@ -92,6 +92,23 @@ pub(crate) fn try_focus_existing(path: &str) -> bool {
     true
 }
 
+/// Activate a specific top-level window by raw HWND. Used by the running-apps
+/// switcher for UWP windows (Settings, Calculator, …) owned by
+/// ApplicationFrameHost, where exe-path matching can't pick which of several
+/// windows sharing one host PID to raise.
+pub(crate) fn focus_hwnd(raw: isize) -> bool {
+    let hwnd = HWND(raw as *mut core::ffi::c_void);
+    if hwnd.0.is_null() {
+        return false;
+    }
+    // Stale handle (window closed since it was listed) → thread id 0.
+    if unsafe { GetWindowThreadProcessId(hwnd, None) } == 0 {
+        return false;
+    }
+    activate_window(hwnd);
+    true
+}
+
 enum Target {
     Aumid(String),
     ExePath(String),

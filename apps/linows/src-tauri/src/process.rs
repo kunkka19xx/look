@@ -61,8 +61,9 @@ pub fn list_running_apps() -> Vec<RunningApp> {
 
     #[cfg(target_os = "windows")]
     {
-        // Windows list() already filters to windowed processes
-        crate::platform::windows::process::list()
+        // Switcher-specific view: includes UWP apps (Settings, Calculator, …)
+        // hosted by ApplicationFrameHost that list()/kill deliberately hides.
+        crate::platform::windows::process::list_gui()
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
@@ -115,11 +116,22 @@ pub fn activate_running_app(
     #[cfg(target_os = "windows")]
     {
         if let Some(ref id) = desktop_id {
-            if let Some(path) = id.strip_prefix("app:") {
-                if crate::platform::windows::window_focus::try_focus_existing(path) {
+            // UWP windows (Settings, …) are addressed by HWND: several share one
+            // ApplicationFrameHost PID, so exe-path matching can't disambiguate.
+            if let Some(raw) = id.strip_prefix("hwnd:") {
+                if let Ok(h) = raw.parse::<isize>()
+                    && crate::platform::windows::window_focus::focus_hwnd(h)
+                {
                     let _ = window.hide();
                     return Ok(true);
                 }
+                return Ok(false);
+            }
+            if let Some(path) = id.strip_prefix("app:")
+                && crate::platform::windows::window_focus::try_focus_existing(path)
+            {
+                let _ = window.hide();
+                return Ok(true);
             }
         }
         Ok(false)

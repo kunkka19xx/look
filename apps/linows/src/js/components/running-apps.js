@@ -1,4 +1,5 @@
 import { listRunningApps, getIcon, activateRunningApp } from '../ipc.js';
+import { appWindow, settings } from '../icons.js';
 
 // Ergonomic badge keys — easy-to-reach keys first (1,2,3,9,8,4,7,6,5).
 // We assign in this order then sort ascending for visual display.
@@ -108,8 +109,14 @@ function render() {
 
     container.appendChild(item);
 
-    // Load real icon async
-    if (app.desktop_id) {
+    // UWP windows (Settings, …) are addressed by HWND and have no resolvable
+    // file icon — the shell returns a generic "earth" globe. Use a Lucide app
+    // glyph instead. Everything else resolves its real icon async.
+    if (app.desktop_id && app.desktop_id.startsWith('hwnd:')) {
+      icon.textContent = '';
+      // Settings → gear; other UWP apps (Calculator, Photos, …) → app-window.
+      icon.innerHTML = /settings/i.test(app.name) ? settings : appWindow;
+    } else if (app.desktop_id) {
       loadAppIcon(icon, app.desktop_id);
     }
   });
