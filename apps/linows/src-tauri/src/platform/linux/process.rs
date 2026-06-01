@@ -135,8 +135,21 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
     }
 
     if super::transparency::is_wayland() {
+        let debug = std::env::var("LOOK_DEBUG_GUI").is_ok();
+        if debug {
+            eprintln!("[list_gui] wayland; candidates from list(): {}", all.len());
+            for app in &all {
+                eprintln!(
+                    "[list_gui]   candidate: name={:?} pid={} desktop_id={:?}",
+                    app.name, app.pid, app.desktop_id
+                );
+            }
+        }
         // Wayland: get app_ids from wlr-foreign-toplevel
         let app_ids = super::wlr_focus::list_toplevel_app_ids();
+        if debug {
+            eprintln!("[list_gui] wlr app_ids: {:?}", app_ids);
+        }
         if !app_ids.is_empty() {
             return all
                 .into_iter()
@@ -164,7 +177,11 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
         // wlr unavailable (GNOME Wayland) — ask the Look GNOME Shell extension
         // which apps Shell.AppSystem considers running (≥1 window). This is
         // the same signal GNOME's Activities/app-switcher uses.
-        if let Some(ids) = super::gnome_ext::list_windowed_apps() {
+        let ext_ids = super::gnome_ext::list_windowed_apps();
+        if debug {
+            eprintln!("[list_gui] gnome ext ListWindowedApps: {:?}", ext_ids);
+        }
+        if let Some(ids) = ext_ids {
             let windowed: std::collections::HashSet<String> =
                 ids.into_iter().map(|s| s.to_lowercase()).collect();
             return all
@@ -181,11 +198,21 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
                         .and_then(|f| f.to_str())
                         .unwrap_or("")
                         .to_lowercase();
-                    windowed.contains(&fname)
+                    let keep = windowed.contains(&fname);
+                    if debug {
+                        eprintln!(
+                            "[list_gui]   ext-filter name={:?} fname={:?} keep={}",
+                            app.name, fname, keep
+                        );
+                    }
+                    keep
                 })
                 .collect();
         }
         // Extension unreachable — last-resort heuristic.
+        if debug {
+            eprintln!("[list_gui] no wlr, no extension — using desktop-hint heuristic");
+        }
         return filter_by_desktop_hints(all);
     }
 
@@ -216,6 +243,13 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
 
 /// Heuristic filter for GNOME Wayland (no wlr, no X11 window list).
 /// Checks desktop file for Terminal=true and known non-GUI categories.
+///
+/// We intentionally do NOT exclude `--gapplication-service` daemons here:
+/// most GNOME apps (Calendar, Weather, Maps, Files, …) run in daemon mode
+/// even when the user has a visible window open. Without a compositor signal
+/// we can't distinguish "daemon idling in background" from "daemon with an
+/// active window," so we err on the side of showing the app — false positives
+/// (a few invisible daemons) beat false negatives (missing real user apps).
 fn filter_by_desktop_hints(apps: Vec<RunningApp>) -> Vec<RunningApp> {
     apps.into_iter()
         .filter(|app| {
@@ -225,18 +259,7 @@ fn filter_by_desktop_hints(apps: Vec<RunningApp>) -> Vec<RunningApp> {
             let Some(path) = id.strip_prefix("app:") else {
                 return false;
             };
-            if is_terminal_or_background(path) {
-                return false;
-            }
-            // Background daemons launched by GNOME at login (gnome-calendar,
-            // evolution, gnome-control-center, …) run with this flag and only
-            // become foreground when the user activates them. Without a
-            // compositor window list we can't tell which one currently owns a
-            // window, so treat the daemon mode as "not a running app".
-            if is_gapp_service_daemon(app.pid) {
-                return false;
-            }
-            true
+            !is_terminal_or_background(path)
         })
         .collect()
 }
@@ -276,15 +299,6 @@ fn is_terminal_or_background(path: &str) -> bool {
         }
     }
     false
-}
-
-fn is_gapp_service_daemon(pid: u32) -> bool {
-    let Ok(cmdline) = fs::read_to_string(format!("/proc/{pid}/cmdline")) else {
-        return false;
-    };
-    cmdline
-        .split('\0')
-        .any(|arg| arg == "--gapplication-service")
 }
 
 pub(crate) fn list_on_port(port: u16) -> Vec<RunningApp> {
