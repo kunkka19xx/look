@@ -174,7 +174,31 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
                 })
                 .collect();
         }
-        // wlr unavailable (GNOME Wayland) — fall back to desktop file heuristics
+        // wlr unavailable (GNOME Wayland) — ask the Look GNOME Shell extension
+        // which apps Shell.AppSystem considers running (≥1 window). This is
+        // the same signal GNOME's Activities/app-switcher uses.
+        if let Some(ids) = super::gnome_ext::list_windowed_apps() {
+            let windowed: std::collections::HashSet<String> =
+                ids.into_iter().map(|s| s.to_lowercase()).collect();
+            return all
+                .into_iter()
+                .filter(|app| {
+                    let Some(ref id) = app.desktop_id else {
+                        return false;
+                    };
+                    let Some(path) = id.strip_prefix("app:") else {
+                        return false;
+                    };
+                    let fname = Path::new(path)
+                        .file_name()
+                        .and_then(|f| f.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    windowed.contains(&fname)
+                })
+                .collect();
+        }
+        // Extension unreachable — last-resort heuristic.
         return filter_by_desktop_hints(all);
     }
 

@@ -413,6 +413,15 @@ fn disable_gpu_acceleration(app: &tauri::App) {
 /// On subsequent launches — re-sync the registry/desktop-entry with the current
 /// exe path so it stays valid after updates or reinstalls (matches WinUI3 behavior).
 fn sync_autostart() {
+    // Debug builds live under target/debug and (when produced by `tauri dev`)
+    // load the frontend from devUrl. If we wrote them into autostart, login
+    // would launch a binary that fails with "Could not connect to 127.0.0.1"
+    // because the dev server isn't running. Leave the installed binary's
+    // autostart entry alone.
+    if cfg!(debug_assertions) {
+        return;
+    }
+
     const KEY: &str = "launch_at_login";
 
     let config_path = config::config_file_path();

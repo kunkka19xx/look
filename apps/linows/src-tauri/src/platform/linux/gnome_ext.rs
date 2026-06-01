@@ -141,6 +141,30 @@ pub fn get_pointer() -> Option<(i32, i32)> {
     })
 }
 
+/// List desktop IDs of apps that GNOME Shell considers "running" (i.e. have
+/// at least one window). Returns None if the extension isn't reachable —
+/// callers should fall back to other heuristics in that case. Returns
+/// `Some(vec![])` if the extension answered but no apps have windows.
+pub fn list_windowed_apps() -> Option<Vec<String>> {
+    let conn = dbus_conn()?;
+    dbus_runtime().block_on(async {
+        let reply: (Vec<String>,) = conn
+            .call_method(
+                Some(DBUS_NAME),
+                DBUS_PATH,
+                Some(DBUS_IFACE),
+                "ListWindowedApps",
+                &(),
+            )
+            .await
+            .ok()?
+            .body()
+            .deserialize()
+            .ok()?;
+        Some(reply.0)
+    })
+}
+
 /// Try to focus an app by its desktop file ID using the GNOME Shell extension.
 /// Returns true if the app was focused (had existing windows).
 ///
