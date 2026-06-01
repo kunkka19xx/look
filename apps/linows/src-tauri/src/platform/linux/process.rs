@@ -47,31 +47,8 @@ pub(crate) fn list() -> Vec<RunningApp> {
     //    Build a map: normalized_name → Vec<(pid, rss)>
     let mut norm_procs: HashMap<String, Vec<(u32, u64)>> = HashMap::new();
     for (proc_name, pids) in &procs {
-        // Original name
-        norm_procs
-            .entry(proc_name.to_lowercase())
-            .or_default()
-            .extend(pids);
-        // Strip NixOS wrapper: ".firefox-wrappe" → "firefox", ".DiscordPTB-wra" → "DiscordPTB"
-        // The /proc/status Name field is truncated to 15 chars, so "-wrapped" may
-        // appear as "-wrappe", "-wrapp", "-wrap", "-wra", "-wr" etc.
-        let stripped = proc_name.strip_prefix('.').unwrap_or(proc_name);
-        let base = if let Some(pos) = stripped.find("-wr") {
-            // Verify the suffix looks like truncated "-wrapped"
-            let suffix = &stripped[pos..];
-            if "-wrapped".starts_with(suffix) {
-                &stripped[..pos]
-            } else {
-                stripped
-            }
-        } else {
-            stripped
-        };
-        if !base.is_empty() && base != proc_name {
-            norm_procs
-                .entry(base.to_lowercase())
-                .or_default()
-                .extend(pids);
+        for candidate in normalize_proc_name(proc_name) {
+            norm_procs.entry(candidate).or_default().extend(pids);
         }
     }
 
@@ -81,7 +58,17 @@ pub(crate) fn list() -> Vec<RunningApp> {
     let mut matched_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for de in &desktop_entries {
-        let bin_names = extract_bin_names(&de.exec);
+        let mut bin_names = extract_bin_names(&de.exec);
+        // DBusActivatable apps may use `Exec=gapplication launch X.Y.Z` (Weather)
+        // or wrap the binary so /proc Name doesn't match Exec. Derive a kebab
+        // candidate from the desktop file stem as a fallback (`org.gnome.Weather`
+        // → `gnome-weather`).
+        if let Some(kebab) = kebab_from_desktop_stem(&de.path) {
+            let key = kebab.to_lowercase();
+            if !bin_names.iter().any(|n| n.to_lowercase() == key) {
+                bin_names.push(kebab);
+            }
+        }
         for bin in &bin_names {
             let key = bin.to_lowercase();
             if matched_keys.contains(&key) {
@@ -497,19 +484,94 @@ fn parse_desktop_entry(path: &str) -> Option<DesktopEntry> {
 
 fn extract_bin_names(exec: &str) -> Vec<String> {
     let mut names = Vec::new();
-    // First token is the command (may have env vars, prefixes)
-    for token in exec.split_whitespace() {
-        if token.contains('=') || token.starts_with('%') {
-            continue; // skip env vars and field codes
+    let mut tokens = exec
+        .split_whitespace()
+        .filter(|t| !t.contains('=') && !t.starts_with('%'));
+
+    let Some(first) = tokens.next() else {
+        return names;
+    };
+    let bin = Path::new(first)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or(first);
+    names.push(bin.to_string());
+
+    // `gapplication launch org.gnome.Weather` — the real binary won't be
+    // `gapplication`. Derive a kebab candidate from the app ID's last two
+    // reverse-DNS segments (`org.gnome.Weather` → `gnome-weather`).
+    if bin == "gapplication" {
+        for t in tokens {
+            if t == "launch" || t.starts_with("--") {
+                continue;
+            }
+            if let Some(kebab) = kebab_from_appid(t) {
+                names.push(kebab);
+            }
+            break;
         }
-        let bin = Path::new(token)
-            .file_name()
-            .and_then(|f| f.to_str())
-            .unwrap_or(token);
-        names.push(bin.to_string());
-        break;
     }
+
     names
+}
+
+/// Convert a reverse-DNS app ID like `org.gnome.Weather` into a kebab-cased
+/// binary candidate `gnome-weather`. Returns None for IDs with fewer than 2
+/// dot-separated segments.
+fn kebab_from_appid(id: &str) -> Option<String> {
+    let segs: Vec<&str> = id.split('.').filter(|s| !s.is_empty()).collect();
+    if segs.len() < 2 {
+        return None;
+    }
+    let n = segs.len();
+    Some(format!("{}-{}", segs[n - 2], segs[n - 1]).to_lowercase())
+}
+
+/// Derive a kebab binary candidate from a desktop file path: the file stem
+/// is treated as a reverse-DNS app ID. Returns None if the stem isn't dotted.
+fn kebab_from_desktop_stem(path: &str) -> Option<String> {
+    let stem = Path::new(path).file_stem().and_then(|s| s.to_str())?;
+    kebab_from_appid(stem)
+}
+
+/// Build all matching candidates for a /proc/<pid>/status `Name:` field.
+///
+/// Always yields the lowercased original. For NixOS-style wrappers (binaries
+/// renamed `.<bin>-wrapped`), `Name:` is truncated to 15 chars and the
+/// `-wrapped` suffix may appear as anything from `-wrapped` down to just `-`
+/// (or vanish entirely when `<bin>` is long enough to fill the 14 chars after
+/// the dot). Yield the unwrapped base in that case too.
+fn normalize_proc_name(proc_name: &str) -> Vec<String> {
+    let mut out = vec![proc_name.to_lowercase()];
+    let Some(stripped) = proc_name.strip_prefix('.') else {
+        return out;
+    };
+    // Try each truncation of "-wrapped" as a suffix. Longest first so we don't
+    // accidentally strip a single `-` from a name that actually ended in `-w*`.
+    for sfx in [
+        "-wrapped", "-wrappe", "-wrapp", "-wrap", "-wra", "-wr", "-w",
+    ] {
+        if let Some(base) = stripped.strip_suffix(sfx)
+            && !base.is_empty()
+        {
+            out.push(base.to_lowercase());
+            return out;
+        }
+    }
+    // Trailing `-` is the most ambiguous case (could be a `-wrapped` truncation
+    // OR a legitimate dash-ending name). Only treat it as a wrapper suffix
+    // when the leading dot is present — which is already guaranteed here.
+    if let Some(base) = stripped.strip_suffix('-')
+        && !base.is_empty()
+    {
+        out.push(base.to_lowercase());
+        return out;
+    }
+    // No wrapper suffix; emit the dot-stripped form as a candidate.
+    if !stripped.is_empty() {
+        out.push(stripped.to_lowercase());
+    }
+    out
 }
 
 fn xdg_app_dirs() -> Vec<String> {
@@ -561,4 +623,50 @@ fn parse_status_field(status: &str, prefix: &str) -> Option<String> {
         .find(|l| l.starts_with(prefix))
         .and_then(|l| l.split_whitespace().nth(1))
         .map(|s| s.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nixos_wrapper_truncations() {
+        // 15-char /proc/comm field, NixOS .<bin>-wrapped pattern.
+        assert!(normalize_proc_name(".firefox-wrappe").contains(&"firefox".to_string()));
+        assert!(normalize_proc_name(".nautilus-wrapp").contains(&"nautilus".to_string()));
+        assert!(normalize_proc_name(".ghostty-wrappe").contains(&"ghostty".to_string()));
+        // Trailing dash from `.gnome-weather-wrapped` truncated to 15 chars.
+        assert!(normalize_proc_name(".gnome-weather-").contains(&"gnome-weather".to_string()));
+        // No `-wrapped` suffix visible — base fills the 14 chars.
+        assert!(normalize_proc_name(".gnome-calendar").contains(&"gnome-calendar".to_string()));
+        // Non-wrapper name passes through.
+        assert_eq!(normalize_proc_name("firefox"), vec!["firefox"]);
+    }
+
+    #[test]
+    fn gapplication_launch_yields_kebab() {
+        let names = extract_bin_names("gapplication launch org.gnome.Weather");
+        assert!(names.contains(&"gapplication".to_string()));
+        assert!(names.contains(&"gnome-weather".to_string()));
+    }
+
+    #[test]
+    fn direct_exec_unchanged() {
+        let names = extract_bin_names("gnome-calendar %U");
+        assert_eq!(names, vec!["gnome-calendar"]);
+    }
+
+    #[test]
+    fn kebab_from_stem() {
+        assert_eq!(
+            kebab_from_desktop_stem("/usr/share/applications/org.gnome.Weather.desktop"),
+            Some("gnome-weather".to_string())
+        );
+        assert_eq!(
+            kebab_from_desktop_stem("/x/org.gnome.Calendar.desktop"),
+            Some("gnome-calendar".to_string())
+        );
+        // Single-segment stems (e.g., `firefox.desktop`) yield None.
+        assert_eq!(kebab_from_desktop_stem("/x/firefox.desktop"), None);
+    }
 }
