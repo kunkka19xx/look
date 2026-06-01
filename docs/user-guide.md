@@ -13,7 +13,7 @@
 > | `Cmd+/`         | `Ctrl+/`         |
 > | `Cmd+0`         | `Ctrl+0`         |
 > | `Cmd+1`…`Cmd+5` | `Ctrl+1`…`Ctrl+5`|
-> | `Cmd+1`…`Cmd+9` (running-apps switcher, macOS only) | — |
+> | `Cmd+1`…`Cmd+9` (running-apps switcher) | `Alt+1`…`Alt+9` |
 > | `Cmd+P`         | `Ctrl+P`         |
 > | `Cmd+Shift+P`   | `Ctrl+Shift+P`   |
 > | `Cmd+Shift+,`   | `Ctrl+Shift+,`   |
@@ -161,12 +161,13 @@ Built-in theme presets are available:
 
 Theme is saved as `ui_theme=<name>` in config.
 
-**Running Apps** (macOS only): a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing `Cmd`+the badge digit on the home screen activates that app. When off, the search bar spans the full width and `Cmd+1`..`Cmd+9` switching is disabled. The launcher window stays the same size either way.
+**Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app — `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. The launcher window stays the same size either way.
 
 Behavior:
 
-- **Stable** — icons sit in alphabetical order and don't shuffle when you switch apps. The `Cmd`+digit for a given app stays the same until you launch or quit something.
+- **Stable** — icons sit in alphabetical order and don't shuffle when you switch apps. The activation digit for a given app stays the same until you launch or quit something.
 - **Ergonomic badge keys** — easier-to-reach keys are assigned first. With 5 running apps the badges are `1, 2, 3, 8, 9` (skipping the harder middle keys); `5/6/7` only get used when you have 7+ apps running.
+- **Linux focus** — Look's GNOME Shell extension activates the app's most-recent window on Wayland; X11 uses `_NET_ACTIVE_WINDOW` via x11rb; sway/Hyprland use `wlr-foreign-toplevel-management`; i3 uses `i3-msg`.
 - **Windowless apps** (Finder with no Finder windows, etc.) get a fresh window via a Dock-style "reopen" so you don't see an empty flash.
 
 Saved as `running_apps_placement=<value>` in `~/.look.config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
@@ -252,7 +253,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+/`: command mode
 - `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:pomo`): jump to a command directly from the home screen
 - `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4` / `Cmd+5`: in command mode, direct command switch (`shell`, `calc`, `kill`, `sys`, `pomo`)
-- `Cmd+1`..`Cmd+9`: on the home screen, activate the running-app whose badge shows that digit (macOS, when `Running Apps` is on). Badge labels are ergonomic, not strictly positional — see Settings → Appearance → Running Apps
+- `Cmd+1`..`Cmd+9` (macOS) / `Alt+1`..`Alt+9` (Linux, Windows): on the home screen, activate the running-app whose badge shows that digit, when `Running Apps` is on. Badge labels are ergonomic, not strictly positional — see Settings → Appearance → Running Apps
 - `Space` / `R` / `P` (inside `/pomo`): start/pause session, reset, toggle music play/pause
 - `Escape`: back/close (context dependent)
 - `Shift+Escape`: hide launcher

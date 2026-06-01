@@ -38,15 +38,18 @@ This document tracks what `look` supports today and what is planned next.
 - kill flow with explicit confirmation and process-by-port lookup (`:3000` / `port 3000`)
 - warning cue when shell input contains `sudo`
 
-### Running apps switcher (macOS)
+### Running apps switcher
 
-- an icon row rendered **inside the search bar**: when enabled, the search field takes the left half of the top bar and the running-app icons occupy the right half (right-aligned, growing leftward as more apps open). Apps come from `NSWorkspace.shared.runningApplications`, filtered to regular apps, capped at 9, sorted alphabetically and **stable** — positions don't shuffle when you switch apps
-- on the home screen, `Cmd`+the digit shown on an icon's corner badge activates it (in command mode, `Cmd+1`..`Cmd+5` keep their existing command-catalog semantics)
+- an icon row rendered on the right half of the search bar: when enabled, the search field takes the left half and the running-app icons occupy the right (right-aligned, growing leftward as more apps open). Apps are capped at 9, sorted alphabetically and **stable** — positions don't shuffle when you switch apps
+  - **macOS**: from `NSWorkspace.shared.runningApplications`, filtered to regular apps
+  - **Linux**: from `/proc` scan, filtered by what GNOME Shell's `Shell.AppSystem.get_running()` considers a windowed app (via Look's GNOME extension on Wayland) or by `wlr-foreign-toplevel` / X11 client-list / desktop-hints on other compositors
+  - **Windows**: from running-window enumeration via Win32
+- on the home screen, activation: `Cmd`+badge digit (macOS) / `Alt`+badge digit (Linux, Windows). In command mode, `Cmd+1`..`Cmd+5` / `Ctrl+1`..`Ctrl+5` keep their existing command-catalog semantics
 - badge labels follow an ergonomic outer-first layout: with N running apps we consume the easiest-to-reach keys first (`1, 2, 3, 9, 8` before `4`, then `7`, then `6`, then `5`). 5 running apps → badges `1, 2, 3, 8, 9`; 9 running apps → all of `1`..`9`
-- windowless apps (e.g. Finder with no Finder windows open) get a fresh window via a Dock-style reopen instead of the bare activate flash; hidden apps (`Cmd+H`) are unhidden first
+- focus paths: macOS = `NSRunningApplication.activate()` with Dock-style reopen for windowless apps; Linux = GNOME Shell extension D-Bus on GNOME Wayland, `wlr-foreign-toplevel-management` on sway/Hyprland, `i3-msg` on i3, `_NET_ACTIVE_WINDOW` (x11rb) on other X11 WMs; Windows = `SetForegroundWindow` via window handle
 - click on an icon also switches; hover shows app name + shortcut tooltip; active app has an accent ring
-- toggled on/off via `Settings > Appearance > Running Apps`. Persisted as `running_apps_placement` in `~/.look.config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` still load as "on"). The window is a single fixed size (860×600, screen-ratio scaled) and never resizes for the row
-- off hides the row and disables the `Cmd+number` switching
+- toggled on/off via `Settings > Appearance > Running Apps`. Persisted as `running_apps_placement` in `~/.look.config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` still load as "on"). The window is a single fixed size and never resizes for the row
+- off hides the row and disables the activation shortcut
 
 ### Settings and runtime config
 
@@ -71,7 +74,6 @@ This document tracks what `look` supports today and what is planned next.
 
 ## In progress / near-term
 
-- running apps switcher parity on Linux + Windows (Tauri shell) — see `docs/tasks.md` "linows" section
 - better coverage for deeper System Settings pages
 - safer shell policy controls (more explicit execution guardrails)
 - richer benchmark reporting (p50/p95/p99) for query/index paths
