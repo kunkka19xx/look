@@ -366,9 +366,12 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
     // Build the launch chain: gtk-launch → gio launch → direct exec.
     // gtk-launch is preferred because gio launch uses D-Bus activation
     // which can silently fail to show a window on first invocation.
+    // Use the resolved desktop_file path (case-preserving) rather than the
+    // raw frontend ID — IDs may be lowercased upstream while gtk-launch is
+    // case-sensitive ("org.gnome.Nautilus" works, "org.gnome.nautilus" does not).
     let desktop_path = desktop_file.clone();
-    let desktop_name = id
-        .and_then(|id| id.strip_prefix("app:"))
+    let desktop_name = desktop_file
+        .as_deref()
         .and_then(|p| std::path::Path::new(p).file_name())
         .and_then(|f| f.to_str())
         .and_then(|f| f.strip_suffix(".desktop"))

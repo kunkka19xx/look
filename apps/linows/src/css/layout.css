@@ -77,11 +77,30 @@ html[data-os="windows"] .launcher-window {
   -webkit-backdrop-filter: none !important;
 }
 
-/* Search bar — sits inside .results-pane so its width tracks the result
- * rows' column (full window when no preview, left half when preview shown).
- * Asymmetric vertical margin matches macOS panel insets (top 6, bottom 12). */
+/* Main pane: two-column CSS Grid that aligns the search bar with the
+ * results-list, and the running apps strip with the preview panel.
+ * Locking them to the same columns guarantees the chip's right edge
+ * matches the row chips' right edge regardless of content sizing.
+ * Right column expands only when one of its rows has visible content. */
+.main-pane {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto 1fr;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.main-pane:has(.running-apps-strip:not([hidden])),
+.main-pane:has(.preview-panel:not([hidden])) {
+  grid-template-columns: 1fr 1fr;
+}
+
 .search-bar {
   position: relative;
+  grid-row: 1;
+  grid-column: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -89,7 +108,12 @@ html[data-os="windows"] .launcher-window {
   padding: var(--input-padding-y) var(--input-padding-x);
   background: var(--control-fill);
   border-radius: var(--control-radius);
-  flex-shrink: 0;
+}
+
+/* When running-apps toggle is off, let the search bar span both columns —
+ * even if preview-panel is still showing below in column 2. */
+.main-pane:has(.running-apps-strip[hidden]) .search-bar {
+  grid-column: 1 / -1;
 }
 
 .search-icon {
@@ -111,26 +135,18 @@ html[data-os="windows"] .launcher-window {
   color: var(--font-muted);
 }
 
-/* Content area: results column (left) + preview panel (right) */
+/* Generic .content-area wrapper used by other screens (settings, commands). */
 .content-area {
   display: flex;
   flex: 1;
   overflow: hidden;
 }
 
-/* Results pane wraps search-row + banner + results-list so the search row
- * is bound to the same column width as the result rows. */
-.results-pane {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 .results-list {
-  flex: 1;
+  grid-row: 3;
+  grid-column: 1;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   padding: var(--row-spacing) 0;
   scrollbar-width: none;
@@ -140,26 +156,14 @@ html[data-os="windows"] .launcher-window {
   display: none;
 }
 
-/* Preview pane wraps running-apps strip (top) + preview panel (bottom),
- * mirroring the results-pane structure on the right side. */
-.preview-pane {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  border-left: var(--border-thickness) solid var(--divider-color);
-  overflow: hidden;
-}
-
-/* Collapse the right column when both its children are hidden — the
- * results-pane (with search bar) then takes the full window width. */
-.preview-pane:has(.running-apps-strip[hidden]):has(.preview-panel[hidden]) {
-  display: none;
-}
-
 .preview-panel {
-  flex: 1;
+  grid-row: 3;
+  grid-column: 2;
   min-width: 0;
+  min-height: 0;
+  /* Fixed 1px (not var(--border-thickness)) so the column divider stays
+   * a hairline even when the user raises the window-border thickness. */
+  border-left: 1px solid var(--divider-color);
   padding: var(--content-padding);
   overflow-y: auto;
 }
@@ -187,8 +191,8 @@ html[data-os="windows"] .launcher-window {
   margin: 0 3px;
 }
 
-.hint-bar-copy {
-  font-size: calc(var(--font-size) - 1px);
+.hint-bar .hint-bar-copy {
+  font-size: 10px;
   color: var(--font-muted);
   opacity: 0.6;
   flex-shrink: 0;

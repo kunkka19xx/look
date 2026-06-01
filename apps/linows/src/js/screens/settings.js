@@ -246,6 +246,18 @@ export function init(exitFn) {
     saveConfig({ lazy_indexing_enabled: e.target.checked ? 'true' : 'false' });
   });
 
+  // Running apps toggle (Appearance tab, next to Theme).
+  // Persisted as `running_apps_placement` to share the macOS config key;
+  // 'right' = visible, 'none' = hidden. Dispatches a custom event so
+  // app.js can apply the change live.
+  document.getElementById('settings-running-apps').addEventListener('change', (e) => {
+    const enabled = e.target.checked;
+    saveConfig({ running_apps_placement: enabled ? 'right' : 'none' });
+    document.dispatchEvent(new CustomEvent('look:running-apps-changed', {
+      detail: { enabled },
+    }));
+  });
+
   // Extra scan dirs
   const extraDirsList = document.getElementById('settings-extra-dirs');
   extraDirsList.dataset.empty = 'No extra scan directories';
@@ -490,6 +502,7 @@ export function init(exitFn) {
       updates.file_scan_depth = document.getElementById('settings-scan-depth').value;
       updates.file_scan_limit = document.getElementById('settings-file-limit').value;
       updates.lazy_indexing_enabled = document.getElementById('settings-lazy-indexing').checked ? 'true' : 'false';
+      updates.running_apps_placement = document.getElementById('settings-running-apps').checked ? 'right' : 'none';
 
       // Advanced: log level
       const logDD = document.getElementById('settings-log-level');
@@ -614,6 +627,17 @@ export async function restoreOnStartup() {
     // already opaque if the user toggled it.
     if (map.arch_disable_blur === 'true') {
       document.documentElement.setAttribute('data-disable-blur', '');
+    }
+
+    // Pre-populate user-controlled sliders from config so the preset's
+    // applytint/applyBorderColor read the user's saved opacity/thickness
+    // instead of the HTML default values. Without this, first-launch
+    // appearance ignores any user opacity / border-thickness overrides
+    // until they actually open Settings.
+    for (const key of USER_CONTROLLED_KEYS) {
+      if (map[key] === undefined) continue;
+      const slider = screen?.querySelector(`.settings-row[data-key="${key}"] .settings-slider`);
+      if (slider) slider.value = map[key];
     }
 
     // Restore theme preset — preset values drive tint/font/border
@@ -752,6 +776,7 @@ async function loadConfig() {
     document.getElementById('settings-scan-depth').value = map.file_scan_depth || '4';
     document.getElementById('settings-file-limit').value = map.file_scan_limit || '8000';
     document.getElementById('settings-lazy-indexing').checked = map.lazy_indexing_enabled !== 'false';
+    document.getElementById('settings-running-apps').checked = (map.running_apps_placement || 'right') !== 'none';
     document.getElementById('settings-arch-disable-gpu').checked = map.arch_disable_gpu === 'true';
     document.getElementById('settings-arch-disable-blur').checked = map.arch_disable_blur === 'true';
     if (map.arch_disable_blur === 'true') {

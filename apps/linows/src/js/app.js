@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     onExecuteCommand: executeCommand,
     onGetIcon: getIcon,
   });
-  translatePanel.init(document.querySelector('.results-pane'));
+  translatePanel.init(contentArea);
   settings.init(() => {
     queryInput.value = '';
     search.handleQueryInput('');
@@ -397,6 +397,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const on = (map.running_apps_placement || 'right') !== 'none';
     runningApps.setEnabled(on);
     if (on) runningApps.refresh();
+  });
+
+  // Live-update when the Settings → Appearance → Running Apps toggle changes.
+  document.addEventListener('look:running-apps-changed', (e) => {
+    const enabled = e.detail.enabled;
+    runningApps.setEnabled(enabled);
+    if (enabled) runningApps.refresh();
   });
 
   // Expose enterCommandMode and settings for keyboard
