@@ -39,6 +39,9 @@ export async function refresh() {
 
   try {
     const procs = await listRunningApps();
+    // Re-check after await: user may have entered a suspended mode
+    // (command, translate) while the IPC call was in flight.
+    if (!enabled || suspended || !container) return;
     // Already sorted alphabetically by backend, take first 9
     apps = procs.slice(0, MAX_ITEMS);
     render();
@@ -49,7 +52,7 @@ export async function refresh() {
 
 /** Activate a running app by its badge key (1-9). Returns true if handled. */
 export function activateByKey(key) {
-  if (!enabled || apps.length === 0) return false;
+  if (!enabled || suspended || apps.length === 0) return false;
 
   const total = apps.length;
   const keys = badgeKeys(total);
