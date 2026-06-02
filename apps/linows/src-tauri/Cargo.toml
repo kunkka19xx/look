@@ -5,7 +5,7 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-tauri = { version = "2.11.1", features = ["tray-icon", "protocol-asset"] }
+tauri = { version = "2.11.2", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 look-engine = { path = "../../../core/engine" }
@@ -13,10 +13,10 @@ look-indexing = { path = "../../../core/indexing" }
 look-storage = { path = "../../../core/storage" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-notify = "6"
+notify = "8"
 open = "5"
 base64 = "0.22"
-rodio = "0.20"
+rodio = "0.22"
 arboard = "3"
 dirs = "6"
 tauri-plugin-dialog = "2"
@@ -26,12 +26,12 @@ x11rb = { version = "0.13", features = ["allow-unsafe-code"] }
 zbus = "5"
 tokio = { version = "1.52.3", features = ["rt"] }
 webkit2gtk = "2.0"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 wayland-client = { version = "0.31", default-features = false }
 wayland-protocols-wlr = { version = "0.3", features = ["client"], default-features = false }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.61", features = [
+windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
@@ -49,7 +49,7 @@ windows = { version = "0.61", features = [
     "Win32_UI_Shell_Common",
     "Win32_UI_WindowsAndMessaging",
 ] }
-png = "0.17"
+png = "0.18"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
