@@ -1,3 +1,4 @@
+use crate::BootstrapScope;
 use crate::config::RuntimeConfig;
 mod apps;
 mod files;
@@ -21,20 +22,40 @@ pub struct CandidateDiscoveryStream {
 }
 
 pub fn discover_candidates_stream(config: &RuntimeConfig) -> CandidateDiscoveryStream {
+    discover_candidates_stream_scoped(config, BootstrapScope::ALL)
+}
+
+/// Like `discover_candidates_stream`, but only spawns the sub-discoveries selected
+/// by `scope`. Sources whose flag is `false` are skipped entirely — no walker is
+/// spawned and no candidates are emitted for them.
+pub fn discover_candidates_stream_scoped(
+    config: &RuntimeConfig,
+    scope: BootstrapScope,
+) -> CandidateDiscoveryStream {
     let (tx, rx) = mpsc::sync_channel(INDEX_CHANNEL_CAPACITY);
     let config = config.clone();
     let producer_handle = thread::spawn(move || {
-        let files_config = config.clone();
-        let files_tx = tx.clone();
-        let files_handle = thread::spawn(move || {
-            files::discover_local_files_and_folders(&files_config, files_tx);
-        });
+        let files_handle = if scope.files {
+            let files_config = config.clone();
+            let files_tx = tx.clone();
+            Some(thread::spawn(move || {
+                files::discover_local_files_and_folders(&files_config, files_tx);
+            }))
+        } else {
+            None
+        };
 
-        apps::discover_installed_apps(&config, tx.clone());
-        settings::discover_system_settings_entries(tx.clone());
+        if scope.apps {
+            apps::discover_installed_apps(&config, tx.clone());
+        }
+        if scope.settings {
+            settings::discover_system_settings_entries(tx.clone());
+        }
         drop(tx);
 
-        if let Err(err) = files_handle.join() {
+        if let Some(handle) = files_handle
+            && let Err(err) = handle.join()
+        {
             eprintln!("look index: file worker panicked: {err:?}");
         }
     });

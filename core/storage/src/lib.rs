@@ -362,6 +362,55 @@ impl SqliteStore {
         Ok(removed)
     }
 
+    /// Scoped variant of `delete_stale_candidates`: prunes only rows whose id begins
+    /// with one of `prefixes`. Used by partial reindex paths that re-walk a subset
+    /// of sources (e.g. apps-only) and must not prune candidates from sources that
+    /// were not part of this run.
+    pub fn delete_stale_candidates_with_prefixes(
+        &mut self,
+        older_than_unix_s: i64,
+        prefixes: &[&str],
+    ) -> StorageResult<usize> {
+        if prefixes.is_empty() {
+            return Ok(0);
+        }
+        let escaped: Vec<String> = prefixes
+            .iter()
+            .map(|p| format!("{}%", p.replace('\\', "\\\\").replace('%', "\\%")))
+            .collect();
+        let like_clause = (0..escaped.len())
+            .map(|i| format!("id LIKE ?{} ESCAPE '\\'", i + 2))
+            .collect::<Vec<_>>()
+            .join(" OR ");
+
+        let tx = self.conn.transaction()?;
+
+        let mut bindings: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(1 + escaped.len());
+        bindings.push(&older_than_unix_s);
+        for s in &escaped {
+            bindings.push(s);
+        }
+
+        let del_usage_sql = format!(
+            "DELETE FROM usage_events
+             WHERE candidate_id IN (
+               SELECT id FROM candidates
+               WHERE (indexed_at_unix_s IS NULL OR indexed_at_unix_s < ?1)
+                 AND ({like_clause})
+             )"
+        );
+        tx.execute(&del_usage_sql, bindings.as_slice())?;
+
+        let del_cand_sql = format!(
+            "DELETE FROM candidates
+             WHERE (indexed_at_unix_s IS NULL OR indexed_at_unix_s < ?1)
+               AND ({like_clause})"
+        );
+        let removed = tx.execute(&del_cand_sql, bindings.as_slice())?;
+        tx.commit()?;
+        Ok(removed)
+    }
+
     /// Deletes every candidate whose `id` starts with `prefix` and is NOT in `keep_ids`,
     /// along with its usage_events rows. Returned value is the number of candidate rows
     /// removed. Used by the UWP seed path (bridge/ffi/src/seed_api.rs) to age out apps
@@ -722,6 +771,125 @@ mod tests {
 
         let loaded = store.load_candidates(None).expect("load candidates");
         assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn delete_stale_candidates_with_prefixes_is_noop_on_empty_prefix_list() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let old = candidate("app:old", "Old", "/Applications/Old.app");
+        store
+            .upsert_candidates_indexed(&[old], Some(100))
+            .expect("insert");
+
+        let removed = store
+            .delete_stale_candidates_with_prefixes(200, &[])
+            .expect("noop");
+        assert_eq!(removed, 0);
+        let loaded = store.load_candidates(None).expect("load");
+        assert_eq!(loaded.len(), 1, "row must be preserved");
+    }
+
+    #[test]
+    fn delete_stale_candidates_with_prefixes_accepts_multiple_prefixes() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let old_app = candidate("app:old", "Old App", "/Applications/Old.app");
+        let old_file = candidate("file:old", "Old File", "/Users/demo/old.txt");
+        let old_folder = candidate("folder:old", "Old Folder", "/Users/demo/old");
+        let old_setting = candidate("setting:old", "Old Setting", "settings://old");
+
+        store
+            .upsert_candidates_indexed(&[old_app, old_file, old_folder, old_setting], Some(100))
+            .expect("seed");
+
+        // Sweep apps + files (mirrors what BootstrapScope::FILES_ONLY produces
+        // via id_prefixes() — file + folder together — plus apps).
+        let removed = store
+            .delete_stale_candidates_with_prefixes(200, &["app:", "file:", "folder:"])
+            .expect("sweep");
+        assert_eq!(removed, 3);
+
+        let ids: Vec<String> = store
+            .load_candidates(None)
+            .expect("load")
+            .into_iter()
+            .map(|c| c.id.as_ref().to_string())
+            .collect();
+        assert_eq!(ids, vec!["setting:old"]);
+    }
+
+    #[test]
+    fn delete_stale_candidates_with_prefixes_purges_matching_usage_events() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let old_app = candidate("app:old", "Old App", "/Applications/Old.app");
+        let old_file = candidate("file:old", "Old File", "/Users/demo/old.txt");
+        store
+            .upsert_candidates_indexed(&[old_app.clone(), old_file.clone()], Some(100))
+            .expect("seed");
+        store
+            .record_usage_event(old_app.id.as_ref(), "open_app")
+            .expect("record app usage");
+        store
+            .record_usage_event(old_file.id.as_ref(), "open_file")
+            .expect("record file usage");
+
+        let removed = store
+            .delete_stale_candidates_with_prefixes(200, &["app:"])
+            .expect("sweep apps");
+        assert_eq!(removed, 1);
+
+        // app:old's usage_events row must be gone; file:old's must remain.
+        let app_usage: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM usage_events WHERE candidate_id = ?1",
+                params!["app:old"],
+                |row| row.get(0),
+            )
+            .expect("count app usage");
+        assert_eq!(app_usage, 0);
+        let file_usage: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM usage_events WHERE candidate_id = ?1",
+                params!["file:old"],
+                |row| row.get(0),
+            )
+            .expect("count file usage");
+        assert_eq!(file_usage, 1);
+    }
+
+    #[test]
+    fn delete_stale_candidates_with_prefixes_only_touches_matching_kinds() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let old_app = candidate("app:old", "Old App", "/Applications/Old.app");
+        let old_file = candidate("file:old", "Old File", "/Users/demo/old.txt");
+        let fresh_app = candidate("app:fresh", "Fresh App", "/Applications/Fresh.app");
+        let fresh_file = candidate("file:fresh", "Fresh File", "/Users/demo/fresh.txt");
+
+        store
+            .upsert_candidates_indexed(&[old_app, old_file], Some(100))
+            .expect("insert old rows");
+        store
+            .upsert_candidates_indexed(&[fresh_app, fresh_file], Some(200))
+            .expect("insert fresh rows");
+
+        let removed = store
+            .delete_stale_candidates_with_prefixes(150, &["app:"])
+            .expect("prune stale apps");
+        assert_eq!(removed, 1);
+
+        let ids: Vec<String> = store
+            .load_candidates(None)
+            .expect("load")
+            .into_iter()
+            .map(|c| c.id.as_ref().to_string())
+            .collect();
+        assert!(!ids.contains(&"app:old".to_string()));
+        assert!(ids.contains(&"app:fresh".to_string()));
+        // file:old is older than the cutoff but must be untouched because we
+        // restricted the sweep to the `app:` prefix.
+        assert!(ids.contains(&"file:old".to_string()));
+        assert!(ids.contains(&"file:fresh".to_string()));
     }
 
     #[test]
