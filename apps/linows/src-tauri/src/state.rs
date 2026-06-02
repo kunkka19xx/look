@@ -221,7 +221,7 @@ impl AppState {
     }
 
     fn start_index_watchers(&self) {
-        let config = RuntimeConfig::load();
+        let config = RuntimeConfig::load_cached();
         if !config.lazy_indexing_enabled {
             return;
         }

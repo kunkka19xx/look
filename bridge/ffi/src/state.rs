@@ -110,7 +110,7 @@ pub(crate) fn stop_index_watchers_for_test() {
 pub(crate) fn restart_index_watchers() {
     stop_index_watchers();
 
-    let config = RuntimeConfig::load();
+    let config = RuntimeConfig::load_cached();
     if !config.lazy_indexing_enabled {
         log_info("index watcher: disabled by lazy_indexing_enabled=false");
         return;
@@ -203,7 +203,7 @@ pub(crate) fn restart_index_watchers() {
 fn request_background_index_refresh_internal() -> bool {
     let _ = engine_cache();
 
-    let lazy_indexing_enabled = RuntimeConfig::load().lazy_indexing_enabled;
+    let lazy_indexing_enabled = RuntimeConfig::load_cached().lazy_indexing_enabled;
     // Lazy indexing ON: refresh only when watcher marked index as dirty.
     // Lazy indexing OFF: refresh on every Cmd+Space request.
     if !refresh_allowed_by_dirty_mode(lazy_indexing_enabled, is_index_dirty()) {

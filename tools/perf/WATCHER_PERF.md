@@ -36,14 +36,28 @@ From `scoped_refresh_bench` (warm pass; the first call after `WAL` setup is
 slightly slower but not representative of the watcher's steady state).
 
 ```
-Indexed snapshot: 2,465 candidates  (77 apps · 1,687 files · 675 folders · 26 settings)
+Indexed snapshot: 2,471 candidates  (77 apps · 1,692 files · 676 folders · 26 settings)
 
-  Scope         Warm latency       Notes
-  ──────────    ────────────       ─────────────────────────────────────
-  ALL           ≈ 15.0 ms          Was the only path before today.
-  APPS_ONLY     ≈  7.2 ms          ~2× faster: skips the files walker.
-  FILES_ONLY    ≈ 14.8 ms          ~same: files walker dominates this dataset.
+  Scope         Initial scoped    + is_demo_seeded   Notes
+                + scoped refresh   + load_cached
+  ──────────    ──────────────    ────────────────   ─────────────────────────────────────
+  ALL           ≈ 15.0 ms         ≈ 13.75 ms         Was the only path before today.
+  APPS_ONLY     ≈  7.2 ms         ≈  5.95 ms         ~2.3× faster than ALL; skips files walker.
+  FILES_ONLY    ≈ 14.8 ms         ≈ 13.70 ms         ~same as ALL: files walker dominates.
 ```
+
+Two refinements landed after the initial scoped refresh:
+
+- `SqliteStore::is_demo_seeded()` — one `COUNT(*)` instead of loading every row to
+  check if the table is just the demo seed (`core/engine/src/lib.rs:135` previously
+  did `load_candidates(None)` for that check).
+- `RuntimeConfig::load_cached()` — skips re-reading `~/.look.config` on every
+  refresh; the linows `reload_config` command and FFI `look_reload_config`
+  drop the cache so user edits still take effect.
+
+The savings (~1.25 ms per call) apply to every bootstrap call regardless of
+scope, so the absolute delta is the same in each row; the *relative* gain is
+largest on `APPS_ONLY` (~17%) because its baseline is smallest.
 
 **Reading this:** scoped refresh is a real win **only for apps events**. On a
 file-only event the walker has to run anyway, so the scope flag saves nothing
@@ -178,8 +192,8 @@ What this proves about the live policy (vs the simulator's predictions):
 ```
                                  BEFORE                          AFTER
   ──────────────────────────    ──────────────────────────     ──────────────────────────
-  Apps refresh cost             ≈ 15 ms                        ≈ 7 ms      (2× faster)
-  Files refresh cost            ≈ 15 ms                        ≈ 15 ms     (same per call)
+  Apps refresh cost             ≈ 15 ms                        ≈ 6 ms      (~2.5× faster)
+  Files refresh cost            ≈ 15 ms                        ≈ 13.7 ms   (slight per-call win)
   Inotify watches               unbounded (recursive)          bounded     (file roots non-recursive)
   Editor / temp / partial noise every event fires              filtered    (zero refreshes)
   Refresh rate cap              none                           ≤ 6 / min   (10 s cooldown)

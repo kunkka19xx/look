@@ -167,6 +167,29 @@ impl SqliteStore {
         Ok(store)
     }
 
+    /// Cheap check for "is the candidates table currently just the demo seed?".
+    /// Used by `bootstrap_sqlite_scoped` to decide whether to wipe the table
+    /// before streaming real candidates. Two `COUNT(*)` queries; avoids the
+    /// alternative of deserializing every row just to inspect ≤7 ids.
+    pub fn is_demo_seeded(&self) -> StorageResult<bool> {
+        let total: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM candidates", [], |row| row.get(0))?;
+        // The demo seed has at most 6 rows; anything larger is definitely real
+        // data and we should not wipe it.
+        if total == 0 || total > 6 {
+            return Ok(false);
+        }
+        let demo_hits: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM candidates \
+             WHERE id IN ('app:safari', 'app:vscode', 'app.safari', 'app.vscode')",
+            [],
+            |row| row.get(0),
+        )?;
+        // Demo seed always includes both Safari and VS Code markers.
+        Ok(demo_hits >= 2)
+    }
+
     pub fn load_candidates(&self, limit: Option<usize>) -> StorageResult<Vec<Candidate>> {
         let sql = match limit {
             Some(_) => {
@@ -771,6 +794,54 @@ mod tests {
 
         let loaded = store.load_candidates(None).expect("load candidates");
         assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn is_demo_seeded_recognizes_demo_rows() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let safari = candidate("app:safari", "Safari", "/Applications/Safari.app");
+        let vscode = candidate("app:vscode", "VS Code", "/Applications/Code.app");
+        store
+            .upsert_candidates_indexed(&[safari, vscode], Some(100))
+            .expect("seed demo rows");
+
+        assert!(store.is_demo_seeded().expect("query"));
+    }
+
+    #[test]
+    fn is_demo_seeded_returns_false_for_empty_table() {
+        let store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        assert!(!store.is_demo_seeded().expect("query"));
+    }
+
+    #[test]
+    fn is_demo_seeded_returns_false_when_real_data_present() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        // > 6 rows means we're past the demo seed regardless of contents.
+        let rows: Vec<Candidate> = (0..10)
+            .map(|i| {
+                candidate(
+                    &format!("app:user-app-{i}"),
+                    &format!("App {i}"),
+                    &format!("/Applications/App{i}.app"),
+                )
+            })
+            .collect();
+        store
+            .upsert_candidates_indexed(&rows, Some(100))
+            .expect("seed");
+        assert!(!store.is_demo_seeded().expect("query"));
+    }
+
+    #[test]
+    fn is_demo_seeded_returns_false_for_partial_demo_match() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        // Only one demo marker — not the full seed.
+        let only_safari = candidate("app:safari", "Safari", "/Applications/Safari.app");
+        store
+            .upsert_candidates_indexed(&[only_safari], Some(100))
+            .expect("seed");
+        assert!(!store.is_demo_seeded().expect("query"));
     }
 
     #[test]

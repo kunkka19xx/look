@@ -1,4 +1,5 @@
 use crate::state::AppState;
+use look_engine::config::RuntimeConfig;
 use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
@@ -272,6 +273,10 @@ pub fn reveal_path(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn reload_config(state: State<'_, AppState>) -> bool {
+    // The engine caches the parsed `~/.look.config` across calls (skips a disk
+    // read on every refresh). When the user explicitly reloads, drop the cache
+    // so the next bootstrap picks up their edits.
+    RuntimeConfig::invalidate_cache();
     state.request_index_refresh()
 }
 

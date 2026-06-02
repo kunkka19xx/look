@@ -108,7 +108,7 @@ impl QueryEngine {
     }
 
     pub fn from_sqlite(path: impl AsRef<Path>) -> Result<Self, StorageError> {
-        let runtime_config = RuntimeConfig::load();
+        let runtime_config = RuntimeConfig::load_cached();
         let store = SqliteStore::open(path)?;
         let candidates = store.load_candidates(None)?;
         Ok(Self::new_with_config(candidates, &runtime_config))
@@ -127,14 +127,12 @@ impl QueryEngine {
         scope: BootstrapScope,
     ) -> Result<(), StorageError> {
         let mut store = SqliteStore::open(path)?;
-        let runtime_config = RuntimeConfig::load();
+        let runtime_config = RuntimeConfig::load_cached();
         let run_started_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|err| StorageError::Data(format!("system time error: {err}")))?
             .as_secs() as i64;
-        let existing = store.load_candidates(None)?;
-        let should_replace = looks_like_demo_seed(&existing);
-        if should_replace {
+        if store.is_demo_seeded()? {
             // Clear demo rows first, then progressively stream real candidates.
             store.replace_candidates(&[])?;
         }
@@ -262,16 +260,6 @@ impl BootstrapScope {
         }
         out
     }
-}
-
-fn looks_like_demo_seed(candidates: &[Candidate]) -> bool {
-    if candidates.len() > 6 {
-        return false;
-    }
-
-    let ids: HashSet<&str> = candidates.iter().map(|c| c.id.as_ref()).collect();
-    (ids.contains("app:safari") || ids.contains("app.safari"))
-        && (ids.contains("app:vscode") || ids.contains("app.vscode"))
 }
 
 #[cfg(test)]

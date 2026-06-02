@@ -57,6 +57,9 @@ pub extern "C" fn look_record_usage_json(
 #[unsafe(no_mangle)]
 pub extern "C" fn look_reload_config() -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // Drop the engine's cached `~/.look.config` before anything below reads
+        // RuntimeConfig — otherwise the reload would see stale roots/limits.
+        look_engine::config::RuntimeConfig::invalidate_cache();
         runtime_config::reload_runtime_config();
         state::restart_index_watchers();
         let path = state::default_db_path();
