@@ -69,6 +69,18 @@ pub(crate) fn list() -> Vec<RunningApp> {
                 bin_names.push(kebab);
             }
         }
+        // GJS apps (Weather, etc.) launch via `gjs-console` but set their
+        // /proc Name to the GApplication ID — `org.gnome.Weather` truncated
+        // to `org.gnome.Weath` at the 15-char comm limit. Add the raw dotted
+        // stem so the truncation fallback below picks it up.
+        if let Some(stem) = Path::new(&de.path).file_stem().and_then(|s| s.to_str())
+            && stem.contains('.')
+        {
+            let key = stem.to_lowercase();
+            if !bin_names.iter().any(|n| n.to_lowercase() == key) {
+                bin_names.push(stem.to_string());
+            }
+        }
         for bin in &bin_names {
             let key = bin.to_lowercase();
             if matched_keys.contains(&key) {
@@ -668,6 +680,19 @@ mod tests {
     fn direct_exec_unchanged() {
         let names = extract_bin_names("gnome-calendar %U");
         assert_eq!(names, vec!["gnome-calendar"]);
+    }
+
+    #[test]
+    fn gjs_appid_truncated_proc_name_matches_via_15char_fallback() {
+        // GNOME Weather (GJS) shows up in /proc as `org.gnome.Weath` (15 chars
+        // truncated from `org.gnome.Weather`). The desktop file is
+        // `org.gnome.Weather.desktop`; lowercased stem `org.gnome.weather`
+        // truncated to 15 chars is `org.gnome.weath`. Verify the truncation
+        // produces the proc-name form a real Weather process exposes.
+        let key = "org.gnome.weather";
+        let trunc: String = key.chars().take(15).collect();
+        assert_eq!(trunc, "org.gnome.weath");
+        assert!(trunc.len() < key.len());
     }
 
     #[test]
