@@ -26,6 +26,31 @@ fn now_unix_ms() -> u64 {
         .unwrap_or(0)
 }
 
+#[cfg(target_os = "linux")]
+fn extra_apps_roots() -> Vec<String> {
+    let mut roots = Vec::new();
+    if let Ok(home) = std::env::var("HOME") {
+        let home = home.trim();
+        if !home.is_empty() {
+            roots.push(format!("{home}/.local/share/applications"));
+        }
+    }
+    if let Ok(data_dirs) = std::env::var("XDG_DATA_DIRS") {
+        for dir in data_dirs.split(':') {
+            let dir = dir.trim();
+            if !dir.is_empty() {
+                roots.push(format!("{dir}/applications"));
+            }
+        }
+    }
+    roots
+}
+
+#[cfg(not(target_os = "linux"))]
+fn extra_apps_roots() -> Vec<String> {
+    Vec::new()
+}
+
 /// Resets the `in_progress` flag on drop, so a panic inside the refresh worker
 /// can't leak it as permanently `true` (which would silently disable all
 /// further auto-refreshes for the rest of the session).
@@ -162,23 +187,7 @@ impl AppState {
         // Apps roots: small directories holding .desktop / .app entries. Safe to
         // watch recursively — inode budget is tiny.
         let mut apps_roots: Vec<String> = config.app_scan_roots.clone();
-        #[cfg(target_os = "linux")]
-        {
-            if let Ok(home) = std::env::var("HOME") {
-                let home = home.trim().to_string();
-                if !home.is_empty() {
-                    apps_roots.push(format!("{home}/.local/share/applications"));
-                }
-            }
-            if let Ok(data_dirs) = std::env::var("XDG_DATA_DIRS") {
-                for dir in data_dirs.split(':') {
-                    let dir = dir.trim();
-                    if !dir.is_empty() {
-                        apps_roots.push(format!("{dir}/applications"));
-                    }
-                }
-            }
-        }
+        apps_roots.extend(extra_apps_roots());
 
         // File roots: Documents / Downloads / Desktop and any extras. These can
         // be huge; recursive watches would chew through `fs.inotify.max_user_watches`
