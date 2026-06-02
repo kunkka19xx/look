@@ -152,23 +152,36 @@ Runtime refresh triggers:
   - `true`: run only when dirty,
   - `false`: run on every launcher open request.
 
+Watcher policy (linows, see `apps/linows/src-tauri/src/state.rs`):
+
+- **apps roots** (`/usr/share/applications`, `~/.local/share/applications`, `XDG_DATA_DIRS/applications`) — watched **recursively** (small directories, cheap),
+- **file roots** (`~/Documents`, `~/Downloads`, `~/Desktop`, `file_scan_extra_roots`) — watched **non-recursively** to bound inotify watch count on large trees; deep-tree changes reconciled on next launcher-open refresh,
+- **noise filter** suppresses events whose every path is a synthetic file (vim `.swp`, browser `.crdownload`/`.part`, Office `~$lock`, OS droppings),
+- **debounce** (2 s) coalesces bursts before firing a refresh,
+- **cooldown** (10 s) caps watcher-triggered refresh rate at ≤ 6/min; explicit launcher-open refreshes bypass it,
+- **scoped refresh** — `QueryEngine::bootstrap_sqlite_scoped(path, scope)` re-walks only the dirty source family (apps-only / files-only / all). Stale deletion is scoped to the same id prefixes so unrelated rows survive,
+- **off-thread reindex** — the watcher loop spawns a worker thread to run the bootstrap, so subsequent events keep draining instead of queuing in the kernel buffer,
+- **RAII slot guard** ensures a panic inside the worker still releases the in-progress flag.
+
+Benchmarks for this path live in `tools/perf/` (see [tools/perf/WATCHER_PERF.md](../tools/perf/WATCHER_PERF.md)).
+
 ```mermaid
 flowchart TD
-    Start[Engine cache init or config reload] --> Bootstrap[QueryEngine bootstrap_sqlite]
+    Start[Engine cache init or config reload] --> Bootstrap[QueryEngine bootstrap_sqlite_scoped scope]
     Bootstrap --> LoadCfg[RuntimeConfig load from .look.config]
     LoadCfg --> OpenStore[SqliteStore open and migrate]
-    OpenStore --> Stream[discover_candidates_stream]
+    OpenStore --> Stream[discover_candidates_stream_scoped]
 
-    Stream --> Apps[discover_installed_apps]
-    Stream --> Settings[discover_system_settings_entries]
-    Stream --> FilesThread[Thread discover_local_files_and_folders]
+    Stream -- scope.apps --> Apps[discover_installed_apps]
+    Stream -- scope.settings --> Settings[discover_system_settings_entries]
+    Stream -- scope.files --> FilesThread[Thread discover_local_files_and_folders]
 
     Apps --> Dedup[Deduplicate by candidate id]
     Settings --> Dedup
     FilesThread --> Dedup
 
     Dedup --> ChunkUpsert[Chunked upsert_candidates_indexed]
-    ChunkUpsert --> DeleteStale[delete_stale_candidates]
+    ChunkUpsert --> DeleteStale[delete_stale_candidates_with_prefixes for active scope]
     DeleteStale --> UsagePrune[prune usage events by age and max rows]
     UsagePrune --> RefreshCache[refresh_engine_cache]
     RefreshCache --> Ready[Search-ready in-memory engine]
