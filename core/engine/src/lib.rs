@@ -162,13 +162,21 @@ impl QueryEngine {
             eprintln!("look index: producer worker panicked: {err:?}");
         }
 
-        if discovered_count > 0 {
-            let prefixes = scope.id_prefixes();
-            if scope.is_all() {
+        // Stale-row sweep. The `ALL` branch keeps the "discovered something"
+        // guard as a crash-shaped failsafe — if a full bootstrap silently
+        // produced zero candidates we'd rather leave the DB alone than wipe
+        // every row. Scoped paths are different: when the watcher fires an
+        // `APPS_ONLY` refresh, "zero discovered" is the legitimate "user just
+        // uninstalled their last app in this root" outcome, and we must still
+        // sweep the matching prefixes or the deleted row lingers forever
+        // (only an `ALL` refresh would otherwise catch it).
+        let prefixes = scope.id_prefixes();
+        if scope.is_all() {
+            if discovered_count > 0 {
                 let _ = store.delete_stale_candidates(run_started_at)?;
-            } else if !prefixes.is_empty() {
-                let _ = store.delete_stale_candidates_with_prefixes(run_started_at, &prefixes)?;
             }
+        } else if !prefixes.is_empty() {
+            let _ = store.delete_stale_candidates_with_prefixes(run_started_at, &prefixes)?;
         }
 
         let usage_cutoff = run_started_at.saturating_sub(USAGE_RETENTION_DAYS * 24 * 3600);

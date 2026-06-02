@@ -117,107 +117,40 @@ impl AppState {
         if !self.try_acquire_refresh_slot() {
             return false;
         }
-
         let dirty_snapshot = self.index_change_version.load(Ordering::Acquire);
-
-        let db_path = default_db_path();
-        let engine_lock = &self.engine as *const RwLock<QueryEngine> as usize;
-        let change_version = &self.index_change_version as *const AtomicU64 as usize;
-        let cleared_version = &self.index_cleared_version as *const AtomicU64 as usize;
-        let in_progress = &self.index_refresh_in_progress as *const AtomicBool as usize;
-        let last_refresh_at = &self.last_refresh_completed_unix_ms as *const AtomicU64 as usize;
-
-        // SAFETY: AppState is managed by Tauri and lives for the app's lifetime.
-        // The spawned thread will complete before the app exits.
-        thread::spawn(move || {
-            let (engine_lock, change_version, cleared_version, in_progress, last_refresh_at) = unsafe {
-                (
-                    &*(engine_lock as *const RwLock<QueryEngine>),
-                    &*(change_version as *const AtomicU64),
-                    &*(cleared_version as *const AtomicU64),
-                    &*(in_progress as *const AtomicBool),
-                    &*(last_refresh_at as *const AtomicU64),
-                )
-            };
-            // Releases the slot and writes the cooldown stamp on every exit path,
-            // including a panic in `bootstrap_sqlite` or `from_sqlite`.
-            let _slot = RefreshSlotGuard { flag: in_progress };
-
-            let started_at = Instant::now();
-            match QueryEngine::bootstrap_sqlite(&db_path) {
-                Ok(()) => {
-                    if let Ok(new_engine) = QueryEngine::from_sqlite(&db_path) {
-                        let mut guard = engine_lock
-                            .write()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner());
-                        *guard = new_engine;
-                    }
-                    if change_version.load(Ordering::Acquire) == dirty_snapshot {
-                        cleared_version.store(dirty_snapshot, Ordering::Release);
-                    }
-                    eprintln!(
-                        "look: index refresh ok elapsed_ms={}",
-                        started_at.elapsed().as_millis()
-                    );
-                }
-                Err(err) => {
-                    change_version.fetch_add(1, Ordering::AcqRel);
-                    eprintln!("look: index refresh failed error={err}");
-                }
-            }
-            last_refresh_at.store(now_unix_ms(), Ordering::Release);
-        });
-
+        spawn_refresh_worker(
+            self.ptrs(),
+            BootstrapScope::ALL,
+            dirty_snapshot,
+            true,  // we just acquired in_progress; worker releases it on drop
+            false, // user-initiated refresh; frontend already knows it asked
+            "look: index refresh",
+        );
         true
     }
 
     fn start_background_bootstrap(&self) {
-        let db_path = default_db_path();
-        let engine_lock = &self.engine as *const RwLock<QueryEngine> as usize;
-        let change_version = &self.index_change_version as *const AtomicU64 as usize;
-        let cleared_version = &self.index_cleared_version as *const AtomicU64 as usize;
-        let last_refresh_at = &self.last_refresh_completed_unix_ms as *const AtomicU64 as usize;
+        // Initial bootstrap doesn't gate on `in_progress` (it's the first
+        // refresh of the session, nothing else has tried to acquire yet).
+        let dirty_snapshot = self.index_change_version.load(Ordering::Acquire);
+        spawn_refresh_worker(
+            self.ptrs(),
+            BootstrapScope::ALL,
+            dirty_snapshot,
+            false, // no slot held — don't release on drop
+            true,  // frontend needs the EVENT_INDEX_READY signal to render
+            "look: bootstrap",
+        );
+    }
 
-        // SAFETY: AppState lives for the app's lifetime.
-        thread::spawn(move || {
-            let (engine_lock, change_version, cleared_version, last_refresh_at) = unsafe {
-                (
-                    &*(engine_lock as *const RwLock<QueryEngine>),
-                    &*(change_version as *const AtomicU64),
-                    &*(cleared_version as *const AtomicU64),
-                    &*(last_refresh_at as *const AtomicU64),
-                )
-            };
-            let started_at = Instant::now();
-            let dirty_snapshot = change_version.load(Ordering::Acquire);
-            match QueryEngine::bootstrap_sqlite(&db_path) {
-                Ok(()) => {
-                    if let Ok(new_engine) = QueryEngine::from_sqlite(&db_path) {
-                        let mut guard = engine_lock
-                            .write()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner());
-                        *guard = new_engine;
-                    }
-                    if change_version.load(Ordering::Acquire) == dirty_snapshot {
-                        cleared_version.store(dirty_snapshot, Ordering::Release);
-                    }
-                    eprintln!(
-                        "look: bootstrap ok elapsed_ms={}",
-                        started_at.elapsed().as_millis()
-                    );
-                    if let Some(handle) = APP_HANDLE.get()
-                        && let Some(w) = handle.get_webview_window(crate::consts::MAIN_WINDOW)
-                    {
-                        let _ = w.emit(crate::consts::EVENT_INDEX_READY, ());
-                    }
-                }
-                Err(err) => {
-                    change_version.fetch_add(1, Ordering::AcqRel);
-                    eprintln!("look: bootstrap failed error={err}");
-                }
-            }
-            last_refresh_at.store(now_unix_ms(), Ordering::Release);
-        });
+    fn ptrs(&self) -> WatcherStatePtrs {
+        WatcherStatePtrs {
+            change_version: &self.index_change_version as *const AtomicU64 as usize,
+            cleared_version: &self.index_cleared_version as *const AtomicU64 as usize,
+            in_progress: &self.index_refresh_in_progress as *const AtomicBool as usize,
+            engine_lock: &self.engine as *const RwLock<QueryEngine> as usize,
+            last_refresh_at: &self.last_refresh_completed_unix_ms as *const AtomicU64 as usize,
+        }
     }
 
     fn start_index_watchers(&self) {
@@ -397,64 +330,16 @@ impl AppState {
                     apps_dirty = false;
                     files_dirty = false;
                     let dirty_snapshot = change_version.load(Ordering::Acquire);
-                    let db_path = default_db_path();
 
                     eprintln!("[watcher] auto-refresh start scope={scope:?}");
-                    let worker_ptrs = ptrs;
-
-                    // SAFETY: same lifetime guarantee as the outer thread.
-                    thread::spawn(move || {
-                        let (
-                            change_version,
-                            cleared_version,
-                            in_progress,
-                            engine_lock,
-                            last_refresh_at,
-                        ) = unsafe {
-                            (
-                                &*(worker_ptrs.change_version as *const AtomicU64),
-                                &*(worker_ptrs.cleared_version as *const AtomicU64),
-                                &*(worker_ptrs.in_progress as *const AtomicBool),
-                                &*(worker_ptrs.engine_lock as *const RwLock<QueryEngine>),
-                                &*(worker_ptrs.last_refresh_at as *const AtomicU64),
-                            )
-                        };
-                        // Releases the slot on any exit, including a panic in
-                        // the engine or storage layer — otherwise the watcher
-                        // would silently stop auto-refreshing for the rest of
-                        // the session.
-                        let _slot = RefreshSlotGuard { flag: in_progress };
-
-                        let started_at = Instant::now();
-                        match QueryEngine::bootstrap_sqlite_scoped(&db_path, scope) {
-                            Ok(()) => {
-                                if let Ok(new_engine) = QueryEngine::from_sqlite(&db_path) {
-                                    let mut guard = engine_lock
-                                        .write()
-                                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                                    *guard = new_engine;
-                                }
-                                if change_version.load(Ordering::Acquire) == dirty_snapshot {
-                                    cleared_version.store(dirty_snapshot, Ordering::Release);
-                                }
-                                eprintln!(
-                                    "[watcher] auto-refresh ok scope={scope:?} elapsed_ms={}",
-                                    started_at.elapsed().as_millis()
-                                );
-                                if let Some(handle) = APP_HANDLE.get()
-                                    && let Some(w) =
-                                        handle.get_webview_window(crate::consts::MAIN_WINDOW)
-                                {
-                                    let _ = w.emit(crate::consts::EVENT_INDEX_READY, ());
-                                }
-                            }
-                            Err(err) => {
-                                change_version.fetch_add(1, Ordering::AcqRel);
-                                eprintln!("[watcher] auto-refresh failed: {err}");
-                            }
-                        }
-                        last_refresh_at.store(now_unix_ms(), Ordering::Release);
-                    });
+                    spawn_refresh_worker(
+                        ptrs,
+                        scope,
+                        dirty_snapshot,
+                        true, // outer loop already CAS-acquired in_progress
+                        true, // watcher refreshes are async; frontend needs the signal
+                        "[watcher] auto-refresh",
+                    );
                 }
             }
         });
@@ -471,6 +356,94 @@ impl AppState {
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
     }
+}
+
+/// Spawns the background thread that runs a single index refresh and folds the
+/// result back into `AppState`. Used by all three callers: the initial
+/// bootstrap, the user-triggered window-show refresh, and the watcher's
+/// debounced auto-refresh. Each caller passes its own knobs:
+///
+/// - `scope`: `ALL` for full bootstrap, `APPS_ONLY`/`FILES_ONLY` for scoped.
+/// - `dirty_snapshot`: captured by the caller *before* spawning so that
+///   events arriving during the refresh keep the cleared_version stale.
+/// - `holds_slot`: `true` if the caller already CAS-acquired `in_progress` and
+///   wants this worker to release it via `RefreshSlotGuard` on drop. The
+///   initial bootstrap passes `false` (no contention to gate against yet).
+/// - `emit_ready`: `true` for async refreshes that the frontend can't otherwise
+///   know about (bootstrap, watcher auto-refresh). `false` for user-initiated
+///   refreshes — the frontend already knows it issued the command.
+/// - `log_label`: prefix for stdout log lines (kept distinct so grep-by-source
+///   still works: `look: …` vs `[watcher] …`).
+fn spawn_refresh_worker(
+    ptrs: WatcherStatePtrs,
+    scope: BootstrapScope,
+    dirty_snapshot: u64,
+    holds_slot: bool,
+    emit_ready: bool,
+    log_label: &'static str,
+) {
+    let db_path = default_db_path();
+    // SAFETY: `AppState` is owned by Tauri and outlives every worker thread,
+    // so the addresses smuggled through `WatcherStatePtrs` stay valid.
+    thread::spawn(move || {
+        let (engine_lock, change_version, cleared_version, in_progress, last_refresh_at) = unsafe {
+            (
+                &*(ptrs.engine_lock as *const RwLock<QueryEngine>),
+                &*(ptrs.change_version as *const AtomicU64),
+                &*(ptrs.cleared_version as *const AtomicU64),
+                &*(ptrs.in_progress as *const AtomicBool),
+                &*(ptrs.last_refresh_at as *const AtomicU64),
+            )
+        };
+        // RAII slot release. A panic inside the engine/storage layer would
+        // otherwise leave `in_progress` stuck `true` and silently disable all
+        // further auto-refreshes for the rest of the session.
+        let _slot = holds_slot.then(|| RefreshSlotGuard { flag: in_progress });
+
+        let started_at = Instant::now();
+        let result = if scope.is_all() {
+            QueryEngine::bootstrap_sqlite(&db_path)
+        } else {
+            QueryEngine::bootstrap_sqlite_scoped(&db_path, scope)
+        };
+        match result {
+            Ok(()) => {
+                if let Ok(new_engine) = QueryEngine::from_sqlite(&db_path) {
+                    let mut guard = engine_lock
+                        .write()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    *guard = new_engine;
+                }
+                // Only clear the dirty version if no new events landed during
+                // the refresh; otherwise the next loop tick picks them up.
+                if change_version.load(Ordering::Acquire) == dirty_snapshot {
+                    cleared_version.store(dirty_snapshot, Ordering::Release);
+                }
+                if scope.is_all() {
+                    eprintln!(
+                        "{log_label} ok elapsed_ms={}",
+                        started_at.elapsed().as_millis()
+                    );
+                } else {
+                    eprintln!(
+                        "{log_label} ok scope={scope:?} elapsed_ms={}",
+                        started_at.elapsed().as_millis()
+                    );
+                }
+                if emit_ready
+                    && let Some(handle) = APP_HANDLE.get()
+                    && let Some(w) = handle.get_webview_window(crate::consts::MAIN_WINDOW)
+                {
+                    let _ = w.emit(crate::consts::EVENT_INDEX_READY, ());
+                }
+            }
+            Err(err) => {
+                change_version.fetch_add(1, Ordering::AcqRel);
+                eprintln!("{log_label} failed: {err}");
+            }
+        }
+        last_refresh_at.store(now_unix_ms(), Ordering::Release);
+    });
 }
 
 pub const ENV_DB_PATH: &str = "LOOK_DB_PATH";
