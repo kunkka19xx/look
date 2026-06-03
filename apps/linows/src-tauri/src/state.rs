@@ -279,31 +279,35 @@ impl AppState {
 
                 match event_rx.recv_timeout(std::time::Duration::from_millis(WATCHER_POLL_MS)) {
                     Ok(Ok(event)) => {
-                        if !should_mark_dirty(&event) {
-                            continue;
-                        }
-                        let mut matched = false;
-                        for path in &event.paths {
-                            if path_under_any(path, &apps_roots_paths) {
-                                apps_dirty = true;
-                                matched = true;
+                        // Only relevant events update dirty state, but we always
+                        // fall through to the debounce check below — otherwise a
+                        // steady stream of ignored events (e.g. `Modify(Data)`
+                        // during a long save/download) would starve the debounce
+                        // timer and leave the index stale until the stream stops.
+                        if should_mark_dirty(&event) {
+                            let mut matched = false;
+                            for path in &event.paths {
+                                if path_under_any(path, &apps_roots_paths) {
+                                    apps_dirty = true;
+                                    matched = true;
+                                }
+                                if path_under_any(path, &file_roots_paths) {
+                                    files_dirty = true;
+                                    matched = true;
+                                }
                             }
-                            if path_under_any(path, &file_roots_paths) {
-                                files_dirty = true;
-                                matched = true;
+                            if matched {
+                                let v = change_version.fetch_add(1, Ordering::AcqRel);
+                                eprintln!(
+                                    "[watcher] dirty! v={} apps={} files={} {:?} {:?}",
+                                    v + 1,
+                                    apps_dirty,
+                                    files_dirty,
+                                    event.kind,
+                                    event.paths
+                                );
+                                last_dirty_at = Some(Instant::now());
                             }
-                        }
-                        if matched {
-                            let v = change_version.fetch_add(1, Ordering::AcqRel);
-                            eprintln!(
-                                "[watcher] dirty! v={} apps={} files={} {:?} {:?}",
-                                v + 1,
-                                apps_dirty,
-                                files_dirty,
-                                event.kind,
-                                event.paths
-                            );
-                            last_dirty_at = Some(Instant::now());
                         }
                     }
                     Ok(Err(_)) => {}
