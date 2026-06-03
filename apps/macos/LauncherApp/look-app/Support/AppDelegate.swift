@@ -34,6 +34,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // when the launcher window is the active app.
         UNUserNotificationCenter.current().delegate = PomoNotifications.foregroundDelegate
         PomoNotifications.requestPermissionEarly()
+
+        // Notify-only update check against GitHub Releases (throttled to once
+        // per 12h). Look ships via Homebrew, so this never self-installs — it
+        // just surfaces a notice linking to the release page.
+        UpdateChecker.shared.checkForUpdates()
     }
 
     private func shouldTerminateDuplicateInstance() -> Bool {

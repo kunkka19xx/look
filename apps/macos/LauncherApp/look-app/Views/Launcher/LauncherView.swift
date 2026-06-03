@@ -599,7 +599,7 @@ struct LauncherView: View {
         if appUIState.showsThemeSettings {
             ThemeSettingsView(settings: $themeStore.settings)
         } else {
-            if !isCommandMode {
+            if !isCommandMode && !showsHelpScreen {
                 if shouldShowRunningAppsStrip {
                     // Split the search-bar row in half: search field on the
                     // left, running-apps icons on the right. No floating strip,
