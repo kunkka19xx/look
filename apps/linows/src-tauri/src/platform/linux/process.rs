@@ -52,8 +52,23 @@ pub(crate) fn list() -> Vec<RunningApp> {
         }
     }
 
-    // 3. Scan .desktop files, match Exec against running process names
-    let desktop_entries = scan_desktop_files();
+    // 3. Scan .desktop files, match Exec against running process names.
+    //    Sort so "primary" entries (desktop stem matches a bin in its own Exec,
+    //    e.g. `steam.desktop` with `Exec=steam`) are tried first. Otherwise
+    //    user-installed game shortcuts like `Dota 2.desktop` (Exec=steam …)
+    //    would claim the steam /proc match before steam.desktop gets a turn,
+    //    and Steam would show up as "Dota 2" in the running-apps list.
+    let mut desktop_entries = scan_desktop_files();
+    desktop_entries.sort_by_key(|de| {
+        let stem = Path::new(&de.path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let bins = extract_bin_names(&de.exec);
+        let primary = bins.iter().any(|b| b.to_lowercase() == stem);
+        (if primary { 0 } else { 1 }, stem)
+    });
     let mut apps: Vec<RunningApp> = Vec::new();
     let mut matched_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
 
@@ -87,12 +102,20 @@ pub(crate) fn list() -> Vec<RunningApp> {
                 continue;
             }
             // /proc/<pid>/comm is limited to TASK_COMM_LEN-1 == 15 chars, so
-            // `gnome-text-editor` shows up as `gnome-text-edit`. Match the
-            // truncated form too when the desktop Exec is longer.
+            // `gnome-text-editor` shows up as `gnome-text-edit`. On NixOS the
+            // wrapper prefixes a `.` (`.gnome-text-edi-wrapped`), eating one
+            // more slot so the stripped form is only 14 chars (`gnome-text-edi`).
+            // Try both lengths.
             let pids = norm_procs.get(&key).or_else(|| {
-                let trunc: String = key.chars().take(15).collect();
-                if trunc.len() < key.len() {
-                    norm_procs.get(&trunc)
+                let trunc15: String = key.chars().take(15).collect();
+                if trunc15.len() < key.len()
+                    && let Some(v) = norm_procs.get(&trunc15)
+                {
+                    return Some(v);
+                }
+                let trunc14: String = key.chars().take(14).collect();
+                if trunc14.len() < key.len() {
+                    norm_procs.get(&trunc14)
                 } else {
                     None
                 }
@@ -693,6 +716,62 @@ mod tests {
         let trunc: String = key.chars().take(15).collect();
         assert_eq!(trunc, "org.gnome.weath");
         assert!(trunc.len() < key.len());
+    }
+
+    #[test]
+    fn nixos_wrapper_14char_truncation_matches_long_binary() {
+        // For a binary like `gnome-text-editor` (17 chars), the NixOS wrapper
+        // form `.gnome-text-editor-wrapped` is truncated by /proc/<pid>/comm to
+        // `.gnome-text-edi` — the leading dot eats one slot, leaving only 14
+        // chars of the base. `normalize_proc_name` strips the dot and yields a
+        // 14-char key. The 15-char truncation of "gnome-text-editor" produces
+        // "gnome-text-edit" which DOESN'T match, so the lookup must also try
+        // 14 chars to catch this case.
+        let proc_name = ".gnome-text-edi"; // exactly what /proc shows on NixOS
+        let candidates = normalize_proc_name(proc_name);
+        assert!(
+            candidates.contains(&"gnome-text-edi".to_string()),
+            "stripped form must be in candidates"
+        );
+        let key = "gnome-text-editor".to_lowercase();
+        let trunc15: String = key.chars().take(15).collect();
+        let trunc14: String = key.chars().take(14).collect();
+        assert_ne!(trunc15, "gnome-text-edi", "15-char trunc doesn't help here");
+        assert_eq!(trunc14, "gnome-text-edi", "14-char trunc is the match");
+    }
+
+    #[test]
+    fn primary_desktop_entries_sort_before_game_shortcuts() {
+        // Steam game shortcuts (`~/.local/share/applications/Dota 2.desktop`
+        // with `Exec=steam steam://run/570`) shouldn't shadow `steam.desktop`
+        // when matching against the `steam` /proc entry. The sort key in
+        // `list()` prioritizes desktop entries whose file stem matches a bin
+        // name in their own Exec. Mirror that logic here as a regression check.
+        let entries = vec![
+            DesktopEntry {
+                name: "Dota 2".into(),
+                exec: "steam steam://run/570".into(),
+                path: "/home/u/.local/share/applications/Dota 2.desktop".into(),
+            },
+            DesktopEntry {
+                name: "Steam".into(),
+                exec: "steam %U".into(),
+                path: "/usr/share/applications/steam.desktop".into(),
+            },
+        ];
+        let mut sorted = entries;
+        sorted.sort_by_key(|de| {
+            let stem = std::path::Path::new(&de.path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let bins = extract_bin_names(&de.exec);
+            let primary = bins.iter().any(|b| b.to_lowercase() == stem);
+            (if primary { 0 } else { 1 }, stem)
+        });
+        assert_eq!(sorted[0].name, "Steam", "primary entry must come first");
+        assert_eq!(sorted[1].name, "Dota 2");
     }
 
     #[test]
