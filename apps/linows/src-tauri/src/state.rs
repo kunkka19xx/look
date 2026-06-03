@@ -563,7 +563,7 @@ fn is_noisy_path(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
         return false;
     };
-    if NOISY_NAMES.iter().any(|n| *n == name) {
+    if NOISY_NAMES.contains(&name) {
         return true;
     }
     if NOISY_PREFIXES.iter().any(|p| name.starts_with(p)) {
