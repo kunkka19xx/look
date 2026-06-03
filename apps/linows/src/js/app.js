@@ -6,6 +6,7 @@ import * as picked from './components/picked.js';
 import * as banner from './components/banner.js';
 import * as commands from './screens/commands/index.js';
 import * as settings from './screens/settings.js';
+import { mountUpdateWidget } from './screens/update_widget.js';
 import * as translatePanel from './components/translate.js';
 import * as runningApps from './components/running-apps.js';
 import * as platform from './platform.js';
@@ -48,6 +49,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   await load('html/screens/commands/index.html', app);
   await load('html/screens/settings.html', app);
   await load('html/screens/help.html', app);
+
+  // About / version + update-status widget, shared between Settings and Help.
+  // Settings gets an "About" header label; Help mounts the widget bare so the
+  // screen title above already serves as its heading (mirrors macOS layout).
+  mountUpdateWidget(document.getElementById('settings-about'), { label: 'About' });
+  mountUpdateWidget(document.getElementById('help-update'));
 
   // Hint bar — always at bottom, shared by all screens
   app.insertAdjacentHTML('beforeend',

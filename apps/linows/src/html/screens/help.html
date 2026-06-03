@@ -1,11 +1,14 @@
 <div class="help-overlay" id="help-screen" hidden>
   <div class="help-panel">
     <div class="help-header">
-      <span class="help-title">Keyboard Help</span>
+      <span class="help-title">Help</span>
       <span class="help-close-hint">Ctrl+H to close</span>
     </div>
-    <div class="help-subtitle">Quick guide for app list, app switching, clipboard search, and command flow.</div>
     <div class="help-body">
+      <!-- About / update status sits inside the scroll area, so scrolling
+           the shortcut list moves it off-screen — matches macOS layout. -->
+      <div class="help-update" id="help-update"></div>
+
       <!-- Main -->
       <div class="help-section-title">Main</div>
       <div class="help-item"><kbd>Enter</kbd><span>Open selected app/file/folder or copy selected clipboard item</span></div>

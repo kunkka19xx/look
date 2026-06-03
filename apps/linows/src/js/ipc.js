@@ -196,3 +196,7 @@ export async function highlightFile(path) {
 export async function listFolder(path) {
   return invoke('list_folder', { path });
 }
+
+export async function getLookappVersion() {
+  return invoke('get_lookapp_version');
+}

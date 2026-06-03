@@ -76,6 +76,17 @@ pub fn is_dev_build() -> bool {
     cfg!(debug_assertions)
 }
 
+/// Source of truth is `tauri.conf.json` (exposed via `PackageInfo`).
+/// Debug builds report a fixed `0.1.0` so the update check can be exercised
+/// end-to-end against the latest GitHub release.
+#[tauri::command]
+pub fn get_lookapp_version(app: tauri::AppHandle) -> String {
+    if cfg!(debug_assertions) {
+        return "0.1.0".to_string();
+    }
+    app.package_info().version.to_string()
+}
+
 #[tauri::command]
 pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), String> {
     if paths.is_empty() {

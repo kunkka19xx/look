@@ -710,6 +710,9 @@ fn main() {
             autostart::get_autostart,
             // Highlight
             highlight::highlight_file_cmd,
+            // About widget: version only. The update check itself runs in
+            // the webview via fetch() — no Rust HTTP/TLS dep needed.
+            files::get_lookapp_version,
         ])
         .build(tauri::generate_context!())
         .expect("error while building look desktop")
