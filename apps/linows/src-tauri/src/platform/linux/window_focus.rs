@@ -219,34 +219,79 @@ fn read_active_window(conn: &impl Connection, root: Window, atom: Atom) -> u32 {
         .unwrap_or(0)
 }
 
-/// Collect PIDs of all windows in `_NET_CLIENT_LIST`.
-/// Returns an empty set on failure (Wayland, no X11, etc.).
-pub fn pids_with_visible_windows() -> std::collections::HashSet<u32> {
-    let mut pids = std::collections::HashSet::new();
+/// One visible window's identifying properties — what we can read from X11
+/// without consulting `/proc`. Both `WM_CLASS` strings are lowercased so
+/// callers can compare case-insensitively against desktop file metadata.
+#[derive(Debug, Clone)]
+pub struct VisibleWindowInfo {
+    /// `WM_CLASS` instance (first NUL-terminated string). Usually matches the
+    /// app's `StartupWMClass=` desktop field — e.g. `libreoffice-writer`,
+    /// `discord`, `postman`.
+    pub instance: String,
+    /// `WM_CLASS` class (second string). Usually the human-readable form
+    /// like `LibreOffice 7.6`. Kept lowercased for matching.
+    pub class: String,
+    /// `_NET_WM_PID` if the app set it. Many Electron/Java/AppImage apps
+    /// don't, which is precisely why `list_gui`'s PID filter alone misses
+    /// them — WM_CLASS gives us a second matching axis.
+    pub pid: Option<u32>,
+}
+
+/// Enumerate every window in `_NET_CLIENT_LIST` with its WM_CLASS and (if
+/// available) `_NET_WM_PID`. Used by `list_gui` to recover apps that the
+/// /proc-name → desktop-Exec matcher missed: LibreOffice's `soffice.bin`
+/// process doesn't share a name with any `libreoffice-*.desktop` Exec, but
+/// its window's WM_CLASS does match the desktop's `StartupWMClass`. Same
+/// pattern fixes Postman, Discord, and other Electron/Java apps that either
+/// rename their /proc entry or omit `_NET_WM_PID`.
+pub fn list_visible_windows() -> Vec<VisibleWindowInfo> {
+    let mut out = Vec::new();
     let Ok((conn, screen_num)) = x11rb::connect(None) else {
-        return pids;
+        return out;
     };
     let root = conn.setup().roots[screen_num].root;
     let Some(windows) = get_client_list(&conn, root) else {
-        return pids;
+        return out;
     };
     let pid_atom = conn
         .intern_atom(false, b"_NET_WM_PID")
         .ok()
         .and_then(|c| c.reply().ok())
         .map(|r| r.atom);
-    let Some(pid_atom) = pid_atom else {
-        return pids;
-    };
+
     for wid in windows {
-        if let Ok(cookie) = conn.get_property(false, wid, pid_atom, AtomEnum::CARDINAL, 0, 1)
-            && let Ok(reply) = cookie.reply()
-            && let Some(pid) = reply.value32().and_then(|mut v| v.next())
-        {
-            pids.insert(pid);
-        }
+        let Some((instance, class)) = read_wm_class(&conn, wid) else {
+            continue;
+        };
+        let pid = pid_atom.and_then(|atom| {
+            conn.get_property(false, wid, atom, AtomEnum::CARDINAL, 0, 1)
+                .ok()
+                .and_then(|c| c.reply().ok())
+                .and_then(|r| r.value32().and_then(|mut v| v.next()))
+        });
+        out.push(VisibleWindowInfo {
+            instance,
+            class,
+            pid,
+        });
     }
-    pids
+    out
+}
+
+/// Read `WM_CLASS` for a window. Property is a pair of NUL-terminated
+/// strings: instance, then class. Returns lowercased values for
+/// case-insensitive matching downstream.
+fn read_wm_class(conn: &impl Connection, wid: Window) -> Option<(String, String)> {
+    let reply = conn
+        .get_property(false, wid, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 256)
+        .ok()?
+        .reply()
+        .ok()?;
+    let raw = String::from_utf8_lossy(&reply.value);
+    let mut parts = raw.split('\0').filter(|s| !s.is_empty());
+    let instance = parts.next()?.to_lowercase();
+    let class = parts.next().unwrap_or("").to_lowercase();
+    Some((instance, class))
 }
 
 // --- Active window monitor ---
