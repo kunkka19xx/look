@@ -1,11 +1,21 @@
 import AppKit
 import Darwin
+import SwiftUI
 import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotKeyManager = GlobalHotKeyManager()
     private let pomoMenuBarItem = PomoMenuBarItem()
+
+    // The launcher window is owned by AppKit (created here), NOT by a SwiftUI
+    // WindowGroup. SwiftUI refuses to create a WindowGroup window on a
+    // background login launch, which left LauncherView (and its Cmd+Space
+    // toggle observer) unmounted → the hotkey fired into the void. An AppKit
+    // NSWindow is not subject to that suppression: we create it at launch
+    // (hidden) so LauncherView is always mounted and the existing
+    // .lookToggleWindowRequested → toggleWindowVisibility() path just works.
+    private var launcherWindow: NSWindow?
 
     // Grace period allows macOS "Quit & Reopen" handoff to release the previous process lock.
     private static let relaunchGracePeriodSeconds: TimeInterval = 0.8
@@ -28,12 +38,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         pomoMenuBarItem.install()
 
+        // Create the launcher window ourselves (hidden) so LauncherView mounts
+        // at launch — even on a cold background-login launch, where SwiftUI
+        // would never create a WindowGroup window. With the view mounted, its
+        // .lookToggleWindowRequested observer is live and Cmd+Space toggles it.
+        makeLauncherWindow()
+
         // Notifications: ask for permission early (so the prompt isn't
         // tied to the user being mid-pomodoro) and forward foreground
         // deliveries through a delegate so banners aren't suppressed
         // when the launcher window is the active app.
         UNUserNotificationCenter.current().delegate = PomoNotifications.foregroundDelegate
         PomoNotifications.requestPermissionEarly()
+    }
+
+    /// Build the launcher window in AppKit, host ContentView in it, and leave
+    /// it hidden. WindowConfigurator (embedded in ContentView) restyles this
+    /// window on first appearance — corner radius, floating level, titlebar
+    /// hairline fix, multi-display autoscale — exactly as it did for the old
+    /// WindowGroup window, so nothing about the launcher's look changes.
+    private func makeLauncherWindow() {
+        let baseSize = WindowAutoScale.baseSize()
+        let (minW, minH) = (baseSize.width, baseSize.height)
+        let content = ContentView()
+            .frame(minWidth: minW, minHeight: minH)
+            .background(WindowConfigurator())
+            .environmentObject(AppUIState.shared)
+            .environmentObject(ThemeStore.shared)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: minW, height: minH),
+            styleMask: [.titled, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = NSHostingView(rootView: content)
+        window.isReleasedWhenClosed = false
+        // Start hidden — this matches the launcher's normal resting state
+        // (it is summoned with Cmd+Space, not shown at launch).
+        window.orderOut(nil)
+        launcherWindow = window
     }
 
     private func shouldTerminateDuplicateInstance() -> Bool {

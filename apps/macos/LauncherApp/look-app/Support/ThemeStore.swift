@@ -5,6 +5,11 @@ import AppKit
 import ServiceManagement
 
 final class ThemeStore: ObservableObject {
+    // Shared instance so AppDelegate (which hosts ContentView in an
+    // AppKit-owned window) and the App scene's `.commands` (zoom, theme)
+    // operate on the same store. See AppDelegate.makeLauncherWindow().
+    static let shared = ThemeStore()
+
     @Published private(set) var backgroundImageURL: URL?
     @Published private(set) var backgroundImage: NSImage?
     @Published var uiScale: CGFloat = 1.0
