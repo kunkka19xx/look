@@ -15,6 +15,17 @@ const SETTINGS_KEY_WEB_SEARCH_ENGINE: &str = "web_search_engine";
 const SETTINGS_TRUE: &str = "true";
 const SETTINGS_FALSE: &str = "false";
 
+/// Number of rows in the demo seed inserted by `QueryEngine::demo_candidates`.
+/// `is_demo_seeded` uses this as an upper bound: anything larger is real data.
+/// Keep in sync with `core/engine/src/lib.rs::demo_candidates`.
+const DEMO_SEED_ROW_COUNT: i64 = 6;
+
+/// Marker ids the demo seed always contains. `is_demo_seeded` treats the
+/// database as a pristine demo only if BOTH are present, so a small real
+/// DB that happens to contain one isn't wiped on the next scoped refresh.
+const DEMO_MARKER_SAFARI: &str = "app:safari";
+const DEMO_MARKER_VSCODE: &str = "app:vscode";
+
 #[derive(Default)]
 pub struct InMemorySettingsStore {
     values: HashMap<String, String>,
@@ -169,25 +180,32 @@ impl SqliteStore {
 
     /// Cheap check for "is the candidates table currently just the demo seed?".
     /// Used by `bootstrap_sqlite_scoped` to decide whether to wipe the table
-    /// before streaming real candidates. Two `COUNT(*)` queries; avoids the
-    /// alternative of deserializing every row just to inspect ≤7 ids.
+    /// before streaming real candidates. Point lookups on the PK index; avoids
+    /// deserializing every row just to inspect the marker ids.
+    ///
+    /// Source of truth for the marker ids and row count is
+    /// `QueryEngine::demo_candidates` in `core/engine/src/lib.rs`.
     pub fn is_demo_seeded(&self) -> StorageResult<bool> {
         let total: i64 = self
             .conn
             .query_row("SELECT COUNT(*) FROM candidates", [], |row| row.get(0))?;
-        // The demo seed has at most 6 rows; anything larger is definitely real
-        // data and we should not wipe it.
-        if total == 0 || total > 6 {
+        // Anything larger than the demo seed is definitely real data.
+        if total == 0 || total > DEMO_SEED_ROW_COUNT {
             return Ok(false);
         }
-        let demo_hits: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM candidates \
-             WHERE id IN ('app:safari', 'app:vscode', 'app.safari', 'app.vscode')",
-            [],
+        // Demo seed always includes both markers; require BOTH families
+        // present so a small real DB with only one of them doesn't trip
+        // the heuristic and get wiped on the next scoped refresh.
+        Ok(self.has_candidate(DEMO_MARKER_SAFARI)? && self.has_candidate(DEMO_MARKER_VSCODE)?)
+    }
+
+    fn has_candidate(&self, id: &str) -> StorageResult<bool> {
+        let hit: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM candidates WHERE id = ?1",
+            [id],
             |row| row.get(0),
         )?;
-        // Demo seed always includes both Safari and VS Code markers.
-        Ok(demo_hits >= 2)
+        Ok(hit > 0)
     }
 
     pub fn load_candidates(&self, limit: Option<usize>) -> StorageResult<Vec<Candidate>> {

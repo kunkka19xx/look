@@ -19,6 +19,33 @@ const WATCHER_POLL_MS: u64 = 500;
 /// (window show, force_index_refresh) deliberately bypass this gate.
 const WATCHER_REFRESH_COOLDOWN_MS: u64 = 10_000;
 
+/// Exact filenames that the watcher should ignore — OS metadata droppings
+/// that file managers create as a side effect of normal directory access.
+const NOISY_NAMES: &[&str] = &[".DS_Store", "Thumbs.db", "desktop.ini", ".directory"];
+
+/// Filename prefixes that signal a transient atomic-save artifact: Office
+/// lockfile (`~$`), Emacs autosave (`.#`), and the vim `.~` family.
+const NOISY_PREFIXES: &[&str] = &["~$", ".~", ".#"];
+
+/// Lowercased filename suffixes that signal transient files: editor swaps,
+/// browser partial downloads, generic tmp/lock/bak artifacts.
+const NOISY_SUFFIXES: &[&str] = &[
+    ".swp",
+    ".swo",
+    ".swn",
+    ".swx",
+    ".tmp",
+    ".temp",
+    ".crdownload",
+    ".part",
+    ".partial",
+    ".download",
+    ".lock",
+    ".lck",
+    ".bak",
+    ".cache",
+];
+
 fn now_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -536,33 +563,13 @@ fn is_noisy_path(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
         return false;
     };
-    if matches!(
-        name,
-        ".DS_Store" | "Thumbs.db" | "desktop.ini" | ".directory"
-    ) {
+    if NOISY_NAMES.iter().any(|n| *n == name) {
         return true;
     }
-    // Office, emacs, vim atomic-save prefixes.
-    if name.starts_with("~$") || name.starts_with(".~") || name.starts_with(".#") {
+    if NOISY_PREFIXES.iter().any(|p| name.starts_with(p)) {
         return true;
     }
     let lower = name.to_ascii_lowercase();
-    const NOISY_SUFFIXES: &[&str] = &[
-        ".swp",
-        ".swo",
-        ".swn",
-        ".swx",
-        ".tmp",
-        ".temp",
-        ".crdownload",
-        ".part",
-        ".partial",
-        ".download",
-        ".lock",
-        ".lck",
-        ".bak",
-        ".cache",
-    ];
     NOISY_SUFFIXES.iter().any(|ext| lower.ends_with(ext))
 }
 
