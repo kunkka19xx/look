@@ -407,6 +407,31 @@ fn disable_gpu_acceleration(app: &tauri::App) {
     }
 }
 
+/// Disable WebKitGTK smooth scrolling on X11.
+///
+/// Why: GTK3 issue #3287 — on X11 with GDK_SMOOTH_SCROLL_MASK enabled, the
+/// first scroll event after the cursor enters a window arrives with delta=0
+/// (GDK has no previous value to subtract), so the first wheel notch is
+/// effectively dropped. On tiling WMs like i3 the launcher pops up at a new
+/// position every show, so users cross the window edge every session and hit
+/// this bug every session ("scroll feels frozen, then works"). Switching to
+/// discrete scroll events sidesteps the smooth-delta=0 path entirely.
+///
+/// Wayland uses a different event delivery path and isn't affected, so this
+/// is X11-only.
+#[cfg(target_os = "linux")]
+fn disable_smooth_scrolling_x11(app: &tauri::App) {
+    if let Some(webview) = app.get_webview_window(consts::MAIN_WINDOW) {
+        let _ = webview.with_webview(|wv| {
+            use webkit2gtk::SettingsExt;
+            let inner = wv.inner();
+            if let Some(settings) = webkit2gtk::WebViewExt::settings(&inner) {
+                settings.set_enable_smooth_scrolling(false);
+            }
+        });
+    }
+}
+
 /// Sync autostart registration with config on every launch.
 ///
 /// On first launch (no `launch_at_login` key yet) — enable autostart and persist.
@@ -607,6 +632,7 @@ fn main() {
             #[cfg(target_os = "linux")]
             if !use_wayland {
                 setup_x11_focus_monitor(app);
+                disable_smooth_scrolling_x11(app);
             }
 
             let window = app
