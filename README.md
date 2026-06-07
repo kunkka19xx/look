@@ -103,7 +103,7 @@ Uninstall:
 yay -R look-bin
 
 # Ubuntu/Debian
-sudo dpkg -r lookapp
+sudo dpkg -r look
 
 # AppImage — just delete the file
 rm Look_*.AppImage
