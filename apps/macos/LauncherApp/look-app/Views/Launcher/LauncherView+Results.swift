@@ -284,6 +284,97 @@ extension LauncherView {
         )
     }
 
+    // MARK: - Delete to Trash
+
+    /// File/folder targets the delete action should act on: the picked basket
+    /// when non-empty, otherwise the single selected result. Non-deletable
+    /// kinds, URL-scheme paths, and items gone from disk are filtered out by
+    /// `DeleteTargetLogic.eligible`.
+    func eligibleDeleteTargets() -> [DeleteCommand.Target] {
+        let candidates: [LauncherResult]
+        if !pickedKeys.isEmpty {
+            candidates = pickedKeys.compactMap { pickedResultsByKey[$0] }
+        } else if let selectedResultID,
+                  let selected = displayedResults.first(where: { $0.id == selectedResultID }) {
+            candidates = [selected]
+        } else {
+            candidates = []
+        }
+
+        return DeleteTargetLogic
+            .eligible(from: candidates, fileExists: { FileManager.default.fileExists(atPath: $0) })
+            .map { result in
+                DeleteCommand.Target(
+                    id: result.id,
+                    displayName: result.title,
+                    path: result.path,
+                    kind: result.kind,
+                    icon: NSWorkspace.shared.icon(forFile: result.path)
+                )
+            }
+    }
+
+    /// Cmd+Delete entry point: builds targets and raises the confirm banner.
+    func requestDeleteSelection() {
+        guard !isCommandMode, !appUIState.showsThemeSettings, !showsHelpScreen else { return }
+        // Don't stack a second confirmation while one is pending / in flight.
+        guard pendingDeleteTargets.isEmpty else { return }
+
+        let targets = eligibleDeleteTargets()
+        guard !targets.isEmpty else {
+            showBanner("Select a file or folder to delete", style: .info, duration: 1.2)
+            return
+        }
+        pendingDeleteTargets = targets
+    }
+
+    func confirmDeleteSelection() {
+        guard !pendingDeleteTargets.isEmpty else { return }
+        runDeleteCommand(targets: pendingDeleteTargets)
+        pendingDeleteTargets = []
+    }
+
+    func cancelDeleteSelection() {
+        pendingDeleteTargets = []
+    }
+
+    private func runDeleteCommand(targets: [DeleteCommand.Target]) {
+        let targetsByID = Dictionary(targets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
+        DeleteCommand.trash(targets) { [self] outcome in
+            let trashed = Set(outcome.trashedIDs)
+
+            // Drop trashed items from the picked basket.
+            for id in outcome.trashedIDs {
+                guard let target = targetsByID[id] else { continue }
+                let key = "\(target.kind.rawValue)|\(target.path)"
+                if let idx = pickedKeys.firstIndex(of: key) {
+                    pickedKeys.remove(at: idx)
+                    pickedResultsByKey.removeValue(forKey: key)
+                }
+            }
+            if pickedKeys.isEmpty {
+                NSPasteboard.general.clearContents()
+            } else {
+                writePickedToPasteboard()
+            }
+
+            // Move selection off any row that was trashed.
+            if let selectedResultID, trashed.contains(selectedResultID) {
+                self.selectedResultID = displayedResults.first(where: { !trashed.contains($0.id) })?.id
+            }
+
+            let message = DeleteTargetLogic.resultMessage(
+                trashedCount: outcome.trashedCount,
+                failureCount: outcome.failures.count,
+                firstFailure: outcome.firstFailure
+            )
+            showBanner(message.text, style: message.isError ? .error : .success, duration: message.isError ? 2.0 : 1.4)
+
+            _ = bridge.requestIndexRefresh()
+        }
+    }
+
     func refreshClipboardSelectionIfNeeded() {
         guard !isCommandMode, isClipboardQuery else { return }
 

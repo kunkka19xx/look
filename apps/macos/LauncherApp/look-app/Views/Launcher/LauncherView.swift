@@ -59,6 +59,7 @@ struct LauncherView: View {
     @State var lookupPreviewTask: Task<Void, Never>?
     @State var selectedKillSuggestionIndex: Int?
     @State var pendingKillCandidate: KillCommand.Candidate?
+    @State var pendingDeleteTargets: [DeleteCommand.Target] = []
     @State var killListRefreshTick: Int = 0
     @State var recentlyKilledPIDs: Set<Int32> = []
     @State var showsHelpScreen = false
@@ -338,7 +339,7 @@ struct LauncherView: View {
             return ["Enter copy clip", "Delete remove clip", "Cmd+H help", "Cmd+/ command mode"]
         }
 
-        return ["Enter open", "Cmd+F reveal", "Cmd+H help", "Cmd+/ command mode"]
+        return ["Enter open", "Cmd+F reveal", "Cmd+D trash", "Cmd+H help", "Cmd+/ command mode"]
     }
 
     var commandNamePart: String {
@@ -374,6 +375,10 @@ struct LauncherView: View {
         isCommandMode
             && activeCommandID == AppConstants.Launcher.Command.kill
             && pendingKillCandidate != nil
+    }
+
+    var isDeleteConfirmationVisible: Bool {
+        !isCommandMode && !pendingDeleteTargets.isEmpty
     }
 
     var liveCommandPreview: String? {
@@ -444,6 +449,11 @@ struct LauncherView: View {
             clipboardStore.setMonitoringMode(.background)
         }
         .onChange(of: query) { _, _ in
+            // Editing the query dismisses a pending delete confirmation, mirroring
+            // how the kill command clears its pending candidate on input change.
+            if !pendingDeleteTargets.isEmpty {
+                pendingDeleteTargets = []
+            }
             if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
                 enterCommandMode(commandID: cmd.id, prefilledInput: cmd.args)
                 return
@@ -576,7 +586,8 @@ struct LauncherView: View {
         .modifier(PanelDecorationsModifier(
             testHint: { testHintOverlay },
             copyright: { copyrightOverlay },
-            killBar: { killConfirmationOverlay }
+            killBar: { killConfirmationOverlay },
+            deleteBar: { deleteConfirmationOverlay }
         ))
         .layoutPriority(1)
     }
@@ -644,7 +655,7 @@ struct LauncherView: View {
                 Spacer(minLength: 0)
             }
 
-            if !isKillConfirmationVisible {
+            if !isKillConfirmationVisible && !isDeleteConfirmationVisible {
                 HintBar(hint: currentHint, themeStore: themeStore)
             }
         }
@@ -772,18 +783,34 @@ struct LauncherView: View {
         }
     }
 
+    @ViewBuilder
+    private var deleteConfirmationOverlay: some View {
+        if !isCommandMode, !pendingDeleteTargets.isEmpty {
+            DeleteConfirmationBar(
+                targets: pendingDeleteTargets,
+                themeStore: themeStore,
+                onConfirm: { confirmDeleteSelection() },
+                onCancel: { cancelDeleteSelection() }
+            )
+            .padding(.horizontal, 14)
+            .padding(.bottom, 24)
+        }
+    }
+
 
 }
 
-private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar: View>: ViewModifier {
+private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar: View, DeleteBar: View>: ViewModifier {
     @ViewBuilder let testHint: () -> TestHint
     @ViewBuilder let copyright: () -> Copyright
     @ViewBuilder let killBar: () -> KillBar
+    @ViewBuilder let deleteBar: () -> DeleteBar
 
     func body(content: Content) -> some View {
         content
             .overlay(alignment: .topTrailing, content: testHint)
             .overlay(alignment: .bottomTrailing, content: copyright)
             .overlay(alignment: .bottom, content: killBar)
+            .overlay(alignment: .bottom, content: deleteBar)
     }
 }
