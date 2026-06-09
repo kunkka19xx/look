@@ -20,6 +20,8 @@ This document tracks what `look` supports today and what is planned next.
 - open with `Enter`, reveal in Finder with `Cmd+F`
 - copy selected file/folder path/content handle with `Cmd+C`
 - multi-pick files/folders with `Cmd+P` (toggle); picked set is mirrored to the system pasteboard for paste anywhere. `Cmd+Shift+P` clears the set
+- move selected file/folder (or all picked items) to the Trash with `Cmd+D` — recoverable, no confirmation (macOS only for now)
+- pinned **Trash** quick folder (type `trash`): `Enter` opens it in Finder, its preview shows the item count, and `Cmd+D` empties it via Finder (confirmed, since it's permanent)
 - preview pane: text/image file previews, plus folder previews listing the immediate children (folders first, capped at 30, click to open)
 
 ### Clipboard and translation

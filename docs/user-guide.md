@@ -42,6 +42,7 @@ Look is designed to need as few macOS permissions as possible:
 - **No Full Disk Access** is required. Look indexes standard user directories (`~`, `/Applications`, `~/Documents`, `~/Downloads`, etc.). To index a directory outside those defaults, add it via `file_scan_extra_roots` in `~/.look.config`.
 - **No Screen Recording** is required.
 - **Network access** is used only for explicit actions: `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search. The local search and indexing paths make no network calls.
+- **Finder Automation** is requested only when you empty the Trash (`Cmd+D` on the pinned Trash folder). The Trash is protected by macOS, so Look asks Finder to empty it; macOS prompts once, and you can manage it under `System Settings > Privacy & Security > Automation`. Moving individual files to the Trash needs no permission.
 
 If macOS prompts for permission during an action you didn't trigger, that's a bug — please [file an issue](https://github.com/kunkka19xx/look/issues).
 
@@ -61,9 +62,12 @@ Useful actions:
 - `Cmd+C`: copy selected file/folder
 - `Cmd+P`: toggle pick on the selected file/folder (multi-select); the picked set is written to the system pasteboard so you can paste them anywhere in Finder
 - `Cmd+Shift+P`: clear all picked items
+- `Cmd+D`: move the selected file/folder — or all picked items — to the Trash (macOS only for now). Like Finder's `Cmd+Delete`, this is immediate and unconfirmed because it's recoverable: the items go to the Trash, not permanent deletion. The rows disappear from results right away.
 - `Cmd+Enter`: web search current query (Google)
 
 When at least one item is picked, the right panel switches to the **Picked** list — each row has an `X` to remove a single item, plus a **Clear all** button. File/folder copies (both `Cmd+C` and `Cmd+P`) are excluded from clipboard history.
+
+**Trash.** Type `trash` to pin the Trash quick folder; `Enter` opens it in Finder. With the Trash folder selected, its preview shows the item count and `Cmd+D` **empties** the Trash. Emptying is permanent, so it asks you to confirm (`Y`/`Enter` to empty, `N`/`Esc` to cancel). Look empties the Trash through Finder, so the first time you do this macOS asks for permission to control Finder (see [Permissions](#permissions)).
 
 ## Query prefixes
 
@@ -261,6 +265,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+F`: reveal in Finder
 - `Cmd+C`: copy selected file/folder
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
+- `Cmd+D`: move selected file/folder (or picked items) to Trash; on the pinned Trash folder, empty the Trash (macOS only for now)
 - `Cmd+Shift+,`: toggle settings panel
 - `Cmd+Shift+;`: reload config
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset

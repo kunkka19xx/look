@@ -242,6 +242,7 @@ open "/Applications/Look.app"
 | Open / run                                    | `Enter`          | `Enter`             | `Enter`          |
 | Web search                                    | `Cmd+Enter`      | `Ctrl+Enter`        | `Ctrl+Enter`     |
 | Reveal in file manager                        | `Cmd+F` (Finder) | `Ctrl+F` (Explorer) | `Ctrl+F` (Files) |
+| Move to Trash (or empty the Trash folder)     | `Cmd+D`          | —                   | —                |
 | Command mode (`calc`, `shell`, `kill`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
 | Settings                                      | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
 | Back / hide                                   | `Escape`         | `Escape`            | `Escape`         |
