@@ -405,9 +405,14 @@ extension LauncherView {
                 writePickedToPasteboard()
             }
 
-            // Move selection off any row that was trashed.
-            if let selectedResultID, trashed.contains(selectedResultID) {
-                self.selectedResultID = displayedResults.first(where: { !trashed.contains($0.id) })?.id
+            // Drop the trashed rows from the on-screen results immediately — the
+            // background index refresh below is async and would otherwise leave
+            // the now-gone items visible (and un-previewable) until the next search.
+            backendResults.removeAll { trashed.contains($0.id) }
+
+            // Keep selection valid if it pointed at a now-removed row.
+            if let selectedResultID, !displayedResults.contains(where: { $0.id == selectedResultID }) {
+                self.selectedResultID = displayedResults.first?.id
             }
 
             let message = DeleteTargetLogic.resultMessage(
