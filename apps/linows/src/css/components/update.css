@@ -1,0 +1,116 @@
+/* Notify-only update widget. Shared between Settings (About) and Help. */
+
+.update-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.update-section-label {
+  font-size: calc(var(--font-size) - 1px);
+  font-weight: 600;
+  color: var(--font-color);
+  margin-bottom: 2px;
+}
+
+/* Both mounts live inside their parent's scroll area, so horizontal padding
+   is inherited; only vertical spacing + a divider are set here. */
+.settings-about {
+  padding: 12px 0 4px;
+  margin-top: 8px;
+  border-top: 1px solid var(--divider-color);
+}
+
+.help-update {
+  padding: 4px 0 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--divider-color);
+}
+
+.update-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.update-version {
+  font-size: calc(var(--font-size) - 1px);
+  font-weight: 600;
+  color: var(--font-color);
+  user-select: text;
+}
+
+.update-status {
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--font-secondary);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.update-pill {
+  font-size: calc(var(--font-size) - 2px);
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--divider-color);
+  background: var(--control-fill);
+  color: var(--font-color);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.update-pill:hover:not(:disabled) {
+  background: var(--selection-fill);
+}
+
+.update-pill:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.update-pill-muted {
+  background: transparent;
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--control-fill);
+  border: 1px solid var(--accent-color, var(--divider-color));
+}
+
+.update-banner-text {
+  flex: 1 1 auto;
+  font-size: calc(var(--font-size) - 1px);
+  font-weight: 600;
+  color: var(--font-color);
+}
+
+.update-hint {
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--font-secondary);
+}
+
+.update-hint-link {
+  color: var(--accent-color, var(--font-color));
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.update-hint-link:hover {
+  opacity: 0.8;
+}
+
+/* Push the version-row pill to flush-right when no status text is present. */
+.update-row > .update-pill {
+  margin-left: auto;
+}
+.update-row > .update-status + .update-pill {
+  margin-left: 0;
+}

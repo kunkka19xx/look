@@ -20,6 +20,9 @@ This document tracks what `look` supports today and what is planned next.
 - open with `Enter`, reveal in Finder with `Cmd+F`
 - copy selected file/folder path/content handle with `Cmd+C`
 - multi-pick files/folders with `Cmd+P` (toggle); picked set is mirrored to the system pasteboard for paste anywhere. `Cmd+Shift+P` clears the set
+- move selected file/folder (or all picked items) to the Trash with `Cmd+D` — recoverable, no confirmation (macOS only for now)
+- pinned **Trash** quick folder (type `trash`): `Enter` opens it in Finder, its preview shows the item count, and `Cmd+D` empties it via Finder (confirmed, since it's permanent)
+- preview pane: text/image file previews, plus folder previews listing the immediate children (folders first, capped at 30, click to open)
 
 ### Clipboard and translation
 
@@ -36,6 +39,19 @@ This document tracks what `look` supports today and what is planned next.
 - calc parser supports exponent (`^`), factorial (`!`), constants (`pi`, `e`), math functions (`sqrt`, `abs`, `round`, `floor`, `ceil`), and `%` shorthand while keeping modulo
 - kill flow with explicit confirmation and process-by-port lookup (`:3000` / `port 3000`)
 - warning cue when shell input contains `sudo`
+
+### Running apps switcher
+
+- an icon row rendered on the right half of the search bar: when enabled, the search field takes the left half and the running-app icons occupy the right (right-aligned, growing leftward as more apps open). Apps are capped at 9, sorted alphabetically and **stable** — positions don't shuffle when you switch apps
+  - **macOS**: from `NSWorkspace.shared.runningApplications`, filtered to regular apps
+  - **Linux**: from `/proc` scan, filtered by what GNOME Shell's `Shell.AppSystem.get_running()` considers a windowed app (via Look's GNOME extension on Wayland) or by `wlr-foreign-toplevel` / X11 client-list / desktop-hints on other compositors
+  - **Windows**: from running-window enumeration via Win32
+- on the home screen, activation: `Cmd`+badge digit (macOS) / `Alt`+badge digit (Linux, Windows). In command mode, `Cmd+1`..`Cmd+5` / `Ctrl+1`..`Ctrl+5` keep their existing command-catalog semantics
+- badge labels follow an ergonomic outer-first layout: with N running apps we consume the easiest-to-reach keys first (`1, 2, 3, 9, 8` before `4`, then `7`, then `6`, then `5`). 5 running apps → badges `1, 2, 3, 8, 9`; 9 running apps → all of `1`..`9`
+- focus paths: macOS = `NSRunningApplication.activate()` with Dock-style reopen for windowless apps; Linux = GNOME Shell extension D-Bus on GNOME Wayland, `wlr-foreign-toplevel-management` on sway/Hyprland, `i3-msg` on i3, `_NET_ACTIVE_WINDOW` (x11rb) on other X11 WMs; Windows = `SetForegroundWindow` via window handle
+- click on an icon also switches; hover shows app name + shortcut tooltip; active app has an accent ring
+- toggled on/off via `Settings > Appearance > Running Apps`. Persisted as `running_apps_placement` in `~/.look.config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` still load as "on"). The window is a single fixed size and never resizes for the row
+- off hides the row and disables the activation shortcut
 
 ### Settings and runtime config
 

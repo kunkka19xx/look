@@ -5,6 +5,11 @@ import AppKit
 import ServiceManagement
 
 final class ThemeStore: ObservableObject {
+    // Shared instance so AppDelegate (which hosts ContentView in an
+    // AppKit-owned window) and the App scene's `.commands` (zoom, theme)
+    // operate on the same store. See AppDelegate.makeLauncherWindow().
+    static let shared = ThemeStore()
+
     @Published private(set) var backgroundImageURL: URL?
     @Published private(set) var backgroundImage: NSImage?
     @Published var uiScale: CGFloat = 1.0
@@ -232,6 +237,9 @@ final class ThemeStore: ObservableObject {
 
         // Settings blur multiplier
         upsertConfigLine(&lines, key: "settings_blur_multiplier", value: String(format: "%.2f", settings.settingsBlurMultiplier))
+
+        // Running apps switcher
+        upsertConfigLine(&lines, key: "running_apps_placement", value: settings.runningAppsPlacement.rawValue)
 
         let payload = lines.joined(separator: "\n") + "\n"
         do {
@@ -523,6 +531,17 @@ final class ThemeStore: ObservableObject {
             case "settings_blur_multiplier":
                 if let parsed = parseUnitDouble(value) {
                     settings.settingsBlurMultiplier = parsed
+                }
+            case "running_apps_placement":
+                // The setting is now a simple on/off (running apps render inside
+                // the search bar, not as a placed floating strip). Legacy values
+                // top/right/bottom all mean "on" — normalize them to `.right`
+                // (canonical on) so the stored config converges on the new model
+                // on next save. Unknown/empty values fall back to off.
+                if let placement = RunningAppsPlacement(rawValue: value.lowercased()) {
+                    settings.runningAppsPlacement = placement == .none ? .none : .right
+                } else {
+                    settings.runningAppsPlacement = .none
                 }
             default:
                 continue
@@ -819,6 +838,9 @@ ui_border_green=1.0
 ui_border_blue=1.0
 ui_border_opacity=0.12
 
+# Running apps switcher: none, top, right, bottom
+running_apps_placement=right
+
 # Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3
 alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq
 alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed
@@ -838,14 +860,22 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
             return decoded
         }
 
+        // Backfill keys added after the first release so existing UserDefaults blobs
+        // (which won't contain new non-optional Codable properties) still decode
+        // instead of falling back to .default and wiping the user's customizations.
         guard
-            var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-            object["lazyIndexingEnabled"] == nil
+            var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else {
             return .default
         }
 
-        object["lazyIndexingEnabled"] = true
+        if object["lazyIndexingEnabled"] == nil {
+            object["lazyIndexingEnabled"] = true
+        }
+        if object["runningAppsPlacement"] == nil {
+            object["runningAppsPlacement"] = ThemeSettings.default.runningAppsPlacement.rawValue
+        }
+
         guard
             let migratedData = try? JSONSerialization.data(withJSONObject: object),
             let migrated = try? decoder.decode(ThemeSettings.self, from: migratedData)

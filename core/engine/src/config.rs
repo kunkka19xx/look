@@ -4,6 +4,7 @@ use crate::platform::paths::expand_with_home;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 pub const APP_SCAN_DEPTH: usize = 3;
 pub const APP_EXCLUDE_PATHS: [&str; 0] = [];
@@ -115,7 +116,20 @@ impl Default for RuntimeConfig {
     }
 }
 
+/// Process-wide cache of the parsed `~/.look.config`. Filled lazily by
+/// `RuntimeConfig::load_cached()`, cleared by `RuntimeConfig::invalidate_cache()`.
+/// Reading the config from disk is cheap (< 1 KB file) but happens on every
+/// `bootstrap_sqlite_scoped` / `from_sqlite` — including watcher-triggered
+/// refreshes — so caching removes a stat + read per refresh.
+static CACHED_CONFIG: OnceLock<Mutex<Option<RuntimeConfig>>> = OnceLock::new();
+
+fn cached_config_slot() -> &'static Mutex<Option<RuntimeConfig>> {
+    CACHED_CONFIG.get_or_init(|| Mutex::new(None))
+}
+
 impl RuntimeConfig {
+    /// Reads `~/.look.config` from disk and parses it. Always touches the file.
+    /// Most callers should use [`load_cached`](Self::load_cached) instead.
     pub fn load() -> Self {
         let mut config = Self::default();
         if let Some(path) = config_path() {
@@ -123,6 +137,37 @@ impl RuntimeConfig {
             config.apply_from_file(&path);
         }
         config
+    }
+
+    /// Returns the cached `RuntimeConfig`, reading from disk on first call only.
+    /// Subsequent calls clone the cached value (cheap — the struct is plain
+    /// data). Callers that mutate `~/.look.config` at runtime must call
+    /// [`invalidate_cache`](Self::invalidate_cache) afterwards.
+    pub fn load_cached() -> Self {
+        let slot = cached_config_slot();
+        {
+            let guard = slot.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some(cfg) = guard.as_ref() {
+                return cfg.clone();
+            }
+        }
+        // Drop the lock before the disk read so concurrent callers don't queue.
+        // First-arrival wins; the others will see the populated cache and clone.
+        let fresh = Self::load();
+        let mut guard = slot.lock().unwrap_or_else(|p| p.into_inner());
+        if guard.is_none() {
+            *guard = Some(fresh.clone());
+        }
+        fresh
+    }
+
+    /// Drops the cached config. Call after `~/.look.config` is edited so the
+    /// next `load_cached()` re-reads from disk.
+    pub fn invalidate_cache() {
+        let mut guard = cached_config_slot()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        *guard = None;
     }
 
     fn apply_from_file(&mut self, path: &Path) {

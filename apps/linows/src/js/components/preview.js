@@ -1,9 +1,10 @@
-import { getIcon, getFileMeta, getAppVersion, deleteClipboardEntry } from '../ipc.js';
+import { getIcon, getFileMeta, getAppVersion, deleteClipboardEntry, highlightFile, listFolder, openPath } from '../ipc.js';
 import { clipboard as clipboardIcon, trash as trashIcon, appIcon, fileIcon, folderIcon, settingIcon } from '../icons.js';
 
 let panel = null;
 let currentPath = null;
 let onClipDelete = null;
+let highlightTimer = null;
 
 export function init(panelEl) {
   panel = panelEl;
@@ -25,6 +26,7 @@ export function update(result) {
   if (currentPath === cacheKey) return;
   currentPath = cacheKey;
 
+  if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
   panel.hidden = false;
   panel.innerHTML = '';
 
@@ -79,6 +81,11 @@ export function update(result) {
   header.appendChild(headerText);
   panel.appendChild(header);
 
+  // Preview placeholder — sits between header and metadata (matches macOS order)
+  const previewSlot = document.createElement('div');
+  previewSlot.className = 'preview-slot';
+  panel.appendChild(previewSlot);
+
   // Metadata rows
   const metaWrap = document.createElement('div');
   metaWrap.className = 'preview-meta';
@@ -87,7 +94,7 @@ export function update(result) {
   if (result.kind === 'app') {
     renderAppMeta(metaWrap, result, headerSub);
   } else {
-    renderFileMeta(metaWrap, result, headerSub);
+    renderFileMeta(metaWrap, previewSlot, result, headerSub);
   }
 }
 
@@ -180,9 +187,12 @@ function renderAppMeta(metaWrap, result, headerSub) {
   metaWrap.appendChild(infoRow('Path', result.path));
 }
 
-function renderFileMeta(metaWrap, result, headerSub) {
+function renderFileMeta(metaWrap, previewSlot, result, headerSub) {
+  const cacheKey = result.path;
+
+  // Metadata: size (in header), then Kind → Path → Modified (matches macOS order)
   getFileMeta(result.path).then((meta) => {
-    if (currentPath !== result.path) return;
+    if (currentPath !== cacheKey) return;
 
     if (meta.size != null) {
       const sizeSpan = document.createElement('span');
@@ -191,14 +201,14 @@ function renderFileMeta(metaWrap, result, headerSub) {
       headerSub.appendChild(sizeSpan);
     }
 
+    metaWrap.appendChild(infoRow('Kind', result.kind === 'folder' ? 'Folder' : 'File'));
+    metaWrap.appendChild(infoRow('Path', result.path));
+
     if (meta.modified) {
       metaWrap.appendChild(infoRow('Modified', meta.modified));
     }
 
-    metaWrap.appendChild(infoRow('Kind', result.kind === 'folder' ? 'Folder' : 'File'));
-    metaWrap.appendChild(infoRow('Path', result.path));
-
-    // Image preview
+    // Image preview — inserted into previewSlot (between header and metadata)
     if (meta.is_image) {
       const preview = document.createElement('div');
       preview.className = 'preview-image';
@@ -207,9 +217,125 @@ function renderFileMeta(metaWrap, result, headerSub) {
       img.alt = result.title;
       img.onerror = () => preview.remove();
       preview.appendChild(img);
-      panel.appendChild(preview);
+      previewSlot.appendChild(preview);
     }
   });
+
+  // Text/code file preview with syntax highlighting.
+  // 150ms debounce so rapid arrow-key navigation skips intermediate files
+  // (matches macOS TextFilePreview dwell behavior).
+  // Inserted into previewSlot (between header and metadata).
+  if (result.kind === 'file') {
+    if (highlightTimer) clearTimeout(highlightTimer);
+    highlightTimer = setTimeout(() => {
+      if (currentPath !== cacheKey) return;
+      highlightFile(result.path).then((res) => {
+        if (!res || currentPath !== cacheKey) return;
+        const codeWrap = document.createElement('div');
+        codeWrap.className = 'preview-code';
+        const pre = document.createElement('pre');
+        pre.className = 'preview-code-text';
+        pre.innerHTML = res.html;
+        codeWrap.appendChild(pre);
+        if (res.truncated) {
+          const hint = document.createElement('div');
+          hint.className = 'preview-code-truncated';
+          hint.textContent = 'File truncated at 64 KB';
+          codeWrap.appendChild(hint);
+        }
+        previewSlot.appendChild(codeWrap);
+      });
+    }, 150);
+  }
+
+  // Folder content listing — flat list with counts, clickable items.
+  if (result.kind === 'folder') {
+    listFolder(result.path).then((listing) => {
+      if (!listing || currentPath !== cacheKey) return;
+
+      // Consolidate item count into header badge area (#6)
+      const total = listing.folder_count + listing.file_count;
+      const countParts = [];
+      if (listing.folder_count > 0) countParts.push(`${listing.folder_count} folder${listing.folder_count !== 1 ? 's' : ''}`);
+      if (listing.file_count > 0) countParts.push(`${listing.file_count} file${listing.file_count !== 1 ? 's' : ''}`);
+      if (countParts.length > 0) {
+        const countSpan = document.createElement('span');
+        countSpan.className = 'preview-size';
+        countSpan.textContent = countParts.join(', ');
+        headerSub.appendChild(countSpan);
+      }
+
+      const wrap = document.createElement('div');
+      wrap.className = 'preview-folder';
+
+      // Empty folder state (#8)
+      if (total === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'preview-folder-empty';
+        empty.textContent = 'Empty folder';
+        wrap.appendChild(empty);
+        previewSlot.appendChild(wrap);
+        return;
+      }
+
+      // Item list
+      const list = document.createElement('div');
+      list.className = 'preview-folder-list';
+      if (listing.truncated) list.classList.add('is-truncated');
+
+      const pathSep = result.path.includes('\\') ? '\\' : '/';
+      let foldersDone = false;
+      for (const item of listing.items) {
+        // Separator between folders and files (#1)
+        if (!item.is_dir && !foldersDone && listing.folder_count > 0) {
+          foldersDone = true;
+          const sep = document.createElement('div');
+          sep.className = 'preview-folder-separator';
+          list.appendChild(sep);
+        }
+
+        const row = document.createElement('div');
+        row.className = 'preview-folder-item';
+        row.setAttribute('role', 'button');
+        row.tabIndex = -1;
+
+        const icon = document.createElement('span');
+        icon.className = 'preview-folder-item-icon';
+        // File extension color hints (#2)
+        if (!item.is_dir) {
+          const ext = item.name.includes('.') ? item.name.split('.').pop().toLowerCase() : '';
+          // Only add class for safe extensions (alphanumeric) — classList.add
+          // throws InvalidCharacterError on names with spaces or special chars
+          if (ext && /^[a-z0-9]+$/.test(ext)) icon.classList.add(`ext-${ext}`);
+        }
+        icon.innerHTML = item.is_dir ? folderIcon : fileIcon;
+        row.appendChild(icon);
+
+        const name = document.createElement('span');
+        name.className = 'preview-folder-item-name';
+        name.textContent = item.name;
+        name.title = item.name;
+        row.appendChild(name);
+
+        // Inline file size (#5)
+        if (!item.is_dir && item.size != null) {
+          const size = document.createElement('span');
+          size.className = 'preview-folder-item-size';
+          size.textContent = formatSize(item.size);
+          row.appendChild(size);
+        }
+
+        const itemPath = result.path + pathSep + item.name;
+        const itemKind = item.is_dir ? 'folder' : 'file';
+        row.addEventListener('click', () => openPath(itemPath, itemKind, ''));
+
+        list.appendChild(row);
+      }
+      wrap.appendChild(list);
+
+      previewSlot.appendChild(wrap);
+    });
+  }
 }
 
 export function clear() {

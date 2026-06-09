@@ -5,7 +5,8 @@ extension ThemeSettingsView {
     var appearanceTab: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 10) {
-                sectionHeaderWithPicker("Theme") {
+                HStack(spacing: 14) {
+                    inlinePickerLabel("Theme")
                     Picker("Theme", selection: $settings.uiTheme) {
                         ForEach(BuiltinThemePreset.allCases) { preset in
                             Text(preset.title).tag(preset)
@@ -17,6 +18,19 @@ extension ThemeSettingsView {
                     .onChange(of: settings.uiTheme) { _, newValue in
                         themeStore.applyBuiltinTheme(newValue)
                     }
+
+                    Spacer().frame(width: 40)
+
+                    inlinePickerLabel("Running Apps")
+                    Toggle("Show running apps", isOn: Binding(
+                        get: { settings.runningAppsPlacement != .none },
+                        set: { settings.runningAppsPlacement = $0 ? .right : .none }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .help("Show running apps in the right half of the search bar (⌘1–9 to switch)")
+
+                    Spacer(minLength: 0)
                 }
 
                 Divider()
@@ -121,7 +135,7 @@ extension ThemeSettingsView {
                 LabeledSlider(title: "Border Thick", value: $settings.borderThickness, range: 0...6)
                 LabeledSlider(title: "Border Red", value: $settings.borderRed, range: 0...1)
                 LabeledSlider(title: "Border Green", value: $settings.borderGreen, range: 0...1)
-                LabeledSlider(title: "Border Blue", value: $settings.fontBlue, range: 0...1)
+                LabeledSlider(title: "Border Blue", value: $settings.borderBlue, range: 0...1)
                 LabeledSlider(title: "Border Opacity", value: $settings.borderOpacity, range: 0...1)
             }
             .onAppear {
@@ -175,6 +189,18 @@ extension ThemeSettingsView {
                 .stroke(.white.opacity(0.12), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
+    }
+
+    @ViewBuilder
+    func inlinePickerLabel(_ title: String) -> some View {
+        HStack(spacing: 6) {
+            Text("▶")
+                .font(.system(size: CGFloat(settings.fontSize - 2)))
+                .foregroundStyle(themeStore.secondaryTextColor())
+            Text(title)
+                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
+                .foregroundStyle(themeStore.secondaryTextColor())
+        }
     }
 
     func placeCaretAtEndOfFontField() {

@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicoverbruggen/tauri-v2-schema/main/schema.json",
   "productName": "Look",
-  "version": "0.5.4",
+  "version": "0.6.2",
   "identifier": "com.look.desktop",
   "build": {
     "frontendDist": "../src",
@@ -14,7 +14,7 @@
       {
         "title": "Look",
         "width": 860,
-        "height": 580,
+        "height": 600,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

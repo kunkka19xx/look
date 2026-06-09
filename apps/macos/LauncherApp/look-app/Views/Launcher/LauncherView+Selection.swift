@@ -193,6 +193,9 @@ extension LauncherView {
                 commandFeedback = "Selected /\(command.id)"
                 requestCommandInputFocusIfNeeded()
             },
+            onActivateRunningApp: { [self] key in
+                activateRunningApp(forKey: key)
+            },
             onConfirmKill: { [self] in
                 if let pendingKillCandidate {
                     runKillCommand(candidate: pendingKillCandidate)
@@ -204,6 +207,18 @@ extension LauncherView {
             },
             killConfirmationActive: { [self] in
                 pendingKillCandidate != nil
+            },
+            onRequestDelete: { [self] in
+                requestDeleteSelection()
+            },
+            onConfirmDelete: { [self] in
+                confirmDeleteSelection()
+            },
+            onCancelDelete: { [self] in
+                cancelDeleteSelection()
+            },
+            deleteConfirmationActive: { [self] in
+                pendingEmptyTrashCount != nil
             }
         )
     }

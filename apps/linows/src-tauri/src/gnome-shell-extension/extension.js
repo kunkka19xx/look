@@ -1,4 +1,5 @@
 import Gio from 'gi://Gio';
+import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -8,6 +9,13 @@ const IFACE = `
     <method name="FocusApp">
       <arg type="s" direction="in" name="desktop_id"/>
       <arg type="b" direction="out" name="success"/>
+    </method>
+    <method name="GetPointer">
+      <arg type="i" direction="out" name="x"/>
+      <arg type="i" direction="out" name="y"/>
+    </method>
+    <method name="ListWindowedApps">
+      <arg type="as" direction="out" name="desktop_ids"/>
     </method>
   </interface>
 </node>`;
@@ -33,6 +41,34 @@ export default class LookIntegration extends Extension {
             Gio.bus_unown_name(this._owner);
             this._owner = null;
         }
+    }
+
+    GetPointer() {
+        const [x, y] = global.get_pointer();
+        return [x, y];
+    }
+
+    ListWindowedApps() {
+        // Shell.AppSystem.get_running() puts an app in RUNNING state once it
+        // owns any tracked window — including skip-taskbar / utility surfaces
+        // some tray apps (flameshot, fcitx5 indicator) create. To match what
+        // a user calls a "running app", we require at least one NORMAL window
+        // that isn't skip-taskbar, matching GNOME's own window switcher.
+        const appSys = Shell.AppSystem.get_default();
+        const ids = [];
+        for (const app of appSys.get_running()) {
+            const wins = app.get_windows();
+            const hasSwitchableWindow = wins.some(w => {
+                if (w.get_window_type() !== Meta.WindowType.NORMAL)
+                    return false;
+                if (w.is_skip_taskbar())
+                    return false;
+                return true;
+            });
+            if (hasSwitchableWindow)
+                ids.push(app.get_id());
+        }
+        return ids;
     }
 
     FocusApp(desktop_id) {

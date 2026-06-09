@@ -13,6 +13,7 @@
 > | `Cmd+/`         | `Ctrl+/`         |
 > | `Cmd+0`         | `Ctrl+0`         |
 > | `Cmd+1`…`Cmd+5` | `Ctrl+1`…`Ctrl+5`|
+> | `Cmd+1`…`Cmd+9` (running-apps switcher) | `Alt+1`…`Alt+9` |
 > | `Cmd+P`         | `Ctrl+P`         |
 > | `Cmd+Shift+P`   | `Ctrl+Shift+P`   |
 > | `Cmd+Shift+,`   | `Ctrl+Shift+,`   |
@@ -41,6 +42,7 @@ Look is designed to need as few macOS permissions as possible:
 - **No Full Disk Access** is required. Look indexes standard user directories (`~`, `/Applications`, `~/Documents`, `~/Downloads`, etc.). To index a directory outside those defaults, add it via `file_scan_extra_roots` in `~/.look.config`.
 - **No Screen Recording** is required.
 - **Network access** is used only for explicit actions: `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search. The local search and indexing paths make no network calls.
+- **Finder Automation** is requested only when you empty the Trash (`Cmd+D` on the pinned Trash folder). The Trash is protected by macOS, so Look asks Finder to empty it; macOS prompts once, and you can manage it under `System Settings > Privacy & Security > Automation`. Moving individual files to the Trash needs no permission.
 
 If macOS prompts for permission during an action you didn't trigger, that's a bug — please [file an issue](https://github.com/kunkka19xx/look/issues).
 
@@ -60,9 +62,12 @@ Useful actions:
 - `Cmd+C`: copy selected file/folder
 - `Cmd+P`: toggle pick on the selected file/folder (multi-select); the picked set is written to the system pasteboard so you can paste them anywhere in Finder
 - `Cmd+Shift+P`: clear all picked items
+- `Cmd+D`: move the selected file/folder — or all picked items — to the Trash (macOS only for now). Like Finder's `Cmd+Delete`, this is immediate and unconfirmed because it's recoverable: the items go to the Trash, not permanent deletion. The rows disappear from results right away.
 - `Cmd+Enter`: web search current query (Google)
 
 When at least one item is picked, the right panel switches to the **Picked** list — each row has an `X` to remove a single item, plus a **Clear all** button. File/folder copies (both `Cmd+C` and `Cmd+P`) are excluded from clipboard history.
+
+**Trash.** Type `trash` to pin the Trash quick folder; `Enter` opens it in Finder. With the Trash folder selected, its preview shows the item count and `Cmd+D` **empties** the Trash. Emptying is permanent, so it asks you to confirm (`Y`/`Enter` to empty, `N`/`Esc` to cancel). Look empties the Trash through Finder, so the first time you do this macOS asks for permission to control Finder (see [Permissions](#permissions)).
 
 ## Query prefixes
 
@@ -160,6 +165,17 @@ Built-in theme presets are available:
 
 Theme is saved as `ui_theme=<name>` in config.
 
+**Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app — `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. The launcher window stays the same size either way.
+
+Behavior:
+
+- **Stable** — icons sit in alphabetical order and don't shuffle when you switch apps. The activation digit for a given app stays the same until you launch or quit something.
+- **Ergonomic badge keys** — easier-to-reach keys are assigned first. With 5 running apps the badges are `1, 2, 3, 8, 9` (skipping the harder middle keys); `5/6/7` only get used when you have 7+ apps running.
+- **Linux focus** — Look's GNOME Shell extension activates the app's most-recent window on Wayland; X11 uses `_NET_ACTIVE_WINDOW` via x11rb; sway/Hyprland use `wlr-foreign-toplevel-management`; i3 uses `i3-msg`.
+- **Windowless apps** (Finder with no Finder windows, etc.) get a fresh window via a Dock-style "reopen" so you don't see an empty flash.
+
+Saved as `running_apps_placement=<value>` in `~/.look.config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
+
 ### Indexing Settings
 
 Default values:
@@ -240,7 +256,8 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Up` / `Down`: move selection (and in `kill`, move process selection)
 - `Cmd+/`: command mode
 - `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:pomo`): jump to a command directly from the home screen
-- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4` / `Cmd+5`: direct command switch (`shell`, `calc`, `kill`, `sys`, `pomo`)
+- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4` / `Cmd+5`: in command mode, direct command switch (`shell`, `calc`, `kill`, `sys`, `pomo`)
+- `Cmd+1`..`Cmd+9` (macOS) / `Alt+1`..`Alt+9` (Linux, Windows): on the home screen, activate the running-app whose badge shows that digit, when `Running Apps` is on. Badge labels are ergonomic, not strictly positional — see Settings → Appearance → Running Apps
 - `Space` / `R` / `P` (inside `/pomo`): start/pause session, reset, toggle music play/pause
 - `Escape`: back/close (context dependent)
 - `Shift+Escape`: hide launcher
@@ -248,6 +265,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+F`: reveal in Finder
 - `Cmd+C`: copy selected file/folder
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
+- `Cmd+D`: move selected file/folder (or picked items) to Trash; on the pinned Trash folder, empty the Trash (macOS only for now)
 - `Cmd+Shift+,`: toggle settings panel
 - `Cmd+Shift+;`: reload config
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset

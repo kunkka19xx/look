@@ -18,7 +18,7 @@
     <div class="settings-body" id="settings-body">
       <!-- Appearance tab -->
       <div class="settings-tab-content" id="settings-tab-appearance">
-        <!-- Theme -->
+        <!-- Theme + Running Apps toggle -->
         <div class="settings-section-header">
           <span class="settings-section-arrow">&#9654;</span>
           <span>Theme</span>
@@ -37,6 +37,11 @@
               <div class="settings-dropdown-item" data-value="custom">Custom</div>
             </div>
           </div>
+          <span style="margin-left: 40px;">Running Apps</span>
+          <label class="settings-toggle" title="Show running apps strip on the main screen (Ctrl+1-9 to switch)">
+            <input type="checkbox" id="settings-running-apps" checked />
+            <span class="settings-toggle-track"></span>
+          </label>
         </div>
 
         <div class="settings-divider"></div>
@@ -188,6 +193,9 @@
           <div class="settings-shortcut"><kbd>Ctrl+Shift+P</kbd><span>Clear all picks</span></div>
           <div class="settings-shortcut"><kbd>Ctrl+Shift+,</kbd><span>Open/close settings panel</span></div>
           <div class="settings-shortcut"><kbd>Ctrl+Shift+;</kbd><span>Reload .look.config</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+=</kbd><span>Zoom in UI scale</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+-</kbd><span>Zoom out UI scale</span></div>
+          <div class="settings-shortcut"><kbd>Ctrl+0</kbd><span>Reset UI scale</span></div>
           <div class="settings-shortcut"><kbd>Esc</kbd><span>Back to app list (in command mode)</span></div>
           <div class="settings-shortcut"><kbd>Alt+Space</kbd><span>Toggle launcher</span></div>
 
@@ -385,6 +393,11 @@
         </div>
 
       </div>
+
+      <!-- About / update status. Lives inside the scroll area so it sits
+           at the bottom of the settings panel and scrolls with the rest of
+           the content — matches the macOS layout. -->
+      <div class="settings-about" id="settings-about"></div>
     </div>
   </div>
 </div>

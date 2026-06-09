@@ -12,8 +12,11 @@ import SwiftUI
 @main
 struct look_appApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var appUIState = AppUIState()
-    @StateObject private var themeStore = ThemeStore()
+    // The launcher window is owned by AppDelegate (an AppKit NSWindow), not a
+    // SwiftUI WindowGroup — see AppDelegate.makeLauncherWindow() for why. These
+    // stores are shared with that window's hosted ContentView.
+    private let appUIState = AppUIState.shared
+    private let themeStore = ThemeStore.shared
 
     init() {
         if let exitCode = handleCLIFlags() {
@@ -124,14 +127,14 @@ struct look_appApp: App {
     }
 
     var body: some Scene {
-        WindowGroup(id: "main") {
-            ContentView()
-                .frame(minWidth: 860, minHeight: 580)
-                .background(WindowConfigurator())
-                .environmentObject(appUIState)
-                .environmentObject(themeStore)
+        // The launcher window is an AppKit NSWindow owned by AppDelegate (see
+        // AppDelegate.makeLauncherWindow) — SwiftUI won't create a WindowGroup
+        // window on a background login launch, which was the root cause of the
+        // dead Cmd+Space. A Settings scene gives the app a valid Scene to carry
+        // the command menu below without auto-creating any window.
+        Settings {
+            EmptyView()
         }
-        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {}
 

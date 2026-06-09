@@ -4,10 +4,49 @@
 
 A keyboard-first, local-first launcher for macOS, Windows, and Linux. Open apps, files, folders, clipboard history, and quick commands without leaving the keyboard.
 
-[macOS](#macos) · [Windows](#windows) · [Linux](#linux-under-development)
-📘 [Docs](https://noah-code.com/docs/look) · 📖 [User guide](docs/user-guide.md) · 🎬 [Demo video](https://www.youtube.com/watch?v=4Twb4We3PIs)
+[![Latest release](https://img.shields.io/github/v/release/kunkka19xx/look)](https://github.com/kunkka19xx/look/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/kunkka19xx/look/total)](https://github.com/kunkka19xx/look/releases)
+[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 
-https://github.com/user-attachments/assets/176a929d-edbe-46a0-a0c5-229eb9b31c1c
+📘 [Docs](https://noah-code.com/docs/look) · 🎬 [Demo video](https://www.youtube.com/watch?v=NBB5bmjnLFU) · 📖 [User guide](docs/user-guide.md)
+
+
+https://github.com/user-attachments/assets/f8ee0f85-4c0d-4ea5-bb1d-8c8bf014d50d
+
+
+## What you can do
+
+- **Find and open anything** — apps, files, folders indexed locally. Type, Enter, done.
+- **Calc inline** — type `2^10`, `4!`, `200*15%`, `sqrt(2)`, `2*pi`. No command mode needed.
+- **Kill a process by port** — `Cmd+/` then `kill :3000`. Confirms before killing.
+- **Search clipboard history** — `c"meeting` finds the snippet you copied an hour ago.
+- **Translate or look up a word** — `t"hello` for quick translation, `tw"word` for a definition panel.
+- **Regex, path, and kind-scoped search** — `r"^Visual.*`, `git/project/readme`, `a"safari`, `f"note`, `d"documents`.
+- **Switch running apps from the launcher** — an icon strip on the right half of the search bar. `Cmd+1`..`Cmd+9` on macOS / `Alt+1`..`Alt+9` on Linux+Windows jumps to a running app. Toggle on/off in `Settings > Appearance > Running Apps`.
+
+All local. No account. No telemetry. No plugin marketplace to manage.
+
+## Why look
+
+- **Fast** — typical search under 1 ms on a 2000-item index; empty-query browse under 30 µs.
+- **Small** — single native app per platform. No Electron, no background daemons.
+- **Local-first** — candidates indexed in a local SQLite file; the only network calls are explicit (`t"`, `tw"`, `Cmd+Enter` web search).
+- **Zero-config by default** — presets cover common apps (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`). Configure more via `~/.look.config` when you want to.
+- **Keyboard-first** — every action has a key; mouse never required.
+
+If you want a launcher that stays out of your way and does exactly what you asked, that's the pitch.
+
+## How it compares
+
+|                 | **look**                | Spotlight  | Raycast            | Alfred       | ulauncher  | rofi       |
+| --------------- | ----------------------- | ---------- | ------------------ | ------------ | ---------- | ---------- |
+| Platform        | macOS · Windows · Linux | macOS only | macOS · Win (beta) | macOS only   | Linux only | Linux only |
+| Open source     | ✅ GPLv3                | ❌         | ❌                 | ❌           | ✅         | ✅         |
+| Local-first     | ✅                      | ✅         | ❌ cloud sync      | ✅           | ✅         | ✅         |
+| No Electron     | ✅                      | ✅         | ❌                 | ✅           | ✅         | ✅         |
+| No plugin store | ✅                      | ✅         | ❌                 | ❌ Powerpack | ✅         | ✅         |
+
+> If this is useful, ⭐ star the repo — it's the single biggest signal that helps the project keep shipping.
 
 ## Install
 
@@ -64,7 +103,7 @@ Uninstall:
 yay -R look-bin
 
 # Ubuntu/Debian
-sudo dpkg -r lookapp
+sudo dpkg -r look
 
 # AppImage — just delete the file
 rm Look_*.AppImage
@@ -74,10 +113,10 @@ rm Look_*.AppImage
 
 ```bash
 # Run directly
-nix run github:kunkka19xx/look?dir=apps/linows
+nix run 'github:kunkka19xx/look?dir=apps/linows'
 
 # Install to profile
-nix profile install github:kunkka19xx/look?dir=apps/linows
+nix profile install 'github:kunkka19xx/look?dir=apps/linows'
 ```
 
 Declarative (NixOS):
@@ -195,27 +234,6 @@ open "/Applications/Look.app"
 
 </details>
 
-## What you can do
-
-- **Find and open anything** — apps, files, folders indexed locally. Type, Enter, done.
-- **Calc inline** — type `2^10`, `4!`, `200*15%`, `sqrt(2)`, `2*pi`. No command mode needed.
-- **Kill a process by port** — `Cmd+/` then `kill :3000`. Confirms before killing.
-- **Search clipboard history** — `c"meeting` finds the snippet you copied an hour ago.
-- **Translate or look up a word** — `t"hello` for quick translation, `tw"word` for a definition panel.
-- **Regex, path, and kind-scoped search** — `r"^Visual.*`, `git/project/readme`, `a"safari`, `f"note`, `d"documents`.
-
-All local. No account. No telemetry. No plugin marketplace to manage.
-
-## Why look
-
-- **Fast** — typical search under 1 ms on a 2000-item index; empty-query browse under 30 µs.
-- **Small** — single native macOS app, no Electron, no background daemons.
-- **Local-first** — candidates indexed in a local SQLite file; the only network calls are explicit (`t"`, `tw"`, `Cmd+Enter` web search).
-- **Zero-config by default** — presets cover common apps (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`). Configure more via `~/.look.config` when you want to.
-- **Keyboard-first** — every action has a key; mouse never required.
-
-If you want a launcher that stays out of your way and does exactly what you asked, that's the pitch.
-
 ## Essential shortcuts
 
 | Action                                        | macOS            | Windows             | Linux            |
@@ -224,9 +242,11 @@ If you want a launcher that stays out of your way and does exactly what you aske
 | Open / run                                    | `Enter`          | `Enter`             | `Enter`          |
 | Web search                                    | `Cmd+Enter`      | `Ctrl+Enter`        | `Ctrl+Enter`     |
 | Reveal in file manager                        | `Cmd+F` (Finder) | `Ctrl+F` (Explorer) | `Ctrl+F` (Files) |
+| Move to Trash (or empty the Trash folder)     | `Cmd+D`          | —                   | —                |
 | Command mode (`calc`, `shell`, `kill`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
 | Settings                                      | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
 | Back / hide                                   | `Escape`         | `Escape`            | `Escape`         |
+| Switch to running app N (home screen)         | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
 
@@ -282,7 +302,7 @@ Out of scope for v1:
   - Platform-aware blur (Mica/Acrylic on Windows, CSS backdrop-filter on Linux)
   - Dynamic window scaling based on monitor resolution
   - 6 built-in themes + Custom
-- **Windows (WinUI3)** — the current `apps/windows/` WinUI3/C# app is in maintenance mode (bug fixes only). It will be archived once the Tauri app reaches feature parity.
+- **Windows (WinUI3)** — the current `apps/windows/` WinUI3/C# app isarchived.
 
 ## License
 
@@ -291,5 +311,3 @@ GPLv3 — see [LICENSE](LICENSE).
 ## Contributors
 
 Thanks to everyone who has contributed — see the [contributor graph](https://github.com/kunkka19xx/look/graphs/contributors).
-
-Contribution flow: branch from `dev`, open PRs into `dev`. See [CONTRIBUTING.md](CONTRIBUTING.md) and [DEVELOPMENT.md](DEVELOPMENT.md).

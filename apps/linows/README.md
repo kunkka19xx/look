@@ -13,7 +13,9 @@ apps/linows/
     src/
       main.rs            Entry point, plugin registration, global hotkey
       commands.rs        Search, open, reveal, window, quit
-      state.rs           AppState (engine cache, file watchers, index refresh)
+      state.rs           AppState — engine cache, scoped-refresh watcher (non-recursive
+                         file roots, noise filter, debounce + cooldown, off-thread reindex,
+                         RAII slot guard). See tools/perf/WATCHER_PERF.md for benchmarks.
       config.rs          Config get/set (.look.config persistence)
       files.rs           File meta, version, clipboard copy, music scan, folder pick
       clipboard.rs       Clipboard history monitor

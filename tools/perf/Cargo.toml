@@ -1,0 +1,29 @@
+[package]
+name = "look-perf-tools"
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+publish = false
+description = "Perf and stress benches for look's index refresh / watcher path. Not shipped in any app bundle."
+
+[dependencies]
+look-engine = { path = "../../core/engine" }
+look-matching = { path = "../../core/matching" }
+look-storage = { path = "../../core/storage" }
+notify = "6"
+
+[[bin]]
+name = "query_engine_bench"
+path = "query_engine_bench.rs"
+
+[[bin]]
+name = "scoped_refresh_bench"
+path = "scoped_refresh_bench.rs"
+
+[[bin]]
+name = "watcher_stress"
+path = "watcher_stress.rs"
+
+[[bin]]
+name = "real_fs_stress"
+path = "real_fs_stress.rs"

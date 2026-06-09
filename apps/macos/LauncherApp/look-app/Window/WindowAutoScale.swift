@@ -1,5 +1,8 @@
 import AppKit
 import Foundation
+import OSLog
+
+private let windowAutoScaleLog = Logger(subsystem: "noah-code.Look", category: "window-resize")
 
 /// Screen-based auto-scale for the launcher window.
 ///
@@ -21,7 +24,7 @@ enum WindowAutoScale {
     // Base size matches the Linux/Windows build (apps/linows/src-tauri):
     // 860×580 logical, landscape — list pane + preview pane side by side.
     static let baseWidth: CGFloat = 860
-    static let baseHeight: CGFloat = 580
+    static let baseHeight: CGFloat = 600
 
     static func ratio(forScreenHeightPoints h: CGFloat) -> CGFloat {
         guard h > 1080 else { return 1.0 }
@@ -29,6 +32,14 @@ enum WindowAutoScale {
         return min(r, 1.3)
     }
 
+    /// Base (unscaled) size of the launcher window. Running apps render inside
+    /// the search bar, so the window is always the bordered-panel size.
+    static func baseSize() -> CGSize {
+        CGSize(width: baseWidth, height: baseHeight)
+    }
+
+    /// Window size for the given screen: the base panel multiplied by the
+    /// screen ratio.
     static func size(for screen: NSScreen) -> CGSize {
         let r = ratio(forScreenHeightPoints: screen.frame.height)
         return CGSize(
@@ -55,11 +66,21 @@ enum WindowAutoScale {
     /// Clamps the result inside the screen's visibleFrame so we never
     /// leave the window partially off-screen (e.g. tucked behind a notch
     /// or menu bar after a screen with different geometry).
+    @MainActor
     static func resizeKeepingTopLeft(_ window: NSWindow) {
-        guard let screen = window.screen else { return }
+        guard let screen = window.screen else {
+            windowAutoScaleLog.debug("resize: window.screen is nil, skipping")
+            return
+        }
         let newSize = size(for: screen)
         let currentFrame = window.frame
-        if currentFrame.size == newSize { return }
+        let visible = screen.visibleFrame
+        windowAutoScaleLog.debug("resize start: screen=\(screen.frame.debugDescription, privacy: .public) visible=\(visible.debugDescription, privacy: .public) current=\(currentFrame.debugDescription, privacy: .public) newSize=\(newSize.debugDescription, privacy: .public) isVisible=\(window.isVisible, privacy: .public)")
+
+        if currentFrame.size == newSize {
+            windowAutoScaleLog.debug("resize: size unchanged, skipping")
+            return
+        }
 
         // AppKit's frame origin is bottom-left; preserve the visual top by
         // shifting origin.y when height changes.
@@ -68,7 +89,6 @@ enum WindowAutoScale {
             y: currentFrame.origin.y + currentFrame.height - newSize.height
         )
 
-        let visible = screen.visibleFrame
         let maxX = visible.maxX - newSize.width
         let minX = visible.minX
         let maxY = visible.maxY - newSize.height
@@ -77,8 +97,11 @@ enum WindowAutoScale {
         newOrigin.y = min(max(newOrigin.y, minY), maxY)
 
         let newFrame = NSRect(origin: newOrigin, size: newSize)
+        windowAutoScaleLog.debug("resize -> newFrame=\(newFrame.debugDescription, privacy: .public) (clamp bounds x=\(minX, privacy: .public)..\(maxX, privacy: .public), y=\(minY, privacy: .public)..\(maxY, privacy: .public))")
         if newFrame != currentFrame {
+            Self.lastProgrammaticResizeAt = Date()
             window.setFrame(newFrame, display: true, animate: false)
+            windowAutoScaleLog.debug("resize done: applied=\(window.frame.debugDescription, privacy: .public) isVisible=\(window.isVisible, privacy: .public)")
         }
     }
 
@@ -90,11 +113,31 @@ enum WindowAutoScale {
     /// drag finishes.
     @MainActor private static var pendingResizeTokens: [ObjectIdentifier: UUID] = [:]
 
+    /// Timestamp of the most recent programmatic `setFrame` from this module.
+    /// `didResignActiveNotification` can fire shortly after a screen-drag
+    /// resize because the size change briefly knocks the launcher off
+    /// "frontmost" status. Surface a "did we just resize?" check so the
+    /// launcher's auto-hide-on-resign handler can ignore those events.
+    @MainActor private static var lastProgrammaticResizeAt: Date?
+
+    static let resizeSettleWindow: TimeInterval = 1.0
+
+    @MainActor
+    static func didProgrammaticallyResizeRecently() -> Bool {
+        guard let t = lastProgrammaticResizeAt else { return false }
+        return Date().timeIntervalSince(t) < resizeSettleWindow
+    }
+
     @MainActor
     static func scheduleResize(for window: NSWindow) {
         let id = ObjectIdentifier(window)
         let token = UUID()
         pendingResizeTokens[id] = token
+        // Start the suppression window NOW (at notification time) — even
+        // if the resize turns out to be a no-op (e.g., same scale across
+        // screens), the screen change itself can briefly drop the
+        // launcher's frontmost status and trigger the auto-hide.
+        Self.lastProgrammaticResizeAt = Date()
 
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 50_000_000)

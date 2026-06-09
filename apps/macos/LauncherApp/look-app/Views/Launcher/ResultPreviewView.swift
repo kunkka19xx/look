@@ -7,6 +7,27 @@ struct ResultPreviewView: View {
     let result: LauncherResult
     var onDeleteClipboard: (() -> Void)? = nil
 
+    @State private var folderListing: FolderListing?
+    @State private var trashItemCount: Int?
+
+    /// The pinned Trash quick folder is TCC-protected, so it can't be listed
+    /// like a normal folder — it gets a Finder-backed summary instead.
+    private var isTrash: Bool {
+        result.kind == .folder
+            && DeleteTargetLogic.isTrashPath(result.path, homeDirectory: NSHomeDirectory())
+    }
+
+    private func folderCountText(_ listing: FolderListing) -> String? {
+        var parts: [String] = []
+        if listing.folderCount > 0 {
+            parts.append("\(listing.folderCount) folder\(listing.folderCount == 1 ? "" : "s")")
+        }
+        if listing.fileCount > 0 {
+            parts.append("\(listing.fileCount) file\(listing.fileCount == 1 ? "" : "s")")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
     private static let modifiedDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -103,9 +124,24 @@ struct ResultPreviewView: View {
 
                         HStack(spacing: 6) {
                             KindBadge(kind: result.kind.rawValue)
-                            Text(info.size)
-                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
-                                .foregroundStyle(themeStore.secondaryTextColor())
+                            if result.kind == .folder {
+                                if isTrash {
+                                    if let trashItemCount {
+                                        Text("\(trashItemCount) item\(trashItemCount == 1 ? "" : "s")")
+                                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                            .foregroundStyle(themeStore.secondaryTextColor())
+                                    }
+                                } else if let listing = folderListing,
+                                   let counts = folderCountText(listing) {
+                                    Text(counts)
+                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                        .foregroundStyle(themeStore.secondaryTextColor())
+                                }
+                            } else {
+                                Text(info.size)
+                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                    .foregroundStyle(themeStore.secondaryTextColor())
+                            }
                         }
                     }
                     Spacer()
@@ -116,6 +152,14 @@ struct ResultPreviewView: View {
                         TextFilePreview(path: result.path, maxHeight: .infinity)
                     } else {
                         QuickLookPreviewImage(path: result.path, maxHeight: .infinity)
+                    }
+                }
+
+                if result.kind == .folder {
+                    if isTrash {
+                        TrashSummaryView(itemCount: trashItemCount, themeStore: themeStore)
+                    } else {
+                        FolderPreviewView(path: result.path, listing: folderListing)
                     }
                 }
 
@@ -139,12 +183,34 @@ struct ResultPreviewView: View {
                     InfoRow(label: "Modified", value: modified)
                 }
 
-                if result.kind != .file {
+                if result.kind != .file && result.kind != .folder {
                     Spacer()
                 }
             }
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .task(id: result.kind == .folder ? result.path : "") {
+                guard result.kind == .folder else {
+                    folderListing = nil
+                    trashItemCount = nil
+                    return
+                }
+                if isTrash {
+                    // Don't list ~/.Trash (TCC) and don't prompt for Automation
+                    // just by previewing — only show a count if already granted.
+                    folderListing = nil
+                    trashItemCount = EmptyTrashCommand.itemCount(promptIfNeeded: false)
+                    return
+                }
+                folderListing = nil
+                let path = result.path
+                let listing = await FolderListingService.list(path: path)
+                // .task(id:) cancels this closure when the result changes,
+                // but the detached worker keeps running — guard against
+                // stale assignment when the user moved on to another folder.
+                if Task.isCancelled { return }
+                folderListing = listing
+            }
         }
     }
 

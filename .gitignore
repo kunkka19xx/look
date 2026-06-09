@@ -32,6 +32,8 @@ docs/tmp-issue-tracker.md
 
 # internal feature specs — maintainer-only design notes; user docs live in docs/
 specs/
+# blogs
+blogs/
 
 # .NET / Visual Studio
 ## User-specific files

@@ -8,6 +8,7 @@ mod commands;
 mod config;
 mod consts;
 mod files;
+mod highlight;
 mod music;
 mod platform;
 mod process;
@@ -19,7 +20,7 @@ mod translate;
 use state::AppState;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{Emitter, Manager, PhysicalPosition};
+use tauri::{Emitter, Manager};
 
 /// Timestamp (ms) of last window show, used to debounce focus-loss auto-hide.
 static LAST_SHOWN_AT: AtomicU64 = AtomicU64::new(0);
@@ -52,15 +53,16 @@ fn supports_transparency() -> bool {
 }
 
 const BASE_W: f64 = 860.0;
-const BASE_H: f64 = 580.0;
+const BASE_H: f64 = 600.0;
 /// Grace period (ms) after show — ignore focus-loss within this window.
 const AUTO_HIDE_GRACE_MS: u64 = 300;
 /// Guard (ms) to prevent re-showing after auto-hide (GNOME X11 race).
 const AUTO_HIDE_RESHOW_GUARD_MS: u64 = 200;
 const EVENT_WINDOW_SHOWN: &str = "window-shown";
 
-/// Scale window size for larger monitors. Base at 1080p (1.0x), up to 1.3x max.
-/// 1440p → 1.2x, 4K → 1.3x (capped).
+/// Scale window size (logical pixels) to fit the current monitor.
+/// Base size targets 1080p (1.0×). Scales up for larger logical screens
+/// (1440p → 1.2×, 4K → 1.3× cap).
 fn scaled_window_size(screen_w: u32, screen_h: u32, scale: f64) -> (u32, u32) {
     let logical_h = screen_h as f64 / scale;
     let ratio = if logical_h <= 1080.0 {
@@ -71,8 +73,8 @@ fn scaled_window_size(screen_w: u32, screen_h: u32, scale: f64) -> (u32, u32) {
         r.min(1.3)
     };
     let _ = screen_w; // used only for centering
-    let w = (BASE_W * ratio * scale).round() as u32;
-    let h = (BASE_H * ratio * scale).round() as u32;
+    let w = (BASE_W * ratio).round() as u32;
+    let h = (BASE_H * ratio).round() as u32;
     (w, h)
 }
 
@@ -133,33 +135,84 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) {
     let screen = monitor.size();
     let scale = monitor.scale_factor();
     let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
-    let size = tauri::PhysicalSize::new(win_w, win_h);
+    let logical_screen_w = screen.width as f64 / scale;
+    let logical_screen_h = screen.height as f64 / scale;
+    eprintln!(
+        "[look:scale] monitor={}x{} scale={} logical_screen={}x{} → window={}x{}",
+        screen.width, screen.height, scale, logical_screen_w, logical_screen_h, win_w, win_h,
+    );
+    let size = tauri::LogicalSize::new(win_w as f64, win_h as f64);
     let _ = window.set_size(size);
     // Lock min/max to the scaled size: on Wayland, hide()/show() can
-    // otherwise revert to tauri.conf's default (860×580) on remap,
+    // otherwise revert to tauri.conf's default (860×600) on remap,
     // producing a visible "big rectangle then snap" on toggle.
-    let _ = window.set_min_size(Some(tauri::Size::Physical(size)));
-    let _ = window.set_max_size(Some(tauri::Size::Physical(size)));
-    let x = pos.x + ((screen.width as f64 - win_w as f64) / 2.0) as i32;
-    let y = pos.y + ((screen.height as f64 - win_h as f64) / 2.0) as i32;
-    let _ = window.set_position(PhysicalPosition::new(x, y));
+    let _ = window.set_min_size(Some(tauri::Size::Logical(size)));
+    let _ = window.set_max_size(Some(tauri::Size::Logical(size)));
+    let lx = pos.x as f64 / scale + (logical_screen_w - win_w as f64) / 2.0;
+    let ly = pos.y as f64 / scale + (logical_screen_h - win_h as f64) / 2.0;
+    let _ = window.set_position(tauri::LogicalPosition::new(lx, ly));
 }
 
 /// Find the monitor that contains the cursor. Falls back to the window's
 /// current monitor, then the first available monitor.
 fn monitor_at_cursor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
-    if let Ok(cursor) = window.cursor_position()
+    // Try Tauri's cursor_position first (works on X11).
+    // On Wayland, cursor_position() fails — fall back to GNOME Shell D-Bus.
+    // GNOME Shell's global.get_pointer() returns *logical* coordinates,
+    // while Tauri's monitor positions/sizes are *physical* pixels.
+    // We track which space the cursor is in so the hit-test works correctly.
+    // On Wayland, Tauri's cursor_position() returns Ok((0,0)) instead of
+    // failing — it never reflects the real pointer location. Use the GNOME
+    // Shell extension (which calls global.get_pointer()) on Wayland instead.
+    #[cfg(target_os = "linux")]
+    let wayland = is_wayland();
+    #[cfg(not(target_os = "linux"))]
+    let wayland = false;
+
+    let (cursor, cursor_is_logical) = if !wayland {
+        match window.cursor_position() {
+            Ok(pos) => (Some(pos), false),
+            Err(_) => (None, false),
+        }
+    } else {
+        #[cfg(target_os = "linux")]
+        {
+            let pos = platform::linux::gnome_ext::get_pointer()
+                .map(|(x, y)| tauri::PhysicalPosition::new(x as f64, y as f64));
+            (pos, true) // GNOME Shell returns logical coords
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            (None, false)
+        }
+    };
+
+    if let Some(cursor) = cursor
         && let Ok(monitors) = window.available_monitors()
     {
-        let cx = cursor.x as i32;
-        let cy = cursor.y as i32;
+        let cx = cursor.x;
+        let cy = cursor.y;
         for m in &monitors {
             let pos = m.position();
             let size = m.size();
-            let mx = pos.x;
-            let my = pos.y;
-            let mw = size.width as i32;
-            let mh = size.height as i32;
+            let scale = m.scale_factor();
+            // When cursor is in logical coords (GNOME Shell on Wayland),
+            // convert each monitor's physical bounds to logical for comparison.
+            let (mx, my, mw, mh) = if cursor_is_logical {
+                (
+                    pos.x as f64 / scale,
+                    pos.y as f64 / scale,
+                    size.width as f64 / scale,
+                    size.height as f64 / scale,
+                )
+            } else {
+                (
+                    pos.x as f64,
+                    pos.y as f64,
+                    size.width as f64,
+                    size.height as f64,
+                )
+            };
             if cx >= mx && cx < mx + mw && cy >= my && cy < my + mh {
                 return Some(m.clone());
             }
@@ -184,19 +237,26 @@ fn recenter_window(window: &tauri::WebviewWindow) {
     let screen = monitor.size();
     let scale = monitor.scale_factor();
     let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
-    // Update size constraints if scale changed (different DPI monitors)
-    let size = tauri::PhysicalSize::new(win_w, win_h);
+    let logical_screen_w = screen.width as f64 / scale;
+    let logical_screen_h = screen.height as f64 / scale;
+    // Relax min/max constraints FIRST so the new size isn't clamped to the
+    // old monitor's dimensions, then resize, then lock constraints again.
+    let size = tauri::LogicalSize::new(win_w as f64, win_h as f64);
+    let _ = window.set_min_size(None::<tauri::Size>);
+    let _ = window.set_max_size(None::<tauri::Size>);
     let _ = window.set_size(size);
-    let _ = window.set_min_size(Some(tauri::Size::Physical(size)));
-    let _ = window.set_max_size(Some(tauri::Size::Physical(size)));
-    let x = pos.x + ((screen.width as f64 - win_w as f64) / 2.0) as i32;
-    let y = pos.y + ((screen.height as f64 - win_h as f64) / 2.0) as i32;
-    let _ = window.set_position(PhysicalPosition::new(x, y));
+    let _ = window.set_min_size(Some(tauri::Size::Logical(size)));
+    let _ = window.set_max_size(Some(tauri::Size::Logical(size)));
+    let lx = pos.x as f64 / scale + (logical_screen_w - win_w as f64) / 2.0;
+    let ly = pos.y as f64 / scale + (logical_screen_h - win_h as f64) / 2.0;
+    let _ = window.set_position(tauri::LogicalPosition::new(lx, ly));
 }
 
 #[cfg(target_os = "linux")]
 fn is_wayland() -> bool {
-    platform::linux::transparency::is_wayland()
+    use std::sync::OnceLock;
+    static CACHED: OnceLock<bool> = OnceLock::new();
+    *CACHED.get_or_init(platform::linux::transparency::is_wayland)
 }
 
 /// Set dev-mode config and database paths so dev doesn't pollute production.
@@ -347,12 +407,46 @@ fn disable_gpu_acceleration(app: &tauri::App) {
     }
 }
 
+/// Disable WebKitGTK smooth scrolling on X11.
+///
+/// Why: GTK3 issue #3287 — on X11 with GDK_SMOOTH_SCROLL_MASK enabled, the
+/// first scroll event after the cursor enters a window arrives with delta=0
+/// (GDK has no previous value to subtract), so the first wheel notch is
+/// effectively dropped. On tiling WMs like i3 the launcher pops up at a new
+/// position every show, so users cross the window edge every session and hit
+/// this bug every session ("scroll feels frozen, then works"). Switching to
+/// discrete scroll events sidesteps the smooth-delta=0 path entirely.
+///
+/// Wayland uses a different event delivery path and isn't affected, so this
+/// is X11-only.
+#[cfg(target_os = "linux")]
+fn disable_smooth_scrolling_x11(app: &tauri::App) {
+    if let Some(webview) = app.get_webview_window(consts::MAIN_WINDOW) {
+        let _ = webview.with_webview(|wv| {
+            use webkit2gtk::SettingsExt;
+            let inner = wv.inner();
+            if let Some(settings) = webkit2gtk::WebViewExt::settings(&inner) {
+                settings.set_enable_smooth_scrolling(false);
+            }
+        });
+    }
+}
+
 /// Sync autostart registration with config on every launch.
 ///
 /// On first launch (no `launch_at_login` key yet) — enable autostart and persist.
 /// On subsequent launches — re-sync the registry/desktop-entry with the current
 /// exe path so it stays valid after updates or reinstalls (matches WinUI3 behavior).
 fn sync_autostart() {
+    // Debug builds live under target/debug and (when produced by `tauri dev`)
+    // load the frontend from devUrl. If we wrote them into autostart, login
+    // would launch a binary that fails with "Could not connect to 127.0.0.1"
+    // because the dev server isn't running. Leave the installed binary's
+    // autostart entry alone.
+    if cfg!(debug_assertions) {
+        return;
+    }
+
     const KEY: &str = "launch_at_login";
 
     let config_path = config::config_file_path();
@@ -538,6 +632,7 @@ fn main() {
             #[cfg(target_os = "linux")]
             if !use_wayland {
                 setup_x11_focus_monitor(app);
+                disable_smooth_scrolling_x11(app);
             }
 
             let window = app
@@ -549,12 +644,21 @@ fn main() {
             // commits the HTML — visible as a brief "big rectangle without
             // corners" flash before the rounded launcher appears.
             // On X11 bare (no compositor), keep GTK's solid bg as a fallback.
+            //
+            // Hide the window first so the opaque frame never appears — the
+            // race between GTK's first paint and set_background_color causes
+            // intermittent sharp-cornered flashes on GNOME.
             #[cfg(target_os = "linux")]
             if supports_transparency() {
+                let _ = window.hide();
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
             }
             center_and_scale_window(&window);
             apply_transparency(&window);
+            #[cfg(target_os = "linux")]
+            if supports_transparency() {
+                let _ = window.show();
+            }
             #[cfg(target_os = "windows")]
             {
                 // WebView2 defaults to an opaque background. With the window
@@ -591,6 +695,7 @@ fn main() {
             // Files: meta, version, clipboard, music, folder
             files::get_file_meta,
             files::get_app_version,
+            files::list_folder,
             files::is_dev_build,
             files::copy_files_to_clipboard,
             files::get_home_dir,
@@ -612,6 +717,8 @@ fn main() {
             process::list_processes,
             process::list_processes_on_port,
             process::kill_process,
+            process::list_running_apps,
+            process::activate_running_app,
             // Translation
             translate::translate,
             // Clipboard
@@ -627,6 +734,11 @@ fn main() {
             // Autostart
             autostart::set_autostart,
             autostart::get_autostart,
+            // Highlight
+            highlight::highlight_file_cmd,
+            // About widget: version only. The update check itself runs in
+            // the webview via fetch() — no Rust HTTP/TLS dep needed.
+            files::get_lookapp_version,
         ])
         .build(tauri::generate_context!())
         .expect("error while building look desktop")

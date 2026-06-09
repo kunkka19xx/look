@@ -87,6 +87,10 @@ app-install-dev: app-build app-ensure-bundle
 	@plutil -replace CFBundleDisplayName -string "$(DEV_APP_NAME)" "$(DEV_APP_INSTALL_BUNDLE)/Contents/Info.plist"
 	@plutil -replace CFBundleName -string "$(DEV_APP_NAME)" "$(DEV_APP_INSTALL_BUNDLE)/Contents/Info.plist"
 	@plutil -replace CFBundleIdentifier -string "$(DEV_APP_ID)" "$(DEV_APP_INSTALL_BUNDLE)/Contents/Info.plist"
+	@# Pin dev to 0.0 so it is always "behind" the latest release — lets the
+	@# update-available notice be exercised in dev builds.
+	@plutil -replace CFBundleShortVersionString -string "0.0" "$(DEV_APP_INSTALL_BUNDLE)/Contents/Info.plist"
+	@plutil -replace CFBundleVersion -string "0" "$(DEV_APP_INSTALL_BUNDLE)/Contents/Info.plist"
 	@codesign --force --sign - --deep "$(DEV_APP_INSTALL_BUNDLE)" >/dev/null
 	@"$(LSREGISTER)" -f "$(DEV_APP_INSTALL_BUNDLE)" >/dev/null
 	@echo "Installed $(DEV_APP_NAME) with bundle id $(DEV_APP_ID)"

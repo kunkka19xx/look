@@ -9,6 +9,7 @@ struct ThemeSettingsView: View {
 
     @EnvironmentObject var appUIState: AppUIState
     @EnvironmentObject var themeStore: ThemeStore
+    @ObservedObject var updateChecker = UpdateChecker.shared
     @Binding var settings: ThemeSettings
     @State var selectedTab = 0
     @State var saveMessage: String?

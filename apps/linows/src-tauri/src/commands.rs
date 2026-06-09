@@ -1,4 +1,5 @@
 use crate::state::AppState;
+use look_engine::config::RuntimeConfig;
 use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
@@ -272,6 +273,10 @@ pub fn reveal_path(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn reload_config(state: State<'_, AppState>) -> bool {
+    // The engine caches the parsed `~/.look.config` across calls (skips a disk
+    // read on every refresh). When the user explicitly reloads, drop the cache
+    // so the next bootstrap picks up their edits.
+    RuntimeConfig::invalidate_cache();
     state.request_index_refresh()
 }
 
@@ -308,6 +313,52 @@ pub fn hide_window(window: tauri::WebviewWindow) {
 
 // --- App launching helpers ---
 
+/// Build a Command that runs `prog` inside the user's systemd session, so
+/// the child sees the user manager's environment (current XAUTHORITY for
+/// XWayland, DBUS_SESSION_BUS_ADDRESS, etc.) rather than whatever Look
+/// inherited. Falls back to a plain spawn when systemd-run isn't available.
+///
+/// Without this, a dev-mode Look launched from a long-lived `nix develop` /
+/// terminal shell carries the X11 cookie path it picked up at shell start —
+/// stale after the next mutter/XWayland restart — so spawned GUI children
+/// (firefox, etc.) fail with "cannot open display: :0" while gtk-launch
+/// itself still reports success.
+///
+/// `KillMode=process` keeps the actual GUI app alive after gtk-launch / gio
+/// launch (the unit's main process) exits.
+#[cfg(target_os = "linux")]
+fn user_session_cmd(prog: &str) -> std::process::Command {
+    use std::sync::OnceLock;
+    static SYSTEMD_RUN: OnceLock<bool> = OnceLock::new();
+    let available = *SYSTEMD_RUN.get_or_init(|| {
+        // Exercise the actual `--user` path (a no-op transient unit) — checking
+        // only `systemd-run --version` succeeds on systems that have the binary
+        // but no usable per-user manager (containers, minimal installs), and
+        // would route every launch through a wrapper that then fails.
+        std::process::Command::new("systemd-run")
+            .args(["--user", "--quiet", "--wait", "--collect", "--", "true"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    });
+    if available {
+        let mut cmd = std::process::Command::new("systemd-run");
+        cmd.args([
+            "--user",
+            "--collect",
+            "--quiet",
+            "--property=KillMode=process",
+            "--",
+            prog,
+        ]);
+        cmd
+    } else {
+        std::process::Command::new(prog)
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
     let desktop_file = id
@@ -324,9 +375,12 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
     // Build the launch chain: gtk-launch → gio launch → direct exec.
     // gtk-launch is preferred because gio launch uses D-Bus activation
     // which can silently fail to show a window on first invocation.
+    // Use the resolved desktop_file path (case-preserving) rather than the
+    // raw frontend ID — IDs may be lowercased upstream while gtk-launch is
+    // case-sensitive ("org.gnome.Nautilus" works, "org.gnome.nautilus" does not).
     let desktop_path = desktop_file.clone();
-    let desktop_name = id
-        .and_then(|id| id.strip_prefix("app:"))
+    let desktop_name = desktop_file
+        .as_deref()
         .and_then(|p| std::path::Path::new(p).file_name())
         .and_then(|f| f.to_str())
         .and_then(|f| f.strip_suffix(".desktop"))
@@ -336,7 +390,7 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
     std::thread::spawn(move || {
         if let Some(ref name) = desktop_name {
             eprintln!("[launch] trying gtk-launch {name}");
-            let result = std::process::Command::new("gtk-launch")
+            let result = user_session_cmd("gtk-launch")
                 .arg(name)
                 .env_remove("LD_LIBRARY_PATH")
                 .stdin(std::process::Stdio::null())
@@ -358,7 +412,7 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
 
         if let Some(ref real_path) = desktop_path {
             eprintln!("[launch] trying gio launch {real_path}");
-            let result = std::process::Command::new("gio")
+            let result = user_session_cmd("gio")
                 .args(["launch", real_path])
                 .env_remove("LD_LIBRARY_PATH")
                 .stdin(std::process::Stdio::null())
@@ -382,7 +436,7 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
         if let Some(cmd) = parts.next() {
             let args: Vec<&str> = parts.filter(|s| !s.starts_with('%')).collect();
             eprintln!("[launch] trying direct exec: {cmd} {}", args.join(" "));
-            match std::process::Command::new(cmd)
+            match user_session_cmd(cmd)
                 .args(&args)
                 .env_remove("LD_LIBRARY_PATH")
                 .stdin(std::process::Stdio::null())
@@ -448,6 +502,18 @@ fn try_focus_window(wm_class: &str) -> bool {
     false
 }
 
+/// Public wrapper for process::activate_running_app.
+#[cfg(target_os = "linux")]
+pub fn try_focus_existing_pub(desktop_path: &str) -> bool {
+    try_focus_existing(desktop_path)
+}
+
+/// Public wrapper for process::activate_running_app.
+#[cfg(target_os = "linux")]
+pub fn try_focus_window_pub(wm_class: &str) -> bool {
+    try_focus_window(wm_class)
+}
+
 /// Try to focus an existing window for a desktop file.
 /// Dispatches to the appropriate method based on display server / compositor.
 #[cfg(target_os = "linux")]
@@ -492,7 +558,7 @@ fn try_focus_existing(desktop_path: &str) -> bool {
 /// Wayland focus: dispatch to the active compositor's IPC.
 #[cfg(target_os = "linux")]
 fn try_focus_wayland(desktop_path: &str, candidates: &[&str]) -> bool {
-    if std::env::var("SWAYSOCK").is_ok() {
+    if crate::platform::linux::wm::is_sway() {
         return candidates.iter().any(|id| try_focus_sway(id));
     }
     if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
