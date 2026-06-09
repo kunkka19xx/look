@@ -155,8 +155,8 @@ extension LauncherView {
         }
         focusRequestToken &+= 1
         isQueryFocused = false
-        // Don't leave a stale delete confirmation to reappear on next show.
-        pendingDeleteTargets = []
+        // Don't leave a stale Empty Trash confirmation to reappear on next show.
+        pendingEmptyTrashCount = nil
         let wasVisible = window.isVisible
         window.orderOut(nil)
         hotkeyLog.notice("hide: orderOut wasVisible=\(wasVisible) restore=\(restorePreviousApp)")

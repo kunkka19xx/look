@@ -59,7 +59,12 @@ struct LauncherView: View {
     @State var lookupPreviewTask: Task<Void, Never>?
     @State var selectedKillSuggestionIndex: Int?
     @State var pendingKillCandidate: KillCommand.Candidate?
-    @State var pendingDeleteTargets: [DeleteCommand.Target] = []
+    // nil == no empty-Trash confirmation pending; otherwise the item count to show.
+    // (Moving files/folders to Trash is recoverable, so it skips confirmation;
+    // only the permanent Empty Trash prompts.)
+    @State var pendingEmptyTrashCount: Int?
+    // True while a trash/empty operation is running, to block re-triggering it.
+    @State var isDeleteInFlight = false
     @State var killListRefreshTick: Int = 0
     @State var recentlyKilledPIDs: Set<Int32> = []
     @State var showsHelpScreen = false
@@ -201,7 +206,7 @@ struct LauncherView: View {
                 id: "\(AppConstants.Launcher.QuickFolder.idPrefix)\(normalizedTitle)",
                 kind: .folder,
                 title: entry.title,
-                subtitle: AppConstants.Launcher.QuickFolder.pinnedSubtitle,
+                subtitle: entry.subtitle ?? AppConstants.Launcher.QuickFolder.pinnedSubtitle,
                 path: folderPath,
                 score: AppConstants.Launcher.Finder.pinnedScore
             )
@@ -378,7 +383,7 @@ struct LauncherView: View {
     }
 
     var isDeleteConfirmationVisible: Bool {
-        !isCommandMode && !pendingDeleteTargets.isEmpty
+        !isCommandMode && pendingEmptyTrashCount != nil
     }
 
     var liveCommandPreview: String? {
@@ -449,10 +454,10 @@ struct LauncherView: View {
             clipboardStore.setMonitoringMode(.background)
         }
         .onChange(of: query) { _, _ in
-            // Editing the query dismisses a pending delete confirmation, mirroring
-            // how the kill command clears its pending candidate on input change.
-            if !pendingDeleteTargets.isEmpty {
-                pendingDeleteTargets = []
+            // Editing the query dismisses a pending Empty Trash confirmation,
+            // mirroring how the kill command clears its pending candidate.
+            if pendingEmptyTrashCount != nil {
+                pendingEmptyTrashCount = nil
             }
             if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
                 enterCommandMode(commandID: cmd.id, prefilledInput: cmd.args)
@@ -785,9 +790,9 @@ struct LauncherView: View {
 
     @ViewBuilder
     private var deleteConfirmationOverlay: some View {
-        if !isCommandMode, !pendingDeleteTargets.isEmpty {
-            DeleteConfirmationBar(
-                targets: pendingDeleteTargets,
+        if !isCommandMode, let pendingEmptyTrashCount {
+            EmptyTrashConfirmationBar(
+                itemCount: pendingEmptyTrashCount,
                 themeStore: themeStore,
                 onConfirm: { confirmDeleteSelection() },
                 onCancel: { cancelDeleteSelection() }

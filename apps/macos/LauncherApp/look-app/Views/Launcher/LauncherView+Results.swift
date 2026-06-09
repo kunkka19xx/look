@@ -106,7 +106,7 @@ extension LauncherView {
     }
 
     private func isURLScheme(_ target: String) -> Bool {
-        target.contains(":") && !target.hasPrefix("/")
+        DeleteTargetLogic.isURLScheme(target)
     }
 
     private func recordOpen(_ selected: LauncherResult, action: String) {
@@ -314,34 +314,80 @@ extension LauncherView {
             }
     }
 
-    /// Cmd+Delete entry point: builds targets and raises the confirm banner.
+    /// Cmd+D entry point. Files/folders move to Trash immediately (recoverable,
+    /// no confirmation — like Finder's Cmd+Delete). When the single selection is
+    /// the Trash quick folder, routes to Empty Trash, which DOES confirm because
+    /// it's permanent.
     func requestDeleteSelection() {
         guard !isCommandMode, !appUIState.showsThemeSettings, !showsHelpScreen else { return }
-        // Don't stack a second confirmation while one is pending / in flight.
-        guard pendingDeleteTargets.isEmpty else { return }
+        // Don't stack an Empty Trash confirmation, nor start work while a
+        // previous trash/empty is still running (recycle / Finder are async).
+        guard pendingEmptyTrashCount == nil, !isDeleteInFlight else { return }
+
+        // Cmd+D on the pinned Trash folder empties it rather than trashing it.
+        if pickedKeys.isEmpty,
+           let selectedResultID,
+           let selected = displayedResults.first(where: { $0.id == selectedResultID }),
+           selected.kind == .folder,
+           DeleteTargetLogic.isTrashPath(selected.path, homeDirectory: NSHomeDirectory()) {
+            // Count comes from Finder (TCC blocks reading ~/.Trash directly);
+            // this is the right moment to prompt for Automation permission.
+            guard let count = EmptyTrashCommand.itemCount() else {
+                showBanner(
+                    "Allow Look to control Finder in System Settings ▸ Privacy ▸ Automation to empty the Trash",
+                    style: .error,
+                    duration: 2.8
+                )
+                return
+            }
+            guard count > 0 else {
+                showBanner("Trash is already empty", style: .info, duration: 1.2)
+                return
+            }
+            pendingEmptyTrashCount = count
+            return
+        }
 
         let targets = eligibleDeleteTargets()
         guard !targets.isEmpty else {
             showBanner("Select a file or folder to delete", style: .info, duration: 1.2)
             return
         }
-        pendingDeleteTargets = targets
+        // Recoverable — trash straight away, no confirmation.
+        runDeleteCommand(targets: targets)
     }
 
+    /// Confirm/cancel only apply to the permanent Empty Trash prompt now.
     func confirmDeleteSelection() {
-        guard !pendingDeleteTargets.isEmpty else { return }
-        runDeleteCommand(targets: pendingDeleteTargets)
-        pendingDeleteTargets = []
+        guard pendingEmptyTrashCount != nil else { return }
+        pendingEmptyTrashCount = nil
+        runEmptyTrash()
     }
 
     func cancelDeleteSelection() {
-        pendingDeleteTargets = []
+        pendingEmptyTrashCount = nil
+    }
+
+    private func runEmptyTrash() {
+        isDeleteInFlight = true
+        // Finder's "empty the trash" can take seconds on a large Trash; run it
+        // off the main thread so the launcher window stays responsive.
+        EmptyTrashCommand.empty { [self] error in
+            isDeleteInFlight = false
+            if let error {
+                showBanner(error, style: .error, duration: 2.6)
+            } else {
+                showBanner("Emptied Trash", style: .success, duration: 1.6)
+            }
+        }
     }
 
     private func runDeleteCommand(targets: [DeleteCommand.Target]) {
         let targetsByID = Dictionary(targets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
+        isDeleteInFlight = true
         DeleteCommand.trash(targets) { [self] outcome in
+            isDeleteInFlight = false
             let trashed = Set(outcome.trashedIDs)
 
             // Drop trashed items from the picked basket.

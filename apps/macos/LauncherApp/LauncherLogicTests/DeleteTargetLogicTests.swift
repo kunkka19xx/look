@@ -45,43 +45,38 @@ final class DeleteTargetLogicTests: XCTestCase {
         XCTAssertEqual(eligible.map(\.id), ["here"])
     }
 
-    // MARK: - confirmTitle
-
-    func testConfirmTitleSingularNamesItem() {
-        XCTAssertEqual(
-            DeleteTargetLogic.confirmTitle(displayNames: ["report.pdf"]),
-            "Move \"report.pdf\" to Trash?"
+    func testProtectsHomeRootAndTrash() {
+        let home = "/Users/me"
+        let input = [
+            result("root", .folder, path: "/"),
+            result("home", .folder, path: "/Users/me"),
+            result("homeSlash", .folder, path: "/Users/me/"),
+            result("trash", .folder, path: "/Users/me/.Trash"),
+            result("ok", .folder, path: "/Users/me/Projects"),
+        ]
+        let eligible = DeleteTargetLogic.eligible(
+            from: input,
+            fileExists: { _ in true },
+            homeDirectory: home
         )
+        XCTAssertEqual(eligible.map(\.id), ["ok"])
     }
 
-    func testConfirmTitlePluralShowsCount() {
-        XCTAssertEqual(
-            DeleteTargetLogic.confirmTitle(displayNames: ["a", "b", "c"]),
-            "Move 3 items to Trash?"
-        )
+    // MARK: - isTrashPath
+
+    func testIsTrashPath() {
+        let home = "/Users/me"
+        XCTAssertTrue(DeleteTargetLogic.isTrashPath("/Users/me/.Trash", homeDirectory: home))
+        XCTAssertTrue(DeleteTargetLogic.isTrashPath("/Users/me/.Trash/", homeDirectory: home))
+        XCTAssertFalse(DeleteTargetLogic.isTrashPath("/Users/me/.Trash/file.txt", homeDirectory: home))
+        XCTAssertFalse(DeleteTargetLogic.isTrashPath("/Users/me/Documents", homeDirectory: home))
     }
 
-    // MARK: - confirmDetail
+    // MARK: - empty trash wording
 
-    func testConfirmDetailSingleShowsPath() {
-        XCTAssertEqual(
-            DeleteTargetLogic.confirmDetail(fileCount: 1, folderCount: 0, singlePath: "/tmp/a.txt"),
-            "/tmp/a.txt"
-        )
-    }
-
-    func testConfirmDetailPluralCountsFilesAndFolders() {
-        XCTAssertEqual(
-            DeleteTargetLogic.confirmDetail(fileCount: 2, folderCount: 1, singlePath: nil),
-            "2 files, 1 folder"
-        )
-    }
-
-    func testConfirmDetailOmitsZeroCategory() {
-        XCTAssertEqual(
-            DeleteTargetLogic.confirmDetail(fileCount: 0, folderCount: 3, singlePath: nil),
-            "3 folders"
-        )
+    func testEmptyTrashDetailPluralization() {
+        XCTAssertEqual(DeleteTargetLogic.emptyTrashDetail(itemCount: 1), "1 item — deleted permanently")
+        XCTAssertEqual(DeleteTargetLogic.emptyTrashDetail(itemCount: 7), "7 items — deleted permanently")
     }
 
     // MARK: - resultMessage

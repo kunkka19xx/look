@@ -218,7 +218,7 @@ extension LauncherView {
                 cancelDeleteSelection()
             },
             deleteConfirmationActive: { [self] in
-                !pendingDeleteTargets.isEmpty
+                pendingEmptyTrashCount != nil
             }
         )
     }
