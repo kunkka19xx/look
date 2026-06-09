@@ -14,10 +14,10 @@
 //!   exe-path comparison against `QueryFullProcessImageNameW`, pre-filtered
 //!   by basename to skip the kernel call on most processes.
 //!
-//! Once a PID matches, `EnumWindows` finds the first visible top-level
-//! window for it; `SetForegroundWindow` (with `SW_RESTORE` for minimized
-//! windows) raises it. Call this **before** hiding Look's own window —
-//! `SetForegroundWindow` only succeeds while we still hold foreground.
+//! Once a PID matches, `EnumWindows` picks the best top-level frame and
+//! `activate_window` raises it (AttachThreadInput + sync ShowWindow if
+//! iconic + SetForegroundWindow). Call sites must run this **before**
+//! hiding Look's own window — see commands.rs for ordering.
 
 use windows::Win32::Foundation::{CloseHandle, FALSE, HANDLE, HWND, LPARAM, MAX_PATH, TRUE};
 use windows::Win32::System::Com::{
@@ -28,12 +28,15 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::Threading::{
-    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+    AttachThreadInput, GetCurrentThreadId, OpenProcess, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
+use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_RESTORE,
-    SetForegroundWindow, ShowWindowAsync,
+    BringWindowToTop, EnumWindows, GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongW,
+    GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_RESTORE,
+    SetForegroundWindow, ShowWindow, WS_EX_TOOLWINDOW,
 };
 use windows::core::BOOL;
 use windows::core::{HSTRING, Interface, PWSTR};
@@ -64,9 +67,8 @@ pub(crate) fn try_focus_existing(path: &str) -> bool {
         return false;
     }
 
-    let target = match resolve_target(trimmed) {
-        Some(t) => t,
-        None => return false,
+    let Some(target) = resolve_target(trimmed) else {
+        return false;
     };
 
     // Collect every PID that matches, not just the first. Modern apps spawn
@@ -86,7 +88,23 @@ pub(crate) fn try_focus_existing(path: &str) -> bool {
     let Some(hwnd) = find_main_window_for_pids(&pids) else {
         return false;
     };
+    activate_window(hwnd);
+    true
+}
 
+/// Activate a specific top-level window by raw HWND. Used by the running-apps
+/// switcher for UWP windows (Settings, Calculator, …) owned by
+/// ApplicationFrameHost, where exe-path matching can't pick which of several
+/// windows sharing one host PID to raise.
+pub(crate) fn focus_hwnd(raw: isize) -> bool {
+    let hwnd = HWND(raw as *mut core::ffi::c_void);
+    if hwnd.0.is_null() {
+        return false;
+    }
+    // Stale handle (window closed since it was listed) → thread id 0.
+    if unsafe { GetWindowThreadProcessId(hwnd, None) } == 0 {
+        return false;
+    }
     activate_window(hwnd);
     true
 }
@@ -188,7 +206,7 @@ fn find_pids_by_exe(target_exe_path: &str) -> Vec<u32> {
         .unwrap_or("")
         .to_string();
 
-    enumerate_processes(|pid, basename| {
+    let exact = enumerate_processes(|pid, basename| {
         // szExeFile only gives basename, but that's enough to skip the
         // OpenProcess + QueryFullProcessImageName syscalls for non-candidates.
         if !target_basename.is_empty() && !basename.eq_ignore_ascii_case(&target_basename) {
@@ -203,6 +221,43 @@ fn find_pids_by_exe(target_exe_path: &str) -> Vec<u32> {
         }
         match path {
             Some(p) => normalize_path(&p).to_lowercase() == target_norm,
+            None => false,
+        }
+    });
+    if !exact.is_empty() {
+        return exact;
+    }
+
+    // Squirrel/Electron shim fallback: Discord, GitHub Desktop, Slack, Atom and
+    // friends ship a Start-Menu shortcut that points at <Root>\Update.exe with
+    // `--processStart App.exe`. Update.exe pivots to the newest <Root>\app-X.Y.Z\App.exe
+    // and exits, so it's never running when the app is. When the exact match
+    // misses on Update.exe, scan for any non-Update.exe process whose image
+    // lives under the same install root. find_main_window_for_pids then picks
+    // the one with the real top-level window (Electron spawns several helpers).
+    if !target_basename.eq_ignore_ascii_case("Update.exe") {
+        return exact;
+    }
+    let root = std::path::Path::new(&target_norm)
+        .parent()
+        // Refuse to scan a whole drive if the path was just `C:\Update.exe`.
+        .filter(|p| p.parent().is_some());
+    let Some(root) = root else { return exact };
+    let root_prefix = format!("{}\\", root.to_string_lossy());
+
+    enumerate_processes(|pid, basename| {
+        if basename.eq_ignore_ascii_case("Update.exe") {
+            return false;
+        }
+        let Some(handle) = open_process(pid) else {
+            return false;
+        };
+        let path = query_full_image_name(handle);
+        unsafe {
+            let _ = CloseHandle(handle);
+        }
+        match path {
+            Some(p) => normalize_path(&p).to_lowercase().starts_with(&root_prefix),
             None => false,
         }
     })
@@ -292,13 +347,19 @@ fn get_process_aumid(handle: HANDLE) -> Option<String> {
 }
 
 fn find_main_window_for_pids(pids: &[u32]) -> Option<HWND> {
+    // Two-pass: ideal main window first (top-level, visible, non-tool, titled),
+    // then fall back to any visible window belonging to the PID. Apps like
+    // A5:SQL Mk-2 spawn multiple owned dialogs/tool windows; picking the first
+    // visible one means we activate a hidden helper instead of the real frame.
     struct Search<'a> {
         pids: &'a [u32],
-        hwnd: HWND,
+        best: HWND,
+        fallback: HWND,
     }
     let mut search = Search {
         pids,
-        hwnd: HWND::default(),
+        best: HWND::default(),
+        fallback: HWND::default(),
     };
 
     unsafe extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
@@ -308,31 +369,81 @@ fn find_main_window_for_pids(pids: &[u32]) -> Option<HWND> {
         if !s.pids.contains(&wnd_pid) {
             return TRUE;
         }
+        // Minimized windows still report IsWindowVisible == true (WS_VISIBLE
+        // is retained while iconic) so this filter is safe for the "minimize
+        // to taskbar" case we're trying to fix.
         if !unsafe { IsWindowVisible(hwnd).as_bool() } {
             return TRUE;
         }
-        s.hwnd = hwnd;
+
+        if s.fallback.0.is_null() {
+            s.fallback = hwnd;
+        }
+
+        // Owned windows are dialogs/popups, not the app's main frame.
+        let owner = unsafe { GetWindow(hwnd, GW_OWNER) };
+        if let Ok(o) = owner
+            && !o.0.is_null()
+        {
+            return TRUE;
+        }
+        // WS_EX_TOOLWINDOW = floating palette, not the main frame.
+        let exstyle = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) } as u32;
+        if exstyle & WS_EX_TOOLWINDOW.0 != 0 {
+            return TRUE;
+        }
+        // Empty title = hidden helper (drag-drop sink, IME composition, etc.).
+        if unsafe { GetWindowTextLengthW(hwnd) } == 0 {
+            return TRUE;
+        }
+
+        s.best = hwnd;
         FALSE
     }
 
     unsafe {
         let _ = EnumWindows(Some(cb), LPARAM(&mut search as *mut _ as isize));
     }
-    if search.hwnd.0.is_null() {
+    let chosen = if !search.best.0.is_null() {
+        search.best
+    } else {
+        search.fallback
+    };
+    if chosen.0.is_null() {
         None
     } else {
-        Some(search.hwnd)
+        Some(chosen)
     }
 }
 
 fn activate_window(hwnd: HWND) {
+    // SetForegroundWindow rejects threads that haven't received the last user
+    // input. Tauri commands run on a tokio worker that never sees raw input,
+    // so the rule trips even though Look's UI thread is foreground. Attach
+    // our input queue to the target's for the duration to lend us its rights.
+    //
+    // SW_RESTORE only when iconic — calling it on a maximized window
+    // un-maximizes it (Edge loses F11/fullscreen). Synchronous `ShowWindow`
+    // (not `ShowWindowAsync`): cross-thread it blocks until the target
+    // processes the restore, so SetForegroundWindow next runs against a
+    // non-iconic window. Async would race and reduce SFW to a taskbar flash.
     unsafe {
-        // SW_RESTORE on a non-minimized window can un-maximize it (Edge losing
-        // F11/fullscreen). Only restore when actually minimized; otherwise
-        // SetForegroundWindow alone is enough to raise the window.
+        let cur_thread = GetCurrentThreadId();
+        let target_thread = GetWindowThreadProcessId(hwnd, None);
+
+        let attached = target_thread != 0
+            && target_thread != cur_thread
+            && AttachThreadInput(cur_thread, target_thread, true).as_bool();
+
         if IsIconic(hwnd).as_bool() {
-            let _ = ShowWindowAsync(hwnd, SW_RESTORE);
+            let _ = ShowWindow(hwnd, SW_RESTORE);
         }
         let _ = SetForegroundWindow(hwnd);
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetFocus(Some(hwnd));
+
+        if attached {
+            let _ = AttachThreadInput(cur_thread, target_thread, false);
+        }
     }
 }

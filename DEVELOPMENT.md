@@ -23,6 +23,8 @@ Guide for building Look locally and contributing to the project.
 │   └── storage/                  # SQLite-backed storage
 ├── bridge/
 │   └── ffi/                      # Rust FFI bridge (consumed by macOS/Windows native apps)
+├── tools/
+│   └── perf/                     # Watcher / refresh benchmarks (separate crate, never bundled)
 ├── docs/                         # User guide, architecture, design decisions
 ├── scripts/                      # Build, release, install scripts
 └── assets/                       # Icons, screenshots, demo GIF
@@ -147,11 +149,19 @@ make app-run-dev DEV_CONFIG_PATH="$HOME/.look.qa.config"
 
 ## Benchmarks
 
-Run the query-engine benchmark:
+All benches live in a separate `tools/perf` crate. Nothing in `apps/` or
+`bridge/` depends on it, so they never end up in a shipped binary.
 
 ```bash
-cargo run --manifest-path core/engine/Cargo.toml --example perf_bench
+cd tools/perf
+cargo run --release --bin query_engine_bench     # query throughput + fuzzy scoring micro-bench
+cargo run --release --bin scoped_refresh_bench   # per-call latency: ALL / APPS_ONLY / FILES_ONLY
+cargo run --release --bin watcher_stress         # simulated event streams, BEFORE vs AFTER
+cargo run --release --bin real_fs_stress         # real notify watcher + worker doing real disk I/O
 ```
+
+Watcher / index-refresh methodology, scenarios, and a side-by-side report
+live at [tools/perf/WATCHER_PERF.md](tools/perf/WATCHER_PERF.md).
 
 Benchmark snapshots land under [docs/bench-notes/](docs/bench-notes/). Add a new snapshot when scoring, matching, or indexing changes.
 

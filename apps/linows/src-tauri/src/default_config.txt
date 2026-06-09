@@ -18,5 +18,8 @@ skip_dir_names=node_modules,target,build,dist,.git,vendor,out,coverage,tmp,cache
 arch_disable_gpu=false
 arch_disable_blur=false
 
+# Running apps switcher: none, right
+running_apps_placement=right
+
 # UI theme
 ui_theme=

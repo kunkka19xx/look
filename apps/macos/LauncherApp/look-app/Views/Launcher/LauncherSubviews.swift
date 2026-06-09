@@ -343,6 +343,8 @@ struct LauncherHelpScreenView: View {
                         .foregroundStyle(themeStore.mutedTextColor())
                 }
 
+                AppUpdateStatusView(themeStore: themeStore)
+
                 Text(LauncherHelpContent.subtitle)
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .regular))
                     .foregroundStyle(themeStore.secondaryTextColor())
@@ -357,7 +359,7 @@ struct LauncherHelpScreenView: View {
 }
 
 private enum LauncherHelpContent {
-    static let title = "Keyboard Help"
+    static let title = "Help"
     static let closeHint = "Cmd+H to close"
     static let subtitle = "Quick guide for app list, clipboard search, and command flow."
 

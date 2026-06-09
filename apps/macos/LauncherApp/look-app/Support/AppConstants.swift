@@ -28,6 +28,7 @@ struct AppCommand: Identifiable {
 struct QuickFolderDefinition {
     let title: String
     let relativePath: String
+    var subtitle: String? = nil
 }
 
 enum AppConstants {
@@ -74,6 +75,9 @@ enum AppConstants {
                 // the user sees in Finder/Explorer pins it.
                 QuickFolderDefinition(title: "Movies", relativePath: "Movies"),
                 QuickFolderDefinition(title: "Music", relativePath: "Music"),
+                // ~/.Trash is a real directory, so it opens in Finder like any
+                // other quick folder. Typing "trash" pins it; ⌘D empties it.
+                QuickFolderDefinition(title: "Trash", relativePath: ".Trash", subtitle: "Pinned · ⌘D to empty"),
             ]
         }
 
@@ -114,7 +118,6 @@ enum AppConstants {
             static let horizontalPadding: CGFloat = 6
             static let verticalPadding: CGFloat = 10
             static let itemGap: CGFloat = 8
-            static let panelGap: CGFloat = 8
             // Slack on each end of the strip to keep the active ring from being clipped.
             static let edgeSlack: CGFloat = 8
             static let maxItems = 9

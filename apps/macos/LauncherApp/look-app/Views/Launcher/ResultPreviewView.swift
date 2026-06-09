@@ -8,6 +8,14 @@ struct ResultPreviewView: View {
     var onDeleteClipboard: (() -> Void)? = nil
 
     @State private var folderListing: FolderListing?
+    @State private var trashItemCount: Int?
+
+    /// The pinned Trash quick folder is TCC-protected, so it can't be listed
+    /// like a normal folder — it gets a Finder-backed summary instead.
+    private var isTrash: Bool {
+        result.kind == .folder
+            && DeleteTargetLogic.isTrashPath(result.path, homeDirectory: NSHomeDirectory())
+    }
 
     private func folderCountText(_ listing: FolderListing) -> String? {
         var parts: [String] = []
@@ -117,7 +125,13 @@ struct ResultPreviewView: View {
                         HStack(spacing: 6) {
                             KindBadge(kind: result.kind.rawValue)
                             if result.kind == .folder {
-                                if let listing = folderListing,
+                                if isTrash {
+                                    if let trashItemCount {
+                                        Text("\(trashItemCount) item\(trashItemCount == 1 ? "" : "s")")
+                                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                            .foregroundStyle(themeStore.secondaryTextColor())
+                                    }
+                                } else if let listing = folderListing,
                                    let counts = folderCountText(listing) {
                                     Text(counts)
                                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
@@ -142,7 +156,11 @@ struct ResultPreviewView: View {
                 }
 
                 if result.kind == .folder {
-                    FolderPreviewView(path: result.path, listing: folderListing)
+                    if isTrash {
+                        TrashSummaryView(itemCount: trashItemCount, themeStore: themeStore)
+                    } else {
+                        FolderPreviewView(path: result.path, listing: folderListing)
+                    }
                 }
 
                 if let version = info.version {
@@ -174,6 +192,14 @@ struct ResultPreviewView: View {
             .task(id: result.kind == .folder ? result.path : "") {
                 guard result.kind == .folder else {
                     folderListing = nil
+                    trashItemCount = nil
+                    return
+                }
+                if isTrash {
+                    // Don't list ~/.Trash (TCC) and don't prompt for Automation
+                    // just by previewing — only show a count if already granted.
+                    folderListing = nil
+                    trashItemCount = EmptyTrashCommand.itemCount(promptIfNeeded: false)
                     return
                 }
                 folderListing = nil

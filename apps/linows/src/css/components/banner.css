@@ -1,8 +1,9 @@
 /* Banner notifications */
 .banner {
+  grid-row: 2;
+  grid-column: 1 / -1;
   padding: 8px var(--content-padding);
   border-bottom: var(--border-thickness) solid var(--divider-color);
-  flex-shrink: 0;
   animation: banner-in 200ms ease-out;
 }
 

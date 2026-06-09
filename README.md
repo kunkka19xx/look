@@ -22,6 +22,7 @@ https://github.com/user-attachments/assets/f8ee0f85-4c0d-4ea5-bb1d-8c8bf014d50d
 - **Search clipboard history** — `c"meeting` finds the snippet you copied an hour ago.
 - **Translate or look up a word** — `t"hello` for quick translation, `tw"word` for a definition panel.
 - **Regex, path, and kind-scoped search** — `r"^Visual.*`, `git/project/readme`, `a"safari`, `f"note`, `d"documents`.
+- **Switch running apps from the launcher** — an icon strip on the right half of the search bar. `Cmd+1`..`Cmd+9` on macOS / `Alt+1`..`Alt+9` on Linux+Windows jumps to a running app. Toggle on/off in `Settings > Appearance > Running Apps`.
 
 All local. No account. No telemetry. No plugin marketplace to manage.
 
@@ -102,7 +103,7 @@ Uninstall:
 yay -R look-bin
 
 # Ubuntu/Debian
-sudo dpkg -r lookapp
+sudo dpkg -r look
 
 # AppImage — just delete the file
 rm Look_*.AppImage
@@ -112,10 +113,10 @@ rm Look_*.AppImage
 
 ```bash
 # Run directly
-nix run github:kunkka19xx/look?dir=apps/linows
+nix run 'github:kunkka19xx/look?dir=apps/linows'
 
 # Install to profile
-nix profile install github:kunkka19xx/look?dir=apps/linows
+nix profile install 'github:kunkka19xx/look?dir=apps/linows'
 ```
 
 Declarative (NixOS):
@@ -241,9 +242,11 @@ open "/Applications/Look.app"
 | Open / run                                    | `Enter`          | `Enter`             | `Enter`          |
 | Web search                                    | `Cmd+Enter`      | `Ctrl+Enter`        | `Ctrl+Enter`     |
 | Reveal in file manager                        | `Cmd+F` (Finder) | `Ctrl+F` (Explorer) | `Ctrl+F` (Files) |
+| Move to Trash (or empty the Trash folder)     | `Cmd+D`          | —                   | —                |
 | Command mode (`calc`, `shell`, `kill`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
 | Settings                                      | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
 | Back / hide                                   | `Escape`         | `Escape`            | `Escape`         |
+| Switch to running app N (home screen)         | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
 

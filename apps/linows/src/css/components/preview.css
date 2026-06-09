@@ -130,7 +130,7 @@
   word-break: break-word;
   margin: 0;
   padding: 10px;
-  max-height: calc(100vh - 260px);
+  max-height: calc(100vh - 280px);
   overflow-y: auto;
   user-select: text;
   line-height: 1.5;
@@ -159,7 +159,7 @@
   background: var(--control-fill);
   border-radius: 8px;
   overflow-y: auto;
-  max-height: calc(100vh - 260px);
+  max-height: calc(100vh - 280px);
   padding: 4px;
   position: relative;
 }

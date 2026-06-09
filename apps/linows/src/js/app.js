@@ -6,7 +6,9 @@ import * as picked from './components/picked.js';
 import * as banner from './components/banner.js';
 import * as commands from './screens/commands/index.js';
 import * as settings from './screens/settings.js';
+import { mountUpdateWidget } from './screens/update_widget.js';
 import * as translatePanel from './components/translate.js';
+import * as runningApps from './components/running-apps.js';
 import * as platform from './platform.js';
 import { load } from './html-loader.js';
 import {
@@ -14,11 +16,23 @@ import {
   evalCalc, runShellCommand, getSystemInfo,
   listProcesses, listProcessesOnPort, killProcess, getIcon,
   copyToClipboard, deleteClipboardEntry, isDevBuild,
+  getConfig,
 } from './ipc.js';
 
-const HINT_MAIN = 'Enter open \u2022 Ctrl+Enter search web \u2022 Ctrl+P pick \u2022 Ctrl+C copy \u2022 Ctrl+F reveal \u2022 Esc hide';
-const HINT_TRANSLATE = 'Enter translate \u2022 Esc clear';
-const HINT_CLIPBOARD = 'Enter copy \u2022 Delete remove \u2022 Esc clear';
+// Item count and structure mirror the macOS app's `LauncherView.hintItems`
+// (apps/macos/.../LauncherView.swift:302) so both platforms surface the same
+// shortcuts in the same modes. Style stays per-platform: linows uses the
+// colon + bold-bullet format, macOS keeps its space-separated form.
+const HINT_MAIN = 'Enter: Open \u2022 Ctrl+F: Reveal \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+const HINT_TRANSLATE = 'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Delete: Remove clip \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+
+// Hint constants are static, authored in code \u2014 safe to set as innerHTML so
+// each bullet renders through `.hint-sep` (accent color, bold) for clearer
+// visual separation between key/action pairs.
+function setHint(el, text) {
+  el.innerHTML = text.split(' \u2022 ').join(' <span class="hint-sep">\u2022</span> ');
+}
 const BANNER_DURATION_SHORT = 1.0;
 const BANNER_DURATION_MEDIUM = 1.2;
 const BANNER_DURATION_LONG = 1.5;
@@ -36,9 +50,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   await load('html/screens/settings.html', app);
   await load('html/screens/help.html', app);
 
+  // About / version + update-status widget, shared between Settings and Help.
+  // Settings gets an "About" header label; Help mounts the widget bare so the
+  // screen title above already serves as its heading (mirrors macOS layout).
+  mountUpdateWidget(document.getElementById('settings-about'), { label: 'About' });
+  mountUpdateWidget(document.getElementById('help-update'));
+
   // Hint bar — always at bottom, shared by all screens
   app.insertAdjacentHTML('beforeend',
-    `<div class="hint-bar" id="hint-bar"><span>${HINT_MAIN}</span><span class="hint-bar-copy">\u00A9 2026 by <a class="hint-bar-link" href="#">Kunkka</a></span></div>`);
+    `<div class="hint-bar" id="hint-bar"><span></span><span class="hint-bar-copy">\u00A9 2026 by <a class="hint-bar-link" href="#">Kunkka</a></span></div>`);
 
   // Load command panels into cmd-main
   const cmdMain = document.getElementById('cmd-main');
@@ -55,7 +75,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const resultsList = document.getElementById('results-list');
   const previewPanel = document.getElementById('preview-panel');
   const hintBar = document.getElementById('hint-bar');
+  const hintMessage = hintBar.querySelector('span');
   const contentArea = document.getElementById('search-content');
+  setHint(hintMessage, HINT_MAIN);
 
   hintBar.querySelector('.hint-bar-link').addEventListener('click', (e) => {
     e.preventDefault();
@@ -83,9 +105,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     queryInput.value = '';
     search.handleQueryInput('');
     queryInput.focus();
-    hintBar.querySelector('span').textContent = HINT_MAIN;
+    setHint(hintMessage, HINT_MAIN);
   });
   settings.restoreOnStartup();
+
+  // Running apps strip
+  runningApps.init(document.getElementById('running-apps-strip'));
+  getConfig().then((cfg) => {
+    const placement = cfg.entries.find((e) => e.key === 'running_apps_placement');
+    const on = !placement || placement.value !== 'none';
+    runningApps.setEnabled(on);
+    if (on) runningApps.refresh();
+  });
 
   // Show DEV badge when running in dev mode (cargo tauri dev)
   isDevBuild().then((isDev) => {
@@ -168,19 +199,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (tryCommandPrefix(value)) return;
 
     search.handleQueryInput(value);
-    const h = hintBar.querySelector('span');
     if (search.isTranslateMode()) {
-      h.textContent = HINT_TRANSLATE;
+      setHint(hintMessage, HINT_TRANSLATE);
       resultsList.hidden = true;
       previewPanel.hidden = true;
+      runningApps.setSuspended(true);
       if (!translatePanel.isActive()) translatePanel.showPlaceholder();
     } else if (search.isClipboardMode()) {
-      h.textContent = HINT_CLIPBOARD;
+      setHint(hintMessage, HINT_CLIPBOARD);
       resultsList.hidden = false;
+      runningApps.setSuspended(false);
+      if (runningApps.isEnabled()) runningApps.refresh();
       translatePanel.hide();
     } else {
-      h.textContent = HINT_MAIN;
+      setHint(hintMessage, HINT_MAIN);
       resultsList.hidden = false;
+      runningApps.setSuspended(false);
+      if (runningApps.isEnabled()) runningApps.refresh();
       translatePanel.hide();
     }
   });
@@ -202,6 +237,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     queryInput.focus();
     queryInput.select();
     requestIndexRefresh();
+    runningApps.refresh();
   });
 
   onIndexReady(() => {
@@ -233,6 +269,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function enterCommandMode() {
     resultsList.hidden = true;
     previewPanel.hidden = true;
+    runningApps.setSuspended(true);
     updateCommandHintBar();
     commands.enter();
     commands.setOnCommandChange(updateCommandHintBar);
@@ -240,25 +277,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function updateCommandHintBar() {
     const cmd = commands.getActiveCommand();
-    const h = hintBar.querySelector('span');
     if (cmd === 'pomo') {
-      h.textContent =
-        'Space start/pause \u2022 R reset \u2022 P music \u2022 Esc back \u2022 Tab/Ctrl+1-5 switch';
+      setHint(hintMessage,
+        'Space: Start/pause \u2022 R: Reset \u2022 P: Music \u2022 Esc: Back \u2022 Tab/Ctrl+1-5: Switch');
     } else if (cmd === 'kill') {
-      h.textContent =
-        'Y confirm \u2022 N cancel \u2022 Tab/Ctrl+1-5 switch \u2022 Esc back';
+      setHint(hintMessage,
+        'Y: Confirm \u2022 N: Cancel \u2022 Tab/Ctrl+1-5: Switch \u2022 Esc: Back');
     } else if (cmd === 'sys') {
-      h.textContent =
-        'Esc back \u2022 Tab/Ctrl+1-5 switch';
+      setHint(hintMessage,
+        'Esc: Back \u2022 Tab/Ctrl+1-5: Switch \u2022 Ctrl+/: Command mode \u2022 Ctrl+Shift+,: Settings');
     } else if (cmd === 'calc') {
-      h.textContent =
-        'Enter evaluate \u2022 Tab/Ctrl+1-5 switch \u2022 Esc back';
+      setHint(hintMessage,
+        'Enter: Evaluate \u2022 Tab: Select \u2022 Ctrl+1-5: Switch \u2022 Esc: Back');
     } else if (cmd === 'shell') {
-      h.textContent =
-        'Enter run \u2022 Tab/Ctrl+1-5 switch \u2022 Esc back';
+      setHint(hintMessage,
+        'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-5: Switch \u2022 Esc: Back');
     } else {
-      h.textContent =
-        'Tab/Ctrl+1-5 switch \u2022 Esc back';
+      setHint(hintMessage,
+        'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-5: Switch \u2022 Esc: Back');
     }
   }
 
@@ -267,10 +303,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     resultsList.hidden = false;
     previewPanel.hidden = false;
     translatePanel.hide();
-    hintBar.querySelector('span').textContent = HINT_MAIN;
+    setHint(hintMessage, HINT_MAIN);
     queryInput.value = '';
     search.handleQueryInput('');
     queryInput.focus();
+    runningApps.setSuspended(false);
+    if (runningApps.isEnabled()) runningApps.refresh();
   }
 
   async function executeCommand(cmdId, input) {
@@ -360,6 +398,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         break;
     }
   }
+
+  // Sync running apps strip when config is reloaded from file
+  settings.setOnConfigReload((map) => {
+    const on = (map.running_apps_placement || 'right') !== 'none';
+    runningApps.setEnabled(on);
+    if (on) runningApps.refresh();
+  });
+
+  // Live-update when the Settings → Appearance → Running Apps toggle changes.
+  document.addEventListener('look:running-apps-changed', (e) => {
+    const enabled = e.detail.enabled;
+    runningApps.setEnabled(enabled);
+    if (enabled) runningApps.refresh();
+  });
 
   // Expose enterCommandMode and settings for keyboard
   keyboard.setEnterCommandMode(enterCommandMode);

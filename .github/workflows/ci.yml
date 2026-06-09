@@ -54,17 +54,21 @@ jobs:
               - 'apps/linows/**'
               - 'core/**'
               - '.github/workflows/ci.yml'
+            # NOTE: dorny/paths-filter matches each changed file against the rule
+            # list with OR semantics, and a leading "!" is a picomatch negation
+            # that matches every file *outside* that path - so an excluded-subdir
+            # line like "!.../platform/windows/**" matched virtually any change
+            # (macOS code, docs, README), firing these builds on unrelated PRs.
+            # There's no AND across rules to express "linows changes except subdir
+            # X", so we just trigger on any apps/linows or core change.
             linows_linux:
               - 'apps/linows/**'
               - 'core/**'
               - '.github/workflows/ci.yml'
-              - '!apps/linows/src-tauri/src/platform/windows/**'
             linows_windows:
               - 'apps/linows/**'
               - 'core/**'
               - '.github/workflows/ci.yml'
-              - '!apps/linows/src-tauri/src/platform/linux/**'
-              - '!apps/linows/nix/**'
 
   lint:
     name: lint

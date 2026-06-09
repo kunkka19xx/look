@@ -24,8 +24,9 @@ use windows::Win32::System::Threading::{
     PROCESS_TERMINATE, QueryFullProcessImageNameW, TerminateProcess,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetShellWindow, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
-    IsWindowVisible,
+    EnumWindows, GW_OWNER, GWL_EXSTYLE, GetShellWindow, GetWindow, GetWindowLongW,
+    GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+    WS_EX_TOOLWINDOW,
 };
 use windows::core::{BOOL, PWSTR};
 
@@ -111,6 +112,62 @@ pub(crate) fn list_on_port(port: u16) -> Vec<RunningApp> {
         });
     }
     out
+}
+
+/// Switcher view: one entry per switchable top-level window. Unlike `list()`
+/// (the kill view), this surfaces UWP apps — Settings, Calculator, Photos, … —
+/// whose visible windows are owned by `ApplicationFrameHost.exe` while their
+/// real process is windowless, so `list()` hides them. UWP entries activate by
+/// HWND (encoded in `desktop_id` as `hwnd:<handle>`) because several UWP apps
+/// share one ApplicationFrameHost PID and exe-path matching can't tell them
+/// apart. Normal apps keep the `app:<exe>` id and per-process dedup.
+pub(crate) fn list_gui() -> Vec<RunningApp> {
+    let current_pid = unsafe { GetCurrentProcessId() };
+    let mut apps: Vec<RunningApp> = Vec::new();
+    let mut seen_pids: HashSet<u32> = HashSet::new();
+
+    for (hwnd_raw, pid, title) in enumerate_switchable_windows() {
+        if pid == 0 || pid == 4 || pid == current_pid {
+            continue;
+        }
+        let exe_path = resolve_full_path(pid).unwrap_or_default();
+        let basename = Path::new(&exe_path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        let is_frame_host = basename.eq_ignore_ascii_case("applicationframehost.exe");
+        // ApplicationFrameHost is the UWP UI host — keep it; drop other noise.
+        if !is_frame_host && is_system_noise(&basename) {
+            continue;
+        }
+
+        if is_frame_host {
+            // The UWP window title ("Settings") is the app name (always non-empty
+            // — enumerate_switchable_windows drops untitled windows). One entry
+            // per window, activated by HWND.
+            apps.push(RunningApp {
+                name: title,
+                pid,
+                desktop_id: Some(format!("hwnd:{hwnd_raw}")),
+                exec: (!exe_path.is_empty()).then(|| exe_path.clone()),
+            });
+        } else {
+            if !seen_pids.insert(pid) {
+                continue;
+            }
+            apps.push(RunningApp {
+                name: resolve_display_name(&basename, &exe_path, &title),
+                pid,
+                desktop_id: (!exe_path.is_empty()).then(|| format!("app:{exe_path}")),
+                exec: (!exe_path.is_empty()).then(|| exe_path.clone()),
+            });
+        }
+    }
+
+    apps.sort_by_key(|a| a.name.to_lowercase());
+    apps
 }
 
 pub(crate) fn kill(pid: u32) -> Result<String, String> {
@@ -233,6 +290,67 @@ unsafe extern "system" fn visible_cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
             }
         })
         .or_insert(title);
+    TRUE
+}
+
+// --- switchable window enumeration (running-apps switcher) ---
+
+struct SwitchCtx {
+    shell: HWND,
+    out: Vec<(isize, u32, String)>,
+}
+
+/// Visible, titled, top-level (un-owned, non-tool) windows: (HWND, PID, title).
+/// Same selectivity as `window_focus::find_main_window_for_pids` so the listed
+/// window is the one activation will raise.
+fn enumerate_switchable_windows() -> Vec<(isize, u32, String)> {
+    let mut ctx = SwitchCtx {
+        shell: unsafe { GetShellWindow() },
+        out: Vec::new(),
+    };
+    unsafe {
+        let _ = EnumWindows(Some(switchable_cb), LPARAM(&mut ctx as *mut _ as isize));
+    }
+    ctx.out
+}
+
+unsafe extern "system" fn switchable_cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let ctx = unsafe { &mut *(lparam.0 as *mut SwitchCtx) };
+    if hwnd == ctx.shell || !unsafe { IsWindowVisible(hwnd).as_bool() } {
+        return TRUE;
+    }
+    // Owned windows are dialogs/popups, not the app's main frame.
+    if let Ok(owner) = unsafe { GetWindow(hwnd, GW_OWNER) }
+        && !owner.0.is_null()
+    {
+        return TRUE;
+    }
+    // WS_EX_TOOLWINDOW = floating palette, not a switchable app.
+    let exstyle = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) } as u32;
+    if exstyle & WS_EX_TOOLWINDOW.0 != 0 {
+        return TRUE;
+    }
+    let len = unsafe { GetWindowTextLengthW(hwnd) };
+    if len <= 0 {
+        return TRUE;
+    }
+    let mut buf = vec![0u16; (len as usize) + 1];
+    let copied = unsafe { GetWindowTextW(hwnd, &mut buf) };
+    if copied <= 0 {
+        return TRUE;
+    }
+    let title = String::from_utf16_lossy(&buf[..copied as usize])
+        .trim()
+        .to_string();
+    if title.is_empty() {
+        return TRUE;
+    }
+    let mut pid = 0u32;
+    unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+    if pid == 0 {
+        return TRUE;
+    }
+    ctx.out.push((hwnd.0 as isize, pid, title));
     TRUE
 }
 

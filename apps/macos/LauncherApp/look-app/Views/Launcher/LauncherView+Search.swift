@@ -56,7 +56,9 @@ extension LauncherView {
         var components = URLComponents(string: "https://www.google.com/search")
         components?.queryItems = [URLQueryItem(name: "q", value: trimmed)]
         guard let url = components?.url else { return }
-        NSWorkspace.shared.open(url)
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.open(url, configuration: config, completionHandler: nil)
     }
 
     func reloadConfig() {

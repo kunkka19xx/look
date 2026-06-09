@@ -15,6 +15,17 @@ const SETTINGS_KEY_WEB_SEARCH_ENGINE: &str = "web_search_engine";
 const SETTINGS_TRUE: &str = "true";
 const SETTINGS_FALSE: &str = "false";
 
+/// Number of rows in the demo seed inserted by `QueryEngine::demo_candidates`.
+/// `is_demo_seeded` uses this as an upper bound: anything larger is real data.
+/// Keep in sync with `core/engine/src/lib.rs::demo_candidates`.
+const DEMO_SEED_ROW_COUNT: i64 = 6;
+
+/// Marker ids the demo seed always contains. `is_demo_seeded` treats the
+/// database as a pristine demo only if BOTH are present, so a small real
+/// DB that happens to contain one isn't wiped on the next scoped refresh.
+const DEMO_MARKER_SAFARI: &str = "app:safari";
+const DEMO_MARKER_VSCODE: &str = "app:vscode";
+
 #[derive(Default)]
 pub struct InMemorySettingsStore {
     values: HashMap<String, String>,
@@ -165,6 +176,36 @@ impl SqliteStore {
         let store = Self { conn };
         store.migrate()?;
         Ok(store)
+    }
+
+    /// Cheap check for "is the candidates table currently just the demo seed?".
+    /// Used by `bootstrap_sqlite_scoped` to decide whether to wipe the table
+    /// before streaming real candidates. Point lookups on the PK index; avoids
+    /// deserializing every row just to inspect the marker ids.
+    ///
+    /// Source of truth for the marker ids and row count is
+    /// `QueryEngine::demo_candidates` in `core/engine/src/lib.rs`.
+    pub fn is_demo_seeded(&self) -> StorageResult<bool> {
+        let total: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM candidates", [], |row| row.get(0))?;
+        // Anything larger than the demo seed is definitely real data.
+        if total == 0 || total > DEMO_SEED_ROW_COUNT {
+            return Ok(false);
+        }
+        // Demo seed always includes both markers; require BOTH families
+        // present so a small real DB with only one of them doesn't trip
+        // the heuristic and get wiped on the next scoped refresh.
+        Ok(self.has_candidate(DEMO_MARKER_SAFARI)? && self.has_candidate(DEMO_MARKER_VSCODE)?)
+    }
+
+    fn has_candidate(&self, id: &str) -> StorageResult<bool> {
+        let hit: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM candidates WHERE id = ?1",
+            [id],
+            |row| row.get(0),
+        )?;
+        Ok(hit > 0)
     }
 
     pub fn load_candidates(&self, limit: Option<usize>) -> StorageResult<Vec<Candidate>> {
@@ -358,6 +399,55 @@ impl SqliteStore {
              WHERE indexed_at_unix_s IS NULL OR indexed_at_unix_s < ?1",
             params![older_than_unix_s],
         )?;
+        tx.commit()?;
+        Ok(removed)
+    }
+
+    /// Scoped variant of `delete_stale_candidates`: prunes only rows whose id begins
+    /// with one of `prefixes`. Used by partial reindex paths that re-walk a subset
+    /// of sources (e.g. apps-only) and must not prune candidates from sources that
+    /// were not part of this run.
+    pub fn delete_stale_candidates_with_prefixes(
+        &mut self,
+        older_than_unix_s: i64,
+        prefixes: &[&str],
+    ) -> StorageResult<usize> {
+        if prefixes.is_empty() {
+            return Ok(0);
+        }
+        let escaped: Vec<String> = prefixes
+            .iter()
+            .map(|p| format!("{}%", p.replace('\\', "\\\\").replace('%', "\\%")))
+            .collect();
+        let like_clause = (0..escaped.len())
+            .map(|i| format!("id LIKE ?{} ESCAPE '\\'", i + 2))
+            .collect::<Vec<_>>()
+            .join(" OR ");
+
+        let tx = self.conn.transaction()?;
+
+        let mut bindings: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(1 + escaped.len());
+        bindings.push(&older_than_unix_s);
+        for s in &escaped {
+            bindings.push(s);
+        }
+
+        let del_usage_sql = format!(
+            "DELETE FROM usage_events
+             WHERE candidate_id IN (
+               SELECT id FROM candidates
+               WHERE (indexed_at_unix_s IS NULL OR indexed_at_unix_s < ?1)
+                 AND ({like_clause})
+             )"
+        );
+        tx.execute(&del_usage_sql, bindings.as_slice())?;
+
+        let del_cand_sql = format!(
+            "DELETE FROM candidates
+             WHERE (indexed_at_unix_s IS NULL OR indexed_at_unix_s < ?1)
+               AND ({like_clause})"
+        );
+        let removed = tx.execute(&del_cand_sql, bindings.as_slice())?;
         tx.commit()?;
         Ok(removed)
     }
@@ -722,6 +812,173 @@ mod tests {
 
         let loaded = store.load_candidates(None).expect("load candidates");
         assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn is_demo_seeded_recognizes_demo_rows() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let safari = candidate("app:safari", "Safari", "/Applications/Safari.app");
+        let vscode = candidate("app:vscode", "VS Code", "/Applications/Code.app");
+        store
+            .upsert_candidates_indexed(&[safari, vscode], Some(100))
+            .expect("seed demo rows");
+
+        assert!(store.is_demo_seeded().expect("query"));
+    }
+
+    #[test]
+    fn is_demo_seeded_returns_false_for_empty_table() {
+        let store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        assert!(!store.is_demo_seeded().expect("query"));
+    }
+
+    #[test]
+    fn is_demo_seeded_returns_false_when_real_data_present() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        // > 6 rows means we're past the demo seed regardless of contents.
+        let rows: Vec<Candidate> = (0..10)
+            .map(|i| {
+                candidate(
+                    &format!("app:user-app-{i}"),
+                    &format!("App {i}"),
+                    &format!("/Applications/App{i}.app"),
+                )
+            })
+            .collect();
+        store
+            .upsert_candidates_indexed(&rows, Some(100))
+            .expect("seed");
+        assert!(!store.is_demo_seeded().expect("query"));
+    }
+
+    #[test]
+    fn is_demo_seeded_returns_false_for_partial_demo_match() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        // Only one demo marker — not the full seed.
+        let only_safari = candidate("app:safari", "Safari", "/Applications/Safari.app");
+        store
+            .upsert_candidates_indexed(&[only_safari], Some(100))
+            .expect("seed");
+        assert!(!store.is_demo_seeded().expect("query"));
+    }
+
+    #[test]
+    fn delete_stale_candidates_with_prefixes_is_noop_on_empty_prefix_list() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let old = candidate("app:old", "Old", "/Applications/Old.app");
+        store
+            .upsert_candidates_indexed(&[old], Some(100))
+            .expect("insert");
+
+        let removed = store
+            .delete_stale_candidates_with_prefixes(200, &[])
+            .expect("noop");
+        assert_eq!(removed, 0);
+        let loaded = store.load_candidates(None).expect("load");
+        assert_eq!(loaded.len(), 1, "row must be preserved");
+    }
+
+    #[test]
+    fn delete_stale_candidates_with_prefixes_accepts_multiple_prefixes() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let old_app = candidate("app:old", "Old App", "/Applications/Old.app");
+        let old_file = candidate("file:old", "Old File", "/Users/demo/old.txt");
+        let old_folder = candidate("folder:old", "Old Folder", "/Users/demo/old");
+        let old_setting = candidate("setting:old", "Old Setting", "settings://old");
+
+        store
+            .upsert_candidates_indexed(&[old_app, old_file, old_folder, old_setting], Some(100))
+            .expect("seed");
+
+        // Sweep apps + files (mirrors what BootstrapScope::FILES_ONLY produces
+        // via id_prefixes() — file + folder together — plus apps).
+        let removed = store
+            .delete_stale_candidates_with_prefixes(200, &["app:", "file:", "folder:"])
+            .expect("sweep");
+        assert_eq!(removed, 3);
+
+        let ids: Vec<String> = store
+            .load_candidates(None)
+            .expect("load")
+            .into_iter()
+            .map(|c| c.id.as_ref().to_string())
+            .collect();
+        assert_eq!(ids, vec!["setting:old"]);
+    }
+
+    #[test]
+    fn delete_stale_candidates_with_prefixes_purges_matching_usage_events() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let old_app = candidate("app:old", "Old App", "/Applications/Old.app");
+        let old_file = candidate("file:old", "Old File", "/Users/demo/old.txt");
+        store
+            .upsert_candidates_indexed(&[old_app.clone(), old_file.clone()], Some(100))
+            .expect("seed");
+        store
+            .record_usage_event(old_app.id.as_ref(), "open_app")
+            .expect("record app usage");
+        store
+            .record_usage_event(old_file.id.as_ref(), "open_file")
+            .expect("record file usage");
+
+        let removed = store
+            .delete_stale_candidates_with_prefixes(200, &["app:"])
+            .expect("sweep apps");
+        assert_eq!(removed, 1);
+
+        // app:old's usage_events row must be gone; file:old's must remain.
+        let app_usage: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM usage_events WHERE candidate_id = ?1",
+                params!["app:old"],
+                |row| row.get(0),
+            )
+            .expect("count app usage");
+        assert_eq!(app_usage, 0);
+        let file_usage: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM usage_events WHERE candidate_id = ?1",
+                params!["file:old"],
+                |row| row.get(0),
+            )
+            .expect("count file usage");
+        assert_eq!(file_usage, 1);
+    }
+
+    #[test]
+    fn delete_stale_candidates_with_prefixes_only_touches_matching_kinds() {
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let old_app = candidate("app:old", "Old App", "/Applications/Old.app");
+        let old_file = candidate("file:old", "Old File", "/Users/demo/old.txt");
+        let fresh_app = candidate("app:fresh", "Fresh App", "/Applications/Fresh.app");
+        let fresh_file = candidate("file:fresh", "Fresh File", "/Users/demo/fresh.txt");
+
+        store
+            .upsert_candidates_indexed(&[old_app, old_file], Some(100))
+            .expect("insert old rows");
+        store
+            .upsert_candidates_indexed(&[fresh_app, fresh_file], Some(200))
+            .expect("insert fresh rows");
+
+        let removed = store
+            .delete_stale_candidates_with_prefixes(150, &["app:"])
+            .expect("prune stale apps");
+        assert_eq!(removed, 1);
+
+        let ids: Vec<String> = store
+            .load_candidates(None)
+            .expect("load")
+            .into_iter()
+            .map(|c| c.id.as_ref().to_string())
+            .collect();
+        assert!(!ids.contains(&"app:old".to_string()));
+        assert!(ids.contains(&"app:fresh".to_string()));
+        // file:old is older than the cutoff but must be untouched because we
+        // restricted the sweep to the `app:` prefix.
+        assert!(ids.contains(&"file:old".to_string()));
+        assert!(ids.contains(&"file:fresh".to_string()));
     }
 
     #[test]

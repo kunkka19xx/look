@@ -77,15 +77,43 @@ html[data-os="windows"] .launcher-window {
   -webkit-backdrop-filter: none !important;
 }
 
-/* Search bar */
+/* Main pane: two-column CSS Grid that aligns the search bar with the
+ * results-list, and the running apps strip with the preview panel.
+ * Locking them to the same columns guarantees the chip's right edge
+ * matches the row chips' right edge regardless of content sizing.
+ * Right column expands only when one of its rows has visible content. */
+.main-pane {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto 1fr;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.main-pane:has(.running-apps-strip:not([hidden])),
+.main-pane:has(.preview-panel:not([hidden])) {
+  grid-template-columns: 1fr 1fr;
+}
+
 .search-bar {
   position: relative;
+  grid-row: 1;
+  grid-column: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: var(--input-padding-y) var(--content-padding);
-  border-bottom: var(--border-thickness) solid var(--divider-color);
-  flex-shrink: 0;
+  margin: var(--content-padding) var(--content-padding) 12px;
+  padding: var(--input-padding-y) var(--input-padding-x);
+  background: var(--control-fill);
+  border-radius: var(--control-radius);
+}
+
+/* When running-apps toggle is off, let the search bar span both columns —
+ * even if preview-panel is still showing below in column 2. */
+.main-pane:has(.running-apps-strip[hidden]) .search-bar {
+  grid-column: 1 / -1;
 }
 
 .search-icon {
@@ -107,7 +135,7 @@ html[data-os="windows"] .launcher-window {
   color: var(--font-muted);
 }
 
-/* Content area */
+/* Generic .content-area wrapper used by other screens (settings, commands). */
 .content-area {
   display: flex;
   flex: 1;
@@ -115,16 +143,27 @@ html[data-os="windows"] .launcher-window {
 }
 
 .results-list {
-  flex: 1;
+  grid-row: 3;
+  grid-column: 1;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   padding: var(--row-spacing) 0;
+  scrollbar-width: none;
+}
+
+.results-list::-webkit-scrollbar {
+  display: none;
 }
 
 .preview-panel {
-  flex: 1;
+  grid-row: 3;
+  grid-column: 2;
   min-width: 0;
-  border-left: var(--border-thickness) solid var(--divider-color);
+  min-height: 0;
+  /* Fixed 1px (not var(--border-thickness)) so the column divider stays
+   * a hairline even when the user raises the window-border thickness. */
+  border-left: 1px solid var(--divider-color);
   padding: var(--content-padding);
   overflow-y: auto;
 }
@@ -135,17 +174,25 @@ html[data-os="windows"] .launcher-window {
   align-items: center;
   justify-content: space-between;
   padding: 6px var(--content-padding);
-  border-top: var(--border-thickness) solid var(--divider-color);
   flex-shrink: 0;
 }
 
 .hint-bar span {
-  font-size: calc(var(--font-size) - 3px);
+  font-size: calc(var(--font-size) - 1px);
   color: var(--font-muted);
 }
 
-.hint-bar-copy {
-  font-size: calc(var(--font-size) - 3px);
+.hint-bar .hint-sep {
+  color: var(--accent-color);
+  font-weight: 700;
+  font-size: 1.25em;
+  line-height: 1;
+  vertical-align: middle;
+  margin: 0 3px;
+}
+
+.hint-bar .hint-bar-copy {
+  font-size: 10px;
   color: var(--font-muted);
   opacity: 0.6;
   flex-shrink: 0;

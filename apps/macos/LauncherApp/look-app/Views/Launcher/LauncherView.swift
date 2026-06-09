@@ -59,6 +59,12 @@ struct LauncherView: View {
     @State var lookupPreviewTask: Task<Void, Never>?
     @State var selectedKillSuggestionIndex: Int?
     @State var pendingKillCandidate: KillCommand.Candidate?
+    // nil == no empty-Trash confirmation pending; otherwise the item count to show.
+    // (Moving files/folders to Trash is recoverable, so it skips confirmation;
+    // only the permanent Empty Trash prompts.)
+    @State var pendingEmptyTrashCount: Int?
+    // True while a trash/empty operation is running, to block re-triggering it.
+    @State var isDeleteInFlight = false
     @State var killListRefreshTick: Int = 0
     @State var recentlyKilledPIDs: Set<Int32> = []
     @State var showsHelpScreen = false
@@ -110,7 +116,6 @@ struct LauncherView: View {
     }
 
     static let postHideActivationDelay: TimeInterval = 0.01
-    static let postOpenActivationDelay: TimeInterval = 0.05
     @FocusState var isQueryFocused: Bool
 
     let bridge = EngineBridge.shared
@@ -201,7 +206,7 @@ struct LauncherView: View {
                 id: "\(AppConstants.Launcher.QuickFolder.idPrefix)\(normalizedTitle)",
                 kind: .folder,
                 title: entry.title,
-                subtitle: AppConstants.Launcher.QuickFolder.pinnedSubtitle,
+                subtitle: entry.subtitle ?? AppConstants.Launcher.QuickFolder.pinnedSubtitle,
                 path: folderPath,
                 score: AppConstants.Launcher.Finder.pinnedScore
             )
@@ -339,7 +344,7 @@ struct LauncherView: View {
             return ["Enter copy clip", "Delete remove clip", "Cmd+H help", "Cmd+/ command mode"]
         }
 
-        return ["Enter open", "Cmd+F reveal", "Cmd+H help", "Cmd+/ command mode"]
+        return ["Enter open", "Cmd+F reveal", "Cmd+D trash", "Cmd+H help", "Cmd+/ command mode"]
     }
 
     var commandNamePart: String {
@@ -375,6 +380,10 @@ struct LauncherView: View {
         isCommandMode
             && activeCommandID == AppConstants.Launcher.Command.kill
             && pendingKillCandidate != nil
+    }
+
+    var isDeleteConfirmationVisible: Bool {
+        !isCommandMode && pendingEmptyTrashCount != nil
     }
 
     var liveCommandPreview: String? {
@@ -425,30 +434,10 @@ struct LauncherView: View {
         let contentSpacing: CGFloat = isCommandMode ? 8 : 12
         let contentPadding: CGFloat = isCommandMode ? 10 : 14
 
-        let placement = runningAppsPlacement
-        let gap = AppConstants.Launcher.RunningAppsStrip.panelGap
-
-        Group {
-            switch placement {
-            case .none:
-                borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
-            case .right:
-                HStack(alignment: .center, spacing: gap) {
-                    borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
-                    reservedStrip(axis: .vertical)
-                }
-            case .top:
-                VStack(alignment: .center, spacing: gap) {
-                    reservedStrip(axis: .horizontal)
-                    borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
-                }
-            case .bottom:
-                VStack(alignment: .center, spacing: gap) {
-                    borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
-                    reservedStrip(axis: .horizontal)
-                }
-            }
-        }
+        // Running apps render inside the search bar (see panelContent), not as a
+        // floating strip that grows the window. The launcher is always a single
+        // fixed-size panel regardless of the running-apps toggle.
+        borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
         .ignoresSafeArea()
         .onAppear {
             refreshSearchResults()
@@ -465,6 +454,11 @@ struct LauncherView: View {
             clipboardStore.setMonitoringMode(.background)
         }
         .onChange(of: query) { _, _ in
+            // Editing the query dismisses a pending Empty Trash confirmation,
+            // mirroring how the kill command clears its pending candidate.
+            if pendingEmptyTrashCount != nil {
+                pendingEmptyTrashCount = nil
+            }
             if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
                 enterCommandMode(commandID: cmd.id, prefilledInput: cmd.args)
                 return
@@ -579,7 +573,11 @@ struct LauncherView: View {
             VStack(alignment: .leading, spacing: contentSpacing) {
                 panelContent
             }
-            .padding(contentPadding)
+            // Tighter top inset so the search bar sits closer to the window's
+            // top edge; keep the original padding on the other three sides.
+            .padding(.top, max(4, contentPadding - 8))
+            .padding(.horizontal, contentPadding)
+            .padding(.bottom, contentPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .font(themeStore.uiFont())
             .foregroundStyle(themeStore.fontColor())
@@ -593,9 +591,23 @@ struct LauncherView: View {
         .modifier(PanelDecorationsModifier(
             testHint: { testHintOverlay },
             copyright: { copyrightOverlay },
-            killBar: { killConfirmationOverlay }
+            killBar: { killConfirmationOverlay },
+            deleteBar: { deleteConfirmationOverlay }
         ))
         .layoutPriority(1)
+    }
+
+    @ViewBuilder
+    private var searchInputBar: some View {
+        SearchInputBar(
+            text: $query,
+            isCommandMode: $isCommandMode,
+            isQueryFocused: $isQueryFocused,
+            activeCommand: activeCommand,
+            themeStore: themeStore,
+            onSubmit: handleSubmit,
+            onExitCommandMode: exitCommandMode
+        )
     }
 
     @ViewBuilder
@@ -603,16 +615,24 @@ struct LauncherView: View {
         if appUIState.showsThemeSettings {
             ThemeSettingsView(settings: $themeStore.settings)
         } else {
-            if !isCommandMode {
-                SearchInputBar(
-                    text: $query,
-                    isCommandMode: $isCommandMode,
-                    isQueryFocused: $isQueryFocused,
-                    activeCommand: activeCommand,
-                    themeStore: themeStore,
-                    onSubmit: handleSubmit,
-                    onExitCommandMode: exitCommandMode
-                )
+            if !isCommandMode && !showsHelpScreen {
+                if shouldShowRunningAppsStrip {
+                    // Split the search-bar row in half: search field on the
+                    // left, running-apps icons on the right. No floating strip,
+                    // no window resize — toggled via Settings → Running Apps.
+                    HStack(alignment: .center, spacing: 10) {
+                        searchInputBar
+                            .frame(maxWidth: .infinity)
+                        RunningAppsStripView(
+                            service: runningAppsService,
+                            themeStore: themeStore,
+                            onActivate: { key in _ = activateRunningApp(forKey: key) }
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                } else {
+                    searchInputBar
+                }
             }
 
             if let bannerMessage {
@@ -640,7 +660,7 @@ struct LauncherView: View {
                 Spacer(minLength: 0)
             }
 
-            if !isKillConfirmationVisible {
+            if !isKillConfirmationVisible && !isDeleteConfirmationVisible {
                 HintBar(hint: currentHint, themeStore: themeStore)
             }
         }
@@ -769,48 +789,33 @@ struct LauncherView: View {
     }
 
     @ViewBuilder
-    private func reservedStrip(axis: Axis) -> some View {
-        ZStack {
-            // Back layer: an empty NSView that returns
-            // mouseDownCanMoveWindow=true so the strip's spacing/padding
-            // becomes a window drag handle. Strip icons sit on top and
-            // keep their tap/hover behavior.
-            WindowDragArea()
-            stripOverlay(axis: axis)
+    private var deleteConfirmationOverlay: some View {
+        if !isCommandMode, let pendingEmptyTrashCount {
+            EmptyTrashConfirmationBar(
+                itemCount: pendingEmptyTrashCount,
+                themeStore: themeStore,
+                onConfirm: { confirmDeleteSelection() },
+                onCancel: { cancelDeleteSelection() }
+            )
+            .padding(.horizontal, 14)
+            .padding(.bottom, 24)
         }
-        .frame(
-            width: axis == .vertical ? AppConstants.Launcher.RunningAppsStrip.width : nil,
-            height: axis == .horizontal ? AppConstants.Launcher.RunningAppsStrip.width : nil
-        )
-        .allowsHitTesting(shouldShowRunningAppsStrip)
     }
 
-    @ViewBuilder
-    private func stripOverlay(axis: Axis) -> some View {
-        if shouldShowRunningAppsStrip {
-            RunningAppsStripView(
-                service: runningAppsService,
-                themeStore: themeStore,
-                axis: axis,
-                onActivate: { key in
-                    _ = activateRunningApp(forKey: key)
-                }
-            )
-            .transition(.opacity)
-        }
-    }
 
 }
 
-private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar: View>: ViewModifier {
+private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar: View, DeleteBar: View>: ViewModifier {
     @ViewBuilder let testHint: () -> TestHint
     @ViewBuilder let copyright: () -> Copyright
     @ViewBuilder let killBar: () -> KillBar
+    @ViewBuilder let deleteBar: () -> DeleteBar
 
     func body(content: Content) -> some View {
         content
             .overlay(alignment: .topTrailing, content: testHint)
             .overlay(alignment: .bottomTrailing, content: copyright)
             .overlay(alignment: .bottom, content: killBar)
+            .overlay(alignment: .bottom, content: deleteBar)
     }
 }

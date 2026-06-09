@@ -24,7 +24,7 @@ enum WindowAutoScale {
     // Base size matches the Linux/Windows build (apps/linows/src-tauri):
     // 860×580 logical, landscape — list pane + preview pane side by side.
     static let baseWidth: CGFloat = 860
-    static let baseHeight: CGFloat = 580
+    static let baseHeight: CGFloat = 600
 
     static func ratio(forScreenHeightPoints h: CGFloat) -> CGFloat {
         guard h > 1080 else { return 1.0 }
@@ -32,57 +32,26 @@ enum WindowAutoScale {
         return min(r, 1.3)
     }
 
-    /// Base content size for the bordered launcher panel plus the running-apps
-    /// strip area for a given placement. The strip is purely additive — `.none`
-    /// matches the original 860×580; `.right` grows width; `.top`/`.bottom`
-    /// grow height. Everything is later multiplied by the screen ratio.
-    static func baseSize(for placement: RunningAppsPlacement) -> CGSize {
-        let stripExtent = AppConstants.Launcher.RunningAppsStrip.width
-            + AppConstants.Launcher.RunningAppsStrip.panelGap
-        switch placement {
-        case .none:
-            return CGSize(width: baseWidth, height: baseHeight)
-        case .right:
-            return CGSize(width: baseWidth + stripExtent, height: baseHeight)
-        case .top, .bottom:
-            return CGSize(width: baseWidth, height: baseHeight + stripExtent)
-        }
+    /// Base (unscaled) size of the launcher window. Running apps render inside
+    /// the search bar, so the window is always the bordered-panel size.
+    static func baseSize() -> CGSize {
+        CGSize(width: baseWidth, height: baseHeight)
     }
 
-    static func size(for screen: NSScreen, placement: RunningAppsPlacement = .none) -> CGSize {
-        // The screen ratio scales the bordered panel only. The running-apps
-        // strip is composed of fixed-size icons (per AppConstants), so adding
-        // its extent *after* scaling keeps the panel at its natural ratio
-        // and adds a consistent strip area regardless of display size.
+    /// Window size for the given screen: the base panel multiplied by the
+    /// screen ratio.
+    static func size(for screen: NSScreen) -> CGSize {
         let r = ratio(forScreenHeightPoints: screen.frame.height)
-        let scaledPanel = CGSize(
+        return CGSize(
             width: (baseWidth * r).rounded(),
             height: (baseHeight * r).rounded()
         )
-        let stripExtent = AppConstants.Launcher.RunningAppsStrip.width
-            + AppConstants.Launcher.RunningAppsStrip.panelGap
-        // The bordered launcher panel is consistently sized as
-        // (baseWidth × (baseHeight + stripExtent)) regardless of placement —
-        // this is what makes every placement *feel* the same. The window
-        // size on top adds only the strip's own footprint.
-        let consistentPanel = CGSize(
-            width: scaledPanel.width,
-            height: scaledPanel.height + stripExtent
-        )
-        switch placement {
-        case .none:
-            return consistentPanel
-        case .right:
-            return CGSize(width: consistentPanel.width + stripExtent, height: consistentPanel.height)
-        case .top, .bottom:
-            return CGSize(width: consistentPanel.width, height: consistentPanel.height + stripExtent)
-        }
     }
 
     /// Frame that centers the scaled launcher within the screen's
     /// visibleFrame (so it doesn't overlap the menu bar or Dock).
-    static func centeredFrame(on screen: NSScreen, placement: RunningAppsPlacement = .none) -> NSRect {
-        let size = size(for: screen, placement: placement)
+    static func centeredFrame(on screen: NSScreen) -> NSRect {
+        let size = size(for: screen)
         let visible = screen.visibleFrame
         let x = visible.origin.x + (visible.width - size.width) / 2
         let y = visible.origin.y + (visible.height - size.height) / 2
@@ -98,15 +67,15 @@ enum WindowAutoScale {
     /// leave the window partially off-screen (e.g. tucked behind a notch
     /// or menu bar after a screen with different geometry).
     @MainActor
-    static func resizeKeepingTopLeft(_ window: NSWindow, placement: RunningAppsPlacement = .none) {
+    static func resizeKeepingTopLeft(_ window: NSWindow) {
         guard let screen = window.screen else {
             windowAutoScaleLog.debug("resize: window.screen is nil, skipping")
             return
         }
-        let newSize = size(for: screen, placement: placement)
+        let newSize = size(for: screen)
         let currentFrame = window.frame
         let visible = screen.visibleFrame
-        windowAutoScaleLog.debug("resize start: placement=\(placement.rawValue, privacy: .public) screen=\(screen.frame.debugDescription, privacy: .public) visible=\(visible.debugDescription, privacy: .public) current=\(currentFrame.debugDescription, privacy: .public) newSize=\(newSize.debugDescription, privacy: .public) isVisible=\(window.isVisible, privacy: .public)")
+        windowAutoScaleLog.debug("resize start: screen=\(screen.frame.debugDescription, privacy: .public) visible=\(visible.debugDescription, privacy: .public) current=\(currentFrame.debugDescription, privacy: .public) newSize=\(newSize.debugDescription, privacy: .public) isVisible=\(window.isVisible, privacy: .public)")
 
         if currentFrame.size == newSize {
             windowAutoScaleLog.debug("resize: size unchanged, skipping")
@@ -160,7 +129,7 @@ enum WindowAutoScale {
     }
 
     @MainActor
-    static func scheduleResize(for window: NSWindow, placement: RunningAppsPlacement = .none) {
+    static func scheduleResize(for window: NSWindow) {
         let id = ObjectIdentifier(window)
         let token = UUID()
         pendingResizeTokens[id] = token
@@ -181,7 +150,7 @@ enum WindowAutoScale {
                     continue
                 }
                 pendingResizeTokens[id] = nil
-                resizeKeepingTopLeft(window, placement: placement)
+                resizeKeepingTopLeft(window)
                 return
             }
         }

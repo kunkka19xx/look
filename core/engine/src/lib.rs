@@ -10,7 +10,7 @@ mod search;
 
 pub use action::{ActionKind, LaunchAction};
 use config::RuntimeConfig;
-use look_indexing::{Candidate, CandidateKind};
+use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
 use look_storage::{SearchSettings, SqliteStore, StorageError};
 use normalize::normalize_for_search;
 pub use result::{LaunchResult, LaunchResultAction};
@@ -108,27 +108,37 @@ impl QueryEngine {
     }
 
     pub fn from_sqlite(path: impl AsRef<Path>) -> Result<Self, StorageError> {
-        let runtime_config = RuntimeConfig::load();
+        let runtime_config = RuntimeConfig::load_cached();
         let store = SqliteStore::open(path)?;
         let candidates = store.load_candidates(None)?;
         Ok(Self::new_with_config(candidates, &runtime_config))
     }
 
     pub fn bootstrap_sqlite(path: impl AsRef<Path>) -> Result<(), StorageError> {
+        Self::bootstrap_sqlite_scoped(path, BootstrapScope::ALL)
+    }
+
+    /// Like `bootstrap_sqlite`, but only re-walks the sources selected by `scope`
+    /// and only prunes stale rows whose candidate id matches one of those sources.
+    /// Used by the file watcher so that, e.g., a change inside an apps directory
+    /// does not force a full rescan of every file root.
+    pub fn bootstrap_sqlite_scoped(
+        path: impl AsRef<Path>,
+        scope: BootstrapScope,
+    ) -> Result<(), StorageError> {
         let mut store = SqliteStore::open(path)?;
-        let runtime_config = RuntimeConfig::load();
+        let runtime_config = RuntimeConfig::load_cached();
         let run_started_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|err| StorageError::Data(format!("system time error: {err}")))?
             .as_secs() as i64;
-        let existing = store.load_candidates(None)?;
-        let should_replace = looks_like_demo_seed(&existing);
-        if should_replace {
+        if store.is_demo_seeded()? {
             // Clear demo rows first, then progressively stream real candidates.
             store.replace_candidates(&[])?;
         }
 
-        let (rx, producer_handle) = index::discover_candidates_stream(&runtime_config).into_parts();
+        let (rx, producer_handle) =
+            index::discover_candidates_stream_scoped(&runtime_config, scope).into_parts();
         let mut seen = HashSet::new();
         let mut chunk = Vec::with_capacity(INDEX_UPSERT_CHUNK_SIZE);
         let mut discovered_count = 0usize;
@@ -152,8 +162,21 @@ impl QueryEngine {
             eprintln!("look index: producer worker panicked: {err:?}");
         }
 
-        if discovered_count > 0 {
-            let _ = store.delete_stale_candidates(run_started_at)?;
+        // Stale-row sweep. The `ALL` branch keeps the "discovered something"
+        // guard as a crash-shaped failsafe — if a full bootstrap silently
+        // produced zero candidates we'd rather leave the DB alone than wipe
+        // every row. Scoped paths are different: when the watcher fires an
+        // `APPS_ONLY` refresh, "zero discovered" is the legitimate "user just
+        // uninstalled their last app in this root" outcome, and we must still
+        // sweep the matching prefixes or the deleted row lingers forever
+        // (only an `ALL` refresh would otherwise catch it).
+        let prefixes = scope.id_prefixes();
+        if scope.is_all() {
+            if discovered_count > 0 {
+                let _ = store.delete_stale_candidates(run_started_at)?;
+            }
+        } else if !prefixes.is_empty() {
+            let _ = store.delete_stale_candidates_with_prefixes(run_started_at, &prefixes)?;
         }
 
         let usage_cutoff = run_started_at.saturating_sub(USAGE_RETENTION_DAYS * 24 * 3600);
@@ -195,20 +218,116 @@ impl IndexedCandidate {
     }
 }
 
-fn looks_like_demo_seed(candidates: &[Candidate]) -> bool {
-    if candidates.len() > 6 {
-        return false;
+/// Selects which discovery sources `bootstrap_sqlite_scoped` should re-walk.
+/// Each source maps 1:1 to a candidate id prefix; only candidates with those
+/// prefixes are eligible for the post-walk stale sweep.
+#[derive(Debug, Clone, Copy)]
+pub struct BootstrapScope {
+    pub apps: bool,
+    pub files: bool,
+    pub settings: bool,
+}
+
+impl BootstrapScope {
+    pub const ALL: Self = Self {
+        apps: true,
+        files: true,
+        settings: true,
+    };
+    pub const APPS_ONLY: Self = Self {
+        apps: true,
+        files: false,
+        settings: false,
+    };
+    pub const FILES_ONLY: Self = Self {
+        apps: false,
+        files: true,
+        settings: false,
+    };
+
+    pub fn is_all(&self) -> bool {
+        self.apps && self.files && self.settings
     }
 
-    let ids: HashSet<&str> = candidates.iter().map(|c| c.id.as_ref()).collect();
-    (ids.contains("app:safari") || ids.contains("app.safari"))
-        && (ids.contains("app:vscode") || ids.contains("app.vscode"))
+    pub fn is_empty(&self) -> bool {
+        !(self.apps || self.files || self.settings)
+    }
+
+    pub(crate) fn id_prefixes(&self) -> Vec<&'static str> {
+        let mut out = Vec::new();
+        if self.apps {
+            out.push(CandidateIdKind::PREFIX_APP);
+        }
+        if self.files {
+            // file:* and folder:* are both produced by the files walker.
+            out.push(CandidateIdKind::PREFIX_FILE);
+            out.push(CandidateIdKind::PREFIX_FOLDER);
+        }
+        if self.settings {
+            out.push(CandidateIdKind::PREFIX_SETTING);
+        }
+        out
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::scoring::default_browse_score;
+
+    #[test]
+    fn bootstrap_scope_all_includes_every_source() {
+        let s = BootstrapScope::ALL;
+        assert!(s.is_all());
+        assert!(!s.is_empty());
+        assert!(s.apps && s.files && s.settings);
+    }
+
+    #[test]
+    fn bootstrap_scope_apps_only_picks_only_app_prefix() {
+        let prefixes = BootstrapScope::APPS_ONLY.id_prefixes();
+        assert_eq!(prefixes, vec![CandidateIdKind::PREFIX_APP]);
+        assert!(!BootstrapScope::APPS_ONLY.is_all());
+        assert!(!BootstrapScope::APPS_ONLY.is_empty());
+    }
+
+    #[test]
+    fn bootstrap_scope_files_only_includes_file_and_folder_prefixes() {
+        // The files walker emits both `file:` and `folder:` candidates, so a
+        // scoped delete for files must sweep both — otherwise renamed/removed
+        // folders linger forever.
+        let prefixes = BootstrapScope::FILES_ONLY.id_prefixes();
+        assert_eq!(
+            prefixes,
+            vec![CandidateIdKind::PREFIX_FILE, CandidateIdKind::PREFIX_FOLDER]
+        );
+    }
+
+    #[test]
+    fn bootstrap_scope_all_yields_all_four_prefixes() {
+        let prefixes = BootstrapScope::ALL.id_prefixes();
+        assert_eq!(
+            prefixes,
+            vec![
+                CandidateIdKind::PREFIX_APP,
+                CandidateIdKind::PREFIX_FILE,
+                CandidateIdKind::PREFIX_FOLDER,
+                CandidateIdKind::PREFIX_SETTING,
+            ]
+        );
+    }
+
+    #[test]
+    fn bootstrap_scope_empty_is_detectable() {
+        let s = BootstrapScope {
+            apps: false,
+            files: false,
+            settings: false,
+        };
+        assert!(s.is_empty());
+        assert!(!s.is_all());
+        assert!(s.id_prefixes().is_empty());
+    }
 
     fn sample_engine() -> QueryEngine {
         QueryEngine::new(vec![

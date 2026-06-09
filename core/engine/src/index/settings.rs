@@ -154,6 +154,7 @@ mod tests {
         producer.join().expect("settings discovery thread panicked");
 
         let expected_len = if platform::has_settings_app() {
+            #[allow(unused_mut)]
             let mut total = platform::settings_catalog().len();
             #[cfg(target_os = "windows")]
             {

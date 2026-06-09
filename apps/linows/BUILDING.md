@@ -133,7 +133,7 @@ For now, build from source using the instructions above.
 
 ### Ubuntu / Debian (.deb)
 
-**Target:** `sudo dpkg -i lookapp_*.deb` or download from GitHub Releases.
+**Target:** `sudo dpkg -i Look_*.deb` or download from GitHub Releases.
 
 Steps to implement:
 
@@ -145,7 +145,7 @@ Steps to implement:
 
 ### Arch Linux (AUR)
 
-**Target:** `yay -S lookapp`
+**Target:** `yay -S look-bin`
 
 Steps to implement:
 

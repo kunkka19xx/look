@@ -82,6 +82,11 @@ enum BackgroundImageMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+/// On/off state for the in-search-bar running-apps row, stored as a string in
+/// `~/.look.config` under `running_apps_placement`. The setting is now a simple
+/// toggle (`.none` = off, `.right` = on); the legacy `.top`/`.bottom` cases are
+/// retained only so old config files still decode — they are normalized to
+/// `.right` ("on") on load. See ThemeStore's config parser.
 enum RunningAppsPlacement: String, CaseIterable, Codable, Identifiable {
     case none
     case top
@@ -89,24 +94,6 @@ enum RunningAppsPlacement: String, CaseIterable, Codable, Identifiable {
     case bottom
 
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .none: return "None"
-        case .top: return "Top"
-        case .right: return "Right"
-        case .bottom: return "Bottom"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .none: return "Hide the strip and disable ⌘+number switching"
-        case .top: return "Horizontal row above the launcher"
-        case .right: return "Vertical column to the right"
-        case .bottom: return "Horizontal row below the launcher"
-        }
-    }
 }
 
 enum BackendLogLevel: String, CaseIterable, Codable, Identifiable {

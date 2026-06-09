@@ -3,6 +3,7 @@ import * as search from './search.js';
 import * as translatePanel from './components/translate.js';
 import { openPath, recordUsage, revealPath, hideWindow, copyFilesToClipboard, copyToClipboard, deleteClipboardEntry } from './ipc.js';
 import * as banner from './components/banner.js';
+import * as runningApps from './components/running-apps.js';
 
 let queryInput = null;
 let shiftHeld = false;
@@ -85,6 +86,27 @@ function handleKeyDown(e) {
     }
   }
 
+  // Ctrl+= / Ctrl+- / Ctrl+0 — UI zoom in/out/reset. Mirrors macOS
+  // Cmd+= / Cmd+- / Cmd+0 (apps/macos/.../look_appApp.swift:177). Global:
+  // works in search, command, settings, and help screens.
+  if (e.ctrlKey && !e.shiftKey && !e.altKey && settingsModule) {
+    if (e.key === '=') {
+      e.preventDefault();
+      settingsModule.zoomIn();
+      return;
+    }
+    if (e.key === '-') {
+      e.preventDefault();
+      settingsModule.zoomOut();
+      return;
+    }
+    if (e.key === '0') {
+      e.preventDefault();
+      settingsModule.resetZoom();
+      return;
+    }
+  }
+
   // Delegate to settings if active
   if (settingsModule?.isActive()) {
     if (settingsModule.handleKey(e)) return;
@@ -117,6 +139,15 @@ function handleKeyDown(e) {
     if (commandMode.handleKey(e)) return;
     // Let typing through to input
     return;
+  }
+
+  // Alt+1-9 on home screen → activate running app
+  if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key >= '1' && e.key <= '9') {
+    const num = parseInt(e.key);
+    if (runningApps.activateByKey(num)) {
+      e.preventDefault();
+      return;
+    }
   }
 
   // WebKitGTK reports Shift+Tab as key="Unidentified", code="Tab"

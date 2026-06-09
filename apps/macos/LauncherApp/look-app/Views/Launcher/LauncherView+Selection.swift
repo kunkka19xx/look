@@ -207,6 +207,18 @@ extension LauncherView {
             },
             killConfirmationActive: { [self] in
                 pendingKillCandidate != nil
+            },
+            onRequestDelete: { [self] in
+                requestDeleteSelection()
+            },
+            onConfirmDelete: { [self] in
+                confirmDeleteSelection()
+            },
+            onCancelDelete: { [self] in
+                cancelDeleteSelection()
+            },
+            deleteConfirmationActive: { [self] in
+                pendingEmptyTrashCount != nil
             }
         )
     }

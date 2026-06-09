@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 extension ThemeSettingsView {
     var backgroundTab: some View {
         VStack(alignment: .leading, spacing: 10) {
+            ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Background")
@@ -317,6 +318,13 @@ extension ThemeSettingsView {
                         }
                     }
 
+                    Divider()
+                        .overlay(.white.opacity(0.1))
+                        .padding(.vertical, 4)
+
+                    aboutSection
+                        .id(Self.aboutAnchorID)
+
                 }
             }
             .onAppear { syncIndexingInputsFromSettings() }
@@ -326,6 +334,14 @@ extension ThemeSettingsView {
             .onChange(of: settings.fileScanLimit) { _, _ in
                 fileScanLimitInput = String(settings.fileScanLimit)
             }
+            // Reveal the About/update result after a manual "Check for Updates".
+            .onChange(of: updateChecker.statusMessage) { _, message in
+                guard message != nil else { return }
+                withAnimation {
+                    proxy.scrollTo(Self.aboutAnchorID, anchor: .bottom)
+                }
+            }
+            }
 
             Spacer(minLength: 0)
 
@@ -333,6 +349,17 @@ extension ThemeSettingsView {
                 .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 2), weight: .regular))
                 .foregroundStyle(themeStore.mutedTextColor())
         }
+    }
+
+    static let aboutAnchorID = "look-about-section"
+
+    @ViewBuilder
+    var aboutSection: some View {
+        Text("About")
+            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
+            .foregroundStyle(themeStore.secondaryTextColor())
+
+        AppUpdateStatusView(themeStore: themeStore)
     }
 
     func selectBackgroundImage() {

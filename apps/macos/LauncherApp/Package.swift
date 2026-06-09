@@ -17,10 +17,11 @@ let package = Package(
                 "Support/Launcher/HintText.swift",
                 "Support/AppConstants.swift",
                 "Support/Launcher/LauncherSearchLogic.swift",
+                "Support/Launcher/DeleteTargetLogic.swift",
                 "Support/Launcher/BridgeErrorMapping.swift",
                 "Support/SingleInstanceLock.swift",
                 "Models/LauncherResult.swift",
-                "Views/CalcCommand.swift",
+                "Views/Commands/CalcCommand.swift",
             ]
         ),
         .testTarget(

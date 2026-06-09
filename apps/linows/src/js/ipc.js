@@ -81,6 +81,14 @@ export async function killProcess(pid) {
   return invoke('kill_process', { pid });
 }
 
+export async function listRunningApps() {
+  return invoke('list_running_apps');
+}
+
+export async function activateRunningApp(pid, desktopId, exec) {
+  return invoke('activate_running_app', { pid, desktopId, exec });
+}
+
 export async function getHomeDir() {
   return invoke('get_home_dir');
 }
@@ -187,4 +195,8 @@ export async function highlightFile(path) {
 
 export async function listFolder(path) {
   return invoke('list_folder', { path });
+}
+
+export async function getLookappVersion() {
+  return invoke('get_lookapp_version');
 }

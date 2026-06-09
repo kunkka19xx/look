@@ -53,7 +53,7 @@ fn supports_transparency() -> bool {
 }
 
 const BASE_W: f64 = 860.0;
-const BASE_H: f64 = 580.0;
+const BASE_H: f64 = 600.0;
 /// Grace period (ms) after show — ignore focus-loss within this window.
 const AUTO_HIDE_GRACE_MS: u64 = 300;
 /// Guard (ms) to prevent re-showing after auto-hide (GNOME X11 race).
@@ -144,7 +144,7 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) {
     let size = tauri::LogicalSize::new(win_w as f64, win_h as f64);
     let _ = window.set_size(size);
     // Lock min/max to the scaled size: on Wayland, hide()/show() can
-    // otherwise revert to tauri.conf's default (860×580) on remap,
+    // otherwise revert to tauri.conf's default (860×600) on remap,
     // producing a visible "big rectangle then snap" on toggle.
     let _ = window.set_min_size(Some(tauri::Size::Logical(size)));
     let _ = window.set_max_size(Some(tauri::Size::Logical(size)));
@@ -407,12 +407,46 @@ fn disable_gpu_acceleration(app: &tauri::App) {
     }
 }
 
+/// Disable WebKitGTK smooth scrolling on X11.
+///
+/// Why: GTK3 issue #3287 — on X11 with GDK_SMOOTH_SCROLL_MASK enabled, the
+/// first scroll event after the cursor enters a window arrives with delta=0
+/// (GDK has no previous value to subtract), so the first wheel notch is
+/// effectively dropped. On tiling WMs like i3 the launcher pops up at a new
+/// position every show, so users cross the window edge every session and hit
+/// this bug every session ("scroll feels frozen, then works"). Switching to
+/// discrete scroll events sidesteps the smooth-delta=0 path entirely.
+///
+/// Wayland uses a different event delivery path and isn't affected, so this
+/// is X11-only.
+#[cfg(target_os = "linux")]
+fn disable_smooth_scrolling_x11(app: &tauri::App) {
+    if let Some(webview) = app.get_webview_window(consts::MAIN_WINDOW) {
+        let _ = webview.with_webview(|wv| {
+            use webkit2gtk::SettingsExt;
+            let inner = wv.inner();
+            if let Some(settings) = webkit2gtk::WebViewExt::settings(&inner) {
+                settings.set_enable_smooth_scrolling(false);
+            }
+        });
+    }
+}
+
 /// Sync autostart registration with config on every launch.
 ///
 /// On first launch (no `launch_at_login` key yet) — enable autostart and persist.
 /// On subsequent launches — re-sync the registry/desktop-entry with the current
 /// exe path so it stays valid after updates or reinstalls (matches WinUI3 behavior).
 fn sync_autostart() {
+    // Debug builds live under target/debug and (when produced by `tauri dev`)
+    // load the frontend from devUrl. If we wrote them into autostart, login
+    // would launch a binary that fails with "Could not connect to 127.0.0.1"
+    // because the dev server isn't running. Leave the installed binary's
+    // autostart entry alone.
+    if cfg!(debug_assertions) {
+        return;
+    }
+
     const KEY: &str = "launch_at_login";
 
     let config_path = config::config_file_path();
@@ -598,6 +632,7 @@ fn main() {
             #[cfg(target_os = "linux")]
             if !use_wayland {
                 setup_x11_focus_monitor(app);
+                disable_smooth_scrolling_x11(app);
             }
 
             let window = app
@@ -682,6 +717,8 @@ fn main() {
             process::list_processes,
             process::list_processes_on_port,
             process::kill_process,
+            process::list_running_apps,
+            process::activate_running_app,
             // Translation
             translate::translate,
             // Clipboard
@@ -699,6 +736,9 @@ fn main() {
             autostart::get_autostart,
             // Highlight
             highlight::highlight_file_cmd,
+            // About widget: version only. The update check itself runs in
+            // the webview via fetch() — no Rust HTTP/TLS dep needed.
+            files::get_lookapp_version,
         ])
         .build(tauri::generate_context!())
         .expect("error while building look desktop")
