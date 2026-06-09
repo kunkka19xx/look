@@ -283,10 +283,10 @@ jobs:
         run: cargo fmt --all --manifest-path apps/linows/src-tauri/Cargo.toml -- --check
 
       - name: Run clippy
-        run: cargo clippy --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings
+        run: cargo clippy --locked --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings
 
       - name: Build (debug)
-        run: cargo build --manifest-path apps/linows/src-tauri/Cargo.toml
+        run: cargo build --locked --manifest-path apps/linows/src-tauri/Cargo.toml
 
   linows-build-windows:
     name: Build linows (Tauri, Windows)
@@ -317,7 +317,7 @@ jobs:
         run: cargo fmt --all --manifest-path apps/linows/src-tauri/Cargo.toml -- --check
 
       - name: Run clippy
-        run: cargo clippy --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings
+        run: cargo clippy --locked --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings
 
       - name: Build (debug)
-        run: cargo build --manifest-path apps/linows/src-tauri/Cargo.toml
+        run: cargo build --locked --manifest-path apps/linows/src-tauri/Cargo.toml

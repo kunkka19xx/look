@@ -39,6 +39,17 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      # Fail fast on a tag/version mismatch - this only reads a JSON file, so it
+      # runs before any slow toolchain setup or build.
+      - name: Verify version matches tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CONF_VERSION=$(grep '"version"' apps/linows/src-tauri/tauri.conf.json | head -1 | sed 's/.*"\([0-9][^"]*\)".*/\1/')
+          if [[ "$VERSION" != "$CONF_VERSION" ]]; then
+            echo "::error::Version mismatch! Tag=$VERSION but tauri.conf.json=$CONF_VERSION. Update tauri.conf.json before tagging."
+            exit 1
+          fi
+
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
@@ -70,15 +81,6 @@ jobs:
 
       - name: Install cargo-tauri
         run: cargo install tauri-cli --version "^2" --locked
-
-      - name: Verify version matches tag
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          CONF_VERSION=$(grep '"version"' apps/linows/src-tauri/tauri.conf.json | head -1 | sed 's/.*"\([0-9][^"]*\)".*/\1/')
-          if [[ "$VERSION" != "$CONF_VERSION" ]]; then
-            echo "::error::Version mismatch! Tag=$VERSION but tauri.conf.json=$CONF_VERSION. Update tauri.conf.json before tagging."
-            exit 1
-          fi
 
       - name: Build Tauri app
         working-directory: apps/linows
