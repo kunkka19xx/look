@@ -136,6 +136,10 @@ pub struct Candidate {
     pub path: Box<str>,
     pub use_count: u64,
     pub last_used_at_unix_s: Option<i64>,
+    /// Filesystem modification time (Unix seconds), captured at index time.
+    /// Lets the "recent" view surface freshly downloaded/created files the user
+    /// hasn't opened through Look yet. `None` for app/settings candidates.
+    pub fs_modified_at_unix_s: Option<i64>,
 }
 
 impl Candidate {
@@ -148,6 +152,7 @@ impl Candidate {
             path: path.into(),
             use_count: 0,
             last_used_at_unix_s: None,
+            fs_modified_at_unix_s: None,
         }
     }
 }

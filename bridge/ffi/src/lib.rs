@@ -285,6 +285,7 @@ mod tests {
             path: "/Applications/Smoke Test App.app".into(),
             use_count: 0,
             last_used_at_unix_s: None,
+            fs_modified_at_unix_s: None,
         }
     }
 

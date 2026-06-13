@@ -211,10 +211,10 @@ impl SqliteStore {
     pub fn load_candidates(&self, limit: Option<usize>) -> StorageResult<Vec<Candidate>> {
         let sql = match limit {
             Some(_) => {
-                "SELECT id, kind, title, subtitle, path, use_count, last_used_at_unix_s FROM candidates ORDER BY title ASC LIMIT ?1"
+                "SELECT id, kind, title, subtitle, path, use_count, last_used_at_unix_s, fs_modified_at_unix_s FROM candidates ORDER BY title ASC LIMIT ?1"
             }
             None => {
-                "SELECT id, kind, title, subtitle, path, use_count, last_used_at_unix_s FROM candidates ORDER BY title ASC"
+                "SELECT id, kind, title, subtitle, path, use_count, last_used_at_unix_s, fs_modified_at_unix_s FROM candidates ORDER BY title ASC"
             }
         };
 
@@ -239,6 +239,7 @@ impl SqliteStore {
                 path: row.get::<_, String>(4)?.into_boxed_str(),
                 use_count: to_use_count(use_count_raw)?,
                 last_used_at_unix_s: row.get(6)?,
+                fs_modified_at_unix_s: row.get(7)?,
             });
         }
 
@@ -257,14 +258,15 @@ impl SqliteStore {
         let tx = self.conn.transaction()?;
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s, indexed_at_unix_s)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s, indexed_at_unix_s, fs_modified_at_unix_s)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                  ON CONFLICT(id) DO UPDATE SET
                    kind = excluded.kind,
                    title = excluded.title,
                    subtitle = excluded.subtitle,
                      path = excluded.path,
-                    indexed_at_unix_s = excluded.indexed_at_unix_s",
+                    indexed_at_unix_s = excluded.indexed_at_unix_s,
+                    fs_modified_at_unix_s = excluded.fs_modified_at_unix_s",
             )?;
 
             for candidate in candidates {
@@ -278,6 +280,7 @@ impl SqliteStore {
                     use_count,
                     candidate.last_used_at_unix_s,
                     indexed_at_unix_s,
+                    candidate.fs_modified_at_unix_s,
                 ])?;
             }
         }
@@ -292,8 +295,8 @@ impl SqliteStore {
 
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s, indexed_at_unix_s)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s, indexed_at_unix_s, fs_modified_at_unix_s)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             )?;
 
             for candidate in candidates {
@@ -307,6 +310,7 @@ impl SqliteStore {
                     use_count,
                     candidate.last_used_at_unix_s,
                     None::<i64>,
+                    candidate.fs_modified_at_unix_s,
                 ])?;
             }
         }
@@ -562,6 +566,10 @@ impl SqliteStore {
             [],
         )?;
 
+        // Filesystem mtime, captured at index time, powers the recent view's
+        // "newly added/changed" signal. Additive column on existing DBs.
+        ensure_column_exists(&self.conn, "candidates", "fs_modified_at_unix_s", "INTEGER")?;
+
         Ok(())
     }
 }
@@ -663,6 +671,7 @@ mod tests {
             path: path.into(),
             use_count: 0,
             last_used_at_unix_s: None,
+            fs_modified_at_unix_s: None,
         }
     }
 
@@ -754,6 +763,7 @@ mod tests {
             path: "/Applications/Renamed.app".into(),
             use_count: 0,
             last_used_at_unix_s: None,
+            fs_modified_at_unix_s: None,
         };
 
         store

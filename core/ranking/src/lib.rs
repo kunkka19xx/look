@@ -40,6 +40,7 @@ mod tests {
             path: "/test".into(),
             use_count,
             last_used_at_unix_s: last_used,
+            fs_modified_at_unix_s: None,
         }
     }
 

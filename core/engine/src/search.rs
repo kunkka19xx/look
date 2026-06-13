@@ -119,6 +119,49 @@ impl QueryEngine {
         finalize_top_k(top)
     }
 
+    fn search_recent_query(&self, normalized_query: &str, limit: usize) -> Vec<(u32, i64)> {
+        // Recent view: files/folders the user has actually opened (last_used_at
+        // set), most-recently-opened first. Apps and never-opened items are
+        // excluded. Optional filter text narrows by title/path substring.
+        let mut matches: Vec<(u32, i64)> = Vec::new();
+        for (idx, candidate) in self.candidates.iter().enumerate() {
+            let kind = &candidate.candidate.kind;
+            if *kind != CandidateKind::File && *kind != CandidateKind::Folder {
+                continue;
+            }
+            // Recency blends "opened through Look" (last_used) with "appeared/
+            // changed on disk" (fs_modified) so freshly downloaded/captured files
+            // surface even before the user opens them. Items with neither are out.
+            let recency = match (
+                candidate.candidate.last_used_at_unix_s,
+                candidate.candidate.fs_modified_at_unix_s,
+            ) {
+                (Some(a), Some(b)) => a.max(b),
+                (Some(a), None) => a,
+                (None, Some(b)) => b,
+                (None, None) => continue,
+            };
+            if !normalized_query.is_empty()
+                && !candidate.title_search.contains(normalized_query)
+                && !candidate.path_search.contains(normalized_query)
+            {
+                continue;
+            }
+            matches.push((idx as u32, recency));
+        }
+
+        // Most recent first; tie-break by title for a stable order.
+        matches.sort_by(|a, b| {
+            b.1.cmp(&a.1).then_with(|| {
+                let title_a = &self.candidates[a.0 as usize].candidate.title;
+                let title_b = &self.candidates[b.0 as usize].candidate.title;
+                title_a.cmp(title_b)
+            })
+        });
+        matches.truncate(limit);
+        matches
+    }
+
     fn search_regex_query(
         &self,
         raw_query: Option<&String>,
@@ -292,7 +335,9 @@ impl QueryEngine {
 
         let parsed_query = ParsedQuery::from_input(query);
         let kind_filter = parsed_query.kind_filter.as_ref();
-        let indices = if parsed_query.normalized_query.is_empty() && !parsed_query.is_regex {
+        let indices = if parsed_query.is_recent {
+            self.search_recent_query(&parsed_query.normalized_query, limit)
+        } else if parsed_query.normalized_query.is_empty() && !parsed_query.is_regex {
             self.search_empty_query(kind_filter, limit)
         } else if parsed_query.is_regex {
             self.search_regex_query(parsed_query.raw_query.as_ref(), kind_filter, limit)
@@ -312,6 +357,82 @@ impl QueryEngine {
 #[cfg(test)]
 mod tests {
     use super::QueryEngine;
+    use look_indexing::{Candidate, CandidateKind};
+
+    fn recent_engine() -> QueryEngine {
+        let mut older = Candidate::new("file:old", CandidateKind::File, "old.txt", "/x/old.txt");
+        older.last_used_at_unix_s = Some(100);
+        let mut newer = Candidate::new("file:new", CandidateKind::File, "new.txt", "/x/new.txt");
+        newer.last_used_at_unix_s = Some(200);
+        let mut folder = Candidate::new(
+            "folder:proj",
+            CandidateKind::Folder,
+            "project",
+            "/x/project",
+        );
+        folder.last_used_at_unix_s = Some(150);
+        // Never opened — must be excluded.
+        let never = Candidate::new(
+            "file:never",
+            CandidateKind::File,
+            "never.txt",
+            "/x/never.txt",
+        );
+        // An app, even if recently used, must be excluded from recent files/folders.
+        let mut app = Candidate::new(
+            "app:safari",
+            CandidateKind::App,
+            "Safari",
+            "/Applications/Safari.app",
+        );
+        app.last_used_at_unix_s = Some(999);
+        QueryEngine::new(vec![older, newer, folder, never, app])
+    }
+
+    #[test]
+    fn recent_orders_by_last_used_descending() {
+        let engine = recent_engine();
+        let results = engine.search_scored("rc\"", 10);
+        let ids: Vec<&str> = results.iter().map(|(c, _)| c.id.as_ref()).collect();
+        assert_eq!(ids, vec!["file:new", "folder:proj", "file:old"]);
+    }
+
+    #[test]
+    fn recent_excludes_apps_and_never_opened() {
+        let engine = recent_engine();
+        let results = engine.search_scored("rc\"", 10);
+        assert!(results.iter().all(|(c, _)| c.kind != CandidateKind::App));
+        assert!(results.iter().all(|(c, _)| c.last_used_at_unix_s.is_some()));
+        assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn recent_includes_newly_modified_files_not_yet_opened() {
+        // A just-downloaded/screenshotted file: fs_modified set, never opened.
+        let mut downloaded =
+            Candidate::new("file:dl", CandidateKind::File, "shot.png", "/x/shot.png");
+        downloaded.fs_modified_at_unix_s = Some(500);
+        // Opened a while ago.
+        let mut opened = Candidate::new("file:old", CandidateKind::File, "old.txt", "/x/old.txt");
+        opened.last_used_at_unix_s = Some(100);
+        // Recently opened but old on disk → ranks by the opened time (the max).
+        let mut both = Candidate::new("file:both", CandidateKind::File, "both.txt", "/x/both.txt");
+        both.last_used_at_unix_s = Some(700);
+        both.fs_modified_at_unix_s = Some(50);
+        let engine = QueryEngine::new(vec![downloaded, opened, both]);
+
+        let results = engine.search_scored("rc\"", 10);
+        let ids: Vec<&str> = results.iter().map(|(c, _)| c.id.as_ref()).collect();
+        assert_eq!(ids, vec!["file:both", "file:dl", "file:old"]);
+    }
+
+    #[test]
+    fn recent_filter_text_narrows_the_set() {
+        let engine = recent_engine();
+        let results = engine.search_scored("rc\"new", 10);
+        let ids: Vec<&str> = results.iter().map(|(c, _)| c.id.as_ref()).collect();
+        assert_eq!(ids, vec!["file:new"]);
+    }
 
     #[test]
     fn term_boundary_match_rejects_inner_substring() {

@@ -4,6 +4,16 @@ use crate::platform::paths::{candidate_id_path_component, path_is_same_or_child}
 use ignore::WalkBuilder;
 use look_indexing::{Candidate, CandidateKind};
 use std::sync::mpsc;
+use std::time::UNIX_EPOCH;
+
+fn modified_unix_s(metadata: Option<&std::fs::Metadata>) -> Option<i64> {
+    metadata?
+        .modified()
+        .ok()?
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs() as i64)
+}
 
 pub fn discover_local_files_and_folders(config: &RuntimeConfig, tx: mpsc::SyncSender<Candidate>) {
     let mut roots = config.file_scan_roots.clone();
@@ -79,6 +89,9 @@ fn walk_files(
             break;
         }
 
+        // Read mtime from the walker's entry metadata before consuming `entry`,
+        // so the recent view can rank by when files appeared/changed on disk.
+        let modified_at = modified_unix_s(entry.metadata().ok().as_ref());
         let path_buf = entry.into_path();
         let Some(path_str) = path_buf.to_str() else {
             continue;
@@ -97,6 +110,7 @@ fn walk_files(
             );
             let mut candidate = Candidate::new(&key, CandidateKind::Folder, name, path_str);
             candidate.subtitle = Some(CandidateKind::Folder.as_str().into());
+            candidate.fs_modified_at_unix_s = modified_at;
             let _ = tx.send(candidate);
             continue;
         }
@@ -109,6 +123,7 @@ fn walk_files(
             );
             let mut candidate = Candidate::new(&key, CandidateKind::File, name, path_str);
             candidate.subtitle = Some(CandidateKind::File.as_str().into());
+            candidate.fs_modified_at_unix_s = modified_at;
             let _ = tx.send(candidate);
         }
     }

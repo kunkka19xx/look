@@ -60,6 +60,8 @@ pub(crate) fn look_seed_uwp_apps_json_impl(json: *const c_char) -> bool {
             // doesn't reset the user's launch history.
             use_count: 0,
             last_used_at_unix_s: None,
+            // App candidate — no filesystem mtime; not part of the recent-files view.
+            fs_modified_at_unix_s: None,
         });
     }
 

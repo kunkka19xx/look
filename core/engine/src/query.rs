@@ -7,6 +7,10 @@ const PREFIX_FOLDERS: u8 = b'd';
 const PREFIX_REGEX: u8 = b'r';
 const PREFIX_MARKER: u8 = b'"';
 const PREFIX_LENGTH: usize = 2;
+// Two-char prefix `rc"` for the recent-files view. It's engine-side (unlike the
+// Swift-handled `t"`/`tw"`/`c"`) because recency ordering needs the per-candidate
+// `last_used_at` timestamps that only the engine has.
+const RECENT_PREFIX: &[u8] = b"rc\"";
 
 #[derive(Clone, Debug)]
 pub(crate) struct ParsedQuery {
@@ -14,11 +18,24 @@ pub(crate) struct ParsedQuery {
     pub(crate) raw_query: Option<String>,
     pub(crate) kind_filter: Option<CandidateKind>,
     pub(crate) is_regex: bool,
+    pub(crate) is_recent: bool,
 }
 
 impl ParsedQuery {
     pub(crate) fn from_input(input: &str) -> Self {
         let trimmed = input.trim();
+
+        // `rc"` is checked before `r"` (single-char) — they can't collide since
+        // `r"` requires the 2nd byte to be `"`, which is `c` here.
+        if let Some(rest) = strip_recent_prefix(trimmed) {
+            return Self {
+                normalized_query: normalize_for_search(rest),
+                raw_query: None,
+                kind_filter: None,
+                is_regex: false,
+                is_recent: true,
+            };
+        }
 
         if let Some(rest) = strip_prefixed_query(trimmed, PREFIX_FOLDERS) {
             return Self {
@@ -26,6 +43,7 @@ impl ParsedQuery {
                 raw_query: None,
                 kind_filter: Some(CandidateKind::Folder),
                 is_regex: false,
+                is_recent: false,
             };
         }
 
@@ -35,6 +53,7 @@ impl ParsedQuery {
                 raw_query: None,
                 kind_filter: Some(CandidateKind::File),
                 is_regex: false,
+                is_recent: false,
             };
         }
 
@@ -44,6 +63,7 @@ impl ParsedQuery {
                 raw_query: None,
                 kind_filter: Some(CandidateKind::App),
                 is_regex: false,
+                is_recent: false,
             };
         }
 
@@ -53,6 +73,7 @@ impl ParsedQuery {
                 raw_query: Some(rest.to_string()),
                 kind_filter: None,
                 is_regex: true,
+                is_recent: false,
             };
         }
 
@@ -61,8 +82,25 @@ impl ParsedQuery {
             raw_query: None,
             kind_filter: None,
             is_regex: false,
+            is_recent: false,
         }
     }
+}
+
+/// Strips the two-char `rc"` recent prefix (case-insensitive), returning the
+/// optional filter text after it. Returns None when the input isn't `rc"...`.
+fn strip_recent_prefix(input: &str) -> Option<&str> {
+    let bytes = input.as_bytes();
+    if bytes.len() < RECENT_PREFIX.len() {
+        return None;
+    }
+    if !bytes[0].eq_ignore_ascii_case(&RECENT_PREFIX[0])
+        || !bytes[1].eq_ignore_ascii_case(&RECENT_PREFIX[1])
+        || bytes[2] != RECENT_PREFIX[2]
+    {
+        return None;
+    }
+    Some(input[RECENT_PREFIX.len()..].trim())
 }
 
 fn strip_prefixed_query(input: &str, prefix: u8) -> Option<&str> {
@@ -76,4 +114,31 @@ fn strip_prefixed_query(input: &str, prefix: u8) -> Option<&str> {
     }
 
     Some(input[PREFIX_LENGTH..].trim())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ParsedQuery;
+
+    #[test]
+    fn recent_prefix_sets_flag_and_filter() {
+        let parsed = ParsedQuery::from_input("rc\"report");
+        assert!(parsed.is_recent);
+        assert!(!parsed.is_regex);
+        assert_eq!(parsed.normalized_query, "report");
+    }
+
+    #[test]
+    fn recent_prefix_is_case_insensitive_and_allows_empty_filter() {
+        let parsed = ParsedQuery::from_input("RC\"");
+        assert!(parsed.is_recent);
+        assert!(parsed.normalized_query.is_empty());
+    }
+
+    #[test]
+    fn regex_prefix_is_not_treated_as_recent() {
+        let parsed = ParsedQuery::from_input("r\"foo");
+        assert!(parsed.is_regex);
+        assert!(!parsed.is_recent);
+    }
 }
