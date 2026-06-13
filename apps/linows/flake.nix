@@ -23,10 +23,22 @@
       packages = forAllSystems (
         system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ rust-overlay.overlays.default ];
+          };
+          # nixpkgs' default rustc lags behind. libsqlite3-sys (via rusqlite
+          # 0.40) uses cfg_select!, stable only since Rust 1.95, so the default
+          # toolchain fails to build it. Pin the build toolchain to match the
+          # devShell instead of relying on nixpkgs' older default.
+          rustToolchain = pkgs.rust-bin.stable."1.95.0".default;
+          rustPlatform = pkgs.makeRustPlatform {
+            cargo = rustToolchain;
+            rustc = rustToolchain;
+          };
         in
         {
-          default = pkgs.callPackage ./nix/package.nix { };
+          default = pkgs.callPackage ./nix/package.nix { inherit rustPlatform; };
         }
       );
 
