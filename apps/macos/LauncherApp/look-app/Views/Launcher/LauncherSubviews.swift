@@ -328,6 +328,34 @@ struct ClipboardEmptyStateView: View {
     }
 }
 
+struct RecentEmptyStateView: View {
+    let themeStore: ThemeStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundStyle(themeStore.accentColor())
+                Text("Recent files & folders")
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 1), weight: .semibold))
+            }
+
+            Text("Nothing recent yet")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
+                .foregroundStyle(themeStore.secondaryTextColor())
+
+            Text("Open files/folders through Look, or download/create some — newest activity shows here. Type rc\"word to filter.")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                .foregroundStyle(themeStore.secondaryTextColor())
+                .lineLimit(3)
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
 struct LauncherHelpScreenView: View {
     let themeStore: ThemeStore
 
@@ -368,6 +396,7 @@ private enum LauncherHelpContent {
         ("Cmd+C", "Copy selected file/folder to pasteboard"),
         ("Cmd+P", "Toggle pick on selected file/folder (multi-select copy)"),
         ("Cmd+Shift+P", "Clear all picked items"),
+        ("Cmd+D", "Move selected file/folder to Trash (on the Trash folder: empty Trash)"),
         ("Tab / Shift+Tab", "Move selection"),
         ("Up / Down", "Move selection"),
         ("Cmd+F", "Reveal selected app/file/folder in Finder"),
@@ -383,6 +412,7 @@ private enum LauncherHelpContent {
         ("a\"word", "Apps only"),
         ("f\"word", "Files only"),
         ("d\"word", "Folders only"),
+        ("rc\"word", "Recent files/folders, newest first (optional filter)"),
         ("r\"pattern", "Regex search"),
         ("c\"word", "Clipboard history search (latest 10 text clips)"),
         ("t\"word", "Web translate (VI/EN/JA)"),

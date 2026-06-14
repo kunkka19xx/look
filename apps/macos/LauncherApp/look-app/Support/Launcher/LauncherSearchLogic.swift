@@ -14,7 +14,10 @@ enum LauncherSearchLogic {
 
         if normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.regex)
             || normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.clipboard)
+            || normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.recent)
         {
+            // Recent (rc") is engine-ranked by recency; suppress quick-folder and
+            // Finder pinned injection so they don't pollute the recent list.
             return .disabled
         }
         if normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.apps) {

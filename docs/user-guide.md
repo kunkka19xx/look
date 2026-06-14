@@ -74,6 +74,7 @@ When at least one item is picked, the right panel switches to the **Picked** lis
 - `a"term` -> apps only
 - `f"term` -> files only
 - `d"term` -> folders only
+- `rc"term` -> recent files/folders, newest activity first (optional filter; `rc"` alone lists all). Blends what you've opened through Look with what recently appeared/changed on disk (downloads, screenshots). macOS for now.
 - `r"pattern` -> regex search (case-insensitive)
 - `c"term` -> clipboard history search
 - `t"text` -> quick translation panel

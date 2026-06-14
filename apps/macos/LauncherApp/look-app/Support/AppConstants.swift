@@ -47,6 +47,10 @@ enum AppConstants {
             static let folders = "d\""
             static let regex = "r\""
             static let clipboard = "c\""
+            // Recent files/folders, newest-activity first. Handled engine-side
+            // (needs last_used/fs_modified timestamps); the app just sends it
+            // through search and suppresses pinned injection (see LauncherSearchLogic).
+            static let recent = "rc\""
         }
 
         enum Finder {

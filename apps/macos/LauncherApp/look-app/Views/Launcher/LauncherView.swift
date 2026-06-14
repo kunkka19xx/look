@@ -253,6 +253,12 @@ struct LauncherView: View {
         LauncherClipboardFeature.isClipboardQuery(query)
     }
 
+    var isRecentQuery: Bool {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .hasPrefix(AppConstants.Launcher.QueryPrefix.recent)
+    }
+
     var clipboardSearchTerm: String? {
         LauncherClipboardFeature.searchTerm(from: query)
     }
@@ -344,7 +350,7 @@ struct LauncherView: View {
             return ["Enter copy clip", "Delete remove clip", "Cmd+H help", "Cmd+/ command mode"]
         }
 
-        return ["Enter open", "Cmd+F reveal", "Cmd+D trash", "Cmd+H help", "Cmd+/ command mode"]
+        return ["Enter open", "Cmd+F reveal", "Cmd+H help", "Cmd+/ command mode"]
     }
 
     var commandNamePart: String {
@@ -652,6 +658,8 @@ struct LauncherView: View {
                 LauncherHelpScreenView(themeStore: themeStore)
             } else if isClipboardQuery && displayedResults.isEmpty {
                 ClipboardEmptyStateView(themeStore: themeStore)
+            } else if isRecentQuery && displayedResults.isEmpty {
+                RecentEmptyStateView(themeStore: themeStore)
             } else {
                 resultsRow
             }

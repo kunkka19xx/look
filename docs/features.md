@@ -15,7 +15,7 @@ This document tracks what `look` supports today and what is planned next.
 ### Core search and launch
 
 - app/file/folder search from one input
-- scoped query prefixes: `a"`, `f"`, `d"`, `r"`
+- scoped query prefixes: `a"`, `f"`, `d"`, `r"`, and `rc"` (recent files/folders, newest first — blends opened-through-Look with recently added/changed on disk; macOS for now)
 - path-fragment friendly matching (slash-biased queries)
 - open with `Enter`, reveal in Finder with `Cmd+F`
 - copy selected file/folder path/content handle with `Cmd+C`

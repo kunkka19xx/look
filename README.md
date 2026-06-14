@@ -22,6 +22,7 @@ https://github.com/user-attachments/assets/f8ee0f85-4c0d-4ea5-bb1d-8c8bf014d50d
 - **Search clipboard history** — `c"meeting` finds the snippet you copied an hour ago.
 - **Translate or look up a word** — `t"hello` for quick translation, `tw"word` for a definition panel.
 - **Regex, path, and kind-scoped search** — `r"^Visual.*`, `git/project/readme`, `a"safari`, `f"note`, `d"documents`.
+- **Browse recent files/folders** — `rc"` lists what you most recently opened *and* what recently landed on disk (downloads, screenshots), newest first; `rc"word` filters. macOS for now.
 - **Switch running apps from the launcher** — an icon strip on the right half of the search bar. `Cmd+1`..`Cmd+9` on macOS / `Alt+1`..`Alt+9` on Linux+Windows jumps to a running app. Toggle on/off in `Settings > Appearance > Running Apps`.
 
 All local. No account. No telemetry. No plugin marketplace to manage.
