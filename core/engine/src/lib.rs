@@ -170,13 +170,22 @@ impl QueryEngine {
         // uninstalled their last app in this root" outcome, and we must still
         // sweep the matching prefixes or the deleted row lingers forever
         // (only an `ALL` refresh would otherwise catch it).
+        // Prune by the `seen` set rather than the old "indexed_at < run_started"
+        // sweep: the change-detecting upsert (see specs/indexing-scale.md) no
+        // longer bumps indexed_at on unchanged rows, so only "not seen this scan"
+        // reliably means "gone". delete_unseen_candidates keeps the indexed_at<run
+        // guard to preserve i64::MAX pinned rows. `seen` is already collected above
+        // for dedup, so this reuses it.
+        // TODO(indexing-scale Direction A): this still required a full walk to
+        // build `seen`. Event-driven incremental indexing (watcher paths) would
+        // delete only the paths the watcher reported removed.
         let prefixes = scope.id_prefixes();
         if scope.is_all() {
             if discovered_count > 0 {
-                let _ = store.delete_stale_candidates(run_started_at)?;
+                let _ = store.delete_unseen_candidates(&seen, run_started_at, &[])?;
             }
         } else if !prefixes.is_empty() {
-            let _ = store.delete_stale_candidates_with_prefixes(run_started_at, &prefixes)?;
+            let _ = store.delete_unseen_candidates(&seen, run_started_at, &prefixes)?;
         }
 
         let usage_cutoff = run_started_at.saturating_sub(USAGE_RETENTION_DAYS * 24 * 3600);
