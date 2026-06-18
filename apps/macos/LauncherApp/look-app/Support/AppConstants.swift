@@ -26,9 +26,30 @@ struct AppCommand: Identifiable {
 }
 
 struct QuickFolderDefinition {
+    /// Where a quick folder lives. Most are under the user's home directory
+    /// (`.home("Desktop")`); a few are fixed system locations outside home
+    /// (`.absolute("/Applications")`).
+    enum Location {
+        case home(String)
+        case absolute(String)
+    }
+
     let title: String
-    let relativePath: String
+    let location: Location
     var subtitle: String? = nil
+
+    /// Resolves to a concrete filesystem path. Home-relative entries are joined
+    /// onto `homeDirectory`; absolute entries are used verbatim.
+    func resolvedPath(homeDirectory: String) -> String {
+        switch location {
+        case .home(let relativePath):
+            return URL(fileURLWithPath: homeDirectory)
+                .appendingPathComponent(relativePath)
+                .path
+        case .absolute(let path):
+            return path
+        }
+    }
 }
 
 enum AppConstants {
@@ -69,19 +90,29 @@ enum AppConstants {
             static let idPrefix = "quickfolder:"
             static let pinnedSubtitle = "Pinned home folder"
             static let minPrefixMatchLength = 2
+            static let absoluteFolderSubtitle = "Pinned folder"
             static let entries: [QuickFolderDefinition] = [
-                QuickFolderDefinition(title: "Desktop", relativePath: "Desktop"),
-                QuickFolderDefinition(title: "Documents", relativePath: "Documents"),
-                QuickFolderDefinition(title: "Downloads", relativePath: "Downloads"),
-                QuickFolderDefinition(title: "Pictures", relativePath: "Pictures"),
+                QuickFolderDefinition(title: "Desktop", location: .home("Desktop")),
+                QuickFolderDefinition(title: "Documents", location: .home("Documents")),
+                QuickFolderDefinition(title: "Downloads", location: .home("Downloads")),
+                QuickFolderDefinition(title: "Pictures", location: .home("Pictures")),
                 // macOS names this folder "Movies" (Windows calls the equivalent "Videos");
                 // each platform's QuickFolder uses the OS-native folder name so typing what
                 // the user sees in Finder/Explorer pins it.
-                QuickFolderDefinition(title: "Movies", relativePath: "Movies"),
-                QuickFolderDefinition(title: "Music", relativePath: "Music"),
+                QuickFolderDefinition(title: "Movies", location: .home("Movies")),
+                QuickFolderDefinition(title: "Music", location: .home("Music")),
+                // /Applications is a system folder outside home — the folder indexer
+                // only walks Desktop/Documents/Downloads, so pin it here to make it
+                // reachable. .app bundles inside it stay app candidates, not folders.
+                QuickFolderDefinition(
+                    title: "Applications",
+                    location: .absolute("/Applications"),
+                    subtitle: absoluteFolderSubtitle
+                ),
                 // ~/.Trash is a real directory, so it opens in Finder like any
                 // other quick folder. Typing "trash" pins it; ⌘D empties it.
-                QuickFolderDefinition(title: "Trash", relativePath: ".Trash", subtitle: "Pinned · ⌘D to empty"),
+                QuickFolderDefinition(
+                    title: "Trash", location: .home(".Trash"), subtitle: "Pinned · ⌘D to empty"),
             ]
         }
 

@@ -197,9 +197,7 @@ struct LauncherView: View {
                     && normalized.count >= AppConstants.Launcher.QuickFolder.minPrefixMatchLength)
             guard isMatch else { return nil }
 
-            let folderPath = URL(fileURLWithPath: NSHomeDirectory())
-                .appendingPathComponent(entry.relativePath)
-                .path
+            let folderPath = entry.resolvedPath(homeDirectory: NSHomeDirectory())
             guard FileManager.default.fileExists(atPath: folderPath) else { return nil }
 
             return LauncherResult(
