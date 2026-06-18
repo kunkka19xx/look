@@ -757,9 +757,7 @@ mod tests {
             title: title.into(),
             subtitle: Some("test subtitle".into()),
             path: path.into(),
-            use_count: 0,
-            last_used_at_unix_s: None,
-            fs_modified_at_unix_s: None,
+            ..Default::default()
         }
     }
 
@@ -849,9 +847,7 @@ mod tests {
             title: "Renamed App".into(),
             subtitle: Some("updated subtitle".into()),
             path: "/Applications/Renamed.app".into(),
-            use_count: 0,
-            last_used_at_unix_s: None,
-            fs_modified_at_unix_s: None,
+            ..Default::default()
         };
 
         store

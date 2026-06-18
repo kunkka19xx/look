@@ -283,9 +283,7 @@ mod tests {
             title: "Smoke Test App".into(),
             subtitle: Some("smoke app".into()),
             path: "/Applications/Smoke Test App.app".into(),
-            use_count: 0,
-            last_used_at_unix_s: None,
-            fs_modified_at_unix_s: None,
+            ..Default::default()
         }
     }
 

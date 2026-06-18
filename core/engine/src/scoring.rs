@@ -388,9 +388,7 @@ mod tests {
             title: "System Settings".into(),
             subtitle: Some("System Settings".into()),
             path: "/System/Applications/System Settings.app".into(),
-            use_count: 0,
-            last_used_at_unix_s: None,
-            fs_modified_at_unix_s: None,
+            ..Default::default()
         };
         let regular_app = app("Safari", "/Applications/Safari.app");
         let folder = folder("network", "/Users/test/network");
@@ -411,9 +409,7 @@ mod tests {
             title: "Network".into(),
             subtitle: Some("System Settings network".into()),
             path: "x-apple.systempreferences:com.apple.preference.network".into(),
-            use_count: 0,
-            last_used_at_unix_s: None,
-            fs_modified_at_unix_s: None,
+            ..Default::default()
         };
 
         assert!(query_kind_penalty_with_settings_flag(false, &settings_app) < 0);
@@ -427,9 +423,7 @@ mod tests {
             title: "Network".into(),
             subtitle: Some("System Settings network".into()),
             path: "x-apple.systempreferences:com.apple.preference.network".into(),
-            use_count: 0,
-            last_used_at_unix_s: None,
-            fs_modified_at_unix_s: None,
+            ..Default::default()
         };
         let regular_app = app("Safari", "/Applications/Safari.app");
         let regular_file = file("notes.txt", "/Users/test/notes.txt");

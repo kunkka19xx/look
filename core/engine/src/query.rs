@@ -1,15 +1,14 @@
 use crate::normalize::normalize_for_search;
 use look_indexing::CandidateKind;
 
-const PREFIX_APPS: u8 = b'a';
-const PREFIX_FILES: u8 = b'f';
-const PREFIX_FOLDERS: u8 = b'd';
-const PREFIX_REGEX: u8 = b'r';
-const PREFIX_MARKER: u8 = b'"';
-const PREFIX_LENGTH: usize = 2;
-// Two-char prefix `rc"` for the recent-files view. It's engine-side (unlike the
-// Swift-handled `t"`/`tw"`/`c"`) because recency ordering needs the per-candidate
-// `last_used_at` timestamps that only the engine has.
+// Query prefixes: leading letter(s) matched case-insensitively, trailing `"`
+// exactly (see `strip_query_prefix`). `rc"` must be checked before `r"` — see
+// `from_input`. `rc"` is engine-side (unlike the Swift-handled `t"`/`tw"`/`c"`)
+// because recency ordering needs the per-candidate timestamps only the engine has.
+const PREFIX_APPS: &[u8] = b"a\"";
+const PREFIX_FILES: &[u8] = b"f\"";
+const PREFIX_FOLDERS: &[u8] = b"d\"";
+const PREFIX_REGEX: &[u8] = b"r\"";
 const RECENT_PREFIX: &[u8] = b"rc\"";
 
 #[derive(Clone, Debug)]
@@ -27,7 +26,7 @@ impl ParsedQuery {
 
         // `rc"` is checked before `r"` (single-char) — they can't collide since
         // `r"` requires the 2nd byte to be `"`, which is `c` here.
-        if let Some(rest) = strip_recent_prefix(trimmed) {
+        if let Some(rest) = strip_query_prefix(trimmed, RECENT_PREFIX) {
             return Self {
                 normalized_query: normalize_for_search(rest),
                 raw_query: None,
@@ -37,7 +36,7 @@ impl ParsedQuery {
             };
         }
 
-        if let Some(rest) = strip_prefixed_query(trimmed, PREFIX_FOLDERS) {
+        if let Some(rest) = strip_query_prefix(trimmed, PREFIX_FOLDERS) {
             return Self {
                 normalized_query: normalize_for_search(rest),
                 raw_query: None,
@@ -47,7 +46,7 @@ impl ParsedQuery {
             };
         }
 
-        if let Some(rest) = strip_prefixed_query(trimmed, PREFIX_FILES) {
+        if let Some(rest) = strip_query_prefix(trimmed, PREFIX_FILES) {
             return Self {
                 normalized_query: normalize_for_search(rest),
                 raw_query: None,
@@ -57,7 +56,7 @@ impl ParsedQuery {
             };
         }
 
-        if let Some(rest) = strip_prefixed_query(trimmed, PREFIX_APPS) {
+        if let Some(rest) = strip_query_prefix(trimmed, PREFIX_APPS) {
             return Self {
                 normalized_query: normalize_for_search(rest),
                 raw_query: None,
@@ -67,7 +66,7 @@ impl ParsedQuery {
             };
         }
 
-        if let Some(rest) = strip_prefixed_query(trimmed, PREFIX_REGEX) {
+        if let Some(rest) = strip_query_prefix(trimmed, PREFIX_REGEX) {
             return Self {
                 normalized_query: String::new(),
                 raw_query: Some(rest.to_string()),
@@ -87,33 +86,17 @@ impl ParsedQuery {
     }
 }
 
-/// Strips the two-char `rc"` recent prefix (case-insensitive), returning the
-/// optional filter text after it. Returns None when the input isn't `rc"...`.
-fn strip_recent_prefix(input: &str) -> Option<&str> {
+/// Strips a `…"` query prefix, returning the trimmed text after it (or `None`
+/// when `input` doesn't start with `prefix`). The prefix is matched ASCII
+/// case-insensitively — the trailing `"` has no case, so it matches exactly.
+/// `prefix` is all-ASCII, so its length is always a UTF-8 char boundary in a
+/// matched input.
+fn strip_query_prefix<'a>(input: &'a str, prefix: &[u8]) -> Option<&'a str> {
     let bytes = input.as_bytes();
-    if bytes.len() < RECENT_PREFIX.len() {
+    if bytes.len() < prefix.len() || !bytes[..prefix.len()].eq_ignore_ascii_case(prefix) {
         return None;
     }
-    if !bytes[0].eq_ignore_ascii_case(&RECENT_PREFIX[0])
-        || !bytes[1].eq_ignore_ascii_case(&RECENT_PREFIX[1])
-        || bytes[2] != RECENT_PREFIX[2]
-    {
-        return None;
-    }
-    Some(input[RECENT_PREFIX.len()..].trim())
-}
-
-fn strip_prefixed_query(input: &str, prefix: u8) -> Option<&str> {
-    let bytes = input.as_bytes();
-    if bytes.len() < PREFIX_LENGTH {
-        return None;
-    }
-
-    if !bytes[0].eq_ignore_ascii_case(&prefix) || bytes[1] != PREFIX_MARKER {
-        return None;
-    }
-
-    Some(input[PREFIX_LENGTH..].trim())
+    Some(input[prefix.len()..].trim())
 }
 
 #[cfg(test)]

@@ -150,6 +150,24 @@ impl Candidate {
             title: title.into(),
             subtitle: Some(path.into()),
             path: path.into(),
+            ..Self::default()
+        }
+    }
+}
+
+impl Default for Candidate {
+    /// Empty candidate used as a base for struct-update construction
+    /// (`Candidate { id, kind, .., ..Default::default() }`). Keeps the
+    /// "all the always-default fields" (`use_count`, the timestamp options) in
+    /// one place so adding another such field doesn't touch every call site.
+    /// `CandidateKind` deliberately has no `Default`, so it's pinned here.
+    fn default() -> Self {
+        Self {
+            id: "".into(),
+            kind: CandidateKind::File,
+            title: "".into(),
+            subtitle: None,
+            path: "".into(),
             use_count: 0,
             last_used_at_unix_s: None,
             fs_modified_at_unix_s: None,

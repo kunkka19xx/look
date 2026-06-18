@@ -49,19 +49,17 @@ pub(crate) fn look_seed_uwp_apps_json_impl(json: *const c_char) -> bool {
         }
         let id = format!("{}{}", UWP_ID_PREFIX, aumid);
         kept_ids.push(id.clone());
+        // Defaults cover use_count/last_used_at_unix_s (preserved by the ON CONFLICT
+        // clause in upsert_candidates_indexed, so re-seeding on every app start
+        // doesn't reset launch history) and fs_modified_at_unix_s (an app candidate
+        // has no filesystem mtime and isn't part of the recent-files view).
         candidates.push(Candidate {
             id: id.into(),
             kind: CandidateKind::App,
             title: title.into(),
             subtitle: None,
             path: format!("shell:AppsFolder\\{}", aumid).into(),
-            // use_count and last_used_at_unix_s are preserved by the ON CONFLICT
-            // clause in upsert_candidates_indexed, so re-seeding on every app start
-            // doesn't reset the user's launch history.
-            use_count: 0,
-            last_used_at_unix_s: None,
-            // App candidate — no filesystem mtime; not part of the recent-files view.
-            fs_modified_at_unix_s: None,
+            ..Default::default()
         });
     }
 
