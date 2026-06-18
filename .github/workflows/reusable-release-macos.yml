@@ -164,9 +164,19 @@ jobs:
             exit 1
           fi
 
+          # Re-sign with --options runtime (Hardened Runtime, required for
+          # notarization). The Apple Events entitlement MUST be re-applied here:
+          # `codesign --force` drops the entitlements xcodebuild embedded, and
+          # without it the notarized build can't automate Finder to empty the
+          # Trash (macOS returns errAEEventNotPermitted, no consent prompt).
+          ENTITLEMENTS_PATH="apps/macos/LauncherApp/look-app/Look.entitlements"
           codesign --force --deep --options runtime --timestamp \
+            --entitlements "$ENTITLEMENTS_PATH" \
             --sign "$APPLE_DEVELOPER_ID_APPLICATION" "$APP_PATH"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          # Confirm the entitlement actually made it into the signature.
+          codesign -d --entitlements - --xml "$APP_PATH" | grep -q "com.apple.security.automation.apple-events" \
+            || { echo "apple-events entitlement missing after signing" >&2; exit 1; }
 
           rm -f "$ZIP_PATH"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
