@@ -56,13 +56,12 @@ enum ShortcutDocs {
         ),
         ShortcutSectionData(
             title: "Search prefixes",
-            items: [
-                ShortcutItem(keys: "a\"", action: "Apps-only query"),
-                ShortcutItem(keys: "f\"", action: "Files-only query"),
-                ShortcutItem(keys: "d\"", action: "Folders-only query"),
-                ShortcutItem(keys: "r\"", action: "Regex query"),
-                ShortcutItem(keys: "c\"", action: "Clipboard history query"),
-            ]
+            // Derived from the canonical prefix list (AppConstants) so this panel,
+            // the in-window help screen, and the `"` discovery menu can't drift.
+            // Type `"` alone to browse these prefixes interactively.
+            items: AppConstants.Launcher.PrefixSuggestion.all.map {
+                ShortcutItem(keys: $0.prefix, action: $0.description)
+            }
         ),
         ShortcutSectionData(
             title: "Clipboard history",

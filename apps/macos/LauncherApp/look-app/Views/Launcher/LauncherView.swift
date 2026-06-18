@@ -257,6 +257,31 @@ struct LauncherView: View {
             .hasPrefix(AppConstants.Launcher.QueryPrefix.recent)
     }
 
+    /// A lone `"` opens the prefix-discovery menu: a list of every query prefix
+    /// with a short description. Picking one fills the prefix into the field.
+    var isPrefixSuggestionQuery: Bool {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+            == AppConstants.Launcher.QueryPrefix.discovery
+    }
+
+    /// Synthetic results backing the discovery menu. Rendered through the normal
+    /// results list so selection/keyboard nav work as usual; `openSelectedApp`
+    /// recognises the id prefix and inserts the prefix instead of opening.
+    var prefixSuggestionResults: [LauncherResult] {
+        let suggestions = AppConstants.Launcher.PrefixSuggestion.menuEntries
+        return suggestions.enumerated().map { index, entry in
+            LauncherResult(
+                id: "\(AppConstants.Launcher.PrefixSuggestion.resultIDPrefix)\(entry.prefix)",
+                kind: .app,
+                title: entry.displayWithArg,
+                subtitle: entry.description,
+                path: "",
+                // Preserve list order: higher score sorts first, top entry highest.
+                score: suggestions.count - index
+            )
+        }
+    }
+
     var clipboardSearchTerm: String? {
         LauncherClipboardFeature.searchTerm(from: query)
     }
@@ -270,7 +295,8 @@ struct LauncherView: View {
     }
 
     var displayedResults: [LauncherResult] {
-        isClipboardQuery ? clipboardResults : backendFilteredResults
+        if isPrefixSuggestionQuery { return prefixSuggestionResults }
+        return isClipboardQuery ? clipboardResults : backendFilteredResults
     }
 
     var isTranslationQuery: Bool {
@@ -342,6 +368,10 @@ struct LauncherView: View {
 
         if showsHelpScreen {
             return ["Cmd+H close help", "Esc hide launcher", "Cmd+/ command mode", "Enter open"]
+        }
+
+        if isPrefixSuggestionQuery {
+            return ["Enter pick prefix", "Up/Down move", "Esc clear", "Cmd+H help"]
         }
 
         if isClipboardQuery {
@@ -472,7 +502,9 @@ struct LauncherView: View {
                 if showsHelpScreen {
                     showsHelpScreen = false
                 }
-                if isClipboardQuery {
+                if isClipboardQuery || isPrefixSuggestionQuery {
+                    // Both render synthetic results (clip history / prefix menu);
+                    // no backend search, just re-seed the selection.
                     setInitialSelection()
                 } else {
                     refreshSearchResults()
@@ -718,7 +750,8 @@ struct LauncherView: View {
                     onRemove: { removePicked(key: $0) },
                     onClearAll: { clearAllPicked() }
                 )
-            } else if let selectedID = selectedResultID,
+            } else if !isPrefixSuggestionQuery,
+                      let selectedID = selectedResultID,
                       let selectedResult = displayedResults.first(where: { $0.id == selectedID }) {
                 resultsDivider
                 ResultPreviewView(

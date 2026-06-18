@@ -71,6 +71,8 @@ When at least one item is picked, the right panel switches to the **Picked** lis
 
 ## Query prefixes
 
+Don't remember the prefixes? Type a single `"` to open a menu listing every prefix with a short description — pick one (click or `↑`/`↓` then `Enter`) to drop it into the search field, ready for your term.
+
 - `a"term` -> apps only
 - `f"term` -> files only
 - `d"term` -> folders only

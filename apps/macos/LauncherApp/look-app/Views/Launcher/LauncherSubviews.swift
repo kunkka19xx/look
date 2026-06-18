@@ -408,16 +408,10 @@ private enum LauncherHelpContent {
         ("Esc", "Close help / back / hide launcher"),
     ]
 
-    static let queryModes: [(String, String)] = [
-        ("a\"word", "Apps only"),
-        ("f\"word", "Files only"),
-        ("d\"word", "Folders only"),
-        ("rc\"word", "Recent files/folders, newest first (optional filter)"),
-        ("r\"pattern", "Regex search"),
-        ("c\"word", "Clipboard history search (latest 10 text clips)"),
-        ("t\"word", "Web translate (VI/EN/JA)"),
-        ("tw\"word", "Lookup panel with definitions"),
-    ]
+    // Derived from the canonical prefix list so the help screen and the `"`
+    // discovery menu stay in sync.
+    static let queryModes: [(String, String)] =
+        AppConstants.Launcher.PrefixSuggestion.all.map { ($0.displayWithArg, $0.description) }
 
     static let commandMode: [(String, String)] = [
         ("Tab / Shift+Tab", "Switch command"),

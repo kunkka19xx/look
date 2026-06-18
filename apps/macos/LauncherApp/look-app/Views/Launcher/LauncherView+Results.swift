@@ -10,6 +10,14 @@ extension LauncherView {
             let selected = displayedResults.first(where: { $0.id == selectedResultID })
         else { return }
 
+        // Prefix-discovery menu: choosing an entry fills its prefix into the
+        // field (cursor ready for the term) rather than opening anything.
+        if let prefix = AppConstants.Launcher.PrefixSuggestion.prefix(fromResultID: selected.id) {
+            query = prefix
+            isQueryFocused = true
+            return
+        }
+
         switch selected.kind {
         case .app:
             guard ensureTargetExists(selected) else { return }
@@ -144,7 +152,7 @@ extension LauncherView {
     }
 
     func revealSelectedInFinder() {
-        guard !isCommandMode,
+        guard !isCommandMode, !isPrefixSuggestionQuery,
               let selectedID = selectedResultID,
               let selected = displayedResults.first(where: { $0.id == selectedID })
         else { return }
@@ -174,7 +182,7 @@ extension LauncherView {
     }
 
     func togglePickForSelectedResult() {
-        guard !isCommandMode,
+        guard !isCommandMode, !isPrefixSuggestionQuery,
               let selectedID = selectedResultID,
               let selected = displayedResults.first(where: { $0.id == selectedID })
         else { return }

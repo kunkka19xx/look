@@ -72,6 +72,66 @@ enum AppConstants {
             // (needs last_used/fs_modified timestamps); the app just sends it
             // through search and suppresses pinned injection (see LauncherSearchLogic).
             static let recent = "rc\""
+            // Translation prefixes (handled in LauncherView+Translation).
+            static let translate = "t\""
+            static let translateWord = "tw\""
+
+            // Typing a lone `"` opens the prefix-discovery menu (see
+            // PrefixSuggestion.all / LauncherView.isPrefixSuggestionQuery).
+            static let discovery = "\""
+        }
+
+        // Canonical list of query prefixes, with a usage hint and a description.
+        // Single source of truth for the prefix-discovery menu (type `"`), the help
+        // screen's "Query modes" section, and the Settings → Shortcuts panel, so
+        // the three can't drift apart.
+        enum PrefixSuggestion {
+            // Synthetic result id prefix; lets the row view and open handler tell a
+            // discovery suggestion apart from a real candidate.
+            static let resultIDPrefix = "prefixhint:"
+
+            struct Entry: Identifiable {
+                let prefix: String
+                let argHint: String
+                let description: String
+                /// Whether this entry appears in the live `"` discovery menu.
+                /// The `"` entry itself is documented in the static lists but
+                /// hidden from the menu it opens (see `menuEntries`).
+                var listedInMenu: Bool = true
+                var id: String { prefix }
+                /// What the help/shortcuts lists show, e.g. `a"word` (or just `"`).
+                var displayWithArg: String { prefix + argHint }
+            }
+
+            /// Entries shown in the live discovery menu (excludes `"` itself).
+            static var menuEntries: [Entry] { all.filter(\.listedInMenu) }
+
+            static let all: [Entry] = [
+                Entry(
+                    prefix: QueryPrefix.discovery, argHint: "",
+                    description: "Browse all prefixes", listedInMenu: false),
+                Entry(prefix: QueryPrefix.apps, argHint: "word", description: "Apps only"),
+                Entry(prefix: QueryPrefix.files, argHint: "word", description: "Files only"),
+                Entry(prefix: QueryPrefix.folders, argHint: "word", description: "Folders only"),
+                Entry(
+                    prefix: QueryPrefix.recent, argHint: "word",
+                    description: "Recent files/folders, newest first (optional filter)"),
+                Entry(prefix: QueryPrefix.regex, argHint: "pattern", description: "Regex search"),
+                Entry(
+                    prefix: QueryPrefix.clipboard, argHint: "word",
+                    description: "Clipboard history search (latest 10 text clips)"),
+                Entry(prefix: QueryPrefix.translate, argHint: "word", description: "Web translate (VI/EN/JA)"),
+                Entry(
+                    prefix: QueryPrefix.translateWord, argHint: "word",
+                    description: "Lookup panel with definitions"),
+            ]
+
+            /// Recovers the query prefix encoded in a discovery-suggestion result
+            /// id, or nil when `resultID` isn't a discovery suggestion.
+            static func prefix(fromResultID resultID: String) -> String? {
+                guard resultID.hasPrefix(resultIDPrefix) else { return nil }
+                return String(resultID.dropFirst(resultIDPrefix.count))
+            }
         }
 
         enum Finder {

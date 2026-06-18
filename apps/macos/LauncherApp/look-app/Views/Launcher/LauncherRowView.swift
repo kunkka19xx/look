@@ -10,7 +10,16 @@ struct LauncherRowView: View {
     let isPicked: Bool
     let onOpen: () -> Void
 
+    private var isPrefixSuggestion: Bool {
+        result.id.hasPrefix(AppConstants.Launcher.PrefixSuggestion.resultIDPrefix)
+    }
+
     private var rowIcon: NSImage {
+        if isPrefixSuggestion {
+            return NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
+                ?? NSWorkspace.shared.icon(for: .plainText)
+        }
+
         if result.kind == .clipboard {
             return NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
                 ?? NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)
@@ -58,6 +67,9 @@ struct LauncherRowView: View {
     }
 
     private var metaLabel: String {
+        if isPrefixSuggestion {
+            return result.subtitle ?? ""
+        }
         if result.kind == .clipboard {
             return result.subtitle ?? kindLabel
         }
