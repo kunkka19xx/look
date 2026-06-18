@@ -19,10 +19,21 @@ enum DeleteTargetLogic {
     ) -> [LauncherResult] {
         results.filter { result in
             guard result.kind == .file || result.kind == .folder else { return false }
+            if isQuickFolderPin(result.id) { return false }
             if isURLScheme(result.path) { return false }
             if isProtected(result.path, homeDirectory: homeDirectory) { return false }
             return fileExists(result.path)
         }
+    }
+
+    /// Quick-folder results (Desktop, Documents, …, Applications, Trash) are
+    /// navigation pins, not delete targets - Cmd+D must never trash the real
+    /// folder behind one. They aren't covered by `isProtected` (most are ordinary
+    /// home subfolders / `/Applications`), so they're excluded by id here. Cmd+D
+    /// on the Trash pin is routed to Empty Trash before eligibility is checked
+    /// (see `requestDeleteSelection`).
+    static func isQuickFolderPin(_ id: String) -> Bool {
+        id.hasPrefix(AppConstants.Launcher.QuickFolder.idPrefix)
     }
 
     /// URL-scheme targets contain a ":" and don't start at the filesystem root.
@@ -59,7 +70,9 @@ enum DeleteTargetLogic {
     }
 
     /// Banner text + error flag summarizing a trash outcome.
-    static func resultMessage(trashedCount: Int, failureCount: Int, firstFailure: (name: String, reason: String)?) -> (text: String, isError: Bool) {
+    static func resultMessage(
+        trashedCount: Int, failureCount: Int, firstFailure: (name: String, reason: String)?
+    ) -> (text: String, isError: Bool) {
         if failureCount == 0 {
             return ("Moved \(trashedCount) to Trash", false)
         }

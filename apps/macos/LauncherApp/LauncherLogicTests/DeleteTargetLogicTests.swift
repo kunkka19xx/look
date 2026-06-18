@@ -62,6 +62,23 @@ final class DeleteTargetLogicTests: XCTestCase {
         XCTAssertEqual(eligible.map(\.id), ["ok"])
     }
 
+    func testDropsQuickFolderPins() {
+        // Quick-folder pins are navigation shortcuts, not delete targets, even
+        // though they're real, existing folders outside the protected set.
+        let prefix = AppConstants.Launcher.QuickFolder.idPrefix
+        let input = [
+            result("\(prefix)applications", .folder, path: "/Applications"),
+            result("\(prefix)documents", .folder, path: "/Users/me/Documents"),
+            result("real", .folder, path: "/Users/me/Projects"),
+        ]
+        let eligible = DeleteTargetLogic.eligible(
+            from: input,
+            fileExists: { _ in true },
+            homeDirectory: "/Users/me"
+        )
+        XCTAssertEqual(eligible.map(\.id), ["real"])
+    }
+
     // MARK: - isTrashPath
 
     func testIsTrashPath() {
