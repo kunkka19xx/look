@@ -3,11 +3,67 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension ThemeSettingsView {
+    var aiAvailability: AIProviderAvailability {
+        AIQueryRouter.shared.availability(of: settings.aiProvider)
+    }
+
+    @ViewBuilder
+    var aiInfoIndicator: some View {
+        Image(systemName: aiAvailability.isAvailable ? "checkmark.circle.fill" : "info.circle")
+            .font(.system(size: CGFloat(settings.fontSize)))
+            .foregroundStyle(
+                aiAvailability.isAvailable
+                    ? Color.green.opacity(0.85)
+                    : themeStore.secondaryTextColor()
+            )
+            .contentShape(Rectangle())
+            .accessibilityLabel(Text("AI availability"))
+            .hoverTooltip(aiAvailabilityTooltip)
+    }
+
+    var aiAvailabilityTooltip: String {
+        let base = "\(settings.aiProvider.title) powers AI query understanding and runs "
+            + "fully on-device. Requires macOS 26 or later on Apple Silicon, with "
+            + "Apple Intelligence turned on in System Settings."
+        switch aiAvailability {
+        case .available:
+            return base + "\n\nStatus: Ready on this Mac."
+        case .unavailable(let reason):
+            return base + "\n\nStatus: Unavailable — \(reason.userFacingMessage)"
+        }
+    }
+
     var backgroundTab: some View {
         VStack(alignment: .leading, spacing: 10) {
             ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 10) {
+                    Text("AI")
+                        .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
+                        .foregroundStyle(themeStore.secondaryTextColor())
+
+                    HStack(spacing: 10) {
+                        Text("Apple Intelligence")
+                            .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
+                            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+                            .foregroundStyle(themeStore.secondaryTextColor())
+
+                        Toggle("Enable AI features", isOn: $settings.aiEnabled)
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                            .disabled(!aiAvailability.isAvailable)
+                            .opacity(aiAvailability.isAvailable ? 1 : 0.5)
+                            .help("Enable Apple Intelligence / AI-assisted features (on-device, opt-out anytime)")
+
+                        aiInfoIndicator
+
+                        Spacer(minLength: 0)
+                    }
+
+                    Divider()
+                        .overlay(.white.opacity(0.1))
+                        .padding(.vertical, 4)
+
                     Text("Background")
                         .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
                         .foregroundStyle(themeStore.secondaryTextColor())

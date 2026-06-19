@@ -241,6 +241,10 @@ final class ThemeStore: ObservableObject {
         // Running apps switcher
         upsertConfigLine(&lines, key: "running_apps_placement", value: settings.runningAppsPlacement.rawValue)
 
+        // Apple Intelligence / AI features
+        upsertConfigLine(&lines, key: "ai_enabled", value: settings.aiEnabled ? "true" : "false")
+        upsertConfigLine(&lines, key: "ai_provider", value: settings.aiProvider.rawValue)
+
         let payload = lines.joined(separator: "\n") + "\n"
         do {
             try payload.write(to: path, atomically: true, encoding: .utf8)
@@ -511,6 +515,14 @@ final class ThemeStore: ObservableObject {
             case "launch_at_login":
                 if let parsed = parseBool(value) {
                     settings.launchAtLogin = parsed
+                }
+            case "ai_enabled":
+                if let parsed = parseBool(value) {
+                    settings.aiEnabled = parsed
+                }
+            case "ai_provider":
+                if let parsed = AIProviderKind(rawValue: value) {
+                    settings.aiProvider = parsed
                 }
             case "ui_background_image":
                 if !value.isEmpty {
@@ -841,6 +853,10 @@ ui_border_opacity=0.12
 # Running apps switcher: none, top, right, bottom
 running_apps_placement=right
 
+# Apple Intelligence / AI features. ai_provider: appleIntelligence
+ai_enabled=true
+ai_provider=appleIntelligence
+
 # Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3
 alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq
 alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed
@@ -874,6 +890,12 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
         }
         if object["runningAppsPlacement"] == nil {
             object["runningAppsPlacement"] = ThemeSettings.default.runningAppsPlacement.rawValue
+        }
+        if object["aiEnabled"] == nil {
+            object["aiEnabled"] = ThemeSettings.default.aiEnabled
+        }
+        if object["aiProvider"] == nil {
+            object["aiProvider"] = ThemeSettings.default.aiProvider.rawValue
         }
 
         guard

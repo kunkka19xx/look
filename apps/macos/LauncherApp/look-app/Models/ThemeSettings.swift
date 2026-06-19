@@ -96,6 +96,21 @@ enum RunningAppsPlacement: String, CaseIterable, Codable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Which AI backend powers query understanding. On-device Apple Intelligence is
+/// the only option today; cloud providers can be added as new cases without
+/// touching the rest of the app. Persisted in `~/.look.config` as `ai_provider`.
+enum AIProviderKind: String, CaseIterable, Codable, Identifiable {
+    case appleIntelligence
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .appleIntelligence: return "Apple Intelligence (on-device)"
+        }
+    }
+}
+
 enum BackendLogLevel: String, CaseIterable, Codable, Identifiable {
     case error
     case info
@@ -151,6 +166,14 @@ struct ThemeSettings: Codable, Equatable {
     var launchAtLogin: Bool = true
 
     var runningAppsPlacement: RunningAppsPlacement = .right
+
+    /// Whether Apple Intelligence / AI-assisted features are enabled. Defaults to
+    /// on; users can opt out via Settings → Appearance. Persisted in
+    /// `~/.look.config` under `ai_enabled`.
+    var aiEnabled: Bool = true
+
+    /// Which AI backend powers query understanding when `aiEnabled` is on.
+    var aiProvider: AIProviderKind = .appleIntelligence
 
     static let `default` = ThemeSettings()
 }

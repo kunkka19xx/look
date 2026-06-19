@@ -29,6 +29,8 @@ final class LauncherSearchCoordinator: ObservableObject {
         query: String,
         isCommandMode: Bool,
         isClipboardQuery: Bool,
+        aiEnabled: Bool = false,
+        aiProvider: AIProviderKind = .appleIntelligence,
         onComplete: @escaping ([LauncherResult]) -> Void
     ) {
         guard !isCommandMode else { return }
@@ -47,8 +49,19 @@ final class LauncherSearchCoordinator: ObservableObject {
             try? await Task.sleep(nanoseconds: AppConstants.Launcher.searchDebounceNanoseconds)
             guard !Task.isCancelled else { return }
 
+            var engineQuery = currentQuery
+            if aiEnabled {
+                if let rewritten = await AIQueryRouter.shared.rewrite(
+                    query: currentQuery,
+                    using: aiProvider
+                ) {
+                    engineQuery = rewritten
+                }
+                guard !Task.isCancelled else { return }
+            }
+
             let results = await Task.detached(priority: .userInitiated) {
-                bridge.search(query: currentQuery, limit: searchLimit)
+                bridge.search(query: engineQuery, limit: searchLimit)
             }.value
 
             await MainActor.run {

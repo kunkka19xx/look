@@ -23,14 +23,30 @@ extension LauncherView {
 
         let currentQuery = query
         let searchLimit = AppConstants.Launcher.defaultSearchLimit
+        let aiEnabled = themeStore.settings.aiEnabled
+        let aiProvider = themeStore.settings.aiProvider
         let searchID = beginSearchRequest()
         searchTask?.cancel()
         searchTask = Task {
             try? await Task.sleep(nanoseconds: AppConstants.Launcher.searchDebounceNanoseconds)
             guard !Task.isCancelled else { return }
 
+            // When AI is enabled, let the provider rewrite the natural-language
+            // query into the engine's prefix grammar. Falls back to the raw query
+            // on any miss so search never depends on the model.
+            var engineQuery = currentQuery
+            if aiEnabled {
+                if let rewritten = await AIQueryRouter.shared.rewrite(
+                    query: currentQuery,
+                    using: aiProvider
+                ) {
+                    engineQuery = rewritten
+                }
+                guard !Task.isCancelled else { return }
+            }
+
             let results = await Task.detached(priority: .userInitiated) {
-                bridge.search(query: currentQuery, limit: searchLimit)
+                bridge.search(query: engineQuery, limit: searchLimit)
             }.value
 
             await MainActor.run {
