@@ -60,6 +60,55 @@ struct AppleIntelligenceProvider: AIQueryProvider {
         #endif
     }
 
+    /// Warms up the on-device model so the first real answer doesn't pay the
+    /// cold-load cost. Cheap and idempotent — safe to call repeatedly while the
+    /// user types.
+    func prewarm() {
+        #if canImport(FoundationModels)
+        guard #available(macOS 26, *), availability.isAvailable else { return }
+        Task { @MainActor in AppleIntelligenceWarmer.shared.prewarm() }
+        #endif
+    }
+
+    func answer(query: String) -> AsyncThrowingStream<String, Error>? {
+        #if canImport(FoundationModels)
+        guard #available(macOS 26, *), availability.isAvailable else { return nil }
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let session = LanguageModelSession(instructions: Self.answerInstructions)
+                    // Cap the length so answers stay launcher-sized and fast.
+                    let options = GenerationOptions(maximumResponseTokens: 220)
+                    // Each snapshot carries the cumulative answer so far.
+                    for try await snapshot in session.streamResponse(to: trimmed, options: options) {
+                        if Task.isCancelled { break }
+                        continuation.yield(snapshot.content)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+        #else
+        return nil
+        #endif
+    }
+
+    private static let answerInstructions = """
+        You are a concise assistant embedded in a macOS launcher (a small \
+        Spotlight-style search box). Answer the user's question directly in at \
+        most 2–4 short sentences of plain text. No markdown, no headings, no \
+        bullet lists, no code fences unless the answer is literally a short \
+        command. If you are unsure or the question needs the web, say so in one \
+        sentence rather than guessing.
+        """
+
     private static let instructions = """
         You translate a macOS launcher search into a structured plan. The user types \
         natural language; map it to what they want to find.
@@ -78,6 +127,22 @@ struct AppleIntelligenceProvider: AIQueryProvider {
 }
 
 #if canImport(FoundationModels)
+/// Holds one resident session so the model stays loaded between answers. Keeping
+/// a live session is what actually keeps the weights warm; answers still use a
+/// fresh session each time for a clean (history-free) context.
+@available(macOS 26, *)
+@MainActor
+private final class AppleIntelligenceWarmer {
+    static let shared = AppleIntelligenceWarmer()
+    private var session: LanguageModelSession?
+
+    func prewarm() {
+        let warm = session ?? LanguageModelSession()
+        session = warm
+        warm.prewarm()
+    }
+}
+
 @available(macOS 26, *)
 @Generable
 private struct EngineQueryPlan {

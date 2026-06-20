@@ -31,31 +31,55 @@ extension LauncherView {
             try? await Task.sleep(nanoseconds: AppConstants.Launcher.searchDebounceNanoseconds)
             guard !Task.isCancelled else { return }
 
-            // When AI is enabled, let the provider rewrite the natural-language
-            // query into the engine's prefix grammar. Falls back to the raw query
-            // on any miss so search never depends on the model.
-            var engineQuery = currentQuery
-            if aiEnabled {
-                if let rewritten = await AIQueryRouter.shared.rewrite(
-                    query: currentQuery,
-                    using: aiProvider
-                ) {
-                    engineQuery = rewritten
-                }
-                guard !Task.isCancelled else { return }
-            }
-
-            let results = await Task.detached(priority: .userInitiated) {
-                bridge.search(query: engineQuery, limit: searchLimit)
+            // Fast path: search the raw query first and paint immediately. The
+            // on-device model is never in front of results — it only refines.
+            let rawResults = await Task.detached(priority: .userInitiated) {
+                bridge.search(query: currentQuery, limit: searchLimit)
             }.value
+            guard !Task.isCancelled else { return }
+            await publishSearchResults(rawResults, searchID: searchID, for: currentQuery)
 
-            await MainActor.run {
-                guard searchID == latestSearchID else { return }
-                guard !isCommandMode, query == currentQuery else { return }
-                backendResults = results
-                setInitialSelection()
-            }
+            // Refine pass: when AI is on, let it rewrite the natural-language
+            // query into the engine's prefix grammar and re-search in the
+            // background. A miss, an identical rewrite, or an empty result set
+            // leaves the raw results untouched, so search never depends on AI.
+            guard aiEnabled else { return }
+            guard let rewritten = await AIQueryRouter.shared.rewrite(
+                query: currentQuery,
+                using: aiProvider
+            ), rewritten != currentQuery else { return }
+            guard !Task.isCancelled else { return }
+
+            let refined = await Task.detached(priority: .userInitiated) {
+                bridge.search(query: rewritten, limit: searchLimit)
+            }.value
+            guard !Task.isCancelled, !refined.isEmpty else { return }
+            await publishSearchResults(refined, searchID: searchID, for: currentQuery)
         }
+    }
+
+    /// Publishes results on the main actor only if this request is still the
+    /// latest and the query hasn't changed out from under it.
+    @MainActor
+    private func publishSearchResults(
+        _ results: [LauncherResult],
+        searchID: UInt64,
+        for requestedQuery: String
+    ) {
+        guard searchID == latestSearchID else { return }
+        guard !isCommandMode, query == requestedQuery else { return }
+        backendResults = results
+        setInitialSelection()
+
+        // Additive AI answer card. Driven from here so it knows the local result
+        // count — a multi-word query with no local match is treated as a
+        // knowledge lookup. Self-gates; never blocks search.
+        aiAnswer.update(
+            query: requestedQuery,
+            resultCount: results.count,
+            aiEnabled: themeStore.settings.aiEnabled,
+            provider: themeStore.settings.aiProvider
+        )
     }
 
     func performWebSearchFromQuery() {

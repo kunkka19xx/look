@@ -47,6 +47,22 @@ final class AIQueryRouter: @unchecked Sendable {
         return rewritten
     }
 
+    /// Streams a short free-form answer for `query` using `kind`, or returns
+    /// `nil` when the provider is unavailable or can't answer. Never throws at
+    /// the call site — failures surface as the stream finishing with an error.
+    func answer(query: String, using kind: AIProviderKind) -> AsyncThrowingStream<String, Error>? {
+        let provider = provider(for: kind)
+        guard provider.availability.isAvailable else { return nil }
+        return provider.answer(query: query)
+    }
+
+    /// Warm up the provider so the next answer is faster. Safe to call often.
+    func prewarm(_ kind: AIProviderKind) {
+        let provider = provider(for: kind)
+        guard provider.availability.isAvailable else { return }
+        provider.prewarm()
+    }
+
     /// Current availability of `kind`, for surfacing status in Settings.
     func availability(of kind: AIProviderKind) -> AIProviderAvailability {
         provider(for: kind).availability

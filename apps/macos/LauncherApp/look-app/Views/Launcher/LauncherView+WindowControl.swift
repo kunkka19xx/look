@@ -129,6 +129,11 @@ extension LauncherView {
         hotkeyLog.notice("toggle: -> SHOW branch")
         captureFrontmostAppForRestoreIfNeeded()
         _ = bridge.requestIndexRefresh()
+        // Warm the on-device model the instant the launcher opens so the first
+        // AI answer doesn't pay the cold-load cost while the user types.
+        if themeStore.settings.aiEnabled {
+            AIQueryRouter.shared.prewarm(themeStore.settings.aiProvider)
+        }
         NSApplication.shared.unhide(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
 

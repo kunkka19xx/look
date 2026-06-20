@@ -85,4 +85,23 @@ protocol AIQueryProvider: Sendable {
     /// `nil` when the provider declines or fails, so the caller can fall back to
     /// the raw query — AI must never block a search.
     func understand(query: String) async -> AISearchIntent?
+
+    /// Stream a short, free-form answer to a natural-language question. Each
+    /// yielded value is the *cumulative* answer text so far (so the UI can show
+    /// it typing itself out). Returns `nil` when the provider can't answer at
+    /// all; the stream may otherwise finish with an error, which the caller
+    /// treats as "no answer". Purely additive — never blocks search.
+    func answer(query: String) -> AsyncThrowingStream<String, Error>?
+
+    /// Optional hint that an answer may be coming soon, so the provider can warm
+    /// up resources. Default is a no-op.
+    func prewarm()
+}
+
+extension AIQueryProvider {
+    /// Providers that only do query understanding don't have to implement
+    /// free-form answering.
+    func answer(query: String) -> AsyncThrowingStream<String, Error>? { nil }
+
+    func prewarm() {}
 }

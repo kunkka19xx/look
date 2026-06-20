@@ -34,6 +34,7 @@ struct LauncherView: View {
     @EnvironmentObject var themeStore: ThemeStore
     @Environment(\.openWindow) var openWindow
     @StateObject var clipboardStore = ClipboardHistoryStore()
+    @StateObject var aiAnswer = AIAnswerController()
 
     @State var query = ""
     @State var commandInput = ""
@@ -494,6 +495,7 @@ struct LauncherView: View {
                 pendingEmptyTrashCount = nil
             }
             if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
+                aiAnswer.cancel()
                 enterCommandMode(commandID: cmd.id, prefilledInput: cmd.args)
                 return
             }
@@ -505,10 +507,15 @@ struct LauncherView: View {
                 if isClipboardQuery || isPrefixSuggestionQuery {
                     // Both render synthetic results (clip history / prefix menu);
                     // no backend search, just re-seed the selection.
+                    aiAnswer.cancel()
                     setInitialSelection()
                 } else {
+                    // Search drives the AI answer card from its completion handler
+                    // (it needs the local result count to decide whether to fire).
                     refreshSearchResults()
                 }
+            } else {
+                aiAnswer.cancel()
             }
         }
         .onReceive(clipboardStore.$entries) { _ in
@@ -731,6 +738,23 @@ struct LauncherView: View {
 
     @ViewBuilder
     private var resultsRow: some View {
+        if aiAnswer.isActive {
+            VStack(spacing: 8) {
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                    // Fill the panel when there's nothing else to show; otherwise
+                    // cap it so results stay visible underneath.
+                    .frame(maxHeight: displayedResults.isEmpty ? .infinity : 240)
+                if !displayedResults.isEmpty {
+                    resultsListAndPreview
+                }
+            }
+        } else {
+            resultsListAndPreview
+        }
+    }
+
+    @ViewBuilder
+    private var resultsListAndPreview: some View {
         HStack(spacing: 0) {
             ResultsListView(
                 results: displayedResults,
