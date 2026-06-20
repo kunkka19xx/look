@@ -18,6 +18,13 @@ extension LauncherView {
             return
         }
 
+        // Google autocomplete row: run the web search for that suggestion.
+        if let suggestion = AppConstants.Launcher.WebSuggestion.text(fromResultID: selected.id) {
+            performWebSearch(for: suggestion)
+            hideLauncherWindow(restorePreviousApp: false)
+            return
+        }
+
         switch selected.kind {
         case .app:
             guard ensureTargetExists(selected) else { return }

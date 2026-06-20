@@ -134,6 +134,19 @@ enum AppConstants {
             }
         }
 
+        // Google autocomplete rows appended after the engine results. Like
+        // PrefixSuggestion, these are Swift-synthesized rows told apart by id.
+        enum WebSuggestion {
+            static let resultIDPrefix = "websuggest:"
+            static let limit = 6
+
+            /// Recovers the suggestion text encoded in a result id, or nil.
+            static func text(fromResultID resultID: String) -> String? {
+                guard resultID.hasPrefix(resultIDPrefix) else { return nil }
+                return String(resultID.dropFirst(resultIDPrefix.count))
+            }
+        }
+
         enum Finder {
             static let appName = "finder"
             static let appPath = "/System/Library/CoreServices/Finder.app"

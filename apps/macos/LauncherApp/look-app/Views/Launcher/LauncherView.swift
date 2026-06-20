@@ -40,6 +40,8 @@ struct LauncherView: View {
     @State var commandInput = ""
     @State var isCommandMode = false
     @State var backendResults: [LauncherResult] = []
+    @State var webSuggestions: [String] = []
+    @State var webSuggestionTask: Task<Void, Never>?
     @State var selectedResultID: String?
     @State var pickedKeys: [String] = []
     @State var pickedResultsByKey: [String: LauncherResult] = [:]
@@ -295,9 +297,27 @@ struct LauncherView: View {
         }
     }
 
+    /// Google autocomplete rows, appended after the engine results. Built by
+    /// hand like `prefixSuggestionResults`; `openSelectedApp` recognises the id
+    /// prefix and runs a web search instead of opening a file.
+    var webSuggestionResults: [LauncherResult] {
+        guard !isCommandMode, !isClipboardQuery, !isPrefixSuggestionQuery else { return [] }
+        return webSuggestions.enumerated().map { index, text in
+            LauncherResult(
+                id: "\(AppConstants.Launcher.WebSuggestion.resultIDPrefix)\(text)",
+                kind: .app,
+                title: text,
+                subtitle: "Search Google",
+                path: "",
+                score: -1 - index
+            )
+        }
+    }
+
     var displayedResults: [LauncherResult] {
         if isPrefixSuggestionQuery { return prefixSuggestionResults }
-        return isClipboardQuery ? clipboardResults : backendFilteredResults
+        if isClipboardQuery { return clipboardResults }
+        return backendFilteredResults + webSuggestionResults
     }
 
     var isTranslationQuery: Bool {
@@ -485,6 +505,7 @@ struct LauncherView: View {
             invalidateSearchRequests()
             bannerTask?.cancel()
             lookupPreviewTask?.cancel()
+            webSuggestionTask?.cancel()
             keyboardMonitor.stop()
             clipboardStore.setMonitoringMode(.background)
         }
@@ -517,6 +538,9 @@ struct LauncherView: View {
             } else {
                 aiAnswer.cancel()
             }
+            // Google autocomplete rows (appended after engine results). Self-gates
+            // by mode and the online-features flag; never blocks search.
+            refreshWebSuggestions()
         }
         .onReceive(clipboardStore.$entries) { _ in
             refreshClipboardSelectionIfNeeded()
@@ -776,7 +800,10 @@ struct LauncherView: View {
                 )
             } else if !isPrefixSuggestionQuery,
                       let selectedID = selectedResultID,
-                      let selectedResult = displayedResults.first(where: { $0.id == selectedID }) {
+                      let selectedResult = displayedResults.first(where: { $0.id == selectedID }),
+                      // Search suggestions have nothing to preview — let the list
+                      // span full width instead of showing an empty pane.
+                      AppConstants.Launcher.WebSuggestion.text(fromResultID: selectedResult.id) == nil {
                 resultsDivider
                 ResultPreviewView(
                     result: selectedResult,

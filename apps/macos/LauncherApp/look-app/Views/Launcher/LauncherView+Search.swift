@@ -39,11 +39,12 @@ extension LauncherView {
             guard !Task.isCancelled else { return }
             await publishSearchResults(rawResults, searchID: searchID, for: currentQuery)
 
-            // Refine pass: when AI is on, let it rewrite the natural-language
-            // query into the engine's prefix grammar and re-search in the
-            // background. A miss, an identical rewrite, or an empty result set
-            // leaves the raw results untouched, so search never depends on AI.
-            guard aiEnabled else { return }
+            // Rescue pass: only when AI is on AND the raw query found nothing,
+            // let the model rewrite the natural-language query into the engine's
+            // prefix grammar and re-search. We never run this when raw results
+            // exist — a rewrite that narrows "firefox" to apps-only would wrongly
+            // drop the matching folder/files the user can already see.
+            guard aiEnabled, rawResults.isEmpty else { return }
             guard let rewritten = await AIQueryRouter.shared.rewrite(
                 query: currentQuery,
                 using: aiProvider
@@ -93,12 +94,52 @@ extension LauncherView {
             return
         }
 
+        performWebSearch(for: trimmed)
+    }
+
+    /// Opens a Google search for `text` in the default browser. Shared by the
+    /// Cmd+Enter web-search shortcut and the autocomplete suggestion rows.
+    func performWebSearch(for text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
         var components = URLComponents(string: "https://www.google.com/search")
         components?.queryItems = [URLQueryItem(name: "q", value: trimmed)]
         guard let url = components?.url else { return }
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         NSWorkspace.shared.open(url, configuration: config, completionHandler: nil)
+    }
+
+    /// Fetches Google autocomplete rows for the current query, debounced, and
+    /// only for plain text queries while online features are on. Self-gating —
+    /// clears the rows in any non-applicable mode.
+    func refreshWebSuggestions() {
+        webSuggestionTask?.cancel()
+        let currentQuery = query
+        let trimmed = currentQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard themeStore.settings.aiEnabled,
+              !isCommandMode, !isClipboardQuery, !isPrefixSuggestionQuery,
+              !isTranslationQuery, trimmed.count >= 2
+        else {
+            if !webSuggestions.isEmpty { webSuggestions = [] }
+            return
+        }
+
+        webSuggestionTask = Task {
+            try? await Task.sleep(nanoseconds: AppConstants.Launcher.searchDebounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            let suggestions = await WebSuggestionService.suggestions(
+                for: currentQuery,
+                limit: AppConstants.Launcher.WebSuggestion.limit
+            )
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard query == currentQuery, !isCommandMode else { return }
+                webSuggestions = suggestions
+            }
+        }
     }
 
     func reloadConfig() {

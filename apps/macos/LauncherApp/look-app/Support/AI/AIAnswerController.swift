@@ -60,7 +60,7 @@ final class AIAnswerController: ObservableObject {
 
         // Triggers: an explicit question, a multi-word entity that matched
         // nothing locally, or a pattern-gated instant source (weather, currency,
-        // crypto, dev packages) — those carry their own narrow grammar.
+        // crypto) — those carry their own narrow grammar.
         let questionLike = Self.isQuestionLike(trimmed)
         let orphanEntity = resultCount == 0 && Self.isEntityLookup(trimmed)
         let instant = InstantAnswerSources.hasMatch(for: trimmed)

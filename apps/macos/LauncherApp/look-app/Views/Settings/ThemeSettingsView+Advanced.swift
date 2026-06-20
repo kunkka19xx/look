@@ -22,14 +22,17 @@ extension ThemeSettingsView {
     }
 
     var aiAvailabilityTooltip: String {
-        let base = "\(settings.aiProvider.title) powers AI query understanding and runs "
-            + "fully on-device. Requires macOS 26 or later on Apple Silicon, with "
-            + "Apple Intelligence turned on in System Settings."
+        let base = "Shows instant answers (facts, definitions, weather, currency, "
+            + "crypto, calculations) and web search suggestions for your queries. "
+            + "Powered by free web sources (Wikipedia, DuckDuckGo) plus on-device "
+            + "Apple Intelligence where available. Queries are sent to the web "
+            + "while this is on."
         switch aiAvailability {
         case .available:
-            return base + "\n\nStatus: Ready on this Mac."
+            return base + "\n\nApple Intelligence: Ready on this Mac."
         case .unavailable(let reason):
-            return base + "\n\nStatus: Unavailable — \(reason.userFacingMessage)"
+            return base + "\n\nApple Intelligence: \(reason.userFacingMessage) "
+                + "(Web answers and suggestions still work without it.)"
         }
     }
 
@@ -43,17 +46,18 @@ extension ThemeSettingsView {
                         .foregroundStyle(themeStore.secondaryTextColor())
 
                     HStack(spacing: 10) {
-                        Text("Apple Intelligence")
+                        Text("AI & web answers")
                             .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
                             .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
                             .foregroundStyle(themeStore.secondaryTextColor())
 
-                        Toggle("Enable AI features", isOn: $settings.aiEnabled)
+                        // Not gated on Apple Intelligence availability — the web
+                        // answer card and search suggestions work without it; the
+                        // on-device tier just self-skips when unavailable.
+                        Toggle("Enable AI & web answers", isOn: $settings.aiEnabled)
                             .toggleStyle(.switch)
                             .labelsHidden()
-                            .disabled(!aiAvailability.isAvailable)
-                            .opacity(aiAvailability.isAvailable ? 1 : 0.5)
-                            .help("Enable Apple Intelligence / AI-assisted features (on-device, opt-out anytime)")
+                            .help("Show instant answers and web search suggestions (sends queries to the web; opt-out anytime)")
 
                         aiInfoIndicator
 

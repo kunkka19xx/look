@@ -14,8 +14,12 @@ struct LauncherRowView: View {
         result.id.hasPrefix(AppConstants.Launcher.PrefixSuggestion.resultIDPrefix)
     }
 
+    private var isWebSuggestion: Bool {
+        result.id.hasPrefix(AppConstants.Launcher.WebSuggestion.resultIDPrefix)
+    }
+
     private var rowIcon: NSImage {
-        if isPrefixSuggestion {
+        if isPrefixSuggestion || isWebSuggestion {
             return NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
                 ?? NSWorkspace.shared.icon(for: .plainText)
         }
@@ -67,7 +71,7 @@ struct LauncherRowView: View {
     }
 
     private var metaLabel: String {
-        if isPrefixSuggestion {
+        if isPrefixSuggestion || isWebSuggestion {
             return result.subtitle ?? ""
         }
         if result.kind == .clipboard {

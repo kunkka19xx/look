@@ -91,7 +91,7 @@ struct EmptyTrashCommand {
     /// the main queue. Suppresses Finder's own "are you sure" (we show our own
     /// confirm) and restores the user's preference afterward — the restore is
     /// isolated so it can't turn a successful empty into a reported failure.
-    static func empty(completion: @escaping (String?) -> Void) {
+    static func empty(completion: @escaping @Sendable (String?) -> Void) {
         let body = """
         set prevWarn to warns before emptying of the trash
         set warns before emptying of the trash to false
