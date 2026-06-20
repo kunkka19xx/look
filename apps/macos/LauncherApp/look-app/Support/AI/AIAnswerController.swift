@@ -1,6 +1,5 @@
 import Combine
 import Foundation
-import os
 
 /// Drives the inline "AI answer" card shown at the top of launcher results.
 ///
@@ -38,7 +37,6 @@ final class AIAnswerController: ObservableObject {
 
     private var task: Task<Void, Never>?
     private let router: AIQueryRouter
-    private static let log = Logger(subsystem: "noah-code.Look", category: "ai")
 
     /// Wait for typing to settle before spending a model generation. The model
     /// is prewarmed as the user types, so this can stay short.
@@ -60,11 +58,13 @@ final class AIAnswerController: ObservableObject {
             router.prewarm(provider)
         }
 
-        // Two triggers: an explicit question, OR a multi-word entity that matched
-        // nothing locally (so the user clearly isn't launching an app/file).
+        // Triggers: an explicit question, a multi-word entity that matched
+        // nothing locally, or a pattern-gated instant source (weather, currency,
+        // crypto, dev packages) — those carry their own narrow grammar.
         let questionLike = Self.isQuestionLike(trimmed)
         let orphanEntity = resultCount == 0 && Self.isEntityLookup(trimmed)
-        guard aiEnabled, questionLike || orphanEntity else {
+        let instant = InstantAnswerSources.hasMatch(for: trimmed)
+        guard aiEnabled, questionLike || orphanEntity || instant else {
             cancel()
             return
         }
@@ -82,13 +82,9 @@ final class AIAnswerController: ObservableObject {
             try? await Task.sleep(nanoseconds: Self.debounceNanoseconds)
             guard let self, !Task.isCancelled else { return }
 
-            let clock = ContinuousClock()
-            let start = clock.now
-
             // Fastest path: local arithmetic. No network, no model — instant.
             if let calc = Self.calcAnswer(for: trimmed) {
                 if Task.isCancelled { return }
-                Self.log.notice("answer CALC q=\(trimmed, privacy: .public)")
                 self.items = [Item(text: calc, source: "Calculator", url: nil, imageURL: nil)]
                 self.state = .done
                 return
@@ -99,11 +95,9 @@ final class AIAnswerController: ObservableObject {
             await self.collectWebAnswers(for: trimmed, questionLike: questionLike)
             if Task.isCancelled { return }
             if !self.items.isEmpty {
-                Self.log.notice("answer WEB \(self.items.count) source(s) in \(start.duration(to: clock.now).milliseconds)ms q=\(trimmed, privacy: .public)")
                 self.state = .done
                 return
             }
-            Self.log.notice("answer web MISS in \(start.duration(to: clock.now).milliseconds)ms -> LLM q=\(trimmed, privacy: .public)")
 
             // Fall back to streaming the on-device model.
             guard let stream = self.router.answer(query: trimmed, using: provider) else {
@@ -117,7 +111,6 @@ final class AIAnswerController: ObservableObject {
                     self.llmAnswer = partial
                 }
                 if !Task.isCancelled {
-                    Self.log.notice("answer LLM done in \(start.duration(to: clock.now).milliseconds)ms q=\(trimmed, privacy: .public)")
                     self.state = self.llmAnswer.isEmpty ? .failed : .done
                 }
             } catch is CancellationError {
@@ -145,9 +138,18 @@ final class AIAnswerController: ObservableObject {
         }
 
         await withTaskGroup(of: WebAnswer?.self) { group in
-            group.addTask { await WebAnswerService.duckDuckGoAnswer(query: query) }
-            if let wikiTerm {
-                group.addTask { await WebAnswerService.wikipediaAnswer(searchTerm: wikiTerm) }
+            // A matched instant source (weather/currency/crypto/package) is what
+            // the user wants — skip the generic encyclopedia lookups then.
+            let instant = InstantAnswerSources.matches(for: query)
+            if instant.isEmpty {
+                group.addTask { await WebAnswerService.duckDuckGoAnswer(query: query) }
+                if let wikiTerm {
+                    group.addTask { await WebAnswerService.wikipediaAnswer(searchTerm: wikiTerm) }
+                }
+            } else {
+                for fetch in instant {
+                    group.addTask { await fetch() }
+                }
             }
 
             for await result in group {
@@ -225,13 +227,5 @@ final class AIAnswerController: ObservableObject {
         guard CalcCommand.isReadyForEvaluation(expr) else { return nil }
         guard case .value(let result) = CalcCommand.evaluate(expr) else { return nil }
         return "\(expr) = \(result)"
-    }
-}
-
-private extension Duration {
-    /// Whole milliseconds, for logging.
-    var milliseconds: Int {
-        let parts = components
-        return Int(parts.seconds * 1000 + parts.attoseconds / 1_000_000_000_000_000)
     }
 }

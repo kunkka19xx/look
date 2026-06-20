@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// An instant, web-sourced answer (à la Spotlight's knowledge card). Returned
 /// finished — no streaming — because it's a cached lookup, not generation.
@@ -14,48 +13,17 @@ struct WebAnswer: Sendable {
 /// the (slower) on-device model. Coverage is deliberately narrow: encyclopedic
 /// facts and definitions, which is exactly what these APIs do well.
 enum WebAnswerService {
-    nonisolated private static let log = Logger(subsystem: "noah-code.Look", category: "ai")
-
-    nonisolated private static let session: URLSession = {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 2.5
-        config.waitsForConnectivity = false
-        return URLSession(configuration: config)
-    }()
-
     /// DuckDuckGo instant answer, or nil. Source is labelled "DuckDuckGo" so it
     /// reads distinctly from a direct Wikipedia hit when both are shown.
     nonisolated static func duckDuckGoAnswer(query: String) async -> WebAnswer? {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let result = await duckDuckGo(trimmed)
-        log.notice("ddg q=\(trimmed, privacy: .public) -> \(result == nil ? "miss" : "hit", privacy: .public)")
-        return result
-    }
-
-    /// Wikipedia summary for an already-chosen search term (the caller decides
-    /// whether a query warrants a Wikipedia lookup and what to search for).
-    nonisolated static func wikipediaAnswer(searchTerm: String) async -> WebAnswer? {
-        let trimmed = searchTerm.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let result = await wikipedia(trimmed)
-        log.notice("wiki term=\(trimmed, privacy: .public) -> \(result == nil ? "miss" : "hit", privacy: .public)")
-        return result
-    }
-
-    // MARK: - Sources
-
-    nonisolated private static func duckDuckGo(_ query: String) async -> WebAnswer? {
-        var components = URLComponents(string: "https://api.duckduckgo.com/")
-        components?.queryItems = [
-            URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "format", value: "json"),
-            URLQueryItem(name: "no_html", value: "1"),
-            URLQueryItem(name: "skip_disambig", value: "1"),
-        ]
-        guard let url = components?.url,
-              let (data, _) = try? await session.data(from: url),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard !trimmed.isEmpty,
+              let object = await WebJSON.object(WebJSON.url("https://api.duckduckgo.com/", [
+                  URLQueryItem(name: "q", value: trimmed),
+                  URLQueryItem(name: "format", value: "json"),
+                  URLQueryItem(name: "no_html", value: "1"),
+                  URLQueryItem(name: "skip_disambig", value: "1"),
+              ]))
         else { return nil }
 
         let answer = (object["Answer"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -68,28 +36,26 @@ enum WebAnswerService {
         return WebAnswer(text: text, source: "DuckDuckGo", url: pageURL, imageURL: imageURL)
     }
 
-    nonisolated private static func wikipedia(_ entity: String) async -> WebAnswer? {
+    /// Wikipedia summary for an already-chosen search term (the caller decides
+    /// whether a query warrants a Wikipedia lookup and what to search for).
+    nonisolated static func wikipediaAnswer(searchTerm: String) async -> WebAnswer? {
+        let trimmed = searchTerm.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
         // Resolve free text to a real article title first.
-        var search = URLComponents(string: "https://en.wikipedia.org/w/api.php")
-        search?.queryItems = [
-            URLQueryItem(name: "action", value: "opensearch"),
-            URLQueryItem(name: "format", value: "json"),
-            URLQueryItem(name: "limit", value: "1"),
-            URLQueryItem(name: "search", value: entity),
-        ]
-        guard let searchURL = search?.url,
-              let (searchData, _) = try? await session.data(from: searchURL),
-              let parsed = try? JSONSerialization.jsonObject(with: searchData) as? [Any],
+        guard let parsed = await WebJSON.array(WebJSON.url("https://en.wikipedia.org/w/api.php", [
+                  URLQueryItem(name: "action", value: "opensearch"),
+                  URLQueryItem(name: "format", value: "json"),
+                  URLQueryItem(name: "limit", value: "1"),
+                  URLQueryItem(name: "search", value: trimmed),
+              ])),
               parsed.count >= 4,
               let title = (parsed[1] as? [String])?.first
         else { return nil }
 
         let pageURL = (parsed[3] as? [String])?.first.flatMap(URL.init(string:))
-
         let encoded = title.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? title
-        guard let summaryURL = URL(string: "https://en.wikipedia.org/api/rest_v1/page/summary/\(encoded)"),
-              let (data, _) = try? await session.data(from: summaryURL),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let object = await WebJSON.object(URL(string: "https://en.wikipedia.org/api/rest_v1/page/summary/\(encoded)")),
               let extract = (object["extract"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !extract.isEmpty
         else { return nil }
