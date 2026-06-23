@@ -20,10 +20,14 @@ struct AIAnswerCardView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(controller.items) { item in
-                        answerBlock(text: item.text, source: item.source, url: item.url, imageURL: item.imageURL)
+                        answerBlock(
+                            text: item.text, source: item.source, url: item.url,
+                            imageURL: item.imageURL)
                     }
                     if hasLLM {
-                        answerBlock(text: controller.llmAnswer, source: "Apple Intelligence", url: nil, imageURL: nil)
+                        answerBlock(
+                            text: controller.llmAnswer, source: "Apple Intelligence", url: nil,
+                            imageURL: nil)
                     }
                     statusLine
                 }
@@ -81,7 +85,7 @@ struct AIAnswerCardView: View {
                 .help("Copy this answer")
             }
 
-            HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
                 if let imageURL {
                     AsyncImage(url: imageURL) { phase in
                         if let image = phase.image {
@@ -157,10 +161,10 @@ struct AIAnswerCardView: View {
     }
 }
 
-private extension View {
+extension View {
     /// Shows the pointing-hand cursor on hover when `enabled`.
     @ViewBuilder
-    func pointingHandCursor(enabled: Bool) -> some View {
+    fileprivate func pointingHandCursor(enabled: Bool) -> some View {
         if enabled {
             onHover { inside in
                 if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
