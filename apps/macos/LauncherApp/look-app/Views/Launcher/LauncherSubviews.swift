@@ -15,8 +15,8 @@ struct SearchInputBar: View {
                 .foregroundStyle(isCommandMode ? themeStore.accentColor() : themeStore.secondaryTextColor())
             TextField(
                 isCommandMode
-                    ? (activeCommand?.placeholder ?? "Choose a command with Tab")
-                    : "Search apps",
+                    ? (activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder)
+                    : AppConstants.Launcher.searchPlaceholder,
                 text: $text
             )
                 .textFieldStyle(.plain)
