@@ -59,6 +59,10 @@ enum AppConstants {
         /// Search field placeholder shown in command mode when no command is active.
         static let commandModePlaceholder = "Choose a command with Tab"
 
+        /// Width of the web-suggestion column shown to the right of the AI answer
+        /// card in the two-column knowledge-lookup layout.
+        static let aiAnswerSuggestionColumnWidth: CGFloat = 320
+
         enum Command {
             static let shell = "shell"
             static let calc = "calc"

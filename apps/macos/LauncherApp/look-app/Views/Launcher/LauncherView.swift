@@ -763,12 +763,32 @@ struct LauncherView: View {
     @ViewBuilder
     private var resultsRow: some View {
         if aiAnswer.isActive {
-            VStack(spacing: 8) {
+            if displayedResults.isEmpty {
+                // Nothing actionable underneath, let the answer fill the panel.
                 AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
-                    // Fill the panel when there's nothing else to show; otherwise
-                    // cap it so results stay visible underneath.
-                    .frame(maxHeight: displayedResults.isEmpty ? .infinity : 240)
-                if !displayedResults.isEmpty {
+                    .frame(maxHeight: .infinity)
+            } else if backendFilteredResults.isEmpty {
+                // Knowledge lookup: the answer is the headline and the only rows
+                // are web suggestions. Two columns: answer on the left at a
+                // comfortable reading measure, suggestion list pinned on the
+                // right so it stays visible and keyboard-navigable. Both fill the
+                // panel height so the layout matches the normal results screen
+                // and the hint bar stays pinned to the bottom.
+                HStack(alignment: .top, spacing: 8) {
+                    AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    resultsListAndPreview
+                        .frame(width: AppConstants.Launcher.aiAnswerSuggestionColumnWidth)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                }
+                .frame(maxHeight: .infinity)
+            } else {
+                // Local file/app results coexist with the answer. Keep the answer
+                // capped on top so the results list keeps its full-width preview
+                // pane instead of being squeezed into a third column.
+                VStack(spacing: 8) {
+                    AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                        .frame(maxHeight: 240)
                     resultsListAndPreview
                 }
             }

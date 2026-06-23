@@ -151,7 +151,11 @@ struct WindowConfigurator: NSViewRepresentable {
             guard let w = note.object as? NSWindow else { return }
             Logger(subsystem: "noah-code.Look", category: "window-resize")
                 .debug("didChangeScreenNotification fired — scheduling resize")
-            WindowAutoScale.scheduleResize(for: w)
+            // The observer is registered with `queue: .main`, so this already
+            // runs on the main actor - assert it to reach the isolated method.
+            MainActor.assumeIsolated {
+                WindowAutoScale.scheduleResize(for: w)
+            }
         }
     }
 }

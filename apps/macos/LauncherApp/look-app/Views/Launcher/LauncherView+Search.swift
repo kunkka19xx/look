@@ -37,7 +37,7 @@ extension LauncherView {
                 bridge.search(query: currentQuery, limit: searchLimit)
             }.value
             guard !Task.isCancelled else { return }
-            await publishSearchResults(rawResults, searchID: searchID, for: currentQuery)
+            publishSearchResults(rawResults, searchID: searchID, for: currentQuery)
 
             // Rescue pass: only when AI is on AND the raw query found nothing,
             // let the model rewrite the natural-language query into the engine's
@@ -55,7 +55,7 @@ extension LauncherView {
                 bridge.search(query: rewritten, limit: searchLimit)
             }.value
             guard !Task.isCancelled, !refined.isEmpty else { return }
-            await publishSearchResults(refined, searchID: searchID, for: currentQuery)
+            publishSearchResults(refined, searchID: searchID, for: currentQuery)
         }
     }
 

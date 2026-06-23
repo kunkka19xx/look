@@ -2,7 +2,9 @@ import AppKit
 import OSLog
 import SwiftUI
 
-private let openLaunchLog = Logger(subsystem: "noah-code.Look", category: "open")
+// `Logger` is Sendable; declare it nonisolated so AppKit's background open
+// completion handlers can log without a main-actor hop.
+nonisolated private let openLaunchLog = Logger(subsystem: "noah-code.Look", category: "open")
 
 extension LauncherView {
     func openSelectedApp() {
@@ -387,12 +389,16 @@ extension LauncherView {
         isDeleteInFlight = true
         // Finder's "empty the trash" can take seconds on a large Trash; run it
         // off the main thread so the launcher window stays responsive.
-        EmptyTrashCommand.empty { [self] error in
-            isDeleteInFlight = false
-            if let error {
-                showBanner(error, style: .error, duration: 2.6)
-            } else {
-                showBanner("Emptied Trash", style: .success, duration: 1.6)
+        EmptyTrashCommand.empty { error in
+            // Completion is delivered on the main queue (see EmptyTrashCommand),
+            // so assert main-actor isolation to touch UI state.
+            MainActor.assumeIsolated {
+                isDeleteInFlight = false
+                if let error {
+                    showBanner(error, style: .error, duration: 2.6)
+                } else {
+                    showBanner("Emptied Trash", style: .success, duration: 1.6)
+                }
             }
         }
     }
