@@ -138,6 +138,13 @@ extension LauncherView {
             await MainActor.run {
                 guard query == currentQuery, !isCommandMode else { return }
                 webSuggestions = suggestions
+                // These rows arrive after publishSearchResults() already seeded
+                // selection. For a query with no local results selection is nil,
+                // so re-seed it onto the first suggestion, otherwise Enter on a
+                // suggestion-only list does nothing.
+                if selectedResultID == nil {
+                    setInitialSelection()
+                }
             }
         }
     }
