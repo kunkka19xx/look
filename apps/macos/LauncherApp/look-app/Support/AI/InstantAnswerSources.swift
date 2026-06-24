@@ -27,44 +27,82 @@ enum InstantAnswerSources {
 
     // MARK: - Providers
 
-    struct CurrencyQuery: Sendable { let amount: Double; let from: String; let to: String }
+    struct CurrencyQuery: Sendable {
+        let amount: Double
+        let from: String
+        let to: String
+    }
 
     nonisolated static func currency(_ q: CurrencyQuery) async -> WebAnswer? {
-        guard let object = await WebJSON.object(WebJSON.url("https://api.frankfurter.dev/v1/latest", [
-                  URLQueryItem(name: "amount", value: trimNumber(q.amount)),
-                  URLQueryItem(name: "base", value: q.from),
-                  URLQueryItem(name: "symbols", value: q.to),
-              ])),
-              let rates = object["rates"] as? [String: Any],
-              let value = (rates[q.to] as? NSNumber)?.doubleValue
-        else { return nil }
+        var value = await frankfurterValue(q)
+        if value == nil { value = await erApiValue(q) }
+        guard let value else { return nil }
         let text = "\(formatNumber(q.amount)) \(q.from) = \(formatNumber(value)) \(q.to)"
         return WebAnswer(text: text, source: "Currency", url: nil, imageURL: nil)
     }
 
+    /// ECB reference rates (~30 major currencies). Frankfurter multiplies by
+    /// `amount` server-side, so the returned rate is the final value.
+    nonisolated private static func frankfurterValue(_ q: CurrencyQuery) async -> Double? {
+        guard
+            let object = await WebJSON.object(
+                WebJSON.url(
+                    "https://api.frankfurter.dev/v1/latest",
+                    [
+                        URLQueryItem(name: "amount", value: trimNumber(q.amount)),
+                        URLQueryItem(name: "base", value: q.from),
+                        URLQueryItem(name: "symbols", value: q.to),
+                    ])),
+            let rates = object["rates"] as? [String: Any]
+        else { return nil }
+        return (rates[q.to] as? NSNumber)?.doubleValue
+    }
+
+    /// Open ER-API (~160 currencies, keyless). Returns a per-unit rate, so the
+    /// amount is applied client-side.
+    nonisolated private static func erApiValue(_ q: CurrencyQuery) async -> Double? {
+        guard
+            let object = await WebJSON.object(
+                URL(string: "https://open.er-api.com/v6/latest/\(q.from)")),
+            (object["result"] as? String) == "success",
+            let rates = object["rates"] as? [String: Any],
+            let rate = (rates[q.to] as? NSNumber)?.doubleValue
+        else { return nil }
+        return rate * q.amount
+    }
+
     nonisolated static func weather(place: String) async -> WebAnswer? {
-        guard let geoObj = await WebJSON.object(WebJSON.url("https://geocoding-api.open-meteo.com/v1/search", [
-                  URLQueryItem(name: "name", value: place),
-                  URLQueryItem(name: "count", value: "1"),
-              ]), timeout: weatherTimeout),
-              let first = (geoObj["results"] as? [[String: Any]])?.first,
-              let lat = first["latitude"] as? Double,
-              let lon = first["longitude"] as? Double
+        guard
+            let geoObj = await WebJSON.object(
+                WebJSON.url(
+                    "https://geocoding-api.open-meteo.com/v1/search",
+                    [
+                        URLQueryItem(name: "name", value: place),
+                        URLQueryItem(name: "count", value: "1"),
+                    ]), timeout: weatherTimeout),
+            let first = (geoObj["results"] as? [[String: Any]])?.first,
+            let lat = first["latitude"] as? Double,
+            let lon = first["longitude"] as? Double
         else { return nil }
 
         let name = (first["name"] as? String) ?? place
         let country = (first["country"] as? String) ?? ""
 
-        guard let fcObj = await WebJSON.object(WebJSON.url("https://api.open-meteo.com/v1/forecast", [
-                  URLQueryItem(name: "latitude", value: String(lat)),
-                  URLQueryItem(name: "longitude", value: String(lon)),
-                  URLQueryItem(
-                      name: "current",
-                      value: "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m"
-                  ),
-              ]), timeout: weatherTimeout),
-              let current = fcObj["current"] as? [String: Any],
-              let temp = current["temperature_2m"] as? Double
+        guard
+            let fcObj = await WebJSON.object(
+                WebJSON.url(
+                    "https://api.open-meteo.com/v1/forecast",
+                    [
+                        URLQueryItem(name: "latitude", value: String(lat)),
+                        URLQueryItem(name: "longitude", value: String(lon)),
+                        URLQueryItem(
+                            name: "current",
+                            value:
+                                "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m"
+                        ),
+                    ]), timeout: weatherTimeout),
+            let current = fcObj["current"] as? [String: Any],
+            let temp = current["temperature_2m"] as? Double
         else { return nil }
 
         let code = (current["weather_code"] as? Int) ?? -1
@@ -84,13 +122,17 @@ enum InstantAnswerSources {
     }
 
     nonisolated static func crypto(_ id: String) async -> WebAnswer? {
-        guard let object = await WebJSON.object(WebJSON.url("https://api.coingecko.com/api/v3/simple/price", [
-                  URLQueryItem(name: "ids", value: id),
-                  URLQueryItem(name: "vs_currencies", value: "usd"),
-                  URLQueryItem(name: "include_24hr_change", value: "true"),
-              ])),
-              let coin = object[id] as? [String: Any],
-              let usd = (coin["usd"] as? NSNumber)?.doubleValue
+        guard
+            let object = await WebJSON.object(
+                WebJSON.url(
+                    "https://api.coingecko.com/api/v3/simple/price",
+                    [
+                        URLQueryItem(name: "ids", value: id),
+                        URLQueryItem(name: "vs_currencies", value: "usd"),
+                        URLQueryItem(name: "include_24hr_change", value: "true"),
+                    ])),
+            let coin = object[id] as? [String: Any],
+            let usd = (coin["usd"] as? NSNumber)?.doubleValue
         else { return nil }
 
         var text = "\(id.capitalized): $\(formatNumber(usd))"
@@ -104,10 +146,13 @@ enum InstantAnswerSources {
     // MARK: - Parsers
 
     nonisolated static func currencyParse(_ q: String) -> CurrencyQuery? {
-        guard let g = q.captures(#"^([0-9]+(?:[.,][0-9]+)?)?\s*([a-zA-Z]{3})\s+(?:to|in|->|=)\s+([a-zA-Z]{3})$"#)
+        guard
+            let g = q.captures(
+                #"^([0-9]+(?:[.,][0-9]+)?)?\s*([a-zA-Z]{3})\s+(?:to|in|->|=)\s+([a-zA-Z]{3})$"#)
         else { return nil }
         let amount = Double(g[1].replacingOccurrences(of: ",", with: ".")) ?? 1
-        return CurrencyQuery(amount: amount == 0 ? 1 : amount, from: g[2].uppercased(), to: g[3].uppercased())
+        return CurrencyQuery(
+            amount: amount == 0 ? 1 : amount, from: g[2].uppercased(), to: g[3].uppercased())
     }
 
     nonisolated static func weatherParse(_ q: String) -> String? {
@@ -118,9 +163,14 @@ enum InstantAnswerSources {
 
     nonisolated static func cryptoParse(_ q: String) -> String? {
         var name: String?
-        if let g = q.captures(#"^(.+?)\s+price$"#) { name = g[1] }
-        else if let g = q.captures(#"^price\s+of\s+(.+)$"#) { name = g[1] }
-        guard var n = name?.lowercased().trimmingCharacters(in: .whitespaces), !n.isEmpty else { return nil }
+        if let g = q.captures(#"^(.+?)\s+price$"#) {
+            name = g[1]
+        } else if let g = q.captures(#"^price\s+of\s+(.+)$"#) {
+            name = g[1]
+        }
+        guard var n = name?.lowercased().trimmingCharacters(in: .whitespaces), !n.isEmpty else {
+            return nil
+        }
         let aliases = [
             "btc": "bitcoin", "eth": "ethereum", "sol": "solana", "doge": "dogecoin",
             "ada": "cardano", "xrp": "ripple", "bnb": "binancecoin", "ltc": "litecoin",
@@ -165,10 +215,11 @@ enum InstantAnswerSources {
     }
 }
 
-private extension String {
+extension String {
     /// Capture groups (index 0 = whole match) of the first regex match, or nil.
-    nonisolated func captures(_ pattern: String) -> [String]? {
-        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+    fileprivate nonisolated func captures(_ pattern: String) -> [String]? {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        else { return nil }
         let range = NSRange(startIndex..., in: self)
         guard let match = re.firstMatch(in: self, range: range) else { return nil }
         return (0..<match.numberOfRanges).map { idx in
