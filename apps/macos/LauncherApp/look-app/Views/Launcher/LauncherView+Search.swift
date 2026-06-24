@@ -121,7 +121,7 @@ extension LauncherView {
 
         guard themeStore.settings.aiEnabled,
               !isCommandMode, !isClipboardQuery, !isPrefixSuggestionQuery,
-              !isTranslationQuery, trimmed.count >= 2
+              !isCommandSuggestionQuery, !isTranslationQuery, trimmed.count >= 2
         else {
             if !webSuggestions.isEmpty { webSuggestions = [] }
             return

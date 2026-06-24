@@ -304,6 +304,32 @@ enum AppConstants {
             AppCommand(id: Command.sys, title: "sys (⌘5)", detail: "Show system information", placeholder: "View system info"),
         ]
 
+        /// Commands narrowed by `filter` - the text typed after a leading `:`.
+        /// Case-insensitive substring match against the command id and its
+        /// description, so `:end` or `:process` both surface `kill`. An empty
+        /// filter returns the whole catalog.
+        static func commandCatalog(matching filter: String) -> [AppCommand] {
+            let needle = filter.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !needle.isEmpty else { return commandCatalog }
+            return commandCatalog.filter {
+                $0.id.lowercased().contains(needle)
+                    || $0.detail.lowercased().contains(needle)
+            }
+        }
+
+        // Command-discovery rows (type `:`). Like PrefixSuggestion, these are
+        // Swift-synthesized rows in the main results list, told apart by id;
+        // `openSelectedApp` enters the command instead of opening a file.
+        enum CommandSuggestion {
+            static let resultIDPrefix = "cmdhint:"
+
+            /// Recovers the command id encoded in a discovery-row result id, or nil.
+            static func commandID(fromResultID resultID: String) -> String? {
+                guard resultID.hasPrefix(resultIDPrefix) else { return nil }
+                return String(resultID.dropFirst(resultIDPrefix.count))
+            }
+        }
+
         static let normalHint = HintText.Launcher.normal
         static let commandHint = HintText.Launcher.command
         static let killHint = HintText.Launcher.kill

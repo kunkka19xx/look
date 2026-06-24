@@ -27,6 +27,12 @@ extension LauncherView {
             return
         }
 
+        // Command-discovery row: enter that command's panel (empty input).
+        if let commandID = AppConstants.Launcher.CommandSuggestion.commandID(fromResultID: selected.id) {
+            enterCommandMode(commandID: commandID, prefilledInput: "")
+            return
+        }
+
         switch selected.kind {
         case .app:
             guard ensureTargetExists(selected) else { return }

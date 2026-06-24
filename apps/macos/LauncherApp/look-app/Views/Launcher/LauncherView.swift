@@ -294,6 +294,43 @@ struct LauncherView: View {
         }
     }
 
+    /// A leading `:` opens the command-discovery menu: every command with its
+    /// description. Typing after the `:` (e.g. `:process`) filters by id and
+    /// description; picking one enters that command. A `:<exact-id> <args>`
+    /// live-trigger (e.g. `:calc 2+2`) jumps straight into the command instead
+    /// (handled in `onChange(of: query)`), so it isn't a discovery query.
+    var isCommandSuggestionQuery: Bool {
+        guard !isCommandMode else { return false }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix(":") else { return false }
+        if let cmd = extractInlineCommand(from: query), cmd.hasSpace { return false }
+        return true
+    }
+
+    /// The text typed after the leading `:`, used to filter the command menu.
+    var commandSuggestionFilter: String {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix(":") else { return "" }
+        return String(trimmed.dropFirst())
+    }
+
+    /// Synthetic results backing the command-discovery menu. Rendered through the
+    /// normal results list; `openSelectedApp` recognises the id prefix and enters
+    /// the command instead of opening a file.
+    var commandSuggestionResults: [LauncherResult] {
+        let matches = AppConstants.Launcher.commandCatalog(matching: commandSuggestionFilter)
+        return matches.enumerated().map { index, command in
+            LauncherResult(
+                id: "\(AppConstants.Launcher.CommandSuggestion.resultIDPrefix)\(command.id)",
+                kind: .app,
+                title: command.title,
+                subtitle: command.detail,
+                path: "",
+                score: matches.count - index
+            )
+        }
+    }
+
     var clipboardSearchTerm: String? {
         LauncherClipboardFeature.searchTerm(from: query)
     }
@@ -310,7 +347,7 @@ struct LauncherView: View {
     /// hand like `prefixSuggestionResults`; `openSelectedApp` recognises the id
     /// prefix and runs a web search instead of opening a file.
     var webSuggestionResults: [LauncherResult] {
-        guard !isCommandMode, !isClipboardQuery, !isPrefixSuggestionQuery else { return [] }
+        guard !isCommandMode, !isClipboardQuery, !isPrefixSuggestionQuery, !isCommandSuggestionQuery else { return [] }
         return webSuggestions.enumerated().map { index, text in
             LauncherResult(
                 id: "\(AppConstants.Launcher.WebSuggestion.resultIDPrefix)\(text)",
@@ -325,6 +362,7 @@ struct LauncherView: View {
 
     var displayedResults: [LauncherResult] {
         if isPrefixSuggestionQuery { return prefixSuggestionResults }
+        if isCommandSuggestionQuery { return commandSuggestionResults }
         if isClipboardQuery { return clipboardResults }
         return backendFilteredResults + webSuggestionResults
     }
@@ -402,6 +440,10 @@ struct LauncherView: View {
 
         if isPrefixSuggestionQuery {
             return ["Enter pick prefix", "Up/Down move", "Esc clear", "Cmd+H help"]
+        }
+
+        if isCommandSuggestionQuery {
+            return ["Enter run command", "Up/Down move", "Esc clear", "Cmd+H help"]
         }
 
         if isClipboardQuery {
@@ -534,9 +576,9 @@ struct LauncherView: View {
                 if showsHelpScreen {
                     showsHelpScreen = false
                 }
-                if isClipboardQuery || isPrefixSuggestionQuery {
-                    // Both render synthetic results (clip history / prefix menu);
-                    // no backend search, just re-seed the selection.
+                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery {
+                    // These render synthetic results (clip history / prefix menu /
+                    // command menu); no backend search, just re-seed the selection.
                     aiAnswer.cancel()
                     setInitialSelection()
                 } else {
@@ -827,7 +869,7 @@ struct LauncherView: View {
                     onRemove: { removePicked(key: $0) },
                     onClearAll: { clearAllPicked() }
                 )
-            } else if !isPrefixSuggestionQuery,
+            } else if !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
                       let selectedID = selectedResultID,
                       let selectedResult = displayedResults.first(where: { $0.id == selectedID }),
                       // Search suggestions have nothing to preview — let the list
