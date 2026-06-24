@@ -115,6 +115,21 @@ enum AppConstants {
             /// Entries shown in the live discovery menu (excludes `"` itself).
             static var menuEntries: [Entry] { all.filter(\.listedInMenu) }
 
+            /// Discovery entries narrowed by `filter` - the text typed after the
+            /// leading `"`. Case-insensitive substring match against the prefix,
+            /// its display form, and the description, so `"folder` finds `d"` by
+            /// intent rather than only by the cryptic prefix letter. An empty
+            /// filter returns the full menu.
+            static func menuEntries(matching filter: String) -> [Entry] {
+                let needle = filter.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard !needle.isEmpty else { return menuEntries }
+                return menuEntries.filter {
+                    $0.prefix.lowercased().contains(needle)
+                        || $0.displayWithArg.lowercased().contains(needle)
+                        || $0.description.lowercased().contains(needle)
+                }
+            }
+
             static let all: [Entry] = [
                 Entry(
                     prefix: QueryPrefix.discovery, argHint: "",

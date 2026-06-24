@@ -260,18 +260,27 @@ struct LauncherView: View {
             .hasPrefix(AppConstants.Launcher.QueryPrefix.recent)
     }
 
-    /// A lone `"` opens the prefix-discovery menu: a list of every query prefix
-    /// with a short description. Picking one fills the prefix into the field.
+    /// A leading `"` opens the prefix-discovery menu: a list of every query
+    /// prefix with a short description. Typing after the `"` (e.g. `"folder`)
+    /// filters the list by name/description; picking one fills the prefix in.
     var isPrefixSuggestionQuery: Bool {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
-            == AppConstants.Launcher.QueryPrefix.discovery
+            .hasPrefix(AppConstants.Launcher.QueryPrefix.discovery)
+    }
+
+    /// The text typed after the leading `"`, used to filter the discovery menu.
+    var prefixSuggestionFilter: String {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let discovery = AppConstants.Launcher.QueryPrefix.discovery
+        guard trimmed.hasPrefix(discovery) else { return "" }
+        return String(trimmed.dropFirst(discovery.count))
     }
 
     /// Synthetic results backing the discovery menu. Rendered through the normal
     /// results list so selection/keyboard nav work as usual; `openSelectedApp`
     /// recognises the id prefix and inserts the prefix instead of opening.
     var prefixSuggestionResults: [LauncherResult] {
-        let suggestions = AppConstants.Launcher.PrefixSuggestion.menuEntries
+        let suggestions = AppConstants.Launcher.PrefixSuggestion.menuEntries(matching: prefixSuggestionFilter)
         return suggestions.enumerated().map { index, entry in
             LauncherResult(
                 id: "\(AppConstants.Launcher.PrefixSuggestion.resultIDPrefix)\(entry.prefix)",
