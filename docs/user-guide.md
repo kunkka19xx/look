@@ -41,7 +41,7 @@ Look is designed to need as few macOS permissions as possible:
 - **No Accessibility permission** is required.
 - **No Full Disk Access** is required. Look indexes standard user directories (`~`, `/Applications`, `~/Documents`, `~/Downloads`, etc.). To index a directory outside those defaults, add it via `file_scan_extra_roots` in `~/.look.config`.
 - **No Screen Recording** is required.
-- **Network access** is used only for explicit actions: `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search. The local search and indexing paths make no network calls.
+- **Network access** is used for explicit actions — `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search — and, when **AI features** are enabled (macOS, on by default), for live Google search suggestions and the DuckDuckGo/Wikipedia answer card as you type. The on-device Apple Intelligence model runs locally and makes no network calls of its own. Turn the AI/web features off by setting `ai_enabled = false` in `~/.look.config` (or via Settings). Local search and indexing never make network calls.
 - **Finder Automation** is requested only when you empty the Trash (`Cmd+D` on the pinned Trash folder). The Trash is protected by macOS, so Look asks Finder to empty it; macOS prompts once, and you can manage it under `System Settings > Privacy & Security > Automation`. Moving individual files to the Trash needs no permission.
 
 If macOS prompts for permission during an action you didn't trigger, that's a bug — please [file an issue](https://github.com/kunkka19xx/look/issues).
@@ -68,6 +68,16 @@ Useful actions:
 When at least one item is picked, the right panel switches to the **Picked** list — each row has an `X` to remove a single item, plus a **Clear all** button. File/folder copies (both `Cmd+C` and `Cmd+P`) are excluded from clipboard history.
 
 **Trash.** Type `trash` to pin the Trash quick folder; `Enter` opens it in Finder. With the Trash folder selected, its preview shows the item count and `Cmd+D` **empties** the Trash. Emptying is permanent, so it asks you to confirm (`Y`/`Enter` to empty, `N`/`Esc` to cancel). Look empties the Trash through Finder, so the first time you do this macOS asks for permission to control Finder (see [Permissions](#permissions)).
+
+## AI answers and web suggestions (macOS)
+
+Look can answer questions and look things up without leaving the launcher. These features are **macOS-only**, **on by default**, and powered by on-device **Apple Intelligence**. Toggle them in Settings or with `ai_enabled` in `~/.look.config`.
+
+- **Answer card.** A question, an entity that has no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather, currency, crypto) shows a Spotlight-style card above the results. Sources resolve independently and each appears as it lands — local **Calculator** first, then **DuckDuckGo** and **Wikipedia**, falling back to a streaming on-device **Apple Intelligence** answer when no web source has one. Click a source label to open it; the copy button copies that block.
+- **Search suggestions.** For plain text queries (2+ characters), Google autocomplete rows appear under the results. `Enter` on a suggestion (or `Cmd+Enter` on your query) runs a web search in your default browser.
+- **Query rewrite.** When a natural-language query finds nothing locally, the on-device model rewrites it into Look's prefix grammar and searches again. It never overrides results you can already see — it only runs when the raw query came up empty.
+
+**Network note.** While AI features are on, the answer card's web sources and the Google suggestions send your typed query to those services (DuckDuckGo, Wikipedia, Google). The on-device model makes no network calls of its own. Set `ai_enabled = false` to disable all of it.
 
 ## Query prefixes
 

@@ -31,6 +31,14 @@ This document tracks what `look` supports today and what is planned next.
 - quick translation with `t"...`
 - dictionary lookup panel with `tw"...`
 
+### AI answers and web suggestions (macOS)
+
+- optional, **on by default**; toggle with `ai_enabled` in `~/.look.config` or the Settings panel. Runs on-device via **Apple Intelligence**
+- **answer card**: a question, an entity with no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather/currency/crypto) shows a Spotlight-style card. Sources resolve concurrently and render as they arrive — local Calculator, then DuckDuckGo and Wikipedia, falling back to a streaming on-device Apple Intelligence answer when no web source hits. In the knowledge-lookup view the card sits in a two-column layout with the suggestion list
+- **search suggestions**: Google autocomplete rows appear under the results for plain text queries (2+ chars); `Enter` on one runs a web search, as does `Cmd+Enter` on the query
+- **query rewrite**: when a natural-language query finds nothing locally, the on-device model rewrites it into Look's prefix grammar and re-searches — never overriding results already on screen
+- network note: while AI is on, the answer card's web sources and the Google suggestions send the typed query to those services; the on-device model itself makes no network calls. All of it is off when `ai_enabled = false`
+
 ### Command mode
 
 - `Cmd+/` command mode entry, or inline `:cmdid` shortcut from the home screen (e.g. `:calc 2+2`, `:kill chrome`, `:pomo`); space after a known command id triggers a live switch with args pre-filled
