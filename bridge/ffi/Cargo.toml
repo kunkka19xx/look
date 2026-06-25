@@ -8,6 +8,7 @@ version = "0.1.0"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
+look-answers = { path = "../../core/answers" }
 look-engine = { path = "../../core/engine" }
 look-indexing = { path = "../../core/indexing" }
 look-storage = { path = "../../core/storage" }

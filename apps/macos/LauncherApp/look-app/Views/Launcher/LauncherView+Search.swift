@@ -130,10 +130,10 @@ extension LauncherView {
         webSuggestionTask = Task {
             try? await Task.sleep(nanoseconds: AppConstants.Launcher.searchDebounceNanoseconds)
             guard !Task.isCancelled else { return }
-            let suggestions = await WebSuggestionService.suggestions(
-                for: currentQuery,
-                limit: AppConstants.Launcher.WebSuggestion.limit
-            )
+            let suggestionLimit = AppConstants.Launcher.WebSuggestion.limit
+            let suggestions = await Task.detached(priority: .userInitiated) {
+                bridge.webSuggestions(query: currentQuery, limit: suggestionLimit)
+            }.value
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard query == currentQuery, !isCommandMode else { return }

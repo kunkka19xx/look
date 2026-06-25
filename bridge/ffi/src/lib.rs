@@ -1,5 +1,6 @@
 #![allow(unsafe_code)]
 
+mod answers_api;
 mod runtime_config;
 mod search_api;
 mod seed_api;
@@ -104,6 +105,63 @@ pub extern "C" fn look_translate_json(
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         translate_api::look_translate_json_impl(text, target_lang)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Resolves a shared instant answer (currency/weather/crypto) for `query`,
+/// returning an owned JSON C string - an `Answer` object on a hit, or the JSON
+/// literal `null` otherwise. Free the result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_instant_answer_json(query: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        answers_api::look_instant_answer_json_impl(query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Network-free check of whether `query` matches an instant-answer provider.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_instant_has_match(query: *const c_char) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        answers_api::look_instant_has_match_impl(query)
+    }))
+    .unwrap_or(false)
+}
+
+/// JSON array of autocomplete suggestions for `query` (up to `limit`). Free the
+/// result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_web_suggestions_json(query: *const c_char, limit: u32) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        answers_api::look_web_suggestions_json_impl(query, limit)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// DuckDuckGo instant-answer JSON for `query` (an `Answer` object or `null`).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_duckduckgo_answer_json(query: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        answers_api::look_duckduckgo_answer_json_impl(query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Wikipedia summary JSON for `search_term` (an `Answer` object or `null`).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_wikipedia_answer_json(search_term: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        answers_api::look_wikipedia_answer_json_impl(search_term)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Definitional entity JSON for `query` (a JSON string or `null`).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_definitional_entity_json(query: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        answers_api::look_definitional_entity_json_impl(query)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

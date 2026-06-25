@@ -63,7 +63,7 @@ final class AIAnswerController: ObservableObject {
         // crypto) — those carry their own narrow grammar.
         let questionLike = Self.isQuestionLike(trimmed)
         let orphanEntity = resultCount == 0 && Self.isEntityLookup(trimmed)
-        let instant = InstantAnswerSources.hasMatch(for: trimmed)
+        let instant = EngineBridge.shared.instantAnswerMatches(trimmed)
         guard aiEnabled, questionLike || orphanEntity || instant else {
             cancel()
             return
@@ -129,7 +129,7 @@ final class AIAnswerController: ObservableObject {
         // - a bare entity ("david beckham") -> the query itself
         // - a how-to/why question -> skip; Wikipedia would mislead ("Vim is…")
         let wikiTerm: String?
-        if let entity = WebAnswerService.definitionalEntity(in: query) {
+        if let entity = EngineBridge.shared.definitionalEntity(query: query) {
             wikiTerm = entity
         } else if !questionLike {
             wikiTerm = query
@@ -138,17 +138,28 @@ final class AIAnswerController: ObservableObject {
         }
 
         await withTaskGroup(of: WebAnswer?.self) { group in
-            // A matched instant source (weather/currency/crypto/package) is what
-            // the user wants — skip the generic encyclopedia lookups then.
-            let instant = InstantAnswerSources.matches(for: query)
-            if instant.isEmpty {
-                group.addTask { await WebAnswerService.duckDuckGoAnswer(query: query) }
-                if let wikiTerm {
-                    group.addTask { await WebAnswerService.wikipediaAnswer(searchTerm: wikiTerm) }
+            // A matched instant source (weather/currency/crypto) is what the user
+            // wants - skip the generic encyclopedia lookups then. The match check
+            // is network-free; the answer fetch runs in the Rust core off-thread.
+            let bridge = EngineBridge.shared
+            if bridge.instantAnswerMatches(query) {
+                group.addTask {
+                    await Task.detached(priority: .userInitiated) {
+                        bridge.instantAnswer(query: query)
+                    }.value
                 }
             } else {
-                for fetch in instant {
-                    group.addTask { await fetch() }
+                group.addTask {
+                    await Task.detached(priority: .userInitiated) {
+                        bridge.duckDuckGoAnswer(query: query)
+                    }.value
+                }
+                if let wikiTerm {
+                    group.addTask {
+                        await Task.detached(priority: .userInitiated) {
+                            bridge.wikipediaAnswer(searchTerm: wikiTerm)
+                        }.value
+                    }
                 }
             }
 

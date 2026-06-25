@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "answers",
   "engine",
   "indexing",
   "matching",
