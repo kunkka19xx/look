@@ -9,6 +9,7 @@ let onResultsCallback = null;
 let homeDir = null;
 let clipboardMode = false;
 let translateMode = false;
+let recentMode = false;
 
 /** Resolved by the backend (Windows: SHGetKnownFolderPath; *nix: $HOME/<name>).
  *  Empty until setQuickFolders is called at boot. */
@@ -34,6 +35,10 @@ export function isTranslateMode() {
   return translateMode;
 }
 
+export function isRecentMode() {
+  return recentMode;
+}
+
 export function getTranslateText() {
   return translateMode ? _translateText : '';
 }
@@ -46,6 +51,7 @@ export function handleQueryInput(query) {
   if (query.startsWith('t"')) {
     translateMode = true;
     clipboardMode = false;
+    recentMode = false;
     _translateText = query.slice(2).trim();
     // Translation is triggered on Enter, not on typing
     // Show empty results with hint
@@ -57,12 +63,24 @@ export function handleQueryInput(query) {
 
   if (query.startsWith('c"')) {
     clipboardMode = true;
+    recentMode = false;
     const filter = query.slice(2);
     debounceTimer = setTimeout(() => performClipboardSearch(filter), DEBOUNCE_MS);
     return;
   }
 
   clipboardMode = false;
+
+  // rc" — recent files/folders. Engine handles ranking + filter; the only
+  // frontend duty is the mode flag (drives empty-state copy + suppresses
+  // quick-folder injection so pinned entries don't pollute the recent list).
+  if (query.startsWith('rc"')) {
+    recentMode = true;
+    debounceTimer = setTimeout(() => performSearch(query), DEBOUNCE_MS);
+    return;
+  }
+
+  recentMode = false;
 
   if (query.trim() === '') {
     performSearch('');
@@ -75,7 +93,7 @@ export function handleQueryInput(query) {
 async function performSearch(query) {
   try {
     const payload = await ipcSearch(query, SEARCH_LIMIT);
-    const results = prependQuickFolders(payload.results, query);
+    const results = recentMode ? payload.results : prependQuickFolders(payload.results, query);
     if (onResultsCallback) {
       onResultsCallback(results, query);
     }

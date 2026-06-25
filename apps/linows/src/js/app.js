@@ -217,6 +217,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       runningApps.setSuspended(false);
       if (runningApps.isEnabled()) runningApps.refresh();
       translatePanel.hide();
+      results.setEmptyState({ mode: search.isRecentMode() ? 'recent' : 'default' });
     }
   });
 

@@ -174,8 +174,13 @@ impl AppState {
             self.ptrs(),
             BootstrapScope::ALL,
             dirty_snapshot,
-            true,  // we just acquired in_progress; worker releases it on drop
-            false, // user-initiated refresh; frontend already knows it asked
+            true, // we just acquired in_progress; worker releases it on drop
+            // Emit ready: the IPC command returns immediately after spawning the
+            // worker, so the frontend has no other signal that the rewalk is
+            // done. Without this, on-show refreshes silently prune deleted
+            // files from the DB but the visible result list keeps showing them
+            // until the user retypes the query.
+            true,
             "look: index refresh",
         );
         true

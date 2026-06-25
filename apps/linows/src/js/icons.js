@@ -45,6 +45,9 @@ export const chevronRight = s('<polyline points="9 18 15 12 9 6"/>');
 
 // Sized variants
 export const globeLg = s('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>', 36);
+// Lucide "history" — counterpart to macOS SF clock.arrow.circlepath; used in
+// the rc" recent-files empty-state placeholder.
+export const historyLg = s('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>', 36);
 
 // Settings-page icons (Lucide, MIT). Used by Windows ms-settings: dispatch in
 // settings-icons/windows.js. Naming follows lucide.dev for easy lookup.

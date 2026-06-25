@@ -1,5 +1,5 @@
 import { getIcon } from '../ipc.js';
-import { clipboard as clipboardIcon, check as checkIcon, appIcon, fileIcon, folderIcon, settingIcon } from '../icons.js';
+import { clipboard as clipboardIcon, check as checkIcon, appIcon, fileIcon, folderIcon, settingIcon, historyLg } from '../icons.js';
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
 
 const iconCache = new Map();
@@ -10,6 +10,7 @@ let selectedIndex = -1;
 let container = null;
 let onSelectionChange = null;
 let onPickChange = null;
+let emptyState = { mode: 'default' };
 
 export function init(containerEl) {
   container = containerEl;
@@ -23,12 +24,35 @@ export function setOnPickChange(callback) {
   onPickChange = callback;
 }
 
+// Caller (app.js) flips this when entering/leaving rc" recent mode so the
+// empty-state copy matches the active prefix without coupling this module
+// back to search.js.
+export function setEmptyState(state) {
+  emptyState = state || { mode: 'default' };
+  if (currentResults.length === 0 && container) {
+    container.innerHTML = renderEmptyState();
+  }
+}
+
+function renderEmptyState() {
+  if (emptyState.mode === 'recent') {
+    return `
+      <div class="empty-state empty-state-rich">
+        <div class="empty-state-icon">${historyLg}</div>
+        <div class="empty-state-title">Recent files &amp; folders</div>
+        <div class="empty-state-body">Nothing recent yet</div>
+        <div class="empty-state-help">Open files/folders through Look, or download/create some — newest activity shows here. Type <kbd>rc"word</kbd> to filter.</div>
+      </div>`;
+  }
+  return '<div class="empty-state">No results</div>';
+}
+
 export function render(results) {
   currentResults = results;
   container.innerHTML = '';
 
   if (results.length === 0) {
-    container.innerHTML = '<div class="empty-state">No results</div>';
+    container.innerHTML = renderEmptyState();
     selectedIndex = -1;
     return;
   }
