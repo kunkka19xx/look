@@ -6,7 +6,8 @@ use std::env;
 pub(crate) const APP_SCAN_ROOTS: &[&str] =
     &["/usr/share/applications", "/usr/local/share/applications"];
 
-pub(crate) const FILE_SCAN_ROOT_SUFFIXES: &[&str] = &["Desktop", "Documents", "Downloads"];
+pub(crate) const FILE_SCAN_ROOT_SUFFIXES: &[&str] =
+    &["Desktop", "Documents", "Downloads", "Pictures", "Videos"];
 
 pub(crate) const SETTINGS_URL_SCHEME_PREFIX: &str = "settings://";
 pub(crate) const SETTINGS_SUBTITLE_PREFIX: &str = "Settings ";

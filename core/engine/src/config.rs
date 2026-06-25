@@ -135,8 +135,25 @@ impl RuntimeConfig {
         if let Some(path) = config_path() {
             ensure_default_config_file(&path);
             config.apply_from_file(&path);
+            config.ensure_default_file_scan_roots_present();
         }
         config
+    }
+
+    /// Union the current platform defaults into the user's saved
+    /// `file_scan_roots`, preserving any custom entries they added.
+    /// Idempotent: re-running with no missing defaults is a no-op.
+    ///
+    /// Trade-off: removing a default by deleting it from the config file
+    /// won't stick — the next load adds it back. That's intentional; the
+    /// schema treats defaults as a guaranteed minimum, with
+    /// `file_exclude_paths` as the supported opt-out for specific dirs.
+    fn ensure_default_file_scan_roots_present(&mut self) {
+        for default_root in default_file_scan_roots() {
+            if !self.file_scan_roots.contains(&default_root) {
+                self.file_scan_roots.push(default_root);
+            }
+        }
     }
 
     /// Returns the cached `RuntimeConfig`, reading from disk on first call only.

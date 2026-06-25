@@ -23,7 +23,8 @@ pub(crate) const APP_FALLBACK_SCAN_ROOTS: &[&str] = &[
     "~/AppData/Local/Programs",
 ];
 
-pub(crate) const FILE_SCAN_ROOT_SUFFIXES: &[&str] = &["Desktop", "Documents", "Downloads"];
+pub(crate) const FILE_SCAN_ROOT_SUFFIXES: &[&str] =
+    &["Desktop", "Documents", "Downloads", "Pictures", "Videos"];
 
 pub(crate) const SETTINGS_URL_SCHEME_PREFIX: &str = "ms-settings:";
 pub(crate) const SETTINGS_SUBTITLE_PREFIX: &str = "Windows Settings ";
