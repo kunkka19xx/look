@@ -16,6 +16,7 @@ mod shell;
 mod state;
 mod sysinfo;
 mod translate;
+mod trash;
 
 use state::AppState;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -731,6 +732,10 @@ fn main() {
             music::music_resume,
             music::music_stop,
             music::music_is_finished,
+            // Trash
+            trash::trash_paths,
+            trash::count_trash_items,
+            trash::empty_trash,
             // Autostart
             autostart::set_autostart,
             autostart::get_autostart,

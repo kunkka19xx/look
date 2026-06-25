@@ -24,9 +24,6 @@ export function setOnPickChange(callback) {
   onPickChange = callback;
 }
 
-// Caller (app.js) flips this when entering/leaving rc" recent mode so the
-// empty-state copy matches the active prefix without coupling this module
-// back to search.js.
 export function setEmptyState(state) {
   emptyState = state || { mode: 'default' };
   if (currentResults.length === 0 && container) {

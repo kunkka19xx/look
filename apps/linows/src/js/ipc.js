@@ -200,3 +200,15 @@ export async function listFolder(path) {
 export async function getLookappVersion() {
   return invoke('get_lookapp_version');
 }
+
+export async function trashPaths(paths) {
+  return invoke('trash_paths', { paths });
+}
+
+export async function countTrashItems() {
+  return invoke('count_trash_items');
+}
+
+export async function emptyTrash() {
+  return invoke('empty_trash');
+}

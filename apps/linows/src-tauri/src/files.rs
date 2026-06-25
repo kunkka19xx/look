@@ -175,7 +175,7 @@ pub fn get_quick_folders() -> Vec<QuickFolder> {
             "Music",
         ];
 
-        names
+        let mut folders: Vec<QuickFolder> = names
             .iter()
             .filter_map(|n| {
                 let path = format!("{home}/{n}");
@@ -184,7 +184,20 @@ pub fn get_quick_folders() -> Vec<QuickFolder> {
                     path,
                 })
             })
-            .collect()
+            .collect();
+
+        #[cfg(target_os = "linux")]
+        if let Some(trash_dir) = crate::trash::linux_trash_dir() {
+            let files_dir = trash_dir.join("files");
+            if files_dir.is_dir() {
+                folders.push(QuickFolder {
+                    title: "Trash".to_string(),
+                    path: files_dir.to_string_lossy().into_owned(),
+                });
+            }
+        }
+
+        folders
     }
 }
 

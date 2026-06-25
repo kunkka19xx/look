@@ -71,9 +71,6 @@ export function handleQueryInput(query) {
 
   clipboardMode = false;
 
-  // rc" — recent files/folders. Engine handles ranking + filter; the only
-  // frontend duty is the mode flag (drives empty-state copy + suppresses
-  // quick-folder injection so pinned entries don't pollute the recent list).
   if (query.startsWith('rc"')) {
     recentMode = true;
     debounceTimer = setTimeout(() => performSearch(query), DEBOUNCE_MS);
@@ -170,11 +167,12 @@ function prependQuickFolders(results, query) {
   for (const folder of quickFolders) {
     if (!folder.title.toLowerCase().startsWith(q)) continue;
     if (results.some((r) => r.path === folder.path)) continue;
+    const isTrash = folder.title === 'Trash';
     matched.push({
       id: `quickfolder:${folder.title.toLowerCase()}`,
       kind: 'folder',
       title: folder.title,
-      subtitle: 'Pinned home folder',
+      subtitle: isTrash ? 'Pinned · Ctrl+D to empty' : 'Pinned home folder',
       path: folder.path,
       score: 999999,
     });

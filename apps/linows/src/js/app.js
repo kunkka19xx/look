@@ -4,6 +4,7 @@ import * as keyboard from './keyboard.js';
 import * as preview from './components/preview.js';
 import * as picked from './components/picked.js';
 import * as banner from './components/banner.js';
+import * as confirm from './components/confirm.js';
 import * as commands from './screens/commands/index.js';
 import * as settings from './screens/settings.js';
 import { mountUpdateWidget } from './screens/update_widget.js';
@@ -91,6 +92,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   keyboard.init(queryInput);
   preview.init(previewPanel);
   banner.init(document.getElementById('banner'));
+  confirm.init(document.getElementById('confirm-bar'));
   picked.init(previewPanel, {
     onRemoveItem: (key) => results.removePick(key),
     onClearAll: () => results.clearPicks(),

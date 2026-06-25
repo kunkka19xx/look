@@ -1,9 +1,11 @@
 import * as results from './components/results.js';
 import * as search from './search.js';
 import * as translatePanel from './components/translate.js';
-import { openPath, recordUsage, revealPath, hideWindow, copyFilesToClipboard, copyToClipboard, deleteClipboardEntry } from './ipc.js';
+import { openPath, recordUsage, revealPath, hideWindow, copyFilesToClipboard, copyToClipboard, deleteClipboardEntry, trashPaths, countTrashItems, emptyTrash, requestIndexRefresh } from './ipc.js';
 import * as banner from './components/banner.js';
+import * as confirm from './components/confirm.js';
 import * as runningApps from './components/running-apps.js';
+import { trash as trashIcon } from './icons.js';
 
 let queryInput = null;
 let shiftHeld = false;
@@ -50,6 +52,22 @@ export function setSettingsMode(mod, contentArea, searchBar) {
 }
 
 function handleKeyDown(e) {
+  if (confirm.isActive()) {
+    const k = e.key;
+    if (k === 'y' || k === 'Y' || k === 'Enter') {
+      e.preventDefault();
+      confirm.confirm();
+      return;
+    }
+    if (k === 'n' || k === 'N' || k === 'Escape') {
+      e.preventDefault();
+      confirm.cancel();
+      return;
+    }
+    e.preventDefault();
+    return;
+  }
+
   // Alt+Shift+Q quits the app
   if (e.altKey && (e.shiftKey || shiftHeld) && (e.key === 'Q' || e.key === 'q')) {
     e.preventDefault();
@@ -232,6 +250,79 @@ function handleKeyDown(e) {
         results.togglePick(results.getSelected());
       }
       break;
+
+    case 'd':
+    case 'D':
+      if (e.ctrlKey && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        handleTrashShortcut();
+      }
+      break;
+  }
+}
+
+function trashTargetsFromSelection() {
+  const picked = results.getPickedItems();
+  const candidates = picked.length > 0 ? picked : [results.getSelected()].filter(Boolean);
+  return candidates.filter((item) => item.kind === 'file' || item.kind === 'folder');
+}
+
+async function handleTrashShortcut() {
+  const selected = results.getSelected();
+  if (selected && typeof selected.id === 'string' && selected.id === 'quickfolder:trash') {
+    await handleEmptyTrash();
+    return;
+  }
+
+  const targets = trashTargetsFromSelection();
+  if (targets.length === 0) {
+    banner.show('Select a file or folder to delete', 'info', 1.2);
+    return;
+  }
+
+  try {
+    const outcome = await trashPaths(targets.map((t) => t.path));
+    results.clearPicks();
+    if (outcome.failed.length === 0) {
+      banner.show(`Moved ${outcome.trashed} to Trash`, 'success', 1.4);
+    } else if (outcome.trashed === 0) {
+      const first = outcome.failed[0];
+      const name = first.path.split('/').pop() || first.path;
+      banner.show(`Failed to trash ${name}: ${first.reason}`, 'error', 2.0);
+    } else {
+      banner.show(`Moved ${outcome.trashed}, ${outcome.failed.length} failed`, 'error', 2.0);
+    }
+    try { await requestIndexRefresh(); } catch (_) {}
+  } catch (err) {
+    banner.show(`Trash failed: ${err}`, 'error', 2.0);
+  }
+}
+
+async function handleEmptyTrash() {
+  let count;
+  try {
+    count = await countTrashItems();
+  } catch (err) {
+    banner.show(`Empty Trash unavailable: ${err}`, 'error', 2.2);
+    return;
+  }
+  if (count === 0) {
+    banner.show('Trash is already empty', 'info', 1.2);
+    return;
+  }
+  const itemWord = count === 1 ? 'item' : 'items';
+  const ok = await confirm.ask({
+    title: 'Empty Trash?',
+    detail: `${count} ${itemWord} — deleted permanently`,
+    icon: trashIcon,
+  });
+  if (!ok) return;
+  try {
+    const purged = await emptyTrash();
+    banner.show(`Emptied Trash (${purged})`, 'success', 1.4);
+    try { await requestIndexRefresh(); } catch (_) {}
+  } catch (err) {
+    banner.show(`Empty Trash failed: ${err}`, 'error', 2.0);
   }
 }
 
