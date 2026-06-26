@@ -560,26 +560,42 @@ fn apply_transparency(window: &tauri::WebviewWindow) {
 /// Set up window event handlers (focus input on focus, auto-hide on blur).
 fn setup_window_events(window: &tauri::WebviewWindow) {
     let w = window.clone();
-    window.on_window_event(move |event| {
-        match event {
-            tauri::WindowEvent::Focused(true) => {
-                let _ = w.eval("{ let q = document.getElementById('query'); if (q) { q.focus(); q.select(); } }");
-            }
-            // On Linux, Focused(false) fires on mouse-leave (GNOME/Mutter
-            // with undecorated always-on-top windows), so auto-hide is
-            // handled entirely by the X11 active-window monitor instead.
-            // TODO: add Wayland auto-hide when Wayland support is added.
-            #[cfg(not(target_os = "linux"))]
-            tauri::WindowEvent::Focused(false)
-                if !PICKING_FILE.load(Ordering::Relaxed)
-                    && now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > AUTO_HIDE_GRACE_MS =>
-            {
-                LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
-                let _ = w.hide();
-            }
-            _ => {}
+    window.on_window_event(move |event| match event {
+        tauri::WindowEvent::Focused(true) => {
+            let _ = w.eval(
+                "{ let q = document.getElementById('query'); if (q) { q.focus(); q.select(); } }",
+            );
         }
+        tauri::WindowEvent::Focused(false)
+            if !PICKING_FILE.load(Ordering::Relaxed)
+                && now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > AUTO_HIDE_GRACE_MS
+                && focus_loss_means_dismiss() =>
+        {
+            LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
+            let _ = w.hide();
+        }
+        _ => {}
     });
+}
+
+/// Whether a `Focused(false)` event should auto-hide the launcher.
+///
+/// macOS / Windows: trustworthy, fire only on real focus loss → always true.
+/// Linux X11: GNOME/Mutter emit Focused(false) on mouse-leave even when the
+///   window still has keyboard focus; the X11 _NET_ACTIVE_WINDOW monitor
+///   handles auto-hide instead (it tracks the true active window). → false.
+/// Linux Wayland (Sway, GNOME Wayland, KDE Plasma): Focused(false) only
+///   fires on real focus changes, and the X11 monitor can't see Wayland
+///   windows at all (so without this path Look never auto-hides). → true.
+fn focus_loss_means_dismiss() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        is_wayland()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
 }
 
 fn main() {

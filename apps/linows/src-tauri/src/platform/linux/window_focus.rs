@@ -300,7 +300,7 @@ static MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
 
 /// Returns true for WMs that use focus-follows-mouse (i3, sway, etc.)
 /// where auto-hide on focus loss would fight the WM's focus policy.
-fn is_focus_follows_mouse_wm() -> bool {
+pub fn is_focus_follows_mouse_wm() -> bool {
     // I3SOCK is always set when running under i3
     if std::env::var("I3SOCK").is_ok() {
         return true;

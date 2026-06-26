@@ -20,8 +20,7 @@
       <div class="settings-tab-content" id="settings-tab-appearance">
         <!-- Theme + Running Apps toggle -->
         <div class="settings-section-header">
-          <span class="settings-section-arrow">&#9654;</span>
-          <span>Theme</span>
+                    <span>Theme</span>
           <div class="settings-dropdown" id="settings-theme">
             <button class="settings-dropdown-btn" type="button">
               <span class="settings-dropdown-label">Catppuccin</span>
@@ -241,6 +240,28 @@
 
       <!-- Advanced tab -->
       <div class="settings-tab-content" id="settings-tab-advanced" hidden>
+        <!-- Web answers — Linux/Windows have no on-device LLM (Apple
+             Intelligence on macOS only), so this section advertises the
+             feature accurately as web-based instead of borrowing the macOS
+             "AI" label that would otherwise mislead. -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Web answers</span></div>
+        <div class="settings-section">
+          <div class="settings-row">
+            <label class="settings-label">Enable</label>
+            <label class="settings-toggle" title="Inline answers for question-like queries (currency/weather/crypto, Wikipedia, DuckDuckGo) plus Google autocomplete suggestions">
+              <input type="checkbox" id="settings-ai-enabled" checked />
+              <span class="settings-toggle-track"></span>
+            </label>
+            <span class="settings-hint-text">Inline answers + Google autocomplete over HTTPS</span>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label"></label>
+            <span class="settings-hint-text">On-device AI (model that rewrites queries, drafts answers) is macOS-only.</span>
+          </div>
+        </div>
+
+        <div class="settings-divider"></div>
+
         <!-- Background -->
         <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Background</span></div>
         <div class="settings-section">
@@ -326,14 +347,6 @@
         <!-- Privacy & Logs -->
         <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Privacy &amp; Logs</span></div>
         <div class="settings-section">
-          <div class="settings-row">
-            <label class="settings-label">Web answers</label>
-            <label class="settings-toggle" title="Show an inline answer card for question-like queries (currency/weather/crypto, Wikipedia, DuckDuckGo) and Google autocomplete suggestions">
-              <input type="checkbox" id="settings-ai-enabled" checked />
-              <span class="settings-toggle-track"></span>
-            </label>
-            <span class="settings-hint-text">When on, Look fetches inline answers and Google autocomplete over HTTPS. Disable for fully offline use.</span>
-          </div>
           <div class="settings-row">
             <label class="settings-label">Backend Log Level</label>
             <div class="settings-dropdown" id="settings-log-level">

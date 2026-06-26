@@ -362,6 +362,8 @@ html:not([data-os="linux"]) .settings-linux-only {
   position: relative;
   width: 36px;
   height: 20px;
+  flex-shrink: 0; /* keep its 36 px even when a long nowrap hint
+                     would otherwise squeeze it in the flex row */
   cursor: pointer;
 }
 
