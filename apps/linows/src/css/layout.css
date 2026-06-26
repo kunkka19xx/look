@@ -152,6 +152,14 @@ html[data-os="windows"] .launcher-window {
   scrollbar-width: none;
 }
 
+/* When the preview pane is hidden (discovery menus, etc.), let the results
+ * list span both grid columns so it doesn't get squeezed into column 1 while
+ * the running-apps strip occupies column 2's top row. Matches macOS, which
+ * drops the preview pane entirely in `"` / `:` discovery modes. */
+.main-pane:has(.preview-panel[hidden]) .results-list {
+  grid-column: 1 / -1;
+}
+
 .results-list::-webkit-scrollbar {
   display: none;
 }

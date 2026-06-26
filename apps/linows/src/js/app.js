@@ -19,6 +19,7 @@ import {
   copyToClipboard, deleteClipboardEntry, isDevBuild,
   getConfig,
 } from './ipc.js';
+import { prefixFromResultId, commandIdFromResultId } from './catalog.js';
 
 // Item count and structure mirror the macOS app's `LauncherView.hintItems`
 // (apps/macos/.../LauncherView.swift:302) so both platforms surface the same
@@ -27,6 +28,10 @@ import {
 const HINT_MAIN = 'Enter: Open \u2022 Ctrl+F: Reveal \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
 const HINT_TRANSLATE = 'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
 const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Delete: Remove clip \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+// Discovery-menu hints \u2014 mirror macOS prefixSuggestion / commandSuggestion
+// hint bars (LauncherView.swift hintItems).
+const HINT_PREFIX_DISCOVERY = 'Enter: Pick prefix \u2022 Up/Down: Move \u2022 Esc: Clear \u2022 Ctrl+H: Help';
+const HINT_COMMAND_DISCOVERY = 'Enter: Run command \u2022 Up/Down: Move \u2022 Esc: Clear \u2022 Ctrl+H: Help';
 
 // Hint constants are static, authored in code \u2014 safe to set as innerHTML so
 // each bullet renders through `.hint-sep` (accent color, bold) for clearer
@@ -133,12 +138,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Expose command mode toggle for keyboard.js
   keyboard.setCommandMode(commands);
 
-  // Update right panel when selection changes
+  // Update right panel when selection changes. Discovery rows have nothing
+  // to preview (synthetic, empty path) — let the list span full width instead
+  // of showing an empty pane (matches macOS LauncherView.swift:872).
   results.setOnSelectionChange((item) => {
-    if (!results.hasPickedItems()) {
-      previewPanel.hidden = false;
-      preview.update(item);
+    if (results.hasPickedItems()) return;
+    if (item && (prefixFromResultId(item.id) != null || commandIdFromResultId(item.id) != null)) {
+      previewPanel.hidden = true;
+      return;
     }
+    previewPanel.hidden = false;
+    preview.update(item);
   });
 
   // Wire clipboard delete from preview panel
@@ -172,20 +182,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     results.render(items);
   });
 
-  // :cmd prefix → jump into command mode (e.g. :calc 2+2, :kill chrome)
+  // :cmd <args> live trigger — jumps straight into that command's panel with
+  // the rest of the text prefilled (e.g. `:calc 2+2`, `:kill chrome`). Bare
+  // `:calc` without a trailing space stays in the discovery menu (matches
+  // macOS extractInlineCommand semantics); the user can press Enter on the
+  // highlighted row to enter the command with empty input.
   const CMD_PREFIX_MAP = { calc: 'calc', pomo: 'pomo', kill: 'kill', shell: 'shell', sys: 'sys' };
 
   function tryCommandPrefix(value) {
     if (!value.startsWith(':')) return false;
     const rest = value.slice(1);
-    const spaceIdx = rest.indexOf(' ');
-    const cmdName = spaceIdx >= 0 ? rest.slice(0, spaceIdx) : rest;
+    const spaceIdx = rest.search(/\s/);
+    // No whitespace → not a live trigger; let the discovery menu handle it.
+    if (spaceIdx < 0) return false;
+    const cmdName = rest.slice(0, spaceIdx);
     const cmdId = CMD_PREFIX_MAP[cmdName.toLowerCase()];
     if (!cmdId) return false;
-    const input = spaceIdx >= 0 ? rest.slice(spaceIdx + 1) : '';
+    const input = rest.slice(spaceIdx + 1);
     commands.enterById(cmdId);
     enterCommandMode();
-    // Set the command input if there's text after the command name
     const cmdInput = document.getElementById('cmd-input');
     if (cmdInput && input) {
       cmdInput.value = input;
@@ -213,6 +228,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       runningApps.setSuspended(false);
       if (runningApps.isEnabled()) runningApps.refresh();
       translatePanel.hide();
+    } else if (search.isPrefixHintMode()) {
+      setHint(hintMessage, HINT_PREFIX_DISCOVERY);
+      resultsList.hidden = false;
+      previewPanel.hidden = true;
+      runningApps.setSuspended(false);
+      if (runningApps.isEnabled()) runningApps.refresh();
+      translatePanel.hide();
+    } else if (search.isCommandHintMode()) {
+      setHint(hintMessage, HINT_COMMAND_DISCOVERY);
+      resultsList.hidden = false;
+      previewPanel.hidden = true;
+      runningApps.setSuspended(false);
+      if (runningApps.isEnabled()) runningApps.refresh();
+      translatePanel.hide();
     } else {
       setHint(hintMessage, HINT_MAIN);
       resultsList.hidden = false;
@@ -226,13 +255,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Click on result row -> open
   resultsList.addEventListener('result-activate', () => {
     const item = results.getSelected();
-    if (item) {
-      import('./ipc.js').then(({ openPath, recordUsage }) => {
-        openPath(item.path, item.kind, item.id);
-        const actionMap = { app: 'open_app', file: 'open_file', folder: 'open_folder' };
-        recordUsage(item.id, actionMap[item.kind] || 'open_file');
-      });
+    if (!item) return;
+
+    // Discovery rows behave the same on click as on Enter: pick a prefix fills
+    // the query, pick a command enters that command's panel.
+    const hintedPrefix = prefixFromResultId(item.id);
+    if (hintedPrefix != null) {
+      queryInput.value = hintedPrefix;
+      queryInput.focus();
+      queryInput.setSelectionRange(hintedPrefix.length, hintedPrefix.length);
+      queryInput.dispatchEvent(new Event('input'));
+      return;
     }
+    const hintedCmd = commandIdFromResultId(item.id);
+    if (hintedCmd != null) {
+      commands.enterById(hintedCmd);
+      enterCommandMode();
+      queryInput.value = '';
+      return;
+    }
+
+    import('./ipc.js').then(({ openPath, recordUsage }) => {
+      openPath(item.path, item.kind, item.id);
+      const actionMap = { app: 'open_app', file: 'open_file', folder: 'open_folder' };
+      recordUsage(item.id, actionMap[item.kind] || 'open_file');
+    });
   });
 
   // When window shown via global hotkey, focus input and select all

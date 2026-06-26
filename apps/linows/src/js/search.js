@@ -1,4 +1,8 @@
 import { search as ipcSearch, getClipboardHistory } from './ipc.js';
+import {
+  isPrefixSuggestionQuery, isCommandSuggestionQuery,
+  prefixSuggestionResults, commandSuggestionResults,
+} from './catalog.js';
 
 const DEBOUNCE_MS = 70;
 const MIN_QUICK_FOLDER_PREFIX = 2;
@@ -10,6 +14,8 @@ let homeDir = null;
 let clipboardMode = false;
 let translateMode = false;
 let recentMode = false;
+let prefixHintMode = false;
+let commandHintMode = false;
 
 /** Resolved by the backend (Windows: SHGetKnownFolderPath; *nix: $HOME/<name>).
  *  Empty until setQuickFolders is called at boot. */
@@ -39,6 +45,14 @@ export function isRecentMode() {
   return recentMode;
 }
 
+export function isPrefixHintMode() {
+  return prefixHintMode;
+}
+
+export function isCommandHintMode() {
+  return commandHintMode;
+}
+
 export function getTranslateText() {
   return translateMode ? _translateText : '';
 }
@@ -47,6 +61,25 @@ let _translateText = '';
 
 export function handleQueryInput(query) {
   clearTimeout(debounceTimer);
+
+  // Discovery menus — `"` lists every query prefix, `:` lists every slash
+  // command, both filterable by what follows the leading character. Must
+  // run before the t"/c"/rc" branches because the leading chars overlap.
+  if (isPrefixSuggestionQuery(query)) {
+    prefixHintMode = true;
+    commandHintMode = translateMode = clipboardMode = recentMode = false;
+    if (onResultsCallback) onResultsCallback(prefixSuggestionResults(query), query);
+    return;
+  }
+  if (isCommandSuggestionQuery(query)) {
+    commandHintMode = true;
+    prefixHintMode = translateMode = clipboardMode = recentMode = false;
+    if (onResultsCallback) onResultsCallback(commandSuggestionResults(query), query);
+    return;
+  }
+
+  prefixHintMode = false;
+  commandHintMode = false;
 
   if (query.startsWith('t"')) {
     translateMode = true;

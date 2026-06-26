@@ -6,6 +6,7 @@ import * as banner from './components/banner.js';
 import * as confirm from './components/confirm.js';
 import * as runningApps from './components/running-apps.js';
 import { trash as trashIcon } from './icons.js';
+import { prefixFromResultId, commandIdFromResultId } from './catalog.js';
 
 let queryInput = null;
 let shiftHeld = false;
@@ -216,7 +217,8 @@ function handleKeyDown(e) {
 
     case 'Escape':
       e.preventDefault();
-      if (search.isClipboardMode() || search.isTranslateMode()) {
+      if (search.isClipboardMode() || search.isTranslateMode()
+          || search.isPrefixHintMode() || search.isCommandHintMode()) {
         queryInput.value = '';
         translatePanel.hide();
         queryInput.dispatchEvent(new Event('input'));
@@ -229,6 +231,7 @@ function handleKeyDown(e) {
     case 'f':
       if (e.ctrlKey) {
         e.preventDefault();
+        if (isDiscoveryMode()) break;
         revealSelected();
       }
       break;
@@ -236,6 +239,7 @@ function handleKeyDown(e) {
     case 'c':
       if (e.ctrlKey && !window.getSelection()?.toString()) {
         e.preventDefault();
+        if (isDiscoveryMode()) break;
         copySelectedPath();
       }
       break;
@@ -247,6 +251,7 @@ function handleKeyDown(e) {
         results.clearPicks();
       } else if (e.ctrlKey) {
         e.preventDefault();
+        if (isDiscoveryMode()) break;
         results.togglePick(results.getSelected());
       }
       break;
@@ -255,10 +260,18 @@ function handleKeyDown(e) {
     case 'D':
       if (e.ctrlKey && !e.shiftKey && !e.altKey) {
         e.preventDefault();
+        if (isDiscoveryMode()) break;
         handleTrashShortcut();
       }
       break;
   }
+}
+
+// Side actions (reveal, copy path, pick, trash) don't make sense on synthetic
+// discovery rows — their `path` is empty. Mirrors macOS guards on
+// revealSelectedInFinder / togglePickForSelectedResult.
+function isDiscoveryMode() {
+  return search.isPrefixHintMode() || search.isCommandHintMode();
 }
 
 function trashTargetsFromSelection() {
@@ -329,6 +342,25 @@ async function handleEmptyTrash() {
 async function openSelected() {
   const item = results.getSelected();
   if (!item) return;
+
+  // Discovery rows: `prefixhint:` fills the query with that prefix (cursor
+  // ready for the term); `cmdhint:` enters the command's panel with empty
+  // input. Mirrors macOS openSelectedApp.
+  const hintedPrefix = prefixFromResultId(item.id);
+  if (hintedPrefix != null) {
+    queryInput.value = hintedPrefix;
+    queryInput.focus();
+    queryInput.setSelectionRange(hintedPrefix.length, hintedPrefix.length);
+    queryInput.dispatchEvent(new Event('input'));
+    return;
+  }
+  const hintedCmd = commandIdFromResultId(item.id);
+  if (hintedCmd != null && commandMode && enterCommandModeFn) {
+    commandMode.enterById(hintedCmd);
+    enterCommandModeFn();
+    queryInput.value = '';
+    return;
+  }
 
   try {
     await openPath(item.path, item.kind, item.id);

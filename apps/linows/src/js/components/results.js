@@ -197,15 +197,20 @@ function createRow(result, index) {
   // list scans visually. Returns null if the path isn't an ms-settings URI.
   const windowsSettingsSvg = getWindowsSettingsIcon(result.path);
   const fallbacks = { file: fileIcon, folder: folderIcon, setting: settingIcon, clipboard: clipboardIcon };
-  icon.innerHTML = windowsSettingsSvg
+  // Synthetic discovery rows (prefix/command menus) ship their own glyph in
+  // result.iconSvg so the list scans visually; everything else falls back to
+  // the kind-based stub until the backend icon fetch resolves.
+  icon.innerHTML = result.iconSvg
+    || windowsSettingsSvg
     || (isLinuxSettings ? settingIcon : (fallbacks[result.kind] || appIcon));
   icon.style.background = 'var(--control-fill)';
   icon.style.color = 'var(--font-secondary)';
   row.appendChild(icon);
 
   // Skip backend icon fetch for ms-settings entries — the Shell PNG would just
-  // be the generic gear and would clobber our category-specific glyph.
-  if (result.kind !== 'clipboard' && !windowsSettingsSvg) {
+  // be the generic gear and would clobber our category-specific glyph. Same
+  // applies to synthetic discovery rows whose `path` is empty.
+  if (result.kind !== 'clipboard' && !windowsSettingsSvg && !result.iconSvg && result.path) {
     loadIcon(icon, result.kind, result.path, result.id);
   }
 
