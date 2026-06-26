@@ -24,6 +24,14 @@
     </div>
   </div>
 
-  <div class="results-list" id="results-list"></div>
+  <!-- Results area lives in column 1 of the main grid alongside the search
+       bar, so its rows share the same effective width — their right edges
+       line up exactly with the search bar's right edge (mirrors macOS, where
+       both are siblings in the left panel). The preview pane lives in
+       column 2 with the running-apps strip. -->
+  <div class="results-area" id="results-area">
+    <div class="ai-card" id="ai-answer-card" hidden></div>
+    <div class="results-list" id="results-list"></div>
+  </div>
   <div class="preview-panel" id="preview-panel" hidden></div>
 </div>

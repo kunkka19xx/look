@@ -6,7 +6,7 @@ import * as banner from './components/banner.js';
 import * as confirm from './components/confirm.js';
 import * as runningApps from './components/running-apps.js';
 import { trash as trashIcon } from './icons.js';
-import { prefixFromResultId, commandIdFromResultId } from './catalog.js';
+import { prefixFromResultId, commandIdFromResultId, webSuggestionFromResultId } from './catalog.js';
 
 let queryInput = null;
 let shiftHeld = false;
@@ -359,6 +359,13 @@ async function openSelected() {
     commandMode.enterById(hintedCmd);
     enterCommandModeFn();
     queryInput.value = '';
+    return;
+  }
+  // Google autocomplete row → open the search in the browser.
+  const suggestionText = webSuggestionFromResultId(item.id);
+  if (suggestionText != null) {
+    const url = `https://www.google.com/search?q=${encodeURIComponent(suggestionText)}`;
+    openPath(url, 'browser', '');
     return;
   }
 

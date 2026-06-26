@@ -89,6 +89,32 @@
   opacity: 0.8;
 }
 
+/* Web-suggestion rows wrap their title to up to 3 lines instead of truncating
+ * with ellipsis. They live in a narrow 320 px column when the AI card is
+ * showing, so "david beckham manchester united" reads better wrapped than
+ * cut off. Mirrors macOS WebSuggestionPreviewView's 3-line title cap.
+ *
+ * In normal/stacked mode they sit in column 1 mixed with app/file/folder
+ * rows, so they inherit the regular margin/padding to keep the magnifying
+ * glass icon visually aligned with the app icons above. The tighter inset
+ * only kicks in for the narrow 320 px column in two-col mode (see
+ * layout.css). */
+.result-row-web-suggest {
+  align-items: flex-start;
+}
+
+.result-row-web-suggest .result-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* Kind badge */
 .result-badge {
   font-size: calc(var(--font-size) - 4px);

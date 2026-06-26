@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod answers;
 mod autostart;
 mod calc;
 mod clipboard;
@@ -722,6 +723,13 @@ fn main() {
             process::activate_running_app,
             // Translation
             translate::translate,
+            // AI / web answers (look-answers crate, shared with macOS)
+            answers::instant_has_match,
+            answers::definitional_entity,
+            answers::instant_answer,
+            answers::duckduckgo_answer,
+            answers::wikipedia_answer,
+            answers::web_suggestions,
             // Clipboard
             clipboard::get_clipboard_history,
             clipboard::delete_clipboard_entry,

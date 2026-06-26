@@ -246,6 +246,17 @@ export function init(exitFn) {
     saveConfig({ lazy_indexing_enabled: e.target.checked ? 'true' : 'false' });
   });
 
+  // AI / web answers toggle — gates the inline answer card and Google
+  // autocomplete rows. Dispatches a custom event so app.js can apply the
+  // change live (it propagates to both the controller and search.js).
+  document.getElementById('settings-ai-enabled').addEventListener('change', (e) => {
+    const enabled = e.target.checked;
+    saveConfig({ ai_enabled: enabled ? 'true' : 'false' });
+    document.dispatchEvent(new CustomEvent('look:ai-enabled-changed', {
+      detail: { enabled },
+    }));
+  });
+
   // Running apps toggle (Appearance tab, next to Theme).
   // Persisted as `running_apps_placement` to share the macOS config key;
   // 'right' = visible, 'none' = hidden. Dispatches a custom event so
@@ -503,6 +514,7 @@ export function init(exitFn) {
       updates.file_scan_limit = document.getElementById('settings-file-limit').value;
       updates.lazy_indexing_enabled = document.getElementById('settings-lazy-indexing').checked ? 'true' : 'false';
       updates.running_apps_placement = document.getElementById('settings-running-apps').checked ? 'right' : 'none';
+      updates.ai_enabled = document.getElementById('settings-ai-enabled').checked ? 'true' : 'false';
 
       // Advanced: log level
       const logDD = document.getElementById('settings-log-level');
@@ -777,6 +789,7 @@ async function loadConfig() {
     document.getElementById('settings-file-limit').value = map.file_scan_limit || '8000';
     document.getElementById('settings-lazy-indexing').checked = map.lazy_indexing_enabled !== 'false';
     document.getElementById('settings-running-apps').checked = (map.running_apps_placement || 'right') !== 'none';
+    document.getElementById('settings-ai-enabled').checked = map.ai_enabled !== 'false';
     document.getElementById('settings-arch-disable-gpu').checked = map.arch_disable_gpu === 'true';
     document.getElementById('settings-arch-disable-blur').checked = map.arch_disable_blur === 'true';
     if (map.arch_disable_blur === 'true') {

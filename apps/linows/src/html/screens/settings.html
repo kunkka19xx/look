@@ -327,6 +327,14 @@
         <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Privacy &amp; Logs</span></div>
         <div class="settings-section">
           <div class="settings-row">
+            <label class="settings-label">Web answers</label>
+            <label class="settings-toggle" title="Show an inline answer card for question-like queries (currency/weather/crypto, Wikipedia, DuckDuckGo) and Google autocomplete suggestions">
+              <input type="checkbox" id="settings-ai-enabled" checked />
+              <span class="settings-toggle-track"></span>
+            </label>
+            <span class="settings-hint-text">When on, Look fetches inline answers and Google autocomplete over HTTPS. Disable for fully offline use.</span>
+          </div>
+          <div class="settings-row">
             <label class="settings-label">Backend Log Level</label>
             <div class="settings-dropdown" id="settings-log-level">
               <button class="settings-dropdown-btn" type="button">

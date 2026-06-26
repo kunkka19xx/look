@@ -21,5 +21,11 @@ arch_disable_blur=false
 # Running apps switcher: none, right
 running_apps_placement=right
 
+# AI / web answers — show an inline answer card for question-like queries
+# (currency/weather/crypto via the network, Wikipedia/DuckDuckGo lookups,
+# and Google autocomplete suggestions). Set to false to disable all network
+# answer features and run fully offline.
+ai_enabled=true
+
 # UI theme
 ui_theme=

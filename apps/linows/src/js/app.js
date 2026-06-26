@@ -11,6 +11,8 @@ import { mountUpdateWidget } from './screens/update_widget.js';
 import * as translatePanel from './components/translate.js';
 import * as runningApps from './components/running-apps.js';
 import * as platform from './platform.js';
+import * as aiAnswer from './components/ai-answer.js';
+import * as aiCard from './components/ai-answer-card.js';
 import { load } from './html-loader.js';
 import {
   onWindowShown, onIndexReady, requestIndexRefresh, getHomeDir, getQuickFolders, copyFilesToClipboard,
@@ -19,7 +21,7 @@ import {
   copyToClipboard, deleteClipboardEntry, isDevBuild,
   getConfig,
 } from './ipc.js';
-import { prefixFromResultId, commandIdFromResultId } from './catalog.js';
+import { prefixFromResultId, commandIdFromResultId, webSuggestionFromResultId } from './catalog.js';
 
 // Item count and structure mirror the macOS app's `LauncherView.hintItems`
 // (apps/macos/.../LauncherView.swift:302) so both platforms surface the same
@@ -83,7 +85,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   const hintBar = document.getElementById('hint-bar');
   const hintMessage = hintBar.querySelector('span');
   const contentArea = document.getElementById('search-content');
+  const resultsArea = document.getElementById('results-area');
+  const aiCardEl = document.getElementById('ai-answer-card');
   setHint(hintMessage, HINT_MAIN);
+
+  // Snapshot of the latest results + AI state, used by applyAiLayoutMode()
+  // to pick full / two-col / stacked. Mirrors macOS LauncherView resultsRow.
+  let lastResults = [];
+  let lastAiState = 'idle';
 
   hintBar.querySelector('.hint-bar-link').addEventListener('click', (e) => {
     e.preventDefault();
@@ -108,6 +117,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     onGetIcon: getIcon,
   });
   translatePanel.init(contentArea);
+  aiCard.init(aiCardEl);
+  aiAnswer.init({
+    onChange: (snapshot) => {
+      lastAiState = snapshot.state;
+      aiCard.update(snapshot);
+      applyAiLayoutMode();
+    },
+  });
   settings.init(() => {
     queryInput.value = '';
     search.handleQueryInput('');
@@ -123,6 +140,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const on = !placement || placement.value !== 'none';
     runningApps.setEnabled(on);
     if (on) runningApps.refresh();
+
+    // AI / web answers — default ON to match the default_config.txt setting
+    // (and macOS, which ships aiEnabled=true). Honour the persisted value if
+    // the user has flipped it. Propagated to both the controller (gates the
+    // card) and search.js (gates web suggestions).
+    const aiCfg = cfg.entries.find((e) => e.key === 'ai_enabled');
+    const aiOn = !aiCfg || aiCfg.value !== 'false';
+    aiAnswer.setEnabled(aiOn);
+    search.setAiEnabled(aiOn);
   });
 
   // Show DEV badge when running in dev mode (cargo tauri dev)
@@ -177,10 +203,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Wire search -> results
+  // Wire search -> results. After rendering, drive the AI controller with
+  // the LOCAL result count (websuggest: rows don't count — a query that
+  // only matches web suggestions is treated as zero local results, which is
+  // the macOS knowledge-lookup trigger).
   search.setOnResults((items, query) => {
+    lastResults = items;
     results.render(items);
+    applyAiLayoutMode();
+    const localCount = items.filter((r) => webSuggestionFromResultId(r.id) == null).length;
+    aiAnswer.update(query, localCount);
   });
+
+  // Pick stacked / two-col purely from the local-result count, ignoring the
+  // controller state and the suggestion-arrival timing. This is what
+  // eliminates the 2–3 second "card width zooms out" shift the user sees:
+  // engine returns first (empty), then 2 s later web suggestions arrive,
+  // and the OLD logic reacted to every intermediate state with a different
+  // mode. Now the only thing that matters is "are there any local rows":
+  //   - has local results → stacked (card capped 240 px above rows, both
+  //     in col 1; search-bar and rows stay aligned)
+  //   - no local results  → two-col (wide card + 320 px suggestion column
+  //     on the right; alignment intentionally broken so the answer reads
+  //     at a comfortable measure)
+  // The 320 px column may be empty briefly while suggestions load, or
+  // permanently for queries that get none (e.g. "1+1=?"). Stable layout
+  // matters more than the empty column for those edge cases.
+  function applyAiLayoutMode() {
+    if (!resultsArea) return;
+    resultsArea.classList.remove('ai-mode-full', 'ai-mode-two-col', 'ai-mode-stacked');
+    if (lastAiState === 'idle') return;
+    const local = lastResults.filter((r) => webSuggestionFromResultId(r.id) == null);
+    if (local.length > 0) {
+      resultsArea.classList.add('ai-mode-stacked');
+    } else {
+      resultsArea.classList.add('ai-mode-two-col');
+    }
+  }
 
   // :cmd <args> live trigger — jumps straight into that command's panel with
   // the rest of the text prefilled (e.g. `:calc 2+2`, `:kill chrome`). Bare
@@ -274,6 +333,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       queryInput.value = '';
       return;
     }
+    const suggestionText = webSuggestionFromResultId(item.id);
+    if (suggestionText != null) {
+      const url = `https://www.google.com/search?q=${encodeURIComponent(suggestionText)}`;
+      import('./ipc.js').then(({ openPath }) => openPath(url, 'browser', ''));
+      return;
+    }
 
     import('./ipc.js').then(({ openPath, recordUsage }) => {
       openPath(item.path, item.kind, item.id);
@@ -320,6 +385,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     resultsList.hidden = true;
     previewPanel.hidden = true;
     runningApps.setSuspended(true);
+    // Tear down any active AI card — command mode owns the whole content
+    // area, and a stale card would peek through. Matches macOS, which
+    // calls aiAnswer.cancel() whenever it switches into command mode.
+    aiAnswer.cancel();
     updateCommandHintBar();
     commands.enter();
     commands.setOnCommandChange(updateCommandHintBar);
@@ -449,11 +518,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Sync running apps strip when config is reloaded from file
+  // Sync running apps strip + AI when config is reloaded from file. Both
+  // settings have live downstream consumers, so propagate on every reload.
   settings.setOnConfigReload((map) => {
     const on = (map.running_apps_placement || 'right') !== 'none';
     runningApps.setEnabled(on);
     if (on) runningApps.refresh();
+
+    const aiOn = map.ai_enabled !== 'false';
+    aiAnswer.setEnabled(aiOn);
+    search.setAiEnabled(aiOn);
   });
 
   // Live-update when the Settings → Appearance → Running Apps toggle changes.
@@ -461,6 +535,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     const enabled = e.detail.enabled;
     runningApps.setEnabled(enabled);
     if (enabled) runningApps.refresh();
+  });
+
+  // Live-update when the Settings → Privacy & Logs → Web Answers toggle
+  // changes. Propagate immediately so the card and suggestion rows appear or
+  // disappear without a config reload.
+  document.addEventListener('look:ai-enabled-changed', (e) => {
+    const enabled = e.detail.enabled;
+    aiAnswer.setEnabled(enabled);
+    search.setAiEnabled(enabled);
+    // Re-run the current query so the new gate takes effect immediately
+    // (drops websuggest rows when disabled, fetches them when enabled).
+    search.handleQueryInput(queryInput.value);
   });
 
   // Expose enterCommandMode and settings for keyboard

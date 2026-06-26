@@ -1,0 +1,181 @@
+/* AI / web answer card. Mirrors macOS AIAnswerCardView:
+ *   10px corner radius, 12px padding, 1px white-8% border, control-fill bg
+ *   header row uses sparkles + question + spinner
+ *   blocks separated by 14px, each with a SOURCE LABEL (uppercased, accent
+ *   when clickable) + copy button, then an optional 96x96 image and the
+ *   answer text (selectable, generous line spacing).
+ *
+ * Three layouts (toggled by container classes in layout.css):
+ *   .ai-layout-full      — card fills the panel (no local results)
+ *   .ai-layout-two-col   — card on left, 320px web-suggestions list on right
+ *   .ai-layout-stacked   — card capped to 240px, results-list below
+ */
+
+.ai-card {
+  /* Top/bottom margin gives the card breathing room from the search bar
+   * above and the hint bar below — matches macOS, where the card has
+   * visible padding between the chrome edges instead of sitting flush. */
+  margin: 6px var(--content-padding) 8px;
+  padding: 12px;
+  background: var(--control-fill);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* User can select answer text without nuking selection on the rest of the
+   * launcher (which is `user-select: none` at the window level). */
+  user-select: text;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The `display: flex` above otherwise wins against the UA `[hidden] { display: none }`
+ * default, leaving an empty bordered bar under the search field whenever the
+ * controller is idle. !important keeps this override winning regardless of
+ * specificity changes elsewhere. */
+.ai-card[hidden] {
+  display: none !important;
+}
+
+.ai-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ai-card-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--accent-color);
+  flex-shrink: 0;
+  display: inline-flex;
+}
+
+.ai-card-question {
+  font-size: var(--font-size);
+  font-weight: 600;
+  color: var(--font-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ai-card-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+/* Streaming spinner — a thin border ring rotating. CSS-only so we don't have
+ * to ship an SVG; matches the visual weight of macOS ProgressView.small. */
+.ai-spinner {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--font-muted);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: ai-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes ai-spin {
+  to { transform: rotate(360deg); }
+}
+
+.ai-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  min-height: 0;
+}
+
+.ai-card-body::-webkit-scrollbar { display: none; }
+
+.ai-card-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-card-block-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Uppercased source name — 3pt smaller than body, bold. Accent + chevron
+ * when the source has a URL (Wikipedia, DuckDuckGo); muted otherwise
+ * (Calculator). Whole .ai-card-source is the click target. */
+.ai-card-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px 2px 0;
+  font-size: calc(var(--font-size) - 3px);
+  font-weight: 700;
+  color: var(--font-muted);
+  letter-spacing: 0.04em;
+  cursor: default;
+}
+
+.ai-card-source-linked {
+  color: var(--accent-color);
+  cursor: pointer;
+}
+
+.ai-card-source-chevron {
+  display: inline-flex;
+  width: calc(var(--font-size) - 5px);
+  height: calc(var(--font-size) - 5px);
+  color: var(--accent-color);
+}
+
+/* Copy button — same muted color as the source label until hover. */
+.ai-card-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: var(--font-muted);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.ai-card-copy:hover {
+  color: var(--font-color);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ai-card-block-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ai-card-image {
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  object-fit: cover;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ai-card-text {
+  font-size: var(--font-size);
+  font-weight: 400;
+  color: var(--font-secondary);
+  line-height: 1.5; /* macOS uses fontSize * 1.18 line spacing; 1.5 reads close */
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.ai-card-status {
+  font-size: var(--font-size);
+  color: var(--font-muted);
+}

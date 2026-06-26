@@ -19,7 +19,7 @@
 
 /* Background image layer (behind tint) */
 .launcher-window::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   background-image: var(--bg-image, none);
@@ -77,11 +77,12 @@ html[data-os="windows"] .launcher-window {
   -webkit-backdrop-filter: none !important;
 }
 
-/* Main pane: two-column CSS Grid that aligns the search bar with the
- * results-list, and the running apps strip with the preview panel.
- * Locking them to the same columns guarantees the chip's right edge
- * matches the row chips' right edge regardless of content sizing.
- * Right column expands only when one of its rows has visible content. */
+/* Main pane: 50/50 grid so the search bar's right edge lines up exactly with
+ * the result rows' right edge (and, when visible, the running-apps strip
+ * sits in column 2 above the preview pane, right-aligned to the same border).
+ * The split applies whenever there's anything in column 2 — either the
+ * running-apps strip up top or the preview pane below (the latter lives
+ * inside `.results-area`, so we test for its presence in the DOM via :has). */
 .main-pane {
   display: grid;
   grid-template-columns: 1fr;
@@ -110,12 +111,6 @@ html[data-os="windows"] .launcher-window {
   border-radius: var(--control-radius);
 }
 
-/* When running-apps toggle is off, let the search bar span both columns —
- * even if preview-panel is still showing below in column 2. */
-.main-pane:has(.running-apps-strip[hidden]) .search-bar {
-  grid-column: 1 / -1;
-}
-
 .search-icon {
   width: 16px;
   height: 16px;
@@ -142,22 +137,89 @@ html[data-os="windows"] .launcher-window {
   overflow: hidden;
 }
 
-.results-list {
+/* Results area — column 1 only by default, so its width matches the search
+ * bar's column exactly. The AI card sits on top, the engine results list
+ * below, both inheriting the same 50 % width as the search bar above them —
+ * which is what makes the search-bar right edge line up with the result rows
+ * in normal browsing and stacked AI mode. The two-col AI mode (knowledge
+ * lookup) deliberately overrides this so the answer card can read at a
+ * comfortable measure. */
+.results-area {
   grid-row: 3;
   grid-column: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+/* Stacked: card capped at 240 px on top, results-list fills the rest.
+ * Search-bar and result rows stay aligned (both in col 1). */
+.results-area.ai-mode-stacked .ai-card {
+  flex-shrink: 0;
+  max-height: 240px;
+}
+.results-area.ai-mode-stacked .results-list {
+  flex: 1;
+}
+
+/* Two-col: only web suggestions, no local results. Card extends across both
+ * grid columns so the answer reads at a comfortable measure; suggestions
+ * pin to a 320 px column on the right (matches macOS
+ * AppConstants.Launcher.aiAnswerSuggestionColumnWidth). Preview pane is
+ * suppressed — nothing useful to preview alongside a search list.
+ * Search-bar/results alignment is deliberately broken here: the wider card
+ * is the visual signal that the launcher has switched into knowledge mode.
+ *
+ * Tight inner gap (4 px) between the card and the suggestion column —
+ * the card and the suggestion rows already carry their own borders and
+ * background fills, so anything more reads as wasted gutter. Outer edges
+ * still keep the standard content-padding so the columns aren't flush
+ * against the window border. */
+.results-area.ai-mode-two-col {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 4px;
+}
+.results-area.ai-mode-two-col .ai-card {
+  flex: 1;
+  margin-right: 0;
+}
+.results-area.ai-mode-two-col .results-list {
+  flex: 0 0 320px;
+  width: 320px;
+}
+.results-area.ai-mode-two-col .result-row-web-suggest {
+  margin-left: 2px;
+  margin-right: 4px;
+  padding-left: 4px;
+}
+.results-area.ai-mode-two-col ~ .preview-panel {
+  display: none;
+}
+
+/* Card alone fills the column; results-list hidden. */
+.results-area.ai-mode-full .ai-card {
+  flex: 1;
+}
+.results-area.ai-mode-full .results-list {
+  display: none;
+}
+/* When the card is alone, the preview pane in column 2 has nothing useful
+ * to show — hide it so the answer card can read at a comfortable measure. */
+.results-area.ai-mode-full ~ .preview-panel {
+  display: none;
+}
+
+.results-list {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
   padding: var(--row-spacing) 0;
   scrollbar-width: none;
-}
-
-/* When the preview pane is hidden (discovery menus, etc.), let the results
- * list span both grid columns so it doesn't get squeezed into column 1 while
- * the running-apps strip occupies column 2's top row. Matches macOS, which
- * drops the preview pane entirely in `"` / `:` discovery modes. */
-.main-pane:has(.preview-panel[hidden]) .results-list {
-  grid-column: 1 / -1;
 }
 
 .results-list::-webkit-scrollbar {

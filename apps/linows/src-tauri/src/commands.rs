@@ -194,11 +194,13 @@ pub fn open_path(
         let _ = window.hide();
         std::thread::spawn(move || {
             let _ = open::that(&path);
+            // Give the browser a beat to receive the URL and surface its new
+            // tab — otherwise the focus attempt below races the spawn and
+            // sees no matching window yet.
             #[cfg(target_os = "linux")]
-            for class in &["Brave-browser", "firefox", "chromium", "Google-chrome"] {
-                if try_focus_window(class) {
-                    break;
-                }
+            {
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                focus_default_browser();
             }
         });
         Ok(())
@@ -454,7 +456,80 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
 }
 
 #[cfg(target_os = "linux")]
+/// Bring the user's default browser window to the foreground. Resolves the
+/// browser via `xdg-mime query default x-scheme-handler/https` so we focus
+/// the exact browser xdg-open just sent the URL to — not whichever browser
+/// happened to come first in a hard-coded candidate list (which would
+/// route the focus to the wrong window when the user has multiple browsers
+/// open, e.g. Brave default but Firefox also running).
+///
+/// Tries the GNOME Shell extension first (FocusApp by .desktop id, works on
+/// GNOME Wayland), then falls back to WM_CLASS / app_id matching via
+/// try_focus_window which knows about Sway, i3, and X11.
+#[cfg(target_os = "linux")]
+fn focus_default_browser() -> bool {
+    let Ok(output) = std::process::Command::new("xdg-mime")
+        .args(["query", "default", "x-scheme-handler/https"])
+        .output()
+    else {
+        return false;
+    };
+    let desktop_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if desktop_id.is_empty() {
+        return false;
+    }
+
+    // GNOME Shell extension — exact desktop id.
+    if crate::platform::linux::gnome_ext::try_focus_app(&desktop_id) {
+        return true;
+    }
+
+    // Strip ".desktop" suffix to get the base id (e.g. "brave-browser").
+    // That's typically the WM_CLASS / app_id the browser advertises — Sway
+    // and i3 match it case-insensitively via the (?i) flag inside
+    // try_focus_window, so "brave-browser" matches "Brave-browser" too.
+    let base = desktop_id.strip_suffix(".desktop").unwrap_or(&desktop_id);
+    if try_focus_window(base) {
+        return true;
+    }
+    // Some browsers use the last path segment of a reverse-DNS id as their
+    // class (e.g. "org.mozilla.firefox.desktop" → "firefox"). Try that too.
+    if let Some(tail) = base.rsplit('.').next()
+        && tail != base
+        && try_focus_window(tail)
+    {
+        return true;
+    }
+    false
+}
+
 fn try_focus_window(wm_class: &str) -> bool {
+    // Sway (Wayland): SWAYSOCK is set, swaymsg shares i3's IPC and CLI but
+    // Wayland-native clients identify by `app_id`, not WM_CLASS. XWayland
+    // clients still fall back to class/instance. The x11rb path below can't
+    // see Wayland windows at all, so this branch is the only thing that
+    // brings non-XWayland browsers (firefox-wayland, brave Wayland) forward.
+    if std::env::var("SWAYSOCK").is_ok() {
+        for criterion in [
+            format!("[app_id=\"(?i){wm_class}\"] focus"),
+            format!("[class=\"(?i){wm_class}\"] focus"),
+            format!("[instance=\"(?i){wm_class}\"] focus"),
+        ] {
+            if let Ok(output) = std::process::Command::new("swaymsg")
+                .arg(&criterion)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if stdout.contains("\"success\":true") {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     // i3 window manager — use i3-msg exclusively (i3 ignores raw X11
     // _NET_ACTIVE_WINDOW messages, so the x11rb fallback would report
     // success without actually focusing).  Try both class and instance

@@ -212,3 +212,30 @@ export async function countTrashItems() {
 export async function emptyTrash() {
   return invoke('empty_trash');
 }
+
+// AI / web answers — see src-tauri/src/answers.rs. Each returns an Answer
+// `{ text, source, url?, image_url? }` or null. The card UI ignores null.
+
+export async function instantHasMatch(query) {
+  return invoke('instant_has_match', { query });
+}
+
+export async function definitionalEntity(query) {
+  return invoke('definitional_entity', { query });
+}
+
+export async function instantAnswer(query) {
+  return invoke('instant_answer', { query });
+}
+
+export async function duckduckgoAnswer(query) {
+  return invoke('duckduckgo_answer', { query });
+}
+
+export async function wikipediaAnswer(term) {
+  return invoke('wikipedia_answer', { term });
+}
+
+export async function webSuggestions(query, limit) {
+  return invoke('web_suggestions', { query, limit });
+}

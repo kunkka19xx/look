@@ -1,5 +1,6 @@
 import { getIcon, getFileMeta, getAppVersion, deleteClipboardEntry, highlightFile, listFolder, openPath } from '../ipc.js';
 import { clipboard as clipboardIcon, trash as trashIcon, appIcon, fileIcon, folderIcon, settingIcon } from '../icons.js';
+import { webSuggestionFromResultId } from '../catalog.js';
 
 let panel = null;
 let currentPath = null;
@@ -32,6 +33,15 @@ export function update(result) {
 
   if (result.kind === 'clipboard') {
     renderClipboardPreview(result);
+    return;
+  }
+
+  // Google autocomplete row — mirror macOS WebSuggestionPreviewView: a
+  // big magnifying-glass icon, the suggestion text, "Search Google", and
+  // an Enter hint. No file metadata to show.
+  const suggestionText = webSuggestionFromResultId(result.id);
+  if (suggestionText != null) {
+    renderWebSuggestionPreview(suggestionText);
     return;
   }
 
@@ -372,4 +382,34 @@ function formatSize(bytes) {
 
 function convertFileSrc(path) {
   return window.__TAURI__.core.convertFileSrc(path);
+}
+
+// Mirrors macOS WebSuggestionPreviewView.swift — a centred "search the web"
+// card. A web-suggestion row has no file metadata to render, so we show the
+// action affordance instead.
+function renderWebSuggestionPreview(query) {
+  const wrap = document.createElement('div');
+  wrap.className = 'preview-web-suggestion';
+
+  const icon = document.createElement('div');
+  icon.className = 'preview-web-suggestion-icon';
+  icon.innerHTML = `<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
+  wrap.appendChild(icon);
+
+  const title = document.createElement('div');
+  title.className = 'preview-web-suggestion-title';
+  title.textContent = query;
+  wrap.appendChild(title);
+
+  const subtitle = document.createElement('div');
+  subtitle.className = 'preview-web-suggestion-subtitle';
+  subtitle.textContent = 'Search Google';
+  wrap.appendChild(subtitle);
+
+  const hint = document.createElement('div');
+  hint.className = 'preview-web-suggestion-hint';
+  hint.innerHTML = `Press <kbd>Enter</kbd> to search the web`;
+  wrap.appendChild(hint);
+
+  panel.appendChild(wrap);
 }

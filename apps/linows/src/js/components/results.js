@@ -1,6 +1,7 @@
 import { getIcon } from '../ipc.js';
 import { clipboard as clipboardIcon, check as checkIcon, appIcon, fileIcon, folderIcon, settingIcon, historyLg } from '../icons.js';
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
+import { webSuggestionFromResultId } from '../catalog.js';
 
 const iconCache = new Map();
 const pickedMap = new Map(); // key → result
@@ -187,6 +188,12 @@ function createRow(result, index) {
   const row = document.createElement('div');
   row.className = 'result-row';
   row.dataset.index = index;
+  // Web-suggestion rows live in a narrow 320 px column when the AI card is
+  // active; let their title wrap to multiple lines instead of truncating
+  // (matches macOS WebSuggestionPreviewView's 3-line title cap).
+  if (webSuggestionFromResultId(result.id) != null) {
+    row.classList.add('result-row-web-suggest');
+  }
 
   // Icon (kind-based SVG fallback, async-load real icon)
   const icon = document.createElement('div');
