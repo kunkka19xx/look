@@ -508,6 +508,7 @@ fn focus_default_browser() -> bool {
     false
 }
 
+#[cfg(target_os = "linux")]
 fn try_focus_window(wm_class: &str) -> bool {
     // Sway (Wayland): SWAYSOCK is set, swaymsg shares i3's IPC and CLI but
     // Wayland-native clients identify by `app_id`, not WM_CLASS. XWayland
