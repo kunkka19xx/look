@@ -14,9 +14,20 @@
 
 import { sparkles, copy as copyIcon, arrowUpRight } from '../icons.js';
 import { copyToClipboard, openPath } from '../ipc.js';
+import { State } from './ai-answer.js';
 import * as banner from './banner.js';
 
+const COPY_OK_BANNER_S = 1.0;
+const COPY_FAIL_BANNER_S = 1.2;
+
 let cardEl = null;
+
+// Open a URL in the default browser. Reused by source-label and image
+// clicks; centralised here so the `('browser', '')` magic args don't drift
+// between sites.
+function openUrl(url) {
+  if (url) openPath(url, 'browser', '');
+}
 
 export function init(el) {
   cardEl = el;
@@ -26,14 +37,16 @@ export function update(snapshot) {
   if (!cardEl) return;
   const { state, question, items } = snapshot;
 
-  if (state === 'idle') {
+  if (state === State.idle) {
     cardEl.hidden = true;
     cardEl.innerHTML = '';
     return;
   }
 
   const headerLabel = question || 'Web answer';
-  const streamingDot = state === 'streaming' ? '<span class="ai-spinner" aria-label="Loading"></span>' : '';
+  const streamingDot = state === State.streaming
+    ? '<span class="ai-spinner" aria-label="Loading"></span>'
+    : '';
 
   const blocks = items.map(renderBlock).join('');
   const status = renderStatusLine(state, items.length === 0);
@@ -83,36 +96,33 @@ function renderBlock(item) {
 
 function renderStatusLine(state, isEmpty) {
   if (!isEmpty) return '';
-  if (state === 'streaming') return `<div class="ai-card-status">Thinking…</div>`;
-  if (state === 'failed') return `<div class="ai-card-status">Couldn't find an answer.</div>`;
+  if (state === State.streaming) return `<div class="ai-card-status">Thinking…</div>`;
+  if (state === State.failed) return `<div class="ai-card-status">Couldn't find an answer.</div>`;
   return '';
 }
 
+// Bind a click handler to every matching child inside the card. Small
+// helper to keep wireBlockHandlers terse — the three click handlers all
+// share the same querySelectorAll + addEventListener boilerplate.
+function bindClick(selector, handler) {
+  cardEl.querySelectorAll(selector).forEach((el) => {
+    el.addEventListener('click', (e) => handler(el, e));
+  });
+}
+
 function wireBlockHandlers() {
-  cardEl.querySelectorAll('.ai-card-source-linked').forEach((el) => {
-    el.addEventListener('click', () => {
-      const url = el.dataset.url;
-      if (url) openPath(url, 'browser', '');
-    });
-  });
-  cardEl.querySelectorAll('.ai-card-image[data-url]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const url = el.dataset.url;
-      if (url) openPath(url, 'browser', '');
-    });
-  });
-  cardEl.querySelectorAll('.ai-card-copy').forEach((el) => {
-    el.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const text = (el.dataset.text || '').trim();
-      if (!text) return;
-      try {
-        await copyToClipboard(text);
-        banner.show('Copied answer', 'success', 1.0);
-      } catch {
-        banner.show('Copy failed', 'error', 1.2);
-      }
-    });
+  bindClick('.ai-card-source-linked', (el) => openUrl(el.dataset.url));
+  bindClick('.ai-card-image[data-url]', (el) => openUrl(el.dataset.url));
+  bindClick('.ai-card-copy', async (el, e) => {
+    e.stopPropagation();
+    const text = (el.dataset.text || '').trim();
+    if (!text) return;
+    try {
+      await copyToClipboard(text);
+      banner.show('Copied answer', 'success', COPY_OK_BANNER_S);
+    } catch {
+      banner.show('Copy failed', 'error', COPY_FAIL_BANNER_S);
+    }
   });
 }
 

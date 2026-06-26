@@ -12,13 +12,25 @@ import {
 } from '../ipc.js';
 
 const DEBOUNCE_MS = 350;
+// Chars stripped from the trailing end of a calc query — people tack
+// "=?", "=", or "?" onto math expressions before pressing Enter.
+const CALC_TRIM_TRAILING = '=? ';
+// Require at least one arithmetic operator so a bare number or word
+// ("hello") isn't sent to the calculator.
+const CALC_OPERATOR = /[+\-*/^%]/;
+// Two answer texts are "the same" when their leading N chars match —
+// DuckDuckGo abstracts are often verbatim Wikipedia, so we don't show both.
+const SIMILARITY_PREFIX_LEN = 60;
+// Source labels — exposed as constants so the card view can match against
+// them without restating the magic string. Mirror macOS source names.
+export const SOURCE_CALCULATOR = 'Calculator';
 
 // State machine: same names + meanings as macOS AIAnswerController.State.
 //   idle      — not a question / AI off / no answer to show
 //   streaming — at least one async source is in flight
 //   done      — every source has settled (one or more blocks landed)
 //   failed    — every source returned null (only used to show the empty hint)
-const State = Object.freeze({
+export const State = Object.freeze({
   idle: 'idle', streaming: 'streaming', done: 'done', failed: 'failed',
 });
 
@@ -105,21 +117,26 @@ function emitChange() {
   if (onChangeCallback) onChangeCallback(getState());
 }
 
+// A run is "stale" when a newer update() has bumped runVersion. Every async
+// step checks this before mutating state, so a slow fetch from a previous
+// query can't paint over the answer for a later one.
+function isStale(myVersion) {
+  return myVersion !== runVersion;
+}
+
 // Fastest path: local arithmetic. No network, no provider — instant. The
 // macOS version uses CalcCommand.evaluate; we use the same backend
 // (`eval_calc` Tauri command) so behaviour matches.
 async function tryCalc(query, myVersion) {
   let expr = query;
-  while (expr.length && '=? '.includes(expr[expr.length - 1])) {
+  while (expr.length && CALC_TRIM_TRAILING.includes(expr[expr.length - 1])) {
     expr = expr.slice(0, -1);
   }
-  if (!expr) return false;
-  if (!/[+\-*/^%]/.test(expr)) return false;
+  if (!expr || !CALC_OPERATOR.test(expr)) return false;
   try {
     const result = await evalCalc(expr);
-    if (myVersion !== runVersion) return false;
-    if (!result) return false;
-    items = [{ text: `${expr} = ${result}`, source: 'Calculator', url: null, imageUrl: null }];
+    if (isStale(myVersion) || !result) return false;
+    items = [{ text: `${expr} = ${result}`, source: SOURCE_CALCULATOR, url: null, imageUrl: null }];
     state = State.done;
     emitChange();
     return true;
@@ -129,10 +146,10 @@ async function tryCalc(query, myVersion) {
 }
 
 async function runFetch(query, questionLike, instant, myVersion) {
-  if (myVersion !== runVersion) return;
+  if (isStale(myVersion)) return;
 
   if (await tryCalc(query, myVersion)) return;
-  if (myVersion !== runVersion) return;
+  if (isStale(myVersion)) return;
 
   // Choose what (if anything) to search Wikipedia for. Mirrors macOS
   // collectWebAnswers: definitionalEntity for "what is X" patterns; the raw
@@ -140,28 +157,26 @@ async function runFetch(query, questionLike, instant, myVersion) {
   let wikiTerm = null;
   if (!instant) {
     const entity = await definitionalEntity(query).catch(() => null);
-    if (myVersion !== runVersion) return;
+    if (isStale(myVersion)) return;
     if (entity) wikiTerm = entity;
     else if (!questionLike) wikiTerm = query;
   }
 
   // Fan out concurrently. A matched instant source (currency / weather /
   // crypto) is what the user wants — skip the generic encyclopedia lookups
-  // then.
+  // then. Each task is a Promise<Item | null> that the loop below appends as
+  // it resolves so the first available source surfaces immediately, and a
+  // single slow provider doesn't hold up the others.
   const tasks = instant
-    ? [instantAnswer(query).then((a) => tag(a))]
+    ? [instantAnswer(query).then(toItem)]
     : [
-        duckduckgoAnswer(query).then((a) => tag(a)),
-        ...(wikiTerm ? [wikipediaAnswer(wikiTerm).then((a) => tag(a))] : []),
+        duckduckgoAnswer(query).then(toItem),
+        ...(wikiTerm ? [wikipediaAnswer(wikiTerm).then(toItem)] : []),
       ];
 
-  // Append each block the moment it lands; the card re-renders per-source so
-  // the first available source surfaces immediately. Promise.allSettled keeps
-  // a single slow provider from holding up the others.
   await Promise.all(tasks.map(async (p) => {
     const result = await p;
-    if (myVersion !== runVersion) return;
-    if (!result) return;
+    if (isStale(myVersion) || !result) return;
     if (items.some((it) => it.source === result.source)) return;
     if (items.some((it) => similar(it.text, result.text))) return;
     items = [...items, result];
@@ -169,14 +184,14 @@ async function runFetch(query, questionLike, instant, myVersion) {
     emitChange();
   }));
 
-  if (myVersion !== runVersion) return;
+  if (isStale(myVersion)) return;
   state = items.length ? State.done : State.failed;
   emitChange();
 }
 
 // Normalise the Rust `Answer` (snake_case wire shape) to the controller's
 // item shape used by the card view.
-function tag(answer) {
+function toItem(answer) {
   if (!answer) return null;
   return {
     text: answer.text,
@@ -186,10 +201,8 @@ function tag(answer) {
   };
 }
 
-// Two extracts are "the same" if their leading text matches — DuckDuckGo
-// abstracts are often verbatim Wikipedia, so we don't show both.
 function similar(a, b) {
-  const key = (s) => s.toLowerCase().replace(/\s+/g, '').slice(0, 60);
+  const key = (s) => s.toLowerCase().replace(/\s+/g, '').slice(0, SIMILARITY_PREFIX_LEN);
   return key(a) === key(b);
 }
 

@@ -580,22 +580,15 @@ fn setup_window_events(window: &tauri::WebviewWindow) {
 
 /// Whether a `Focused(false)` event should auto-hide the launcher.
 ///
-/// macOS / Windows: trustworthy, fire only on real focus loss → always true.
-/// Linux X11: GNOME/Mutter emit Focused(false) on mouse-leave even when the
-///   window still has keyboard focus; the X11 _NET_ACTIVE_WINDOW monitor
-///   handles auto-hide instead (it tracks the true active window). → false.
-/// Linux Wayland (Sway, GNOME Wayland, KDE Plasma): Focused(false) only
-///   fires on real focus changes, and the X11 monitor can't see Wayland
-///   windows at all (so without this path Look never auto-hides). → true.
+/// macOS / Windows: trustworthy, fire only on real focus loss → true.
+/// Linux (X11 + Wayland): false. On X11 the GNOME/Mutter mouse-leave race
+///   means Focused(false) fires even when the window still has keyboard
+///   focus, so the X11 _NET_ACTIVE_WINDOW monitor handles auto-hide
+///   instead. On Wayland we also stay false — Focused(false) fires when
+///   any screenshot / screencast tool grabs focus, which would dismiss
+///   Look before the capture lands. User dismisses via Esc.
 fn focus_loss_means_dismiss() -> bool {
-    #[cfg(target_os = "linux")]
-    {
-        is_wayland()
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        true
-    }
+    !cfg!(target_os = "linux")
 }
 
 fn main() {

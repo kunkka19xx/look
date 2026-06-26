@@ -199,7 +199,7 @@ pub fn open_path(
             // sees no matching window yet.
             #[cfg(target_os = "linux")]
             {
-                std::thread::sleep(std::time::Duration::from_millis(150));
+                std::thread::sleep(std::time::Duration::from_millis(BROWSER_FOCUS_DELAY_MS));
                 focus_default_browser();
             }
         });
@@ -455,7 +455,12 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
+/// Delay between handing the URL to xdg-open and trying to focus the
+/// browser window — gives the browser time to receive the URL and surface
+/// its new tab so the focus call below sees a matching window.
 #[cfg(target_os = "linux")]
+const BROWSER_FOCUS_DELAY_MS: u64 = 150;
+
 /// Bring the user's default browser window to the foreground. Resolves the
 /// browser via `xdg-mime query default x-scheme-handler/https` so we focus
 /// the exact browser xdg-open just sent the URL to — not whichever browser

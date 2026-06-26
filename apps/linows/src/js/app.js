@@ -12,10 +12,11 @@ import * as translatePanel from './components/translate.js';
 import * as runningApps from './components/running-apps.js';
 import * as platform from './platform.js';
 import * as aiAnswer from './components/ai-answer.js';
+import { State as AiState } from './components/ai-answer.js';
 import * as aiCard from './components/ai-answer-card.js';
 import { load } from './html-loader.js';
 import {
-  onWindowShown, onIndexReady, requestIndexRefresh, getHomeDir, getQuickFolders, copyFilesToClipboard,
+  onWindowShown, onIndexReady, requestIndexRefresh, getQuickFolders, copyFilesToClipboard,
   evalCalc, runShellCommand, getSystemInfo,
   listProcesses, listProcessesOnPort, killProcess, getIcon,
   copyToClipboard, deleteClipboardEntry, isDevBuild,
@@ -45,6 +46,13 @@ const BANNER_DURATION_SHORT = 1.0;
 const BANNER_DURATION_MEDIUM = 1.2;
 const BANNER_DURATION_LONG = 1.5;
 const KILL_FEEDBACK_DELAY_MS = 300;
+
+// Layout modes applied to #results-area when the AI card is visible.
+// Stacked: card capped above results in col 1.
+// Two-col: wide card spans both cols + 320 px suggestion column on the right.
+const AI_LAYOUT_CLASSES = ['ai-mode-full', 'ai-mode-two-col', 'ai-mode-stacked'];
+const AI_LAYOUT_STACKED = 'ai-mode-stacked';
+const AI_LAYOUT_TWO_COL = 'ai-mode-two-col';
 
 document.addEventListener('DOMContentLoaded', async () => {
   const app = document.getElementById('app');
@@ -92,7 +100,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Snapshot of the latest results + AI state, used by applyAiLayoutMode()
   // to pick full / two-col / stacked. Mirrors macOS LauncherView resultsRow.
   let lastResults = [];
-  let lastAiState = 'idle';
+  let lastAiState = AiState.idle;
 
   hintBar.querySelector('.hint-bar-link').addEventListener('click', (e) => {
     e.preventDefault();
@@ -123,6 +131,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       lastAiState = snapshot.state;
       aiCard.update(snapshot);
       applyAiLayoutMode();
+      // Switch the results-list empty-state mode in lockstep with the AI
+      // state so the right-column "No results" doesn't appear the instant
+      // AI flips from streaming to done with an empty suggestions list.
+      if (lastAiState !== AiState.idle) {
+        results.setEmptyState({ mode: 'ai-suggestion' });
+      }
     },
   });
   settings.init(() => {
@@ -231,14 +245,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // matters more than the empty column for those edge cases.
   function applyAiLayoutMode() {
     if (!resultsArea) return;
-    resultsArea.classList.remove('ai-mode-full', 'ai-mode-two-col', 'ai-mode-stacked');
-    if (lastAiState === 'idle') return;
-    const local = lastResults.filter((r) => webSuggestionFromResultId(r.id) == null);
-    if (local.length > 0) {
-      resultsArea.classList.add('ai-mode-stacked');
-    } else {
-      resultsArea.classList.add('ai-mode-two-col');
-    }
+    resultsArea.classList.remove(...AI_LAYOUT_CLASSES);
+    if (lastAiState === AiState.idle) return;
+    const hasLocal = lastResults.some((r) => webSuggestionFromResultId(r.id) == null);
+    resultsArea.classList.add(hasLocal ? AI_LAYOUT_STACKED : AI_LAYOUT_TWO_COL);
   }
 
   // :cmd <args> live trigger — jumps straight into that command's panel with
@@ -307,7 +317,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       runningApps.setSuspended(false);
       if (runningApps.isEnabled()) runningApps.refresh();
       translatePanel.hide();
-      results.setEmptyState({ mode: search.isRecentMode() ? 'recent' : 'default' });
+      // While the AI card is active, the results list holds web-suggestion
+      // rows. Those routinely return empty (DDG rate-limits, transient
+      // failures) — render nothing instead of "No results" so the right
+      // column doesn't shout an error when the left card is working fine.
+      const empty = search.isRecentMode()
+        ? 'recent'
+        : (lastAiState !== AiState.idle ? 'ai-suggestion' : 'default');
+      results.setEmptyState({ mode: empty });
     }
   });
 
@@ -370,11 +387,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Load home dir + resolved quick-folder paths (Desktop, Documents, …).
-  // Quick folders use SHGetKnownFolderPath on Windows to handle OneDrive
-  // redirection; on Linux/macOS they're $HOME/<name>.
-  Promise.all([getHomeDir(), getQuickFolders()]).then(([home, folders]) => {
-    if (home) search.setHomeDir(home);
+  // Load resolved quick-folder paths (Desktop, Documents, …). Uses
+  // SHGetKnownFolderPath on Windows so OneDrive-redirected folders resolve
+  // to their real location; $HOME/<name> on Linux/macOS.
+  getQuickFolders().then((folders) => {
     search.setQuickFolders(folders || []);
     search.handleQueryInput('');
   });

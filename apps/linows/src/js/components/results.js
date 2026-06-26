@@ -42,6 +42,13 @@ function renderEmptyState() {
         <div class="empty-state-help">Open files/folders through Look, or download/create some — newest activity shows here. Type <kbd>rc"word</kbd> to filter.</div>
       </div>`;
   }
+  // AI two-col mode: the right column hosts web suggestions, which routinely
+  // return empty (DDG /ac/ rate-limits, transient curl failures). Showing
+  // a stark "No results" there reads as broken when the user can see the
+  // answer card on the left is working fine. Render nothing instead.
+  if (emptyState.mode === 'ai-suggestion') {
+    return '';
+  }
   return '<div class="empty-state">No results</div>';
 }
 

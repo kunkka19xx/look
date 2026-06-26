@@ -13,7 +13,6 @@ const CLIPBOARD_TITLE_MAX_CHARS = 80;
 let debounceTimer = null;
 let webSuggestionTimer = null;
 let onResultsCallback = null;
-let homeDir = null;
 let clipboardMode = false;
 let translateMode = false;
 let recentMode = false;
@@ -41,10 +40,6 @@ let quickFolders = [];
 
 export function setOnResults(callback) {
   onResultsCallback = callback;
-}
-
-export function setHomeDir(home) {
-  homeDir = home;
 }
 
 export function setQuickFolders(list) {
@@ -167,33 +162,35 @@ export function handleQueryInput(query) {
   webSuggestionTimer = setTimeout(() => fetchWebSuggestions(query, myVersion), DEBOUNCE_MS);
 }
 
+// A fetch is "stale" when handleQueryInput has bumped queryVersion since
+// the fetch started — used by both legs to bail before mutating shared
+// state. Cuts the `if (version !== queryVersion) return;` boilerplate.
+function isStale(version) {
+  return version !== queryVersion;
+}
+
 async function performSearch(query, version) {
   try {
     const payload = await ipcSearch(query, SEARCH_LIMIT);
-    if (version !== queryVersion) return;
+    if (isStale(version)) return;
     lastEnginePayload = recentMode ? payload.results : prependQuickFolders(payload.results, query);
-    publish(query, version);
   } catch (err) {
     console.error('Search failed:', err);
-    if (version !== queryVersion) return;
+    if (isStale(version)) return;
     lastEnginePayload = [];
-    publish(query, version);
   }
+  publish(query, version);
 }
 
 async function fetchWebSuggestions(query, version) {
-  if (!aiEnabled) {
-    webInFlight = false;
-    return;
-  }
   const trimmed = query.trim();
-  if (trimmed.length < MIN_WEB_SUGGESTION_QUERY_LENGTH) {
+  if (!aiEnabled || trimmed.length < MIN_WEB_SUGGESTION_QUERY_LENGTH) {
     webInFlight = false;
     return;
   }
   try {
     const list = await ipcWebSuggestions(trimmed, WEB_SUGGESTIONS_LIMIT);
-    if (version !== queryVersion) return;
+    if (isStale(version)) return;
     // Only replace the cached list when the response actually contains
     // suggestions. DDG /ac/ occasionally returns [] on a working query
     // (rate limit, curl glitch); overwriting the cache with that would
@@ -206,7 +203,7 @@ async function fetchWebSuggestions(query, version) {
     // Web suggestions are best-effort — silent failure mirrors macOS.
     console.warn('Web suggestions failed:', err);
   } finally {
-    if (version === queryVersion) {
+    if (!isStale(version)) {
       webInFlight = false;
       publish(query, version);
     }
@@ -214,8 +211,7 @@ async function fetchWebSuggestions(query, version) {
 }
 
 function publish(query, version) {
-  if (version !== queryVersion) return;
-  if (!onResultsCallback) return;
+  if (isStale(version) || !onResultsCallback) return;
   const suggestionRows = aiEnabled && lastWebSuggestions.length
     ? webSuggestionResults(lastWebSuggestions)
     : [];
