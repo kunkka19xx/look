@@ -182,12 +182,24 @@ pub fn open_path(
     }
 
     #[cfg(target_os = "linux")]
-    if kind.as_deref() == Some("app") && !path.contains("://") {
-        let result = launch_app(&path, id.as_deref());
-        if result.is_ok() {
-            let _ = window.hide();
+    {
+        // An "app" path is a URL only when its FIRST token carries the scheme
+        // (e.g. `https://example.com`). Desktop Exec strings like
+        // `steam steam://run/570` have the `://` embedded in an argument and
+        // must still go through launch_app, otherwise we hand the whole
+        // command line to xdg-open and nothing happens.
+        let path_is_url = path
+            .split_whitespace()
+            .next()
+            .is_some_and(|tok| tok.contains("://"));
+        eprintln!("[open_path] path={path:?} kind={kind:?} id={id:?} path_is_url={path_is_url}");
+        if kind.as_deref() == Some("app") && !path_is_url {
+            let result = launch_app(&path, id.as_deref());
+            if result.is_ok() {
+                let _ = window.hide();
+            }
+            return result;
         }
-        return result;
     }
 
     if kind.as_deref() == Some("browser") {
@@ -388,8 +400,43 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
         .and_then(|f| f.strip_suffix(".desktop"))
         .map(String::from);
     let exec_cmd = exec.to_string();
+    // Steam game shortcuts (Exec like `steam steam://run/<id>` or
+    // `/usr/bin/steam steam://run/<id>`) need the Steam client up before the
+    // URL is issued; on cold start Steam's bootstrap drops the URL silently
+    // and nothing visible happens. Detect any Exec carrying a `steam://`
+    // URL and, when Steam isn't running, pre-start the client and wait for
+    // /proc + a short settle window so the launch chain below hands off to
+    // a Steam that's ready to receive the URL.
+    let exec_has_steam_url = exec_cmd.contains("steam://");
+    let steam_already_running = crate::platform::linux::process::is_running("steam");
+    let needs_steam_warmup = exec_has_steam_url && !steam_already_running;
+    eprintln!(
+        "[launch] exec={exec_cmd:?} desktop_name={desktop_name:?} \
+         steam_url={exec_has_steam_url} steam_running={steam_already_running} \
+         warmup={needs_steam_warmup}"
+    );
 
     std::thread::spawn(move || {
+        if needs_steam_warmup {
+            eprintln!("[launch] Steam URL exec on cold start; pre-starting steam");
+            let _ = user_session_cmd("steam")
+                .env_remove("LD_LIBRARY_PATH")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+            // Poll for the steam process (up to ~5s), then give the client a
+            // moment for its IPC to come up before issuing the URL.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while std::time::Instant::now() < deadline {
+                if crate::platform::linux::process::is_running("steam") {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(150));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+        }
+
         if let Some(ref name) = desktop_name {
             eprintln!("[launch] trying gtk-launch {name}");
             let result = user_session_cmd("gtk-launch")
