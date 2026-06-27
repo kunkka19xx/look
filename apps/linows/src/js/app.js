@@ -22,7 +22,9 @@ import {
   copyToClipboard, deleteClipboardEntry, isDevBuild,
   getConfig,
 } from './ipc.js';
-import { prefixFromResultId, commandIdFromResultId, webSuggestionFromResultId } from './catalog.js';
+import {
+  prefixFromResultId, commandIdFromResultId, webSuggestionFromResultId, isPrefixedQuery,
+} from './catalog.js';
 
 // Item count and structure mirror the macOS app's `LauncherView.hintItems`
 // (apps/macos/.../LauncherView.swift:302) so both platforms surface the same
@@ -220,11 +222,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Wire search -> results. After rendering, drive the AI controller with
   // the LOCAL result count (websuggest: rows don't count — a query that
   // only matches web suggestions is treated as zero local results, which is
-  // the macOS knowledge-lookup trigger).
+  // the macOS knowledge-lookup trigger). Prefix-driven modes (t"/c"/rc"/
+  // "/:) own the result area and must NOT trigger AI/web lookups. A query
+  // like `t"who is` would otherwise fire isEntityLookup and pull Wikipedia.
   search.setOnResults((items, query) => {
     lastResults = items;
     results.render(items);
     applyAiLayoutMode();
+    if (isPrefixedQuery(query)) {
+      aiAnswer.cancel();
+      return;
+    }
     const localCount = items.filter((r) => webSuggestionFromResultId(r.id) == null).length;
     aiAnswer.update(query, localCount);
   });
