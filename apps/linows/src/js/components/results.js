@@ -53,6 +53,14 @@ function renderEmptyState() {
 }
 
 export function render(results) {
+  // Preserve the selected row across re-renders: a file-watcher index refresh
+  // fires `index-ready`, which re-runs the current query and re-publishes the
+  // (often identical) result set. Without this, the cursor snaps back to row 0
+  // mid-scroll a couple seconds after the user picks another row.
+  const prevSelectedId = (selectedIndex >= 0 && selectedIndex < currentResults.length)
+    ? currentResults[selectedIndex].id
+    : null;
+
   currentResults = results;
   container.innerHTML = '';
 
@@ -67,7 +75,12 @@ export function render(results) {
     container.appendChild(row);
   });
 
-  select(0);
+  let nextIndex = 0;
+  if (prevSelectedId != null) {
+    const idx = results.findIndex((r) => r.id === prevSelectedId);
+    if (idx >= 0) nextIndex = idx;
+  }
+  select(nextIndex);
 }
 
 export function getSelected() {
