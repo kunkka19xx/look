@@ -120,6 +120,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   picked.init(previewPanel, {
     onRemoveItem: (key) => results.removePick(key),
     onClearAll: () => results.clearPicks(),
+    onOpenAll: () => keyboard.openAllPicked(),
   });
   commands.init(contentArea, queryInput, {
     onExitMode: exitCommandMode,

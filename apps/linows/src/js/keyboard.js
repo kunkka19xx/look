@@ -202,6 +202,8 @@ function handleKeyDown(e) {
         copyClipboardEntry();
       } else if (e.ctrlKey) {
         searchWeb();
+      } else if ((e.shiftKey || shiftHeld) && results.hasPickedItems()) {
+        openAllPicked();
       } else {
         openSelected();
       }
@@ -252,7 +254,16 @@ function handleKeyDown(e) {
       } else if (e.ctrlKey) {
         e.preventDefault();
         if (isDiscoveryMode()) break;
-        results.togglePick(results.getSelected());
+        // Only files/folders are pickable — apps/settings/clipboard rows have
+        // no real path to copy and would leave the picked panel rendering
+        // nonsense. Mirrors macOS togglePickForSelectedResult.
+        const sel = results.getSelected();
+        if (!sel) break;
+        if (sel.kind !== 'file' && sel.kind !== 'folder') {
+          banner.show('Only files or folders can be picked', 'info', 1.2);
+          break;
+        }
+        results.togglePick(sel);
       }
       break;
 
@@ -337,6 +348,21 @@ async function handleEmptyTrash() {
   } catch (err) {
     banner.show(`Empty Trash failed: ${err}`, 'error', 2.0);
   }
+}
+
+export async function openAllPicked() {
+  const items = results.getPickedItems();
+  if (items.length === 0) return;
+  const actionMap = { app: 'open_app', file: 'open_file', folder: 'open_folder' };
+  for (const item of items) {
+    try {
+      await openPath(item.path, item.kind, item.id);
+      await recordUsage(item.id, actionMap[item.kind] || 'open_file');
+    } catch (err) {
+      console.error('Failed to open picked item:', item.path, err);
+    }
+  }
+  results.clearPicks();
 }
 
 async function openSelected() {
