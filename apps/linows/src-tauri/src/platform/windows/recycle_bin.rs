@@ -6,8 +6,8 @@
 //! every drive at once, matching Explorer's "Empty Recycle Bin".
 
 use windows::Win32::UI::Shell::{
-    SHEmptyRecycleBinW, SHERB_NOCONFIRMATION, SHERB_NOPROGRESSUI, SHERB_NOSOUND,
-    SHQUERYRBINFO, SHQueryRecycleBinW,
+    SHERB_NOCONFIRMATION, SHERB_NOPROGRESSUI, SHERB_NOSOUND, SHEmptyRecycleBinW, SHQUERYRBINFO,
+    SHQueryRecycleBinW,
 };
 use windows::core::PCWSTR;
 

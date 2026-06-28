@@ -234,7 +234,9 @@ pub fn open_path(
         #[cfg(target_os = "windows")]
         if path.starts_with("shell:") {
             let _ = window.hide();
-            let _ = std::process::Command::new("explorer.exe").arg(&path).spawn();
+            let _ = std::process::Command::new("explorer.exe")
+                .arg(&path)
+                .spawn();
             return Ok(());
         }
 
