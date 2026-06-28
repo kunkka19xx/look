@@ -1,5 +1,7 @@
-//! Move-to-Trash + Empty-Trash IPC. Empty-trash is Linux-only: the `trash`
-//! crate's `os_limited` module isn't implemented on Windows.
+//! Move-to-Trash + Empty-Trash IPC. The `trash` crate's `os_limited` module
+//! (list / purge) covers Linux and macOS; Windows goes through the Shell API
+//! (`SHQueryRecycleBinW` / `SHEmptyRecycleBinW`) in
+//! `platform::windows::recycle_bin`.
 
 use std::path::{Path, PathBuf};
 
@@ -144,7 +146,7 @@ pub fn count_trash_items() -> Result<usize, String> {
     }
     #[cfg(target_os = "windows")]
     {
-        Err("not supported on Windows".into())
+        crate::platform::windows::recycle_bin::count()
     }
 }
 
@@ -162,7 +164,7 @@ pub fn empty_trash() -> Result<usize, String> {
     }
     #[cfg(target_os = "windows")]
     {
-        Err("not supported on Windows".into())
+        crate::platform::windows::recycle_bin::empty()
     }
 }
 

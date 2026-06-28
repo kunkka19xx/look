@@ -1068,14 +1068,16 @@ async function saveConfig(updates) {
 let configCache = {};
 
 // Escape/unescape commas in CSV config values
-function csvEscape(s) { return s.replace(/,/g, '\\,'); }
+// Backslash is escaped first so a value ending in `\` (e.g. a Windows drive
+// root like `D:\`) can't merge with the delimiter comma into a phantom `\,`.
+function csvEscape(s) { return s.replace(/\\/g, '\\\\').replace(/,/g, '\\,'); }
 function csvSplit(raw) {
   if (!raw) return [];
   const parts = [];
   let current = '';
   for (let i = 0; i < raw.length; i++) {
-    if (raw[i] === '\\' && raw[i + 1] === ',') {
-      current += ',';
+    if (raw[i] === '\\' && (raw[i + 1] === ',' || raw[i + 1] === '\\')) {
+      current += raw[i + 1];
       i++;
     } else if (raw[i] === ',') {
       const trimmed = current.trim();

@@ -296,7 +296,7 @@ function prependQuickFolders(results, query) {
   for (const folder of quickFolders) {
     if (!folder.title.toLowerCase().startsWith(q)) continue;
     if (results.some((r) => r.path === folder.path)) continue;
-    const isTrash = folder.title === 'Trash';
+    const isTrash = folder.title === 'Trash' || folder.title === 'Recycle Bin';
     matched.push({
       id: `quickfolder:${folder.title.toLowerCase()}`,
       kind: 'folder',

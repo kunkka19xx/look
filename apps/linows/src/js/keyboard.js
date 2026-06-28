@@ -7,6 +7,11 @@ import * as confirm from './components/confirm.js';
 import * as runningApps from './components/running-apps.js';
 import { trash as trashIcon } from './icons.js';
 import { prefixFromResultId, commandIdFromResultId, webSuggestionFromResultId } from './catalog.js';
+import * as platform from './platform.js';
+
+// The quick-folder pin for the OS trash: `Trash` on Linux/macOS,
+// `Recycle Bin` on Windows (id is `quickfolder:<lowercased title>`).
+const TRASH_PIN_IDS = ['quickfolder:trash', 'quickfolder:recycle bin'];
 
 let queryInput = null;
 let shiftHeld = false;
@@ -293,7 +298,7 @@ function trashTargetsFromSelection() {
 
 async function handleTrashShortcut() {
   const selected = results.getSelected();
-  if (selected && typeof selected.id === 'string' && selected.id === 'quickfolder:trash') {
+  if (selected && typeof selected.id === 'string' && TRASH_PIN_IDS.includes(selected.id)) {
     await handleEmptyTrash();
     return;
   }
@@ -307,11 +312,12 @@ async function handleTrashShortcut() {
   try {
     const outcome = await trashPaths(targets.map((t) => t.path));
     results.clearPicks();
+    const label = platform.trashLabel();
     if (outcome.failed.length === 0) {
-      banner.show(`Moved ${outcome.trashed} to Trash`, 'success', 1.4);
+      banner.show(`Moved ${outcome.trashed} to ${label}`, 'success', 1.4);
     } else if (outcome.trashed === 0) {
       const first = outcome.failed[0];
-      const name = first.path.split('/').pop() || first.path;
+      const name = first.path.split(/[\\/]/).pop() || first.path;
       banner.show(`Failed to trash ${name}: ${first.reason}`, 'error', 2.0);
     } else {
       banner.show(`Moved ${outcome.trashed}, ${outcome.failed.length} failed`, 'error', 2.0);
@@ -323,30 +329,31 @@ async function handleTrashShortcut() {
 }
 
 async function handleEmptyTrash() {
+  const label = platform.trashLabel();
   let count;
   try {
     count = await countTrashItems();
   } catch (err) {
-    banner.show(`Empty Trash unavailable: ${err}`, 'error', 2.2);
+    banner.show(`Empty ${label} unavailable: ${err}`, 'error', 2.2);
     return;
   }
   if (count === 0) {
-    banner.show('Trash is already empty', 'info', 1.2);
+    banner.show(`${label} is already empty`, 'info', 1.2);
     return;
   }
   const itemWord = count === 1 ? 'item' : 'items';
   const ok = await confirm.ask({
-    title: 'Empty Trash?',
+    title: `Empty ${label}?`,
     detail: `${count} ${itemWord} — deleted permanently`,
     icon: trashIcon,
   });
   if (!ok) return;
   try {
     const purged = await emptyTrash();
-    banner.show(`Emptied Trash (${purged})`, 'success', 1.4);
+    banner.show(`Emptied ${label} (${purged})`, 'success', 1.4);
     try { await requestIndexRefresh(); } catch (_) {}
   } catch (err) {
-    banner.show(`Empty Trash failed: ${err}`, 'error', 2.0);
+    banner.show(`Empty ${label} failed: ${err}`, 'error', 2.0);
   }
 }
 

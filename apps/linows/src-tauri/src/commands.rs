@@ -228,6 +228,16 @@ pub fn open_path(
             return Ok(());
         }
 
+        // Shell namespace locations (e.g. `shell:RecycleBinFolder`) aren't
+        // filesystem paths — ShellExecute can't always resolve them, but
+        // Explorer opens them directly.
+        #[cfg(target_os = "windows")]
+        if path.starts_with("shell:") {
+            let _ = window.hide();
+            let _ = std::process::Command::new("explorer.exe").arg(&path).spawn();
+            return Ok(());
+        }
+
         let _ = window.hide();
         std::thread::spawn(move || {
             #[cfg(target_os = "linux")]
