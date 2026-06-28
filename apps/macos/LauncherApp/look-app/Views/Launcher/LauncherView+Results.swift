@@ -216,6 +216,34 @@ extension LauncherView {
         writePickedToPasteboard()
     }
 
+    /// Opens every picked file/folder in one shot, then clears the picks and
+    /// hides the launcher. The multi-target counterpart to `openSelectedApp`.
+    /// Mirrors linows `openAllPicked`. Picks are restricted to files/folders at
+    /// pick time, so apps/clipboard rows can't appear here, but we guard kind
+    /// anyway. Targets that no longer exist are skipped (and trigger a reindex
+    /// via `ensureTargetExists`) rather than aborting the whole batch.
+    func openAllPicked() {
+        guard !pickedKeys.isEmpty else { return }
+        let items = pickedKeys.compactMap { pickedResultsByKey[$0] }
+        var openedCount = 0
+        for item in items {
+            guard item.kind == .file || item.kind == .folder else { continue }
+            guard ensureTargetExists(item) else { continue }
+            openTargetAsync(item.path)
+            // Quick-folder entries are ephemeral suggestions, not indexed
+            // candidates, so don't record usage for them (matches openSelectedApp).
+            if !(item.kind == .folder && item.id.hasPrefix(AppConstants.Launcher.QuickFolder.idPrefix)) {
+                recordOpen(item, action: item.kind == .folder ? "open_folder" : "open_file")
+            }
+            openedCount += 1
+        }
+        guard openedCount > 0 else { return }
+        pickedKeys.removeAll()
+        pickedResultsByKey.removeAll()
+        NSPasteboard.general.clearContents()
+        hideLauncherWindow(restorePreviousApp: false)
+    }
+
     func removePicked(key: String) {
         guard let idx = pickedKeys.firstIndex(of: key) else { return }
         pickedKeys.remove(at: idx)
