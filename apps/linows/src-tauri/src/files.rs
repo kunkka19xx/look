@@ -143,10 +143,18 @@ pub struct QuickFolder {
 pub fn get_quick_folders() -> Vec<QuickFolder> {
     #[cfg(target_os = "windows")]
     {
-        crate::platform::windows::known_folders::list()
+        let mut folders: Vec<QuickFolder> = crate::platform::windows::known_folders::list()
             .into_iter()
             .map(|(title, path)| QuickFolder { title, path })
-            .collect()
+            .collect();
+        // The Recycle Bin is a shell namespace, not a real directory, so it's
+        // pinned with a `shell:` location that `open_path` hands to Explorer —
+        // the Windows analogue of Linux's pinned Trash (Ctrl+D empties it).
+        folders.push(QuickFolder {
+            title: "Recycle Bin".to_string(),
+            path: "shell:RecycleBinFolder".to_string(),
+        });
+        folders
     }
     #[cfg(not(target_os = "windows"))]
     {

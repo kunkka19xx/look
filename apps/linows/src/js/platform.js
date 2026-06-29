@@ -34,6 +34,12 @@ export function isLinux() {
   return info?.os === 'linux';
 }
 
+// Windows calls it the Recycle Bin; Linux/macOS call it the Trash. Used for
+// user-facing strings so the banner/confirm copy matches the OS.
+export function trashLabel() {
+  return isWindows() ? 'Recycle Bin' : 'Trash';
+}
+
 // Windows blur styles map to CSS backdrop-filter radii. We deliberately do
 // NOT use native Mica/Acrylic via tauri's `set_effects` — that path
 // reconfigures DWM and brings back the sharp rectangular outline outside

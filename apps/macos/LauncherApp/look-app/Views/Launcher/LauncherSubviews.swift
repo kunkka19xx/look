@@ -211,14 +211,28 @@ struct PickedItemsPanel: View {
     let themeStore: ThemeStore
     let onRemove: (String) -> Void
     let onClearAll: () -> Void
+    let onOpenAll: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: 8) {
                 Text("Picked (\(pickedKeys.count))")
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
                     .foregroundStyle(themeStore.fontColor())
                 Spacer()
+                Button(action: onOpenAll) {
+                    HStack(spacing: 6) {
+                        Text("Open all")
+                        Text("⇧↵")
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                            .foregroundStyle(themeStore.mutedTextColor())
+                    }
+                    .font(themeStore.uiFont(size: CGFloat(max(10, themeStore.settings.fontSize - 3)), weight: .regular))
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(themeStore.accentColor())
                 Button(action: onClearAll) {
                     Text("Clear all")
                         .font(themeStore.uiFont(size: CGFloat(max(10, themeStore.settings.fontSize - 3)), weight: .regular))
@@ -395,6 +409,7 @@ private enum LauncherHelpContent {
         ("Enter", "Open selected app/file/folder or copy selected clipboard item"),
         ("Cmd+C", "Copy selected file/folder to pasteboard"),
         ("Cmd+P", "Toggle pick on selected file/folder (multi-select copy)"),
+        ("Shift+Enter", "Open all picked files/folders at once"),
         ("Cmd+Shift+P", "Clear all picked items"),
         ("Cmd+D", "Move selected file/folder to Trash (on the Trash folder: empty Trash)"),
         ("Tab / Shift+Tab", "Move selection"),

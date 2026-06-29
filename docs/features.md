@@ -31,12 +31,13 @@ This document tracks what `look` supports today and what is planned next.
 - quick translation with `t"...`
 - dictionary lookup panel with `tw"...`
 
-### AI answers and web suggestions (macOS)
+### AI answers and web suggestions (macOS, Linux, Windows)
 
-- optional, **on by default**; toggle with `ai_enabled` in `~/.look.config` or the Settings panel. Runs on-device via **Apple Intelligence**
-- **answer card**: a question, an entity with no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather/currency/crypto) shows a Spotlight-style card. Sources resolve concurrently and render as they arrive - local Calculator, then DuckDuckGo and Wikipedia, falling back to a streaming on-device Apple Intelligence answer when no web source hits. In the knowledge-lookup view the card sits in a two-column layout with the suggestion list
+- optional, **on by default**; toggle with `ai_enabled` in `~/.look.config` or the Settings panel
+- **answer card**: a question, an entity with no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather/currency/crypto) shows a Spotlight-style card. Sources resolve concurrently and render as they arrive - local Calculator, then DuckDuckGo and Wikipedia. On macOS it falls back to a streaming on-device **Apple Intelligence** answer when no web source hits. In the knowledge-lookup view the card sits in a two-column layout with the suggestion list
 - **search suggestions**: Google autocomplete rows appear under the results for plain text queries (2+ chars); `Enter` on one runs a web search, as does `Cmd+Enter` on the query
-- **query rewrite**: when a natural-language query finds nothing locally, the on-device model rewrites it into Look's prefix grammar and re-searches - never overriding results already on screen
+- **query rewrite** *(macOS)*: when a natural-language query finds nothing locally, the on-device model rewrites it into Look's prefix grammar and re-searches - never overriding results already on screen
+- **platform note**: the web answer card and Google suggestions run on macOS, Linux, and Windows (the latter two via the Tauri `apps/linows/` app), sharing the `look-answers` core engine. The on-device LLM (query rewrite + the Apple Intelligence answer fallback) is **macOS-only** - there is no on-device model on Linux/Windows. The `ai_enabled` key is shared so the same toggle gates web answers on Linux/Windows and both web + on-device features on macOS
 - network note: while AI is on, the answer card's web sources and the Google suggestions send the typed query to those services; the on-device model itself makes no network calls. All of it is off when `ai_enabled = false`
 
 ### Command mode

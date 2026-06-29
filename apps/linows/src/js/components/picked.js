@@ -3,11 +3,13 @@ import { getIcon } from '../ipc.js';
 let panel = null;
 let onRemove = null;
 let onClear = null;
+let onOpen = null;
 
-export function init(panelEl, { onRemoveItem, onClearAll }) {
+export function init(panelEl, { onRemoveItem, onClearAll, onOpenAll }) {
   panel = panelEl;
   onRemove = onRemoveItem;
   onClear = onClearAll;
+  onOpen = onOpenAll;
 }
 
 export function update(pickedItems) {
@@ -29,13 +31,26 @@ export function update(pickedItems) {
   label.textContent = `Picked (${pickedItems.length})`;
   header.appendChild(label);
 
+  const actions = document.createElement('div');
+  actions.className = 'picked-actions';
+
+  const openBtn = document.createElement('button');
+  openBtn.className = 'picked-open';
+  openBtn.innerHTML = 'Open all <span class="picked-shortcut">Shift+Enter</span>';
+  openBtn.addEventListener('click', () => {
+    if (onOpen) onOpen();
+  });
+  actions.appendChild(openBtn);
+
   const clearBtn = document.createElement('button');
   clearBtn.className = 'picked-clear';
   clearBtn.textContent = 'Clear all';
   clearBtn.addEventListener('click', () => {
     if (onClear) onClear();
   });
-  header.appendChild(clearBtn);
+  actions.appendChild(clearBtn);
+
+  header.appendChild(actions);
 
   panel.appendChild(header);
 

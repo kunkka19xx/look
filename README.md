@@ -24,15 +24,15 @@ https://github.com/user-attachments/assets/f8ee0f85-4c0d-4ea5-bb1d-8c8bf014d50d
 - **Regex, path, and kind-scoped search** - `r"^Visual.*`, `git/project/readme`, `a"safari`, `f"note`, `d"documents`.
 - **Browse recent files/folders** - `rc"` lists what you most recently opened *and* what recently landed on disk (downloads, screenshots), newest first; `rc"word` filters. macOS for now.
 - **Switch running apps from the launcher** - an icon strip on the right half of the search bar. `Cmd+1`..`Cmd+9` on macOS / `Alt+1`..`Alt+9` on Linux+Windows jumps to a running app. Toggle on/off in `Settings > Appearance > Running Apps`.
-- **Ask a question or look something up** *(macOS, optional)* - with AI features on, a question or an entity that isn't on your Mac (e.g. `sir alex ferguson`) shows an answer card from DuckDuckGo/Wikipedia or the on-device Apple Intelligence model, alongside Google search suggestions. On by default; turn it off in Settings.
+- **Ask a question or look something up** *(macOS, Linux, Windows, optional)* - with AI features on, a question or an entity that isn't indexed locally (e.g. `sir alex ferguson`) shows an answer card from DuckDuckGo/Wikipedia, alongside Google search suggestions. On macOS it can also fall back to the on-device Apple Intelligence model (macOS-only; Linux/Windows use web sources). On by default; turn it off in Settings.
 
-No account. No telemetry. No plugin marketplace to manage. Local-first by default - the optional AI/web features (macOS) are the only things that reach the network, and you can switch them off.
+No account. No telemetry. No plugin marketplace to manage. Local-first by default - the optional AI/web features (macOS, Linux, Windows) are the only things that reach the network, and you can switch them off.
 
 ## Why look
 
 - **Fast** - typical search under 1 ms on a 2000-item index; empty-query browse under 30 µs.
 - **Small** - single native app per platform. No Electron, no background daemons.
-- **Local-first** - candidates indexed in a local SQLite file. Network calls are limited and controllable: the explicit `t"`, `tw"`, and `Cmd+Enter` web search, plus the optional AI features (macOS): Google search suggestions and DuckDuckGo/Wikipedia answer cards, which you can disable in Settings (`ai_enabled`). The on-device Apple Intelligence model itself runs locally.
+- **Local-first** - candidates indexed in a local SQLite file. Network calls are limited and controllable: the explicit `t"`, `tw"`, and `Cmd+Enter` web search, plus the optional AI features (macOS, Linux, Windows): Google search suggestions and DuckDuckGo/Wikipedia answer cards, which you can disable in Settings (`ai_enabled`). The on-device Apple Intelligence model (macOS-only) itself runs locally.
 - **Zero-config by default** - presets cover common apps (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`). Configure more via `~/.look.config` when you want to.
 - **Keyboard-first** - every action has a key; mouse never required.
 
@@ -285,7 +285,7 @@ Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, plus C
 In scope:
 
 - apps, files, folders, clipboard, command mode, translation, regex/path search
-- optional on-device AI answers + web suggestions (macOS), off-switchable
+- optional web answers + suggestions (macOS, Linux, Windows) plus on-device AI answers (macOS), off-switchable
 - local-first behavior, zero telemetry
 - near-term plugin/extension exploration
 
@@ -301,6 +301,7 @@ Out of scope for v1:
 - **Windows + Linux** - a new shared Tauri v2 app (`apps/linows/`) is under active development. It targets both platforms with a single codebase (Rust backend, vanilla HTML/CSS/JS frontend). Current status:
   - Core search, preview, multi-pick, clipboard history, translation - done
   - Command mode (calc, pomo, kill, shell, sys) - done
+  - Web answer card + Google suggestions (DuckDuckGo/Wikipedia/currency/weather/crypto, gated by `ai_enabled`) - done on Linux + Windows; on-device LLM stays macOS-only
   - Settings screen (appearance, themes, blur, font autocomplete) - done
   - Platform-aware blur (Mica/Acrylic on Windows, CSS backdrop-filter on Linux)
   - Dynamic window scaling based on monitor resolution

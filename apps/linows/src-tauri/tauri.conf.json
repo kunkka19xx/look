@@ -28,20 +28,7 @@
     "security": {
       "csp": null,
       "assetProtocol": {
-        "enable": true,
-        "scope": [
-          "$HOME/**",
-          "$APPDATA/**",
-          "$LOCALAPPDATA/**",
-          "$PICTURE/**",
-          "$DOWNLOAD/**",
-          "$DESKTOP/**",
-          "$DOCUMENT/**",
-          "/usr/share/**",
-          "/nix/**",
-          "/run/**",
-          "/tmp/**"
-        ]
+        "enable": true
       }
     }
   },
