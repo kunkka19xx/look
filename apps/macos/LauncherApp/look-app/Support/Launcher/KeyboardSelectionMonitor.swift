@@ -32,6 +32,8 @@ final class KeyboardSelectionMonitor {
         onCopySelection: @escaping @MainActor () -> Bool,
         onTogglePick: @escaping @MainActor () -> Void,
         onClearPicked: @escaping @MainActor () -> Void,
+        onOpenAllPicked: @escaping @MainActor () -> Void = {},
+        hasPickedItems: @escaping @MainActor () -> Bool = { false },
         onToggleHelp: @escaping @MainActor () -> Void,
         onDismissHelpIfVisible: @escaping @MainActor () -> Bool,
         onSelectCommandByIndex: @escaping @MainActor (Int) -> Void,
@@ -117,6 +119,17 @@ final class KeyboardSelectionMonitor {
                     onSelectCommandByIndex(1)
                 }
                 return nil
+            }
+
+            // Shift+Enter opens every picked file/folder at once. Only when
+            // there are picks; otherwise fall through so plain submit still
+            // opens the selected result.
+            if (event.keyCode == 36 || event.keyCode == 76) && flags == [.shift] {
+                if !inCommandMode() && hasPickedItems() {
+                    onOpenAllPicked()
+                    return nil
+                }
+                return event
             }
 
             // Cmd+D (keyCode 2) → trash the selection. Only in result mode; in

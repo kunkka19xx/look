@@ -177,6 +177,12 @@ extension LauncherView {
             onClearPicked: {
                 clearAllPicked()
             },
+            onOpenAllPicked: {
+                openAllPicked()
+            },
+            hasPickedItems: { [self] in
+                !pickedKeys.isEmpty
+            },
             onToggleHelp: {
                 toggleHelpScreen()
             },

@@ -512,6 +512,36 @@ pub(crate) fn list_on_port(port: u16) -> Vec<RunningApp> {
         .collect()
 }
 
+/// True when a process owned by the current user has /proc Name: == `name`.
+/// Used by launch to detect cold-start cases (Steam) whose URL handling
+/// requires the main process to be running before the URL is issued.
+pub(crate) fn is_running(name: &str) -> bool {
+    let my_uid = read_my_uid();
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let fname = entry.file_name();
+        let fname_str = fname.to_string_lossy();
+        if !fname_str.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(status) = fs::read_to_string(format!("/proc/{fname_str}/status")) else {
+            continue;
+        };
+        let uid = parse_status_field(&status, "Uid:")
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(0);
+        if uid != my_uid {
+            continue;
+        }
+        if parse_status_field(&status, "Name:").as_deref() == Some(name) {
+            return true;
+        }
+    }
+    false
+}
+
 pub(crate) fn kill(pid: u32) -> Result<String, String> {
     let output = std::process::Command::new("kill")
         .arg("-9")

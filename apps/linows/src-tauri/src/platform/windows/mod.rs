@@ -6,6 +6,7 @@ pub mod fonts;
 pub mod icons;
 pub mod known_folders;
 pub mod process;
+pub mod recycle_bin;
 pub mod sysinfo;
 pub mod version;
 pub mod window_focus;

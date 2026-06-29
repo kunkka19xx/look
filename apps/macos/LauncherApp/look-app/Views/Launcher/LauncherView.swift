@@ -867,7 +867,8 @@ struct LauncherView: View {
                     pickedByKey: pickedResultsByKey,
                     themeStore: themeStore,
                     onRemove: { removePicked(key: $0) },
-                    onClearAll: { clearAllPicked() }
+                    onClearAll: { clearAllPicked() },
+                    onOpenAll: { openAllPicked() }
                 )
             } else if !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
                       let selectedID = selectedResultID,

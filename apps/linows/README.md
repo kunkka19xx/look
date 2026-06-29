@@ -43,7 +43,7 @@ apps/linows/
       platform.js        Platform detection
       icons.js           Icon resolution
       html-loader.js     Dynamic HTML template loader
-      components/        results, preview, picked, banner, translate
+      components/        results, preview, picked, banner, translate, ai-answer (web answer card)
       screens/           settings, commands (calc, kill, pomo, shell, sys)
     html/screens/        HTML templates (search, settings, help, commands)
     assets/              Icons
