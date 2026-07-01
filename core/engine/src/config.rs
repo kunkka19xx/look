@@ -622,7 +622,11 @@ fn parse_csv(value: &str) -> Vec<String> {
     while let Some(ch) = chars.next() {
         if ch == '\\' {
             match chars.peek().copied() {
-                Some(',') => {
+                // `\,` -> literal comma, `\\` -> literal backslash. Escaping the
+                // backslash lets a value ending in `\` (e.g. a Windows drive
+                // root like `D:\`) survive next to the delimiter comma instead
+                // of being misread as an escaped comma.
+                Some(',') | Some('\\') => {
                     if let Some(escaped) = chars.next() {
                         current.push(escaped);
                     }
@@ -731,9 +735,18 @@ mod tests {
     }
 
     #[test]
-    fn parse_csv_preserves_unc_prefixes() {
-        let parsed = parse_csv("\\\\server\\share\\apps,/Users/demo/Apps");
-        assert_eq!(parsed, vec!["\\\\server\\share\\apps", "/Users/demo/Apps"]);
+    fn parse_csv_unescapes_trailing_backslash_roots() {
+        // Windows drive roots end in `\`; the writer escapes each backslash so
+        // the trailing one can't merge with the delimiter. `D:\` -> `D:\\`.
+        let parsed = parse_csv(r"D:\\,E:\\");
+        assert_eq!(parsed, vec![r"D:\", r"E:\"]);
+    }
+
+    #[test]
+    fn parse_csv_unescapes_doubled_backslash_unc() {
+        // UNC roots are stored with every backslash doubled and decode back.
+        let parsed = parse_csv(r"\\\\server\\share\\apps,/Users/demo/Apps");
+        assert_eq!(parsed, vec![r"\\server\share\apps", "/Users/demo/Apps"]);
     }
 
     #[test]

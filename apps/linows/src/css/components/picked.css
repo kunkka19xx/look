@@ -12,6 +12,38 @@
   color: var(--font-color);
 }
 
+.picked-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.picked-open {
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--accent-color);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.picked-open:hover {
+  background: var(--selection-fill);
+}
+
+.picked-shortcut {
+  font-size: calc(var(--font-size) - 3px);
+  color: var(--font-muted);
+  background: var(--control-fill);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
 .picked-clear {
   background: none;
   border: none;

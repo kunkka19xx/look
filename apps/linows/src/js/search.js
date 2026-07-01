@@ -1,6 +1,6 @@
 import { search as ipcSearch, getClipboardHistory, webSuggestions as ipcWebSuggestions } from './ipc.js';
 import {
-  isPrefixSuggestionQuery, isCommandSuggestionQuery,
+  isPrefixSuggestionQuery, isCommandSuggestionQuery, isPrefixedQuery,
   prefixSuggestionResults, commandSuggestionResults, webSuggestionResults,
 } from './catalog.js';
 
@@ -156,10 +156,16 @@ export function handleQueryInput(query) {
   // when they arrive. Each leg version-checks before publishing. We mark
   // webInFlight up-front (not inside fetchWebSuggestions) so publish() can
   // see it the instant the engine returns and hold off on painting an
-  // empty list.
-  webInFlight = aiEnabled && query.trim().length >= MIN_WEB_SUGGESTION_QUERY_LENGTH;
+  // empty list. Skip web suggestions entirely for prefixed queries
+  // (a"chrome, f"doc, r"regex ...). The engine handles those as scoped
+  // filters; Google-autocomplete rows would be noise.
+  const wantsWeb = aiEnabled && !isPrefixedQuery(query)
+    && query.trim().length >= MIN_WEB_SUGGESTION_QUERY_LENGTH;
+  webInFlight = wantsWeb;
   debounceTimer = setTimeout(() => performSearch(query, myVersion), DEBOUNCE_MS);
-  webSuggestionTimer = setTimeout(() => fetchWebSuggestions(query, myVersion), DEBOUNCE_MS);
+  if (wantsWeb) {
+    webSuggestionTimer = setTimeout(() => fetchWebSuggestions(query, myVersion), DEBOUNCE_MS);
+  }
 }
 
 // A fetch is "stale" when handleQueryInput has bumped queryVersion since
@@ -290,7 +296,7 @@ function prependQuickFolders(results, query) {
   for (const folder of quickFolders) {
     if (!folder.title.toLowerCase().startsWith(q)) continue;
     if (results.some((r) => r.path === folder.path)) continue;
-    const isTrash = folder.title === 'Trash';
+    const isTrash = folder.title === 'Trash' || folder.title === 'Recycle Bin';
     matched.push({
       id: `quickfolder:${folder.title.toLowerCase()}`,
       kind: 'folder',

@@ -1,3 +1,11 @@
+/* Per-OS help rows: show only the line matching the running OS. data-os is
+ * set at boot by js/platform.js from get_platform (mirrors the settings
+ * convention). */
+html:not([data-os="windows"]) .help-windows-only,
+html:not([data-os="linux"]) .help-linux-only {
+  display: none;
+}
+
 /* Help screen overlay — uses an opaque dark base under the translucent
  * tint so the launcher's results/preview can't bleed through. The tint
  * still overlays the base, preserving the user's chosen theme color hue
