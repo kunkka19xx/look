@@ -128,7 +128,8 @@ jobs:
         # wayland-scanner, a build-time proc-macro that parses trusted local
         # protocol XML (no runtime attack surface). wayland-rs has no release
         # or master commit on quick-xml >=0.41 yet. The runtime-exposed path
-        # (tauri -> plist) is already fixed via the plist patch in Cargo.toml.
+        # (tauri -> plist) is fixed by bumping plist to 1.10 (quick-xml 0.41)
+        # in the lockfile.
         # Drop these ignores once wayland-rs moves to quick-xml >=0.41.
         run: >
           cargo audit --file apps/linows/src-tauri/Cargo.lock
