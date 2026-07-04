@@ -8,6 +8,7 @@
 
 use crate::config;
 use crate::consts;
+use tauri::Manager;
 
 /// Disable WebKitGTK's DMABUF-based accelerated surface renderer.
 ///
