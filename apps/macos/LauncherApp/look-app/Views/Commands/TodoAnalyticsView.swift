@@ -26,7 +26,11 @@ struct TodoAnalyticsPage: View {
                         TodoLineChart(data: trend, themeStore: themeStore)
                             .frame(height: 92)
                         HStack {
-                            Text("Jun 5"); Spacer(); Text("Jun 20"); Spacer(); Text("Jul 4")
+                            Text("Jun 5")
+                            Spacer()
+                            Text("Jun 20")
+                            Spacer()
+                            Text("Jul 4")
                         }
                         .font(.system(size: 9.5, design: .monospaced))
                         .foregroundStyle(themeStore.mutedTextColor())
@@ -87,11 +91,15 @@ struct TodoInsightsStrip: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            tile("Avg / day", avgPerDay, help: "Average tasks completed per day over the last 30 days")
+            tile(
+                "Avg / day", avgPerDay,
+                help: "Average tasks completed per day over the last 30 days")
             divider
             tile("Best day", "\(bestDay)", help: "Most tasks completed in a single day")
             divider
-            tile("Active days", "\(activeDays)/\(trend.count)", help: "Days with at least one task completed")
+            tile(
+                "Active days", "\(activeDays)/\(trend.count)",
+                help: "Days with at least one task completed")
             divider
             tile("Done · 30d", "\(total)", help: "Total tasks completed in the last 30 days")
         }
@@ -197,7 +205,10 @@ struct TodoStreakColumn: View {
                         let on = i >= 7 - filled
                         Circle()
                             .fill(on ? themeStore.accentColor() : Color.clear)
-                            .overlay(Circle().stroke(on ? Color.clear : themeStore.dividerColor(), lineWidth: 1))
+                            .overlay(
+                                Circle().stroke(
+                                    on ? Color.clear : themeStore.dividerColor(), lineWidth: 1)
+                            )
                             .frame(width: 6, height: 6)
                     }
                 }
@@ -212,7 +223,7 @@ struct TodoStreakColumn: View {
 struct TodoDonut: View {
     let fraction: Double
     let themeStore: ThemeStore
-    var size: CGFloat = 46
+    var size: CGFloat = 52
     var stroke: CGFloat = 4.5
 
     var body: some View {
@@ -220,9 +231,11 @@ struct TodoDonut: View {
             Circle().stroke(themeStore.dividerColor(), lineWidth: stroke)
             Circle()
                 .trim(from: 0, to: max(0, min(1, fraction)))
-                .stroke(themeStore.accentColor(), style: StrokeStyle(lineWidth: stroke, lineCap: .round))
+                .stroke(
+                    themeStore.accentColor(), style: StrokeStyle(lineWidth: stroke, lineCap: .round)
+                )
                 .rotationEffect(.degrees(-90))
-            Text("\(Int((fraction * 100).rounded()))")
+            Text("\(Int((fraction * 100).rounded()))" + "%")
                 .font(themeStore.uiFont(size: size * 0.28, weight: .bold))
                 .foregroundStyle(themeStore.fontColor())
         }
@@ -237,15 +250,19 @@ struct TodoLineChart: View {
     var body: some View {
         Canvas { ctx, size in
             guard data.count > 1 else { return }
-            let padL: CGFloat = 4, padR: CGFloat = 4, padT: CGFloat = 10, padB: CGFloat = 8
+            let padL: CGFloat = 4
+            let padR: CGFloat = 4
+            let padT: CGFloat = 10
+            let padB: CGFloat = 8
             let w = size.width - padL - padR
             let h = size.height - padT - padB
             let maxV = CGFloat(max(TodoCommand.taskLimit, data.max() ?? TodoCommand.taskLimit))
             let stepX = w / CGFloat(data.count - 1)
 
             let pts: [CGPoint] = data.enumerated().map { i, v in
-                CGPoint(x: padL + CGFloat(i) * stepX,
-                        y: padT + h - (CGFloat(v) / maxV) * h)
+                CGPoint(
+                    x: padL + CGFloat(i) * stepX,
+                    y: padT + h - (CGFloat(v) / maxV) * h)
             }
 
             // Baseline.
@@ -257,8 +274,9 @@ struct TodoLineChart: View {
             // Trend line.
             var line = Path()
             line.addLines(pts)
-            ctx.stroke(line, with: .color(themeStore.accentColor()),
-                       style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+            ctx.stroke(
+                line, with: .color(themeStore.accentColor()),
+                style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
 
             // Dots, last one emphasized.
             let accent = themeStore.accentColor()

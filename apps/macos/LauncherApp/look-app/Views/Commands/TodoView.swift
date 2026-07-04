@@ -582,7 +582,7 @@ struct TodoProgressRing: View {
     let done: Int
     let total: Int
     let themeStore: ThemeStore
-    var size: CGFloat = 26
+    var size: CGFloat = 18
 
     private var fraction: Double { total > 0 ? Double(done) / Double(total) : 0 }
 
