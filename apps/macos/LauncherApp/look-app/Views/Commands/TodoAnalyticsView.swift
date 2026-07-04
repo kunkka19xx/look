@@ -34,8 +34,7 @@ struct TodoAnalyticsPage: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 10)
                     .padding(.bottom, 6)
-                    .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(themeStore.borderColor(), lineWidth: 1))
+                    .todoCard(themeStore)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -48,8 +47,7 @@ struct TodoAnalyticsPage: View {
                         TodoHeatmap(weeks: weeks, themeStore: themeStore)
                     }
                     .padding(12)
-                    .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(themeStore.borderColor(), lineWidth: 1))
+                    .todoCard(themeStore)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -75,7 +73,6 @@ struct TodoAnalyticsPage: View {
     }
 }
 
-
 struct TodoInsightsStrip: View {
     let themeStore: ThemeStore
     let trend: [Int]
@@ -100,8 +97,7 @@ struct TodoInsightsStrip: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 14)
-        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(themeStore.borderColor(), lineWidth: 1))
+        .todoCard(themeStore, cornerRadius: 12)
     }
 
     private func tile(_ label: String, _ value: String, help: String) -> some View {
@@ -118,9 +114,7 @@ struct TodoInsightsStrip: View {
         .help(help)
     }
 
-    private var divider: some View {
-        Rectangle().fill(themeStore.dividerColor()).frame(width: 1).padding(.vertical, 4)
-    }
+    private var divider: some View { TodoVDivider(themeStore: themeStore) }
 }
 
 struct TodoStatStrip: View {
@@ -139,13 +133,10 @@ struct TodoStatStrip: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 14)
-        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(themeStore.borderColor(), lineWidth: 1))
+        .todoCard(themeStore, cornerRadius: 12)
     }
 
-    private var divider: some View {
-        Rectangle().fill(themeStore.dividerColor()).frame(width: 1).padding(.vertical, 4)
-    }
+    private var divider: some View { TodoVDivider(themeStore: themeStore) }
 }
 
 struct TodoMetricColumn: View {
@@ -239,7 +230,6 @@ struct TodoDonut: View {
     }
 }
 
-
 struct TodoLineChart: View {
     let data: [Int]
     let themeStore: ThemeStore
@@ -287,7 +277,6 @@ struct TodoLineChart: View {
         }
     }
 }
-
 
 struct TodoHeatmap: View {
     let weeks: [[Int]]

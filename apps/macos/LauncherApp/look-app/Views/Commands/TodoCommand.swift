@@ -10,21 +10,12 @@ import Observation
 // retention (ideally in core/ so linows can reuse it) is a change to
 // that type alone, with TodoState untouched.
 
-
-/// A task's lifecycle. The spec considered an `inProgress` state but
-/// dropped it ("makes tasks more chaotic without value"), so it is a
-/// plain two-state todo/done.
-enum TodoTaskState: String, Codable {
-    case todo
-    case done
-}
-
+// A task is two-state (todo / done). The spec considered an in-progress
+// state but dropped it, so completion is a plain `done` flag.
 struct TodoTask: Identifiable, Equatable {
     let id: String
     var name: String
     var done: Bool
-
-    var state: TodoTaskState { done ? .done : .todo }
 
     static func newID() -> String {
         "n" + UUID().uuidString.prefix(6).lowercased()
@@ -59,7 +50,6 @@ struct TodoGroup: Identifiable, Equatable {
     /// Unfinished (todo) tasks. This is what the per-day limit caps;
     /// total tasks are unlimited.
     var openCount: Int { total - doneCount }
-
 
     /// Short weekday, e.g. "Sat". "Today" is rendered by the header,
     /// not here.
@@ -100,13 +90,11 @@ struct TodoGroup: Identifiable, Equatable {
     }()
 }
 
-
 struct TodoStat: Equatable {
     var done: Int
     var total: Int
     var fraction: Double { total > 0 ? Double(done) / Double(total) : 0 }
 }
-
 
 enum TodoCommand {
     /// Max unfinished (todo) tasks per day. Completing a task frees a
@@ -133,7 +121,6 @@ enum TodoCommand {
     }
 }
 
-
 @Observable
 final class TodoState {
     private(set) var groups: [TodoGroup]
@@ -148,7 +135,6 @@ final class TodoState {
         groups = TodoState.seed()
     }
 
-
     var today: TodoGroup? { groups.first { $0.kind == .today } }
 
     var todayStat: TodoStat {
@@ -159,7 +145,6 @@ final class TodoState {
     var futureCount: Int { groups.filter { $0.kind == .future }.count }
     var canAddDateGroup: Bool { futureCount < TodoCommand.dateGroupLimit }
     var groupsLeft: Int { max(0, TodoCommand.dateGroupLimit - futureCount) }
-
 
     private func mutate(_ body: (inout [TodoGroup]) -> Void) {
         body(&groups)
@@ -245,7 +230,6 @@ final class TodoState {
             offset += 1
         }
     }
-
 
     func save() {
         // TODO(todo-db): persist `groups` to core storage with one-year

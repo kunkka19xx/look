@@ -93,7 +93,6 @@ struct TodoView: View {
         }
     }
 
-
     private var topInputBar: some View {
         HStack(spacing: 8) {
             Image(systemName: page == .tasks ? "magnifyingglass" : "chart.bar")
@@ -134,11 +133,8 @@ struct TodoView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(
-            themeStore.controlFillColor(),
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .todoCard(themeStore, bordered: false)
     }
-
 
     private var buttonBar: some View {
         HStack(spacing: 8) {
@@ -214,7 +210,6 @@ struct TodoView: View {
         .buttonStyle(.plain)
     }
 
-
     private var pageToggle: some View {
         HStack(spacing: 2) {
             toggleSegment(.tasks, label: "Tasks", icon: "list.bullet")
@@ -252,7 +247,6 @@ struct TodoView: View {
     }
 
 }
-
 
 struct TodoTasksPage: View {
     let themeStore: ThemeStore
@@ -294,7 +288,6 @@ struct TodoTasksPage: View {
     }
 }
 
-
 struct TodoDateGroupCard: View {
     let themeStore: ThemeStore
     @Bindable var state: TodoState
@@ -333,14 +326,7 @@ struct TodoDateGroupCard: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(
-            themeStore.controlFillColor(),
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(themeStore.borderColor(), lineWidth: 1)
-        )
+        .todoCard(themeStore)
     }
 
     private var header: some View {
@@ -376,7 +362,6 @@ struct TodoDateGroupCard: View {
     }
 }
 
-
 struct TodoTaskRow: View {
     let themeStore: ThemeStore
     let task: TodoTask
@@ -402,11 +387,7 @@ struct TodoTaskRow: View {
                     .font(themeStore.uiFont(size: 13))
                     .foregroundStyle(themeStore.fontColor())
                     .onSubmit(commit)
-                    .onChange(of: draft) { _, v in
-                        if v.count > TodoCommand.taskNameMaxLength {
-                            draft = String(v.prefix(TodoCommand.taskNameMaxLength))
-                        }
-                    }
+                    .limitLength($draft, to: TodoCommand.taskNameMaxLength)
                     .onChange(of: focused) { _, isFocused in
                         if !isFocused { commit() }
                     }
@@ -469,7 +450,6 @@ struct TodoTaskRow: View {
     }
 }
 
-
 struct TodoAddRow: View {
     let themeStore: ThemeStore
     let atLimit: Bool
@@ -504,11 +484,7 @@ struct TodoAddRow: View {
                     .font(themeStore.uiFont(size: 13))
                     .foregroundStyle(themeStore.fontColor())
                     .onSubmit(commit)
-                    .onChange(of: draft) { _, v in
-                        if v.count > TodoCommand.taskNameMaxLength {
-                            draft = String(v.prefix(TodoCommand.taskNameMaxLength))
-                        }
-                    }
+                    .limitLength($draft, to: TodoCommand.taskNameMaxLength)
                     .onChange(of: focused) { _, isFocused in
                         if !isFocused && draft.trimmingCharacters(in: .whitespaces).isEmpty {
                             active = false
@@ -555,7 +531,6 @@ struct TodoAddRow: View {
         DispatchQueue.main.async { focused = true }
     }
 }
-
 
 struct TodoCheckbox: View {
     let done: Bool
@@ -708,5 +683,37 @@ final class TodoKeyHostView: NSView {
     private func remove() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+    }
+}
+
+// Shared surface for /todo cards and controls: a control-fill background
+// with rounded corners and an optional hairline border.
+extension View {
+    func todoCard(_ themeStore: ThemeStore, cornerRadius: CGFloat = 10, bordered: Bool = true) -> some View {
+        background(
+            themeStore.controlFillColor(),
+            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        )
+        .overlay {
+            if bordered {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(themeStore.borderColor(), lineWidth: 1)
+            }
+        }
+    }
+
+    /// Clamps a text binding to `max` characters as the user types.
+    func limitLength(_ text: Binding<String>, to max: Int) -> some View {
+        onChange(of: text.wrappedValue) { _, value in
+            if value.count > max { text.wrappedValue = String(value.prefix(max)) }
+        }
+    }
+}
+
+// Thin vertical rule used between columns in the analytics strips.
+struct TodoVDivider: View {
+    let themeStore: ThemeStore
+    var body: some View {
+        Rectangle().fill(themeStore.dividerColor()).frame(width: 1).padding(.vertical, 4)
     }
 }
