@@ -19,6 +19,8 @@ struct AppCommand: Identifiable {
             return "info.circle"
         case AppConstants.Launcher.Command.pomo:
             return "timer"
+        case AppConstants.Launcher.Command.todo:
+            return "checklist"
         default:
             return "terminal"
         }
@@ -69,6 +71,7 @@ enum AppConstants {
             static let kill = "kill"
             static let sys = "sys"
             static let pomo = "pomo"
+            static let todo = "todo"
         }
 
         enum QueryPrefix {
@@ -299,9 +302,10 @@ enum AppConstants {
         static let commandCatalog: [AppCommand] = [
             AppCommand(id: Command.calc, title: "calc (⌘1)", detail: "Evaluate math expression", placeholder: "Type math expression"),
             AppCommand(id: Command.pomo, title: "pomo (⌘2)", detail: "Pomodoro focus timer", placeholder: "Manage focus sessions"),
-            AppCommand(id: Command.kill, title: "kill (⌘3)", detail: "Force kill app or process by port", placeholder: "Type app name, or :3000"),
-            AppCommand(id: Command.shell, title: "shell (⌘4)", detail: "Run a shell command", placeholder: "Type shell command"),
-            AppCommand(id: Command.sys, title: "sys (⌘5)", detail: "Show system information", placeholder: "View system info"),
+            AppCommand(id: Command.todo, title: "todo (⌘3)", detail: "Daily tasks & progress", placeholder: "Search tasks & dates"),
+            AppCommand(id: Command.kill, title: "kill (⌘4)", detail: "Force kill app or process by port", placeholder: "Type app name, or :3000"),
+            AppCommand(id: Command.shell, title: "shell (⌘5)", detail: "Run a shell command", placeholder: "Type shell command"),
+            AppCommand(id: Command.sys, title: "sys (⌘6)", detail: "Show system information", placeholder: "View system info"),
         ]
 
         /// Commands narrowed by `filter` - the text typed after a leading `:`.

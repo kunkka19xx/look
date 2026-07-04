@@ -160,14 +160,14 @@ final class KeyboardSelectionMonitor {
                 }
                 if let key = cmdNumberKey {
                     if inCommandMode() {
-                        if key <= 5 {
+                        if key <= 6 {
                             Self.logger.debug("⌘+\(key, privacy: .public) -> command catalog")
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                                 onSelectCommandByIndex(key)
                             }
                             return nil
                         }
-                        Self.logger.debug("⌘+\(key, privacy: .public) ignored (command mode only maps 1-5)")
+                        Self.logger.debug("⌘+\(key, privacy: .public) ignored (command mode only maps 1-6)")
                     } else {
                         Self.logger.debug("⌘+\(key, privacy: .public) -> running-apps switcher")
                         if onActivateRunningApp(key) {

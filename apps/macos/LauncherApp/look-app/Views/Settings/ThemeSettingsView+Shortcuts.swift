@@ -46,7 +46,7 @@ enum ShortcutDocs {
                 ShortcutItem(keys: "Cmd+Enter", action: "Search query on Google"),
                 ShortcutItem(keys: "Cmd+/", action: "Enter command mode"),
                 ShortcutItem(keys: ":cmd", action: "Jump to a command from home (e.g. :calc 2+2, :kill chrome, :sys, :pomo)"),
-                ShortcutItem(keys: "Cmd+1..5", action: "Switch directly to /shell, /calc, /kill, /sys, /pomo"),
+                ShortcutItem(keys: "Cmd+1..6", action: "Switch directly to /calc, /pomo, /todo, /kill, /shell, /sys"),
                 ShortcutItem(keys: "Cmd+Shift+,", action: "Open/close settings panel"),
                 ShortcutItem(keys: "Cmd+Shift+;", action: "Reload .look.config"),
                 ShortcutItem(keys: "Cmd+H", action: "Toggle in-window keyboard help screen"),

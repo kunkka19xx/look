@@ -270,9 +270,10 @@ extension LauncherView {
                                 themeStore: themeStore,
                                 onSubmit: handleSubmit
                             )
-                        } else if activeCommandID != AppConstants.Launcher.Command.pomo {
-                            // /pomo renders its own header (with "Running: <name>"
-                            // status) inside its panel — skip the redundant outer one.
+                        } else if activeCommandID != AppConstants.Launcher.Command.pomo
+                            && activeCommandID != AppConstants.Launcher.Command.todo {
+                            // /pomo and /todo render their own header inside
+                            // their panels, so skip the redundant outer one.
                             CommandHeaderBar(
                                 command: activeCommand,
                                 themeStore: themeStore,
@@ -318,6 +319,9 @@ extension LauncherView {
                                 .padding(8)
                         } else if activeCommandID == AppConstants.Launcher.Command.pomo {
                             PomoView(themeStore: themeStore)
+                                .padding(2)
+                        } else if activeCommandID == AppConstants.Launcher.Command.todo {
+                            TodoView(themeStore: themeStore)
                                 .padding(2)
                         } else {
                             VStack(alignment: .leading, spacing: 0) {
