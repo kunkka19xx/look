@@ -2514,7 +2514,6 @@ dependencies = [
  "dirs",
  "look-answers",
  "look-engine",
- "look-indexing",
  "look-storage",
  "notify",
  "open",

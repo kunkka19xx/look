@@ -5,12 +5,11 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-tauri = { version = "2.11.1", features = ["tray-icon", "protocol-asset"] }
+tauri = { version = "2.11.1", features = ["protocol-asset"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 look-answers = { path = "../../../core/answers" }
 look-engine = { path = "../../../core/engine" }
-look-indexing = { path = "../../../core/indexing" }
 look-storage = { path = "../../../core/storage" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -35,7 +34,6 @@ wayland-protocols-wlr = { version = "0.3", features = ["client"], default-featur
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = [
     "Win32_Foundation",
-    "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_NetworkManagement_IpHelper",
     "Win32_System_Com",
