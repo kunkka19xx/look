@@ -302,7 +302,7 @@ struct TodoDateGroupCard: View {
 
     private var isPast: Bool { group.kind == .past }
     private var isToday: Bool { group.kind == .today }
-    private var atLimit: Bool { group.total >= TodoCommand.taskLimit }
+    private var atLimit: Bool { group.openCount >= TodoCommand.taskLimit }
     private var overdue: Bool { isPast }
 
     var body: some View {
@@ -486,7 +486,7 @@ struct TodoAddRow: View {
                     .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
                     .frame(width: 16, height: 16)
                     .foregroundStyle(themeStore.mutedTextColor())
-                Text("Day full · \(TodoCommand.taskLimit)/\(TodoCommand.taskLimit) tasks")
+                Text("\(TodoCommand.taskLimit) unfinished · complete one to add more")
                     .font(themeStore.uiFont(size: 11.5))
                     .foregroundStyle(themeStore.mutedTextColor())
                 Spacer(minLength: 0)

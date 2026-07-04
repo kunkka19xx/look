@@ -56,6 +56,9 @@ struct TodoGroup: Identifiable, Equatable {
 
     var doneCount: Int { tasks.filter(\.done).count }
     var total: Int { tasks.count }
+    /// Unfinished (todo) tasks. This is what the per-day limit caps;
+    /// total tasks are unlimited.
+    var openCount: Int { total - doneCount }
 
 
     /// Short weekday, e.g. "Sat". "Today" is rendered by the header,
@@ -106,7 +109,8 @@ struct TodoStat: Equatable {
 
 
 enum TodoCommand {
-    /// Max tasks per day. Spec allows 3 or 5; design default is 3.
+    /// Max unfinished (todo) tasks per day. Completing a task frees a
+    /// slot; total tasks per day are unlimited. Spec allows 3 or 5.
     static let taskLimit = 3
     /// Max upcoming (future) date groups the user can add ahead.
     static let dateGroupLimit = 3
@@ -205,14 +209,15 @@ final class TodoState {
         withGroup(key) { g in g.tasks.removeAll() }
     }
 
-    /// Adds a task, respecting the per-day limit. Returns false when the
-    /// day is full so the caller can leave the field intact.
+    /// Adds a task, respecting the per-day limit on unfinished tasks.
+    /// Returns false when the day is at its open-task limit so the caller
+    /// can leave the field intact.
     @discardableResult
     func addTask(group key: String, name: String) -> Bool {
         let trimmed = Self.clampName(name)
         guard !trimmed.isEmpty else { return false }
         guard let g = groups.first(where: { $0.key == key }),
-              g.tasks.count < TodoCommand.taskLimit else { return false }
+              g.openCount < TodoCommand.taskLimit else { return false }
         withGroup(key) { g in
             g.tasks.append(TodoTask(id: TodoTask.newID(), name: trimmed, done: false))
         }
@@ -323,14 +328,15 @@ enum TodoAnalytics {
         }
     }
 
-    /// Last 30 days, done-count 0...5 per day.
+    /// Last 30 days, done-count per day, capped at the daily task limit.
     static func monthTrend() -> [Int] {
+        let cap = TodoCommand.taskLimit
         var r = Seeded(7)
         var arr: [Int] = []
         for i in 0..<30 {
-            let base = sin(Double(i) / 4) * 1.4 + 2.4
-            let v = base + (r.next() - 0.5) * 2.2
-            arr.append(max(0, min(5, Int(v.rounded()))))
+            let base = sin(Double(i) / 4) * Double(cap) * 0.45 + Double(cap) * 0.65
+            let v = base + (r.next() - 0.5) * Double(cap) * 0.9
+            arr.append(max(0, min(cap, Int(v.rounded()))))
         }
         return arr
     }

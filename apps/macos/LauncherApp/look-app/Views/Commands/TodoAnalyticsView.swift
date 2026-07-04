@@ -51,6 +51,11 @@ struct TodoAnalyticsPage: View {
                     .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(themeStore.borderColor(), lineWidth: 1))
                 }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionLabel("sparkles", "Insights · last 30 days (Tasks)")
+                    TodoInsightsStrip(themeStore: themeStore, trend: trend)
+                }
             }
             .padding(.horizontal, 4)
             .padding(.vertical, 2)
@@ -70,6 +75,53 @@ struct TodoAnalyticsPage: View {
     }
 }
 
+
+struct TodoInsightsStrip: View {
+    let themeStore: ThemeStore
+    let trend: [Int]
+
+    private var total: Int { trend.reduce(0, +) }
+    private var avgPerDay: String {
+        guard !trend.isEmpty else { return "0" }
+        return String(format: "%.1f", Double(total) / Double(trend.count))
+    }
+    private var bestDay: Int { trend.max() ?? 0 }
+    private var activeDays: Int { trend.filter { $0 > 0 }.count }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            tile("Avg / day", avgPerDay, help: "Average tasks completed per day over the last 30 days")
+            divider
+            tile("Best day", "\(bestDay)", help: "Most tasks completed in a single day")
+            divider
+            tile("Active days", "\(activeDays)/\(trend.count)", help: "Days with at least one task completed")
+            divider
+            tile("Done · 30d", "\(total)", help: "Total tasks completed in the last 30 days")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 14)
+        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(themeStore.borderColor(), lineWidth: 1))
+    }
+
+    private func tile(_ label: String, _ value: String, help: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(themeStore.uiFont(size: 20, weight: .bold))
+                .foregroundStyle(themeStore.fontColor())
+            Text(label.uppercased())
+                .font(.system(size: 10, design: .monospaced))
+                .tracking(0.7)
+                .foregroundStyle(themeStore.mutedTextColor())
+        }
+        .frame(maxWidth: .infinity)
+        .help(help)
+    }
+
+    private var divider: some View {
+        Rectangle().fill(themeStore.dividerColor()).frame(width: 1).padding(.vertical, 4)
+    }
+}
 
 struct TodoStatStrip: View {
     let themeStore: ThemeStore
@@ -198,7 +250,7 @@ struct TodoLineChart: View {
             let padL: CGFloat = 4, padR: CGFloat = 4, padT: CGFloat = 10, padB: CGFloat = 8
             let w = size.width - padL - padR
             let h = size.height - padT - padB
-            let maxV = CGFloat(max(5, data.max() ?? 5))
+            let maxV = CGFloat(max(TodoCommand.taskLimit, data.max() ?? TodoCommand.taskLimit))
             let stepX = w / CGFloat(data.count - 1)
 
             let pts: [CGPoint] = data.enumerated().map { i, v in
