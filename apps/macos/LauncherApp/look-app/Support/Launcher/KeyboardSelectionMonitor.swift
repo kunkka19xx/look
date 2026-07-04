@@ -173,7 +173,7 @@ final class KeyboardSelectionMonitor {
                             return nil
                         }
                         Self.logger.debug(
-                            "⌘+\(key, privacy: .public) ignored (command mode only maps 1-6)")
+                            "⌘+\(key, privacy: .public) ignored (command mode maps 1-\(AppConstants.Launcher.commandCatalog.count, privacy: .public))")
                     } else {
                         Self.logger.debug("⌘+\(key, privacy: .public) -> running-apps switcher")
                         if onActivateRunningApp(key) {
