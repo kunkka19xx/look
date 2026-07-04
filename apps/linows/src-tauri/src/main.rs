@@ -19,6 +19,8 @@ mod sysinfo;
 mod translate;
 mod trash;
 
+#[cfg(target_os = "linux")]
+use platform::linux::gpu;
 use state::AppState;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -56,7 +58,7 @@ fn supports_transparency() -> bool {
 
 const BASE_W: f64 = 860.0;
 const BASE_H: f64 = 600.0;
-/// Grace period (ms) after show — ignore focus-loss within this window.
+/// Grace period (ms) after show - ignore focus-loss within this window.
 const AUTO_HIDE_GRACE_MS: u64 = 300;
 /// Guard (ms) to prevent re-showing after auto-hide (GNOME X11 race).
 const AUTO_HIDE_RESHOW_GUARD_MS: u64 = 200;
@@ -91,13 +93,13 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         let _ = window.hide();
     } else if now_ms() - LAST_AUTO_HIDDEN_AT.load(Ordering::Relaxed) > AUTO_HIDE_RESHOW_GUARD_MS {
         // Only show if auto-hide didn't JUST fire.
-        // On GNOME X11, Focused(false) races with this handler —
+        // On GNOME X11, Focused(false) races with this handler -
         // auto-hide hides the window before we run, so is_visible
         // is false.  The 200ms guard prevents re-showing.
         LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
 
         // Tiling WMs (i3, sway, Hyprland) ignore set_position on unmapped
-        // windows — they apply their own placement on map. So we must
+        // windows - they apply their own placement on map. So we must
         // recenter AFTER show. Desktop environments (GNOME, KDE, …) work
         // best with recenter BEFORE show to avoid a visible jump.
         #[cfg(target_os = "linux")]
@@ -128,7 +130,7 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
 }
 
 /// Center and scale a window to fit the current monitor.
-/// Called once at startup. Avoid calling on toggle — see toggle_window.
+/// Called once at startup. Avoid calling on toggle - see toggle_window.
 fn center_and_scale_window(window: &tauri::WebviewWindow) {
     let Some(monitor) = monitor_at_cursor(window) else {
         return;
@@ -159,12 +161,12 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) {
 /// current monitor, then the first available monitor.
 fn monitor_at_cursor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
     // Try Tauri's cursor_position first (works on X11).
-    // On Wayland, cursor_position() fails — fall back to GNOME Shell D-Bus.
+    // On Wayland, cursor_position() fails - fall back to GNOME Shell D-Bus.
     // GNOME Shell's global.get_pointer() returns *logical* coordinates,
     // while Tauri's monitor positions/sizes are *physical* pixels.
     // We track which space the cursor is in so the hit-test works correctly.
     // On Wayland, Tauri's cursor_position() returns Ok((0,0)) instead of
-    // failing — it never reflects the real pointer location. Use the GNOME
+    // failing - it never reflects the real pointer location. Use the GNOME
     // Shell extension (which calls global.get_pointer()) on Wayland instead.
     #[cfg(target_os = "linux")]
     let wayland = is_wayland();
@@ -266,7 +268,7 @@ fn is_wayland() -> bool {
 #[cfg(debug_assertions)]
 fn setup_dev_env() {
     // Resolve home/data dirs per platform. On Linux cmd shells set HOME; on
-    // Windows cmd/PowerShell set USERPROFILE instead — falling back to "."
+    // Windows cmd/PowerShell set USERPROFILE instead - falling back to "."
     // would land dev artifacts inside the repo.
     let home = std::env::var("HOME")
         .ok()
@@ -321,123 +323,10 @@ fn setup_dev_env() {
     );
 }
 
-/// Detect if running inside a VM with a virtual GPU that doesn't support EGL.
-/// Returns true if GPU acceleration should be disabled.
-/// SAFETY: Sets env vars — must be called before any threads are spawned.
-#[cfg(target_os = "linux")]
-fn detect_and_disable_virtual_gpu() -> bool {
-    let detected = if !std::path::Path::new("/dev/dri").exists() {
-        true
-    } else {
-        // /dev/dri exists but the driver may not support EGL (common in VMs).
-        // Check for known virtual GPU drivers via /dev/dri/card* sysfs.
-        std::fs::read_dir("/sys/class/drm")
-            .map(|entries| {
-                entries.filter_map(Result::ok).any(|e| {
-                    let driver = e.path().join("device/driver");
-                    if let Ok(target) = std::fs::read_link(&driver) {
-                        let name = target
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string();
-                        matches!(
-                            name.as_str(),
-                            "virtio-pci"
-                                | "virtio_gpu"
-                                | "qxl"
-                                | "bochs-drm"
-                                | "vmwgfx"
-                                | "vboxvideo"
-                                | "cirrus"
-                        )
-                    } else {
-                        false
-                    }
-                })
-            })
-            .unwrap_or(false)
-    };
-    if detected {
-        unsafe {
-            std::env::set_var("WEBKIT_DISABLE_GPU", "1");
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        }
-    }
-    detected
-}
-
-/// Read the `arch_disable_gpu` config key. User-opt-in workaround for
-/// the WebKitGTK ghost-rendering bug observed on Arch GNOME 50 + webkit
-/// 2.52.3 (other stacks with same webkit version, e.g. Ubuntu 26.04, are
-/// unaffected, so we don't auto-detect — toggle lives in Advanced settings).
-#[cfg(target_os = "linux")]
-fn arch_disable_gpu_from_config() -> bool {
-    let path = config::config_file_path();
-    let Ok(contents) = std::fs::read_to_string(&path) else {
-        return false;
-    };
-    for line in contents.lines() {
-        let line = line.trim();
-        if line.starts_with('#') {
-            continue;
-        }
-        if let Some((k, v)) = line.split_once('=')
-            && k.trim() == "arch_disable_gpu"
-        {
-            return v.trim().eq_ignore_ascii_case("true");
-        }
-    }
-    false
-}
-
-/// Disable hardware acceleration via WebKitGTK API for VM GPUs.
-/// Env vars (WEBKIT_DISABLE_GPU) are ignored by newer WebKitGTK versions,
-/// so we set the policy at the API level before the first render.
-#[cfg(target_os = "linux")]
-fn disable_gpu_acceleration(app: &tauri::App) {
-    if let Some(webview) = app.get_webview_window(consts::MAIN_WINDOW) {
-        let _ = webview.with_webview(|wv| {
-            use webkit2gtk::SettingsExt;
-            let inner = wv.inner();
-            if let Some(settings) = webkit2gtk::WebViewExt::settings(&inner) {
-                settings.set_hardware_acceleration_policy(
-                    webkit2gtk::HardwareAccelerationPolicy::Never,
-                );
-            }
-        });
-    }
-}
-
-/// Disable WebKitGTK smooth scrolling on X11.
-///
-/// Why: GTK3 issue #3287 — on X11 with GDK_SMOOTH_SCROLL_MASK enabled, the
-/// first scroll event after the cursor enters a window arrives with delta=0
-/// (GDK has no previous value to subtract), so the first wheel notch is
-/// effectively dropped. On tiling WMs like i3 the launcher pops up at a new
-/// position every show, so users cross the window edge every session and hit
-/// this bug every session ("scroll feels frozen, then works"). Switching to
-/// discrete scroll events sidesteps the smooth-delta=0 path entirely.
-///
-/// Wayland uses a different event delivery path and isn't affected, so this
-/// is X11-only.
-#[cfg(target_os = "linux")]
-fn disable_smooth_scrolling_x11(app: &tauri::App) {
-    if let Some(webview) = app.get_webview_window(consts::MAIN_WINDOW) {
-        let _ = webview.with_webview(|wv| {
-            use webkit2gtk::SettingsExt;
-            let inner = wv.inner();
-            if let Some(settings) = webkit2gtk::WebViewExt::settings(&inner) {
-                settings.set_enable_smooth_scrolling(false);
-            }
-        });
-    }
-}
-
 /// Sync autostart registration with config on every launch.
 ///
-/// On first launch (no `launch_at_login` key yet) — enable autostart and persist.
-/// On subsequent launches — re-sync the registry/desktop-entry with the current
+/// On first launch (no `launch_at_login` key yet) - enable autostart and persist.
+/// On subsequent launches - re-sync the registry/desktop-entry with the current
 /// exe path so it stays valid after updates or reinstalls (matches WinUI3 behavior).
 fn sync_autostart() {
     // Debug builds live under target/debug and (when produced by `tauri dev`)
@@ -468,7 +357,7 @@ fn sync_autostart() {
     let enabled = if let Some(val) = config_value {
         val
     } else {
-        // First launch — enable by default and persist.
+        // First launch - enable by default and persist.
         let _ = config::set_config(vec![config::ConfigUpdate {
             key: KEY.into(),
             value: "true".into(),
@@ -584,7 +473,7 @@ fn setup_window_events(window: &tauri::WebviewWindow) {
 /// Linux (X11 + Wayland): false. On X11 the GNOME/Mutter mouse-leave race
 ///   means Focused(false) fires even when the window still has keyboard
 ///   focus, so the X11 _NET_ACTIVE_WINDOW monitor handles auto-hide
-///   instead. On Wayland we also stay false — Focused(false) fires when
+///   instead. On Wayland we also stay false - Focused(false) fires when
 ///   any screenshot / screencast tool grabs focus, which would dismiss
 ///   Look before the capture lands. User dismisses via Esc.
 fn focus_loss_means_dismiss() -> bool {
@@ -601,7 +490,10 @@ fn main() {
     setup_dev_env();
 
     #[cfg(target_os = "linux")]
-    let disable_gpu = detect_and_disable_virtual_gpu() || arch_disable_gpu_from_config();
+    gpu::disable_webkit_dmabuf_renderer();
+
+    #[cfg(target_os = "linux")]
+    let disable_gpu = gpu::detect_and_disable_virtual_gpu() || gpu::arch_disable_gpu_from_config();
 
     sync_autostart();
 
@@ -631,7 +523,7 @@ fn main() {
         .setup(move |app| {
             #[cfg(target_os = "linux")]
             if disable_gpu {
-                disable_gpu_acceleration(app);
+                gpu::disable_gpu_acceleration(app);
             }
 
             AppState::init_app_handle(app);
@@ -643,7 +535,7 @@ fn main() {
             #[cfg(target_os = "linux")]
             if !use_wayland {
                 setup_x11_focus_monitor(app);
-                disable_smooth_scrolling_x11(app);
+                gpu::disable_smooth_scrolling_x11(app);
             }
 
             let window = app
@@ -652,11 +544,11 @@ fn main() {
             // On transparency-capable Linux compositors, force the GTK window
             // background to transparent. Without this, GTK paints its theme
             // background (opaque, square corners) on the surface before WebKit
-            // commits the HTML — visible as a brief "big rectangle without
+            // commits the HTML - visible as a brief "big rectangle without
             // corners" flash before the rounded launcher appears.
             // On X11 bare (no compositor), keep GTK's solid bg as a fallback.
             //
-            // Hide the window first so the opaque frame never appears — the
+            // Hide the window first so the opaque frame never appears - the
             // race between GTK's first paint and set_background_color causes
             // intermittent sharp-cornered flashes on GNOME.
             #[cfg(target_os = "linux")]
@@ -677,7 +569,7 @@ fn main() {
                 // pixels in the corner triangles. Forcing the default bg to
                 // (0,0,0,0) lets the CSS-clipped rounded silhouette show.
                 //
-                // No DWM corner call here — `DWMWA_WINDOW_CORNER_PREFERENCE`
+                // No DWM corner call here - `DWMWA_WINDOW_CORNER_PREFERENCE`
                 // is a verified no-op on `transparent: true` windows
                 // (per-pixel-alpha bypasses DWM compositing). Corners come
                 // from `border-radius` on `.launcher-window` in `layout.css`.
@@ -759,7 +651,7 @@ fn main() {
             // Highlight
             highlight::highlight_file_cmd,
             // About widget: version only. The update check itself runs in
-            // the webview via fetch() — no Rust HTTP/TLS dep needed.
+            // the webview via fetch() - no Rust HTTP/TLS dep needed.
             files::get_lookapp_version,
         ])
         .build(tauri::generate_context!())
