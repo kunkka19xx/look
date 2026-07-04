@@ -124,7 +124,15 @@ jobs:
         run: cargo audit --file bridge/ffi/Cargo.lock
 
       - name: Audit dependencies (linows/tauri)
-        run: cargo audit --file apps/linows/src-tauri/Cargo.lock
+        # RUSTSEC-2026-0194/-0195 (quick-xml <0.41) still enter via
+        # wayland-scanner, a build-time proc-macro that parses trusted local
+        # protocol XML (no runtime attack surface). wayland-rs has no release
+        # or master commit on quick-xml >=0.41 yet. The runtime-exposed path
+        # (tauri -> plist) is already fixed via the plist patch in Cargo.toml.
+        # Drop these ignores once wayland-rs moves to quick-xml >=0.41.
+        run: >
+          cargo audit --file apps/linows/src-tauri/Cargo.lock
+          --ignore RUSTSEC-2026-0194 --ignore RUSTSEC-2026-0195
 
   secrets-scan:
     name: secrets-scan
