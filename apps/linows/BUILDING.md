@@ -112,6 +112,31 @@ scripts\windows\with-vcvars.bat cargo clippy --manifest-path apps\linows\src-tau
 
 ---
 
+## Building an AppImage Locally
+
+Release AppImages are built by CI (`release-linux.yml`) on ubuntu-22.04. To build one locally from your current working tree, for example to test a fix on Fedora or openSUSE before releasing:
+
+```bash
+scripts/linux/build-appimage.sh
+```
+
+Requires docker. The script builds a `look-appimage-builder` image (ubuntu-22.04 with the same dependency list as CI) and runs `cargo tauri build --bundles appimage` inside it. The cargo target dir and caches live in named docker volumes (`look-appimage-target`, `look-appimage-registry`, `look-appimage-cache`), so incremental rebuilds are fast and host build dirs stay untouched.
+
+Output: `dist/Look_<version>_amd64.AppImage` at the repo root (gitignored).
+
+**Why a container:** Tauri's AppImage bundler runs linuxdeploy, which is itself an AppImage and needs an FHS system. On NixOS it fails outright, and even if forced, the produced binary would embed a `/nix/store` ELF interpreter path and not run on other distros. Building on ubuntu-22.04 also pins the glibc baseline to match releases.
+
+**Running on the target machine:**
+
+```bash
+chmod +x Look_*.AppImage
+./Look_*.AppImage
+```
+
+If FUSE is missing, run with `--appimage-extract-and-run`, or install it (Fedora: `sudo dnf install fuse fuse-libs`).
+
+---
+
 ## Runtime Dependencies
 
 | Dependency         | Purpose                         |
@@ -222,11 +247,6 @@ For non-NixOS Nix users: `cachix use look` then `nix profile install`.
 
 ### AppImage (universal)
 
-**Target:** Download from GitHub Releases, `chmod +x && ./lookapp_*.AppImage`
+**Status:** Available now.
 
-Steps to implement:
-
-1. Add `"appimage"` to `bundle.targets` in `tauri.conf.json`
-2. Built automatically alongside .deb by `cargo tauri build`
-3. CI uploads to GitHub Releases
-4. Test: run on a minimal distro (Fedora, openSUSE) to verify bundled deps
+Download `Look_<version>_amd64.AppImage` from GitHub Releases, then `chmod +x && ./Look_*.AppImage`. Built by CI alongside the .deb. For local builds see [Building an AppImage Locally](#building-an-appimage-locally).
