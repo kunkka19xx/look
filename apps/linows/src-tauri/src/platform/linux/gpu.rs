@@ -10,26 +10,6 @@ use crate::config;
 use crate::consts;
 use tauri::Manager;
 
-/// Disable WebKitGTK's DMABUF-based accelerated surface renderer.
-///
-/// Why: on some GPU-driver / Mesa / compositor combinations (e.g. Intel Iris
-/// Xe on Fedora KDE Wayland, issue #233) WebKit's DMABUF renderer fails to
-/// create an EGL display and the WebKitWebProcess hard-aborts with
-/// "Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...".
-/// The failing combination depends on the Mesa/compositor stack and can't be
-/// reliably detected up front, and Look is a lightweight search window where
-/// the DMABUF accelerated surface buys nothing, so we disable it everywhere
-/// on Linux to trade one rendering optimization for not crashing on launch.
-/// Respect an explicit user override if the var is already set.
-/// SAFETY: Sets an env var. Must be called before any threads are spawned.
-pub fn disable_webkit_dmabuf_renderer() {
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        unsafe {
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        }
-    }
-}
-
 /// Detect if running inside a VM with a virtual GPU that doesn't support EGL.
 /// Returns true if GPU acceleration should be disabled.
 /// SAFETY: Sets env vars - must be called before any threads are spawned.
@@ -67,11 +47,9 @@ pub fn detect_and_disable_virtual_gpu() -> bool {
             .unwrap_or(false)
     };
     if detected {
-        // WEBKIT_DISABLE_DMABUF_RENDERER is already set unconditionally on
-        // Linux by disable_webkit_dmabuf_renderer(); here we additionally kill
-        // all GPU use, since VM virtual GPUs don't support EGL at all.
         unsafe {
             std::env::set_var("WEBKIT_DISABLE_GPU", "1");
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
     }
     detected

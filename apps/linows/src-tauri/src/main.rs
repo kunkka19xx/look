@@ -490,9 +490,6 @@ fn main() {
     setup_dev_env();
 
     #[cfg(target_os = "linux")]
-    gpu::disable_webkit_dmabuf_renderer();
-
-    #[cfg(target_os = "linux")]
     let disable_gpu = gpu::detect_and_disable_virtual_gpu() || gpu::arch_disable_gpu_from_config();
 
     sync_autostart();

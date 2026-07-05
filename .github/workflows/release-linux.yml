@@ -86,6 +86,14 @@ jobs:
         working-directory: apps/linows
         run: cargo tauri build
 
+      # The bundled build-host libwayland breaks EGL on distros with newer
+      # Mesa (issue #233) - the host copy must be used instead.
+      - name: Strip bundled libwayland from AppImage
+        run: |
+          for f in apps/linows/src-tauri/target/release/bundle/appimage/*.AppImage; do
+            scripts/linux/strip-appimage-wayland-libs.sh "$f"
+          done
+
       - name: Collect artifacts
         run: |
           VERSION="${{ steps.version.outputs.version }}"
