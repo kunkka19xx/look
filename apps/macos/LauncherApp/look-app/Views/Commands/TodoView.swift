@@ -39,7 +39,7 @@ struct TodoView: View {
                 if page == .tasks {
                     TodoTasksPage(themeStore: themeStore, state: state, search: search)
                 } else {
-                    TodoAnalyticsPage(themeStore: themeStore)
+                    TodoAnalyticsPage(themeStore: themeStore, state: state)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -72,7 +72,12 @@ struct TodoView: View {
             ))
         // The launcher does not focus /todo (it owns its own field), so
         // focus the search bar on entry and when returning to Tasks.
-        .onAppear { focusSearchIfTasks() }
+        // ensureTodayGroup covers day rollover while the app stays
+        // resident (state loads once, at first access).
+        .onAppear {
+            state.ensureTodayGroup()
+            focusSearchIfTasks()
+        }
         .onChange(of: page) { _, _ in focusSearchIfTasks() }
     }
 
@@ -253,18 +258,39 @@ struct TodoTasksPage: View {
     @Bindable var state: TodoState
     let search: String
 
+    private var query: String {
+        search.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // Browsing shows future + today + the recent window; search spans
+    // the full retained year.
     private var filteredGroups: [TodoGroup] {
-        let q = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return state.groups }
+        guard !query.isEmpty else { return recentGroups }
         return state.groups.compactMap { g in
             let groupHay = "\(g.weekday) \(g.monthDay) \(g.relative)"
-            if TodoCommand.fuzzyMatch(q, groupHay) { return g }
-            let tasks = g.tasks.filter { TodoCommand.fuzzyMatch(q, $0.name) }
+            if TodoCommand.fuzzyMatch(query, groupHay) { return g }
+            let tasks = g.tasks.filter { TodoCommand.fuzzyMatch(query, $0.name) }
             guard !tasks.isEmpty else { return nil }
             var copy = g
             copy.tasks = tasks
             return copy
         }
+    }
+
+    private var recentGroups: [TodoGroup] {
+        let cal = Calendar.current
+        guard
+            let cutoff = cal.date(
+                byAdding: .day, value: -TodoCommand.listWindowDays,
+                to: cal.startOfDay(for: Date()))
+        else { return state.groups }
+        return state.groups.filter { $0.date >= cutoff }
+    }
+
+    /// Days hidden below the browse window (0 while searching, since
+    /// search already spans everything).
+    private var hiddenOlderDays: Int {
+        query.isEmpty ? state.groups.count - recentGroups.count : 0
     }
 
     var body: some View {
@@ -280,6 +306,14 @@ struct TodoTasksPage: View {
                         .foregroundStyle(themeStore.mutedTextColor())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)
+                }
+
+                if hiddenOlderDays > 0 {
+                    Text("\(hiddenOlderDays) older day\(hiddenOlderDays == 1 ? "" : "s") not shown · search to find them")
+                        .font(themeStore.uiFont(size: 11))
+                        .foregroundStyle(themeStore.mutedTextColor())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
                 }
             }
             .padding(.horizontal, 4)

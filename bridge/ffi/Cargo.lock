@@ -313,6 +313,7 @@ dependencies = [
  "look-engine",
  "look-indexing",
  "look-storage",
+ "look-todo",
  "notify",
  "serde",
  "serde_json",
@@ -342,6 +343,14 @@ version = "0.1.0"
 dependencies = [
  "look-indexing",
  "rusqlite",
+]
+
+[[package]]
+name = "look-todo"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
 ]
 
 [[package]]

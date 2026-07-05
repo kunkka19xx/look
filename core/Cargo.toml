@@ -6,6 +6,7 @@ members = [
   "matching",
   "ranking",
   "storage",
+  "todo",
 ]
 resolver = "2"
 

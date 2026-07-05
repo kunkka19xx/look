@@ -52,6 +52,14 @@ private func look_wikipedia_answer_json(_ searchTerm: UnsafePointer<CChar>?) -> 
 nonisolated
 private func look_definitional_entity_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_todo_list_json")
+nonisolated
+private func look_todo_list_json() -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_todo_save_json")
+nonisolated
+private func look_todo_save_json(_ json: UnsafePointer<CChar>?) -> Bool
+
 final class EngineBridge: @unchecked Sendable {
     static let shared = EngineBridge()
 
@@ -137,6 +145,24 @@ final class EngineBridge: @unchecked Sendable {
 
     nonisolated func reloadConfig() -> Bool {
         look_reload_config()
+    }
+
+    /// Loads the full /todo task set from the shared core backend.
+    nonisolated func todoList() -> [TodoBackendTask] {
+        guard let ptr = look_todo_list_json() else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([TodoBackendTask].self, from: data)) ?? []
+    }
+
+    /// Persists the full /todo task set to the shared core backend
+    /// (lossless replace). Returns true on success.
+    @discardableResult
+    nonisolated func todoSave(_ tasks: [TodoBackendTask]) -> Bool {
+        guard let data = try? JSONEncoder().encode(tasks),
+            let json = String(data: data, encoding: .utf8)
+        else { return false }
+        return json.withCString { look_todo_save_json($0) }
     }
 
     @discardableResult

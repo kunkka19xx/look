@@ -16,9 +16,27 @@ struct TodoTask: Identifiable, Equatable {
     let id: String
     var name: String
     var done: Bool
+    /// When the task was created, for backend round-tripping.
+    var createdAtUnixS: Int64 = Int64(Date().timeIntervalSince1970)
 
     static func newID() -> String {
         "n" + UUID().uuidString.prefix(6).lowercased()
+    }
+}
+
+/// Flat task shape exchanged with the shared core backend (matches
+/// `look_todo::TodoTask`'s JSON). The app groups these by `dueDate`.
+struct TodoBackendTask: Codable {
+    let id: String
+    let name: String
+    let done: Bool
+    let dueDate: String
+    let createdAtUnixS: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, done
+        case dueDate = "due_date"
+        case createdAtUnixS = "created_at_unix_s"
     }
 }
 
@@ -85,8 +103,17 @@ struct TodoGroup: Identifiable, Equatable {
     private static let monthDayFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "MMM d"; return f
     }()
+    // Produces the due_date keys stored in the shared database, so it is
+    // pinned to POSIX/Gregorian: a system set to a non-Gregorian calendar
+    // (e.g. Buddhist) must not write "2569-07-05" into a cross-platform
+    // store that the Rust retention prune compares against Gregorian
+    // date('now'). Timezone stays local so "today" is the user's day.
     static let keyFormatter: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.dateFormat = "yyyy-MM-dd"
+        return f
     }()
 }
 
@@ -105,13 +132,18 @@ enum TodoCommand {
     /// Max characters in a task name. Clamped at the input field and
     /// truncated in the model as a backstop.
     static let taskNameMaxLength = 256
+    /// How many past days the Tasks list shows when not searching. The
+    /// full retained year stays searchable and feeds analytics; the
+    /// browse list only surfaces the recent window.
+    static let listWindowDays = 31
 
-    /// Case-insensitive subsequence match, ignoring whitespace in the
-    /// query, so "jul3", "jul 3", and "j3" all match "Jul 3".
+    /// Case- and diacritic-insensitive subsequence match, ignoring
+    /// whitespace in the query: "jul3" matches "Jul 3", and "di" matches
+    /// "đi" (Vietnamese and other accented text folds to ASCII).
     static func fuzzyMatch(_ query: String, _ target: String) -> Bool {
-        let needle = query.lowercased().filter { !$0.isWhitespace }
+        let needle = searchNormalize(query).filter { !$0.isWhitespace }
         guard !needle.isEmpty else { return true }
-        let hay = target.lowercased()
+        let hay = searchNormalize(target)
         var ni = needle.startIndex
         for ch in hay where ch == needle[ni] {
             ni = needle.index(after: ni)
@@ -119,12 +151,25 @@ enum TodoCommand {
         }
         return false
     }
+
+    /// Swift mirror of the engine's `normalize_for_search`
+    /// (core/engine/src/normalize.rs), which is what lets "tẻ" find
+    /// Terminal in the app list: fold case/diacritics/width, then map
+    /// the Vietnamese đ/Đ, a stroke letter that no diacritic fold
+    /// touches, to plain d. Keep the two in sync.
+    private static func searchNormalize(_ text: String) -> String {
+        text.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil
+        )
+        .replacingOccurrences(of: "đ", with: "d")
+        .replacingOccurrences(of: "Đ", with: "d")
+    }
 }
 
 @Observable
 final class TodoState {
     private(set) var groups: [TodoGroup]
-    /// Unsaved edits pending. Save clears it (no DB yet).
+    /// Unsaved edits pending. Save persists them to the backend.
     var dirty: Bool = false
 
     /// Number of `future` placeholder days already generated, so
@@ -132,7 +177,22 @@ final class TodoState {
     @ObservationIgnored private var futureDaysAdded = 0
 
     init() {
-        groups = TodoState.seed()
+        groups = TodoPersistence.load()
+        ensureTodayGroup()
+    }
+
+    /// Keeps an empty Today group present. Groups derive from stored
+    /// tasks, so an empty store would leave nowhere to type. Also re-run
+    /// when the panel appears, so an app left resident across midnight
+    /// gets a fresh Today without a relaunch. Not a user edit, so it
+    /// deliberately does not mark the state dirty.
+    func ensureTodayGroup() {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let key = TodoGroup.keyFormatter.string(from: today)
+        guard !groups.contains(where: { $0.key == key }) else { return }
+        groups.append(TodoGroup(key: key, date: today, tasks: []))
+        groups.sort { $0.date > $1.date }
     }
 
     var today: TodoGroup? { groups.first { $0.kind == .today } }
@@ -232,50 +292,8 @@ final class TodoState {
     }
 
     func save() {
-        // TODO(todo-db): persist `groups` to core storage with one-year
-        // retention. For now, saving just acknowledges the edits.
         TodoPersistence.save(groups)
         dirty = false
-    }
-
-    // Sample content anchored to the real current date (today, plus two
-    // future and three past days) so the panel is usable before storage
-    // exists. Replaced by TodoPersistence.load() once that returns data.
-
-    static func seed() -> [TodoGroup] {
-        if let restored = TodoPersistence.load() { return restored }
-
-        let cal = Calendar.current
-        let base = cal.startOfDay(for: Date())
-
-        // (dayOffset, [(name, done)])
-        let plan: [(Int, [(String, Bool)])] = [
-            ( 2, [("Prep sprint demo slides", false),
-                  ("Book dentist appointment", false)]),
-            ( 1, [("Grocery run + meal prep", false)]),
-            ( 0, [("Ship running-apps switcher PR", true),
-                  ("Review Todo command spec", true),
-                  ("Reply to design feedback thread", false)]),
-            (-1, [("Merge theme presets", true),
-                  ("Fix hotkey race condition", true),
-                  ("Write bench notes", true)]),
-            (-2, [("Wire AI answer card", true),
-                  ("Add Rose Pine theme", true),
-                  ("QuickLook preview fix", true)]),
-            (-3, [("Single-instance lock", true),
-                  ("Update checker polling", true),
-                  ("Draft user guide section", false)]),
-        ]
-
-        var out: [TodoGroup] = []
-        for (offset, items) in plan {
-            guard let date = cal.date(byAdding: .day, value: offset, to: base) else { continue }
-            let key = TodoGroup.keyFormatter.string(from: date)
-            let tasks = items.map { TodoTask(id: TodoTask.newID(), name: $0.0, done: $0.1) }
-            out.append(TodoGroup(key: key, date: date, tasks: tasks))
-        }
-        out.sort { $0.date > $1.date }   // latest date on top, desc
-        return out
     }
 }
 
@@ -286,12 +304,45 @@ enum TodoSharedState {
     @MainActor static let shared = TodoState()
 }
 
-// Intentionally a no-op today. Kept as a named seam so wiring real
-// storage later is a one-file change and TodoState needs no edits.
-
+// Bridges the panel's grouped model to the shared core backend (via
+// EngineBridge → look_todo). Load reads the flat task set and groups it
+// by date; save flattens the groups back and replaces the stored set.
 enum TodoPersistence {
-    static func load() -> [TodoGroup]? { nil }
-    static func save(_ groups: [TodoGroup]) { /* no DB yet */ }
+    static func load() -> [TodoGroup] {
+        groups(from: EngineBridge.shared.todoList())
+    }
+
+    static func save(_ groups: [TodoGroup]) {
+        EngineBridge.shared.todoSave(backendTasks(from: groups))
+    }
+
+    private static func groups(from tasks: [TodoBackendTask]) -> [TodoGroup] {
+        let cal = Calendar.current
+        var byDate: [String: [TodoTask]] = [:]
+        for task in tasks {
+            byDate[task.dueDate, default: []].append(
+                TodoTask(
+                    id: task.id, name: task.name, done: task.done,
+                    createdAtUnixS: task.createdAtUnixS))
+        }
+        var out: [TodoGroup] = []
+        for (key, list) in byDate {
+            guard let date = TodoGroup.keyFormatter.date(from: key) else { continue }
+            out.append(TodoGroup(key: key, date: cal.startOfDay(for: date), tasks: list))
+        }
+        out.sort { $0.date > $1.date }
+        return out
+    }
+
+    private static func backendTasks(from groups: [TodoGroup]) -> [TodoBackendTask] {
+        groups.flatMap { group in
+            group.tasks.map { task in
+                TodoBackendTask(
+                    id: task.id, name: task.name, done: task.done,
+                    dueDate: group.key, createdAtUnixS: task.createdAtUnixS)
+            }
+        }
+    }
 }
 
 /// One day cell in the activity heatmap: a real date with that day's
@@ -313,35 +364,65 @@ struct TodoHeatDay: Identifiable, Equatable {
     }
 }
 
-// Deterministic seeded series so the charts render a stable shape.
-// Placeholder aggregates until storage exists.
+// Real aggregates over the loaded task set. The client holds the full
+// retained year in memory, so every chart derives from `groups` and
+// updates live as tasks change.
 
 enum TodoAnalytics {
-    static let week = TodoStat(done: 12, total: 18)
-    static let month = TodoStat(done: 47, total: 62)
-    static let streakDays = 6
-
-    /// Deterministic linear congruential generator.
-    private struct Seeded {
-        var s: Int
-        init(_ n: Int) { s = n &* 9301 &+ 49297 }
-        mutating func next() -> Double {
-            s = (s &* 9301 &+ 49297) % 233_280
-            return Double(s) / 233_280.0
+    /// (done, total) per start-of-day.
+    static func dayCounts(_ groups: [TodoGroup]) -> [Date: (done: Int, total: Int)] {
+        var out: [Date: (done: Int, total: Int)] = [:]
+        for g in groups where !g.tasks.isEmpty {
+            let prior = out[g.date] ?? (0, 0)
+            out[g.date] = (prior.done + g.doneCount, prior.total + g.total)
         }
+        return out
     }
 
-    /// Last 30 days, done-count per day, capped at the daily task limit.
-    static func monthTrend() -> [Int] {
-        let cap = TodoCommand.taskLimit
-        var r = Seeded(7)
+    /// Done/total for the calendar period containing today (.weekOfYear
+    /// for the week card, .month for the month card).
+    static func stat(_ groups: [TodoGroup], sameAs component: Calendar.Component) -> TodoStat {
+        let cal = Calendar.current
+        let now = Date()
+        var done = 0
+        var total = 0
+        for g in groups where cal.isDate(g.date, equalTo: now, toGranularity: component) {
+            done += g.doneCount
+            total += g.total
+        }
+        return TodoStat(done: done, total: total)
+    }
+
+    /// Done-count per day for the last 30 days, oldest first.
+    static func monthTrend(_ groups: [TodoGroup]) -> [Int] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let counts = dayCounts(groups)
         var arr: [Int] = []
-        for i in 0..<30 {
-            let base = sin(Double(i) / 4) * Double(cap) * 0.45 + Double(cap) * 0.65
-            let v = base + (r.next() - 0.5) * Double(cap) * 0.9
-            arr.append(max(0, min(cap, Int(v.rounded()))))
+        for offset in -29...0 {
+            guard let date = cal.date(byAdding: .day, value: offset, to: today) else { continue }
+            arr.append(counts[date]?.done ?? 0)
         }
         return arr
+    }
+
+    /// Consecutive days with at least one completed task, counting back
+    /// from today. A doneless today doesn't break the streak until the
+    /// day is actually over, so the walk starts at yesterday and today
+    /// only extends it.
+    static func streakDays(_ groups: [TodoGroup]) -> Int {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let counts = dayCounts(groups)
+        var streak = (counts[today]?.done ?? 0) > 0 ? 1 : 0
+        var cursor = today
+        while let prev = cal.date(byAdding: .day, value: -1, to: cursor),
+            (counts[prev]?.done ?? 0) > 0
+        {
+            streak += 1
+            cursor = prev
+        }
+        return streak
     }
 
     /// A year of activity as GitHub-style week columns (each column is a
@@ -349,14 +430,14 @@ enum TodoAnalytics {
     /// in the current week are empty placeholders.
     static let heatmapWeekCount = 52
 
-    static func heatmapDays() -> [[TodoHeatDay]] {
+    static func heatmapDays(_ groups: [TodoGroup]) -> [[TodoHeatDay]] {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let daysSinceSunday = cal.component(.weekday, from: today) - 1
         guard let lastSunday = cal.date(byAdding: .day, value: -daysSinceSunday, to: today)
         else { return [] }
 
-        var r = Seeded(21)
+        let counts = dayCounts(groups)
         var columns: [[TodoHeatDay]] = []
         for w in stride(from: heatmapWeekCount - 1, through: 0, by: -1) {
             guard let colSunday = cal.date(byAdding: .day, value: -7 * w, to: lastSunday)
@@ -364,14 +445,8 @@ enum TodoAnalytics {
             var col: [TodoHeatDay] = []
             for d in 0..<7 {
                 guard let date = cal.date(byAdding: .day, value: d, to: colSunday) else { continue }
-                if date > today {
-                    col.append(TodoHeatDay(date: date, done: 0, total: 0))
-                    continue
-                }
-                let v = r.next()
-                let done = v > 0.82 ? 3 : (v > 0.60 ? 2 : (v > 0.36 ? 1 : 0))
-                let total = done + (r.next() > 0.55 ? 1 : 0)
-                col.append(TodoHeatDay(date: date, done: done, total: total))
+                let day = date > today ? (done: 0, total: 0) : (counts[date] ?? (done: 0, total: 0))
+                col.append(TodoHeatDay(date: date, done: day.done, total: day.total))
             }
             columns.append(col)
         }
@@ -381,6 +456,12 @@ enum TodoAnalytics {
     static let heatDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "EEE, MMM d"
+        return f
+    }()
+
+    static let axisDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
         return f
     }()
 }
