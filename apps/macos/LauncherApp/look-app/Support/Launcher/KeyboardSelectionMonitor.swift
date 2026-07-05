@@ -10,7 +10,8 @@ final class KeyboardSelectionMonitor {
     nonisolated private static let debugKeyLoggingEnabled: Bool = {
         let env = ProcessInfo.processInfo.environment
         let raw = env["LOOK_UI_DEBUG_EVENTS"] ?? env["LOOK_DEV_HINT"] ?? ""
-        return ["1", "true", "yes", "on"].contains(raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        return ["1", "true", "yes", "on"].contains(
+            raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }()
 
     nonisolated private static func logKey(_ message: String) {
@@ -51,7 +52,9 @@ final class KeyboardSelectionMonitor {
 
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            Self.logKey("down keyCode=\(event.keyCode) chars=\(event.charactersIgnoringModifiers ?? "") flagsRaw=\(flags.rawValue) inCommand=\(inCommandMode())")
+            Self.logKey(
+                "down keyCode=\(event.keyCode) chars=\(event.charactersIgnoringModifiers ?? "") flagsRaw=\(flags.rawValue) inCommand=\(inCommandMode())"
+            )
 
             if flags.contains(.command)
                 && !flags.contains(.control)
@@ -143,7 +146,9 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
-            if event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control) && !event.modifierFlags.contains(.option) {
+            if event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control)
+                && !event.modifierFlags.contains(.option)
+            {
                 // macOS digit keyCodes are not contiguous: 1=18, 2=19, 3=20, 4=21, 5=23, 6=22, 7=26, 8=28, 9=25.
                 let cmdNumberKey: Int?
                 switch event.keyCode {
@@ -160,20 +165,23 @@ final class KeyboardSelectionMonitor {
                 }
                 if let key = cmdNumberKey {
                     if inCommandMode() {
-                        if key <= 5 {
+                        if key <= AppConstants.Launcher.commandCatalog.count {
                             Self.logger.debug("⌘+\(key, privacy: .public) -> command catalog")
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                                 onSelectCommandByIndex(key)
                             }
                             return nil
                         }
-                        Self.logger.debug("⌘+\(key, privacy: .public) ignored (command mode only maps 1-5)")
+                        Self.logger.debug(
+                            "⌘+\(key, privacy: .public) ignored (command mode maps 1-\(AppConstants.Launcher.commandCatalog.count, privacy: .public))")
                     } else {
                         Self.logger.debug("⌘+\(key, privacy: .public) -> running-apps switcher")
                         if onActivateRunningApp(key) {
                             return nil
                         }
-                        Self.logger.debug("⌘+\(key, privacy: .public) running-apps activation declined, falling through")
+                        Self.logger.debug(
+                            "⌘+\(key, privacy: .public) running-apps activation declined, falling through"
+                        )
                     }
                 }
             }

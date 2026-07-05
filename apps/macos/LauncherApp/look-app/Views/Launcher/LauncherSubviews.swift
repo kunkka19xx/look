@@ -284,13 +284,46 @@ struct PickedItemsPanel: View {
 }
 
 struct HintBar: View {
+    /// Today's done/total quick view, clickable to open /todo. Shown on
+    /// the home screen in place of the command-mode hint.
+    struct TodoQuickView {
+        let done: Int
+        let total: Int
+        let onTap: () -> Void
+    }
+
     let hint: String
+    var todo: TodoQuickView? = nil
     let themeStore: ThemeStore
 
+    private var hintFont: Font {
+        themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular)
+    }
+
     var body: some View {
-        Text(hint)
-            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-            .foregroundStyle(themeStore.secondaryTextColor())
+        HStack(spacing: 0) {
+            Text(hint)
+                .font(hintFont)
+                .foregroundStyle(themeStore.secondaryTextColor())
+
+            if let todo {
+                Text("  •  ")
+                    .font(hintFont)
+                    .foregroundStyle(themeStore.secondaryTextColor())
+                Button(action: todo.onTap) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "checklist")
+                            .font(.system(size: CGFloat(themeStore.settings.fontSize - 3)))
+                        Text("Todo \(todo.done)/\(todo.total)")
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
+                    }
+                    .foregroundStyle(themeStore.accentColor())
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open /todo")
+            }
+        }
     }
 }
 

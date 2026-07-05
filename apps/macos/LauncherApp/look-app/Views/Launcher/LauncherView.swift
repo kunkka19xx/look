@@ -417,12 +417,15 @@ struct LauncherView: View {
                 return ["Y confirm", "N cancel", "Tab/Cmd+1-4 switch", "Esc back"]
             }
             if activeCommandID == AppConstants.Launcher.Command.sys {
-                return ["Esc back", "Tab/Cmd+1-5 switch", "Cmd+/ command mode", "Cmd+Shift+, settings"]
+                return ["Esc back", "Tab/Cmd+1-6 switch", "Cmd+/ command mode", "Cmd+Shift+, settings"]
             }
             if activeCommandID == AppConstants.Launcher.Command.pomo {
-                return ["Space start/pause", "R reset", "P music", "Esc back", "Tab/Cmd+1-5 switch"]
+                return ["Space start/pause", "R reset", "P music", "Esc back", "Tab/Cmd+1-6 switch"]
             }
-            return ["Enter run", "Tab select", "Cmd+1-5 switch", "Esc back"]
+            if activeCommandID == AppConstants.Launcher.Command.todo {
+                return ["Cmd+N switch page", "Cmd+S save", "Cmd+1-6 switch", "Esc back"]
+            }
+            return ["Enter run", "Tab select", "Cmd+1-6 switch", "Esc back"]
         }
 
         if let command = extractTranslationQuery(from: query.trimmingCharacters(in: .whitespacesAndNewlines)) {
@@ -450,7 +453,32 @@ struct LauncherView: View {
             return ["Enter copy clip", "Delete remove clip", "Cmd+H help", "Cmd+/ command mode"]
         }
 
-        return ["Enter open", "Cmd+F reveal", "Cmd+H help", "Cmd+/ command mode"]
+        // The home screen replaces the "Cmd+/ command mode" hint with a
+        // clickable today done/total quick view (see todoQuickView), so it
+        // is intentionally omitted here.
+        return ["Enter open", "Cmd+F reveal", "Cmd+H help"]
+    }
+
+    /// True when the launcher is on its default/home screen (the state
+    /// whose hint falls through to the list above), where the /todo quick
+    /// view is shown in place of the command-mode hint.
+    var isHomeHintScreen: Bool {
+        guard !appUIState.showsThemeSettings, !isCommandMode, !showsHelpScreen else { return false }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if extractTranslationQuery(from: trimmed) != nil { return false }
+        if isPrefixSuggestionQuery || isCommandSuggestionQuery || isClipboardQuery { return false }
+        return true
+    }
+
+    /// Today's done/total quick view for the home hint bar, or nil when
+    /// off the home screen or today has no tasks (then it stays empty).
+    var todoQuickView: HintBar.TodoQuickView? {
+        guard isHomeHintScreen else { return nil }
+        let stat = TodoSharedState.shared.todayStat
+        guard stat.total > 0 else { return nil }
+        return HintBar.TodoQuickView(done: stat.done, total: stat.total) {
+            enterCommandMode(commandID: AppConstants.Launcher.Command.todo, prefilledInput: "")
+        }
     }
 
     var commandNamePart: String {
@@ -479,6 +507,8 @@ struct LauncherView: View {
         guard let activeCommandID else { return false }
         if activeCommandID == AppConstants.Launcher.Command.sys { return false }
         if activeCommandID == AppConstants.Launcher.Command.pomo { return false }
+        // /todo owns its own top search bar, like /pomo owns its header.
+        if activeCommandID == AppConstants.Launcher.Command.todo { return false }
         return true
     }
 
@@ -781,7 +811,7 @@ struct LauncherView: View {
             }
 
             if !isKillConfirmationVisible && !isDeleteConfirmationVisible {
-                HintBar(hint: currentHint, themeStore: themeStore)
+                HintBar(hint: currentHint, todo: todoQuickView, themeStore: themeStore)
             }
         }
     }
