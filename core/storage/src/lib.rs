@@ -913,7 +913,7 @@ mod tests {
         let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
         let c = candidate("file:a", "a.txt", "/x/a.txt");
         store
-            .upsert_candidates_indexed(&[c.clone()], Some(100))
+            .upsert_candidates_indexed(std::slice::from_ref(&c), Some(100))
             .expect("first insert");
         // Re-upsert identical content on a later run: the WHERE guard should skip
         // the UPDATE, so indexed_at stays at the original value (no rewrite).

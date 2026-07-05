@@ -25,6 +25,11 @@ pub fn get_json(url: &str, timeout_secs: u32) -> Option<serde_json::Value> {
 /// a specific UA or `Accept-Language` (e.g. translation) share one curl path.
 pub fn get(url: &str, timeout_secs: u32, user_agent: &str, headers: &[&str]) -> Option<String> {
     let mut command = Command::new("curl");
+    // The AppImage points LD_LIBRARY_PATH at bundled Ubuntu libs; the system
+    // curl resolves libcurl's deps against them and dies with a symbol
+    // lookup error on distros with newer libs.
+    #[cfg(target_os = "linux")]
+    command.env_remove("LD_LIBRARY_PATH");
     command.args([
         "-s",
         "-m",

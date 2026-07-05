@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+use crate::platform::linux::host_command;
 use crate::state::AppState;
 use look_engine::config::RuntimeConfig;
 use serde::Serialize;
@@ -147,7 +149,7 @@ pub fn open_path(
         let panel = panel.to_string();
         std::thread::spawn(move || {
             // D-Bus activation: works on GNOME, properly focuses the window.
-            let dbus_ok = std::process::Command::new("gdbus")
+            let dbus_ok = host_command("gdbus")
                 .args([
                     "call",
                     "--session",
@@ -170,7 +172,7 @@ pub fn open_path(
 
             // Fallback: direct command (KDE, non-GNOME desktops)
             if !dbus_ok {
-                let _ = std::process::Command::new("gnome-control-center")
+                let _ = host_command("gnome-control-center")
                     .arg(&panel)
                     .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::null())
@@ -205,15 +207,23 @@ pub fn open_path(
     if kind.as_deref() == Some("browser") {
         let _ = window.hide();
         std::thread::spawn(move || {
-            let _ = open::that(&path);
-            // Give the browser a beat to receive the URL and surface its new
-            // tab — otherwise the focus attempt below races the spawn and
-            // sees no matching window yet.
+            // Not open::that on Linux: it spawns xdg-open with the inherited
+            // env that host_command exists to scrub.
             #[cfg(target_os = "linux")]
             {
+                let _ = host_command("xdg-open")
+                    .arg(&path)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn();
+                // Give the browser a beat to receive the URL and surface its
+                // new tab; the focus attempt below races the spawn otherwise.
                 std::thread::sleep(std::time::Duration::from_millis(HANDLER_FOCUS_DELAY_MS));
                 focus_default_browser();
             }
+            #[cfg(not(target_os = "linux"))]
+            let _ = open::that(&path);
         });
         Ok(())
     } else {
@@ -244,12 +254,8 @@ pub fn open_path(
         std::thread::spawn(move || {
             #[cfg(target_os = "linux")]
             {
-                // Clear LD_LIBRARY_PATH so child processes use system libraries.
-                // On NixOS, the Tauri dev shell may set paths that conflict with
-                // system apps (glibc version mismatch).
-                let _ = std::process::Command::new("xdg-open")
+                let _ = host_command("xdg-open")
                     .arg(&path)
-                    .env_remove("LD_LIBRARY_PATH")
                     .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -294,7 +300,7 @@ pub fn reveal_path(path: String) -> Result<(), String> {
         } else {
             path.clone()
         };
-        std::process::Command::new("xdg-open")
+        host_command("xdg-open")
             .arg(&dir)
             .spawn()
             .map_err(|e| format!("Failed to reveal: {e}"))?;
@@ -367,7 +373,7 @@ fn user_session_cmd(prog: &str) -> std::process::Command {
         // only `systemd-run --version` succeeds on systems that have the binary
         // but no usable per-user manager (containers, minimal installs), and
         // would route every launch through a wrapper that then fails.
-        std::process::Command::new("systemd-run")
+        host_command("systemd-run")
             .args(["--user", "--quiet", "--wait", "--collect", "--", "true"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -376,7 +382,7 @@ fn user_session_cmd(prog: &str) -> std::process::Command {
             .unwrap_or(false)
     });
     if available {
-        let mut cmd = std::process::Command::new("systemd-run");
+        let mut cmd = host_command("systemd-run");
         cmd.args([
             "--user",
             "--collect",
@@ -387,7 +393,7 @@ fn user_session_cmd(prog: &str) -> std::process::Command {
         ]);
         cmd
     } else {
-        std::process::Command::new(prog)
+        host_command(prog)
     }
 }
 
@@ -438,7 +444,6 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
         if needs_steam_warmup {
             eprintln!("[launch] Steam URL exec on cold start; pre-starting steam");
             let _ = user_session_cmd("steam")
-                .env_remove("LD_LIBRARY_PATH")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -459,7 +464,6 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
             eprintln!("[launch] trying gtk-launch {name}");
             let result = user_session_cmd("gtk-launch")
                 .arg(name)
-                .env_remove("LD_LIBRARY_PATH")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::piped())
@@ -481,7 +485,6 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
             eprintln!("[launch] trying gio launch {real_path}");
             let result = user_session_cmd("gio")
                 .args(["launch", real_path])
-                .env_remove("LD_LIBRARY_PATH")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::piped())
@@ -505,7 +508,6 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
             eprintln!("[launch] trying direct exec: {cmd} {}", args.join(" "));
             match user_session_cmd(cmd)
                 .args(&args)
-                .env_remove("LD_LIBRARY_PATH")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -565,7 +567,7 @@ fn focus_handler_by_desktop_id(desktop_id: &str) -> bool {
 /// raw .desktop id (e.g. "brave-browser.desktop") or None if unset.
 #[cfg(target_os = "linux")]
 fn default_handler_for_mime(mime: &str) -> Option<String> {
-    let output = std::process::Command::new("xdg-mime")
+    let output = host_command("xdg-mime")
         .args(["query", "default", mime])
         .output()
         .ok()?;
@@ -591,7 +593,7 @@ fn focus_default_browser() -> bool {
 /// the handler window.
 #[cfg(target_os = "linux")]
 fn focus_file_handler(path: &str) -> bool {
-    let Ok(output) = std::process::Command::new("xdg-mime")
+    let Ok(output) = host_command("xdg-mime")
         .args(["query", "filetype", path])
         .output()
     else {
@@ -620,7 +622,7 @@ fn try_focus_window(wm_class: &str) -> bool {
             format!("[class=\"(?i){wm_class}\"] focus"),
             format!("[instance=\"(?i){wm_class}\"] focus"),
         ] {
-            if let Ok(output) = std::process::Command::new("swaymsg")
+            if let Ok(output) = host_command("swaymsg")
                 .arg(&criterion)
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())
@@ -645,7 +647,7 @@ fn try_focus_window(wm_class: &str) -> bool {
             format!("[class=\"(?i){wm_class}\"] focus"),
             format!("[instance=\"(?i){wm_class}\"] focus"),
         ] {
-            if let Ok(output) = std::process::Command::new("i3-msg")
+            if let Ok(output) = host_command("i3-msg")
                 .arg(&criterion)
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())
@@ -661,7 +663,7 @@ fn try_focus_window(wm_class: &str) -> bool {
     }
 
     // Non-i3: try i3-msg anyway (might be running), then x11rb fallback.
-    if let Ok(output) = std::process::Command::new("i3-msg")
+    if let Ok(output) = host_command("i3-msg")
         .arg(format!("[class=\"(?i){wm_class}\"] focus"))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
@@ -764,7 +766,7 @@ fn try_focus_sway(app_id: &str) -> bool {
         format!("[app_id=\"(?i){app_id}\"] focus"),
         format!("[class=\"(?i){app_id}\"] focus"),
     ] {
-        if let Ok(output) = std::process::Command::new("swaymsg")
+        if let Ok(output) = host_command("swaymsg")
             .arg(&criteria)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
@@ -793,7 +795,7 @@ fn try_focus_hyprland(class: &str) -> bool {
     if !hyprland_has_client(class) {
         return false;
     }
-    let _ = std::process::Command::new("hyprctl")
+    let _ = host_command("hyprctl")
         .args(["dispatch", "focuswindow", &format!("class:{class}")])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -808,7 +810,7 @@ fn try_focus_hyprland(class: &str) -> bool {
 
 #[cfg(target_os = "linux")]
 fn hyprland_has_client(class: &str) -> bool {
-    let Ok(output) = std::process::Command::new("hyprctl")
+    let Ok(output) = host_command("hyprctl")
         .args(["clients", "-j"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
@@ -824,7 +826,7 @@ fn hyprland_has_client(class: &str) -> bool {
 
 #[cfg(target_os = "linux")]
 fn hyprland_active_class_matches(class: &str) -> bool {
-    let Ok(output) = std::process::Command::new("hyprctl")
+    let Ok(output) = host_command("hyprctl")
         .args(["activewindow", "-j"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())

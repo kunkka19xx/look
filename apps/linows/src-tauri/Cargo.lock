@@ -2512,6 +2512,7 @@ dependencies = [
  "arboard",
  "base64 0.22.1",
  "dirs",
+ "futures-util",
  "look-answers",
  "look-engine",
  "look-storage",

@@ -543,7 +543,7 @@ pub(crate) fn is_running(name: &str) -> bool {
 }
 
 pub(crate) fn kill(pid: u32) -> Result<String, String> {
-    let output = std::process::Command::new("kill")
+    let output = super::host_command("kill")
         .arg("-9")
         .arg(pid.to_string())
         .output()

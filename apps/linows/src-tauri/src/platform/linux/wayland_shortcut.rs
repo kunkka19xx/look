@@ -6,10 +6,11 @@
 //! 1. Register a D-Bus service (`com.look.Desktop`) that listens for `Toggle` calls
 //! 2. Register a keybinding in the running compositor that calls our D-Bus service:
 //!    - GNOME: custom keybinding via gsettings
+//!    - KDE: kglobalaccel D-Bus registration (signal-driven, no command hop)
 //!    - Sway: `swaymsg bindsym ...`
 //!    - Hyprland: `hyprctl keyword bind ...`
 
-use std::process::Command;
+use super::host_command;
 use std::sync::Mutex;
 
 /// Saved original value of activate-window-menu before Look disabled it.
@@ -30,6 +31,7 @@ const TOGGLE_CMD: &str = concat!(
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Compositor {
     Gnome,
+    Kde,
     Sway,
     Hyprland,
     Other,
@@ -43,11 +45,16 @@ fn detect_compositor() -> Compositor {
         return Compositor::Hyprland;
     }
     let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-    if desktop
-        .split(':')
-        .any(|s| s.trim().eq_ignore_ascii_case("GNOME"))
-    {
+    let desktop_is = |name: &str| {
+        desktop
+            .split(':')
+            .any(|s| s.trim().eq_ignore_ascii_case(name))
+    };
+    if desktop_is("GNOME") {
         return Compositor::Gnome;
+    }
+    if desktop_is("KDE") {
+        return Compositor::Kde;
     }
     Compositor::Other
 }
@@ -60,27 +67,53 @@ where
     F: Fn() + Send + Sync + 'static,
 {
     let compositor = detect_compositor();
-    match compositor {
-        Compositor::Gnome => ensure_gnome_keybinding(),
-        Compositor::Sway => ensure_sway_keybinding(),
-        Compositor::Hyprland => ensure_hyprland_keybinding(),
-        Compositor::Other => {
-            eprintln!(
-                "[look] Unknown Wayland compositor — Alt+Space must be bound manually.\n\
-                 [look] Bind your hotkey to run: {TOGGLE_CMD}"
-            );
-        }
-    }
 
     std::thread::spawn(move || {
+        // Registration runs off the main thread: it shells out to
+        // gsettings/swaymsg/hyprctl and the GNOME path sleeps between writes.
+        match compositor {
+            Compositor::Gnome => ensure_gnome_keybinding(),
+            Compositor::Sway => ensure_sway_keybinding(),
+            Compositor::Hyprland => ensure_hyprland_keybinding(),
+            // KDE registers via async D-Bus alongside the Toggle service below.
+            Compositor::Kde => {}
+            Compositor::Other => {
+                eprintln!(
+                    "[look] Unknown Wayland compositor: Alt+Space must be bound manually.\n\
+                     [look] Bind your hotkey to run: {TOGGLE_CMD}"
+                );
+            }
+        }
+
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("failed to create tokio runtime for D-Bus service");
 
-        if let Err(e) = rt.block_on(run_dbus_service(on_toggle)) {
-            eprintln!("[look] D-Bus service error: {e}");
-        }
+        rt.block_on(async {
+            let on_toggle = std::sync::Arc::new(on_toggle);
+
+            if compositor == Compositor::Kde {
+                let toggle = on_toggle.clone();
+                tokio::task::spawn(async move {
+                    if let Err(e) = run_kde_keybinding(move || toggle()).await {
+                        eprintln!(
+                            "[look] KDE keybinding error: {e}\n\
+                             [look] Bind your hotkey manually to run: {TOGGLE_CMD}"
+                        );
+                    }
+                });
+            }
+
+            if let Err(e) = run_dbus_service(move || on_toggle()).await {
+                eprintln!("[look] D-Bus service error: {e}");
+                // The KDE task toggles via the kglobalaccel signal alone;
+                // keep it alive.
+                if compositor == Compositor::Kde {
+                    std::future::pending::<()>().await;
+                }
+            }
+        });
     });
 }
 
@@ -90,7 +123,7 @@ where
 
 fn ensure_sway_keybinding() {
     // Add window rule: float + no border
-    let _ = Command::new("swaymsg")
+    let _ = host_command("swaymsg")
         .args([
             "for_window",
             "[app_id=\"lookapp\"]",
@@ -102,7 +135,7 @@ fn ensure_sway_keybinding() {
         .output();
 
     // Bind Alt+Space to toggle Look via D-Bus
-    let _ = Command::new("swaymsg")
+    let _ = host_command("swaymsg")
         .arg(format!("bindsym Alt+space exec {TOGGLE_CMD}"))
         .output();
 
@@ -110,7 +143,7 @@ fn ensure_sway_keybinding() {
 }
 
 fn cleanup_sway_keybinding() {
-    let _ = Command::new("swaymsg").arg("unbindsym Alt+space").output();
+    let _ = host_command("swaymsg").arg("unbindsym Alt+space").output();
     eprintln!("[look] Removed Sway keybinding for Alt+Space");
 }
 
@@ -132,7 +165,7 @@ hl.window_rule({{ name = "look-noborder", match = {{ class = "lookapp" }}, borde
 hl.bind("ALT + space", hl.dsp.exec_cmd("{TOGGLE_CMD}"))"#
     );
 
-    let result = Command::new("hyprctl").args(["eval", &lua]).output();
+    let result = host_command("hyprctl").args(["eval", &lua]).output();
 
     let used_lua = result
         .as_ref()
@@ -141,13 +174,13 @@ hl.bind("ALT + space", hl.dsp.exec_cmd("{TOGGLE_CMD}"))"#
 
     if !used_lua {
         // Fallback: legacy keyword syntax for older Hyprland
-        let _ = Command::new("hyprctl")
+        let _ = host_command("hyprctl")
             .args(["keyword", "windowrulev2", "float, class:lookapp"])
             .output();
-        let _ = Command::new("hyprctl")
+        let _ = host_command("hyprctl")
             .args(["keyword", "windowrulev2", "noborder, class:lookapp"])
             .output();
-        let _ = Command::new("hyprctl")
+        let _ = host_command("hyprctl")
             .args(["keyword", "bind", &format!("ALT,space,exec,{TOGGLE_CMD}")])
             .output();
     }
@@ -157,14 +190,14 @@ hl.bind("ALT + space", hl.dsp.exec_cmd("{TOGGLE_CMD}"))"#
 
 fn cleanup_hyprland_keybinding() {
     // Try Lua first, then legacy
-    let result = Command::new("hyprctl")
+    let result = host_command("hyprctl")
         .args(["eval", r#"hl.unbind("ALT + space")"#])
         .output();
 
     let used_lua = result.as_ref().map(|o| o.status.success()).unwrap_or(false);
 
     if !used_lua {
-        let _ = Command::new("hyprctl")
+        let _ = host_command("hyprctl")
             .args(["keyword", "unbind", "ALT,space"])
             .output();
     }
@@ -177,29 +210,31 @@ fn cleanup_hyprland_keybinding() {
 // ---------------------------------------------------------------------------
 
 /// Register a GNOME custom keybinding for Alt+Space → dbus-send to our service.
+///
+/// Order matters: mutter refuses gsd's grab while activate-window-menu holds
+/// Alt+Space and gsd never retries a failed grab, so the key must be freed
+/// before the binding is written or Alt+Space stays dead until re-login.
 fn ensure_gnome_keybinding() {
-    // Check if our keybinding already exists
-    let existing = gsettings_get(MEDIA_KEYS_SCHEMA, "custom-keybindings");
-    if existing.contains(KEYBINDING_PATH) {
-        // Already registered, verify the binding is still correct
-        let current_binding = gsettings_get_at(KEYBINDING_SCHEMA, "binding", KEYBINDING_PATH);
-        if current_binding.contains("<Alt>space") {
-            return;
-        }
+    let had_conflict = disable_window_menu_binding();
+    if had_conflict {
+        // Give mutter a moment to process the release before gsd re-grabs.
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 
-    // Set up the custom keybinding
+    let existing = gsettings_get(MEDIA_KEYS_SCHEMA, "custom-keybindings");
+    let already_bound = existing.contains(KEYBINDING_PATH)
+        && gsettings_get_at(KEYBINDING_SCHEMA, "binding", KEYBINDING_PATH).contains("<Alt>space");
+
+    // Registered by a previous run and nothing shadowed it: the grab is live.
+    if already_bound && !had_conflict {
+        return;
+    }
+
     gsettings_set_at(KEYBINDING_SCHEMA, "name", "'Look Toggle'", KEYBINDING_PATH);
     gsettings_set_at(
         KEYBINDING_SCHEMA,
         "command",
         &format!("'{TOGGLE_CMD}'"),
-        KEYBINDING_PATH,
-    );
-    gsettings_set_at(
-        KEYBINDING_SCHEMA,
-        "binding",
-        "'<Alt>space'",
         KEYBINDING_PATH,
     );
 
@@ -218,22 +253,38 @@ fn ensure_gnome_keybinding() {
     );
     gsettings_set(MEDIA_KEYS_SCHEMA, "custom-keybindings", &new_value);
 
-    // Disable GNOME's default Alt+Space (window menu) so it doesn't shadow ours.
-    // Save the original value so we can restore it on exit.
-    let wm_binding = gsettings_get("org.gnome.desktop.wm.keybindings", "activate-window-menu");
-    if wm_binding.contains("<Alt>space") {
-        if let Ok(mut saved) = SAVED_WM_BINDING.lock() {
-            *saved = Some(wm_binding);
-        }
-        gsettings_set(
-            "org.gnome.desktop.wm.keybindings",
-            "activate-window-menu",
-            "['']",
-        );
-        eprintln!("[look] Disabled GNOME default Alt+Space (window menu) to avoid conflict");
+    // Write the binding last, toggling it when it was shadowed: dconf drops
+    // same-value writes and gsd only re-grabs on a change notification.
+    if already_bound {
+        gsettings_set_at(KEYBINDING_SCHEMA, "binding", "''", KEYBINDING_PATH);
     }
+    gsettings_set_at(
+        KEYBINDING_SCHEMA,
+        "binding",
+        "'<Alt>space'",
+        KEYBINDING_PATH,
+    );
 
     eprintln!("[look] Registered GNOME keybinding: Alt+Space → Look toggle");
+}
+
+/// Disable GNOME's default Alt+Space (window menu) if it holds the key,
+/// saving the original for restore on exit. Returns true when cleared.
+fn disable_window_menu_binding() -> bool {
+    let wm_binding = gsettings_get("org.gnome.desktop.wm.keybindings", "activate-window-menu");
+    if !wm_binding.contains("<Alt>space") {
+        return false;
+    }
+    if let Ok(mut saved) = SAVED_WM_BINDING.lock() {
+        *saved = Some(wm_binding);
+    }
+    gsettings_set(
+        "org.gnome.desktop.wm.keybindings",
+        "activate-window-menu",
+        "['']",
+    );
+    eprintln!("[look] Disabled GNOME default Alt+Space (window menu) to avoid conflict");
+    true
 }
 
 /// Remove the GNOME custom keybinding registered by Look.
@@ -271,12 +322,164 @@ fn cleanup_gnome_keybinding() {
 }
 
 // ---------------------------------------------------------------------------
+// KDE (kglobalaccel)
+// ---------------------------------------------------------------------------
+
+const KGA_BUS: &str = "org.kde.kglobalaccel";
+const KGA_PATH: &str = "/kglobalaccel";
+const KGA_IFACE: &str = "org.kde.KGlobalAccel";
+/// Object path derived from our component unique name ("lookapp").
+const KGA_COMPONENT_PATH: &str = "/component/lookapp";
+const KGA_COMPONENT_IFACE: &str = "org.kde.kglobalaccel.Component";
+
+/// QKeySequence int encoding of Alt+Space (Qt::AltModifier | Qt::Key_Space).
+const QT_ALT_SPACE: i32 = 0x0800_0020;
+/// kglobalaccel SetShortcutFlag values (kglobalaccel_p.h).
+const KGA_SET_PRESENT: u32 = 2;
+const KGA_IS_DEFAULT: u32 = 8;
+
+/// KRunner actions that hold Alt+Space by default; the "krunner" pair
+/// covers pre-service Plasma 5.
+const KRUNNER_ACTIONS: &[(&str, &str)] = &[
+    ("org.kde.krunner.desktop", "_launch"),
+    ("krunner", "run command"),
+];
+
+/// KRunner bindings Look cleared to free Alt+Space, restored on exit.
+static SAVED_KRUNNER_KEYS: Mutex<Vec<(Vec<String>, Vec<i32>)>> = Mutex::new(Vec::new());
+
+/// kglobalaccel actionId: [component unique, action unique, friendly component, friendly action].
+fn look_action_id() -> Vec<String> {
+    ["lookapp", "toggle", "Look", "Toggle Look"]
+        .map(String::from)
+        .into()
+}
+
+fn krunner_action_id(component: &str, action: &str) -> Vec<String> {
+    vec![
+        component.into(),
+        action.into(),
+        String::new(),
+        String::new(),
+    ]
+}
+
+/// Register Alt+Space with kglobalaccel and toggle on its
+/// `globalShortcutPressed` signal. The KF5-era int-key methods are still
+/// served by the KF6 daemon, so one path covers Plasma 5 and 6.
+async fn run_kde_keybinding<F>(on_toggle: F) -> Result<(), Box<dyn std::error::Error>>
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    use futures_util::StreamExt;
+
+    let conn = zbus::Connection::session().await?;
+    let kga = zbus::Proxy::new(&conn, KGA_BUS, KGA_PATH, KGA_IFACE).await?;
+    let action_id = look_action_id();
+
+    kga.call_method("doRegister", &(&action_id,)).await?;
+
+    // kglobalaccel drops clashing keys rather than stealing them: free
+    // Alt+Space from KRunner first, saving its binding for restore on exit.
+    for (component, action) in KRUNNER_ACTIONS {
+        let id = krunner_action_id(component, action);
+        let Ok(keys) = kga.call::<_, _, Vec<i32>>("shortcut", &(&id,)).await else {
+            continue;
+        };
+        if !keys.contains(&QT_ALT_SPACE) {
+            continue;
+        }
+        let remaining: Vec<i32> = keys
+            .iter()
+            .copied()
+            .filter(|&k| k != QT_ALT_SPACE)
+            .collect();
+        if kga
+            .call_method("setForeignShortcut", &(&id, &remaining))
+            .await
+            .is_ok()
+        {
+            if let Ok(mut saved) = SAVED_KRUNNER_KEYS.lock() {
+                saved.push((id, keys));
+            }
+            eprintln!("[look] Freed Alt+Space from KRunner ({component}) to avoid conflict");
+        }
+    }
+
+    // IsDefault shows Alt+Space as the default in System Settings; SetPresent
+    // without NoAutoloading lets a user rebind survive restarts.
+    let _: Vec<i32> = kga
+        .call(
+            "setShortcut",
+            &(&action_id, &vec![QT_ALT_SPACE], KGA_IS_DEFAULT),
+        )
+        .await
+        .unwrap_or_default();
+    let granted: Vec<i32> = kga
+        .call(
+            "setShortcut",
+            &(&action_id, &vec![QT_ALT_SPACE], KGA_SET_PRESENT),
+        )
+        .await?;
+
+    if granted.contains(&QT_ALT_SPACE) {
+        eprintln!("[look] Registered KDE keybinding: Alt+Space → Look toggle");
+    } else {
+        eprintln!(
+            "[look] KDE assigned {granted:?} instead of Alt+Space. Rebind it in \
+             System Settings → Shortcuts → Look, or bind a key to run: {TOGGLE_CMD}"
+        );
+    }
+
+    let component =
+        zbus::Proxy::new(&conn, KGA_BUS, KGA_COMPONENT_PATH, KGA_COMPONENT_IFACE).await?;
+    let mut presses = component.receive_signal("globalShortcutPressed").await?;
+    while let Some(msg) = presses.next().await {
+        let Ok((_, action, _)) = msg.body().deserialize::<(String, String, i64)>() else {
+            continue;
+        };
+        if action == "toggle" {
+            on_toggle();
+        }
+    }
+    Ok(())
+}
+
+/// Unregister Look's kglobalaccel action and restore KRunner's Alt+Space.
+fn cleanup_kde_keybinding() {
+    let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    else {
+        return;
+    };
+    rt.block_on(async {
+        let Ok(conn) = zbus::Connection::session().await else {
+            return;
+        };
+        let Ok(kga) = zbus::Proxy::new(&conn, KGA_BUS, KGA_PATH, KGA_IFACE).await else {
+            return;
+        };
+        let _ = kga.call_method("unRegister", &(&look_action_id(),)).await;
+        let saved: Vec<_> = SAVED_KRUNNER_KEYS
+            .lock()
+            .map(|mut s| std::mem::take(&mut *s))
+            .unwrap_or_default();
+        for (id, keys) in saved {
+            let _ = kga.call_method("setForeignShortcut", &(&id, &keys)).await;
+        }
+    });
+    eprintln!("[look] Removed KDE keybinding for Alt+Space");
+}
+
+// ---------------------------------------------------------------------------
 // Cleanup dispatcher (called on exit from main.rs)
 // ---------------------------------------------------------------------------
 
 pub fn cleanup_keybinding() {
     match detect_compositor() {
         Compositor::Gnome => cleanup_gnome_keybinding(),
+        Compositor::Kde => cleanup_kde_keybinding(),
         Compositor::Sway => cleanup_sway_keybinding(),
         Compositor::Hyprland => cleanup_hyprland_keybinding(),
         Compositor::Other => {}
@@ -320,7 +523,7 @@ where
 // --- gsettings helpers ---
 
 fn gsettings_get(schema: &str, key: &str) -> String {
-    Command::new("gsettings")
+    host_command("gsettings")
         .args(["get", schema, key])
         .output()
         .ok()
@@ -331,13 +534,13 @@ fn gsettings_get(schema: &str, key: &str) -> String {
 }
 
 fn gsettings_set(schema: &str, key: &str, value: &str) {
-    let _ = Command::new("gsettings")
+    let _ = host_command("gsettings")
         .args(["set", schema, key, value])
         .output();
 }
 
 fn gsettings_get_at(schema: &str, key: &str, path: &str) -> String {
-    Command::new("gsettings")
+    host_command("gsettings")
         .args(["get", &format!("{schema}:{path}"), key])
         .output()
         .ok()
@@ -348,7 +551,7 @@ fn gsettings_get_at(schema: &str, key: &str, path: &str) -> String {
 }
 
 fn gsettings_set_at(schema: &str, key: &str, value: &str, path: &str) {
-    let _ = Command::new("gsettings")
+    let _ = host_command("gsettings")
         .args(["set", &format!("{schema}:{path}"), key, value])
         .output();
 }

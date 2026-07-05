@@ -85,7 +85,7 @@ fn install_via_gnome_extensions() -> bool {
         eprintln!("[look] Failed to create extension zip: {e}");
         return false;
     }
-    let result = std::process::Command::new("gnome-extensions")
+    let result = super::host_command("gnome-extensions")
         .args(["install", "--force"])
         .arg(&zip_path)
         .output();
@@ -254,7 +254,7 @@ fn enable_extension() {
     // Use gnome-extensions CLI which properly handles enabled/disabled state.
     // Raw gsettings manipulation misses the disabled-extensions list and
     // other state that GNOME tracks internally.
-    let result = std::process::Command::new("gnome-extensions")
+    let result = super::host_command("gnome-extensions")
         .args(["enable", EXT_UUID])
         .output();
 
@@ -264,7 +264,7 @@ fn enable_extension() {
         }
         _ => {
             // Fallback: raw gsettings for older GNOME or minimal installs
-            let output = std::process::Command::new("gsettings")
+            let output = super::host_command("gsettings")
                 .args(["get", "org.gnome.shell", "enabled-extensions"])
                 .output();
 
@@ -301,7 +301,7 @@ fn enable_extension() {
                     .join(", ")
             );
 
-            let _ = std::process::Command::new("gsettings")
+            let _ = super::host_command("gsettings")
                 .args(["set", "org.gnome.shell", "enabled-extensions", &new_value])
                 .output();
         }

@@ -106,8 +106,11 @@ pub(crate) fn has_settings_app() -> bool {
             return false;
         }
         use std::process::Command;
+        // Scrub the AppImage's LD_LIBRARY_PATH; bundled libs break newer
+        // system binaries.
         Command::new("which")
             .arg("gnome-control-center")
+            .env_remove("LD_LIBRARY_PATH")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()

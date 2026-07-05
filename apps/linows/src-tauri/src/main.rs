@@ -36,6 +36,11 @@ static LAST_AUTO_HIDDEN_AT: AtomicU64 = AtomicU64::new(0);
 /// focus, and without this guard Focused(false) auto-hide would dismiss Look
 /// while the user is still picking.
 pub static PICKING_FILE: AtomicBool = AtomicBool::new(false);
+/// True once the window received focus after the current show. Auto-hide
+/// requires it: a never-focused window has no focus to lose, and without
+/// this the first launch from the Windows installer hides on the closing
+/// installer's focus churn before the user ever sees it.
+static FOCUSED_SINCE_SHOWN: AtomicBool = AtomicBool::new(false);
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -97,6 +102,7 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         // auto-hide hides the window before we run, so is_visible
         // is false.  The 200ms guard prevents re-showing.
         LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
+        FOCUSED_SINCE_SHOWN.store(false, Ordering::Relaxed);
 
         // Tiling WMs (i3, sway, Hyprland) ignore set_position on unmapped
         // windows - they apply their own placement on map. So we must
@@ -117,10 +123,11 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         }
         let _ = window.emit(EVENT_WINDOW_SHOWN, ());
 
-        // On Linux/X11, bypass Mutter's focus-stealing prevention
-        // by bumping _NET_WM_USER_TIME before activation.
+        // For X11 windows (native X11, or XWayland when the AppImage forces
+        // GDK_BACKEND=x11), bypass the compositor's focus-stealing
+        // prevention by bumping _NET_WM_USER_TIME before activation.
         #[cfg(target_os = "linux")]
-        if !platform::linux::transparency::is_wayland() {
+        if platform::linux::transparency::window_is_x11() {
             platform::linux::window_focus::activate_self();
             platform::linux::window_focus::notify_shown();
         }
@@ -168,8 +175,10 @@ fn monitor_at_cursor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
     // On Wayland, Tauri's cursor_position() returns Ok((0,0)) instead of
     // failing - it never reflects the real pointer location. Use the GNOME
     // Shell extension (which calls global.get_pointer()) on Wayland instead.
+    // Keyed off the window backend: an XWayland window (AppImage) has a
+    // working X11 cursor_position.
     #[cfg(target_os = "linux")]
-    let wayland = is_wayland();
+    let wayland = !platform::linux::transparency::window_is_x11();
     #[cfg(not(target_os = "linux"))]
     let wayland = false;
 
@@ -451,12 +460,14 @@ fn setup_window_events(window: &tauri::WebviewWindow) {
     let w = window.clone();
     window.on_window_event(move |event| match event {
         tauri::WindowEvent::Focused(true) => {
+            FOCUSED_SINCE_SHOWN.store(true, Ordering::Relaxed);
             let _ = w.eval(
                 "{ let q = document.getElementById('query'); if (q) { q.focus(); q.select(); } }",
             );
         }
         tauri::WindowEvent::Focused(false)
             if !PICKING_FILE.load(Ordering::Relaxed)
+                && FOCUSED_SINCE_SHOWN.load(Ordering::Relaxed)
                 && now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > AUTO_HIDE_GRACE_MS
                 && focus_loss_means_dismiss() =>
         {
@@ -497,6 +508,7 @@ fn main() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window(consts::MAIN_WINDOW) {
+                LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
                 let _ = window.show();
                 let _ = window.set_focus();
             }
@@ -529,8 +541,11 @@ fn main() {
 
             register_shortcuts(app, use_wayland)?;
 
+            // X11-window concerns (focus monitor, scrolling tweak) follow the
+            // window backend: they also apply to the AppImage's XWayland
+            // window on a Wayland session.
             #[cfg(target_os = "linux")]
-            if !use_wayland {
+            if platform::linux::transparency::window_is_x11() {
                 setup_x11_focus_monitor(app);
                 gpu::disable_smooth_scrolling_x11(app);
             }
@@ -538,6 +553,9 @@ fn main() {
             let window = app
                 .get_webview_window(consts::MAIN_WINDOW)
                 .expect("main window missing");
+            // Arm the auto-hide grace for the startup show; LAST_SHOWN_AT is
+            // otherwise only set by toggle_window, leaving zero grace here.
+            LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
             // On transparency-capable Linux compositors, force the GTK window
             // background to transparent. Without this, GTK paints its theme
             // background (opaque, square corners) on the surface before WebKit

@@ -30,6 +30,20 @@ pub fn is_wayland() -> bool {
         .unwrap_or(false)
 }
 
+/// Whether the GTK window is an X11 window. True on X11 sessions, and on
+/// Wayland sessions when GDK_BACKEND forces x11 (the AppImage's AppRun does;
+/// the window is then XWayland). Focus/activation must follow the window
+/// backend, while shortcut registration follows the session (`is_wayland`).
+#[cfg(target_os = "linux")]
+pub fn window_is_x11() -> bool {
+    if !is_wayland() {
+        return true;
+    }
+    // GDK_BACKEND is a preference list; on a Wayland session only a leading
+    // "x11" forces the X11 backend.
+    std::env::var("GDK_BACKEND").is_ok_and(|v| v.trim().starts_with("x11"))
+}
+
 /// Desktop environments that embed a compositor (GNOME→mutter, KDE→kwin,
 /// Cinnamon→muffin, Deepin→kwin, Budgie→mutter, COSMIC, Pantheon→gala).
 /// Detected via `XDG_CURRENT_DESKTOP` which is set reliably on all distros.
@@ -61,7 +75,7 @@ fn x11_has_standalone_compositor() -> bool {
     const COMPOSITORS: &[&str] = &["picom", "compton", "compiz", "xfwm4", "marco"];
 
     for name in COMPOSITORS {
-        let ok = std::process::Command::new("pgrep")
+        let ok = super::host_command("pgrep")
             .args(["-f", name])
             .output()
             .map(|o| o.status.success())

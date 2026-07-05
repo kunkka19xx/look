@@ -14,7 +14,7 @@ pub fn collect() -> Vec<Vec<SysInfoEntry>> {
                 value: h.trim().to_string(),
             });
         }
-        if let Ok(output) = std::process::Command::new("uname").arg("-r").output() {
+        if let Ok(output) = super::host_command("uname").arg("-r").output() {
             let kernel = String::from_utf8_lossy(&output.stdout).trim().to_string();
             s.push(SysInfoEntry {
                 label: "Kernel".into(),
@@ -176,7 +176,7 @@ pub fn collect() -> Vec<Vec<SysInfoEntry>> {
     // Section 6: Disk
     {
         let mut s = Vec::new();
-        if let Ok(output) = std::process::Command::new("df").args(["-h", "/"]).output() {
+        if let Ok(output) = super::host_command("df").args(["-h", "/"]).output() {
             let out = String::from_utf8_lossy(&output.stdout);
             if let Some(line) = out.lines().nth(1) {
                 let parts: Vec<&str> = line.split_whitespace().collect();

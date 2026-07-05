@@ -5,7 +5,7 @@
 //! dedup so the picker shows each family once.
 
 pub(crate) fn list() -> Vec<String> {
-    let Ok(output) = std::process::Command::new("fc-list")
+    let Ok(output) = super::host_command("fc-list")
         .args(["--format", "%{family}\n"])
         .output()
     else {

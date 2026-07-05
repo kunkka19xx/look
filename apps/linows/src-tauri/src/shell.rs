@@ -18,7 +18,7 @@ pub fn run_shell_command(cmd: String) -> Result<String, String> {
             .spawn()
     };
     #[cfg(not(target_os = "windows"))]
-    let spawned = std::process::Command::new("sh")
+    let spawned = crate::platform::linux::host_command("sh")
         .args(["-c", &cmd])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())

@@ -5,7 +5,7 @@
 //! whichever is available. Neither is a hard runtime dependency.
 
 use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
     let uris: Vec<String> = paths
@@ -27,7 +27,7 @@ pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
     let mime = "x-special/gnome-copied-files";
 
     // Try wl-copy (Wayland) first, then xclip (X11) — no hard dependency on either.
-    let wl_result = Command::new("wl-copy")
+    let wl_result = super::host_command("wl-copy")
         .args(["-t", mime])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -44,7 +44,7 @@ pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
         return Ok(());
     }
 
-    let xclip_result = Command::new("xclip")
+    let xclip_result = super::host_command("xclip")
         .args(["-selection", "clipboard", "-t", mime])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
