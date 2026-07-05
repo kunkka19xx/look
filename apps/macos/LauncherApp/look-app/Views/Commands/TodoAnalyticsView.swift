@@ -11,56 +11,78 @@ struct TodoAnalyticsPage: View {
     private let weeks = TodoAnalytics.heatmapWeeks()
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                TodoStatStrip(
-                    themeStore: themeStore,
-                    week: TodoAnalytics.week,
-                    month: TodoAnalytics.month,
-                    streak: TodoAnalytics.streakDays
-                )
-
-                VStack(alignment: .leading, spacing: 8) {
-                    sectionLabel("chart.bar", "Completion trend · 30 days")
-                    VStack(spacing: 4) {
-                        TodoLineChart(data: trend, themeStore: themeStore)
-                            .frame(height: 92)
-                        HStack {
-                            Text("Jun 5")
-                            Spacer()
-                            Text("Jun 20")
-                            Spacer()
-                            Text("Jul 4")
-                        }
-                        .font(.system(size: 9.5, design: .monospaced))
-                        .foregroundStyle(themeStore.mutedTextColor())
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
-                    .padding(.bottom, 6)
-                    .todoCard(themeStore)
+        // Fill the height on large screens by letting the four sections
+        // spread apart, while still scrolling (at a compact min gap) when
+        // the panel is too short to fit them.
+        GeometryReader { geo in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    statStrip
+                    Spacer(minLength: 14)
+                    trendSection
+                    Spacer(minLength: 14)
+                    heatmapSection
+                    Spacer(minLength: 14)
+                    insightsSection
                 }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .center) {
-                        sectionLabel("calendar", "Activity · last 18 weeks")
-                        Spacer()
-                        TodoHeatLegend(themeStore: themeStore)
-                    }
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        TodoHeatmap(weeks: weeks, themeStore: themeStore)
-                    }
-                    .padding(12)
-                    .todoCard(themeStore)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    sectionLabel("sparkles", "Insights · last 30 days (Tasks)")
-                    TodoInsightsStrip(themeStore: themeStore, trend: trend)
-                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .frame(minHeight: geo.size.height, alignment: .top)
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
+        }
+    }
+
+    private var statStrip: some View {
+        TodoStatStrip(
+            themeStore: themeStore,
+            week: TodoAnalytics.week,
+            month: TodoAnalytics.month,
+            streak: TodoAnalytics.streakDays
+        )
+    }
+
+    private var trendSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionLabel("chart.bar", "Completion trend · 30 days")
+            VStack(spacing: 4) {
+                TodoLineChart(data: trend, themeStore: themeStore)
+                    .frame(height: 92)
+                HStack {
+                    Text("Jun 5")
+                    Spacer()
+                    Text("Jun 20")
+                    Spacer()
+                    Text("Jul 4")
+                }
+                .font(.system(size: 9.5, design: .monospaced))
+                .foregroundStyle(themeStore.mutedTextColor())
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+            .todoCard(themeStore)
+        }
+    }
+
+    private var heatmapSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center) {
+                sectionLabel("calendar", "Activity · last 18 weeks")
+                Spacer()
+                TodoHeatLegend(themeStore: themeStore)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                TodoHeatmap(weeks: weeks, themeStore: themeStore)
+            }
+            .padding(12)
+            .todoCard(themeStore)
+        }
+    }
+
+    private var insightsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionLabel("sparkles", "Insights · last 30 days (Tasks)")
+            TodoInsightsStrip(themeStore: themeStore, trend: trend)
         }
     }
 
@@ -132,7 +154,7 @@ struct TodoStatStrip: View {
     let streak: Int
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(alignment: .top, spacing: 4) {
             TodoMetricColumn(themeStore: themeStore, label: "This week", stat: week)
             divider
             TodoMetricColumn(themeStore: themeStore, label: "This month", stat: month)
@@ -147,31 +169,44 @@ struct TodoStatStrip: View {
     private var divider: some View { TodoVDivider(themeStore: themeStore) }
 }
 
+// Shared caption used for each column's title.
+private func metricTitle(_ text: String, _ themeStore: ThemeStore) -> some View {
+    Text(text.uppercased())
+        .font(.system(size: 12, design: .monospaced))
+        .tracking(0.7)
+        .foregroundStyle(themeStore.mutedTextColor())
+}
+
 struct TodoMetricColumn: View {
     let themeStore: ThemeStore
     let label: String
     let stat: TodoStat
 
+    private var percent: Int { Int((stat.fraction * 100).rounded()) }
+
     var body: some View {
-        HStack(spacing: 12) {
-            TodoDonut(fraction: stat.fraction, themeStore: themeStore)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(label.uppercased())
-                    .font(.system(size: 10, design: .monospaced))
-                    .tracking(0.7)
-                    .foregroundStyle(themeStore.mutedTextColor())
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
+        VStack(spacing: 10) {
+            HStack(spacing: 5) {
+                metricTitle(label, themeStore)
+                Text("\(percent)%")
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(themeStore.accentColor())
+            }
+            ZStack {
+                TodoDonut(fraction: stat.fraction, themeStore: themeStore, size: 62)
+                VStack(spacing: 2) {
                     Text("\(stat.done)")
-                        .font(themeStore.uiFont(size: 22, weight: .bold))
+                        .font(themeStore.uiFont(size: 16, weight: .bold))
                         .foregroundStyle(themeStore.fontColor())
-                    Text("/ \(stat.total)")
-                        .font(themeStore.uiFont(size: 13))
+                    Rectangle()
+                        .fill(themeStore.dividerColor())
+                        .frame(width: 16, height: 1)
+                    Text("\(stat.total)")
+                        .font(themeStore.uiFont(size: 12))
                         .foregroundStyle(themeStore.mutedTextColor())
                 }
             }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 6)
         .frame(maxWidth: .infinity)
     }
 }
@@ -181,45 +216,46 @@ struct TodoStreakColumn: View {
     let days: Int
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "flame")
-                .font(.system(size: 24, weight: .light))
-                .foregroundStyle(themeStore.accentColor())
-                .frame(width: 46, height: 46)
-            VStack(alignment: .leading, spacing: 5) {
-                Text("STREAK")
-                    .font(.system(size: 10, design: .monospaced))
-                    .tracking(0.7)
-                    .foregroundStyle(themeStore.mutedTextColor())
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("\(days)")
-                        .font(themeStore.uiFont(size: 22, weight: .bold))
-                        .foregroundStyle(themeStore.fontColor())
-                    Text("days")
-                        .font(themeStore.uiFont(size: 12.5))
-                        .foregroundStyle(themeStore.secondaryTextColor())
-                }
-                HStack(spacing: 4) {
-                    let filled = min(days, 7)
-                    ForEach(0..<7, id: \.self) { i in
-                        let on = i >= 7 - filled
-                        Circle()
-                            .fill(on ? themeStore.accentColor() : Color.clear)
-                            .overlay(
-                                Circle().stroke(
-                                    on ? Color.clear : themeStore.dividerColor(), lineWidth: 1)
-                            )
-                            .frame(width: 6, height: 6)
+        VStack(spacing: 8) {
+            metricTitle("Streak", themeStore)
+
+            HStack(spacing: 12) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 24))
+                    .foregroundStyle(themeStore.accentColor())
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text("\(days)")
+                            .font(themeStore.uiFont(size: 18, weight: .bold))
+                            .foregroundStyle(themeStore.fontColor())
+                        Text("days")
+                            .font(themeStore.uiFont(size: 12))
+                            .foregroundStyle(themeStore.secondaryTextColor())
+                    }
+                    HStack(spacing: 4) {
+                        let filled = min(days, 7)
+                        ForEach(0..<7, id: \.self) { i in
+                            let on = i >= 7 - filled
+                            Circle()
+                                .fill(on ? themeStore.accentColor() : Color.clear)
+                                .overlay(
+                                    Circle().stroke(
+                                        on ? Color.clear : themeStore.dividerColor(), lineWidth: 1)
+                                )
+                                .frame(width: 6, height: 6)
+                        }
                     }
                 }
             }
-            Spacer(minLength: 0)
+            .frame(height: 62)
         }
-        .padding(.horizontal, 6)
         .frame(maxWidth: .infinity)
     }
 }
 
+/// Thin progress ring. The percentage is conveyed by the arc and the
+/// exact counts sit beside it (see TodoMetricColumn), so the ring keeps
+/// no redundant center label.
 struct TodoDonut: View {
     let fraction: Double
     let themeStore: ThemeStore
@@ -235,9 +271,6 @@ struct TodoDonut: View {
                     themeStore.accentColor(), style: StrokeStyle(lineWidth: stroke, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-            Text("\(Int((fraction * 100).rounded()))" + "%")
-                .font(themeStore.uiFont(size: size * 0.28, weight: .bold))
-                .foregroundStyle(themeStore.fontColor())
         }
         .frame(width: size, height: size)
     }
