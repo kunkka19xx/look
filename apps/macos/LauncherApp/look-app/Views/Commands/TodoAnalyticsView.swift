@@ -8,7 +8,7 @@ struct TodoAnalyticsPage: View {
     let themeStore: ThemeStore
 
     private let trend = TodoAnalytics.monthTrend()
-    private let weeks = TodoAnalytics.heatmapWeeks()
+    private let heatDays = TodoAnalytics.heatmapDays()
 
     var body: some View {
         // Fill the height on large screens by letting the four sections
@@ -67,15 +67,13 @@ struct TodoAnalyticsPage: View {
     private var heatmapSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center) {
-                sectionLabel("calendar", "Activity · last 18 weeks")
+                sectionLabel("calendar", "Activity · last year")
                 Spacer()
                 TodoHeatLegend(themeStore: themeStore)
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                TodoHeatmap(weeks: weeks, themeStore: themeStore)
-            }
-            .padding(12)
-            .todoCard(themeStore)
+            TodoHeatmap(columns: heatDays, themeStore: themeStore)
+                .padding(12)
+                .todoCard(themeStore)
         }
     }
 
@@ -330,35 +328,54 @@ struct TodoLineChart: View {
 }
 
 struct TodoHeatmap: View {
-    let weeks: [[Int]]
+    let columns: [[TodoHeatDay]]
     let themeStore: ThemeStore
     var cell: CGFloat = 12
     var gap: CGFloat = 3
 
     private let dayLabels = ["", "M", "", "W", "", "F", ""]
+    private let labelColWidth: CGFloat = 12
+    private let labelSpacing: CGFloat = 5
+    private var gridHeight: CGFloat { cell * 7 + gap * 6 }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 5) {
-            VStack(spacing: gap) {
-                ForEach(0..<7, id: \.self) { i in
-                    Text(dayLabels[i])
-                        .font(.system(size: 8, design: .monospaced))
-                        .foregroundStyle(themeStore.mutedTextColor())
-                        .frame(width: 10, height: cell, alignment: .leading)
+        // Render only the most recent weeks that fit the available width,
+        // so the grid never clips on the right regardless of screen size.
+        GeometryReader { geo in
+            let available = geo.size.width - labelColWidth - labelSpacing
+            let fit = max(1, Int((available + gap) / (cell + gap)))
+            let shown = Array(columns.suffix(min(fit, columns.count)))
+
+            HStack(alignment: .top, spacing: labelSpacing) {
+                VStack(spacing: gap) {
+                    ForEach(0..<7, id: \.self) { i in
+                        Text(dayLabels[i])
+                            .font(.system(size: 8, design: .monospaced))
+                            .foregroundStyle(themeStore.mutedTextColor())
+                            .frame(width: labelColWidth, height: cell, alignment: .leading)
+                    }
                 }
-            }
-            HStack(spacing: gap) {
-                ForEach(Array(weeks.enumerated()), id: \.offset) { _, week in
-                    VStack(spacing: gap) {
-                        ForEach(Array(week.enumerated()), id: \.offset) { _, level in
-                            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .fill(TodoHeatColors.color(level, themeStore: themeStore))
-                                .frame(width: cell, height: cell)
+                HStack(spacing: gap) {
+                    ForEach(Array(shown.enumerated()), id: \.offset) { _, week in
+                        VStack(spacing: gap) {
+                            ForEach(week) { day in
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(TodoHeatColors.color(day.level, themeStore: themeStore))
+                                    .frame(width: cell, height: cell)
+                                    .hoverTooltip(tooltip(day), width: 160, edge: .top)
+                            }
                         }
                     }
                 }
+                Spacer(minLength: 0)
             }
         }
+        .frame(height: gridHeight)
+    }
+
+    private func tooltip(_ day: TodoHeatDay) -> String {
+        let date = TodoAnalytics.heatDateFormatter.string(from: day.date)
+        return day.hasTasks ? "\(date): \(day.done)/\(day.total) done" : "\(date): no tasks"
     }
 }
 

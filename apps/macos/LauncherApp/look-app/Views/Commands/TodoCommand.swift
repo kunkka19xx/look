@@ -294,6 +294,25 @@ enum TodoPersistence {
     static func save(_ groups: [TodoGroup]) { /* no DB yet */ }
 }
 
+/// One day cell in the activity heatmap: a real date with that day's
+/// done/total counts. `level` buckets `done` into the color ramp.
+struct TodoHeatDay: Identifiable, Equatable {
+    let date: Date
+    let done: Int
+    let total: Int
+
+    var id: Date { date }
+    var hasTasks: Bool { total > 0 }
+    var level: Int {
+        switch done {
+        case 0: return 0
+        case 1: return 1
+        case 2: return 3
+        default: return 4
+        }
+    }
+}
+
 // Deterministic seeded series so the charts render a stable shape.
 // Placeholder aggregates until storage exists.
 
@@ -325,24 +344,43 @@ enum TodoAnalytics {
         return arr
     }
 
-    /// 18 weeks × 7 days, intensity level 0...4.
-    static func heatmapWeeks() -> [[Int]] {
+    /// A year of activity as GitHub-style week columns (each column is a
+    /// Sun...Sat week; the last column contains today). Days after today
+    /// in the current week are empty placeholders.
+    static let heatmapWeekCount = 52
+
+    static func heatmapDays() -> [[TodoHeatDay]] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let daysSinceSunday = cal.component(.weekday, from: today) - 1
+        guard let lastSunday = cal.date(byAdding: .day, value: -daysSinceSunday, to: today)
+        else { return [] }
+
         var r = Seeded(21)
-        var weeks: [[Int]] = []
-        for _ in 0..<18 {
-            var days: [Int] = []
-            for _ in 0..<7 {
+        var columns: [[TodoHeatDay]] = []
+        for w in stride(from: heatmapWeekCount - 1, through: 0, by: -1) {
+            guard let colSunday = cal.date(byAdding: .day, value: -7 * w, to: lastSunday)
+            else { continue }
+            var col: [TodoHeatDay] = []
+            for d in 0..<7 {
+                guard let date = cal.date(byAdding: .day, value: d, to: colSunday) else { continue }
+                if date > today {
+                    col.append(TodoHeatDay(date: date, done: 0, total: 0))
+                    continue
+                }
                 let v = r.next()
-                let level: Int
-                if v > 0.82 { level = 4 }
-                else if v > 0.62 { level = 3 }
-                else if v > 0.42 { level = 2 }
-                else if v > 0.24 { level = 1 }
-                else { level = 0 }
-                days.append(level)
+                let done = v > 0.82 ? 3 : (v > 0.60 ? 2 : (v > 0.36 ? 1 : 0))
+                let total = done + (r.next() > 0.55 ? 1 : 0)
+                col.append(TodoHeatDay(date: date, done: done, total: total))
             }
-            weeks.append(days)
+            columns.append(col)
         }
-        return weeks
+        return columns
     }
+
+    static let heatDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE, MMM d"
+        return f
+    }()
 }
