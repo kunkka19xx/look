@@ -15,6 +15,12 @@ fn desktop_entry_path() -> PathBuf {
 }
 
 fn current_exe_path() -> String {
+    // Under an AppImage, current_exe() resolves to the temporary FUSE mount
+    // (/tmp/.mount_Look_*/usr/bin/lookapp), gone by next login. The runtime
+    // exposes the .AppImage path itself in $APPIMAGE - use that instead.
+    if let Ok(appimage) = std::env::var("APPIMAGE") {
+        return appimage;
+    }
     std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| "lookapp".to_string())
