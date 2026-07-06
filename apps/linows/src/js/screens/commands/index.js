@@ -1,16 +1,18 @@
 import * as calc from './calc.js';
 import * as pomo from './pomo.js';
+import * as todo from './todo.js';
 import * as kill from './kill.js';
 import * as shell from './shell.js';
 import * as sys from './sys.js';
-import { calculator, timer, xCircle, terminal, info } from '../../icons.js';
+import { calculator, timer, listChecks, xCircle, terminal, info } from '../../icons.js';
 
 const COMMANDS = [
   { id: 'calc', label: '/calc', shortcut: '1', detail: 'Evaluate math...', icon: calculator, module: calc },
   { id: 'pomo', label: '/pomo', shortcut: '2', detail: 'Pomodoro focus...', icon: timer, module: pomo },
-  { id: 'kill', label: '/kill', shortcut: '3', detail: 'Force kill app...', icon: xCircle, module: kill },
-  { id: 'shell', label: '/shell', shortcut: '4', detail: 'Run a shell co...', icon: terminal, module: shell },
-  { id: 'sys', label: '/sys', shortcut: '5', detail: 'Show system in...', icon: info, module: sys },
+  { id: 'todo', label: '/todo', shortcut: '3', detail: 'Daily tasks &...', icon: listChecks, module: todo },
+  { id: 'kill', label: '/kill', shortcut: '4', detail: 'Force kill app...', icon: xCircle, module: kill },
+  { id: 'shell', label: '/shell', shortcut: '5', detail: 'Run a shell co...', icon: terminal, module: shell },
+  { id: 'sys', label: '/sys', shortcut: '6', detail: 'Show system in...', icon: info, module: sys },
 ];
 
 let screen = null;
@@ -35,6 +37,7 @@ export function init(contentAreaEl, inputEl, { onExitMode, onExecuteCommand, onG
   // Init each command module
   calc.init(onExecuteCommand);
   pomo.init();
+  todo.init();
   kill.init(onExecuteCommand, onGetIcon);
   shell.init(onExecuteCommand);
   sys.init(onExecuteCommand);
@@ -104,7 +107,7 @@ export function handleKey(e) {
     return true;
   }
 
-  // Ctrl+1..5 jump to command
+  // Ctrl+1..6 jump to command
   if (e.ctrlKey && !e.shiftKey && e.key >= '1' && e.key <= String(COMMANDS.length)) {
     e.preventDefault();
     const idx = parseInt(e.key) - 1;

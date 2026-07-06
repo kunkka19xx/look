@@ -1,0 +1,35 @@
+<div class="cmd-panel" id="cmd-panel-todo" hidden>
+  <!-- Tasks page: search bar -->
+  <div class="cmd-input-bar" id="cmd-todo-search-bar">
+    <span class="cmd-input-bar-icon" id="cmd-todo-search-icon"></span>
+    <input id="cmd-todo-search" type="text" placeholder="Search tasks & dates" spellcheck="false" autocomplete="off" />
+    <span class="cmd-pill">/todo</span>
+  </div>
+
+  <!-- Stats page: header bar -->
+  <div class="cmd-header-bar" id="cmd-todo-stats-bar" hidden>
+    <span class="cmd-input-bar-icon" id="cmd-todo-stats-icon"></span>
+    <span class="cmd-subtitle">Analytics &amp; trends</span>
+    <div class="cmd-todo-segmented">
+      <button data-page="tasks">Tasks</button>
+      <button data-page="stats">Stats</button>
+    </div>
+    <span class="cmd-pill">/todo</span>
+  </div>
+
+  <!-- Tasks page: toolbar -->
+  <div class="cmd-todo-toolbar" id="cmd-todo-toolbar">
+    <span class="cmd-todo-count" id="cmd-todo-count"></span>
+    <div class="cmd-todo-toolbar-right">
+      <div class="cmd-todo-segmented">
+        <button data-page="tasks">Tasks</button>
+        <button data-page="stats">Stats</button>
+      </div>
+      <button class="cmd-todo-btn" id="cmd-todo-add-date"></button>
+      <button class="cmd-todo-btn" id="cmd-todo-save-btn"></button>
+    </div>
+  </div>
+
+  <div class="cmd-content cmd-todo-days" id="cmd-todo-days"></div>
+  <div class="cmd-content cmd-todo-stats" id="cmd-todo-stats" hidden></div>
+</div>
