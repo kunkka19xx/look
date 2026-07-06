@@ -19,14 +19,14 @@ struct UwpAppPayload {
 // once on app start and posts the results here as JSON: [{"aumid": "...", "title": "..."}, ...]
 //
 // Each entry is upserted as:
-//   id    = app:uwp:<AUMID>          — `app:` prefix so look_record_usage accepts it
+//   id    = app:uwp:<AUMID>          - `app:` prefix so look_record_usage accepts it
 //   kind  = App
-//   title = <DisplayName>            — e.g. "Terminal", "Notepad"
-//   path  = shell:AppsFolder\<AUMID> — ShellExecuteService dispatches via explorer.exe
+//   title = <DisplayName>            - e.g. "Terminal", "Notepad"
+//   path  = shell:AppsFolder\<AUMID> - ShellExecuteService dispatches via explorer.exe
 //
 // indexed_at_unix_s is set to i64::MAX so QueryEngine::bootstrap_sqlite's
 // `delete_stale_candidates(run_started_at)` sweep (core/engine/src/lib.rs:163) leaves
-// these rows alone — the Rust app discovery stream never produces UWP entries, so
+// these rows alone - the Rust app discovery stream never produces UWP entries, so
 // without the MAX sentinel they'd be pruned on every index refresh.
 pub(crate) fn look_seed_uwp_apps_json_impl(json: *const c_char) -> bool {
     let json = cstr_to_string(json);
@@ -80,7 +80,7 @@ pub(crate) fn look_seed_uwp_apps_json_impl(json: *const c_char) -> bool {
 
     // Drop rows for UWP apps that vanished from AppsFolder since the last seed
     // (uninstalls / package renames). Without this, those rows would persist
-    // forever — `delete_stale_candidates` skips them because their indexed_at is
+    // forever - `delete_stale_candidates` skips them because their indexed_at is
     // i64::MAX, and they'd keep showing in search with their old usage weight.
     let keep_set: HashSet<&str> = kept_ids.iter().map(|s| s.as_str()).collect();
     let _ = store.delete_candidates_by_prefix_except(UWP_ID_PREFIX, &keep_set);

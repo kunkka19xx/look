@@ -73,7 +73,7 @@ final class UpdateChecker: ObservableObject {
         }
     }
 
-    /// Hide the notice without persisting a dismissal — used once the user has
+    /// Hide the notice without persisting a dismissal - used once the user has
     /// kicked off an update. If that upgrade fails, a later check resurfaces it.
     @MainActor
     func hideNotice() {
@@ -123,7 +123,7 @@ final class UpdateChecker: ObservableObject {
                 return
             }
 
-            // Ignore drafts/prereleases — only stable updates should nag users.
+            // Ignore drafts/prereleases - only stable updates should nag users.
             if (json["prerelease"] as? Bool) == true || (json["draft"] as? Bool) == true {
                 if isManual { statusMessage = "You're on the latest version (\(currentVersion))" }
                 return
@@ -158,12 +158,12 @@ final class UpdateChecker: ObservableObject {
     static let homebrewUpgradeCommand = "brew upgrade --cask kunkka19xx/tap/look"
 
     /// Bundle id of the release app the Homebrew cask installs. The dev build
-    /// uses the ".Dev" suffix, but brew always upgrades the release app — so the
+    /// uses the ".Dev" suffix, but brew always upgrades the release app - so the
     /// relaunch targets this id, not the running bundle.
     static let productionBundleID = "noah-code.Look"
 
     /// Launch Terminal running the Homebrew upgrade. The app isn't sandboxed, so
-    /// we drop a temporary executable `.command` file and open it — Terminal runs
+    /// we drop a temporary executable `.command` file and open it - Terminal runs
     /// it without needing Automation (Apple Events) permission. The user sees the
     /// output and can authenticate if Homebrew asks. Returns false if we couldn't
     /// stage the script. Note: brew may quit/replace Look while upgrading, which
@@ -171,7 +171,7 @@ final class UpdateChecker: ObservableObject {
     @discardableResult
     static func runHomebrewUpgrade() -> Bool {
         // After a cask upgrade the new bundle is on disk, but the running
-        // process is still the old binary — so on success we quit and relaunch
+        // process is still the old binary - so on success we quit and relaunch
         // Look for the user instead of asking them to restart it manually.
         let script = """
         #!/bin/bash
@@ -182,7 +182,7 @@ final class UpdateChecker: ObservableObject {
         status=$?
         echo ""
         if [ $status -eq 0 ]; then
-          echo "Update complete — relaunching Look…"
+          echo "Update complete - relaunching Look…"
           osascript -e 'tell application id "\(productionBundleID)" to quit' >/dev/null 2>&1
           sleep 1
           open -b "\(productionBundleID)" 2>/dev/null || open "/Applications/Look.app"

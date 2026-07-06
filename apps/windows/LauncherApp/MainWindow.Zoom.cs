@@ -15,7 +15,7 @@ namespace LauncherApp;
 // hardcoded FontSize="..." values per role (14 for row title, 11 for meta, 16 for
 // command title, etc.). A single resource override would flatten that hierarchy.
 // We cache each element's *original* FontSize on first sight, then set
-// FontSize = original * _uiScale on subsequent zoom changes — preserving the per-role
+// FontSize = original * _uiScale on subsequent zoom changes - preserving the per-role
 // size relationships while scaling the whole tree proportionally.
 public sealed partial class MainWindow
 {

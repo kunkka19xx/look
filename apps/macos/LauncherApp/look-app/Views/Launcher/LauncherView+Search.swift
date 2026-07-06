@@ -32,7 +32,7 @@ extension LauncherView {
             guard !Task.isCancelled else { return }
 
             // Fast path: search the raw query first and paint immediately. The
-            // on-device model is never in front of results — it only refines.
+            // on-device model is never in front of results - it only refines.
             let rawResults = await Task.detached(priority: .userInitiated) {
                 bridge.search(query: currentQuery, limit: searchLimit)
             }.value
@@ -42,7 +42,7 @@ extension LauncherView {
             // Rescue pass: only when AI is on AND the raw query found nothing,
             // let the model rewrite the natural-language query into the engine's
             // prefix grammar and re-search. We never run this when raw results
-            // exist — a rewrite that narrows "firefox" to apps-only would wrongly
+            // exist - a rewrite that narrows "firefox" to apps-only would wrongly
             // drop the matching folder/files the user can already see.
             guard aiEnabled, rawResults.isEmpty else { return }
             guard let rewritten = await AIQueryRouter.shared.rewrite(
@@ -73,7 +73,7 @@ extension LauncherView {
         setInitialSelection()
 
         // Additive AI answer card. Driven from here so it knows the local result
-        // count — a multi-word query with no local match is treated as a
+        // count - a multi-word query with no local match is treated as a
         // knowledge lookup. Self-gates; never blocks search.
         aiAnswer.update(
             query: requestedQuery,
@@ -112,7 +112,7 @@ extension LauncherView {
     }
 
     /// Fetches Google autocomplete rows for the current query, debounced, and
-    /// only for plain text queries while online features are on. Self-gating —
+    /// only for plain text queries while online features are on. Self-gating -
     /// clears the rows in any non-applicable mode.
     func refreshWebSuggestions() {
         webSuggestionTask?.cancel()

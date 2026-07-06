@@ -18,7 +18,7 @@ const BLUR_PRESETS = {
   soft: { ui_blur_opacity: 0.60 },
 };
 
-// UI zoom — mirrors macOS ThemeStore.zoomIn/zoomOut/resetZoom
+// UI zoom - mirrors macOS ThemeStore.zoomIn/zoomOut/resetZoom
 // (apps/macos/.../Support/ThemeStore.swift:270). The effective `--font-size`
 // is `baseFontSize * uiScale`; baseFontSize tracks the slider value, uiScale
 // is the user's Ctrl+= / Ctrl+- / Ctrl+0 multiplier. Persisted in localStorage
@@ -139,7 +139,7 @@ export function init(exitFn) {
     saveConfig({ ui_theme: theme });
   });
 
-  // Blur style dropdown — populate labels from platform
+  // Blur style dropdown - populate labels from platform
   const blurDropdown = document.getElementById('settings-blur-style');
   const blurBtn = blurDropdown.querySelector('.settings-dropdown-btn');
   const blurMenu = blurDropdown.querySelector('.settings-dropdown-menu');
@@ -198,7 +198,7 @@ export function init(exitFn) {
 
   // Keys that mark the theme as "Custom" when manually changed.
   // Opacities and thickness are user-controlled and should not flip the
-  // theme to Custom — they are preserved across theme switches separately.
+  // theme to Custom - they are preserved across theme switches separately.
   const THEME_KEYS = new Set([
     'ui_tint_red', 'ui_tint_green', 'ui_tint_blue',
     'ui_font_red', 'ui_font_green', 'ui_font_blue',
@@ -246,7 +246,7 @@ export function init(exitFn) {
     saveConfig({ lazy_indexing_enabled: e.target.checked ? 'true' : 'false' });
   });
 
-  // AI / web answers toggle — gates the inline answer card and Google
+  // AI / web answers toggle - gates the inline answer card and Google
   // autocomplete rows. Dispatches a custom event so app.js can apply the
   // change live (it propagates to both the controller and search.js).
   document.getElementById('settings-ai-enabled').addEventListener('change', (e) => {
@@ -477,7 +477,7 @@ export function init(exitFn) {
     if (name) applyFontName(name);
   });
 
-  // Save Config button — grab all current UI values and write to .look.config
+  // Save Config button - grab all current UI values and write to .look.config
   document.getElementById('settings-save-btn').addEventListener('click', async () => {
     try {
       const updates = {};
@@ -542,7 +542,7 @@ export function init(exitFn) {
 
 export function isActive() { return active; }
 
-// Ctrl+Shift+; — reload all values from .look.config file into running app
+// Ctrl+Shift+; - reload all values from .look.config file into running app
 export async function reloadFromFile() {
   try {
     await reloadConfig();
@@ -652,7 +652,7 @@ export async function restoreOnStartup() {
       if (slider) slider.value = map[key];
     }
 
-    // Restore theme preset — preset values drive tint/font/border
+    // Restore theme preset - preset values drive tint/font/border
     const theme = map.ui_theme || '';
     applyThemePreset(theme);
 
@@ -669,7 +669,7 @@ export async function restoreOnStartup() {
       document.documentElement.style.setProperty('--font-family', `"${map.ui_font_name}", system-ui, sans-serif`);
     }
 
-    // Blur — drive --blur-radius from saved style so the launcher renders
+    // Blur - drive --blur-radius from saved style so the launcher renders
     // with the user's blur on first paint, not only after they open Settings.
     platform.applyBlur(0, map.ui_blur_style || 'high_contrast');
 
@@ -759,7 +759,7 @@ async function loadConfig() {
     document.getElementById('settings-font-name').value = fontName;
 
     // Populate all data-key sliders
-    // If a built-in theme is active, use preset values for theme keys —
+    // If a built-in theme is active, use preset values for theme keys -
     // but keep the user's value for user-controlled keys (opacities,
     // border thickness) so they survive theme switches.
     const activeTheme = map.ui_theme || '';
@@ -829,7 +829,7 @@ async function loadConfig() {
       logItem.classList.add('settings-dropdown-active');
     }
 
-    // Launch at login — read actual system state
+    // Launch at login - read actual system state
     try {
       const autostartEnabled = await getAutostart();
       document.getElementById('settings-launch-login').checked = autostartEnabled;
@@ -846,7 +846,7 @@ async function loadConfig() {
 // Theme preset definitions matching theme.css custom properties.
 // Each maps to the raw slider values stored in config.
 const THEME_PRESETS = {
-  '': { // Catppuccin Mocha — base #1e1e2e, surface0 #313244
+  '': { // Catppuccin Mocha - base #1e1e2e, surface0 #313244
     ui_tint_red: 0.12, ui_tint_green: 0.12, ui_tint_blue: 0.18, ui_tint_opacity: 0.95,
     ui_font_red: 0.81, ui_font_green: 0.80, ui_font_blue: 0.90, ui_font_opacity: 1.0,
     ui_border_red: 0.58, ui_border_green: 0.58, ui_border_blue: 0.65, ui_border_opacity: 0.18,
@@ -884,7 +884,7 @@ const THEME_PRESETS = {
   },
 };
 
-// Keys that belong to the user, not the theme — preserved when switching
+// Keys that belong to the user, not the theme - preserved when switching
 // themes so the user doesn't lose their custom transparency / border tweaks.
 const USER_CONTROLLED_KEYS = new Set([
   'ui_tint_opacity',

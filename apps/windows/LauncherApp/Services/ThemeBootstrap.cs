@@ -10,7 +10,7 @@ namespace LauncherApp.Services;
 // Reads the persisted ui_* theme keys from ~/.look.config and applies them to
 // Application.Resources BEFORE the main window is constructed. Without this, the app boots
 // from XAML defaults every time and user-saved tint / font / border / blur-opacity values
-// are only visible in the Appearance settings session — they disappear on next launch.
+// are only visible in the Appearance settings session - they disappear on next launch.
 public static class ThemeBootstrap
 {
     public static void ApplyFromConfig()
@@ -54,7 +54,7 @@ public static class ThemeBootstrap
         // `activeAppearanceStyle()?.textMuted` before falling back to dimmableColor().
         // Alpha multipliers: macOS gets visual "lift" for free from NSVisualEffectView
         // translucency, so 0.78/0.90 reads fine there. On Windows's opaque panel, the dark
-        // tint bleeds through and washes the theme's muted RGB toward grey — bumping the
+        // tint bleeds through and washes the theme's muted RGB toward grey - bumping the
         // multipliers lets each theme's color signature carry through composition.
         Color secondary = TryGetRgb(cfg, "ui_text_secondary", out double sR, out double sG, out double sB)
             ? ToColor(sR, sG, sB, textAp * 0.94)

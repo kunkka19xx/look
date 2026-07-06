@@ -243,7 +243,7 @@ jobs:
           # The publish output produces LauncherApp.exe (the WinExe entry point) and
           # LauncherApp.dll (the managed assembly), plus look_ffi.dll (the Rust core).
           # An older revision of this workflow filtered for "Look.exe" / "Look.dll" which
-          # never matched anything in the publish dir — signing silently covered only the
+          # never matched anything in the publish dir - signing silently covered only the
           # FFI dll while the strict-mode summary still reported "signed". Require all
           # three so any future rename can't quietly skip the main binary again.
           $expectedTargets = @("LauncherApp.exe", "LauncherApp.dll", "look_ffi.dll")

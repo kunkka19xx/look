@@ -45,7 +45,7 @@ rustPlatform.buildRustPackage {
   # change (e.g. Dependabot bumps), and a stale hash silently broke the Nix
   # build. cargoLock.lockFile derives the vendor from the lockfile itself, so
   # it stays correct automatically. (Safe here because no lockfile has git
-  # dependencies — otherwise this would also need `outputHashes`.)
+  # dependencies - otherwise this would also need `outputHashes`.)
   cargoLock.lockFile = ../src-tauri/Cargo.lock;
 
   buildAndTestSubdir = "apps/linows/src-tauri";

@@ -13,7 +13,7 @@ use windows::core::{HSTRING, Interface};
 
 /// Read the absolute target path from a `.lnk` shortcut. Returns None when
 /// the file isn't a valid shell link, isn't readable, or has no target
-/// (rare — most .lnk files do).
+/// (rare - most .lnk files do).
 pub(crate) fn resolve_target(lnk_path: &str) -> Option<String> {
     unsafe {
         // Idempotent across calls; RPC_E_CHANGED_MODE is harmless if another
@@ -25,7 +25,7 @@ pub(crate) fn resolve_target(lnk_path: &str) -> Option<String> {
         persist.Load(&HSTRING::from(lnk_path), STGM_READ).ok()?;
 
         // MAX_PATH = 260 wide chars. SLGP_RAWPATH = 4 returns the path as
-        // stored, skipping environment expansion — fine because Windows
+        // stored, skipping environment expansion - fine because Windows
         // shortcuts always store absolute paths.
         let mut buf = [0u16; 260];
         link.GetPath(&mut buf, std::ptr::null_mut(), 0).ok()?;

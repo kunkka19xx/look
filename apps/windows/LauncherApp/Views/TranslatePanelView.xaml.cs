@@ -89,7 +89,7 @@ public sealed partial class TranslatePanelView : UserControl
     {
         ApplyToAllSections(section =>
         {
-            section.SetBody("—");
+            section.SetBody("-");
             section.ClearTranslated();
         });
     }
@@ -116,7 +116,7 @@ public sealed partial class TranslatePanelView : UserControl
         }
         else
         {
-            section.SetBody("—");
+            section.SetBody("-");
         }
         section.ClearTranslated();
     }

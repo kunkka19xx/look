@@ -113,7 +113,7 @@ pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_home_dir() -> Option<String> {
-    // Windows has USERPROFILE, not HOME — prefer it there so JS-side quick
+    // Windows has USERPROFILE, not HOME - prefer it there so JS-side quick
     // folders (Desktop/Documents/…) resolve. Fall back to HOME for Linux/macOS.
     #[cfg(target_os = "windows")]
     {
@@ -148,7 +148,7 @@ pub fn get_quick_folders() -> Vec<QuickFolder> {
             .map(|(title, path)| QuickFolder { title, path })
             .collect();
         // The Recycle Bin is a shell namespace, not a real directory, so it's
-        // pinned with a `shell:` location that `open_path` hands to Explorer —
+        // pinned with a `shell:` location that `open_path` hands to Explorer -
         // the Windows analogue of Linux's pinned Trash (Ctrl+D empties it).
         folders.push(QuickFolder {
             title: "Recycle Bin".to_string(),

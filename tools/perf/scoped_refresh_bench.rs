@@ -7,7 +7,7 @@
 //!   cargo run --release --bin scoped_refresh_bench --manifest-path tools/perf/Cargo.toml
 //!
 //! Uses a throwaway temp database (does not touch your real `~/.local/share/look/look.db`).
-//! Each mode is run twice — the first run includes the SQLite WAL bootstrap and
+//! Each mode is run twice - the first run includes the SQLite WAL bootstrap and
 //! initial inserts, the second is the "warm" path the watcher actually exercises.
 use look_engine::{BootstrapScope, QueryEngine};
 use look_storage::SqliteStore;
@@ -53,7 +53,7 @@ fn main() {
         );
     }
 
-    // Tidy up — only one bench process should ever be touching this file.
+    // Tidy up - only one bench process should ever be touching this file.
     let _ = std::fs::remove_file(&db_path);
 }
 

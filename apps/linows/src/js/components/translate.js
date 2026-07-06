@@ -100,7 +100,7 @@ export async function perform(text) {
     return { lang, section, body, copyBtn };
   });
 
-  // Footer: Open in Browser — pinned to bottom
+  // Footer: Open in Browser - pinned to bottom
   const footer = document.createElement('div');
   footer.className = 'translate-footer';
   footer.addEventListener('click', () => {

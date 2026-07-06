@@ -17,7 +17,7 @@
 //! +---------------------------+
 //! ```
 //!
-//! Allocated with `GMEM_MOVEABLE` because `SetClipboardData` takes ownership —
+//! Allocated with `GMEM_MOVEABLE` because `SetClipboardData` takes ownership -
 //! we must NOT free on success, but MUST free on failure (otherwise the
 //! allocation leaks across the process).
 
@@ -29,7 +29,7 @@ use windows::Win32::System::Memory::{GHND, GlobalAlloc, GlobalLock, GlobalUnlock
 use windows::Win32::UI::Shell::DROPFILES;
 
 // CF_HDROP. Defined in winuser.h as `15`; the windows crate exposes it via
-// Win32_System_Ole / Win32_System_SystemServices, but it's just a constant —
+// Win32_System_Ole / Win32_System_SystemServices, but it's just a constant -
 // we use the raw value to keep the feature surface tight.
 const CF_HDROP: u32 = 15;
 
@@ -92,7 +92,7 @@ pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
 
             let _ = GlobalUnlock(hmem); // returns BOOL; non-zero failure expected here
 
-            // On success the clipboard owns hmem — DON'T free. On failure we
+            // On success the clipboard owns hmem - DON'T free. On failure we
             // must free or leak the global handle.
             match SetClipboardData(CF_HDROP, Some(HANDLE(hmem.0))) {
                 Ok(_) => Ok(()),

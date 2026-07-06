@@ -37,7 +37,7 @@ public static class DriveDiscoveryService
     {
         // Track drives the user has opted into via their bare root ("D:\") so the
         // corresponding checkbox shows pre-checked. A sub-path on the same drive
-        // (e.g. "D:\Projects") doesn't pre-check the box — the bare root and the
+        // (e.g. "D:\Projects") doesn't pre-check the box - the bare root and the
         // sub-path are independent scan entries, and we let the user manage any overlap.
         var exactlyCovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (string root in existingScanRoots)
@@ -109,7 +109,7 @@ public static class DriveDiscoveryService
 
         if (drive.FreeBytes is long free && drive.TotalBytes is long total && total > 0)
         {
-            head += $"  —  {FormatBytes(free)} free of {FormatBytes(total)}";
+            head += $"  -  {FormatBytes(free)} free of {FormatBytes(total)}";
         }
 
         return head;

@@ -144,7 +144,7 @@
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* Syntax token colors — matches macOS SyntaxHighlighter palette */
+/* Syntax token colors - matches macOS SyntaxHighlighter palette */
 .tk-kw  { color: var(--syntax-keyword, #d17dc9); }
 .tk-str { color: var(--syntax-string, #e8a86b); }
 .tk-cm  { color: var(--syntax-comment, #737873); }
@@ -318,7 +318,7 @@
   user-select: text;
 }
 
-/* Web-suggestion preview — mirrors macOS WebSuggestionPreviewView. Centred
+/* Web-suggestion preview - mirrors macOS WebSuggestionPreviewView. Centred
  * search affordance for the selected Google-autocomplete row, since there's
  * no file metadata to surface. */
 .preview-web-suggestion {
@@ -345,7 +345,7 @@
   max-width: 100%;
   word-wrap: break-word;
   user-select: text;
-  /* Match macOS lineLimit(3) — long suggestions truncate after three lines. */
+  /* Match macOS lineLimit(3) - long suggestions truncate after three lines. */
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;

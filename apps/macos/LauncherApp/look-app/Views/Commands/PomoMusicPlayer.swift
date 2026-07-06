@@ -5,7 +5,7 @@ import Observation
 // Streams one audio file at a time via AVPlayer. Track URLs are stored
 // as paths (lightweight); only the currently-playing AVPlayerItem holds
 // a buffer in memory. On track end we auto-advance, looping back to the
-// first when the list wraps. Top-level folder scan only — no recursion.
+// first when the list wraps. Top-level folder scan only - no recursion.
 
 @Observable
 final class PomoMusicPlayer {
@@ -56,7 +56,7 @@ final class PomoMusicPlayer {
 
     func togglePlay() {
         if currentIndex == nil {
-            // Cold start — kick off from the first shuffled track.
+            // Cold start - kick off from the first shuffled track.
             guard !tracks.isEmpty else { return }
             loadAndPlay(index: 0)
             return

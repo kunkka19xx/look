@@ -2,7 +2,7 @@
 //!
 //! Uses `x11rb` to find windows by WM_CLASS and send a proper
 //! `_NET_ACTIVE_WINDOW` client message to the window manager.
-//! Works on GNOME, KDE, and any EWMH-compliant WM — including NixOS
+//! Works on GNOME, KDE, and any EWMH-compliant WM - including NixOS
 //! where `xdotool` / `wmctrl` are typically not installed.
 //!
 //! Also provides a background monitor that:
@@ -219,13 +219,13 @@ fn read_active_window(conn: &impl Connection, root: Window, atom: Atom) -> u32 {
         .unwrap_or(0)
 }
 
-/// One visible window's identifying properties — what we can read from X11
+/// One visible window's identifying properties - what we can read from X11
 /// without consulting `/proc`. Both `WM_CLASS` strings are lowercased so
 /// callers can compare case-insensitively against desktop file metadata.
 #[derive(Debug, Clone)]
 pub struct VisibleWindowInfo {
     /// `WM_CLASS` instance (first NUL-terminated string). Usually matches the
-    /// app's `StartupWMClass=` desktop field — e.g. `libreoffice-writer`,
+    /// app's `StartupWMClass=` desktop field - e.g. `libreoffice-writer`,
     /// `discord`, `postman`.
     pub instance: String,
     /// `WM_CLASS` class (second string). Usually the human-readable form
@@ -233,7 +233,7 @@ pub struct VisibleWindowInfo {
     pub class: String,
     /// `_NET_WM_PID` if the app set it. Many Electron/Java/AppImage apps
     /// don't, which is precisely why `list_gui`'s PID filter alone misses
-    /// them — WM_CLASS gives us a second matching axis.
+    /// them - WM_CLASS gives us a second matching axis.
     pub pid: Option<u32>,
 }
 
@@ -366,7 +366,7 @@ where
                 let active = read_active_window(&conn, root, active_atom.atom);
 
                 if active == our_wid {
-                    // Focus confirmed — stop retrying
+                    // Focus confirmed - stop retrying
                     NEEDS_FOCUS.store(false, Ordering::SeqCst);
                     HAS_FOCUS.store(true, Ordering::SeqCst);
                 } else {
@@ -398,7 +398,7 @@ fn handle_active_change<F>(
         NEEDS_FOCUS.store(false, Ordering::SeqCst);
         HAS_FOCUS.store(true, Ordering::SeqCst);
     } else if active != 0 && HAS_FOCUS.swap(false, Ordering::SeqCst) {
-        // We HAD focus and now lost it — auto-hide.
+        // We HAD focus and now lost it - auto-hide.
         if skip_auto_hide {
             // On focus-follows-mouse WMs (i3, sway), only auto-hide when
             // the user clicked outside (mouse button is still pressed).

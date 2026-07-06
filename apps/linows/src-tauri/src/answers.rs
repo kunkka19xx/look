@@ -2,7 +2,7 @@
 //! HTTP (via curl subprocess) and no async runtime, so anything that touches
 //! the network runs on the Tauri blocking pool to keep the UI thread free.
 //!
-//! Mirrors `bridge/ffi/src/answers_api.rs` on macOS — the wire shape is the
+//! Mirrors `bridge/ffi/src/answers_api.rs` on macOS - the wire shape is the
 //! same `Answer` struct from look-answers, serialised straight to JSON.
 
 use look_answers::Answer;
@@ -16,7 +16,7 @@ pub fn instant_has_match(query: String) -> bool {
     look_answers::has_match(&query)
 }
 
-/// Definitional entity extractor — e.g. `"what is vim"` → `Some("vim")`. Used
+/// Definitional entity extractor - e.g. `"what is vim"` → `Some("vim")`. Used
 /// by the JS controller to pick the Wikipedia search term. Cheap (regex only),
 /// so it stays on the calling thread.
 #[tauri::command]
@@ -45,7 +45,7 @@ pub async fn duckduckgo_answer(query: String) -> Option<Answer> {
 }
 
 /// Wikipedia REST API summary. `term` should be the extracted entity, not the
-/// raw query — the JS controller calls `definitional_entity` first.
+/// raw query - the JS controller calls `definitional_entity` first.
 #[tauri::command]
 pub async fn wikipedia_answer(term: String) -> Option<Answer> {
     async_runtime::spawn_blocking(move || look_answers::wikipedia_answer(&term))

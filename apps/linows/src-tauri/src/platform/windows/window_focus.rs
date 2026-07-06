@@ -3,7 +3,7 @@
 //! Mirrors the WinUI3 reference (`apps/windows/LauncherApp/Services/ActionDispatcher.cs`
 //! `TryActivateExistingAppWindow`). Without this hook, every Enter on a
 //! search result hands off to `ShellExecuteW` / `open::that`, which spins
-//! up a new process even when the app already owns a visible window —
+//! up a new process even when the app already owns a visible window -
 //! noisy and unexpected for users who think of Look as a window switcher.
 //!
 //! Two matching strategies:
@@ -17,7 +17,7 @@
 //! Once a PID matches, `EnumWindows` picks the best top-level frame and
 //! `activate_window` raises it (AttachThreadInput + sync ShowWindow if
 //! iconic + SetForegroundWindow). Call sites must run this **before**
-//! hiding Look's own window — see commands.rs for ordering.
+//! hiding Look's own window - see commands.rs for ordering.
 
 use windows::Win32::Foundation::{CloseHandle, FALSE, HANDLE, HWND, LPARAM, MAX_PATH, TRUE};
 use windows::Win32::System::Com::{
@@ -53,7 +53,7 @@ unsafe extern "system" {
     ) -> i32;
 }
 
-// The probe call returns this when the buffer is too small — the only path
+// The probe call returns this when the buffer is too small - the only path
 // that tells us the AUMID exists and how long it is. APPMODEL_ERROR_NO_APPLICATION
 // (15700) and success-with-length-zero both mean "no AUMID, give up".
 const ERROR_INSUFFICIENT_BUFFER: i32 = 122;
@@ -73,7 +73,7 @@ pub(crate) fn try_focus_existing(path: &str) -> bool {
 
     // Collect every PID that matches, not just the first. Modern apps spawn
     // helper processes that share the same AUMID or live under the same
-    // package dir but don't own a window — Windows Terminal pulls in
+    // package dir but don't own a window - Windows Terminal pulls in
     // OpenConsole.exe and shell children, any of which can enumerate first.
     // Picking only the first PID then giving up if it has no window meant
     // Terminal silently fell through to "launch a new instance".
@@ -121,7 +121,7 @@ fn resolve_target(path: &str) -> Option<Target> {
     {
         let aumid = rest.trim();
         // A valid AUMID is `<PackageFamilyName>!<AppId>`. Without the bang
-        // it's a package family name only — nothing reliable to match against.
+        // it's a package family name only - nothing reliable to match against.
         if aumid.contains('!') {
             return Some(Target::Aumid(aumid.to_string()));
         }
@@ -153,7 +153,7 @@ fn normalize_path(path: &str) -> String {
 
 fn resolve_lnk_target(lnk_path: &str) -> Option<String> {
     unsafe {
-        // RPC_E_CHANGED_MODE is harmless — the icon resolver may have already
+        // RPC_E_CHANGED_MODE is harmless - the icon resolver may have already
         // CoInit'd this thread in a compatible apartment model.
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
 
@@ -422,7 +422,7 @@ fn activate_window(hwnd: HWND) {
     // so the rule trips even though Look's UI thread is foreground. Attach
     // our input queue to the target's for the duration to lend us its rights.
     //
-    // SW_RESTORE only when iconic — calling it on a maximized window
+    // SW_RESTORE only when iconic - calling it on a maximized window
     // un-maximizes it (Edge loses F11/fullscreen). Synchronous `ShowWindow`
     // (not `ShowWindowAsync`): cross-thread it blocks until the target
     // processes the restore, so SetForegroundWindow next runs against a

@@ -141,7 +141,7 @@ extension LauncherView {
             window.makeKeyAndOrderFront(nil)
             activateLauncherModeAndFocus()
             let frameStr = NSStringFromRect(window.frame)
-            hotkeyLog.notice("toggle: SHOW done — visible=\(window.isVisible) onActiveSpace=\(window.isOnActiveSpace) frame=\(frameStr, privacy: .public)")
+            hotkeyLog.notice("toggle: SHOW done - visible=\(window.isVisible) onActiveSpace=\(window.isOnActiveSpace) frame=\(frameStr, privacy: .public)")
             return
         }
 

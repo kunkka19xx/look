@@ -60,7 +60,7 @@ enum DeleteTargetLogic {
 
     /// Detail line for the Empty Trash confirmation, stressing permanence.
     static func emptyTrashDetail(itemCount: Int) -> String {
-        "\(itemCount) item\(itemCount == 1 ? "" : "s") — deleted permanently"
+        "\(itemCount) item\(itemCount == 1 ? "" : "s") - deleted permanently"
     }
 
     private static func normalize(_ path: String) -> String {

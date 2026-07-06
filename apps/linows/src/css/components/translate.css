@@ -1,4 +1,4 @@
-/* Translation panel — slots into the main-pane grid's results row, spanning
+/* Translation panel - slots into the main-pane grid's results row, spanning
  * both columns since translate mode hides the preview side. */
 .translate-panel {
   grid-row: 3;
@@ -131,7 +131,7 @@
   font-style: italic;
 }
 
-/* Footer: Open in Browser — pinned to bottom */
+/* Footer: Open in Browser - pinned to bottom */
 .translate-footer {
   margin-top: auto;
   display: flex;

@@ -77,7 +77,7 @@ namespace LauncherApp
             "\\$GetCurrent\\",
             "\\$SysReset\\",
             "\\$INPLACE.~TR\\",
-            // Direct UWP package exes — inaccessible to user, duplicates AppsFolder entries.
+            // Direct UWP package exes - inaccessible to user, duplicates AppsFolder entries.
             "\\WindowsApps\\",
         ];
 

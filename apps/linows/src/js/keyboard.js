@@ -110,7 +110,7 @@ function handleKeyDown(e) {
     }
   }
 
-  // Ctrl+= / Ctrl+- / Ctrl+0 — UI zoom in/out/reset. Mirrors macOS
+  // Ctrl+= / Ctrl+- / Ctrl+0 - UI zoom in/out/reset. Mirrors macOS
   // Cmd+= / Cmd+- / Cmd+0 (apps/macos/.../look_appApp.swift:177). Global:
   // works in search, command, settings, and help screens.
   if (e.ctrlKey && !e.shiftKey && !e.altKey && settingsModule) {
@@ -259,7 +259,7 @@ function handleKeyDown(e) {
       } else if (e.ctrlKey) {
         e.preventDefault();
         if (isDiscoveryMode()) break;
-        // Only files/folders are pickable — apps/settings/clipboard rows have
+        // Only files/folders are pickable - apps/settings/clipboard rows have
         // no real path to copy and would leave the picked panel rendering
         // nonsense. Mirrors macOS togglePickForSelectedResult.
         const sel = results.getSelected();
@@ -284,7 +284,7 @@ function handleKeyDown(e) {
 }
 
 // Side actions (reveal, copy path, pick, trash) don't make sense on synthetic
-// discovery rows — their `path` is empty. Mirrors macOS guards on
+// discovery rows - their `path` is empty. Mirrors macOS guards on
 // revealSelectedInFinder / togglePickForSelectedResult.
 function isDiscoveryMode() {
   return search.isPrefixHintMode() || search.isCommandHintMode();
@@ -344,7 +344,7 @@ async function handleEmptyTrash() {
   const itemWord = count === 1 ? 'item' : 'items';
   const ok = await confirm.ask({
     title: `Empty ${label}?`,
-    detail: `${count} ${itemWord} — deleted permanently`,
+    detail: `${count} ${itemWord} - deleted permanently`,
     icon: trashIcon,
   });
   if (!ok) return;

@@ -12,7 +12,7 @@ private let windowAutoScaleLog = Logger(subsystem: "noah-code.Look", category: "
 /// capped at 1.3× on taller displays.
 ///
 /// SwiftUI/AppKit work in points, so unlike the Tauri version we do
-/// not multiply by backingScaleFactor — the OS handles that.
+/// not multiply by backingScaleFactor - the OS handles that.
 /// NSScreen height on a 2× Retina 4K is already 1080 points, matching
 /// the Tauri `logical_h = physical_h / scale` derivation.
 ///
@@ -22,7 +22,7 @@ private let windowAutoScaleLog = Logger(subsystem: "noah-code.Look", category: "
 /// window attach.
 enum WindowAutoScale {
     // Base size matches the Linux/Windows build (apps/linows/src-tauri):
-    // 860×580 logical, landscape — list pane + preview pane side by side.
+    // 860×580 logical, landscape - list pane + preview pane side by side.
     static let baseWidth: CGFloat = 860
     static let baseHeight: CGFloat = 600
 
@@ -60,7 +60,7 @@ enum WindowAutoScale {
 
     /// Resize the window to match the current screen's scale, keeping the
     /// existing position anchor (top-left). Used when the user drags the
-    /// window to a different display — we adjust the scale but never the
+    /// window to a different display - we adjust the scale but never the
     /// position, since the macOS launcher is user-draggable.
     ///
     /// Clamps the result inside the screen's visibleFrame so we never
@@ -133,7 +133,7 @@ enum WindowAutoScale {
         let id = ObjectIdentifier(window)
         let token = UUID()
         pendingResizeTokens[id] = token
-        // Start the suppression window NOW (at notification time) — even
+        // Start the suppression window NOW (at notification time) - even
         // if the resize turns out to be a no-op (e.g., same scale across
         // screens), the screen change itself can briefly drop the
         // launcher's frontmost status and trigger the auto-hide.

@@ -6,7 +6,7 @@ html:not([data-os="linux"]) .help-linux-only {
   display: none;
 }
 
-/* Help screen overlay — uses an opaque dark base under the translucent
+/* Help screen overlay - uses an opaque dark base under the translucent
  * tint so the launcher's results/preview can't bleed through. The tint
  * still overlays the base, preserving the user's chosen theme color hue
  * while the base provides full opacity. */

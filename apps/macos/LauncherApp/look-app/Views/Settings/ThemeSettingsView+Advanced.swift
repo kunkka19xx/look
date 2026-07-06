@@ -51,7 +51,7 @@ extension ThemeSettingsView {
                             .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
                             .foregroundStyle(themeStore.secondaryTextColor())
 
-                        // Not gated on Apple Intelligence availability — the web
+                        // Not gated on Apple Intelligence availability - the web
                         // answer card and search suggestions work without it; the
                         // on-device tier just self-skips when unavailable.
                         Toggle("Enable AI & web answers", isOn: $settings.aiEnabled)

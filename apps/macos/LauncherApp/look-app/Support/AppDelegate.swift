@@ -39,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pomoMenuBarItem.install()
 
         // Create the launcher window ourselves (hidden) so LauncherView mounts
-        // at launch — even on a cold background-login launch, where SwiftUI
+        // at launch - even on a cold background-login launch, where SwiftUI
         // would never create a WindowGroup window. With the view mounted, its
         // .lookToggleWindowRequested observer is live and Cmd+Space toggles it.
         makeLauncherWindow()
@@ -52,15 +52,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         PomoNotifications.requestPermissionEarly()
 
         // Notify-only update check against GitHub Releases (throttled to once
-        // per 12h). Look ships via Homebrew, so this never self-installs — it
+        // per 12h). Look ships via Homebrew, so this never self-installs - it
         // just surfaces a notice linking to the release page.
         UpdateChecker.shared.checkForUpdates()
     }
 
     /// Build the launcher window in AppKit, host ContentView in it, and leave
     /// it hidden. WindowConfigurator (embedded in ContentView) restyles this
-    /// window on first appearance — corner radius, floating level, titlebar
-    /// hairline fix, multi-display autoscale — exactly as it did for the old
+    /// window on first appearance - corner radius, floating level, titlebar
+    /// hairline fix, multi-display autoscale - exactly as it did for the old
     /// WindowGroup window, so nothing about the launcher's look changes.
     private func makeLauncherWindow() {
         let baseSize = WindowAutoScale.baseSize()
@@ -79,7 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         window.contentView = NSHostingView(rootView: content)
         window.isReleasedWhenClosed = false
-        // Start hidden — this matches the launcher's normal resting state
+        // Start hidden - this matches the launcher's normal resting state
         // (it is summoned with Cmd+Space, not shown at launch).
         window.orderOut(nil)
         launcherWindow = window

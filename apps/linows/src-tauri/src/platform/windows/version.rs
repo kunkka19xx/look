@@ -8,7 +8,7 @@
 //! Path handling:
 //! - `.lnk` shortcuts are resolved to their target `.exe` via `IShellLinkW`
 //!   (Start Menu entries are .lnk-based).
-//! - `shell:AppsFolder\<AUMID>` (UWP) returns None — version lives in the
+//! - `shell:AppsFolder\<AUMID>` (UWP) returns None - version lives in the
 //!   AppX package manifest, not in a queryable file resource. Adding it
 //!   needs a WinRT roundtrip; skipped for now.
 //! - Anything else is fed straight to `GetFileVersionInfoW`.
@@ -91,7 +91,7 @@ fn read_string_file_info(path: &str, key: &str) -> Option<String> {
             return None;
         }
 
-        // Walk every translation — some exes ship en-US first, others SDK-default first.
+        // Walk every translation - some exes ship en-US first, others SDK-default first.
         // Take the first FileDescription we can read.
         let translations = std::slice::from_raw_parts(ptr as *const u32, (len / 4) as usize);
         for &translation in translations {
@@ -161,7 +161,7 @@ fn read_fixed_file_info(path: &str) -> Option<String> {
         let mut buf = vec![0u8; size as usize];
         GetFileVersionInfoW(pcwstr, None, size, buf.as_mut_ptr() as *mut _).ok()?;
 
-        // "\\" pulls the root VS_FIXEDFILEINFO block — numeric version,
+        // "\\" pulls the root VS_FIXEDFILEINFO block - numeric version,
         // language-agnostic. Available on virtually every Win32 binary
         // that ships any version resource at all.
         let root: Vec<u16> = "\\".encode_utf16().chain(std::iter::once(0)).collect();
@@ -193,7 +193,7 @@ fn read_fixed_file_info(path: &str) -> Option<String> {
             return None;
         }
 
-        // Trim trailing zero revision — Explorer's Details tab does the same.
+        // Trim trailing zero revision - Explorer's Details tab does the same.
         let formatted = if revision == 0 {
             format!("{major}.{minor}.{build}")
         } else {

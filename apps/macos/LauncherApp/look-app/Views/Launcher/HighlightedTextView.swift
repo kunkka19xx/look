@@ -45,7 +45,7 @@ struct HighlightedTextView: NSViewRepresentable {
         storage.addAttribute(.font, value: font, range: fullRange)
         // Paint the theme's default text color on ranges the highlighter
         // didn't already color (identifiers, punctuation, whitespace).
-        // NSTextView's default is labelColor — too bright for our pane.
+        // NSTextView's default is labelColor - too bright for our pane.
         storage.enumerateAttribute(.foregroundColor, in: fullRange) { value, range, _ in
             if value == nil {
                 storage.addAttribute(.foregroundColor, value: defaultColor, range: range)

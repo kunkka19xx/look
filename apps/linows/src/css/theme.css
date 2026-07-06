@@ -1,6 +1,6 @@
 /* Catppuccin Mocha (Default Theme) */
 :root {
-  /* Background tint — Catppuccin Mocha base #1e1e2e */
+  /* Background tint - Catppuccin Mocha base #1e1e2e */
   --bg-tint: #1e1e2e;
 
   /* Text hierarchy */
@@ -8,17 +8,17 @@
   --font-secondary: #c8cee0;
   --font-muted: rgba(180, 187, 210, 0.82);
 
-  /* Border — surface2 #585b70 */
+  /* Border - surface2 #585b70 */
   --border-color: rgba(88, 91, 112, 0.28);
   --border-thickness: 1px;
 
-  /* Surfaces — surface0 #313244, surface1 #45475a, overlay0 #6c7086 */
+  /* Surfaces - surface0 #313244, surface1 #45475a, overlay0 #6c7086 */
   --panel-fill: rgba(49, 50, 68, 0.50);
   --control-fill: rgba(69, 71, 90, 0.50);
   --divider-color: rgba(88, 91, 112, 0.32);
   --selection-fill: rgba(88, 91, 112, 0.40);
 
-  /* Accent & semantic — blue #89b4fa */
+  /* Accent & semantic - blue #89b4fa */
   --accent-color: #89b4fa;
   --on-accent-color: #1e1e2e;
   --color-success: #a6e3a1;

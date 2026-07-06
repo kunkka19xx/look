@@ -156,7 +156,7 @@
   font-size: calc(var(--font-size) - 1px);
 }
 
-/* Rich empty state — used by rc" recent mode; mirrors the macOS
+/* Rich empty state - used by rc" recent mode; mirrors the macOS
  * RecentEmptyStateView (clock icon + title + body + help line) in a single
  * stacked column to fit the linows window. */
 .empty-state-rich {

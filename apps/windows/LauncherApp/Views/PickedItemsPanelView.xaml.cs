@@ -29,7 +29,7 @@ public sealed partial class PickedItemsPanelView : UserControl
         foreach (LauncherRowItem item in items)
         {
             Items.Add(item);
-            // Picked panel rows render the same icon as the result list — kick off the
+            // Picked panel rows render the same icon as the result list - kick off the
             // shared async load so the panel doesn't stay on the fallback glyph.
             _ = item.LoadIconAsync();
         }

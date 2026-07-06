@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 // PomoState is the single source of truth for an active pomodoro across
 // the launcher. PomoView reads/writes it; the menu bar item observes it
 // for the always-visible mini-timer. Lives as a @StateObject inside
-// PomoView (not app-global) — closing the launcher window keeps the
+// PomoView (not app-global) - closing the launcher window keeps the
 // timer running because the SwiftUI WindowGroup retains its view tree
 // while the window is hidden.
 
@@ -23,7 +23,7 @@ final class PomoState {
     private(set) var secondsLeft: Int = 0
     private(set) var running: Bool = false
 
-    // UI state for the idle fade — kept here (not as @State on PomoView)
+    // UI state for the idle fade - kept here (not as @State on PomoView)
     // so other views (the launcher's command sidebar) can react to it
     // and collapse out of the way.
     var idle: Bool = false
@@ -118,7 +118,7 @@ final class PomoState {
     // ── Tick driver ─────────────────────────────────────────────────────
     //
     // Wall-clock based: we record `lastTickAt` and on each fire we deduct
-    // the elapsed seconds. This survives sleep/wake correctly — closing
+    // the elapsed seconds. This survives sleep/wake correctly - closing
     // a laptop for 5 min returns with 5 fewer minutes left, not paused.
 
     private func startTicking() {
@@ -164,7 +164,7 @@ final class PomoState {
         didNotifyEndingSoon = false  // ready to fire again for the next phase
 
         // Only the "ending soon" notification (10s before end) is shown
-        // to the user — the phase-end moment itself is silent because
+        // to the user - the phase-end moment itself is silent because
         // the timer / phase color visibly transitioning is enough.
         let next: PomoSession? = (i + 1 < sessions.count) ? sessions[i + 1] : nil
 
@@ -183,7 +183,7 @@ final class PomoState {
 
     private func advance(from i: Int) {
         // Reset the per-phase notification flag so the next session's
-        // own ending-soon alert can fire — covers both the natural
+        // own ending-soon alert can fire - covers both the natural
         // phase-end path and `skip()`, which would otherwise carry the
         // already-notified flag into the next session.
         didNotifyEndingSoon = false
@@ -208,7 +208,7 @@ final class PomoState {
 // AppDelegate creates a global PomoState reference at launch (so the
 // menu bar can show the timer even when the launcher window is closed)
 // and passes it into the PomoView via the environment. We avoid a
-// singleton — PomoState is shared but not global.
+// singleton - PomoState is shared but not global.
 
 enum PomoSharedState {
     @MainActor static let shared = PomoState()
@@ -277,7 +277,7 @@ struct PomoView: View {
             scheduleIdleReset()
         }
         .onChange(of: state.activeIndex) { _, _ in
-            // Don't restore from standby on auto-advance — the user
+            // Don't restore from standby on auto-advance - the user
             // explicitly wants to stay in focus mode across the phase
             // boundary. Re-arming the idle countdown is also unnecessary
             // here; the existing schedule (or the next activity event)
@@ -303,12 +303,12 @@ struct PomoView: View {
     private func restoreFromIdle() {
         // Plain assignment, no `withAnimation`. The fade is driven by
         // `.animation(_:value: idle)` modifiers on the views that
-        // actually fade — so an in-progress idle change can't capture
+        // actually fade - so an in-progress idle change can't capture
         // unrelated state mutations (e.g. a button color flipping when
         // the user clicks Start/Pause) and animate them too. That was
         // showing up as a yellow/red halo around the buttons.
         if state.idle { state.idle = false }
-        // Always re-arm the 5s countdown — without this, an activity
+        // Always re-arm the 5s countdown - without this, an activity
         // event silently consumed the schedule and standby never
         // re-triggered. Token logic in scheduleIdleReset handles the
         // pile-up of pending tasks (only the latest one fires).
@@ -435,7 +435,7 @@ struct PomoView: View {
     private var sessionListToggleAndList: some View {
         VStack(alignment: .leading, spacing: 6) {
             // Settings panel (timer style picker) appears ABOVE the
-            // session-list toggle when its gear is on — placing it below
+            // session-list toggle when its gear is on - placing it below
             // the toggle was confusing, since it visually buried the
             // setting underneath the unrelated list section.
             if showSettings {
@@ -459,7 +459,7 @@ struct PomoView: View {
 
                 Spacer()
 
-                // Add buttons only when the list is open — they wouldn't
+                // Add buttons only when the list is open - they wouldn't
                 // make sense (or be visible) when the list is collapsed.
                 if showSessionList {
                     Button {
@@ -535,7 +535,7 @@ struct PomoView: View {
     }
 
     // ID-based binding so that mutating one session never depends on a
-    // stale captured index — important during ForEach re-render after a
+    // stale captured index - important during ForEach re-render after a
     // delete.
     private func binding(for id: PomoSession.ID) -> Binding<PomoSession> {
         Binding(
@@ -562,7 +562,7 @@ struct PomoView: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 musicButton(systemName: "backward.fill") { state.music.prev() }
-                // Single play/pause button — icon swaps on state.
+                // Single play/pause button - icon swaps on state.
                 musicButton(systemName: state.music.isPlaying ? "pause.fill" : "play.fill") {
                     state.music.togglePlay()
                 }
@@ -778,7 +778,7 @@ private final class KeyCommandsHostView: NSView {
                    text.isKind(of: NSTextField.self) || text.isKind(of: NSTextView.self) { return event }
                 let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
                 let plainModifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
-                // Space (49), no modifiers — start/pause. Cmd+Space
+                // Space (49), no modifiers - start/pause. Cmd+Space
                 // (the launcher hotkey) carries .command and is rejected
                 // by the plainModifiers check, so it passes through.
                 if event.keyCode == 49 && plainModifiers {
@@ -797,7 +797,7 @@ private final class KeyCommandsHostView: NSView {
             }
         }
         // Restore-from-idle on any pointer interaction. Mouse-moved
-        // events are deliberately skipped — they fire constantly and
+        // events are deliberately skipped - they fire constantly and
         // would defeat the idle fade entirely.
         if activityMonitor == nil {
             let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel, .flagsChanged]
@@ -832,7 +832,7 @@ private struct ModernRingTimer: View {
         ZStack {
             Circle()
                 .stroke(dimColor, lineWidth: 6)
-            // No `.animation(_:value: progress)` — the trim was animating
+            // No `.animation(_:value: progress)` - the trim was animating
             // every tick, and that animation transaction was leaking out
             // and rendering a yellow/red halo around the controls below.
             // We trade smooth interpolation for visual stability; the
@@ -858,7 +858,7 @@ private struct VintageDialTimer: View {
     let size: CGFloat
 
     var body: some View {
-        // Vintage style is purely analog — the dial face conveys the
+        // Vintage style is purely analog - the dial face conveys the
         // remaining time via the needle position. No digital readout.
         Canvas { ctx, canvasSize in
             drawDial(in: ctx, canvasSize: canvasSize)
@@ -930,7 +930,7 @@ private struct MinimalTextTimer: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(dimColor)
-                    // No `.animation(_:value: progress)` — see ModernRingTimer.
+                    // No `.animation(_:value: progress)` - see ModernRingTimer.
                     Capsule()
                         .fill(color)
                         .frame(width: geo.size.width * max(0, min(1, progress)))

@@ -345,7 +345,7 @@ impl QueryEngine {
             self.search_text_query(&parsed_query.normalized_query, kind_filter, limit)
         };
 
-        // Materialize Candidates only for the final top-K — the hot scoring loop
+        // Materialize Candidates only for the final top-K - the hot scoring loop
         // kept everything as (index, score) pairs to avoid per-push clones.
         indices
             .into_iter()
@@ -371,7 +371,7 @@ mod tests {
             "/x/project",
         );
         folder.last_used_at_unix_s = Some(150);
-        // Never opened — must be excluded.
+        // Never opened - must be excluded.
         let never = Candidate::new(
             "file:never",
             CandidateKind::File,

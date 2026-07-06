@@ -9,7 +9,7 @@ import Foundation
 @MainActor
 final class AIAnswerController: ObservableObject {
     enum State: Equatable {
-        case idle       // not a question / AI off — no card
+        case idle       // not a question / AI off - no card
         case streaming  // answer is being generated
         case done       // answer complete
         case failed     // model declined or errored
@@ -47,7 +47,7 @@ final class AIAnswerController: ObservableObject {
     }
 
     /// Re-evaluate for the current query. Cancels any in-flight generation.
-    /// `resultCount` is how many local results the launcher found — an entity
+    /// `resultCount` is how many local results the launcher found - an entity
     /// with no local match (e.g. "david beckham") is treated as knowledge-seeking.
     func update(query: String, resultCount: Int, aiEnabled: Bool, provider: AIProviderKind) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -60,7 +60,7 @@ final class AIAnswerController: ObservableObject {
 
         // Triggers: an explicit question, a multi-word entity that matched
         // nothing locally, or a pattern-gated instant source (weather, currency,
-        // crypto) — those carry their own narrow grammar.
+        // crypto) - those carry their own narrow grammar.
         let questionLike = Self.isQuestionLike(trimmed)
         let orphanEntity = resultCount == 0 && Self.isEntityLookup(trimmed)
         let instant = EngineBridge.shared.instantAnswerMatches(trimmed)
@@ -69,7 +69,7 @@ final class AIAnswerController: ObservableObject {
             return
         }
 
-        // Same question already answered/answering — leave it be.
+        // Same question already answered/answering - leave it be.
         if trimmed == question, state != .idle { return }
 
         task?.cancel()
@@ -82,7 +82,7 @@ final class AIAnswerController: ObservableObject {
             try? await Task.sleep(nanoseconds: Self.debounceNanoseconds)
             guard let self, !Task.isCancelled else { return }
 
-            // Fastest path: local arithmetic. No network, no model — instant.
+            // Fastest path: local arithmetic. No network, no model - instant.
             if let calc = Self.calcAnswer(for: trimmed) {
                 if Task.isCancelled { return }
                 self.items = [Item(text: calc, source: "Calculator", url: nil, imageURL: nil)]
@@ -90,7 +90,7 @@ final class AIAnswerController: ObservableObject {
                 return
             }
 
-            // Web sources run concurrently and each renders the moment it lands —
+            // Web sources run concurrently and each renders the moment it lands -
             // first available first, the slower one slots in below it.
             await self.collectWebAnswers(for: trimmed, questionLike: questionLike)
             if Task.isCancelled { return }
@@ -114,7 +114,7 @@ final class AIAnswerController: ObservableObject {
                     self.state = self.llmAnswer.isEmpty ? .failed : .done
                 }
             } catch is CancellationError {
-                // Superseded by a newer query — nothing to surface.
+                // Superseded by a newer query - nothing to surface.
             } catch {
                 if !Task.isCancelled { self.state = .failed }
             }
@@ -175,7 +175,7 @@ final class AIAnswerController: ObservableObject {
         }
     }
 
-    /// Two extracts are "the same" if their leading text matches — DuckDuckGo
+    /// Two extracts are "the same" if their leading text matches - DuckDuckGo
     /// abstracts are often verbatim Wikipedia, so we don't show both.
     private static func similar(_ a: String, _ b: String) -> Bool {
         func key(_ s: String) -> String {
@@ -200,7 +200,7 @@ final class AIAnswerController: ObservableObject {
     /// Keeps the model off the hot path for ordinary launches like "spotify".
     static func isQuestionLike(_ text: String) -> Bool {
         guard text.count >= 3 else { return false }
-        // An explicit question mark is the strongest signal — honour it even for
+        // An explicit question mark is the strongest signal - honour it even for
         // short queries like "1+1=?".
         if text.hasSuffix("?") { return true }
 

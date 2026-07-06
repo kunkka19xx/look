@@ -14,7 +14,7 @@ namespace LauncherApp;
 // Search pipeline: query routing (ResolveMode), async Rust backend fetch (QueryInput_OnTextChanged),
 // rendering (RefreshResults), and the dedup/noise filters that trim Rust results before display.
 // UWP entries live in the Rust candidates table (seeded by UwpAppService at startup) so there's no
-// separate UWP search path here — the engine ranks them alongside System32 / Start Menu apps.
+// separate UWP search path here - the engine ranks them alongside System32 / Start Menu apps.
 public sealed partial class MainWindow
 {
     private (LauncherMode mode, string normalizedQuery) ResolveMode(string rawQuery)
@@ -45,7 +45,7 @@ public sealed partial class MainWindow
         string rawQuery = QueryInput.Text?.Trim() ?? string.Empty;
 
         // `:cmdid<space>...` jumps straight into command mode with the rest pre-filled as
-        // command input. Bare `:cmdid` (no space) is handled on Enter only — see Keyboard.cs.
+        // command input. Bare `:cmdid` (no space) is handled on Enter only - see Keyboard.cs.
         // Skipped while already in command mode so editing a command argument that happens to
         // start with `:` (e.g. `:3000` for kill-by-port) doesn't re-trigger.
         if (_mode != LauncherMode.Command
@@ -117,7 +117,7 @@ public sealed partial class MainWindow
             SetMode(LauncherMode.Translate);
         }
 
-        // Discard any in-flight translate from the prior query — its results are stale now.
+        // Discard any in-flight translate from the prior query - its results are stale now.
         _translateCts?.Cancel();
         _translateCts = null;
 

@@ -1,4 +1,4 @@
-name: Release Windows App (Legacy — manual only)
+name: Release Windows App (Legacy - manual only)
 
 permissions:
   contents: write
@@ -7,7 +7,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # Legacy WinUI3 app is in maintenance mode.
-# Automatic releases disabled — use manual dispatch for critical bugfixes only.
+# Automatic releases disabled - use manual dispatch for critical bugfixes only.
 # The Tauri-based linows app will replace this for Windows.
 on:
   workflow_dispatch:

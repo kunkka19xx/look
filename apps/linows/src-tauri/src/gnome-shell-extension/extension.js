@@ -50,7 +50,7 @@ export default class LookIntegration extends Extension {
 
     ListWindowedApps() {
         // Shell.AppSystem.get_running() puts an app in RUNNING state once it
-        // owns any tracked window — including skip-taskbar / utility surfaces
+        // owns any tracked window - including skip-taskbar / utility surfaces
         // some tray apps (flameshot, fcitx5 indicator) create. To match what
         // a user calls a "running app", we require at least one NORMAL window
         // that isn't skip-taskbar, matching GNOME's own window switcher.

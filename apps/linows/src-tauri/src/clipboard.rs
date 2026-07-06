@@ -22,7 +22,7 @@ struct ClipboardState {
 }
 
 static STATE: Mutex<Option<ClipboardState>> = Mutex::new(None);
-/// When true, the next clipboard change is from Look itself — skip it.
+/// When true, the next clipboard change is from Look itself - skip it.
 static SKIP_NEXT: AtomicBool = AtomicBool::new(false);
 
 fn now_secs() -> u64 {
@@ -56,7 +56,7 @@ fn save_entries(entries: &[ClipboardEntry]) {
     }
 }
 
-/// Mark that Look is about to write to clipboard — monitor should skip the next change.
+/// Mark that Look is about to write to clipboard - monitor should skip the next change.
 pub fn mark_self_write() {
     SKIP_NEXT.store(true, Ordering::Relaxed);
 }

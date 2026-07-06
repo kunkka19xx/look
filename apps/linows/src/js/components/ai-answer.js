@@ -2,7 +2,7 @@
 // area. Faithful port of macOS AIAnswerController.swift: same trigger
 // heuristics, same 350 ms debounce, same source-fan-out + dedup, same state
 // names. linows has no on-device LLM, so the streaming fallback that macOS
-// uses ("Apple Intelligence" block) is intentionally absent — we surface
+// uses ("Apple Intelligence" block) is intentionally absent - we surface
 // Calculator + DuckDuckGo + Wikipedia + the pattern-gated instant providers
 // (currency / weather / crypto) and stop there.
 
@@ -12,24 +12,24 @@ import {
 } from '../ipc.js';
 
 const DEBOUNCE_MS = 350;
-// Chars stripped from the trailing end of a calc query — people tack
+// Chars stripped from the trailing end of a calc query - people tack
 // "=?", "=", or "?" onto math expressions before pressing Enter.
 const CALC_TRIM_TRAILING = '=? ';
 // Require at least one arithmetic operator so a bare number or word
 // ("hello") isn't sent to the calculator.
 const CALC_OPERATOR = /[+\-*/^%]/;
-// Two answer texts are "the same" when their leading N chars match —
+// Two answer texts are "the same" when their leading N chars match -
 // DuckDuckGo abstracts are often verbatim Wikipedia, so we don't show both.
 const SIMILARITY_PREFIX_LEN = 60;
-// Source labels — exposed as constants so the card view can match against
+// Source labels - exposed as constants so the card view can match against
 // them without restating the magic string. Mirror macOS source names.
 export const SOURCE_CALCULATOR = 'Calculator';
 
 // State machine: same names + meanings as macOS AIAnswerController.State.
-//   idle      — not a question / AI off / no answer to show
-//   streaming — at least one async source is in flight
-//   done      — every source has settled (one or more blocks landed)
-//   failed    — every source returned null (only used to show the empty hint)
+//   idle      - not a question / AI off / no answer to show
+//   streaming - at least one async source is in flight
+//   done      - every source has settled (one or more blocks landed)
+//   failed    - every source returned null (only used to show the empty hint)
 export const State = Object.freeze({
   idle: 'idle', streaming: 'streaming', done: 'done', failed: 'failed',
 });
@@ -64,7 +64,7 @@ export function getState() {
 }
 
 // Re-evaluate for the current query. Cancels any in-flight generation.
-// `resultCount` is how many local results the launcher found — a multi-word
+// `resultCount` is how many local results the launcher found - a multi-word
 // entity with no local match (e.g. "david beckham") is treated as a
 // knowledge lookup (see isEntityLookup).
 export async function update(rawQuery, resultCount) {
@@ -73,7 +73,7 @@ export async function update(rawQuery, resultCount) {
   // Triggers (mirrors macOS): an explicit question, a multi-word entity with
   // no local match, or a pattern-gated instant source (weather / currency /
   // crypto). instantHasMatch is a network-free regex gate; everything else
-  // is local — so this can run on every keystroke without I/O.
+  // is local - so this can run on every keystroke without I/O.
   const questionLike = isQuestionLike(query);
   const orphanEntity = resultCount === 0 && isEntityLookup(query);
   const instant = aiEnabled && query.length > 0 ? await instantHasMatch(query) : false;
@@ -83,7 +83,7 @@ export async function update(rawQuery, resultCount) {
     return;
   }
 
-  // Same question already active — leave it be (avoid re-fetch on every
+  // Same question already active - leave it be (avoid re-fetch on every
   // keystroke that doesn't change the trimmed query).
   if (query === question && state !== State.idle) return;
 
@@ -124,7 +124,7 @@ function isStale(myVersion) {
   return myVersion !== runVersion;
 }
 
-// Fastest path: local arithmetic. No network, no provider — instant. The
+// Fastest path: local arithmetic. No network, no provider - instant. The
 // macOS version uses CalcCommand.evaluate; we use the same backend
 // (`eval_calc` Tauri command) so behaviour matches.
 async function tryCalc(query, myVersion) {
@@ -163,7 +163,7 @@ async function runFetch(query, questionLike, instant, myVersion) {
   }
 
   // Fan out concurrently. A matched instant source (currency / weather /
-  // crypto) is what the user wants — skip the generic encyclopedia lookups
+  // crypto) is what the user wants - skip the generic encyclopedia lookups
   // then. Each task is a Promise<Item | null> that the loop below appends as
   // it resolves so the first available source surfaces immediately, and a
   // single slow provider doesn't hold up the others.

@@ -125,7 +125,7 @@ struct AIAnswerCardView: View {
                     .foregroundStyle(themeStore.accentColor())
             }
         }
-        // A generous, reliable hit area — the old Button was a tiny, flaky target
+        // A generous, reliable hit area - the old Button was a tiny, flaky target
         // inside the borderless panel.
         .padding(.vertical, 2)
         .padding(.trailing, 6)

@@ -66,7 +66,7 @@ public sealed partial class MainWindow
 
         _pickedKeys.Clear();
         _pickedResultsByKey.Clear();
-        // Clear the system clipboard too — picks are the only thing we put there via this
+        // Clear the system clipboard too - picks are the only thing we put there via this
         // flow, so leaving stale picks on the clipboard after the user explicitly cleared
         // would be confusing. Matches macOS clearAllPicked which also clears NSPasteboard.
         try
@@ -131,7 +131,7 @@ public sealed partial class MainWindow
 
             // Restore the preview panel for the current selection (only in modes that show it).
             // Help mode covers the entire ResultsHost grid (Grid.ColumnSpan="3" in MainWindow.xaml)
-            // so showing the preview here paints it on top of the help screen — exclude it.
+            // so showing the preview here paints it on top of the help screen - exclude it.
             if ((_mode == LauncherMode.Search || _mode == LauncherMode.Clipboard)
                 && ResultsList.SelectedItem is LauncherRowItem selectedRow)
             {
@@ -166,7 +166,7 @@ public sealed partial class MainWindow
     {
         if (_pickedKeys.Count == 0)
         {
-            // Last pick was just toggled off — clear clipboard so we don't leave the previous
+            // Last pick was just toggled off - clear clipboard so we don't leave the previous
             // (now-stale) pick set behind.
             try
             {

@@ -40,7 +40,7 @@ struct WindowConfigurator: NSViewRepresentable {
 
     // macOS Sequoia draws a 1px titlebar separator on the first paint even
     // though `titlebarSeparatorStyle = .none` is set in configureWindow.
-    // The style is only honored after a *real* frame change — re-assigning
+    // The style is only honored after a *real* frame change - re-assigning
     // `.none` alone does nothing. Reproduce that frame change here: once the
     // window has painted, apply a 1px round-trip resize. It's imperceptible
     // but forces AppKit to re-evaluate the separator and drop the hairline.
@@ -49,7 +49,7 @@ struct WindowConfigurator: NSViewRepresentable {
     //
     // ONE-SHOT per window. The setFrame grow/restore must NOT run on every
     // updateNSView (typing, hover, running-app notifications all trigger it),
-    // or the window would visibly resize twice per state change — flicker, and
+    // or the window would visibly resize twice per state change - flicker, and
     // the same transient deactivation that WindowAutoScale suppresses only for
     // its own resizes. Runs once, on first show, from makeNSView.
     private func suppressTitlebarHairline(in window: NSWindow) {
@@ -61,7 +61,7 @@ struct WindowConfigurator: NSViewRepresentable {
         hideTitlebarSeparatorSubviews(in: window)
 
         // The frame change must actually persist for one runloop pass before
-        // being reverted — growing and restoring in the same tick gets
+        // being reverted - growing and restoring in the same tick gets
         // coalesced by AppKit into a net no-op, so `.none` never re-applies.
         // Grow now, restore on the next tick.
         let original = window.frame
@@ -141,7 +141,7 @@ struct WindowConfigurator: NSViewRepresentable {
         }
 
         // Re-apply scaling when the window crosses to a different display.
-        // Position is preserved (top-left anchor) — only size changes,
+        // Position is preserved (top-left anchor) - only size changes,
         // since the macOS launcher is user-draggable.
         NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeScreenNotification,
@@ -150,7 +150,7 @@ struct WindowConfigurator: NSViewRepresentable {
         ) { note in
             guard let w = note.object as? NSWindow else { return }
             Logger(subsystem: "noah-code.Look", category: "window-resize")
-                .debug("didChangeScreenNotification fired — scheduling resize")
+                .debug("didChangeScreenNotification fired - scheduling resize")
             // The observer is registered with `queue: .main`, so this already
             // runs on the main actor - assert it to reach the isolated method.
             MainActor.assumeIsolated {
@@ -163,7 +163,7 @@ struct WindowConfigurator: NSViewRepresentable {
 // One-shot guard so configureWindow runs exactly once per NSWindow.
 // Only ever read/written on the main actor (configureWindow is invoked
 // from SwiftUI's main-actor view-update path), but the global is
-// otherwise unprotected — declare its isolation explicitly for Swift 6.
+// otherwise unprotected - declare its isolation explicitly for Swift 6.
 @MainActor private var configuredWindowIDs: Set<ObjectIdentifier> = []
 
 // Windows whose first-show titlebar-hairline workaround has already run, so the

@@ -37,7 +37,7 @@ public sealed partial class TranslateLanguageSectionView : UserControl
 
     public void SetBody(string text)
     {
-        BodyText.Text = string.IsNullOrEmpty(text) ? "—" : text;
+        BodyText.Text = string.IsNullOrEmpty(text) ? "-" : text;
     }
 
     public void SetTranslated(string? translated)

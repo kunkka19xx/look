@@ -1,7 +1,7 @@
 //! Enumerate installed font families on Windows via GDI.
 //!
 //! `EnumFontFamiliesExW` with a DEFAULT_CHARSET probe walks every installed
-//! face the system makes available to GDI — the same set Office, Notepad,
+//! face the system makes available to GDI - the same set Office, Notepad,
 //! and the Windows Settings font picker see. We collect unique typeface
 //! family names from `LOGFONTW.lfFaceName` and return them sorted.
 //!
@@ -51,7 +51,7 @@ unsafe extern "system" fn enum_proc(
     let families = unsafe { &mut *(lparam.0 as *mut BTreeSet<String>) };
     let face = unsafe { (*lplf).lfFaceName };
 
-    // Vertical-writing aliases for CJK fonts (e.g. "@MS Gothic"). Hide them —
+    // Vertical-writing aliases for CJK fonts (e.g. "@MS Gothic"). Hide them -
     // they're a layout artefact, not a separate font the user would pick.
     if face.first().copied() == Some(b'@' as u16) {
         return 1;

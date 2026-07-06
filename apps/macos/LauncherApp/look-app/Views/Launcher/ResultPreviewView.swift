@@ -11,7 +11,7 @@ struct ResultPreviewView: View {
     @State private var trashItemCount: Int?
 
     /// The pinned Trash quick folder is TCC-protected, so it can't be listed
-    /// like a normal folder — it gets a Finder-backed summary instead.
+    /// like a normal folder - it gets a Finder-backed summary instead.
     private var isTrash: Bool {
         result.kind == .folder
             && DeleteTargetLogic.isTrashPath(result.path, homeDirectory: NSHomeDirectory())
@@ -197,7 +197,7 @@ struct ResultPreviewView: View {
                 }
                 if isTrash {
                     // Don't list ~/.Trash (TCC) and don't prompt for Automation
-                    // just by previewing — only show a count if already granted.
+                    // just by previewing - only show a count if already granted.
                     folderListing = nil
                     trashItemCount = EmptyTrashCommand.itemCount(promptIfNeeded: false)
                     return
@@ -206,7 +206,7 @@ struct ResultPreviewView: View {
                 let path = result.path
                 let listing = await FolderListingService.list(path: path)
                 // .task(id:) cancels this closure when the result changes,
-                // but the detached worker keeps running — guard against
+                // but the detached worker keeps running - guard against
                 // stale assignment when the user moved on to another folder.
                 if Task.isCancelled { return }
                 folderListing = listing

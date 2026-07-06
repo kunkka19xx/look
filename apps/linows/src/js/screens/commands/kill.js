@@ -61,7 +61,7 @@ export function handleKey(e) {
     return true;
   }
 
-  // Confirm state — consume all keys, only act on Y/N
+  // Confirm state - consume all keys, only act on Y/N
   if (confirmPid !== null) {
     e.preventDefault();
     if (e.key === 'y' || e.key === 'Y') {

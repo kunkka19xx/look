@@ -51,7 +51,7 @@ pub fn list_processes_on_port(port: u16) -> Vec<RunningApp> {
 
 /// List running GUI apps (apps with visible windows).
 /// Unlike `list_processes` (used by /kill), this filters out background
-/// services, terminal apps, and input methods — only switchable apps remain.
+/// services, terminal apps, and input methods - only switchable apps remain.
 #[tauri::command]
 pub fn list_running_apps() -> Vec<RunningApp> {
     #[cfg(target_os = "linux")]

@@ -1,5 +1,5 @@
 //! Windows process listing / kill. Mirrors the WinUI3 reference at
-//! apps/windows/LauncherApp/Commands/KillCommand.cs — EnumWindows tags every
+//! apps/windows/LauncherApp/Commands/KillCommand.cs - EnumWindows tags every
 //! visible top-level window with its owning PID, Toolhelp32 walks the full
 //! process list, GetExtendedTcpTable does per-port lookups. Filtering
 //! (system-noise names, \WindowsApps\, \SystemApps\, \ImmersiveControlPanel\)
@@ -73,7 +73,7 @@ pub(crate) fn list() -> Vec<RunningApp> {
     }
 
     // WinUI3 only falls back to windowless processes when nothing has a window
-    // — otherwise the list is dominated by background helpers no one wants.
+    // - otherwise the list is dominated by background helpers no one wants.
     let mut apps = if !windowed.is_empty() {
         windowed
     } else {
@@ -115,7 +115,7 @@ pub(crate) fn list_on_port(port: u16) -> Vec<RunningApp> {
 }
 
 /// Switcher view: one entry per switchable top-level window. Unlike `list()`
-/// (the kill view), this surfaces UWP apps — Settings, Calculator, Photos, … —
+/// (the kill view), this surfaces UWP apps - Settings, Calculator, Photos, … -
 /// whose visible windows are owned by `ApplicationFrameHost.exe` while their
 /// real process is windowless, so `list()` hides them. UWP entries activate by
 /// HWND (encoded in `desktop_id` as `hwnd:<handle>`) because several UWP apps
@@ -138,14 +138,14 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
             .to_string();
 
         let is_frame_host = basename.eq_ignore_ascii_case("applicationframehost.exe");
-        // ApplicationFrameHost is the UWP UI host — keep it; drop other noise.
+        // ApplicationFrameHost is the UWP UI host - keep it; drop other noise.
         if !is_frame_host && is_system_noise(&basename) {
             continue;
         }
 
         if is_frame_host {
             // The UWP window title ("Settings") is the app name (always non-empty
-            // — enumerate_switchable_windows drops untitled windows). One entry
+            // - enumerate_switchable_windows drops untitled windows). One entry
             // per window, activated by HWND.
             apps.push(RunningApp {
                 name: title,
@@ -391,7 +391,7 @@ fn is_system_noise(name: &str) -> bool {
             | "services"
             | "sihost"
             | "taskhostw"
-            // UWP frame wrapper — owns the visible window for Settings,
+            // UWP frame wrapper - owns the visible window for Settings,
             // Calculator, etc., but the real app process is separate; killing
             // it tears down every UWP window at once.
             | "applicationframehost"
@@ -438,7 +438,7 @@ fn cached_file_description(exe_path: &str) -> Option<String> {
     resolved
 }
 
-// WinUI3 reject-list — these descriptions are too generic to be useful and
+// WinUI3 reject-list - these descriptions are too generic to be useful and
 // just shadow the process basename without adding information.
 fn is_usable_description(desc: &str, stem: &str) -> bool {
     let trimmed = desc.trim();

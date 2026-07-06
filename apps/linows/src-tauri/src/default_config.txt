@@ -10,7 +10,7 @@ file_exclude_paths=
 lazy_indexing_enabled=true
 skip_dir_names=node_modules,target,build,dist,.git,vendor,out,coverage,tmp,cache,venv
 
-# Arch (and other affected stacks) — workarounds for WebKitGTK ghost rendering
+# Arch (and other affected stacks) - workarounds for WebKitGTK ghost rendering
 # arch_disable_gpu=true forces HardwareAccelerationPolicy::Never on the webview;
 # arch_disable_blur=true drops backdrop-filter and forces an opaque tint (same
 # behavior as the Hyprland fallback). Both default off; flip if you see slider
@@ -21,12 +21,12 @@ arch_disable_blur=false
 # Running apps switcher: none, right
 running_apps_placement=right
 
-# Web answers — show an inline answer card for question-like queries
+# Web answers - show an inline answer card for question-like queries
 # (currency/weather/crypto via the network, Wikipedia/DuckDuckGo lookups,
 # and Google autocomplete suggestions). Set to false to disable all network
 # answer features and run fully offline.
 #
-# Note: there is no on-device LLM on Linux/Windows — Apple Intelligence is
+# Note: there is no on-device LLM on Linux/Windows - Apple Intelligence is
 # macOS-only. The key stays named `ai_enabled` to share config storage with
 # the macOS app (where it gates both web answers AND the on-device model).
 ai_enabled=true

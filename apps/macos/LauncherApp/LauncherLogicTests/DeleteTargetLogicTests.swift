@@ -92,8 +92,8 @@ final class DeleteTargetLogicTests: XCTestCase {
     // MARK: - empty trash wording
 
     func testEmptyTrashDetailPluralization() {
-        XCTAssertEqual(DeleteTargetLogic.emptyTrashDetail(itemCount: 1), "1 item — deleted permanently")
-        XCTAssertEqual(DeleteTargetLogic.emptyTrashDetail(itemCount: 7), "7 items — deleted permanently")
+        XCTAssertEqual(DeleteTargetLogic.emptyTrashDetail(itemCount: 1), "1 item - deleted permanently")
+        XCTAssertEqual(DeleteTargetLogic.emptyTrashDetail(itemCount: 7), "7 items - deleted permanently")
     }
 
     // MARK: - resultMessage

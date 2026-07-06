@@ -7,7 +7,7 @@ nonisolated private let hotkeyLog = Logger(subsystem: "noah-code.Look", category
 @MainActor
 final class GlobalHotKeyManager {
     // nonisolated(unsafe) so the nonisolated deinit can release these
-    // (they're Carbon/AppKit handles — not actually Sendable, but they're
+    // (they're Carbon/AppKit handles - not actually Sendable, but they're
     // only mutated from MainActor anyway).
     nonisolated(unsafe) private var hotKeyRef: EventHotKeyRef?
     nonisolated(unsafe) private var eventHandler: EventHandlerRef?
@@ -110,7 +110,7 @@ final class GlobalHotKeyManager {
             if plainCmd && event.keyCode == UInt16(kVK_Space) {
                 hotkeyLog.notice("LOCAL monitor fired (app active=\(NSApp.isActive))")
                 NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
-                return nil   // consume — don't let any field eat the space
+                return nil   // consume - don't let any field eat the space
             }
             return event
         }

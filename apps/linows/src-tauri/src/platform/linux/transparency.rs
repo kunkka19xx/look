@@ -18,7 +18,7 @@ pub fn has_compositor() -> bool {
     x11_has_standalone_compositor()
 }
 
-/// Wayland detection – checks both `WAYLAND_DISPLAY` (more reliable on NixOS
+/// Wayland detection - checks both `WAYLAND_DISPLAY` (more reliable on NixOS
 /// and non-systemd setups) and `XDG_SESSION_TYPE`.
 #[cfg(target_os = "linux")]
 pub fn is_wayland() -> bool {

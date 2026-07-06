@@ -18,7 +18,7 @@ public sealed record ClipboardHistoryEntry(
 
 public sealed class ClipboardHistoryService : IDisposable
 {
-    // Parity with macOS AppConstants.Launcher.Clipboard — caps history at 10 entries to
+    // Parity with macOS AppConstants.Launcher.Clipboard - caps history at 10 entries to
     // keep the picker scannable and limit how much sensitive captured text sits on disk.
     // Reducing MaxEntries naturally truncates an existing larger history on next load
     // because LoadPersisted applies Take(MaxEntries).

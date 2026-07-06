@@ -218,7 +218,7 @@ function Invoke-Uninstall {
             Write-Warn "Uninstaller exited with code $($proc.ExitCode)"
         }
     } else {
-        Write-Warn "No uninstall.exe at $InstallDir — was Look installed via NSIS?"
+        Write-Warn "No uninstall.exe at $InstallDir - was Look installed via NSIS?"
         if (Test-Path $InstallDir) {
             Write-Step "Removing $InstallDir manually"
             Remove-Item -Path $InstallDir -Recurse -Force

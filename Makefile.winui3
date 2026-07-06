@@ -1,4 +1,4 @@
-# Legacy WinUI3 build (apps/windows/, reference-only — superseded by apps/linows/).
+# Legacy WinUI3 build (apps/windows/, reference-only - superseded by apps/linows/).
 # Active Windows build lives in Makefile.win which drives the Tauri app in
 # apps/linows/. Run this one explicitly when you need to poke at the C# code:
 #     make -f Makefile.winui3 <target>

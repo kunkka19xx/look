@@ -7,7 +7,7 @@ namespace LauncherApp.Features.Search;
 
 // Mirrors AppConstants.Launcher.QuickFolder on macOS (apps/macos/.../AppConstants.swift).
 // The Rust file walker (core/engine/src/index/files.rs) deliberately skips the file_scan
-// roots themselves — it emits children but never the root directory — so typing
+// roots themselves - it emits children but never the root directory - so typing
 // "Documents", "Downloads", or "Desktop" in Look never returns those user folders from
 // the engine. macOS compensates by injecting synthetic LauncherResult rows in the Swift
 // view (LauncherView.swift quickFolderPinnedResults); this file is the Windows analog.
@@ -57,7 +57,7 @@ public static class QuickFolderCatalog
     {
         // Environment.SpecialFolder has no Downloads value (the Vista-era KNOWNFOLDERID was
         // never backported to the enum). SHGetKnownFolderPath honors OneDrive redirection
-        // the same way Explorer's Quick Access entry does — `C:\Users\<user>\Downloads`
+        // the same way Explorer's Quick Access entry does - `C:\Users\<user>\Downloads`
         // when local, `C:\Users\<user>\OneDrive\Downloads` when the user enabled the
         // "Back up your folders" toggle in OneDrive.
         IntPtr ptr = IntPtr.Zero;

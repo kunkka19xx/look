@@ -39,7 +39,7 @@ function renderEmptyState() {
         <div class="empty-state-icon">${historyLg}</div>
         <div class="empty-state-title">Recent files &amp; folders</div>
         <div class="empty-state-body">Nothing recent yet</div>
-        <div class="empty-state-help">Open files/folders through Look, or download/create some — newest activity shows here. Type <kbd>rc"word</kbd> to filter.</div>
+        <div class="empty-state-help">Open files/folders through Look, or download/create some - newest activity shows here. Type <kbd>rc"word</kbd> to filter.</div>
       </div>`;
   }
   // AI two-col mode: the right column hosts web suggestions, which routinely
@@ -187,7 +187,7 @@ function updatePickedIndicators() {
 // Settings entries pack their full alias list into `subtitle` so the engine
 // can fuzzy-match on keywords ("wifi", "ssid", "captions" …). That's great
 // for search but renders as a long noisy line ("Windows Settings settings
-// wifi wireless network ssid"). Trim the alias tail at render time — engine
+// wifi wireless network ssid"). Trim the alias tail at render time - engine
 // keeps the full string for scoring.
 const SETTINGS_SUBTITLE_PREFIXES = ['Windows Settings', 'System Settings'];
 
@@ -219,7 +219,7 @@ function createRow(result, index) {
   const icon = document.createElement('div');
   icon.className = 'result-icon';
   const isLinuxSettings = result.path?.startsWith('settings://') || result.subtitle?.toLowerCase().startsWith('settings');
-  // Windows ms-settings: panels share one icon at the OS level (the gear) — we
+  // Windows ms-settings: panels share one icon at the OS level (the gear) - we
   // map each panel to a category-specific Lucide glyph via the catalog so the
   // list scans visually. Returns null if the path isn't an ms-settings URI.
   const windowsSettingsSvg = getWindowsSettingsIcon(result.path);
@@ -234,7 +234,7 @@ function createRow(result, index) {
   icon.style.color = 'var(--font-secondary)';
   row.appendChild(icon);
 
-  // Skip backend icon fetch for ms-settings entries — the Shell PNG would just
+  // Skip backend icon fetch for ms-settings entries - the Shell PNG would just
   // be the generic gear and would clobber our category-specific glyph. Same
   // applies to synthetic discovery rows whose `path` is empty.
   if (result.kind !== 'clipboard' && !windowsSettingsSvg && !result.iconSvg && result.path) {

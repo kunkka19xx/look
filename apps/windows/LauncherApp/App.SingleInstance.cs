@@ -11,7 +11,7 @@ namespace LauncherApp;
 // at most one primary per exe path. Launching a second copy of the SAME exe path signals the
 // primary to come forward and the second copy exits. Different exe paths (e.g. the build dir
 // vs the %LOCALAPPDATA%\Programs\Look Dev side-by-side install) get separate keys and can run
-// concurrently — same per-bundle-path semantics as macOS.
+// concurrently - same per-bundle-path semantics as macOS.
 public partial class App
 {
     private static Mutex? _singletonMutex;
@@ -41,7 +41,7 @@ public partial class App
 
     /// <summary>
     /// Returns true when this process owns the singleton (primary). Returns false when
-    /// another instance already holds it — in that case the existing primary has been
+    /// another instance already holds it - in that case the existing primary has been
     /// signaled and the caller should exit.
     /// </summary>
     private static bool TryClaimSingleton()

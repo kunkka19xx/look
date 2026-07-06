@@ -26,7 +26,7 @@ pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
     let payload = format!("copy\n{}", uris.join("\n"));
     let mime = "x-special/gnome-copied-files";
 
-    // Try wl-copy (Wayland) first, then xclip (X11) — no hard dependency on either.
+    // Try wl-copy (Wayland) first, then xclip (X11) - no hard dependency on either.
     let wl_result = super::host_command("wl-copy")
         .args(["-t", mime])
         .stdin(Stdio::piped())

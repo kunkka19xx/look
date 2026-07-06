@@ -62,11 +62,11 @@ struct DeleteCommand {
 }
 
 /// Empties the macOS Trash via Finder. `~/.Trash` is TCC-protected, so Look
-/// can't enumerate/remove it directly without Full Disk Access — but Finder
+/// can't enumerate/remove it directly without Full Disk Access - but Finder
 /// already has the rights, so we drive it through AppleScript (which only needs
 /// a one-time Automation permission). Irreversible, hence the confirm banner.
 struct EmptyTrashCommand {
-    /// Whether Look already has permission to automate Finder — checked WITHOUT
+    /// Whether Look already has permission to automate Finder - checked WITHOUT
     /// prompting, so merely previewing the Trash doesn't pop a TCC dialog.
     @MainActor
     static func isAutomationAllowed() -> Bool {
@@ -89,7 +89,7 @@ struct EmptyTrashCommand {
     /// Empties the Trash via Finder, off the main thread (it can take seconds on
     /// a large Trash). Delivers an error message on failure, nil on success, on
     /// the main queue. Suppresses Finder's own "are you sure" (we show our own
-    /// confirm) and restores the user's preference afterward — the restore is
+    /// confirm) and restores the user's preference afterward - the restore is
     /// isolated so it can't turn a successful empty into a reported failure.
     static func empty(completion: @escaping @Sendable (String?) -> Void) {
         let body = """

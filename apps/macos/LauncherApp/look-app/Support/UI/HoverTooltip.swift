@@ -4,7 +4,7 @@ import SwiftUI
 /// bubble appears while the pointer is over it.
 ///
 /// It uses a `popover` rather than an `.overlay` so the bubble renders in its own
-/// window and is always drawn on top — an overlay can be covered by sibling
+/// window and is always drawn on top - an overlay can be covered by sibling
 /// views that come later in a VStack/ZStack (e.g. a picker below it).
 struct HoverTooltipModifier: ViewModifier {
     let text: String

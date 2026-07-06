@@ -85,7 +85,7 @@ nonisolated enum SystemInfoCommand {
         let cpuLoad: host_cpu_load_info?
     }
 
-    // Pure function — safe to call off the main actor. The caller owns the
+    // Pure function - safe to call off the main actor. The caller owns the
     // previous CPU sample so we don't need shared mutable state.
     static func snapshot(previousCPULoad: host_cpu_load_info?) -> Snapshot {
         var items: [SystemInfoItem] = []
@@ -242,10 +242,10 @@ nonisolated enum SystemInfoCommand {
 
     // host_cpu_load_info gives cumulative ticks since boot; usage % needs the
     // delta between two samples. The first refresh after the panel opens has
-    // no prior sample and shows "—".
+    // no prior sample and shows "-".
     private static func formatCPUUsage(current: host_cpu_load_info?, previous: host_cpu_load_info?) -> String {
         guard let current else { return "N/A" }
-        guard let previous else { return "—" }
+        guard let previous else { return "-" }
 
         let userDelta = Double(current.cpu_ticks.0 &- previous.cpu_ticks.0)
         let systemDelta = Double(current.cpu_ticks.1 &- previous.cpu_ticks.1)

@@ -24,7 +24,7 @@ Search and launch executables from `$PATH` + shell history, ranked by usage.
 
 - Walk all directories in `$PATH`
 - Collect executable name + full path
-- Deduplicate (same name in multiple dirs — keep first per PATH order)
+- Deduplicate (same name in multiple dirs - keep first per PATH order)
 - Skip entries that already have a `.desktop` match (avoid dupes with app search)
 
 ## Ranking
@@ -52,9 +52,9 @@ Search and launch executables from `$PATH` + shell history, ranked by usage.
 ## Backend
 
 - New module: `src-tauri/src/executables.rs`
-  - `scan_path()` — collect executables from `$PATH`
-  - `parse_shell_history()` — parse bash/zsh/fish history
-  - `search_executables(query)` — fuzzy match + rank
+  - `scan_path()` - collect executables from `$PATH`
+  - `parse_shell_history()` - parse bash/zsh/fish history
+  - `search_executables(query)` - fuzzy match + rank
 - Cache PATH + history on startup
 - Re-read history tail on window show (lightweight refresh)
 

@@ -99,7 +99,7 @@ html:not([data-os="linux"]) .settings-linux-only {
   color: var(--font-muted);
 }
 
-/* Tabs — full-width equal sizing like macOS */
+/* Tabs - full-width equal sizing like macOS */
 .settings-tabs {
   display: flex;
   gap: 4px;
@@ -180,7 +180,7 @@ html:not([data-os="linux"]) .settings-linux-only {
   padding: 0 0 2px;
 }
 
-/* Row — label + full-width slider + value on right */
+/* Row - label + full-width slider + value on right */
 .settings-row {
   display: flex;
   align-items: center;
@@ -195,7 +195,7 @@ html:not([data-os="linux"]) .settings-linux-only {
   color: var(--font-secondary);
 }
 
-/* Slider — full width, no wrapper needed */
+/* Slider - full width, no wrapper needed */
 .settings-slider {
   flex: 1;
   -webkit-appearance: none;

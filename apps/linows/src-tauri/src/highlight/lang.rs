@@ -1,5 +1,5 @@
 /// Language detection and keyword/comment definitions.
-/// Ported from macOS `SyntaxHighlighter.swift` — same extensions, same keywords.
+/// Ported from macOS `SyntaxHighlighter.swift` - same extensions, same keywords.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Language {

@@ -91,7 +91,7 @@ struct LauncherView: View {
     /// Activates the strip icon assigned to Cmd+`key`. The key is mapped
     /// to a visual position via the ergonomic layout in
     /// `AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey:total:)`.
-    /// On success the launcher is *not* hidden here — instead we let
+    /// On success the launcher is *not* hidden here - instead we let
     /// `didResignActiveNotification` close it, which only fires after
     /// macOS has handed key-window status to the target app. Hiding
     /// synchronously raced that handoff and left the keyboard focused
@@ -673,7 +673,7 @@ struct LauncherView: View {
                 // Dragging the launcher across screens triggers a
                 // programmatic resize, which briefly drops Look's frontmost
                 // status and fires this notification. Ignore the auto-hide
-                // when that just happened — the user is still interacting
+                // when that just happened - the user is still interacting
                 // with the launcher, not switching to another app.
                 if WindowAutoScale.didProgrammaticallyResizeRecently() {
                     log.debug("didResignActiveNotification ignored (within \(WindowAutoScale.resizeSettleWindow, privacy: .public)s of a programmatic resize)")
@@ -769,7 +769,7 @@ struct LauncherView: View {
                 if shouldShowRunningAppsStrip {
                     // Split the search-bar row in half: search field on the
                     // left, running-apps icons on the right. No floating strip,
-                    // no window resize — toggled via Settings → Running Apps.
+                    // no window resize - toggled via Settings → Running Apps.
                     HStack(alignment: .center, spacing: 10) {
                         searchInputBar
                             .frame(maxWidth: .infinity)
@@ -905,7 +905,7 @@ struct LauncherView: View {
             } else if !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
                       let selectedID = selectedResultID,
                       let selectedResult = displayedResults.first(where: { $0.id == selectedID }),
-                      // Search suggestions have nothing to preview — let the list
+                      // Search suggestions have nothing to preview - let the list
                       // span full width instead of showing an empty pane.
                       AppConstants.Launcher.WebSuggestion.text(fromResultID: selectedResult.id) == nil {
                 resultsDivider

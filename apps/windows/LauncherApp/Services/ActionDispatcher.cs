@@ -279,7 +279,7 @@ public sealed class ActionDispatcher
             return false;
 
         // UWP entries: shell:AppsFolder\<PackageFamilyName>!<AppId>. Process.GetProcessesByName(title)
-        // misses these whenever the AppX display name and the executable basename diverge —
+        // misses these whenever the AppX display name and the executable basename diverge -
         // Windows Terminal ("Terminal" vs "WindowsTerminal.exe"), Photos, Snipping Tool, etc.
         // So we scan all running processes and match the WindowsApps install dir's package
         // name prefix against MainModule.FileName, which always contains the package full name
@@ -381,7 +381,7 @@ public sealed class ActionDispatcher
         // Exact-match by full AUMID (PackageFamilyName!AppId) via GetApplicationUserModelId
         // on each candidate process. Matching only on the package family name was ambiguous
         // when a single package exposes multiple AppIds (e.g. utilities that ship a "Settings"
-        // entry alongside the main app) — selecting one would activate the other's window
+        // entry alongside the main app) - selecting one would activate the other's window
         // and report success. Pre-filter by `\WindowsApps\` in the exe path so we only call
         // the kernel32 API on processes that could plausibly host a UWP entrypoint.
         foreach (var process in processes)

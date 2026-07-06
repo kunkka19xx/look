@@ -35,7 +35,7 @@ struct AISearchIntent: Sendable, Equatable {
     }
 }
 
-/// Why a provider can't run right now — surfaced to the UI so we can tell the
+/// Why a provider can't run right now - surfaced to the UI so we can tell the
 /// user *what* to fix (update macOS, enable Apple Intelligence, add an API key).
 enum AIProviderUnavailableReason: Equatable, Sendable {
     case requiresNewerOS
@@ -83,14 +83,14 @@ protocol AIQueryProvider: Sendable {
 
     /// Translate a natural-language query into a structured intent. Returns
     /// `nil` when the provider declines or fails, so the caller can fall back to
-    /// the raw query — AI must never block a search.
+    /// the raw query - AI must never block a search.
     func understand(query: String) async -> AISearchIntent?
 
     /// Stream a short, free-form answer to a natural-language question. Each
     /// yielded value is the *cumulative* answer text so far (so the UI can show
     /// it typing itself out). Returns `nil` when the provider can't answer at
     /// all; the stream may otherwise finish with an error, which the caller
-    /// treats as "no answer". Purely additive — never blocks search.
+    /// treats as "no answer". Purely additive - never blocks search.
     func answer(query: String) -> AsyncThrowingStream<String, Error>?
 
     /// Optional hint that an answer may be coming soon, so the provider can warm

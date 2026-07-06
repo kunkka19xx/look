@@ -40,7 +40,7 @@ public sealed partial class MainWindow
             return false;
         }
 
-        // LauncherResult.Id for clipboard rows is "clip:<entryId>" — strip the prefix to
+        // LauncherResult.Id for clipboard rows is "clip:<entryId>" - strip the prefix to
         // recover the persistent entry id used by ClipboardHistoryService.
         const string Prefix = "clip:";
         if (!resultId.StartsWith(Prefix, StringComparison.Ordinal))

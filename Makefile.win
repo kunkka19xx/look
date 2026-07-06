@@ -2,7 +2,7 @@
 # apps/windows/). Included by the top-level Makefile on Windows hosts, so
 # `make <target>` from the repo root runs the right thing.
 #
-# Legacy WinUI3 targets moved to Makefile.winui3 — run with
+# Legacy WinUI3 targets moved to Makefile.winui3 - run with
 #     make -f Makefile.winui3 <target>
 #
 # Recipes are cmd.exe-compatible (no `|| true`, `2>/dev/null`, `[ -f ]`,

@@ -163,7 +163,7 @@ impl QueryEngine {
         }
 
         // Stale-row sweep. The `ALL` branch keeps the "discovered something"
-        // guard as a crash-shaped failsafe — if a full bootstrap silently
+        // guard as a crash-shaped failsafe - if a full bootstrap silently
         // produced zero candidates we'd rather leave the DB alone than wipe
         // every row. Scoped paths are different: when the watcher fires an
         // `APPS_ONLY` refresh, "zero discovered" is the legitimate "user just
@@ -303,7 +303,7 @@ mod tests {
     #[test]
     fn bootstrap_scope_files_only_includes_file_and_folder_prefixes() {
         // The files walker emits both `file:` and `folder:` candidates, so a
-        // scoped delete for files must sweep both — otherwise renamed/removed
+        // scoped delete for files must sweep both - otherwise renamed/removed
         // folders linger forever.
         let prefixes = BootstrapScope::FILES_ONLY.id_prefixes();
         assert_eq!(

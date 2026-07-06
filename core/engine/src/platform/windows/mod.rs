@@ -11,7 +11,7 @@ pub(crate) const APP_SCAN_ROOTS: &[&str] = &[
 
 pub(crate) const REQUIRED_APP_SCAN_ROOTS: &[&str] = &[];
 // Fallback roots scanned recursively. Note: C:/Windows/System32 was deliberately
-// excluded — `is_allowed_windows_system32_executable` only allows notepad.exe
+// excluded - `is_allowed_windows_system32_executable` only allows notepad.exe
 // from there, so a recursive walk over ~thousands of system DLLs/binaries
 // would yield exactly one candidate. Notepad is reachable via the Start Menu
 // shortcut roots and the WindowsApps location instead. The System32 filter

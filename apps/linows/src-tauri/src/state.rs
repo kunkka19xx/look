@@ -19,7 +19,7 @@ const WATCHER_POLL_MS: u64 = 500;
 /// (window show, force_index_refresh) deliberately bypass this gate.
 const WATCHER_REFRESH_COOLDOWN_MS: u64 = 10_000;
 
-/// Exact filenames that the watcher should ignore — OS metadata droppings
+/// Exact filenames that the watcher should ignore - OS metadata droppings
 /// that file managers create as a side effect of normal directory access.
 const NOISY_NAMES: &[&str] = &[".DS_Store", "Thumbs.db", "desktop.ini", ".directory"];
 
@@ -116,7 +116,7 @@ pub struct AppState {
     index_refresh_in_progress: AtomicBool,
     /// UNIX millis at which the most recent refresh (of any source) completed.
     /// Read by the watcher loop to enforce `WATCHER_REFRESH_COOLDOWN_MS`.
-    /// `0` means "no refresh has completed yet" — first run is always allowed.
+    /// `0` means "no refresh has completed yet" - first run is always allowed.
     last_refresh_completed_unix_ms: AtomicU64,
     watcher_control: Mutex<Option<mpsc::Sender<()>>>,
 }
@@ -189,7 +189,7 @@ impl AppState {
             self.ptrs(),
             BootstrapScope::ALL,
             dirty_snapshot,
-            false, // no slot held — don't release on drop
+            false, // no slot held - don't release on drop
             true,  // frontend needs the EVENT_INDEX_READY signal to render
             "look: bootstrap",
         );
@@ -212,13 +212,13 @@ impl AppState {
         }
 
         // Apps roots: small directories holding .desktop / .app entries. Safe to
-        // watch recursively — inode budget is tiny.
+        // watch recursively - inode budget is tiny.
         let mut apps_roots: Vec<String> = config.app_scan_roots.clone();
         apps_roots.extend(extra_apps_roots());
 
         // File roots: Documents / Downloads / Desktop and any extras. These can
         // be huge; recursive watches would chew through `fs.inotify.max_user_watches`
-        // and silently drop deep subdirs. Watched non-recursively — top-level
+        // and silently drop deep subdirs. Watched non-recursively - top-level
         // adds/removes (the common "I just downloaded a thing" case) still
         // refresh promptly, and the on-show full refresh reconciles deeper
         // changes.
@@ -307,7 +307,7 @@ impl AppState {
                 match event_rx.recv_timeout(std::time::Duration::from_millis(WATCHER_POLL_MS)) {
                     Ok(Ok(event)) => {
                         // Only relevant events update dirty state, but we always
-                        // fall through to the debounce check below — otherwise a
+                        // fall through to the debounce check below - otherwise a
                         // steady stream of ignored events (e.g. `Modify(Data)`
                         // during a long save/download) would starve the debounce
                         // timer and leave the index stale until the stream stops.
@@ -346,7 +346,7 @@ impl AppState {
                 // watcher loop keeps draining the event channel while the
                 // (potentially slow) reindex runs. The cooldown gate bounds
                 // refresh frequency when a noisy producer (sync client, package
-                // manager, active downloader) keeps re-dirtying the index — we
+                // manager, active downloader) keeps re-dirtying the index - we
                 // still defer the refresh but don't fire it until enough time
                 // has passed since the last completion.
                 let cooldown_ok = {
@@ -411,7 +411,7 @@ impl AppState {
 ///   initial bootstrap passes `false` (no contention to gate against yet).
 /// - `emit_ready`: `true` for async refreshes that the frontend can't otherwise
 ///   know about (bootstrap, watcher auto-refresh). `false` for user-initiated
-///   refreshes — the frontend already knows it issued the command.
+///   refreshes - the frontend already knows it issued the command.
 /// - `log_label`: prefix for stdout log lines (kept distinct so grep-by-source
 ///   still works: `look: …` vs `[watcher] …`).
 fn spawn_refresh_worker(
@@ -611,7 +611,7 @@ mod tests {
     #[test]
     fn should_mark_dirty_rejects_data_and_metadata_modifies() {
         // Pure content edits (e.g. saving a text file in place) must not
-        // trigger a reindex — only structural changes do.
+        // trigger a reindex - only structural changes do.
         assert!(!should_mark_dirty(&ev(
             EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Content)),
             &["/home/u/Documents/report.pdf"],
@@ -626,12 +626,12 @@ mod tests {
 
     #[test]
     fn should_mark_dirty_suppresses_events_whose_paths_are_all_noise() {
-        // Vim's swap file create — must not wake the indexer.
+        // Vim's swap file create - must not wake the indexer.
         assert!(!should_mark_dirty(&ev(
             EventKind::Create(CreateKind::File),
             &["/home/u/Documents/.notes.txt.swp"],
         )));
-        // Browser partial download — only noisy paths in the event.
+        // Browser partial download - only noisy paths in the event.
         assert!(!should_mark_dirty(&ev(
             EventKind::Create(CreateKind::File),
             &["/home/u/Downloads/big.iso.crdownload"],
@@ -723,7 +723,7 @@ mod tests {
     #[test]
     fn path_under_any_is_boundary_aware() {
         let roots = vec![PathBuf::from("/home/u/Down")];
-        // `/home/u/Downloads` must NOT count as being under `/home/u/Down` —
+        // `/home/u/Downloads` must NOT count as being under `/home/u/Down` -
         // PathBuf::starts_with compares whole components, so this is a property
         // of the helper we explicitly rely on.
         assert!(!path_under_any(

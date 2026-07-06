@@ -85,7 +85,7 @@ pub(crate) fn list() -> Vec<RunningApp> {
             }
         }
         // GJS apps (Weather, etc.) launch via `gjs-console` but set their
-        // /proc Name to the GApplication ID — `org.gnome.Weather` truncated
+        // /proc Name to the GApplication ID - `org.gnome.Weather` truncated
         // to `org.gnome.Weath` at the 15-char comm limit. Add the raw dotted
         // stem so the truncation fallback below picks it up.
         if let Some(stem) = Path::new(&de.path).file_stem().and_then(|s| s.to_str())
@@ -209,7 +209,7 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
                 })
                 .collect();
         }
-        // wlr unavailable (GNOME Wayland) — ask the Look GNOME Shell extension
+        // wlr unavailable (GNOME Wayland) - ask the Look GNOME Shell extension
         // which apps Shell.AppSystem considers running (≥1 window). This is
         // the same signal GNOME's Activities/app-switcher uses.
         let ext_ids = super::gnome_ext::list_windowed_apps();
@@ -244,17 +244,17 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
                 })
                 .collect();
         }
-        // Extension unreachable — last-resort heuristic.
+        // Extension unreachable - last-resort heuristic.
         if debug {
-            eprintln!("[list_gui] no wlr, no extension — using desktop-hint heuristic");
+            eprintln!("[list_gui] no wlr, no extension - using desktop-hint heuristic");
         }
         return filter_by_desktop_hints(all);
     }
 
     // X11: enumerate visible windows with WM_CLASS + (optional) _NET_WM_PID.
     // We use WM_CLASS as a second matching axis because:
-    //   • LibreOffice's /proc Name is `soffice.bin` — no `libreoffice-*.desktop`
-    //     Exec matches it — but every LibreOffice window's WM_CLASS instance
+    //   • LibreOffice's /proc Name is `soffice.bin` - no `libreoffice-*.desktop`
+    //     Exec matches it - but every LibreOffice window's WM_CLASS instance
     //     (`libreoffice-writer`, `libreoffice-calc`, …) matches the
     //     corresponding desktop's `StartupWMClass`.
     //   • Many Electron/Java apps (Postman, Discord, Element, …) don't set
@@ -288,7 +288,7 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
         result.iter().filter_map(|a| a.desktop_id.clone()).collect();
 
     // Pass 2: enrich with WM_CLASS-derived matches. Scan desktop files again
-    // (cheap — filesystem cache is hot) and pair each visible window's
+    // (cheap - filesystem cache is hot) and pair each visible window's
     // WM_CLASS with a desktop entry's StartupWMClass / file-stem fallback.
     let desktop_entries = scan_desktop_files();
     let mut class_map: std::collections::HashMap<String, &DesktopEntry> =
@@ -326,7 +326,7 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
 
 /// All lowercased keys a desktop entry can be matched against by `WM_CLASS`.
 /// Includes the declared `StartupWMClass`, the file stem (often the
-/// canonical class — e.g. `discord.desktop` → `discord`), and a kebab form
+/// canonical class - e.g. `discord.desktop` → `discord`), and a kebab form
 /// of reverse-DNS stems (`org.gnome.TextEditor` → `gnome-texteditor`).
 fn desktop_wm_class_keys(de: &DesktopEntry) -> Vec<String> {
     let mut keys = Vec::new();
@@ -358,7 +358,7 @@ fn desktop_wm_class_keys(de: &DesktopEntry) -> Vec<String> {
 /// most GNOME apps (Calendar, Weather, Maps, Files, …) run in daemon mode
 /// even when the user has a visible window open. Without a compositor signal
 /// we can't distinguish "daemon idling in background" from "daemon with an
-/// active window," so we err on the side of showing the app — false positives
+/// active window," so we err on the side of showing the app - false positives
 /// (a few invisible daemons) beat false negatives (missing real user apps).
 fn filter_by_desktop_hints(apps: Vec<RunningApp>) -> Vec<RunningApp> {
     apps.into_iter()
@@ -659,7 +659,7 @@ fn extract_bin_names(exec: &str) -> Vec<String> {
         .unwrap_or(first);
     names.push(bin.to_string());
 
-    // `gapplication launch org.gnome.Weather` — the real binary won't be
+    // `gapplication launch org.gnome.Weather` - the real binary won't be
     // `gapplication`. Derive a kebab candidate from the app ID's last two
     // reverse-DNS segments (`org.gnome.Weather` → `gnome-weather`).
     if bin == "gapplication" {
@@ -722,7 +722,7 @@ fn normalize_proc_name(proc_name: &str) -> Vec<String> {
     }
     // Trailing `-` is the most ambiguous case (could be a `-wrapped` truncation
     // OR a legitimate dash-ending name). Only treat it as a wrapper suffix
-    // when the leading dot is present — which is already guaranteed here.
+    // when the leading dot is present - which is already guaranteed here.
     if let Some(base) = stripped.strip_suffix('-')
         && !base.is_empty()
     {
@@ -799,7 +799,7 @@ mod tests {
         assert!(normalize_proc_name(".ghostty-wrappe").contains(&"ghostty".to_string()));
         // Trailing dash from `.gnome-weather-wrapped` truncated to 15 chars.
         assert!(normalize_proc_name(".gnome-weather-").contains(&"gnome-weather".to_string()));
-        // No `-wrapped` suffix visible — base fills the 14 chars.
+        // No `-wrapped` suffix visible - base fills the 14 chars.
         assert!(normalize_proc_name(".gnome-calendar").contains(&"gnome-calendar".to_string()));
         // Non-wrapper name passes through.
         assert_eq!(normalize_proc_name("firefox"), vec!["firefox"]);
@@ -835,7 +835,7 @@ mod tests {
     fn nixos_wrapper_14char_truncation_matches_long_binary() {
         // For a binary like `gnome-text-editor` (17 chars), the NixOS wrapper
         // form `.gnome-text-editor-wrapped` is truncated by /proc/<pid>/comm to
-        // `.gnome-text-edi` — the leading dot eats one slot, leaving only 14
+        // `.gnome-text-edi` - the leading dot eats one slot, leaving only 14
         // chars of the base. `normalize_proc_name` strips the dot and yields a
         // 14-char key. The 15-char truncation of "gnome-text-editor" produces
         // "gnome-text-edit" which DOESN'T match, so the lookup must also try

@@ -48,7 +48,7 @@ public sealed partial class SettingsTabsView : UserControl
         }
 
         // Default config has no ui_background_image, so Backdrop's loader returns early
-        // without clearing what's currently shown — clear it explicitly here.
+        // without clearing what's currently shown - clear it explicitly here.
         if (global::LauncherApp.App.MainAppWindow is global::LauncherApp.MainWindow window)
         {
             try

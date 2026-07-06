@@ -48,7 +48,7 @@ extension LauncherView {
             guard ensureTargetExists(selected) else { return }
             openTargetAsync(selected.path)
             // Quick-folder entries are ephemeral filesystem suggestions, not
-            // ranked candidates — they aren't in the usage index.
+            // ranked candidates - they aren't in the usage index.
             if !selected.id.hasPrefix(AppConstants.Launcher.QuickFolder.idPrefix) {
                 recordOpen(selected, action: "open_folder")
             }
@@ -142,8 +142,8 @@ extension LauncherView {
     ///
     /// A candidate can linger in the index after its bundle/file is removed
     /// (an app uninstalled but still indexed, a file moved or deleted). Opening
-    /// it would fail silently in the async completion handler, and — because we
-    /// record usage on intent — would also boost a dead entry, so it keeps
+    /// it would fail silently in the async completion handler, and - because we
+    /// record usage on intent - would also boost a dead entry, so it keeps
     /// surfacing and keeps failing. When the target is gone we surface it to the
     /// user, kick off a background reindex so the stale candidate gets pruned,
     /// and skip the open/record/hide. Recording usage is reserved for targets
@@ -153,12 +153,12 @@ extension LauncherView {
     /// Returns `true` when the target is openable.
     private func ensureTargetExists(_ selected: LauncherResult) -> Bool {
         // URL-scheme targets (settings panes, custom schemes) aren't filesystem
-        // paths and can't be stat'd — treat them as openable.
+        // paths and can't be stat'd - treat them as openable.
         if isURLScheme(selected.path) { return true }
         if FileManager.default.fileExists(atPath: selected.path) { return true }
 
         showBanner(
-            "This \(selected.kind.rawValue) no longer exists — refreshing index",
+            "This \(selected.kind.rawValue) no longer exists - refreshing index",
             style: .error,
             duration: 1.6
         )
@@ -366,7 +366,7 @@ extension LauncherView {
     }
 
     /// Cmd+D entry point. Files/folders move to Trash immediately (recoverable,
-    /// no confirmation — like Finder's Cmd+Delete). When the single selection is
+    /// no confirmation - like Finder's Cmd+Delete). When the single selection is
     /// the Trash quick folder, routes to Empty Trash, which DOES confirm because
     /// it's permanent.
     func requestDeleteSelection() {
@@ -404,7 +404,7 @@ extension LauncherView {
             showBanner("Select a file or folder to delete", style: .info, duration: 1.2)
             return
         }
-        // Recoverable — trash straight away, no confirmation.
+        // Recoverable - trash straight away, no confirmation.
         runDeleteCommand(targets: targets)
     }
 
@@ -460,7 +460,7 @@ extension LauncherView {
                 writePickedToPasteboard()
             }
 
-            // Drop the trashed rows from the on-screen results immediately — the
+            // Drop the trashed rows from the on-screen results immediately - the
             // background index refresh below is async and would otherwise leave
             // the now-gone items visible (and un-previewable) until the next search.
             backendResults.removeAll { trashed.contains($0.id) }

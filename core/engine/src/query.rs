@@ -2,7 +2,7 @@ use crate::normalize::normalize_for_search;
 use look_indexing::CandidateKind;
 
 // Query prefixes: leading letter(s) matched case-insensitively, trailing `"`
-// exactly (see `strip_query_prefix`). `rc"` must be checked before `r"` — see
+// exactly (see `strip_query_prefix`). `rc"` must be checked before `r"` - see
 // `from_input`. `rc"` is engine-side (unlike the Swift-handled `t"`/`tw"`/`c"`)
 // because recency ordering needs the per-candidate timestamps only the engine has.
 const PREFIX_APPS: &[u8] = b"a\"";
@@ -24,7 +24,7 @@ impl ParsedQuery {
     pub(crate) fn from_input(input: &str) -> Self {
         let trimmed = input.trim();
 
-        // `rc"` is checked before `r"` (single-char) — they can't collide since
+        // `rc"` is checked before `r"` (single-char) - they can't collide since
         // `r"` requires the 2nd byte to be `"`, which is `c` here.
         if let Some(rest) = strip_query_prefix(trimmed, RECENT_PREFIX) {
             return Self {
@@ -88,7 +88,7 @@ impl ParsedQuery {
 
 /// Strips a `…"` query prefix, returning the trimmed text after it (or `None`
 /// when `input` doesn't start with `prefix`). The prefix is matched ASCII
-/// case-insensitively — the trailing `"` has no case, so it matches exactly.
+/// case-insensitively - the trailing `"` has no case, so it matches exactly.
 /// `prefix` is all-ASCII, so its length is always a UTF-8 char boundary in a
 /// matched input.
 fn strip_query_prefix<'a>(input: &'a str, prefix: &[u8]) -> Option<&'a str> {

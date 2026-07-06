@@ -99,7 +99,7 @@
          (IShellItem, IEnumShellItems, IShellLinkW, IShellItemImageFactory).
          The trimmer disables built-in COM interop by default, which kills the
          RCW creation that backs `[MarshalAs(UnmanagedType.Interface)] out
-         object` on shell32 P/Invokes — UWP apps fail to seed and shortcut
+         object` on shell32 P/Invokes - UWP apps fail to seed and shortcut
          icons fail to resolve. Re-enable. -->
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
   </PropertyGroup>
@@ -144,7 +144,7 @@
   </Target>
 
   <!-- Without this, `dotnet publish` (and therefore `make app-run-dev`) leaves the publish
-       directory's look_ffi.dll at whatever was committed before the last C# rebuild — a
+       directory's look_ffi.dll at whatever was committed before the last C# rebuild - a
        brand new FFI export will compile and copy into bin\<plat>\Debug\... but never reach
        bin\Debug\...\publish\, so the dev install runs against a stale DLL whose missing
        entrypoint silently fails (EntryPointNotFoundException, swallowed at the call site). -->

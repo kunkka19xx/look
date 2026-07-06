@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace LauncherApp.Services;
 
 // Per-page Segoe Fluent Icons glyph for ms-settings:* targets. Real per-page PNG icons
-// aren't reliably exposed by Windows — Settings page art lives inside the SystemSettings
+// aren't reliably exposed by Windows - Settings page art lives inside the SystemSettings
 // package's protected resource bundles and isn't enumerable as ICON resources, so the
 // IShellItemImageFactory path collapses every page to the same generic Settings icon.
 // Mapping each curated catalog target to a Fluent glyph gives a per-category visual cue

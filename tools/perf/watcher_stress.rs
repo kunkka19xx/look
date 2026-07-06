@@ -31,7 +31,7 @@ const SCENARIO_SECS: f64 = 60.0;
 enum Source {
     Apps,
     Files,
-    DeepFiles, // events from depth > 1 under a file root — only the BEFORE
+    DeepFiles, // events from depth > 1 under a file root - only the BEFORE
                // policy sees these (recursive watch); AFTER's non-recursive
                // watch never delivers them.
 }
@@ -343,7 +343,7 @@ fn vim_edit_storm_scenario() -> Vec<SimEvent> {
 
 /// `npm install` running inside `~/Documents/project/`: thousands of writes
 /// into `node_modules`. Under BEFORE policy these all reach the watcher.
-/// Under AFTER policy the non-recursive watch never delivers them — so they
+/// Under AFTER policy the non-recursive watch never delivers them - so they
 /// are tagged `DeepFiles` and the simulator drops them in the AFTER pass.
 fn deep_tree_scenario() -> Vec<SimEvent> {
     let mut out = Vec::new();

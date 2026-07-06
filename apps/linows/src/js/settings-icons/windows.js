@@ -7,7 +7,7 @@
 // inherits currentColor so it picks up the user's theme.
 //
 // Keys are the part after `ms-settings:` (e.g. "display", "easeofaccess-magnifier").
-// Lookup with `getSettingsIcon(path)` — falls back to the gear if unmapped or
+// Lookup with `getSettingsIcon(path)` - falls back to the gear if unmapped or
 // if path doesn't start with `ms-settings:`.
 
 import {
@@ -244,7 +244,7 @@ const CMD_SCHEME = 'look-cmd://';
 // in sync with the Rust catalog so every entry gets a category icon. The key
 // is the part after `look-cmd://` up to (but not including) the optional `?`.
 const CMD_CATALOG = {
-  // rundll32 sysdm.cpl,EditEnvironmentVariables — special-case below
+  // rundll32 sysdm.cpl,EditEnvironmentVariables - special-case below
   'devmgmt.msc': cpu,
   'services.msc': settingIcon,
   'regedit.exe': code,
@@ -284,7 +284,7 @@ export function getSettingsIcon(path) {
     const qIdx = rest.indexOf('?');
     const program = (qIdx >= 0 ? rest.slice(0, qIdx) : rest).toLowerCase();
     const args = qIdx >= 0 ? rest.slice(qIdx + 1).toLowerCase() : '';
-    // Env-vars dialog: rundll32 sysdm.cpl,EditEnvironmentVariables — show
+    // Env-vars dialog: rundll32 sysdm.cpl,EditEnvironmentVariables - show
     // a code icon since this is the path/PATH editor.
     if (program === 'rundll32.exe' && args.includes('editenvironmentvariables')) {
       return code;

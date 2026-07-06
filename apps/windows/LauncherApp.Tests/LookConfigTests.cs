@@ -77,7 +77,7 @@ public class LookConfigTests
     [Fact]
     public void UpsertMany_PreservesUnknownKeysAndComments_AndIsIdempotent()
     {
-        // Matches a realistic post-first-save user config — every SaveToConfig-managed key is
+        // Matches a realistic post-first-save user config - every SaveToConfig-managed key is
         // already present, plus extra comments / unknown keys we must not touch.
         string configPath = CreateTempConfig(
             "# look configuration",
@@ -156,7 +156,7 @@ public class LookConfigTests
     {
         // Rust writes the initial config template via ensure_default_config_file. It uses
         // slightly different keys than the Windows UI expects. This test pins down what the
-        // very first Save-click does to a fresh Rust-written config — specifically that the
+        // very first Save-click does to a fresh Rust-written config - specifically that the
         // user's indexing values are preserved even though we append a few new keys.
         string configPath = CreateTempConfig(
             "# look configuration",

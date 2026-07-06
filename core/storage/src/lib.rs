@@ -261,7 +261,7 @@ impl SqliteStore {
                 // Interim write-reduction (see specs/indexing-scale.md): the `WHERE`
                 // skips the UPDATE entirely when nothing the scan controls changed,
                 // so a reindex after one download/install rewrites ~1 row instead of
-                // all ~8000. Pairs with `delete_unseen_candidates` for pruning — we
+                // all ~8000. Pairs with `delete_unseen_candidates` for pruning - we
                 // can no longer rely on bumping `indexed_at` for every seen row.
                 // List EVERY scan-owned column here; a missing one means stale data
                 // silently lingers. (use_count/last_used_at are intentionally never
@@ -426,7 +426,7 @@ impl SqliteStore {
     /// Seen-set pruning, the counterpart to the change-detecting upsert
     /// (see specs/indexing-scale.md). Because the upsert no longer bumps
     /// `indexed_at` on unchanged rows, "was this seen in the latest scan?" can't
-    /// be inferred from `indexed_at` anymore — we delete rows in scope that are
+    /// be inferred from `indexed_at` anymore - we delete rows in scope that are
     /// NOT in `seen_ids`. The `indexed_at < older_than_unix_s` guard preserves the
     /// `i64::MAX` pinned/seeded rows (e.g. UWP), exactly like `delete_stale_*`.
     /// `prefixes` empty = whole table (ALL-scope refresh); otherwise restrict to
@@ -545,7 +545,7 @@ impl SqliteStore {
     /// Deletes every candidate whose `id` starts with `prefix` and is NOT in `keep_ids`,
     /// along with its usage_events rows. Returned value is the number of candidate rows
     /// removed. Used by the UWP seed path (bridge/ffi/src/seed_api.rs) to age out apps
-    /// that disappeared from `shell:AppsFolder` between runs — those rows can't be
+    /// that disappeared from `shell:AppsFolder` between runs - those rows can't be
     /// pruned by `delete_stale_candidates` because they're written with
     /// `indexed_at_unix_s = i64::MAX` to survive the regular index-refresh sweep.
     pub fn delete_candidates_by_prefix_except(
@@ -1060,7 +1060,7 @@ mod tests {
     #[test]
     fn is_demo_seeded_returns_false_for_partial_demo_match() {
         let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
-        // Only one demo marker — not the full seed.
+        // Only one demo marker - not the full seed.
         let only_safari = candidate("app:safari", "Safari", "/Applications/Safari.app");
         store
             .upsert_candidates_indexed(&[only_safari], Some(100))
@@ -1097,7 +1097,7 @@ mod tests {
             .expect("seed");
 
         // Sweep apps + files (mirrors what BootstrapScope::FILES_ONLY produces
-        // via id_prefixes() — file + folder together — plus apps).
+        // via id_prefixes() - file + folder together - plus apps).
         let removed = store
             .delete_stale_candidates_with_prefixes(200, &["app:", "file:", "folder:"])
             .expect("sweep");
@@ -1228,7 +1228,7 @@ mod tests {
         assert!(ids.contains(&"app:uwp:Microsoft.WindowsTerminal_8wekyb3d8bbwe!App"));
         assert!(!ids.contains(&"app:uwp:Old.PackageThatGotUninstalled_abc!App"));
         // The non-uwp `app:` row must be untouched even though it shares the broader
-        // `app:` prefix — only `app:uwp:` rows are eligible for this sweep.
+        // `app:` prefix - only `app:uwp:` rows are eligible for this sweep.
         assert!(ids.contains(
             &"app:edge_c:/programdata/microsoft/windows/start menu/programs/microsoft edge.lnk"
         ));

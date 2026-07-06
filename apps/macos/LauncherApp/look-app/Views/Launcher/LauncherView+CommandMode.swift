@@ -226,7 +226,7 @@ extension LauncherView {
 
     @ViewBuilder
     var commandModeView: some View {
-        // Fixed sidebar width — the launcher window is non-resizable
+        // Fixed sidebar width - the launcher window is non-resizable
         // (minWidth 620) so the previous GeometryReader-driven formula
         // (`max(170, usableWidth * 0.25)`) always evaluated to 170 in
         // practice. GeometryReader inside a hidden-titlebar window
@@ -237,7 +237,7 @@ extension LauncherView {
         let leftWidth: CGFloat = 170
 
         // Hide the command sidebar while /pomo is in standby/idle mode
-        // — keeps the user's focus on the clock + music card with no
+        // - keeps the user's focus on the clock + music card with no
         // distractions. Other commands keep the sidebar always visible.
         let hideSidebar = activeCommandID == AppConstants.Launcher.Command.pomo
             && PomoSharedState.shared.idle
@@ -286,7 +286,7 @@ extension LauncherView {
                         // Command mode now has a solid opaque backdrop at
                         // the launcher level (themedBackground branches on
                         // isCommandMode), so the previous outer panel-fill
-                        // RoundedRectangle isn't needed — its only purpose
+                        // RoundedRectangle isn't needed - its only purpose
                         // was layering a card over the visualEffect blur,
                         // which is no longer present here. Each command
                         // owns its own card-style backdrops where wanted.

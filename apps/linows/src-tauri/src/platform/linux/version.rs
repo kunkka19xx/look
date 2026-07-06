@@ -1,6 +1,6 @@
 //! Extract an app version on Linux by canonicalizing the binary's path and
 //! pulling the version segment out of a `/nix/store/<hash>-<name>-<version>/`
-//! path. Returns None on non-Nix distros — those don't have a stable,
+//! path. Returns None on non-Nix distros - those don't have a stable,
 //! cross-distro version string we can derive from the `Exec=` field alone.
 
 pub(crate) fn read(path: &str) -> Option<String> {

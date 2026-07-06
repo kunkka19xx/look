@@ -234,7 +234,7 @@ final class KeyboardSelectionMonitor {
             }
 
             if deleteConfirmationActive() {
-                // Enter confirms too — and must be swallowed so it doesn't fall
+                // Enter confirms too - and must be swallowed so it doesn't fall
                 // through to handleSubmit and *open* the file being deleted.
                 if event.keyCode == 36 || event.keyCode == 76 {
                     onConfirmDelete?()

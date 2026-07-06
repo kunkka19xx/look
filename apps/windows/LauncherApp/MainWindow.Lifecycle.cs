@@ -192,7 +192,7 @@ public sealed partial class MainWindow
 
     /// <summary>
     /// Show the launcher window from any state and give the search input focus.
-    /// Idempotent — safe to call when already visible. Used by the global hotkey
+    /// Idempotent - safe to call when already visible. Used by the global hotkey
     /// (via ToggleLauncherVisibility) and by the single-instance activation listener
     /// in App.SingleInstance.cs when a sibling launch hands off to the primary.
     /// </summary>

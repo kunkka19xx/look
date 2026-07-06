@@ -29,7 +29,7 @@ enum AppVersion {
     /// Human-readable label for display, e.g. "Look 1.0.0 (42)" or "Look 1.0.0".
     /// Dev builds are tagged so the version isn't mistaken for a real release.
     static var displayString: String {
-        let suffix = isDevBuild ? " — dev" : ""
+        let suffix = isDevBuild ? " - dev" : ""
         guard let short else { return "Look (unknown version)\(suffix)" }
         if let build, build != short {
             return "Look \(short) (\(build))\(suffix)"

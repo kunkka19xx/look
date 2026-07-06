@@ -47,7 +47,7 @@
                 Foreground="{StaticResource LauncherTextBrush}"
                 TextWrapping="Wrap"
                 IsTextSelectionEnabled="True"
-                Text="—" />
+                Text="-" />
         </StackPanel>
     </Border>
 </UserControl>

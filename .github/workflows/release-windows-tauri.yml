@@ -25,7 +25,7 @@ jobs:
       group: release-windows-tauri-${{ github.ref }}
       cancel-in-progress: true
     # Hoisted to job scope so `if: env.WINDOWS_PFX_BASE64 != ''` on the signing
-    # step can actually see the value — step-level `env:` is applied AFTER the
+    # step can actually see the value - step-level `env:` is applied AFTER the
     # `if:` is evaluated, so a step-scoped env block never triggers the gate.
     env:
       WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
@@ -80,7 +80,7 @@ jobs:
           $version = "${{ steps.version.outputs.version }}"
           New-Item -ItemType Directory -Force dist | Out-Null
 
-          # NSIS installer — Tauri bundles lookapp.exe, WebView2Loader.dll, and
+          # NSIS installer - Tauri bundles lookapp.exe, WebView2Loader.dll, and
           # the WebView2 bootstrapper into this single .exe. Nothing else to
           # ship: the C runtime is static-linked via .cargo/config.toml.
           Get-ChildItem apps/linows/src-tauri/target/release/bundle/nsis/*.exe `

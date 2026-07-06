@@ -201,7 +201,7 @@ enum PomoPersistence {
 // still shows the transition).
 
 enum PomoNotifications {
-    // Bool flag — accessed from the UNUserNotificationCenter completion
+    // Bool flag - accessed from the UNUserNotificationCenter completion
     // queue (not main). nonisolated(unsafe) is fine: occasional
     // double-set is harmless (worst case: we issue the auth prompt
     // twice; the system de-dupes).
@@ -211,7 +211,7 @@ enum PomoNotifications {
         pomoNotifLog.notice("notifyEndingSoon name=\(session.name, privacy: .public) secondsLeft=\(secondsLeft)")
         NSSound(named: "Tink")?.play()
         let title = session.type == .focus ? "Focus ending soon" : "Break ending soon"
-        let subtitle = "\(session.name) — \(secondsLeft)s left"
+        let subtitle = "\(session.name) - \(secondsLeft)s left"
         NotificationCenter.default.post(
             name: .lookPomoStatusMessage,
             object: nil,
@@ -221,7 +221,7 @@ enum PomoNotifications {
             guard granted else { return }
             let content = UNMutableNotificationContent()
             content.title = session.type == .focus ? "Focus ending soon" : "Break ending soon"
-            content.body = "\(session.name) — \(secondsLeft)s left"
+            content.body = "\(session.name) - \(secondsLeft)s left"
             content.sound = .default
             content.interruptionLevel = .timeSensitive
             let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
@@ -298,7 +298,7 @@ enum PomoNotifications {
             case .authorized, .provisional, .ephemeral:
                 then(true)
             case .denied:
-                pomoNotifLog.error("DENIED — open System Settings → Notifications → \(bundleID, privacy: .public) and enable")
+                pomoNotifLog.error("DENIED - open System Settings → Notifications → \(bundleID, privacy: .public) and enable")
                 then(false)
             case .notDetermined:
                 guard !permissionRequested else { then(false); return }

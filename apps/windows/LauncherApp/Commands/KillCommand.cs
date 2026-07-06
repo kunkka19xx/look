@@ -110,7 +110,7 @@ public static class KillCommand
 
                 // Apply heavy system-helper filters only when the process is windowless.
                 // UWP apps like the new Notepad / Windows Terminal live under \WindowsApps\
-                // but ARE user-facing when they have a top-level window — skipping them there
+                // but ARE user-facing when they have a top-level window - skipping them there
                 // hid them from the kill screen.
                 if (ShouldHideProcess(name, executablePath, hasVisibleWindow))
                 {

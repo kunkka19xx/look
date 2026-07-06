@@ -36,7 +36,7 @@ export function update(result) {
     return;
   }
 
-  // Google autocomplete row — mirror macOS WebSuggestionPreviewView: a
+  // Google autocomplete row - mirror macOS WebSuggestionPreviewView: a
   // big magnifying-glass icon, the suggestion text, "Search Google", and
   // an Enter hint. No file metadata to show.
   const suggestionText = webSuggestionFromResultId(result.id);
@@ -91,7 +91,7 @@ export function update(result) {
   header.appendChild(headerText);
   panel.appendChild(header);
 
-  // Preview placeholder — sits between header and metadata (matches macOS order)
+  // Preview placeholder - sits between header and metadata (matches macOS order)
   const previewSlot = document.createElement('div');
   previewSlot.className = 'preview-slot';
   panel.appendChild(previewSlot);
@@ -218,7 +218,7 @@ function renderFileMeta(metaWrap, previewSlot, result, headerSub) {
       metaWrap.appendChild(infoRow('Modified', meta.modified));
     }
 
-    // Image preview — inserted into previewSlot (between header and metadata)
+    // Image preview - inserted into previewSlot (between header and metadata)
     if (meta.is_image) {
       const preview = document.createElement('div');
       preview.className = 'preview-image';
@@ -258,7 +258,7 @@ function renderFileMeta(metaWrap, previewSlot, result, headerSub) {
     }, 150);
   }
 
-  // Folder content listing — flat list with counts, clickable items.
+  // Folder content listing - flat list with counts, clickable items.
   if (result.kind === 'folder') {
     listFolder(result.path).then((listing) => {
       if (!listing || currentPath !== cacheKey) return;
@@ -314,7 +314,7 @@ function renderFileMeta(metaWrap, previewSlot, result, headerSub) {
         // File extension color hints (#2)
         if (!item.is_dir) {
           const ext = item.name.includes('.') ? item.name.split('.').pop().toLowerCase() : '';
-          // Only add class for safe extensions (alphanumeric) — classList.add
+          // Only add class for safe extensions (alphanumeric) - classList.add
           // throws InvalidCharacterError on names with spaces or special chars
           if (ext && /^[a-z0-9]+$/.test(ext)) icon.classList.add(`ext-${ext}`);
         }
@@ -384,7 +384,7 @@ function convertFileSrc(path) {
   return window.__TAURI__.core.convertFileSrc(path);
 }
 
-// Mirrors macOS WebSuggestionPreviewView.swift — a centred "search the web"
+// Mirrors macOS WebSuggestionPreviewView.swift - a centred "search the web"
 // card. A web-suggestion row has no file metadata to render, so we show the
 // action affordance instead.
 function renderWebSuggestionPreview(query) {

@@ -1,11 +1,11 @@
 /// Syntax highlighting module for file preview.
-/// Ported from macOS `SyntaxHighlighter.swift` — same tokenizer logic,
+/// Ported from macOS `SyntaxHighlighter.swift` - same tokenizer logic,
 /// adapted for Tauri: outputs pre-built HTML with CSS classes.
 ///
 /// Structure:
-///   lang.rs      — language detection + keyword/comment definitions
-///   tokenizer.rs — byte-level tokenizer producing spans
-///   html.rs      — span-to-HTML renderer with CSS classes
+///   lang.rs      - language detection + keyword/comment definitions
+///   tokenizer.rs - byte-level tokenizer producing spans
+///   html.rs      - span-to-HTML renderer with CSS classes
 mod html;
 mod lang;
 mod tokenizer;
@@ -24,11 +24,11 @@ const TEXT_EXTENSIONS: &[&str] = &[
     "svelte", "zig", "nim", "v", "odin",
 ];
 
-/// Size caps — matches macOS `QuickLookPreviewService`.
+/// Size caps - matches macOS `QuickLookPreviewService`.
 const TEXT_FILE_SIZE_CAP: u64 = 512 * 1024; // 512 KB
 const DEFAULT_FILE_SIZE_CAP: u64 = 20 * 1024 * 1024; // 20 MB
 
-/// Display cap — matches macOS `TextFilePreview.displayByteCap`.
+/// Display cap - matches macOS `TextFilePreview.displayByteCap`.
 const DISPLAY_BYTE_CAP: usize = 64 * 1024; // 64 KB
 
 #[derive(Serialize)]

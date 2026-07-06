@@ -12,7 +12,7 @@ namespace LauncherApp.Services;
 // Rust doesn't enumerate shell:AppsFolder (no equivalent of macOS Spotlight on Windows),
 // so we walk it once via direct shell COM at app start and forward each entry to
 // the Rust candidates table via look_seed_uwp_apps_json. After that, the Rust engine
-// owns ranking, scoring, use_count, and recency for UWP entries — there's no parallel
+// owns ranking, scoring, use_count, and recency for UWP entries - there's no parallel
 // C# scoring path. The seed is idempotent (upsert preserves use_count via ON CONFLICT)
 // so re-running on every launch is safe and refreshes the install list cheaply.
 public sealed class UwpAppService

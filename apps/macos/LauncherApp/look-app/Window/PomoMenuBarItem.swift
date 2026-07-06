@@ -6,11 +6,11 @@ import SwiftUI
 //
 // Visible only while a session is active. Click → opens the launcher
 // to /pomo via a notification. PomoState is @Observable, so refresh()
-// re-runs whenever a tracked property mutates — no separate heartbeat
+// re-runs whenever a tracked property mutates - no separate heartbeat
 // timer is needed.
 //
 // Also surfaces in-app messages via a popover anchored to the status
-// item button — used as a fallback for users who haven't granted macOS
+// item button - used as a fallback for users who haven't granted macOS
 // notification permission.
 
 @MainActor
@@ -21,7 +21,7 @@ final class PomoMenuBarItem {
     private var dismissWorkItem: DispatchWorkItem?
     // Coalesces overlapping refresh() calls. Without this, each fired
     // observer schedules its own async refresh, which installs another
-    // observer — repeat ticks compound into N refreshes per second and
+    // observer - repeat ticks compound into N refreshes per second and
     // the SF Symbol re-rasterization saturates the main thread.
     private var refreshScheduled = false
     private var timerImage: NSImage?

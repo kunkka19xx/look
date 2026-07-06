@@ -114,7 +114,7 @@ extension ThemeStore {
     // visualEffect blur, no bg image) so we need solid theme-derived
     // colors. Both the outer backdrop and the inner card colors share
     // the same tint contribution so they read as one continuous surface
-    // — the card is just a few points darker, like a subtle recess.
+    // - the card is just a few points darker, like a subtle recess.
 
     func commandModeBackgroundColor() -> Color {
         Color(

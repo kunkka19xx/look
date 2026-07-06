@@ -17,7 +17,7 @@ final class AppUIState: ObservableObject {
     // Remembered command id of the last command-mode panel the user
     // visited *during this launch*. Re-entering command mode (Cmd+/)
     // resumes there instead of jumping back to /calc. Intentionally
-    // not persisted — each fresh launch should start at /calc.
+    // not persisted - each fresh launch should start at /calc.
     @Published var lastCommandID: String?
 
     private static let settingsBlurMultiplierKey = "look.ui.settingsBlurMultiplier"

@@ -117,7 +117,7 @@ public class DriveDiscoveryServiceTests
             Snapshot("E:\\", DriveType.Fixed, ready: true),
         };
 
-        // System drive given as lowercase with backslash — D: should still be filtered out.
+        // System drive given as lowercase with backslash - D: should still be filtered out.
         List<CandidateDrive> result = DriveDiscoveryService.Filter(
             drives,
             existingScanRoots: [],

@@ -408,7 +408,7 @@ public sealed partial class MainWindow
         {
             // Mirrors macOS KeyboardSelectionMonitor.swift:135-155: in search/clipboard/
             // translate (any state where the query input is the focus) plain Escape hides
-            // the launcher. Help mode is the one exception — Escape there should dismiss
+            // the launcher. Help mode is the one exception - Escape there should dismiss
             // help and go back to search rather than hiding the whole window, matching
             // macOS's `onDismissHelpIfVisible()` priority.
             if (_mode == LauncherMode.Help)
@@ -465,7 +465,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        // Bare `:cmdid` (no space) — submit-only inline command shortcut. macOS parity
+        // Bare `:cmdid` (no space) - submit-only inline command shortcut. macOS parity
         // (LauncherView+CommandMode.swift handleSubmit). Live `:cmdid<space>...` already
         // routes through QueryInput_OnTextChanged before Enter ever runs.
         if (e.Key == VirtualKey.Enter
@@ -555,7 +555,7 @@ public sealed partial class MainWindow
 
     private void ResultsList_OnSelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
     {
-        // When picks exist, the right column is occupied by the picked-items panel — don't
+        // When picks exist, the right column is occupied by the picked-items panel - don't
         // toggle the preview on top of it. Selection changes still scroll/highlight as usual.
         bool picksActive = _pickedKeys.Count > 0;
 

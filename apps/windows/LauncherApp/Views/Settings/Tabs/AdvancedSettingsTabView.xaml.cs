@@ -18,7 +18,7 @@ public sealed partial class AdvancedSettingsTabView : UserControl
     private readonly ObservableCollection<string> _scanRoots = [];
     // Pills view of _scanRoots that hides bare drive roots (e.g. "D:\") because those are
     // owned by the Detected Drives checkbox UI above. Without this filter the same drive
-    // would appear twice — once as a checkbox, once as a removable pill — and removing
+    // would appear twice - once as a checkbox, once as a removable pill - and removing
     // either would leave the other in a stale state.
     private readonly ObservableCollection<string> _scanRootPills = [];
     private readonly ObservableCollection<CandidateDrive> _detectedDrives = [];
@@ -378,7 +378,7 @@ public sealed partial class AdvancedSettingsTabView : UserControl
             string? coveringEntry = FindCoveringScanRoot(folder.Path);
             if (coveringEntry is not null)
             {
-                ShowScanRootsNotice($"\"{folder.Path}\" is already covered by \"{coveringEntry}\" — entry not added.");
+                ShowScanRootsNotice($"\"{folder.Path}\" is already covered by \"{coveringEntry}\" - entry not added.");
                 return;
             }
 

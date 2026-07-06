@@ -1,5 +1,5 @@
 // Notify-only update widget mounted in Settings ("About" footer) and Help.
-// We never download or replace the binary — Linux/Windows distros vary too
+// We never download or replace the binary - Linux/Windows distros vary too
 // much to bundle a single upgrade command, so the banner links to the
 // release notes and the README install section instead.
 //
@@ -74,7 +74,7 @@ function handleDismiss() {
   try {
     localStorage.setItem(DISMISSED_VERSION_KEY, state.available.version);
   } catch {
-    // Private mode or quota errors — in-memory dismissal still works.
+    // Private mode or quota errors - in-memory dismissal still works.
   }
   state.available = null;
   state.status = '';
@@ -119,7 +119,7 @@ async function performCheck(currentVersion, force) {
   if (!isVersionNewer(latest, normalizeVersion(currentVersion))) {
     return latestStatus(currentVersion);
   }
-  // Allow-list GitHub URLs — a compromised response shouldn't hand
+  // Allow-list GitHub URLs - a compromised response shouldn't hand
   // `xdg-open` an arbitrary scheme.
   const rawUrl = typeof json.html_url === 'string' ? json.html_url : '';
   const releaseUrl = rawUrl.startsWith('https://github.com/') ? rawUrl : FALLBACK_RELEASES_URL;
@@ -175,11 +175,11 @@ function renderAll() {
 function render(container) {
   const label = widgets.get(container) || '';
   const { currentVersion, isDev, available, status, isChecking } = state;
-  const devSuffix = isDev ? ' — dev' : '';
+  const devSuffix = isDev ? ' - dev' : '';
   const versionLabel = currentVersion
     ? `Look ${escapeHtml(currentVersion)}${devSuffix}`
     : 'Look …';
-  // Suppress the status text once a real update has surfaced — the banner below
+  // Suppress the status text once a real update has surfaced - the banner below
   // says the same thing more loudly.
   const showStatus = status && !available;
 

@@ -1,4 +1,4 @@
-// Renders the AI / web answer card. Pure view layer — subscribes to
+// Renders the AI / web answer card. Pure view layer - subscribes to
 // ai-answer.js via onChange and re-paints on every state mutation.
 //
 // Matches macOS AIAnswerCardView.swift:
@@ -102,7 +102,7 @@ function renderStatusLine(state, isEmpty) {
 }
 
 // Bind a click handler to every matching child inside the card. Small
-// helper to keep wireBlockHandlers terse — the three click handlers all
+// helper to keep wireBlockHandlers terse - the three click handlers all
 // share the same querySelectorAll + addEventListener boilerplate.
 function bindClick(selector, handler) {
   cardEl.querySelectorAll(selector).forEach((el) => {

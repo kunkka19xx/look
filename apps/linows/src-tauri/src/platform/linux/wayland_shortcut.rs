@@ -152,11 +152,11 @@ fn cleanup_sway_keybinding() {
 // ---------------------------------------------------------------------------
 
 fn ensure_hyprland_keybinding() {
-    // Hyprland v0.55+ uses Lua config — `hyprctl eval` with hl.* API.
+    // Hyprland v0.55+ uses Lua config - `hyprctl eval` with hl.* API.
     // Older versions use `hyprctl keyword bind ...` (INI-style parser).
     //
     // hl.bind stacks duplicates on every call (hot-reloads in dev, or
-    // sequential launches in prod), so unbind first via pcall — pcall keeps
+    // sequential launches in prod), so unbind first via pcall - pcall keeps
     // the eval succeeding even when the binding doesn't exist yet (first run).
     let lua = format!(
         r#"pcall(hl.unbind, "ALT + space")

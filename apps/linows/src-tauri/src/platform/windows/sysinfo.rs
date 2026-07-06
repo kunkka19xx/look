@@ -1,6 +1,6 @@
 //! Windows /sys collector. Mirrors the section layout of the Linux/macOS
 //! versions: OS, memory, CPU, battery, uptime, disk. CPU live-usage is skipped
-//! on Windows — getting it requires two GetSystemTimes calls separated by a
+//! on Windows - getting it requires two GetSystemTimes calls separated by a
 //! delay, and we don't want the /sys command to block.
 
 use crate::sysinfo::SysInfoEntry;

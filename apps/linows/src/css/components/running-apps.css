@@ -1,4 +1,4 @@
-/* Running apps strip — top-right cell of the .main-pane grid (column 2).
+/* Running apps strip - top-right cell of the .main-pane grid (column 2).
  * Locked to the same column as .preview-panel so its outer extent always
  * matches the preview pane below. */
 .running-apps-strip {

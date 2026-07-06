@@ -25,7 +25,7 @@ public sealed class AppearanceSettingsDto
     public double FontOpacityPercent { get; set; }
 
     // Theme preset textSecondary / textMuted RGB tokens (mirrors macOS BuiltinThemeStyle's
-    // textSecondary / textMuted fields). Null when no preset is active — bootstrap then
+    // textSecondary / textMuted fields). Null when no preset is active - bootstrap then
     // derives muted/secondary via DimmableColor instead. Persisting these is what keeps
     // each theme's signature tint (e.g. Tokyo Night's blue-grey muted) across restarts.
     public double? TextSecondaryRedPercent { get; set; }

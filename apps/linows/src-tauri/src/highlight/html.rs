@@ -1,5 +1,5 @@
 /// Converts tokenized spans into an HTML string with CSS classes.
-/// The frontend renders this via `innerHTML` — no JS DOM manipulation needed.
+/// The frontend renders this via `innerHTML` - no JS DOM manipulation needed.
 ///
 /// CSS classes:
 ///   .tk-kw  → keyword   (--syntax-keyword)
@@ -55,7 +55,7 @@ pub fn render(source: &[u8], spans: &[Span]) -> String {
 }
 
 /// HTML-escape a string slice into the output buffer.
-/// Only escapes &, <, > — the minimum needed for safe HTML content.
+/// Only escapes &, <, > - the minimum needed for safe HTML content.
 fn escape_into(s: &str, out: &mut String) {
     for c in s.chars() {
         match c {

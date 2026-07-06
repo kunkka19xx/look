@@ -1,7 +1,7 @@
 //! Focus an existing window via `wlr-foreign-toplevel-management-v1`.
 //!
 //! Spawn-based "launchers" (`gtk-launch`, `gio launch`, `firefox` itself)
-//! cannot focus a running window on Wayland — most apps just open a fresh
+//! cannot focus a running window on Wayland - most apps just open a fresh
 //! window when invoked again, regardless of `XDG_ACTIVATION_TOKEN`. The
 //! foreign-toplevel-management protocol exposes an explicit `activate(seat)`
 //! request that the compositor honours unconditionally, which is the only

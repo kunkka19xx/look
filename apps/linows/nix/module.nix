@@ -6,7 +6,7 @@ let
 in
 {
   options.programs.lookapp = {
-    enable = lib.mkEnableOption "Look — keyboard-first desktop launcher";
+    enable = lib.mkEnableOption "Look - keyboard-first desktop launcher";
 
     package = lib.mkOption {
       type = lib.types.package;

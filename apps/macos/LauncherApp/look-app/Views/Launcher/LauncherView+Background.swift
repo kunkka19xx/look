@@ -13,8 +13,8 @@ extension LauncherView {
             // refresh) with brightly-colored controls (Pause = warning
             // yellow, Reset = danger red, etc.). NSVisualEffectView with
             // .withinWindow blending was producing a soft halo of those
-            // button colors behind/around the buttons — visible as a
-            // yellow/red "eclipse blur" — because macOS samples the
+            // button colors behind/around the buttons - visible as a
+            // yellow/red "eclipse blur" - because macOS samples the
             // window backing during recomposition and feeds it through
             // the blur pipeline.
             //
@@ -66,7 +66,7 @@ extension LauncherView {
     @ViewBuilder
     func backgroundImageView(image: NSImage) -> some View {
         // Keep this in a GeometryReader so the image's frame preference
-        // is contained — without it, `.frame(maxWidth: .infinity, ...)`
+        // is contained - without it, `.frame(maxWidth: .infinity, ...)`
         // on the Image propagates upward through the ZStack and pushes
         // the launcher's inner content layout past the visible window
         // edge (preview pane gets clipped on the right).

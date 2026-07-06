@@ -201,7 +201,7 @@ enum AppConstants {
                 // the user sees in Finder/Explorer pins it.
                 QuickFolderDefinition(title: "Movies", location: .home("Movies")),
                 QuickFolderDefinition(title: "Music", location: .home("Music")),
-                // /Applications is a system folder outside home — the folder indexer
+                // /Applications is a system folder outside home - the folder indexer
                 // only walks Desktop/Documents/Downloads, so pin it here to make it
                 // reachable. .app bundles inside it stay app candidates, not folders.
                 QuickFolderDefinition(
@@ -263,7 +263,7 @@ enum AppConstants {
             /// the typical Cmd-Space launcher posture: left index/middle
             /// fingers first (1, 2, 3), then right-hand edge (9, 8),
             /// then 4 and 7, and finally the painful centre keys
-            /// (6, 5). Used as a *resource* — when the strip has fewer
+            /// (6, 5). Used as a *resource* - when the strip has fewer
             /// than 9 icons we only consume the easy keys from the
             /// front of this list, so 5/6/7 only appear in 7+ app
             /// configurations.

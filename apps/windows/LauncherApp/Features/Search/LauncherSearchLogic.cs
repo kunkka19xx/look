@@ -34,7 +34,7 @@ public sealed class LauncherSearchLogic
         }
 
         // Engine indexing typically skips the file_scan_roots themselves (see
-        // core/engine/src/index/files.rs walk_files), so duplicates are unlikely — but
+        // core/engine/src/index/files.rs walk_files), so duplicates are unlikely - but
         // belt-and-braces drop any backend folder row that already matches a pinned path
         // so we don't render two rows for the same `~/Documents`.
         foreach (LauncherResult entry in backend)
@@ -51,7 +51,7 @@ public sealed class LauncherSearchLogic
 
     // Mirrors apps/macos/.../LauncherView.swift:quickFolderPinnedResults. The macOS view
     // gates this on a `pinnedLookupScope` derived from query prefixes (`d"`, `f"`, `a"`)
-    // — Windows doesn't expose those prefixes, so a bare substring/prefix match against
+    // - Windows doesn't expose those prefixes, so a bare substring/prefix match against
     // the entry titles is enough.
     public static IReadOnlyList<LauncherResult> BuildQuickFolderResults(string rawQuery)
     {

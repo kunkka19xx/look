@@ -1,5 +1,5 @@
 /// Tokenizer that produces spans from source text.
-/// Ported from macOS `SyntaxHighlighter.swift` — same logic, same token rules.
+/// Ported from macOS `SyntaxHighlighter.swift` - same logic, same token rules.
 use super::lang::Language;
 use std::collections::HashSet;
 
@@ -19,7 +19,7 @@ pub struct Span {
 }
 
 /// Tokenize source text for the given language.
-/// Returns a list of spans for highlighted tokens only — plain text is implicit
+/// Returns a list of spans for highlighted tokens only - plain text is implicit
 /// (any byte range not covered by a span is plain text).
 pub fn tokenize(source: &[u8], lang: Language) -> Vec<Span> {
     if lang == Language::Plain {

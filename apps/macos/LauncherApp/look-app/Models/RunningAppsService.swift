@@ -46,7 +46,7 @@ final class RunningAppsService: ObservableObject {
         }
 
         // Alphabetical, stable. Reordering on activation was forcing the
-        // user to re-scan the strip after every switch — keep positions
+        // user to re-scan the strip after every switch - keep positions
         // fixed so the Cmd+N key for "Discord" stays the same.
         let sorted = snapshot.sorted { lhs, rhs in
             lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
@@ -62,16 +62,16 @@ final class RunningAppsService: ObservableObject {
     func activate(index: Int) -> Bool {
         let log = RunningAppsLog.logger
         guard index >= 0, index < items.count else {
-            log.debug("activate(index: \(index, privacy: .public)) — out of range (count=\(self.items.count, privacy: .public))")
+            log.debug("activate(index: \(index, privacy: .public)) - out of range (count=\(self.items.count, privacy: .public))")
             return false
         }
         let item = items[index]
         guard let app = NSRunningApplication(processIdentifier: item.id) else {
-            log.debug("activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) — NSRunningApplication lookup returned nil (process gone?)")
+            log.debug("activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) - NSRunningApplication lookup returned nil (process gone?)")
             return false
         }
         guard !app.isTerminated else {
-            log.debug("activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) — already terminated")
+            log.debug("activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) - already terminated")
             return false
         }
         let wasHidden = app.isHidden
@@ -82,11 +82,11 @@ final class RunningAppsService: ObservableObject {
         // have no visible window. Activating them alone would flash the
         // launcher closed with nothing visibly happening. Track this so
         // we can follow up with a `NSWorkspace.openApplication(...)`
-        // which fires the same "reopen" event a Dock click sends —
+        // which fires the same "reopen" event a Dock click sends -
         // those apps respond by spawning a fresh window.
         let hadVisibleWindow = Self.hasOnScreenWindow(pid: app.processIdentifier)
         let result = app.activate(options: [.activateAllWindows])
-        log.debug("activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) wasHidden=\(wasHidden, privacy: .public) hadVisibleWindow=\(hadVisibleWindow, privacy: .public) — activate returned \(result, privacy: .public)")
+        log.debug("activate \(item.name, privacy: .public) pid=\(item.id, privacy: .public) wasHidden=\(wasHidden, privacy: .public) hadVisibleWindow=\(hadVisibleWindow, privacy: .public) - activate returned \(result, privacy: .public)")
         if result, !hadVisibleWindow, let bundleURL = app.bundleURL {
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.activates = true
@@ -128,7 +128,7 @@ final class RunningAppsService: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 // Track which app is frontmost (for the accent ring) but
-                // do NOT reorder items — positions are kept stable.
+                // do NOT reorder items - positions are kept stable.
                 if let pid = activatedPID { self.activePID = pid }
                 self.refresh()
             }

@@ -412,7 +412,7 @@ struct RecentEmptyStateView: View {
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
                 .foregroundStyle(themeStore.secondaryTextColor())
 
-            Text("Open files/folders through Look, or download/create some — newest activity shows here. Type rc\"word to filter.")
+            Text("Open files/folders through Look, or download/create some - newest activity shows here. Type rc\"word to filter.")
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                 .foregroundStyle(themeStore.secondaryTextColor())
                 .lineLimit(3)

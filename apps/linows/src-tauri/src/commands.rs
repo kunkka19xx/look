@@ -229,7 +229,7 @@ pub fn open_path(
     } else {
         // Windows: before launching a fresh instance, try to raise an existing
         // window for the same .exe / .lnk / UWP AUMID. Must run while Look
-        // still holds foreground — SetForegroundWindow fails after hide().
+        // still holds foreground - SetForegroundWindow fails after hide().
         #[cfg(target_os = "windows")]
         if kind.as_deref() == Some("app")
             && crate::platform::windows::window_focus::try_focus_existing(&path)
@@ -239,7 +239,7 @@ pub fn open_path(
         }
 
         // Shell namespace locations (e.g. `shell:RecycleBinFolder`) aren't
-        // filesystem paths — ShellExecute can't always resolve them, but
+        // filesystem paths - ShellExecute can't always resolve them, but
         // Explorer opens them directly.
         #[cfg(target_os = "windows")]
         if path.starts_with("shell:") {
@@ -260,7 +260,7 @@ pub fn open_path(
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
                     .spawn();
-                // Same focus dance as the browser branch — Sway/i3 don't raise
+                // Same focus dance as the browser branch - Sway/i3 don't raise
                 // the handler on xdg-open activation. Resolves the handler via
                 // the file's MIME type so a PNG opened in Brave focuses Brave,
                 // a PDF opened in Zathura focuses Zathura, etc.
@@ -357,8 +357,8 @@ pub fn hide_window(window: tauri::WebviewWindow) {
 /// inherited. Falls back to a plain spawn when systemd-run isn't available.
 ///
 /// Without this, a dev-mode Look launched from a long-lived `nix develop` /
-/// terminal shell carries the X11 cookie path it picked up at shell start —
-/// stale after the next mutter/XWayland restart — so spawned GUI children
+/// terminal shell carries the X11 cookie path it picked up at shell start -
+/// stale after the next mutter/XWayland restart - so spawned GUI children
 /// (firefox, etc.) fail with "cannot open display: :0" while gtk-launch
 /// itself still reports success.
 ///
@@ -369,7 +369,7 @@ fn user_session_cmd(prog: &str) -> std::process::Command {
     use std::sync::OnceLock;
     static SYSTEMD_RUN: OnceLock<bool> = OnceLock::new();
     let available = *SYSTEMD_RUN.get_or_init(|| {
-        // Exercise the actual `--user` path (a no-op transient unit) — checking
+        // Exercise the actual `--user` path (a no-op transient unit) - checking
         // only `systemd-run --version` succeeds on systems that have the binary
         // but no usable per-user manager (containers, minimal installs), and
         // would route every launch through a wrapper that then fails.
@@ -414,7 +414,7 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
     // gtk-launch is preferred because gio launch uses D-Bus activation
     // which can silently fail to show a window on first invocation.
     // Use the resolved desktop_file path (case-preserving) rather than the
-    // raw frontend ID — IDs may be lowercased upstream while gtk-launch is
+    // raw frontend ID - IDs may be lowercased upstream while gtk-launch is
     // case-sensitive ("org.gnome.Nautilus" works, "org.gnome.nautilus" does not).
     let desktop_path = desktop_file.clone();
     let desktop_name = desktop_file
@@ -523,7 +523,7 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
 }
 
 /// Delay between handing a file/URL to xdg-open and trying to focus the
-/// resulting handler window — gives the app time to receive the input and
+/// resulting handler window - gives the app time to receive the input and
 /// surface its window so the focus call below sees a matching client.
 #[cfg(target_os = "linux")]
 const HANDLER_FOCUS_DELAY_MS: u64 = 150;
@@ -545,7 +545,7 @@ fn focus_handler_by_desktop_id(desktop_id: &str) -> bool {
     }
 
     // Strip ".desktop" suffix to get the base id (e.g. "brave-browser").
-    // That's typically the WM_CLASS / app_id the app advertises — Sway and i3
+    // That's typically the WM_CLASS / app_id the app advertises - Sway and i3
     // match it case-insensitively via the (?i) flag inside try_focus_window,
     // so "brave-browser" matches "Brave-browser" too.
     let base = desktop_id.strip_suffix(".desktop").unwrap_or(desktop_id);
@@ -577,7 +577,7 @@ fn default_handler_for_mime(mime: &str) -> Option<String> {
 
 /// Bring the user's default browser to the foreground. Resolves the browser
 /// via `xdg-mime query default x-scheme-handler/https` so we focus the exact
-/// browser xdg-open just sent the URL to — not whichever browser happened to
+/// browser xdg-open just sent the URL to - not whichever browser happened to
 /// come first in a hard-coded candidate list (which would route the focus to
 /// the wrong window when the user has multiple browsers open, e.g. Brave
 /// default but Firefox also running).
@@ -637,7 +637,7 @@ fn try_focus_window(wm_class: &str) -> bool {
         return false;
     }
 
-    // i3 window manager — use i3-msg exclusively (i3 ignores raw X11
+    // i3 window manager - use i3-msg exclusively (i3 ignores raw X11
     // _NET_ACTIVE_WINDOW messages, so the x11rb fallback would report
     // success without actually focusing).  Try both class and instance
     // criteria: GTK apps often set instance to the reverse-DNS app ID
@@ -714,7 +714,7 @@ fn try_focus_existing(desktop_path: &str) -> bool {
         .map(String::from);
 
     // For reverse-DNS stems like "org.pwmt.zathura", also try the last
-    // segment ("zathura") — many apps use the short name as WM_CLASS even
+    // segment ("zathura") - many apps use the short name as WM_CLASS even
     // when the desktop file uses the full reverse-DNS ID.
     let short_name = stem.as_deref().and_then(|s| {
         if s.contains('.') {

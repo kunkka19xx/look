@@ -71,7 +71,7 @@ fn emit_uwp_candidates(
         let path = format!("shell:AppsFolder\\{}", app.aumid);
         let key = format!("{APP_CANDIDATE_ID_PREFIX}uwp:{}", app.aumid);
         let mut candidate = Candidate::new(&key, CandidateKind::App, &app.title, &path);
-        // Default subtitle would be the raw AUMID — useless in the result list.
+        // Default subtitle would be the raw AUMID - useless in the result list.
         // Mirror linux/apps.rs and use the kind label instead; right-hand detail
         // panel still shows the full path.
         candidate.subtitle = Some("App".into());
@@ -195,7 +195,7 @@ fn walk_windows_fallback_roots(
 
         // IF IT IS A FILE: Check if it's an executable we want
         if file_type.is_file() && is_windows_fallback_executable(path_str) {
-            // Skip if a Start Menu .lnk already resolved to this same exe —
+            // Skip if a Start Menu .lnk already resolved to this same exe -
             // walk_windows_app_entries planted a `target_path:{normalized}`
             // lock for every resolvable shortcut target.
             let normalized = crate::platform::windows::lnk::normalize_for_compare(path_str);
@@ -259,7 +259,7 @@ fn emit_windows_app_candidate(
     let key = format!("{APP_CANDIDATE_ID_PREFIX}{normalized_identity}_{path_id}");
 
     let mut candidate = Candidate::new(&key, CandidateKind::App, &title, path);
-    // Default subtitle would be the Start Menu .lnk path — long and redundant
+    // Default subtitle would be the Start Menu .lnk path - long and redundant
     // (right-hand detail panel already shows it). Mirror linux/apps.rs.
     candidate.subtitle = Some("App".into());
     let _ = tx.send(candidate);

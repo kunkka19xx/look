@@ -52,7 +52,7 @@ struct AppleIntelligenceProvider: AIQueryProvider {
             return response.content.asIntent()
         } catch {
             // Any failure (guardrails, generation error, cancellation) falls back
-            // to the raw query — AI is best-effort, never a hard dependency.
+            // to the raw query - AI is best-effort, never a hard dependency.
             return nil
         }
         #else
@@ -61,7 +61,7 @@ struct AppleIntelligenceProvider: AIQueryProvider {
     }
 
     /// Warms up the on-device model so the first real answer doesn't pay the
-    /// cold-load cost. Cheap and idempotent — safe to call repeatedly while the
+    /// cold-load cost. Cheap and idempotent - safe to call repeatedly while the
     /// user types.
     func prewarm() {
         #if canImport(FoundationModels)
@@ -103,7 +103,7 @@ struct AppleIntelligenceProvider: AIQueryProvider {
     private static let answerInstructions = """
         You are a concise assistant embedded in a macOS launcher (a small \
         Spotlight-style search box). Answer the user's question directly in at \
-        most 2–4 short sentences of plain text. No markdown, no headings, no \
+        most 2-4 short sentences of plain text. No markdown, no headings, no \
         bullet lists, no code fences unless the answer is literally a short \
         command. If you are unsure or the question needs the web, say so in one \
         sentence rather than guessing.
@@ -118,7 +118,7 @@ struct AppleIntelligenceProvider: AIQueryProvider {
         - file: a document/file ("my budget spreadsheet", "the resume pdf")
         - folder: a directory ("downloads folder", "where my projects live")
         - recent: emphasises recently used items ("the doc I opened yesterday")
-        - any: unclear, or a mix — let the launcher decide
+        - any: unclear, or a mix - let the launcher decide
 
         Set `searchText` to just the keywords to match, stripped of filler words \
         like "open", "find", "my", "the". Keep it short. Do not invent terms that \

@@ -30,7 +30,7 @@ public sealed class FfiSearchProvider : ISearchProvider
                 // Most common cause on a fresh Windows install: look_ffi.dll loaded but
                 // failed to resolve VCRUNTIME140.dll / MSVCP140.dll because the Visual
                 // C++ Redistributable isn't installed. Without this log, every search
-                // silently returns [] and look.db never gets created — see
+                // silently returns [] and look.db never gets created - see
                 // EngineBridge.Search where the same exception type is caught per-call.
                 App.WriteCrashLog(
                     "FfiSearchProvider.Init",
@@ -43,7 +43,7 @@ public sealed class FfiSearchProvider : ISearchProvider
             catch (BadImageFormatException ex)
             {
                 // Architecture mismatch (e.g. ARM64 host loading an x64 dll) lands here
-                // instead of DllNotFoundException — also worth surfacing.
+                // instead of DllNotFoundException - also worth surfacing.
                 App.WriteCrashLog("FfiSearchProvider.Init", ex);
                 Debug.WriteLine($"[FfiSearchProvider] BadImageFormat: {ex.Message}");
             }

@@ -62,7 +62,7 @@ pub const SKIP_DIR_NAMES: [&str; 18] = [
     "venv",
     // Win7-era junctions inside %USERPROFILE%\Documents that redirect to
     // %USERPROFILE%\<name>. The ACL on these denies enumeration, so the
-    // walker hits "Access denied" on every entry — and even when it didn't,
+    // walker hits "Access denied" on every entry - and even when it didn't,
     // listing them would duplicate the real Pictures/Videos/Music roots.
     "my pictures",
     "my videos",
@@ -119,8 +119,8 @@ impl Default for RuntimeConfig {
 /// Process-wide cache of the parsed `~/.look.config`. Filled lazily by
 /// `RuntimeConfig::load_cached()`, cleared by `RuntimeConfig::invalidate_cache()`.
 /// Reading the config from disk is cheap (< 1 KB file) but happens on every
-/// `bootstrap_sqlite_scoped` / `from_sqlite` — including watcher-triggered
-/// refreshes — so caching removes a stat + read per refresh.
+/// `bootstrap_sqlite_scoped` / `from_sqlite` - including watcher-triggered
+/// refreshes - so caching removes a stat + read per refresh.
 static CACHED_CONFIG: OnceLock<Mutex<Option<RuntimeConfig>>> = OnceLock::new();
 
 fn cached_config_slot() -> &'static Mutex<Option<RuntimeConfig>> {
@@ -145,7 +145,7 @@ impl RuntimeConfig {
     /// Idempotent: re-running with no missing defaults is a no-op.
     ///
     /// Trade-off: removing a default by deleting it from the config file
-    /// won't stick — the next load adds it back. That's intentional; the
+    /// won't stick - the next load adds it back. That's intentional; the
     /// schema treats defaults as a guaranteed minimum, with
     /// `file_exclude_paths` as the supported opt-out for specific dirs.
     fn ensure_default_file_scan_roots_present(&mut self) {
@@ -157,7 +157,7 @@ impl RuntimeConfig {
     }
 
     /// Returns the cached `RuntimeConfig`, reading from disk on first call only.
-    /// Subsequent calls clone the cached value (cheap — the struct is plain
+    /// Subsequent calls clone the cached value (cheap - the struct is plain
     /// data). Callers that mutate `~/.look.config` at runtime must call
     /// [`invalidate_cache`](Self::invalidate_cache) afterwards.
     pub fn load_cached() -> Self {

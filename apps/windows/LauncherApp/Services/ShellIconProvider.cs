@@ -71,7 +71,7 @@ public sealed class ShellIconProvider
 
             int shellSizePx = smallIcon ? 32 : 64;
 
-            // Factory path only for inputs the HICON pipeline handles poorly — UWP shell items
+            // Factory path only for inputs the HICON pipeline handles poorly - UWP shell items
             // and .lnk stubs that point at packaged apps. Plain .exe / .url / files keep using
             // the proven ExtractIconExW / SHGetFileInfoW path to avoid native regressions.
             bool useShellFactoryFirst = normalizedPath.StartsWith("shell:", PathComparison)

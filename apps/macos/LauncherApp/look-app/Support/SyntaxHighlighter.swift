@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Lightweight syntax highlighter for the file preview pane.
 /// Tokenizes by language and applies foreground colors via
-/// AttributedString. Not as accurate as a real parser — designed for
+/// AttributedString. Not as accurate as a real parser - designed for
 /// "readable at a glance," not editor-quality fidelity.
 nonisolated enum SyntaxHighlighter {
     enum Language {
@@ -39,7 +39,7 @@ nonisolated enum SyntaxHighlighter {
 
         // Build with NSMutableAttributedString + NSRange so each token's
         // attribute set is O(1). Using AttributedString.Index per token
-        // would walk the String from startIndex each time — O(n²) on a
+        // would walk the String from startIndex each time - O(n²) on a
         // 64 KB file with thousands of tokens.
         let keywordC = NSColor(srgbRed: 0.82, green: 0.49, blue: 0.79, alpha: 1)
         let stringC  = NSColor(srgbRed: 0.91, green: 0.66, blue: 0.42, alpha: 1)

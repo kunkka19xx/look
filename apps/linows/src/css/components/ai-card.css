@@ -6,14 +6,14 @@
  *   answer text (selectable, generous line spacing).
  *
  * Three layouts (toggled by container classes in layout.css):
- *   .ai-layout-full      — card fills the panel (no local results)
- *   .ai-layout-two-col   — card on left, 320px web-suggestions list on right
- *   .ai-layout-stacked   — card capped to 240px, results-list below
+ *   .ai-layout-full      - card fills the panel (no local results)
+ *   .ai-layout-two-col   - card on left, 320px web-suggestions list on right
+ *   .ai-layout-stacked   - card capped to 240px, results-list below
  */
 
 .ai-card {
   /* Top/bottom margin gives the card breathing room from the search bar
-   * above and the hint bar below — matches macOS, where the card has
+   * above and the hint bar below - matches macOS, where the card has
    * visible padding between the chrome edges instead of sitting flush. */
   margin: 6px var(--content-padding) 8px;
   padding: 12px;
@@ -67,7 +67,7 @@
   min-width: 8px;
 }
 
-/* Streaming spinner — a thin border ring rotating. CSS-only so we don't have
+/* Streaming spinner - a thin border ring rotating. CSS-only so we don't have
  * to ship an SVG; matches the visual weight of macOS ProgressView.small. */
 .ai-spinner {
   width: 12px;
@@ -106,7 +106,7 @@
   gap: 6px;
 }
 
-/* Uppercased source name — 3pt smaller than body, bold. Accent + chevron
+/* Uppercased source name - 3pt smaller than body, bold. Accent + chevron
  * when the source has a URL (Wikipedia, DuckDuckGo); muted otherwise
  * (Calculator). Whole .ai-card-source is the click target. */
 .ai-card-source {
@@ -133,7 +133,7 @@
   color: var(--accent-color);
 }
 
-/* Copy button — same muted color as the source label until hover. */
+/* Copy button - same muted color as the source label until hover. */
 .ai-card-copy {
   display: inline-flex;
   align-items: center;

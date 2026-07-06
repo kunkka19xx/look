@@ -28,7 +28,7 @@ extension ThemeSettingsView {
                     ))
                     .toggleStyle(.switch)
                     .labelsHidden()
-                    .help("Show running apps in the right half of the search bar (⌘1–9 to switch)")
+                    .help("Show running apps in the right half of the search bar (⌘1-9 to switch)")
 
                     Spacer(minLength: 0)
                 }

@@ -60,7 +60,7 @@ pub extern "C" fn look_record_usage_json(
 pub extern "C" fn look_reload_config() -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         // Drop the engine's cached `~/.look.config` before anything below reads
-        // RuntimeConfig — otherwise the reload would see stale roots/limits.
+        // RuntimeConfig - otherwise the reload would see stale roots/limits.
         look_engine::config::RuntimeConfig::invalidate_cache();
         runtime_config::reload_runtime_config();
         state::restart_index_watchers();
@@ -535,7 +535,7 @@ mod tests {
         .expect("seed json");
         assert!(look_seed_uwp_apps_json(json.as_ptr()));
 
-        // Round-trip via sqlite — make sure the rows actually persisted with the right shape.
+        // Round-trip via sqlite - make sure the rows actually persisted with the right shape.
         let stored = SqliteStore::open(&db_path)
             .expect("reopen sqlite")
             .load_candidates(None)
@@ -552,7 +552,7 @@ mod tests {
         assert_eq!(terminal.use_count, 0);
         assert_eq!(terminal.last_used_at_unix_s, None);
 
-        // Search has to surface the seeded entry — without this, the user can't find Terminal
+        // Search has to surface the seeded entry - without this, the user can't find Terminal
         // via the launcher even though it sits in the DB.
         let query = CString::new("terminal").expect("query");
         let ptr = look_search_json(query.as_ptr(), 10);
@@ -597,7 +597,7 @@ mod tests {
             "re-seeding must preserve use_count via ON CONFLICT"
         );
 
-        // Re-seed with Notepad omitted — simulates the user uninstalling that UWP app
+        // Re-seed with Notepad omitted - simulates the user uninstalling that UWP app
         // between runs. The vanished row must be pruned so it doesn't keep showing up
         // in search forever (delete_stale_candidates can't reach rows written with
         // indexed_at_unix_s = i64::MAX).

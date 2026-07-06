@@ -1,7 +1,7 @@
 import { listRunningApps, getIcon, activateRunningApp } from '../ipc.js';
 import { appWindow, settings } from '../icons.js';
 
-// Ergonomic badge keys — easy-to-reach keys first (1,2,3,9,8,4,7,6,5).
+// Ergonomic badge keys - easy-to-reach keys first (1,2,3,9,8,4,7,6,5).
 // We assign in this order then sort ascending for visual display.
 const EASINESS_ORDER = [1, 2, 3, 9, 8, 4, 7, 6, 5];
 const MAX_ITEMS = 9;
@@ -113,7 +113,7 @@ function render() {
     container.appendChild(item);
 
     // UWP windows (Settings, …) are addressed by HWND and have no resolvable
-    // file icon — the shell returns a generic "earth" globe. Use a Lucide app
+    // file icon - the shell returns a generic "earth" globe. Use a Lucide app
     // glyph instead. Everything else resolves its real icon async.
     if (app.desktop_id && app.desktop_id.startsWith('hwnd:')) {
       icon.textContent = '';
@@ -132,7 +132,7 @@ function loadAppIcon(iconEl, desktopId) {
     return;
   }
 
-  // desktop_id is "app:/path/to/foo.desktop" — pass kind="app", path from id
+  // desktop_id is "app:/path/to/foo.desktop" - pass kind="app", path from id
   const path = desktopId.startsWith('app:') ? desktopId.slice(4) : desktopId;
   getIcon('app', path, desktopId)
     .then((result) => {

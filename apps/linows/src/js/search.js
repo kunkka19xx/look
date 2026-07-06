@@ -27,7 +27,7 @@ let aiEnabled = true;
 // query, so we don't wipe a still-valid suggestion list during a re-fetch.
 // webInFlight gates publish so we don't paint a "No results" empty state
 // during the gap between the engine returning instantly (~50 ms) and the
-// web-suggestions request settling (~500 ms–2 s).
+// web-suggestions request settling (~500 ms-2 s).
 let queryVersion = 0;
 let lastEnginePayload = [];
 let lastWebSuggestions = [];
@@ -84,7 +84,7 @@ export function handleQueryInput(query) {
   clearTimeout(debounceTimer);
   clearTimeout(webSuggestionTimer);
   // Bump version + clear stale engine payload. Web-suggestion cache only
-  // resets when the query actually changes — on a same-query re-run (window
+  // resets when the query actually changes - on a same-query re-run (window
   // toggle, manual refresh) the previous list is still valid, and we'd
   // rather keep showing it than flash "No results" if the re-fetch is slow
   // or returns empty (DuckDuckGo /ac/ is occasionally flaky).
@@ -95,7 +95,7 @@ export function handleQueryInput(query) {
   }
   lastQueryString = query;
 
-  // Discovery menus — `"` lists every query prefix, `:` lists every slash
+  // Discovery menus - `"` lists every query prefix, `:` lists every slash
   // command, both filterable by what follows the leading character. Must
   // run before the t"/c"/rc" branches because the leading chars overlap.
   if (isPrefixSuggestionQuery(query)) {
@@ -151,7 +151,7 @@ export function handleQueryInput(query) {
     return;
   }
 
-  // Both fetches share the 70 ms debounce and run concurrently — engine
+  // Both fetches share the 70 ms debounce and run concurrently - engine
   // results render the moment they land, then web suggestions append below
   // when they arrive. Each leg version-checks before publishing. We mark
   // webInFlight up-front (not inside fetchWebSuggestions) so publish() can
@@ -169,7 +169,7 @@ export function handleQueryInput(query) {
 }
 
 // A fetch is "stale" when handleQueryInput has bumped queryVersion since
-// the fetch started — used by both legs to bail before mutating shared
+// the fetch started - used by both legs to bail before mutating shared
 // state. Cuts the `if (version !== queryVersion) return;` boilerplate.
 function isStale(version) {
   return version !== queryVersion;
@@ -206,7 +206,7 @@ async function fetchWebSuggestions(query, version) {
       lastWebSuggestions = list;
     }
   } catch (err) {
-    // Web suggestions are best-effort — silent failure mirrors macOS.
+    // Web suggestions are best-effort - silent failure mirrors macOS.
     console.warn('Web suggestions failed:', err);
   } finally {
     if (!isStale(version)) {

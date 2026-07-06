@@ -35,7 +35,7 @@ final class AIQueryRouter: @unchecked Sendable {
     }
 
     /// Rewrites `query` using `kind` into the engine's prefix grammar, or returns
-    /// `nil` to signal "use the raw query unchanged". Never throws — AI is
+    /// `nil` to signal "use the raw query unchanged". Never throws - AI is
     /// best-effort and must not block search.
     func rewrite(query: String, using kind: AIProviderKind) async -> String? {
         let provider = provider(for: kind)
@@ -49,7 +49,7 @@ final class AIQueryRouter: @unchecked Sendable {
 
     /// Streams a short free-form answer for `query` using `kind`, or returns
     /// `nil` when the provider is unavailable or can't answer. Never throws at
-    /// the call site — failures surface as the stream finishing with an error.
+    /// the call site - failures surface as the stream finishing with an error.
     func answer(query: String, using kind: AIProviderKind) -> AsyncThrowingStream<String, Error>? {
         let provider = provider(for: kind)
         guard provider.availability.isAvailable else { return nil }

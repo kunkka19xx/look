@@ -1,6 +1,6 @@
-# AUR release — `look-bin`
+# AUR release - `look-bin`
 
-End-to-end guide for publishing `look` to the Arch User Repository as `look-bin`. The PKGBUILD consumes the `.deb` produced by `release-linux.yml` — no source rebuild on the user's machine.
+End-to-end guide for publishing `look` to the Arch User Repository as `look-bin`. The PKGBUILD consumes the `.deb` produced by `release-linux.yml` - no source rebuild on the user's machine.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ git tag v0.5.1 ──► release-linux.yml ──► build .deb ──► GitHub
                                                     extracts, installs.
 ```
 
-The CI workflow (`publish-aur` job in `.github/workflows/release-linux.yml`) handles releases automatically. Everything below is **one-time setup** that an operator does once per project lifetime — except the release flow at the end which fires on every `v*` tag.
+The CI workflow (`publish-aur` job in `.github/workflows/release-linux.yml`) handles releases automatically. Everything below is **one-time setup** that an operator does once per project lifetime - except the release flow at the end which fires on every `v*` tag.
 
 ---
 
@@ -39,7 +39,7 @@ The CI workflow (`publish-aur` job in `.github/workflows/release-linux.yml`) han
 
 ### 2. Dedicated SSH key for AUR
 
-A separate key (not your GitHub key) keeps the secret scoped — if it leaks, only AUR is affected.
+A separate key (not your GitHub key) keeps the secret scoped - if it leaks, only AUR is affected.
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/aur_look -C "aur@look" -N ""
@@ -79,7 +79,7 @@ cd look-bin
 3. Generates `.SRCINFO` via an Arch container (with a non-root user since `makepkg` refuses root).
 4. Commits and pushes to AUR.
 
-After it succeeds, the package is live at https://aur.archlinux.org/packages/look-bin (a fetch at version `0.0.0` will 404 the .deb — that's expected and gets fixed on the first real release).
+After it succeeds, the package is live at https://aur.archlinux.org/packages/look-bin (a fetch at version `0.0.0` will 404 the .deb - that's expected and gets fixed on the first real release).
 
 ### 5. GitHub repository secrets
 
@@ -143,10 +143,10 @@ git push
 ## Troubleshooting
 
 **`Permission denied (publickey)` on git clone/push**
-SSH key isn't registered correctly on AUR, or the `IdentityFile` path in `~/.ssh/config` is wrong. Verify with `ssh -T aur@aur.archlinux.org` — should print `Hi <username>! You've successfully authenticated...`.
+SSH key isn't registered correctly on AUR, or the `IdentityFile` path in `~/.ssh/config` is wrong. Verify with `ssh -T aur@aur.archlinux.org` - should print `Hi <username>! You've successfully authenticated...`.
 
 **`fatal: pathspec '.SRCINFO' did not match any files`**
-The Docker container failed silently. Re-run with the `useradd` line — `makepkg` refuses to run as root.
+The Docker container failed silently. Re-run with the `useradd` line - `makepkg` refuses to run as root.
 
 **CI `publish-aur` job fails with `error: vendor hash mismatch` or similar**
 That's the Nix `nix-build` job, not AUR. Update `cargoHash` in `apps/linows/nix/package.nix` and retag.
@@ -164,7 +164,7 @@ AUR → package page → "Disown" or, as the maintainer, "Request → Deletion".
 
 ## Files in this directory
 
-- `PKGBUILD` — template consumed by CI. Placeholders: `__VERSION__`, `__SHA256__`.
-- `README.md` — this file.
+- `PKGBUILD` - template consumed by CI. Placeholders: `__VERSION__`, `__SHA256__`.
+- `README.md` - this file.
 
 The companion `seed.sh` script lives in the `look-bin` AUR clone, not here, since it depends on having the AUR git checkout next door.

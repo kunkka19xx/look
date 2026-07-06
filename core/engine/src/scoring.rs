@@ -241,7 +241,7 @@ pub(crate) fn push_top_k<'a>(
 pub(crate) fn finalize_top_k(heap: BinaryHeap<ScoredMatch<'_>>) -> Vec<(u32, i64)> {
     // Returns (candidate_index, score) pairs sorted best-first. Callers materialize
     // Candidates by indexing into their candidate slice, so only the final top-K
-    // are cloned — the heap itself never held a Candidate.
+    // are cloned - the heap itself never held a Candidate.
     let mut out: Vec<(u32, i64, &str)> = heap
         .into_iter()
         .map(|entry| (entry.idx, entry.score, entry.title))

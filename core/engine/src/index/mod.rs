@@ -26,7 +26,7 @@ pub fn discover_candidates_stream(config: &RuntimeConfig) -> CandidateDiscoveryS
 }
 
 /// Like `discover_candidates_stream`, but only spawns the sub-discoveries selected
-/// by `scope`. Sources whose flag is `false` are skipped entirely — no walker is
+/// by `scope`. Sources whose flag is `false` are skipped entirely - no walker is
 /// spawned and no candidates are emitted for them.
 pub fn discover_candidates_stream_scoped(
     config: &RuntimeConfig,

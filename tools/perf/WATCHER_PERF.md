@@ -5,7 +5,7 @@ and `core/engine/src/lib.rs` (scoped bootstrap, non-recursive file watches,
 noise filter, off-thread reindex, cooldown gate, RAII slot guard).
 
 Three benches drive every number in this report. They live in a separate
-`tools/perf` crate — not part of the app, not in `dev-dependencies` of any
+`tools/perf` crate - not part of the app, not in `dev-dependencies` of any
 shipped crate. Zero impact on Tauri bundle size.
 
 | Bench                       | What it measures                                                                       |
@@ -48,10 +48,10 @@ Indexed snapshot: 2,471 candidates  (77 apps · 1,692 files · 676 folders · 26
 
 Two refinements landed after the initial scoped refresh:
 
-- `SqliteStore::is_demo_seeded()` — one `COUNT(*)` instead of loading every row to
+- `SqliteStore::is_demo_seeded()` - one `COUNT(*)` instead of loading every row to
   check if the table is just the demo seed (`core/engine/src/lib.rs:135` previously
   did `load_candidates(None)` for that check).
-- `RuntimeConfig::load_cached()` — skips re-reading `~/.look.config` on every
+- `RuntimeConfig::load_cached()` - skips re-reading `~/.look.config` on every
   refresh; the linows `reload_config` command and FFI `look_reload_config`
   drop the cache so user edits still take effect.
 
@@ -62,7 +62,7 @@ largest on `APPS_ONLY` (~17%) because its baseline is smallest.
 **Reading this:** scoped refresh is a real win **only for apps events**. On a
 file-only event the walker has to run anyway, so the scope flag saves nothing
 per call. The wins on the files side come from preventing calls in the first
-place — see §2.
+place - see §2.
 
 ---
 
@@ -144,7 +144,7 @@ of these because file roots were watched recursively.
 ```
 
 - AFTER's non-recursive file watch never delivers the events. Receive count
-  goes to **zero** — the watcher loop doesn't even wake up.
+  goes to **zero** - the watcher loop doesn't even wake up.
 - The deep tree is reconciled next time the user opens the launcher
   (window-show triggers a full refresh).
 - **500 events received → 0 events received, 17 → 0 ms CPU.**
@@ -176,7 +176,7 @@ candidates in final DB             120
 
 What this proves about the live policy (vs the simulator's predictions):
 
-- **Noise filter works on real events.** 189 of 211 kernel events dropped —
+- **Noise filter works on real events.** 189 of 211 kernel events dropped -
   vim swap creates/removes and `.crdownload` writes never trigger a refresh.
 - **Non-recursive file watch works.** The producer wrote into
   `files_root/project/node_modules/foo/` six times. Those events never
@@ -185,7 +185,7 @@ What this proves about the live policy (vs the simulator's predictions):
 - **Cooldown enforces the rate cap.** Twenty would-be fires were deferred;
   three refreshes actually ran across 30 s. Matches the modeled "≤ 6/min."
 - **RAII guard doesn't deadlock.** Every spawned worker released the
-  in-progress slot via `Drop` — the watcher kept firing for the whole run.
+  in-progress slot via `Drop` - the watcher kept firing for the whole run.
 
 ## 4. Headline diff
 
@@ -209,7 +209,7 @@ What this proves about the live policy (vs the simulator's predictions):
 
 - All AFTER numbers assume the user's environment delivers inotify events
   reliably. On NFS / CIFS / VirtualBox shared folders, events may not arrive
-  at all — the window-show refresh remains the backstop in that case.
+  at all - the window-show refresh remains the backstop in that case.
 - The simulator uses measured `bootstrap_sqlite_scoped` costs from a single
   machine snapshot. On a machine with 10× more indexed files, multiply the
   `cpu_ms` columns by ~10. The **ratio** between BEFORE and AFTER stays the

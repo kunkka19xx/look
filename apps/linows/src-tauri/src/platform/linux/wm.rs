@@ -47,7 +47,7 @@ pub(crate) fn detect_compositor() -> Option<String> {
 }
 
 /// Returns true for tiling WMs (i3, sway, Hyprland) where `set_position` on a
-/// hidden/unmapped window is ignored — the WM applies its own placement on map.
+/// hidden/unmapped window is ignored - the WM applies its own placement on map.
 pub fn is_tiling_wm() -> bool {
     std::env::var("I3SOCK").is_ok()
         || is_sway()
