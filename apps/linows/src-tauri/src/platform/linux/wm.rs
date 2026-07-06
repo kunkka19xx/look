@@ -7,6 +7,15 @@ pub fn is_sway() -> bool {
         .unwrap_or(false)
 }
 
+/// Returns true when the session is KDE Plasma (any XDG_CURRENT_DESKTOP
+/// segment is "KDE").
+pub fn is_kde() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .unwrap_or_default()
+        .split(':')
+        .any(|s| s.trim().eq_ignore_ascii_case("KDE"))
+}
+
 pub(crate) fn detect_compositor() -> Option<String> {
     if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
         return Some("hyprland".into());

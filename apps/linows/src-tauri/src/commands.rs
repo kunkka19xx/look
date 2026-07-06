@@ -662,6 +662,13 @@ fn try_focus_window(wm_class: &str) -> bool {
         return false;
     }
 
+    // KDE Wayland: the x11rb path below only sees XWayland clients (under
+    // the AppImage the Look window itself is XWayland), so native Wayland
+    // windows are invisible to it. Go through KWin's scripting D-Bus.
+    if crate::platform::linux::transparency::is_wayland() && crate::platform::linux::wm::is_kde() {
+        return crate::platform::linux::kde_focus::try_focus(&[wm_class]);
+    }
+
     // Non-i3: try i3-msg anyway (might be running), then x11rb fallback.
     if let Ok(output) = host_command("i3-msg")
         .arg(format!("[class=\"(?i){wm_class}\"] focus"))
@@ -745,6 +752,10 @@ fn try_focus_wayland(desktop_path: &str, candidates: &[&str]) -> bool {
     }
     if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
         return candidates.iter().any(|id| try_focus_hyprland(id));
+    }
+    // KDE Wayland: KWin scripting D-Bus (no GNOME Shell, no wlr protocol)
+    if crate::platform::linux::wm::is_kde() {
+        return crate::platform::linux::kde_focus::try_focus(candidates);
     }
     // GNOME Wayland: use GNOME Shell extension
     let desktop_id = std::path::Path::new(desktop_path)

@@ -1,9 +1,11 @@
 pub mod autostart;
 pub mod clipboard;
+pub mod dbus;
 pub mod fonts;
 pub mod gnome_ext;
 pub mod gpu;
 pub mod icons;
+pub mod kde_focus;
 pub mod process;
 pub mod sysinfo;
 pub mod transparency;
