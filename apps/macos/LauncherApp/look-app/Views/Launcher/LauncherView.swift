@@ -474,9 +474,11 @@ struct LauncherView: View {
     /// off the home screen or today has no tasks (then it stays empty).
     var todoQuickView: HintBar.TodoQuickView? {
         guard isHomeHintScreen else { return nil }
-        let stat = TodoSharedState.shared.todayStat
+        let state = TodoSharedState.shared
+        let stat = state.todayStat
         guard stat.total > 0 else { return nil }
-        return HintBar.TodoQuickView(done: stat.done, total: stat.total) {
+        let open = state.today?.tasks.filter { !$0.done }.map(\.name) ?? []
+        return HintBar.TodoQuickView(done: stat.done, total: stat.total, openTasks: open) {
             enterCommandMode(commandID: AppConstants.Launcher.Command.todo, prefilledInput: "")
         }
     }

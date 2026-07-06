@@ -1,14 +1,16 @@
 import SwiftUI
 
 // Week / month done-total donuts, a current streak, a 30-day completion
-// trend line, and a GitHub-style activity heatmap. Series come from
-// TodoAnalytics (deterministic placeholders until storage exists).
+// trend line, and a GitHub-style activity heatmap. All series derive
+// from the live task set via TodoAnalytics, so the page reflects real
+// data and updates as tasks change.
 
 struct TodoAnalyticsPage: View {
     let themeStore: ThemeStore
+    var state: TodoState
 
-    private let trend = TodoAnalytics.monthTrend()
-    private let heatDays = TodoAnalytics.heatmapDays()
+    private var trend: [Int] { TodoAnalytics.monthTrend(state.groups) }
+    private var heatDays: [[TodoHeatDay]] { TodoAnalytics.heatmapDays(state.groups) }
 
     var body: some View {
         // Fill the height on large screens by letting the four sections
@@ -35,9 +37,9 @@ struct TodoAnalyticsPage: View {
     private var statStrip: some View {
         TodoStatStrip(
             themeStore: themeStore,
-            week: TodoAnalytics.week,
-            month: TodoAnalytics.month,
-            streak: TodoAnalytics.streakDays
+            week: TodoAnalytics.stat(state.groups, sameAs: .weekOfYear),
+            month: TodoAnalytics.stat(state.groups, sameAs: .month),
+            streak: TodoAnalytics.streakDays(state.groups)
         )
     }
 
@@ -48,11 +50,11 @@ struct TodoAnalyticsPage: View {
                 TodoLineChart(data: trend, themeStore: themeStore)
                     .frame(height: 92)
                 HStack {
-                    Text("Jun 5")
+                    Text(axisLabel(daysAgo: 29))
                     Spacer()
-                    Text("Jun 20")
+                    Text(axisLabel(daysAgo: 15))
                     Spacer()
-                    Text("Jul 4")
+                    Text(axisLabel(daysAgo: 0))
                 }
                 .font(.system(size: 9.5, design: .monospaced))
                 .foregroundStyle(themeStore.mutedTextColor())
@@ -82,6 +84,12 @@ struct TodoAnalyticsPage: View {
             sectionLabel("sparkles", "Insights · last 30 days (Tasks)")
             TodoInsightsStrip(themeStore: themeStore, trend: trend)
         }
+    }
+
+    private func axisLabel(daysAgo: Int) -> String {
+        let cal = Calendar.current
+        let date = cal.date(byAdding: .day, value: -daysAgo, to: cal.startOfDay(for: Date())) ?? Date()
+        return TodoAnalytics.axisDateFormatter.string(from: date)
     }
 
     private func sectionLabel(_ icon: String, _ text: String) -> some View {

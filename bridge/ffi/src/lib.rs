@@ -5,6 +5,7 @@ mod runtime_config;
 mod search_api;
 mod seed_api;
 mod state;
+mod todo_api;
 mod translate_api;
 mod usage_api;
 
@@ -87,6 +88,25 @@ pub extern "C" fn look_seed_uwp_apps_json(json: *const c_char) -> bool {
 pub extern "C" fn look_request_index_refresh() -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         state::request_background_index_refresh()
+    }))
+    .unwrap_or(false)
+}
+
+/// Returns the full /todo task set as a JSON array. Free with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_todo_list_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        todo_api::look_todo_list_json_impl()
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Replaces the /todo task set from a JSON array. Returns true on success.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_todo_save_json(json: *const c_char) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        todo_api::look_todo_save_json_impl(json)
     }))
     .unwrap_or(false)
 }
@@ -439,6 +459,56 @@ mod tests {
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         env::temp_dir().join(format!("look-ffi-config-smoke-{nanos}.config"))
+    }
+
+    #[test]
+    fn ffi_todo_save_and_list_round_trip() {
+        let lock = TEST_MUTEX.get_or_init(|| Mutex::new(()));
+        let _guard = lock.lock().expect("test lock poisoned");
+
+        // The todo store resolves LOOK_DB_PATH on every call, so pointing
+        // it at a scratch database keeps the test off the real look.db.
+        let db_path = unique_test_db_path();
+        let _ = fs::remove_file(&db_path);
+        unsafe {
+            env::set_var("LOOK_DB_PATH", db_path.as_os_str());
+        }
+
+        // Far-future due_date so the retention prune never removes it.
+        let tasks = CString::new(
+            r#"[{"id":"t1","name":"Ship the todo backend","done":true,"due_date":"2999-01-01","created_at_unix_s":1000}]"#,
+        )
+        .expect("tasks cstring");
+        assert!(look_todo_save_json(tasks.as_ptr()), "save should succeed");
+
+        let ptr = look_todo_list_json();
+        assert!(!ptr.is_null());
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        look_free_cstring(ptr);
+        assert!(
+            raw.contains("Ship the todo backend"),
+            "list should return the saved task, got: {raw}"
+        );
+        assert!(raw.contains(r#""due_date":"2999-01-01""#));
+
+        // Save is a full replace: an empty set clears the table.
+        let empty = CString::new("[]").expect("empty cstring");
+        assert!(look_todo_save_json(empty.as_ptr()));
+        let ptr = look_todo_list_json();
+        assert!(!ptr.is_null());
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        look_free_cstring(ptr);
+        assert_eq!(raw, "[]");
+
+        // Malformed JSON is rejected without touching the store.
+        let bad = CString::new("not json").expect("bad cstring");
+        assert!(!look_todo_save_json(bad.as_ptr()));
+
+        let _ = fs::remove_file(&db_path);
     }
 
     #[test]
