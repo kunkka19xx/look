@@ -46,7 +46,7 @@ let onQuickChange = null;
 
 // --- DOM refs ---
 let panel, searchBar, searchInput, statsBar, toolbar;
-let countEl, addDateBtn, saveBtn, daysEl, statsEl;
+let countEl, addDateBtn, saveBtn, daysEl, statsEl, tooltipEl;
 
 export function init() {
   panel = document.getElementById('cmd-panel-todo');
@@ -99,6 +99,20 @@ export function init() {
     editingAddKey = null;
     renderDays();
   });
+  // Hover tooltip for heatmap cells. Delegated on statsEl so it survives
+  // the wholesale innerHTML re-renders; the bubble itself lives outside.
+  tooltipEl = document.createElement('div');
+  tooltipEl.className = 'cmd-todo-tooltip';
+  tooltipEl.hidden = true;
+  panel.appendChild(tooltipEl);
+  statsEl.addEventListener('mouseover', (e) => {
+    const el = e.target.closest('[data-tip]');
+    if (el) showTooltip(el);
+  });
+  statsEl.addEventListener('mouseout', (e) => {
+    if (e.target.closest('[data-tip]')) tooltipEl.hidden = true;
+  });
+
   // Click-away from an open field cancels it (Enter commits, Esc cancels).
   daysEl.addEventListener('focusout', (e) => {
     if (e.target.dataset?.todoField) {
@@ -125,8 +139,20 @@ export function enter() {
 export function exit() {
   visible = false;
   panel.hidden = true;
+  tooltipEl.hidden = true;
   editingAddKey = null;
   editingTaskRef = null;
+}
+
+// Anchored above the hovered cell, clamped to the window edges.
+function showTooltip(el) {
+  tooltipEl.textContent = el.dataset.tip;
+  tooltipEl.hidden = false;
+  const rect = el.getBoundingClientRect();
+  const w = tooltipEl.offsetWidth;
+  const left = Math.min(Math.max(rect.left + rect.width / 2 - w / 2, 4), window.innerWidth - w - 4);
+  tooltipEl.style.left = `${left}px`;
+  tooltipEl.style.top = `${rect.top - tooltipEl.offsetHeight - 6}px`;
 }
 
 export function handleKey(e) {
@@ -389,6 +415,7 @@ const dateSearchText = (date, diff) =>
 
 function setPage(p) {
   page = p;
+  tooltipEl.hidden = true;
   searchBar.hidden = p !== 'tasks';
   toolbar.hidden = p !== 'tasks';
   daysEl.hidden = p !== 'tasks';
@@ -487,10 +514,10 @@ function dayCardHtml(key, date, diff, tasks) {
   // Ring shows the whole day's progress even when search filters the rows.
   const full = tasksByDay.get(key);
   const done = full.filter((t) => t.done).length;
-  // "Today Jul 6" / "Tomorrow Jul 7" / "Sun Jul 5 · Yesterday"
-  const usePhraseAsTitle = diff === 0 || diff === 1;
-  const title = usePhraseAsTitle ? phrase : WEEKDAYS[date.getDay()];
-  const suffix = !usePhraseAsTitle && phrase ? `<span class="cmd-todo-day-rel">· ${phrase}</span>` : '';
+  // "Today Jul 6" / "Tue Jul 7 · Tomorrow" / "Sun Jul 5 · Yesterday".
+  // Matches macOS TodoView.header: only today drops the weekday.
+  const title = isToday ? 'Today' : WEEKDAYS[date.getDay()];
+  const suffix = phrase && !isToday ? `<span class="cmd-todo-day-rel">· ${phrase}</span>` : '';
 
   const headerBtns = isPast ? '' : `
     <button class="cmd-todo-icon-btn" data-act="complete-all" data-group="${key}" title="Complete all">${listChecks}</button>
@@ -613,31 +640,34 @@ function donutHtml(label, stat) {
       <circle cx="34" cy="34" r="${r}" fill="none" stroke="var(--divider-color)" stroke-width="5"/>
       <circle cx="34" cy="34" r="${r}" fill="none" stroke="var(--accent-color)" stroke-width="5"
         stroke-linecap="round" stroke-dasharray="${(c * f).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 34 34)"/>
-      <text x="34" y="32" text-anchor="middle" class="cmd-todo-donut-done">${stat.done}</text>
-      <text x="34" y="46" text-anchor="middle" class="cmd-todo-donut-total">${stat.total}</text>
+      <text x="34" y="31" text-anchor="middle" class="cmd-todo-donut-done">${stat.done}</text>
+      <line x1="26" y1="35" x2="42" y2="35" stroke="var(--divider-color)" stroke-width="1"/>
+      <text x="34" y="47" text-anchor="middle" class="cmd-todo-donut-total">${stat.total}</text>
     </svg>
   </div>`;
 }
 
-function streakHtml(streak, counts) {
-  const t = today();
+// Flame on the left; "N days" with the dot row under it on the right.
+// The last min(streak, 7) dots light up (macOS TodoStreakColumn).
+function streakHtml(streak) {
+  const filled = Math.min(streak, STREAK_DOTS);
   let dots = '';
-  for (let offset = -(STREAK_DOTS - 1); offset <= 0; offset += 1) {
-    const active = (counts.get(keyOf(addDays(t, offset)))?.done ?? 0) > 0;
-    dots += `<span class="cmd-todo-streak-dot${active ? ' active' : ''}"></span>`;
+  for (let i = 0; i < STREAK_DOTS; i += 1) {
+    dots += `<span class="cmd-todo-streak-dot${i >= STREAK_DOTS - filled ? ' active' : ''}"></span>`;
   }
   return `<div class="cmd-todo-stat-cell">
     <div class="cmd-todo-stat-label">STREAK</div>
     <div class="cmd-todo-streak">
       <span class="cmd-todo-streak-flame">${flame}</span>
-      <span class="cmd-todo-streak-days"><b>${streak}</b> day${streak === 1 ? '' : 's'}</span>
+      <div class="cmd-todo-streak-right">
+        <span class="cmd-todo-streak-days"><b>${streak}</b> day${streak === 1 ? '' : 's'}</span>
+        <div class="cmd-todo-streak-dots">${dots}</div>
+      </div>
     </div>
-    <div class="cmd-todo-streak-dots">${dots}</div>
   </div>`;
 }
 
-function trendSvg(data, width) {
-  const h = 96;
+function trendSvg(data, width, h) {
   const padX = 8;
   const padY = 10;
   const maxV = Math.max(UNFINISHED_LIMIT, ...data);
@@ -660,10 +690,21 @@ function trendSvg(data, width) {
   </svg>`;
 }
 
+// GitHub-style year grid. Cells scale up so 52 weeks fill the card width
+// edge to edge; only when the panel is too narrow for the minimum cell size
+// do the oldest weeks drop off (same responsive rule as macOS heatmapDays).
 function heatmapHtml(counts, width) {
-  const cellStep = 13; // 10px cell + 3px gap
+  const gap = 3;
   const labelW = 18;
-  const weeks = Math.max(1, Math.min(HEATMAP_MAX_WEEKS, Math.floor((width - labelW) / cellStep)));
+  const minCell = 6;
+  const maxCell = 16;
+  let weeks = HEATMAP_MAX_WEEKS;
+  let cell = Math.floor((width - labelW - gap * weeks) / weeks);
+  if (cell < minCell) {
+    cell = minCell;
+    weeks = Math.max(1, Math.floor((width - labelW) / (cell + gap)));
+  }
+  cell = Math.min(cell, maxCell);
   const t = today();
   const lastSunday = addDays(t, -t.getDay());
 
@@ -683,21 +724,26 @@ function heatmapHtml(counts, width) {
       }
       const c = counts.get(keyOf(date)) || { done: 0, total: 0 };
       const opacity = HEAT_LEVEL_OPACITY[HEAT_LEVEL_FOR_DONE(c.done)];
+      // data-tip (custom bubble) instead of title: WebKitGTK doesn't render
+      // native title tooltips inside this undecorated window.
       const tip = `${WEEKDAYS[date.getDay()]}, ${monthDay(date)}: ${c.total > 0 ? `${c.done}/${c.total} done` : 'no tasks'}`;
-      cells += `<span class="cmd-todo-heat-cell" style="opacity:${opacity}" title="${tip}"></span>`;
+      cells += `<span class="cmd-todo-heat-cell" style="opacity:${opacity}" data-tip="${tip}"></span>`;
     }
     cols += `<div class="cmd-todo-heat-col">${cells}</div>`;
   }
 
-  const legend = HEAT_LEVEL_OPACITY
-    .map((o) => `<span class="cmd-todo-heat-cell" style="opacity:${o}"></span>`)
-    .join('');
-
-  return `<div class="cmd-todo-heatmap">
+  return `<div class="cmd-todo-heatmap" style="--heat-cell:${cell}px">
     <div class="cmd-todo-heat-col cmd-todo-heat-labels">${labels}</div>
     ${cols}
-  </div>
-  <div class="cmd-todo-heat-legend">Less ${legend} More</div>`;
+  </div>`;
+}
+
+// Sits right-aligned in the "ACTIVITY" section title, like macOS.
+function heatLegendHtml() {
+  const swatches = HEAT_LEVEL_OPACITY
+    .map((o) => `<span class="cmd-todo-heat-cell" style="opacity:${o}"></span>`)
+    .join('');
+  return `<div class="cmd-todo-heat-legend">Less ${swatches} More</div>`;
 }
 
 function insightsHtml(trend) {
@@ -714,26 +760,30 @@ function insightsHtml(trend) {
   </div>`).join('<div class="cmd-todo-insight-sep"></div>');
 }
 
-function renderStats() {
-  const counts = dayCounts();
-  const trend = trendData(counts);
-  const t = today();
-  // Panel is visible when this runs (setPage/renderAll guard), so widths
-  // are real. Fall back defensively for the first paint.
-  const width = Math.max(280, (statsEl.clientWidth || 560) - 36);
+// Leftover panel height is split between the trend chart (which grows a
+// little) and the section gaps (which widen evenly), so the page fills the
+// panel without any one chart ballooning. The heatmap can't grow: its
+// height is bound to the width through square cells.
+const TREND_BASE_H = 96;
+const TREND_MAX_H = 170;
+const TREND_LEFTOVER_SHARE = 0.35;
+const STATS_GAP_BASE = 8; // must match .cmd-todo-stats gap
+const STATS_GAP_MAX = 26;
 
-  statsEl.innerHTML = `
+function statsHtml(counts, trend, width, trendH) {
+  const t = today();
+  return `
     <div class="cmd-todo-card cmd-todo-stat-strip">
       ${donutHtml('THIS WEEK', periodStat(counts, 'week'))}
       <div class="cmd-todo-stat-sep"></div>
       ${donutHtml('THIS MONTH', periodStat(counts, 'month'))}
       <div class="cmd-todo-stat-sep"></div>
-      ${streakHtml(streakDays(counts), counts)}
+      ${streakHtml(streakDays(counts))}
     </div>
 
     <div class="cmd-todo-section-title">${activity} COMPLETION TREND · ${TREND_DAYS} DAYS</div>
     <div class="cmd-todo-card">
-      ${trendSvg(trend, width)}
+      ${trendSvg(trend, width, trendH)}
       <div class="cmd-todo-trend-axis">
         <span>${monthDay(addDays(t, -(TREND_DAYS - 1)))}</span>
         <span>${monthDay(addDays(t, -Math.floor(TREND_DAYS / 2)))}</span>
@@ -741,9 +791,44 @@ function renderStats() {
       </div>
     </div>
 
-    <div class="cmd-todo-section-title">${calendar} ACTIVITY · LAST YEAR</div>
+    <div class="cmd-todo-section-title">${calendar} ACTIVITY · LAST YEAR${heatLegendHtml()}</div>
     <div class="cmd-todo-card">${heatmapHtml(counts, width)}</div>
 
     <div class="cmd-todo-section-title">${zap} INSIGHTS · LAST ${TREND_DAYS} DAYS (TASKS)</div>
     <div class="cmd-todo-card cmd-todo-insights">${insightsHtml(trend)}</div>`;
+}
+
+function renderStats() {
+  const counts = dayCounts();
+  const trend = trendData(counts);
+  // Panel is visible when this runs (setPage/renderAll guard), so widths
+  // are real. Fall back defensively for the first paint. The 50 is the
+  // chrome around card content: statsEl padding (2x10) + card padding
+  // (2x14) + card border (2x1).
+  const width = Math.max(280, (statsEl.clientWidth || 560) - 50);
+
+  statsEl.style.gap = '';
+  statsEl.innerHTML = statsHtml(counts, trend, width, TREND_BASE_H);
+  // Second pass: measure the space left under the last card and distribute
+  // it: TREND_LEFTOVER_SHARE grows the trend chart, the rest widens the
+  // section gaps evenly. Measured via rects because scrollHeight is clamped
+  // to clientHeight and can't expose underflow. Both renders happen in the
+  // same frame, so nothing flickers.
+  const bottomPad = 10; // statsEl bottom padding
+  const lastCard = statsEl.lastElementChild.getBoundingClientRect();
+  const contentBottom = statsEl.getBoundingClientRect().top + statsEl.clientHeight - bottomPad;
+  const leftover = Math.floor(contentBottom - lastCard.bottom);
+  if (leftover > 4) {
+    const trendH = Math.min(
+      TREND_BASE_H + Math.round(leftover * TREND_LEFTOVER_SHARE),
+      TREND_MAX_H,
+    );
+    const gapCount = statsEl.childElementCount - 1;
+    const gap = Math.min(
+      STATS_GAP_BASE + (leftover - (trendH - TREND_BASE_H)) / gapCount,
+      STATS_GAP_MAX,
+    );
+    statsEl.style.gap = `${gap.toFixed(1)}px`;
+    statsEl.innerHTML = statsHtml(counts, trend, width, trendH);
+  }
 }

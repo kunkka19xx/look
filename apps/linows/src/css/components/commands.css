@@ -93,6 +93,8 @@
 }
 
 /* Input bar */
+/* 18px side margin = the content inset below (8px .cmd-content margin +
+   10px padding), so every command's bar and its content share edges. */
 .cmd-input-bar {
   display: flex;
   align-items: center;
@@ -100,7 +102,7 @@
   padding: 10px 12px;
   background: var(--control-fill);
   border-radius: 10px;
-  margin: 8px 8px 0;
+  margin: 8px 18px 0;
 }
 
 .cmd-input-bar-icon {
@@ -140,7 +142,7 @@
   flex-shrink: 0;
 }
 
-/* Header bar for read-only commands */
+/* Header bar for read-only commands. Same 18px inset as .cmd-input-bar. */
 .cmd-header-bar {
   display: flex;
   align-items: center;
@@ -148,7 +150,7 @@
   padding: 10px 12px;
   background: var(--control-fill);
   border-radius: 10px;
-  margin: 8px 8px 0;
+  margin: 8px 18px 0;
 }
 
 .cmd-header-bar .cmd-subtitle {
@@ -723,7 +725,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 12px 2px;
+  padding: 6px 10px 2px;
   margin: 0 8px;
 }
 
@@ -1092,11 +1094,20 @@ button.cmd-todo-add:hover {
   fill: var(--font-secondary);
 }
 
+/* Two columns like macOS TodoStreakColumn: flame left, days + dots right.
+   The 68px height matches the donut svg so all three cells align. */
 .cmd-todo-streak {
   display: flex;
   align-items: center;
+  gap: 12px;
+  height: 68px;
+}
+
+.cmd-todo-streak-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 6px;
-  flex: 1;
 }
 
 .cmd-todo-streak-flame {
@@ -1105,8 +1116,8 @@ button.cmd-todo-add:hover {
 }
 
 .cmd-todo-streak-flame svg {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
 }
 
 .cmd-todo-streak-days {
@@ -1125,10 +1136,10 @@ button.cmd-todo-add:hover {
 }
 
 .cmd-todo-streak-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  border: 1px solid var(--font-muted);
+  border: 1px solid var(--divider-color);
 }
 
 .cmd-todo-streak-dot.active {
@@ -1160,10 +1171,27 @@ button.cmd-todo-add:hover {
   color: var(--font-muted);
 }
 
+/* space-between absorbs the px remainder from the integer cell size into
+   the column gaps, so labels touch the left edge and the newest week the
+   right edge (no dead strip on either side). */
 .cmd-todo-heatmap {
   display: flex;
   gap: 3px;
-  justify-content: flex-end;
+  justify-content: space-between;
+  --heat-cell: 10px;
+}
+
+.cmd-todo-tooltip {
+  position: fixed;
+  z-index: 20;
+  padding: 4px 8px;
+  background: var(--bg-tint);
+  border: 1px solid var(--divider-color);
+  border-radius: 6px;
+  font-size: calc(var(--font-size) - 3px);
+  color: var(--font-color);
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .cmd-todo-heat-col {
@@ -1173,27 +1201,27 @@ button.cmd-todo-add:hover {
 }
 
 .cmd-todo-heat-cell {
-  width: 10px;
-  height: 10px;
+  width: var(--heat-cell, 10px);
+  height: var(--heat-cell, 10px);
   border-radius: 2px;
   background: var(--accent-color);
 }
 
 .cmd-todo-heat-labels .cmd-todo-heat-label {
   width: 12px;
-  height: 10px;
+  height: var(--heat-cell, 10px);
   font-family: var(--font-mono);
   font-size: 8px;
-  line-height: 10px;
+  line-height: var(--heat-cell, 10px);
   color: var(--font-muted);
 }
 
+/* Lives in the "ACTIVITY" section title row, pushed to the right edge. */
 .cmd-todo-heat-legend {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 3px;
-  margin-top: 8px;
+  margin-left: auto;
   font-size: calc(var(--font-size) - 4px);
   color: var(--font-muted);
 }
