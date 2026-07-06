@@ -5,7 +5,7 @@
 //! available on Plasma.
 
 use std::sync::Mutex;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
 
@@ -22,16 +22,21 @@ const REPORT_IFACE: &str = "com.look.KWinFocus";
 // near-instant, the timeout only guards against a wedged compositor.
 const REPORT_TIMEOUT: Duration = Duration::from_millis(1500);
 
-/// In-flight report channel. The KWin script's `callDBus` lands in
-/// `FocusReport::report` on zbus's executor thread, which forwards here.
-static REPORT_SLOT: Mutex<Option<Sender<bool>>> = Mutex::new(None);
+/// In-flight report channel plus its call token. The KWin script's
+/// `callDBus` lands in `FocusReport::report` on zbus's executor thread,
+/// which forwards here. The token keeps a late report from a timed-out
+/// earlier script from being credited to the current call.
+static REPORT_SLOT: Mutex<Option<(String, Sender<bool>)>> = Mutex::new(None);
 
 struct FocusReport;
 
 #[zbus::interface(name = "com.look.KWinFocus")]
 impl FocusReport {
-    fn report(&self, matched: bool) {
-        if let Some(tx) = REPORT_SLOT.lock().unwrap().take() {
+    fn report(&self, token: &str, matched: bool) {
+        let mut slot = REPORT_SLOT.lock().unwrap();
+        if slot.as_ref().is_some_and(|(t, _)| t == token)
+            && let Some((_, tx)) = slot.take()
+        {
             let _ = tx.send(matched);
         }
     }
@@ -56,15 +61,18 @@ pub fn try_focus(candidates: &[&str]) -> bool {
         return false;
     };
 
+    static TOKEN_COUNTER: AtomicU64 = AtomicU64::new(0);
+    let token = TOKEN_COUNTER.fetch_add(1, Ordering::Relaxed).to_string();
+
     let lowered: Vec<String> = candidates.iter().map(|c| c.to_lowercase()).collect();
     let script_path =
         std::env::temp_dir().join(format!("look-kwin-focus-{}.js", std::process::id()));
-    if std::fs::write(&script_path, build_script(&unique_name, &lowered)).is_err() {
+    if std::fs::write(&script_path, build_script(&unique_name, &token, &lowered)).is_err() {
         return false;
     }
 
     let (tx, rx) = channel();
-    *REPORT_SLOT.lock().unwrap() = Some(tx);
+    *REPORT_SLOT.lock().unwrap() = Some((token, tx));
 
     let script_obj = dbus::runtime().block_on(load_and_run(conn, &script_path));
     let matched = script_obj.is_some() && rx.recv_timeout(REPORT_TIMEOUT).unwrap_or(false);
@@ -88,17 +96,25 @@ pub fn try_focus(candidates: &[&str]) -> bool {
     matched
 }
 
-/// Register the report callback object once on the shared connection.
+/// Register the report callback object on the shared connection. Success is
+/// cached; a failure is retried on the next call instead of disabling KDE
+/// focus for the whole session. Always called with CALL_LOCK held, so the
+/// registration cannot race itself.
 fn ensure_report_object(conn: &'static zbus::Connection) -> bool {
-    static REGISTERED: OnceLock<bool> = OnceLock::new();
-    *REGISTERED.get_or_init(|| {
-        dbus::runtime().block_on(async {
-            conn.object_server()
-                .at(REPORT_PATH, FocusReport)
-                .await
-                .is_ok()
-        })
-    })
+    static REGISTERED: AtomicBool = AtomicBool::new(false);
+    if REGISTERED.load(Ordering::Acquire) {
+        return true;
+    }
+    let ok = dbus::runtime().block_on(async {
+        conn.object_server()
+            .at(REPORT_PATH, FocusReport)
+            .await
+            .is_ok()
+    });
+    if ok {
+        REGISTERED.store(true, Ordering::Release);
+    }
+    ok
 }
 
 /// Load the script into KWin and start it. Returns the script's object path
@@ -147,7 +163,7 @@ async fn load_and_run(conn: &zbus::Connection, path: &std::path::Path) -> Option
 /// KWin script that activates the first window matching `candidates` and
 /// reports the result back over D-Bus. `workspace.windowList` only exists on
 /// Plasma 6; its absence selects the Plasma 5 API.
-fn build_script(service: &str, candidates: &[String]) -> String {
+fn build_script(service: &str, token: &str, candidates: &[String]) -> String {
     let list = serde_json::to_string(candidates).unwrap_or_else(|_| "[]".into());
     format!(
         r#"var candidates = {list};
@@ -163,7 +179,7 @@ for (var i = 0; i < wins.length; ++i) {{
     matched = true;
     break;
 }}
-callDBus("{service}", "{REPORT_PATH}", "{REPORT_IFACE}", "Report", matched);
+callDBus("{service}", "{REPORT_PATH}", "{REPORT_IFACE}", "Report", "{token}", matched);
 "#
     )
 }
