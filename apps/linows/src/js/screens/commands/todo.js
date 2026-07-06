@@ -1,4 +1,4 @@
-// /todo — daily tasks & progress. Port of the macOS TodoCommand/TodoView/
+// /todo: daily tasks & progress. Port of the macOS TodoCommand/TodoView/
 // TodoAnalyticsView trio (apps/macos/.../Views/Commands/Todo*.swift), which
 // is the design source of truth. Data lives in the shared look-todo SQLite
 // store: load the full set once, edit in memory, write the whole set back on
@@ -130,7 +130,7 @@ export function exit() {
 }
 
 export function handleKey(e) {
-  // Ctrl+N flips Tasks/Stats, Ctrl+S saves — same pair as macOS Cmd+N/Cmd+S.
+  // Ctrl+N flips Tasks/Stats, Ctrl+S saves; same pair as macOS Cmd+N/Cmd+S.
   if (e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === 'n' || e.key === 'N')) {
     e.preventDefault();
     setPage(page === 'tasks' ? 'stats' : 'tasks');
@@ -166,7 +166,7 @@ export function setOnQuickChange(fn) {
   if (loaded) fireQuickChange();
 }
 
-// Reload from the store when nothing would be lost — used on window-show so
+// Reload from the store when nothing would be lost; used on window-show so
 // the quick view survives day rollovers and edits from other instances.
 export function reloadIfClean() {
   if (!dirty && !visible) load();
@@ -224,7 +224,7 @@ async function persist() {
   }
 }
 
-// --- Date helpers (local time, ISO yyyy-MM-dd keys — the same Gregorian
+// --- Date helpers (local time, ISO yyyy-MM-dd keys, the same Gregorian
 // keys the macOS app writes, so both clients group identically) ---
 
 const pad2 = (n) => String(n).padStart(2, '0');

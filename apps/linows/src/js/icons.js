@@ -6,7 +6,7 @@ const s = (d, size = 16) =>
 
 // Command sidebar
 export const calculator = s('<rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="8" y1="18" x2="8" y2="18.01"/><line x1="12" y1="18" x2="12" y2="18.01"/>');
-// Lucide "list-checks" — counterpart to macOS SF "checklist"; used by /todo.
+// Lucide "list-checks": counterpart to macOS SF "checklist"; used by /todo.
 export const listChecks = s('<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>');
 export const barChart = s('<line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>');
 export const flame = s('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>');
@@ -37,7 +37,7 @@ export const check = s('<polyline points="20 6 9 17 4 12"/>');
 // Translate
 export const globe = s('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>');
 
-// AI / web answers — header glyph + source-label chevron. Matches macOS
+// AI / web answers: header glyph + source-label chevron. Matches macOS
 // SF Symbols "sparkles" and "arrow.up.forward".
 export const sparkles = s('<path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z"/><path d="M5 16l.6 1.6L7 18l-1.4.4L5 20l-.6-1.6L3 18l1.4-.4z"/>');
 export const arrowUpRight = s('<line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>');
@@ -46,7 +46,7 @@ export const link = s('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07
 
 // Fallback result icons
 export const appIcon = s('<rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="1"/>');
-// Lucide "app-window" — a framed window with a titlebar; reads clearly as a
+// Lucide "app-window": a framed window with a titlebar; reads clearly as a
 // running application. Used for UWP switcher entries with no resolvable icon.
 export const appWindow = s('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 4v4"/><path d="M2 8h20"/><path d="M6 4v4"/>');
 export const fileIcon = s('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>');
@@ -58,7 +58,7 @@ export const chevronRight = s('<polyline points="9 18 15 12 9 6"/>');
 
 // Sized variants
 export const globeLg = s('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>', 36);
-// Lucide "history" — counterpart to macOS SF clock.arrow.circlepath; used in
+// Lucide "history": counterpart to macOS SF clock.arrow.circlepath; used in
 // the rc" recent-files empty-state placeholder.
 export const historyLg = s('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>', 36);
 

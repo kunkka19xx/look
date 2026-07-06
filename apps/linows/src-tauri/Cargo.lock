@@ -2506,6 +2506,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "look-todo"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+]
+
+[[package]]
 name = "lookapp"
 version = "0.1.0"
 dependencies = [
@@ -2516,6 +2524,7 @@ dependencies = [
  "look-answers",
  "look-engine",
  "look-storage",
+ "look-todo",
  "notify",
  "open",
  "png 0.17.16",

@@ -16,6 +16,7 @@ mod process;
 mod shell;
 mod state;
 mod sysinfo;
+mod todo;
 mod translate;
 mod trash;
 
@@ -637,6 +638,9 @@ fn main() {
             process::kill_process,
             process::list_running_apps,
             process::activate_running_app,
+            // Todo (shared look-todo store, same table macOS uses)
+            todo::todo_list,
+            todo::todo_save,
             // Translation
             translate::translate,
             // AI / web answers (look-answers crate, shared with macOS)

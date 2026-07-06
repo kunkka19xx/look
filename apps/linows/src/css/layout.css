@@ -44,7 +44,7 @@
   letter-spacing: 0.01em;
 }
 
-/* Windows: DWM can't round per-pixel-alpha (`transparent: true`) windows —
+/* Windows: DWM can't round per-pixel-alpha (`transparent: true`) windows;
  * Microsoft's "Apply rounded corners" doc explicitly excludes this case
  * (learn.microsoft.com/.../apply-rounded-corners), and DwmSetWindowAttribute
  * returns S_OK but no-ops. Fall back to clipping the visible launcher
@@ -80,7 +80,7 @@ html[data-os="windows"] .launcher-window {
 /* Main pane: 50/50 grid so the search bar's right edge lines up exactly with
  * the result rows' right edge (and, when visible, the running-apps strip
  * sits in column 2 above the preview pane, right-aligned to the same border).
- * The split applies whenever there's anything in column 2 — either the
+ * The split applies whenever there's anything in column 2: either the
  * running-apps strip up top or the preview pane below (the latter lives
  * inside `.results-area`, so we test for its presence in the DOM via :has). */
 .main-pane {
@@ -137,9 +137,9 @@ html[data-os="windows"] .launcher-window {
   overflow: hidden;
 }
 
-/* Results area — column 1 only by default, so its width matches the search
+/* Results area: column 1 only by default, so its width matches the search
  * bar's column exactly. The AI card sits on top, the engine results list
- * below, both inheriting the same 50 % width as the search bar above them —
+ * below, both inheriting the same 50 % width as the search bar above them;
  * which is what makes the search-bar right edge line up with the result rows
  * in normal browsing and stacked AI mode. The two-col AI mode (knowledge
  * lookup) deliberately overrides this so the answer card can read at a
@@ -169,11 +169,11 @@ html[data-os="windows"] .launcher-window {
  * grid columns so the answer reads at a comfortable measure; suggestions
  * pin to a 320 px column on the right (matches macOS
  * AppConstants.Launcher.aiAnswerSuggestionColumnWidth). Preview pane is
- * suppressed — nothing useful to preview alongside a search list.
+ * suppressed; nothing useful to preview alongside a search list.
  * Search-bar/results alignment is deliberately broken here: the wider card
  * is the visual signal that the launcher has switched into knowledge mode.
  *
- * Tight inner gap (4 px) between the card and the suggestion column —
+ * Tight inner gap (4 px) between the card and the suggestion column;
  * the card and the suggestion rows already carry their own borders and
  * background fills, so anything more reads as wasted gutter. Outer edges
  * still keep the standard content-padding so the columns aren't flush
@@ -209,7 +209,7 @@ html[data-os="windows"] .launcher-window {
   display: none;
 }
 /* When the card is alone, the preview pane in column 2 has nothing useful
- * to show — hide it so the answer card can read at a comfortable measure. */
+ * to show; hide it so the answer card can read at a comfortable measure. */
 .results-area.ai-mode-full ~ .preview-panel {
   display: none;
 }
@@ -268,7 +268,7 @@ html[data-os="windows"] .launcher-window {
   flex-shrink: 0;
 }
 
-/* Todo quick view — "Todo X/Y" stat in the main hint bar. Hover reveals the
+/* Todo quick view: "Todo X/Y" stat in the main hint bar. Hover reveals the
    unfinished-tasks bubble; click jumps into /todo. */
 .hint-todo {
   position: relative;

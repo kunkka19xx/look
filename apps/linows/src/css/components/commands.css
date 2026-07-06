@@ -225,7 +225,7 @@
   font-weight: 600;
 }
 
-/* Kill confirm bar — pinned to bottom of cmd-main */
+/* Kill confirm bar: pinned to bottom of cmd-main */
 .cmd-confirm-bar[hidden] {
   display: none;
 }
@@ -435,7 +435,7 @@
   color: #fff;
 }
 
-/* Music player — pinned to bottom */
+/* Music player: pinned to bottom */
 .cmd-pomo-music {
   padding: 10px;
   margin: 0 8px 8px;

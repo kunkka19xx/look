@@ -11,6 +11,7 @@ tauri-plugin-single-instance = "2"
 look-answers = { path = "../../../core/answers" }
 look-engine = { path = "../../../core/engine" }
 look-storage = { path = "../../../core/storage" }
+look-todo = { path = "../../../core/todo" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 notify = "6"
