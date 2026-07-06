@@ -6,6 +6,8 @@ import * as picked from './components/picked.js';
 import * as banner from './components/banner.js';
 import * as confirm from './components/confirm.js';
 import * as commands from './screens/commands/index.js';
+import * as todoCmd from './screens/commands/todo.js';
+import { listChecks } from './icons.js';
 import * as settings from './screens/settings.js';
 import { mountUpdateWidget } from './screens/update_widget.js';
 import * as translatePanel from './components/translate.js';
@@ -83,6 +85,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await Promise.all([
     load('html/screens/commands/calc.html', cmdMain),
     load('html/screens/commands/pomo.html', cmdMain),
+    load('html/screens/commands/todo.html', cmdMain),
     load('html/screens/commands/kill.html', cmdMain),
     load('html/screens/commands/shell.html', cmdMain),
     load('html/screens/commands/sys.html', cmdMain),
@@ -97,7 +100,58 @@ document.addEventListener('DOMContentLoaded', async () => {
   const contentArea = document.getElementById('search-content');
   const resultsArea = document.getElementById('results-area');
   const aiCardEl = document.getElementById('ai-answer-card');
-  setHint(hintMessage, HINT_MAIN);
+
+  // Todo quick view — when today has tasks, the last main-hint item
+  // ("Ctrl+/: Command mode") is swapped for a clickable "Todo X/Y" stat with
+  // an "Unfinished today" hover bubble. Mirrors macOS HintBar.TodoQuickView:
+  // home screen only, hidden when today is empty.
+  let todoQuick = null;
+
+  function renderMainHint() {
+    if (!todoQuick || todoQuick.total === 0) {
+      setHint(hintMessage, HINT_MAIN);
+      return;
+    }
+    setHint(hintMessage, HINT_MAIN.slice(0, HINT_MAIN.lastIndexOf(' • ')));
+    hintMessage.insertAdjacentHTML('beforeend', ' <span class="hint-sep">•</span> ');
+    const widget = document.createElement('span');
+    widget.className = 'hint-todo';
+    widget.innerHTML = `${listChecks} Todo <b>${todoQuick.done}/${todoQuick.total}</b>`;
+    if (todoQuick.open.length > 0) {
+      const bubble = document.createElement('div');
+      bubble.className = 'hint-todo-bubble';
+      const title = document.createElement('div');
+      title.className = 'hint-todo-bubble-title';
+      title.textContent = 'Unfinished today';
+      bubble.appendChild(title);
+      for (const name of todoQuick.open) {
+        const row = document.createElement('div');
+        row.className = 'hint-todo-bubble-task';
+        row.textContent = `• ${name}`;
+        bubble.appendChild(row);
+      }
+      widget.appendChild(bubble);
+    }
+    widget.addEventListener('click', () => {
+      commands.enterById('todo');
+      enterCommandMode();
+      queryInput.value = '';
+    });
+    hintMessage.appendChild(widget);
+  }
+
+  function isHomeHintContext() {
+    return !commands.isActive() && !settings.isActive()
+      && !search.isTranslateMode() && !search.isClipboardMode()
+      && !search.isPrefixHintMode() && !search.isCommandHintMode();
+  }
+
+  todoCmd.setOnQuickChange((stat) => {
+    todoQuick = stat;
+    if (isHomeHintContext()) renderMainHint();
+  });
+
+  renderMainHint();
 
   // Snapshot of the latest results + AI state, used by applyAiLayoutMode()
   // to pick full / two-col / stacked. Mirrors macOS LauncherView resultsRow.
@@ -146,7 +200,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     queryInput.value = '';
     search.handleQueryInput('');
     queryInput.focus();
-    setHint(hintMessage, HINT_MAIN);
+    renderMainHint();
   });
   settings.restoreOnStartup();
 
@@ -265,7 +319,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // `:calc` without a trailing space stays in the discovery menu (matches
   // macOS extractInlineCommand semantics); the user can press Enter on the
   // highlighted row to enter the command with empty input.
-  const CMD_PREFIX_MAP = { calc: 'calc', pomo: 'pomo', kill: 'kill', shell: 'shell', sys: 'sys' };
+  const CMD_PREFIX_MAP = { calc: 'calc', pomo: 'pomo', todo: 'todo', kill: 'kill', shell: 'shell', sys: 'sys' };
 
   function tryCommandPrefix(value) {
     if (!value.startsWith(':')) return false;
@@ -321,7 +375,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (runningApps.isEnabled()) runningApps.refresh();
       translatePanel.hide();
     } else {
-      setHint(hintMessage, HINT_MAIN);
+      renderMainHint();
       resultsList.hidden = false;
       runningApps.setSuspended(false);
       if (runningApps.isEnabled()) runningApps.refresh();
@@ -379,6 +433,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     queryInput.select();
     requestIndexRefresh();
     runningApps.refresh();
+    // Re-read todos when nothing would be lost, so the quick view stays
+    // fresh across day rollovers and edits from other Look clients.
+    todoCmd.reloadIfClean();
   });
 
   onIndexReady(() => {
@@ -423,22 +480,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     const cmd = commands.getActiveCommand();
     if (cmd === 'pomo') {
       setHint(hintMessage,
-        'Space: Start/pause \u2022 R: Reset \u2022 P: Music \u2022 Esc: Back \u2022 Tab/Ctrl+1-5: Switch');
+        'Space: Start/pause \u2022 R: Reset \u2022 P: Music \u2022 Esc: Back \u2022 Tab/Ctrl+1-6: Switch');
+    } else if (cmd === 'todo') {
+      setHint(hintMessage,
+        'Ctrl+N: Switch page \u2022 Ctrl+S: Save \u2022 Tab/Ctrl+1-6: Switch \u2022 Esc: Back');
     } else if (cmd === 'kill') {
       setHint(hintMessage,
-        'Y: Confirm \u2022 N: Cancel \u2022 Tab/Ctrl+1-5: Switch \u2022 Esc: Back');
+        'Y: Confirm \u2022 N: Cancel \u2022 Tab/Ctrl+1-6: Switch \u2022 Esc: Back');
     } else if (cmd === 'sys') {
       setHint(hintMessage,
-        'Esc: Back \u2022 Tab/Ctrl+1-5: Switch \u2022 Ctrl+/: Command mode \u2022 Ctrl+Shift+,: Settings');
+        'Esc: Back \u2022 Tab/Ctrl+1-6: Switch \u2022 Ctrl+/: Command mode \u2022 Ctrl+Shift+,: Settings');
     } else if (cmd === 'calc') {
       setHint(hintMessage,
-        'Enter: Evaluate \u2022 Tab: Select \u2022 Ctrl+1-5: Switch \u2022 Esc: Back');
+        'Enter: Evaluate \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back');
     } else if (cmd === 'shell') {
       setHint(hintMessage,
-        'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-5: Switch \u2022 Esc: Back');
+        'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back');
     } else {
       setHint(hintMessage,
-        'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-5: Switch \u2022 Esc: Back');
+        'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back');
     }
   }
 
@@ -447,7 +507,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     resultsList.hidden = false;
     previewPanel.hidden = false;
     translatePanel.hide();
-    setHint(hintMessage, HINT_MAIN);
+    renderMainHint();
     queryInput.value = '';
     search.handleQueryInput('');
     queryInput.focus();

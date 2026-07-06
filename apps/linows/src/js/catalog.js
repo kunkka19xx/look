@@ -3,7 +3,7 @@
 // `"` menu, the `:` menu, and the Help screen can't drift. linows omits
 // `tw"` (no dictionary lookup yet).
 
-import { calculator, timer, xCircle, terminal, info } from './icons.js';
+import { calculator, timer, listChecks, xCircle, terminal, info } from './icons.js';
 
 // Synthetic-row id namespaces — the renderer and Enter/click handlers tell
 // synthetic rows apart from real candidates by id prefix.
@@ -27,14 +27,15 @@ const PREFIX_ENTRIES = [
   { prefix: 't"',  argHint: 'word',    description: 'Web translate (VI/EN/JA)' },
 ];
 
-// Shortcut numbers must match the Ctrl+1..5 bindings in
+// Shortcut numbers must match the Ctrl+1..6 bindings in
 // screens/commands/index.js, otherwise the title hint lies to the user.
 const COMMAND_ENTRIES = [
   { id: 'calc',  title: 'calc (Ctrl+1)',  detail: 'Evaluate math expression',          icon: calculator },
   { id: 'pomo',  title: 'pomo (Ctrl+2)',  detail: 'Pomodoro focus timer',              icon: timer },
-  { id: 'kill',  title: 'kill (Ctrl+3)',  detail: 'Force kill app or process by port', icon: xCircle },
-  { id: 'shell', title: 'shell (Ctrl+4)', detail: 'Run a shell command',               icon: terminal },
-  { id: 'sys',   title: 'sys (Ctrl+5)',   detail: 'Show system information',           icon: info },
+  { id: 'todo',  title: 'todo (Ctrl+3)',  detail: 'Daily tasks & progress',            icon: listChecks },
+  { id: 'kill',  title: 'kill (Ctrl+4)',  detail: 'Force kill app or process by port', icon: xCircle },
+  { id: 'shell', title: 'shell (Ctrl+5)', detail: 'Run a shell command',               icon: terminal },
+  { id: 'sys',   title: 'sys (Ctrl+6)',   detail: 'Show system information',           icon: info },
 ];
 
 // True when `:cmd <ws>` should bypass the discovery menu and live-trigger
