@@ -8,16 +8,16 @@ dist/
 *.xcresult/
 
 target/
-**/target/
 result
+result-*
 
 .env
 .env.*
 
 # local editor/workbench
 .nvim/
-*.swp
-*.swo
+*.sw?
+.direnv/
 
 # nvim apple development
 buildServer.json
