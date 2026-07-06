@@ -289,6 +289,8 @@ struct HintBar: View {
     struct TodoQuickView {
         let done: Int
         let total: Int
+        /// Names of today's unfinished tasks, listed in the hover tooltip.
+        let openTasks: [String]
         let onTap: () -> Void
     }
 
@@ -321,7 +323,26 @@ struct HintBar: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Open /todo")
+                // hoverBubble (not hoverTooltip): the popover would
+                // swallow the first click; the bubble is click-through,
+                // so tapping always opens /todo directly.
+                .hoverBubble(isEnabled: !todo.openTasks.isEmpty, width: 240) {
+                    openTasksBubbleContent(todo)
+                }
+            }
+        }
+    }
+
+    private func openTasksBubbleContent(_ todo: TodoQuickView) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Unfinished today")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .semibold))
+                .foregroundStyle(themeStore.mutedTextColor())
+            ForEach(Array(todo.openTasks.enumerated()), id: \.offset) { _, name in
+                Text("• \(name)")
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2)))
+                    .foregroundStyle(themeStore.fontColor())
+                    .lineLimit(2)
             }
         }
     }
