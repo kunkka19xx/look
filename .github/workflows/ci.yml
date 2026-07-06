@@ -297,6 +297,9 @@ jobs:
       - name: Build (debug)
         run: cargo build --locked --manifest-path apps/linows/src-tauri/Cargo.toml
 
+      - name: Run tests
+        run: cargo test --locked --manifest-path apps/linows/src-tauri/Cargo.toml
+
   linows-build-windows:
     name: Build linows (Tauri, Windows)
     runs-on: windows-latest
@@ -330,3 +333,6 @@ jobs:
 
       - name: Build (debug)
         run: cargo build --locked --manifest-path apps/linows/src-tauri/Cargo.toml
+
+      - name: Run tests
+        run: cargo test --locked --manifest-path apps/linows/src-tauri/Cargo.toml
