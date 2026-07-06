@@ -2,8 +2,8 @@
 # apps/windows/). Included by the top-level Makefile on Windows hosts, so
 # `make <target>` from the repo root runs the right thing.
 #
-# Legacy WinUI3 targets moved to Makefile.winui3 - run with
-#     make -f Makefile.winui3 <target>
+# Legacy WinUI3 targets moved to scripts/Makefile.winui3 - run with
+#     make -f scripts/Makefile.winui3 <target>
 #
 # Recipes are cmd.exe-compatible (no `|| true`, `2>/dev/null`, `[ -f ]`,
 # `$$(...)`), so this works whether your `make` defaults to cmd or bash.
@@ -65,7 +65,7 @@ help:
 	@echo   CONFIG=Release           (default: Debug)
 	@echo   VCVARSALL=^<path^>         (default: VS 2022 BuildTools x64)
 	@echo.
-	@echo WinUI3 legacy: make -f Makefile.winui3 ^<target^>
+	@echo WinUI3 legacy: make -f scripts/Makefile.winui3 ^<target^>
 
 core-check:
 	$(WITH_VCVARS) cargo check --workspace --manifest-path core\Cargo.toml

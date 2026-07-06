@@ -72,11 +72,15 @@ fn walk_apps(
         let Ok(file_type) = entry.file_type() else {
             continue;
         };
-        if !file_type.is_dir() {
+
+        let app_path = entry.path();
+        let is_dir = file_type.is_dir();
+        let is_symlink_dir =
+            file_type.is_symlink() && fs::metadata(&app_path).map(|m| m.is_dir()).unwrap_or(false);
+        if !is_dir && !is_symlink_dir {
             continue;
         }
 
-        let app_path = entry.path();
         let Some(app_path_str) = app_path.to_str() else {
             continue;
         };
@@ -104,7 +108,7 @@ fn walk_apps(
                 &title,
                 app_path_str,
             ));
-        } else {
+        } else if is_dir {
             walk_apps(
                 app_path_str,
                 depth - 1,
@@ -136,7 +140,66 @@ fn should_exclude_app_name(name: &str, app_exclude_names: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{merged_app_scan_roots, should_exclude_app_name, should_exclude_path};
+    use super::{merged_app_scan_roots, should_exclude_app_name, should_exclude_path, walk_apps};
+    use look_indexing::Candidate;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::mpsc;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time after epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "look-macos-apps-{name}-{}-{unique}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("create temp dir");
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn create_app(root: &Path, name: &str) -> PathBuf {
+        let app = root.join(name);
+        fs::create_dir_all(app.join("Contents")).expect("create app contents");
+        app
+    }
+
+    #[cfg(unix)]
+    fn symlink_dir(target: &Path, link: &Path) {
+        std::os::unix::fs::symlink(target, link).expect("create symlink");
+    }
+
+    fn collect_apps(root: &Path) -> Vec<Candidate> {
+        let (tx, rx) = mpsc::sync_channel(16);
+        let empty = Vec::<String>::new();
+        walk_apps(
+            root.to_str().expect("utf-8 temp path"),
+            3,
+            &tx,
+            &empty,
+            &empty,
+        );
+        drop(tx);
+        rx.into_iter().collect()
+    }
 
     #[test]
     fn excludes_app_paths_by_prefix() {
@@ -190,5 +253,61 @@ mod tests {
                 "/System/Library/CoreServices/Applications".to_string()
             ]
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn indexes_symlinked_app_bundle() {
+        let tmp = TempDir::new("symlink-app");
+        let real_root = tmp.path().join("Real Apps");
+        let scan_root = tmp.path().join("Applications");
+        fs::create_dir_all(&real_root).expect("create real root");
+        fs::create_dir_all(&scan_root).expect("create scan root");
+        let real_app = create_app(&real_root, "Riot Client.app");
+        let link_app = scan_root.join("Client Riot.app");
+        symlink_dir(&real_app, &link_app);
+
+        let apps = collect_apps(&scan_root);
+
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].title.as_ref(), "Client Riot");
+        assert_eq!(
+            apps[0].path.as_ref(),
+            link_app.to_str().expect("utf-8 symlink path")
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn does_not_recurse_into_non_app_symlinked_directory() {
+        let tmp = TempDir::new("symlink-dir");
+        let real_root = tmp.path().join("Real Apps");
+        let scan_root = tmp.path().join("Applications");
+        fs::create_dir_all(&real_root).expect("create real root");
+        fs::create_dir_all(&scan_root).expect("create scan root");
+        create_app(&real_root, "Nested.app");
+        symlink_dir(&real_root, &scan_root.join("Linked Apps"));
+
+        let apps = collect_apps(&scan_root);
+
+        assert!(apps.is_empty());
+    }
+
+    #[test]
+    fn excludes_app_by_bundle_filename() {
+        let tmp = TempDir::new("exclude-filename");
+        create_app(tmp.path(), "Client Riot.app");
+        let (tx, rx) = mpsc::sync_channel(16);
+        let empty = Vec::<String>::new();
+        walk_apps(
+            tmp.path().to_str().expect("utf-8 temp path"),
+            3,
+            &tx,
+            &empty,
+            &["Client Riot".to_string()],
+        );
+        drop(tx);
+
+        assert!(rx.into_iter().collect::<Vec<_>>().is_empty());
     }
 }

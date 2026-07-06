@@ -114,9 +114,9 @@ Enter command mode with `Cmd+/`, or jump straight to a specific command from the
 
 - `:calc` then `Enter` - open `/calc` with empty input
 - `:calc 2+2` - opens `/calc` with `2+2` already typed (the space after the command id is the trigger; you can keep typing without pressing Enter)
-- Same pattern for `:shell`, `:kill`, `:sys`
+- Same pattern for `:shell`, `:kill`, `:sys`, `:pomo`, `:todo`
 
-The `:` prefix only triggers when the word right after it is a known command id (`calc`, `shell`, `kill`, `sys`); anything else (`:foo`, `:Users/me/...`) stays in normal search.
+The `:` prefix only triggers when the word right after it is a known command id (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`); anything else (`:foo`, `:Users/me/...`) stays in normal search.
 
 Built-in commands:
 
@@ -125,6 +125,7 @@ Built-in commands:
 - `kill`: force-kill a running app/process (with confirmation), supports port queries like `:3000` or `port 3000`
 - `sys`: show system information
 - `pomo`: pomodoro focus timer with editable session list, three timer styles (Modern Ring / Vintage Dial / Minimal Text), background-music folder, menu-bar mini-timer, and a 5-second standby fade
+- `todo`: daily tasks and progress. Two pages - a task list grouped by day, and a Stats page (weekly/monthly completion, streak, 30-day trend, GitHub-style year heatmap)
 
 `calc` quick examples:
 
@@ -143,12 +144,22 @@ Built-in commands:
 - A "session ending soon" alert fires 10s before each block ends - both as a menu-bar popover and (when granted) a macOS notification with chime
 - Menu-bar mini-timer shows remaining time even when the launcher is hidden; click to jump back into `/pomo`
 
+`todo` quick reference:
+
+- Tasks are grouped by day, newest on top. Up to 3 unfinished tasks per day (complete one to add more) and up to 3 upcoming date groups (`Add date + N`)
+- Past days are read-only; their unfinished tasks get an `OVERDUE` badge
+- Search matches task names and dates (`jul 3`, `yesterday`); case- and diacritic-insensitive
+- Nothing autosaves: hit `Save` or `Cmd+S`; `Cmd+N` flips between the Tasks and Stats pages
+- When today has tasks, the home-screen hint bar shows a clickable `Todo X/Y` stat; hovering it lists what's still unfinished
+- Data lives in the local database and is kept for one year
+
 Behavior:
 
 - `Escape`: leave command mode
 - `Shift+Escape`: hide launcher
 - `Tab` / `Shift+Tab`: switch commands while staying in command mode
-- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4` / `Cmd+5`: jump to specific command (`shell`, `calc`, `kill`, `sys`, `pomo`)
+- `Cmd+1`..`Cmd+6`: jump to specific command (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`)
+- `Cmd+N` / `Cmd+S` (inside `/todo`): switch Tasks/Stats page, save changes
 - `Up` / `Down`: in `kill`, navigate process/app results
 - shell text containing `sudo` shows an orange warning cue
 
@@ -270,10 +281,11 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
 - `Up` / `Down`: move selection (and in `kill`, move process selection)
 - `Cmd+/`: command mode
-- `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:pomo`): jump to a command directly from the home screen
-- `Cmd+1` / `Cmd+2` / `Cmd+3` / `Cmd+4` / `Cmd+5`: in command mode, direct command switch (`shell`, `calc`, `kill`, `sys`, `pomo`)
+- `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:todo`): jump to a command directly from the home screen
+- `Cmd+1`..`Cmd+6`: in command mode, direct command switch (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`)
 - `Cmd+1`..`Cmd+9` (macOS) / `Alt+1`..`Alt+9` (Linux, Windows): on the home screen, activate the running-app whose badge shows that digit, when `Running Apps` is on. Badge labels are ergonomic, not strictly positional - see Settings → Appearance → Running Apps
 - `Space` / `R` / `P` (inside `/pomo`): start/pause session, reset, toggle music play/pause
+- `Cmd+N` / `Cmd+S` (inside `/todo`): switch Tasks/Stats page, save changes
 - `Escape`: back/close (context dependent)
 - `Shift+Escape`: hide launcher
 - `Cmd+Enter`: web search

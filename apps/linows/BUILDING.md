@@ -85,7 +85,7 @@ scripts\windows\with-vcvars.bat cargo tauri dev
 scripts\windows\with-vcvars.bat cargo tauri build
 ```
 
-The Makefile dispatches to `Makefile.win` on Windows and wraps every target in the vcvars environment:
+The Makefile dispatches to `scripts/Makefile.win` on Windows and wraps every target in the vcvars environment:
 
 ```bash
 make app-run            # cargo tauri dev (hot reload)

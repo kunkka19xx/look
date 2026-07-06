@@ -19,6 +19,7 @@ https://github.com/user-attachments/assets/f8ee0f85-4c0d-4ea5-bb1d-8c8bf014d50d
 - **Find and open anything** - apps, files, folders indexed locally. Type, Enter, done.
 - **Calc inline** - type `2^10`, `4!`, `200*15%`, `sqrt(2)`, `2*pi`. No command mode needed.
 - **Kill a process by port** - `Cmd+/` then `kill :3000`. Confirms before killing.
+- **Track daily tasks** - `:todo` groups tasks by day with overdue badges, a done-today stat in the footer, and a Stats page (streak, 30-day trend, year heatmap).
 - **Search clipboard history** - `c"meeting` finds the snippet you copied an hour ago.
 - **Translate or look up a word** - `t"hello` for quick translation, `tw"word` for a definition panel.
 - **Regex, path, and kind-scoped search** - `r"^Visual.*`, `git/project/readme`, `a"safari`, `f"note`, `d"documents`.
@@ -245,7 +246,7 @@ open "/Applications/Look.app"
 | Web search                                    | `Cmd+Enter`      | `Ctrl+Enter`        | `Ctrl+Enter`     |
 | Reveal in file manager                        | `Cmd+F` (Finder) | `Ctrl+F` (Explorer) | `Ctrl+F` (Files) |
 | Move to Trash (or empty the Trash folder)     | `Cmd+D`          | n/a                 | n/a              |
-| Command mode (`calc`, `shell`, `kill`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
+| Command mode (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`) | `Cmd+/` | `Ctrl+/` | `Ctrl+/` |
 | Settings                                      | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
 | Back / hide                                   | `Escape`         | `Escape`            | `Escape`         |
 | Switch to running app N (home screen)         | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
@@ -300,7 +301,7 @@ Out of scope for v1:
 - **macOS** - shipped and stable (SwiftUI, native). This is the design source of truth.
 - **Windows + Linux** - a new shared Tauri v2 app (`apps/linows/`) is under active development. It targets both platforms with a single codebase (Rust backend, vanilla HTML/CSS/JS frontend). Current status:
   - Core search, preview, multi-pick, clipboard history, translation - done
-  - Command mode (calc, pomo, kill, shell, sys) - done
+  - Command mode (calc, pomo, todo, kill, shell, sys) - done
   - Web answer card + Google suggestions (DuckDuckGo/Wikipedia/currency/weather/crypto, gated by `ai_enabled`) - done on Linux + Windows; on-device LLM stays macOS-only
   - Settings screen (appearance, themes, blur, font autocomplete) - done
   - Platform-aware blur (Mica/Acrylic on Windows, CSS backdrop-filter on Linux)

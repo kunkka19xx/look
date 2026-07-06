@@ -44,6 +44,11 @@ Use this guide when you are changing:
   - usage event persistence,
   - index state persistence.
 
+### `core/todo`
+
+- `core/todo/src/lib.rs`: `TodoStore` (open/list/save/prune) over the `todo_tasks` table in the app's `look.db`; the JSON task shape is pinned by tests since both app shells decode it.
+- `core/todo/examples/seed.rs`: seeds demo task history into a database (`dev` target by default: the `look.dev.db` file that dev builds read automatically).
+
 ### `bridge/ffi`
 
 - `bridge/ffi/src/lib.rs`: exported C ABI.
@@ -53,6 +58,7 @@ Use this guide when you are changing:
 - `bridge/ffi/src/translate_api.rs`: translation endpoint + typed errors.
 - `bridge/ffi/src/answers_api.rs`: instant/web answer endpoints (C ABI over `look_answers`).
 - `bridge/ffi/src/seed_api.rs`: seed externally-discovered candidates (e.g. Windows UWP apps) into storage.
+- `bridge/ffi/src/todo_api.rs`: todo list/save endpoints (JSON over C ABI, backed by `core/todo`).
 - `bridge/ffi/src/runtime_config.rs`: config loading + runtime toggles.
 
 ## Common change recipes

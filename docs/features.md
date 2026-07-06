@@ -43,8 +43,9 @@ This document tracks what `look` supports today and what is planned next.
 ### Command mode
 
 - `Cmd+/` command mode entry, or inline `:cmdid` shortcut from the home screen (e.g. `:calc 2+2`, `:kill chrome`, `:pomo`); space after a known command id triggers a live switch with args pre-filled
-- built-in commands: `calc`, `shell`, `kill`, `sys`, `pomo`
+- built-in commands: `calc`, `pomo`, `todo`, `kill`, `shell`, `sys`
 - `pomo`: pomodoro focus timer with editable session list, three timer styles (Modern Ring / Vintage Dial / Minimal Text), shuffled background-music folder, menu-bar mini-timer, 5s standby fade, "ending soon" alert at 10s remaining
+- `todo`: daily tasks grouped by date (3 unfinished per day, 3 upcoming groups, OVERDUE badges on past days, fuzzy search over tasks and dates, manual save) plus a Stats page: weekly/monthly completion donuts, streak, 30-day trend, GitHub-style year heatmap. Today's done/total shows as a clickable stat in the home hint bar. Stored in the shared `look.db` (`core/todo`), one-year retention
 - calc parser supports exponent (`^`), factorial (`!`), constants (`pi`, `e`), math functions (`sqrt`, `abs`, `round`, `floor`, `ceil`), and `%` shorthand while keeping modulo
 - kill flow with explicit confirmation and process-by-port lookup (`:3000` / `port 3000`)
 - warning cue when shell input contains `sudo`

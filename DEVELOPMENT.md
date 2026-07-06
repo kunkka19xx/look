@@ -35,7 +35,7 @@ Guide for building Look locally and contributing to the project.
 Common:
 
 - Rust stable toolchain (for the core engine and FFI bridge)
-- GNU Make (top-level `Makefile` dispatches to `Makefile.mac` or `Makefile.win` based on host OS)
+- GNU Make (top-level `Makefile` dispatches to `scripts/Makefile.mac` or `scripts/Makefile.win` based on host OS)
 
 macOS:
 
