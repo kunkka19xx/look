@@ -14,10 +14,10 @@ look-storage = { path = "../../../core/storage" }
 look-todo = { path = "../../../core/todo" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-notify = "6"
+notify = "8"
 open = "5"
 base64 = "0.22"
-rodio = "0.20"
+rodio = "0.22"
 arboard = "3"
 dirs = "6"
 tauri-plugin-dialog = "2"
@@ -30,12 +30,12 @@ tokio = { version = "1.52.3", features = ["rt"] }
 # StreamExt for zbus signal streams.
 futures-util = { version = "0.3", default-features = false }
 webkit2gtk = "2.0"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 wayland-client = { version = "0.31", default-features = false }
 wayland-protocols-wlr = { version = "0.3", features = ["client"], default-features = false }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.61", features = [
+windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_NetworkManagement_IpHelper",
@@ -53,7 +53,7 @@ windows = { version = "0.61", features = [
     "Win32_UI_Shell_Common",
     "Win32_UI_WindowsAndMessaging",
 ] }
-png = "0.17"
+png = "0.18"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
