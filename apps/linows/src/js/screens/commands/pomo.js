@@ -155,6 +155,8 @@ export function enter() {
   panel.hidden = false;
   updateAll();
   startTick();
+  if(running)
+    startIdleFade();
 }
 
 export function exit() {
