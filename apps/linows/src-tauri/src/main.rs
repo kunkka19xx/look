@@ -8,6 +8,7 @@ mod clipboard;
 mod commands;
 mod config;
 mod consts;
+mod crash;
 mod files;
 mod health;
 mod highlight;
@@ -510,6 +511,8 @@ fn focus_loss_means_dismiss() -> bool {
 }
 
 fn main() {
+    crash::install_panic_hook();
+
     if std::env::args().any(|a| a == "--version" || a == "-V") {
         println!("lookapp {}", env!("APP_VERSION"));
         return;
