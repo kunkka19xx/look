@@ -720,6 +720,10 @@
   display: none !important;
 }
 
+#cmd-panel-todo {
+  position: relative;
+}
+
 .cmd-todo-toolbar {
   display: flex;
   align-items: center;
@@ -1036,6 +1040,36 @@ button.cmd-todo-add:hover {
   padding: 10px 0;
   font-size: calc(var(--font-size) - 1px);
   color: var(--font-muted);
+}
+
+.cmd-todo-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: calc(var(--font-size) - 2px);
+  font-weight: 600;
+  color: var(--on-accent-color, #fff);
+  background: var(--accent-color);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+
+.cmd-todo-toast svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.cmd-todo-toast-error {
+  color: #fff;
+  background: var(--color-danger);
 }
 
 /* Stats page */

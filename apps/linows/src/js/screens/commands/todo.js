@@ -5,10 +5,9 @@
 // Save (Ctrl+S). No autosave.
 
 import { todoList, todoSave } from '../../ipc.js';
-import * as banner from '../../components/banner.js';
 import {
   listChecks, barChart, flame, plus, save as saveIcon, calendarPlus,
-  trash as trashIcon, search as searchIcon, check as checkIcon, activity, calendar, zap,
+  trash as trashIcon, search as searchIcon, check as checkIcon, alertCircle, activity, calendar, zap,
 } from '../../icons.js';
 
 // Mirrors macOS TodoState limits: at most 3 unfinished tasks per day
@@ -43,10 +42,12 @@ let page = 'tasks';
 let editingAddKey = null; // day key with an open "Add task" field
 let editingTaskRef = null; // {key, id} being renamed
 let onQuickChange = null;
+let toastTimer = null;
 
 // --- DOM refs ---
 let panel, searchBar, searchInput, statsBar, toolbar;
 let countEl, addDateBtn, saveBtn, daysEl, statsEl, tooltipEl;
+let toastEl, toastIconEl, toastTextEl;
 
 export function init() {
   panel = document.getElementById('cmd-panel-todo');
@@ -105,6 +106,13 @@ export function init() {
   tooltipEl.className = 'cmd-todo-tooltip';
   tooltipEl.hidden = true;
   panel.appendChild(tooltipEl);
+  toastEl = document.createElement('div');
+  toastEl.className = 'cmd-todo-toast';
+  toastEl.hidden = true;
+  toastEl.innerHTML = '<span class="cmd-todo-toast-icon"></span><span class="cmd-todo-toast-text"></span>';
+  toastIconEl = toastEl.querySelector('.cmd-todo-toast-icon');
+  toastTextEl = toastEl.querySelector('.cmd-todo-toast-text');
+  panel.appendChild(toastEl);
   statsEl.addEventListener('mouseover', (e) => {
     const el = e.target.closest('[data-tip]');
     if (el) showTooltip(el);
@@ -140,6 +148,7 @@ export function exit() {
   visible = false;
   panel.hidden = true;
   tooltipEl.hidden = true;
+  hideToast();
   editingAddKey = null;
   editingTaskRef = null;
 }
@@ -153,6 +162,32 @@ function showTooltip(el) {
   const left = Math.min(Math.max(rect.left + rect.width / 2 - w / 2, 4), window.innerWidth - w - 4);
   tooltipEl.style.left = `${left}px`;
   tooltipEl.style.top = `${rect.top - tooltipEl.offsetHeight - 6}px`;
+}
+
+// Local save feedback stays inside /todo, mirroring macOS and avoiding the
+// launcher's shared banner area.
+function showToast(message, style = 'success', duration = SAVE_TOAST_SECS) {
+  if (!toastEl || !toastIconEl || !toastTextEl) {
+    return;
+  }
+  clearTimeout(toastTimer);
+  toastIconEl.innerHTML = style === 'error' ? alertCircle : checkIcon;
+  toastTextEl.textContent = message;
+  toastEl.className = `cmd-todo-toast cmd-todo-toast-${style}`;
+  toastEl.hidden = false;
+  toastTimer = setTimeout(() => {
+    toastEl.hidden = true;
+  }, duration * 1000);
+}
+
+// Closing the panel hides any active toast so a later reopen never shows a
+// stale save result from the previous session.
+function hideToast() {
+  clearTimeout(toastTimer);
+  toastTimer = null;
+  if (toastEl) {
+    toastEl.hidden = true;
+  }
 }
 
 export function handleKey(e) {
@@ -243,10 +278,10 @@ async function persist() {
   try {
     await todoSave(tasks);
     dirty = false;
-    banner.show('Saved', 'success', SAVE_TOAST_SECS);
+    showToast('Saved', 'success', SAVE_TOAST_SECS);
     renderToolbar();
   } catch (err) {
-    banner.show(`Save failed: ${err}`, 'error', 2.0);
+    showToast(`Save failed: ${err}`, 'error', 2.0);
   }
 }
 
