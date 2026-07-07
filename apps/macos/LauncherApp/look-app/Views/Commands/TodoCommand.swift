@@ -19,8 +19,9 @@ struct TodoTask: Identifiable, Equatable {
     /// When the task was created, for backend round-tripping.
     var createdAtUnixS: Int64 = Int64(Date().timeIntervalSince1970)
 
+    // Full UUIDs so ids stay unique across machines once task sync lands.
     static func newID() -> String {
-        "n" + UUID().uuidString.prefix(6).lowercased()
+        UUID().uuidString.lowercased()
     }
 }
 

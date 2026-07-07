@@ -287,7 +287,8 @@ function relativePhrase(diff) {
   return '';
 }
 
-const newTaskId = () => `n${Math.random().toString(36).slice(2, 8)}`;
+// UUIDs so ids stay unique across machines once task sync lands.
+const newTaskId = () => crypto.randomUUID();
 const nowUnixS = () => Math.floor(Date.now() / 1000);
 
 // --- Mutations (in-memory; Save persists) ---
