@@ -169,6 +169,14 @@ export async function onWindowShown(callback) {
   return listen('window-shown', callback);
 }
 
+export async function getHealthIssues() {
+  return invoke('get_health_issues');
+}
+
+export async function onHealthChanged(callback) {
+  return listen('health-changed', callback);
+}
+
 export async function onIndexReady(callback) {
   return listen('index-ready', callback);
 }

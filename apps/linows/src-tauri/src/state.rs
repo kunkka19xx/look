@@ -93,6 +93,12 @@ impl Drop for RefreshSlotGuard<'_> {
 
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 
+/// Global app handle for modules that emit events outside a command context
+/// (index-ready, health reports). `None` until `init_app_handle` runs.
+pub fn app_handle() -> Option<&'static tauri::AppHandle> {
+    APP_HANDLE.get()
+}
+
 /// Bundle of `AppState` field addresses shared with the watcher loop and each
 /// reindex worker it spawns. Stored as `usize` because raw pointers are not
 /// `Send`, and Rust 2021's disjoint closure capture would otherwise see each

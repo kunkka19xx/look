@@ -9,6 +9,7 @@ mod commands;
 mod config;
 mod consts;
 mod files;
+mod health;
 mod highlight;
 mod music;
 mod platform;
@@ -380,10 +381,12 @@ fn sync_autostart() {
 
 /// Register global shortcuts (Alt+Space to toggle, Alt+Shift+Q to quit).
 /// Uses compositor-specific keybinding on Wayland, tauri-plugin on X11/macOS/Windows.
-fn register_shortcuts(
-    app: &tauri::App,
-    use_wayland: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+///
+/// Registration failures never abort startup: a launcher with a dead hotkey
+/// is still reachable (relaunching it shows the window via single-instance),
+/// while one that exits during setup is gone with no message. Failures are
+/// reported as health issues so the frontend can explain what happened.
+fn register_shortcuts(app: &tauri::App, use_wayland: bool) {
     let app_handle = app.handle().clone();
 
     if use_wayland {
@@ -406,24 +409,38 @@ fn register_shortcuts(
     } else {
         use tauri_plugin_global_shortcut::GlobalShortcutExt;
         let handle = app_handle.clone();
-        app.global_shortcut()
-            .on_shortcut("Alt+Space", move |_app, _shortcut, event| {
-                if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                    return;
-                }
-                toggle_window(&handle);
-            })?;
-        app.global_shortcut()
+        if let Err(e) =
+            app.global_shortcut()
+                .on_shortcut("Alt+Space", move |_app, _shortcut, event| {
+                    if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        return;
+                    }
+                    toggle_window(&handle);
+                })
+        {
+            health::report(
+                health::ISSUE_HOTKEY,
+                format!(
+                    "Alt+Space could not be registered ({e}). Another app may hold \
+                     the key - free it and restart Look. Until then, open Look \
+                     again from the app menu to show this window."
+                ),
+            );
+        }
+        if let Err(e) = app
+            .global_shortcut()
             .on_shortcut("Alt+Shift+Q", |app, _shortcut, event| {
                 if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
                     return;
                 }
                 eprintln!("look: quit via Alt+Shift+Q");
                 app.exit(0);
-            })?;
+            })
+        {
+            // Quit-shortcut loss is minor: quitting stays available in-app.
+            eprintln!("look: failed to register Alt+Shift+Q: {e}");
+        }
     }
-
-    Ok(())
 }
 
 /// Cache Look's X11 window ID and start monitoring _NET_ACTIVE_WINDOW for auto-hide.
@@ -540,7 +557,10 @@ fn main() {
             app.state::<AppState>().start_bootstrap();
             clipboard::start_monitor();
 
-            register_shortcuts(app, use_wayland)?;
+            register_shortcuts(app, use_wayland);
+
+            #[cfg(debug_assertions)]
+            health::report_fake_issues_from_env();
 
             // X11-window concerns (focus monitor, scrolling tweak) follow the
             // window backend: they also apply to the AppImage's XWayland
@@ -667,6 +687,8 @@ fn main() {
             // Autostart
             autostart::set_autostart,
             autostart::get_autostart,
+            // Setup health (hotkey/extension problems shown in the UI)
+            health::get_health_issues,
             // Highlight
             highlight::highlight_file_cmd,
             // About widget: version only. The update check itself runs in
