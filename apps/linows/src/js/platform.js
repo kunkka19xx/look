@@ -12,6 +12,10 @@ export async function init() {
   if (info.compositor) {
     document.documentElement.setAttribute('data-compositor', info.compositor);
   }
+  // Mirror of apply_transparency (main.rs) with the same has_compositor
+  // semantics: the Rust eval runs once at setup, so a page reload (dev hot
+  // reload) would otherwise lose the attribute and square the corners.
+  document.documentElement.setAttribute('data-transparent', String(hasCompositor()));
 }
 
 export function os() {
@@ -58,14 +62,10 @@ const WINDOWS_BLUR_RADIUS = {
  * - Linux bare (i3): no blur, tint-only
  */
 export function applyBlur(radius, style) {
-  if (isWindows()) {
-    const r = WINDOWS_BLUR_RADIUS[style] ?? WINDOWS_BLUR_RADIUS.balanced;
-    document.documentElement.style.setProperty('--blur-radius', r + 'px');
-  } else {
-    // Linux: CSS backdrop-filter (works if compositor supports it)
-    const r = hasCompositor() ? Math.round(radius) : 0;
-    document.documentElement.style.setProperty('--blur-radius', r + 'px');
-  }
+  const r = isWindows()
+    ? WINDOWS_BLUR_RADIUS[style] ?? WINDOWS_BLUR_RADIUS.balanced
+    : hasCompositor() ? Math.round(radius) : 0;
+  document.documentElement.style.setProperty('--blur-radius', r + 'px');
 }
 
 /**
