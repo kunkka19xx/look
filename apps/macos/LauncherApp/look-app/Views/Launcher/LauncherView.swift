@@ -76,6 +76,12 @@ struct LauncherView: View {
     @State var pidToRestoreOnHide: pid_t?
     @StateObject var runningAppsService = RunningAppsService()
 
+    /// Live size of the whole panel, captured so a background image can be
+    /// cropped into each floating tile at its correct window position (the tiles
+    /// share one aligned image, cut apart by the gaps). See `tileBackground`.
+    @State private var panelSize: CGSize = .zero
+    static let panelCoordinateSpace = "launcherPanel"
+
     var runningAppsPlacement: RunningAppsPlacement {
         themeStore.settings.runningAppsPlacement
     }
@@ -725,8 +731,9 @@ struct LauncherView: View {
     private func borderedPanel(windowCornerRadius: CGFloat, contentSpacing: CGFloat, contentPadding: CGFloat) -> some View {
         ZStack {
             // When the content floats free (floating panes, or resting on an empty
-            // query) the window backdrop is dropped entirely and the tiles sit on
-            // the bare desktop.
+            // query) the blur + tint backdrop box is dropped so the tiles sit on
+            // the bare desktop. A background image, if set, is cropped into each
+            // tile (see tileBackground) rather than filling the gaps.
             if !barFloatsFree {
                 themedBackground
             }
@@ -746,7 +753,14 @@ struct LauncherView: View {
             .contentShape(Rectangle())
             .onTapGesture { focusActiveInput() }
         }
-        .background(Color.clear)
+        .coordinateSpace(name: Self.panelCoordinateSpace)
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { panelSize = geo.size }
+                    .onChange(of: geo.size) { _, newSize in panelSize = newSize }
+            }
+        )
         .clipShape(RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous))
         .overlay { borderOverlay(cornerRadius: windowCornerRadius) }
         .modifier(PanelDecorationsModifier(
@@ -1132,15 +1146,7 @@ struct LauncherView: View {
         if barFloatsFree {
             content()
                 .padding(padding)
-                .background {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(themeStore.controlFillColor())
-                        .background(.black.opacity(0.30), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .background {
-                            VisualEffectBlur(material: themeStore.settings.blurMaterial.material)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                }
+                .background { tileBackground(cornerRadius: 12, floats: true) }
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(.white.opacity(0.10), lineWidth: 1)
@@ -1153,17 +1159,66 @@ struct LauncherView: View {
         }
     }
 
+    /// The frosted surface shared by every floating tile (top bar + columns). When
+    /// a background image is set, each tile shows its own aligned slice of that
+    /// image (cropped to the tile's window position) instead of a blurred desktop,
+    /// so the tiles read as separate windows onto one image. A dark scrim + tint
+    /// on top keeps the tile content legible.
+    @ViewBuilder
+    private func tileBackground(cornerRadius: CGFloat, floats: Bool) -> some View {
+        if floats {
+            ZStack {
+                if let image = themeStore.backgroundImage {
+                    croppedBackgroundImage(image)
+                } else {
+                    VisualEffectBlur(material: themeStore.settings.blurMaterial.material)
+                }
+                Color.black.opacity(0.30)
+                themeStore.controlFillColor()
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        } else {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(themeStore.controlFillColor())
+        }
+    }
+
+    /// The slice of the full-panel background image that sits behind this tile:
+    /// the image is sized to the whole panel and offset by the tile's origin in
+    /// the panel coordinate space, so adjacent tiles show a continuous image cut
+    /// apart by the gaps.
+    @ViewBuilder
+    private func croppedBackgroundImage(_ image: NSImage) -> some View {
+        GeometryReader { tileGeo in
+            let frame = tileGeo.frame(in: .named(Self.panelCoordinateSpace))
+            backgroundImageView(image: image)
+                .frame(width: panelSize.width, height: panelSize.height)
+                .offset(x: -frame.minX, y: -frame.minY)
+                .blur(radius: themeStore.settings.backgroundImageBlur)
+        }
+    }
+
     /// Background wrapper for the unified top row (search + running apps). A
     /// frosted floating tile when the panes are floating, otherwise the classic
     /// rounded search-bar fill - so the merged bar looks consistent on every
     /// screen, gap or no gap.
     private func topRowBar<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        // Apply the chrome as ONE stable modifier (not an if/else that swaps the
-        // subtree) so the search field keeps its identity - and its keyboard
-        // focus - when the bar flips between the classic fill and the frosted
-        // floating tile, e.g. typing the first character out of the empty-rest
-        // state at gap 0.
-        content().modifier(TopBarChrome(floats: barFloatsFree, themeStore: themeStore))
+        // Apply the chrome as a STABLE modifier chain (background/overlay/shadow
+        // always present, only their values change) - never an if/else that swaps
+        // the subtree - so the search field keeps its identity and its keyboard
+        // focus when the bar flips between the classic fill and the frosted tile
+        // (e.g. typing the first character out of the empty-rest state at gap 0).
+        let floats = barFloatsFree
+        return content()
+            .background { tileBackground(cornerRadius: floats ? 12 : 10, floats: floats) }
+            .overlay {
+                if floats {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                }
+            }
+            .shadow(color: floats ? .black.opacity(0.25) : .clear,
+                    radius: floats ? 7 : 0, x: 0, y: floats ? 3 : 0)
     }
 
     /// Wraps a single-panel home state (translation, clipboard/recent empty) in a
@@ -1286,40 +1341,6 @@ struct LauncherView: View {
     }
 
 
-}
-
-/// Chrome for the unified top bar, applied as a single always-present modifier so
-/// the wrapped search field keeps a stable identity (and keyboard focus) as the
-/// bar flips between the classic rounded fill and the frosted floating tile.
-private struct TopBarChrome: ViewModifier {
-    let floats: Bool
-    let themeStore: ThemeStore
-
-    func body(content: Content) -> some View {
-        content
-            .background {
-                if floats {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(themeStore.controlFillColor())
-                        .background(.black.opacity(0.30), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .background {
-                            VisualEffectBlur(material: themeStore.settings.blurMaterial.material)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                } else {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(themeStore.controlFillColor())
-                }
-            }
-            .overlay {
-                if floats {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-                }
-            }
-            .shadow(color: floats ? .black.opacity(0.25) : .clear,
-                    radius: floats ? 7 : 0, x: 0, y: floats ? 3 : 0)
-    }
 }
 
 private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar: View, DeleteBar: View>: ViewModifier {
