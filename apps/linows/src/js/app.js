@@ -4,6 +4,7 @@ import * as keyboard from './keyboard.js';
 import * as preview from './components/preview.js';
 import * as picked from './components/picked.js';
 import * as banner from './components/banner.js';
+import * as health from './components/health.js';
 import * as confirm from './components/confirm.js';
 import * as commands from './screens/commands/index.js';
 import * as todoCmd from './screens/commands/todo.js';
@@ -170,6 +171,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   keyboard.init(queryInput);
   preview.init(previewPanel);
   banner.init(document.getElementById('banner'));
+  health.init();
   confirm.init(document.getElementById('confirm-bar'));
   picked.init(previewPanel, {
     onRemoveItem: (key) => results.removePick(key),

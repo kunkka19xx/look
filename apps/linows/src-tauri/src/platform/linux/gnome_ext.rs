@@ -19,6 +19,11 @@ const DBUS_IFACE: &str = "com.look.ShellIntegration";
 const METADATA_JSON: &str = include_str!(concat!(env!("OUT_DIR"), "/gnome-ext-metadata.json"));
 const EXTENSION_JS: &str = include_str!("../../gnome-shell-extension/extension.js");
 
+/// User-facing notice when the on-disk extension isn't loaded in the running
+/// shell. Shared by the manual-install path and the post-install verification.
+const RELOGIN_MSG: &str = "Log out and back in to finish enabling Look's GNOME \
+     extension (it focuses already-running app windows).";
+
 /// Install the GNOME Shell extension if not already present, then enable it.
 pub fn ensure_installed() {
     let ext_dir = extension_dir();
@@ -35,30 +40,78 @@ pub fn ensure_installed() {
     };
 
     if needs_install {
-        // Use `gnome-extensions install` with a zip so GNOME Shell picks up
-        // the extension immediately - no re-login required on Wayland.
-        if install_via_gnome_extensions() {
-            eprintln!("[look] Installed GNOME Shell extension via gnome-extensions install");
-            enable_extension();
-            return;
-        }
-
-        // Fallback: write files manually (needs re-login on Wayland)
-        if let Err(e) = std::fs::create_dir_all(&ext_dir) {
-            eprintln!("[look] Failed to create extension dir: {e}");
-            return;
-        }
-        if let Err(e) = std::fs::write(&metadata_path, METADATA_JSON) {
-            eprintln!("[look] Failed to write metadata.json: {e}");
-            return;
-        }
-        if let Err(e) = std::fs::write(&extension_path, EXTENSION_JS) {
-            eprintln!("[look] Failed to write extension.js: {e}");
-            return;
-        }
-        eprintln!("[look] Installed GNOME Shell extension: {EXT_UUID} (manual, needs re-login)");
-        enable_extension();
+        install_current_version(&ext_dir, &metadata_path, &extension_path);
     }
+    verify_running_later();
+}
+
+fn install_current_version(
+    ext_dir: &std::path::Path,
+    metadata_path: &std::path::Path,
+    extension_path: &std::path::Path,
+) {
+    // Use `gnome-extensions install` with a zip so GNOME Shell picks up
+    // the extension immediately - no re-login required on Wayland.
+    if install_via_gnome_extensions() {
+        eprintln!("[look] Installed GNOME Shell extension via gnome-extensions install");
+        enable_extension();
+        return;
+    }
+
+    // Fallback: write files manually (needs re-login on Wayland)
+    if let Err(e) = std::fs::create_dir_all(ext_dir) {
+        eprintln!("[look] Failed to create extension dir: {e}");
+        return;
+    }
+    if let Err(e) = std::fs::write(metadata_path, METADATA_JSON) {
+        eprintln!("[look] Failed to write metadata.json: {e}");
+        return;
+    }
+    if let Err(e) = std::fs::write(extension_path, EXTENSION_JS) {
+        eprintln!("[look] Failed to write extension.js: {e}");
+        return;
+    }
+    eprintln!("[look] Installed GNOME Shell extension: {EXT_UUID} (manual, needs re-login)");
+    crate::health::report(crate::health::ISSUE_GNOME_EXT, RELOGIN_MSG.to_string());
+    enable_extension();
+}
+
+/// Delay before checking the extension answers on D-Bus: `gnome-extensions
+/// enable` loads it asynchronously, so an immediate ping right after a fresh
+/// install would report a false negative.
+const VERIFY_DELAY: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Verify in the background that the running shell actually loaded the
+/// extension, and report a re-login/stale notice when it didn't. Alt+Space
+/// works without the extension, but focus-existing-window and multi-monitor
+/// placement silently degrade - exactly the failures users can't diagnose.
+fn verify_running_later() {
+    std::thread::spawn(|| {
+        std::thread::sleep(VERIFY_DELAY);
+        let Some(conn) = dbus_conn() else {
+            return;
+        };
+        // ListWindowedApps is the newest method Rust calls: an old extension
+        // still loaded in memory answers other calls but fails this one.
+        let err = dbus_runtime().block_on(async {
+            conn.call_method(
+                Some(DBUS_NAME),
+                DBUS_PATH,
+                Some(DBUS_IFACE),
+                "ListWindowedApps",
+                &(),
+            )
+            .await
+            .err()
+        });
+        match err.map(|e| classify_dbus_error(&e)) {
+            Some(ExtensionError::NotRunning) => {
+                crate::health::report(crate::health::ISSUE_GNOME_EXT, RELOGIN_MSG.to_string());
+            }
+            Some(ExtensionError::Stale) => warn_stale_extension_once(),
+            _ => {}
+        }
+    });
 }
 
 /// Build a zip of the extension in /tmp and install via `gnome-extensions install --force`.
@@ -185,15 +238,15 @@ pub fn list_windowed_apps() -> Option<Vec<String>> {
     })
 }
 
+/// "Once" comes from health::report deduping by issue id: gnome-shell can't
+/// hot-reload extension JS on Wayland, so this fires until the user re-logs.
 fn warn_stale_extension_once() {
-    static WARNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-    WARNED.get_or_init(|| {
-        eprintln!(
-            "[look] GNOME Shell has an outdated Look extension loaded in memory \
-             (missing ListWindowedApps). Log out and back in to refresh - \
-             gnome-shell can't hot-reload extension JS on Wayland."
-        );
-    });
+    crate::health::report(
+        crate::health::ISSUE_GNOME_EXT,
+        "GNOME Shell is running an outdated Look extension. Log out and back \
+         in to refresh it."
+            .to_string(),
+    );
 }
 
 /// Try to focus an app by its desktop file ID using the GNOME Shell extension.
