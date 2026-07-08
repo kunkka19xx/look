@@ -1147,10 +1147,7 @@ struct LauncherView: View {
             content()
                 .padding(padding)
                 .background { tileBackground(cornerRadius: 12, floats: true) }
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-                )
+                .overlay { tileBorder(cornerRadius: 12) }
                 // Lift each pane off the backdrop so the three parts read as
                 // separate floating tiles rather than sections of one box.
                 .shadow(color: .black.opacity(0.25), radius: 7, x: 0, y: 3)
@@ -1180,6 +1177,18 @@ struct LauncherView: View {
         } else {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(themeStore.controlFillColor())
+        }
+    }
+
+    /// The outline for a floating tile, drawn with the user's configured theme
+    /// border (color + thickness from Settings). Nothing is drawn when the border
+    /// thickness is 0, matching the rest of the app.
+    @ViewBuilder
+    private func tileBorder(cornerRadius: CGFloat) -> some View {
+        let width = themeStore.borderLineWidth()
+        if width > 0 {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(themeStore.borderColor(), lineWidth: width)
         }
     }
 
@@ -1213,8 +1222,7 @@ struct LauncherView: View {
             .background { tileBackground(cornerRadius: floats ? 12 : 10, floats: floats) }
             .overlay {
                 if floats {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                    tileBorder(cornerRadius: 12)
                 }
             }
             .shadow(color: floats ? .black.opacity(0.25) : .clear,
