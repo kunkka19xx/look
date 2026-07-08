@@ -240,6 +240,7 @@ final class ThemeStore: ObservableObject {
 
         // Running apps switcher
         upsertConfigLine(&lines, key: "running_apps_placement", value: settings.runningAppsPlacement.rawValue)
+        upsertConfigLine(&lines, key: "inner_gap", value: String(format: "%.0f", settings.innerGap))
 
         // Apple Intelligence / AI features
         upsertConfigLine(&lines, key: "ai_enabled", value: settings.aiEnabled ? "true" : "false")
@@ -486,6 +487,10 @@ final class ThemeStore: ObservableObject {
             case "ui_border_opacity":
                 if let parsed = parseUnitDouble(value) {
                     settings.borderOpacity = parsed
+                }
+            case "inner_gap":
+                if let parsed = Double(value) {
+                    settings.innerGap = min(max(parsed, 0), 24)
                 }
             case "file_scan_depth":
                 if let parsed = parsePositiveInt(value) {
@@ -852,6 +857,9 @@ ui_border_opacity=0.12
 
 # Running apps switcher: none, top, right, bottom
 running_apps_placement=right
+
+# Inner gap (points, 0-24) between the three home panes; 0 = classic flat layout
+inner_gap=0
 
 # Apple Intelligence / AI features. ai_provider: appleIntelligence
 ai_enabled=true

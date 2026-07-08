@@ -456,7 +456,7 @@ struct LauncherView: View {
         // The home screen replaces the "Cmd+/ command mode" hint with a
         // clickable today done/total quick view (see todoQuickView), so it
         // is intentionally omitted here.
-        return ["Enter open", "Cmd+F reveal", "Cmd+H help"]
+        return ["Enter open", "Cmd+H help"]
     }
 
     /// True when the launcher is on its default/home screen (the state
@@ -569,7 +569,10 @@ struct LauncherView: View {
 
     var body: some View {
         let windowCornerRadius = AppConstants.Launcher.windowCornerRadius
-        let contentSpacing: CGFloat = isCommandMode ? 8 : 12
+        // When floating, use a single uniform gap between the top row and the
+        // columns so it matches the horizontal gap between the columns (i3 style);
+        // otherwise keep the classic fixed spacing.
+        let contentSpacing: CGFloat = showsFloatingCards ? innerGap : (isCommandMode ? 8 : 12)
         let contentPadding: CGFloat = isCommandMode ? 10 : 14
 
         // Running apps render inside the search bar (see panelContent), not as a
@@ -718,7 +721,11 @@ struct LauncherView: View {
     @ViewBuilder
     private func borderedPanel(windowCornerRadius: CGFloat, contentSpacing: CGFloat, contentPadding: CGFloat) -> some View {
         ZStack {
-            themedBackground
+            // Floating panes are self-contained frosted tiles, so the window
+            // backdrop is dropped entirely and they sit on the bare desktop.
+            if !showsFloatingCards {
+                themedBackground
+            }
 
             VStack(alignment: .leading, spacing: contentSpacing) {
                 panelContent
@@ -731,7 +738,7 @@ struct LauncherView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .font(themeStore.uiFont())
             .foregroundStyle(themeStore.fontColor())
-            .background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous))
+            .background(.black.opacity(showsFloatingCards ? 0 : 0.16), in: RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous))
             .contentShape(Rectangle())
             .onTapGesture { focusActiveInput() }
         }
@@ -747,14 +754,14 @@ struct LauncherView: View {
         .layoutPriority(1)
     }
 
-    @ViewBuilder
-    private var searchInputBar: some View {
+    private func searchInputBar(showsBackground: Bool = true) -> some View {
         SearchInputBar(
             text: $query,
             isCommandMode: $isCommandMode,
             isQueryFocused: $isQueryFocused,
             activeCommand: activeCommand,
             themeStore: themeStore,
+            showsBackground: showsBackground,
             onSubmit: handleSubmit,
             onExitCommandMode: exitCommandMode
         )
@@ -767,21 +774,27 @@ struct LauncherView: View {
         } else {
             if !isCommandMode && !showsHelpScreen {
                 if shouldShowRunningAppsStrip {
-                    // Split the search-bar row in half: search field on the
-                    // left, running-apps icons on the right. No floating strip,
-                    // no window resize - toggled via Settings → Running Apps.
-                    HStack(alignment: .center, spacing: 10) {
-                        searchInputBar
+                    // The search field and running-apps icons always share one
+                    // background so they read as a single unified bar: a frosted
+                    // tile when floating, the classic rounded fill otherwise. The
+                    // search field drops its own box since the bar supplies it.
+                    topRowBar {
+                        HStack(alignment: .center, spacing: 10) {
+                            searchInputBar(showsBackground: false)
+                                .frame(maxWidth: .infinity)
+                            RunningAppsStripView(
+                                service: runningAppsService,
+                                themeStore: themeStore,
+                                onActivate: { key in _ = activateRunningApp(forKey: key) }
+                            )
                             .frame(maxWidth: .infinity)
-                        RunningAppsStripView(
-                            service: runningAppsService,
-                            themeStore: themeStore,
-                            onActivate: { key in _ = activateRunningApp(forKey: key) }
-                        )
-                        .frame(maxWidth: .infinity)
+                        }
                     }
+                } else if showsFloatingCards {
+                    // No running apps, floating: keep the search bar a frosted tile.
+                    topRowBar { searchInputBar(showsBackground: false) }
                 } else {
-                    searchInputBar
+                    searchInputBar()
                 }
             }
 
@@ -812,7 +825,9 @@ struct LauncherView: View {
                 Spacer(minLength: 0)
             }
 
-            if !isKillConfirmationVisible && !isDeleteConfirmationVisible {
+            // When floating, the hint bar lives inside the left card instead of
+            // as a full-width strip below the panes.
+            if !showsFloatingCards && !isKillConfirmationVisible && !isDeleteConfirmationVisible {
                 HintBar(hint: currentHint, todo: todoQuickView, themeStore: themeStore)
             }
         }
@@ -882,41 +897,176 @@ struct LauncherView: View {
 
     @ViewBuilder
     private var resultsListAndPreview: some View {
-        HStack(spacing: 0) {
-            ResultsListView(
-                results: displayedResults,
-                selectedID: selectedResultID,
-                pickedKeys: Set(pickedKeys),
-                themeStore: themeStore,
-                onSelect: { selectedResultID = $0 },
-                onOpen: { _ in openSelectedApp() }
-            )
+        // With inner gap on, the list and preview become separate frosted cards
+        // divided by empty space, each carrying a slice of the old bottom bar
+        // (hints in the left card, copyright in the right); with it off, they
+        // share one row split by a hairline and the hint bar lives full-width.
+        HStack(spacing: showsFloatingCards ? innerGap : 0) {
+            paneCard(padding: showsFloatingCards ? 6 : 0) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ResultsListView(
+                        results: displayedResults,
+                        selectedID: selectedResultID,
+                        pickedKeys: Set(pickedKeys),
+                        themeStore: themeStore,
+                        onSelect: { selectedResultID = $0 },
+                        onOpen: { _ in openSelectedApp() }
+                    )
+                    .frame(maxHeight: .infinity)
+
+                    if showsFloatingCards {
+                        cardFooter {
+                            HintBar(hint: currentHint, todo: todoQuickView, themeStore: themeStore)
+                            Spacer(minLength: 8)
+                            // No right pane → copyright has nowhere else to go.
+                            if !hasRightPane { copyrightLink }
+                        }
+                    }
+                }
+            }
 
             if !pickedKeys.isEmpty {
-                resultsDivider
-                PickedItemsPanel(
-                    pickedKeys: pickedKeys,
-                    pickedByKey: pickedResultsByKey,
-                    themeStore: themeStore,
-                    onRemove: { removePicked(key: $0) },
-                    onClearAll: { clearAllPicked() },
-                    onOpenAll: { openAllPicked() }
-                )
-            } else if !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
-                      let selectedID = selectedResultID,
-                      let selectedResult = displayedResults.first(where: { $0.id == selectedID }),
-                      // Search suggestions have nothing to preview - let the list
-                      // span full width instead of showing an empty pane.
-                      AppConstants.Launcher.WebSuggestion.text(fromResultID: selectedResult.id) == nil {
-                resultsDivider
-                ResultPreviewView(
-                    result: selectedResult,
-                    onDeleteClipboard: selectedResult.kind == .clipboard
-                        ? { deleteClipboardResult(resultID: selectedResult.id) }
-                        : nil
-                )
+                if !showsFloatingCards { resultsDivider }
+                paneCard(padding: showsFloatingCards ? 6 : 0) {
+                    rightPaneCardBody {
+                        PickedItemsPanel(
+                            pickedKeys: pickedKeys,
+                            pickedByKey: pickedResultsByKey,
+                            themeStore: themeStore,
+                            onRemove: { removePicked(key: $0) },
+                            onClearAll: { clearAllPicked() },
+                            onOpenAll: { openAllPicked() }
+                        )
+                    }
+                }
+            } else if let selectedResult = previewResult {
+                if !showsFloatingCards { resultsDivider }
+                paneCard(padding: showsFloatingCards ? 6 : 0) {
+                    rightPaneCardBody {
+                        ResultPreviewView(
+                            result: selectedResult,
+                            onDeleteClipboard: selectedResult.kind == .clipboard
+                                ? { deleteClipboardResult(resultID: selectedResult.id) }
+                                : nil
+                        )
+                    }
+                }
             }
         }
+    }
+
+    /// Right-hand card contents plus, when panes are on, the copyright footer.
+    @ViewBuilder
+    private func rightPaneCardBody<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            if showsFloatingCards {
+                cardFooter {
+                    Spacer(minLength: 0)
+                    copyrightLink
+                }
+            }
+        }
+    }
+
+    /// A thin footer strip inside a floating card holding a slice of the old
+    /// full-width hint bar.
+    @ViewBuilder
+    private func cardFooter<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 0) {
+            content()
+        }
+        .padding(.horizontal, 6)
+        .padding(.top, 6)
+        .padding(.bottom, 2)
+    }
+
+    /// i3-style inner gap between the three home panes (0 = classic flat layout).
+    private var innerGap: CGFloat { CGFloat(themeStore.settings.innerGap) }
+    private var usesPanes: Bool { innerGap > 0 }
+
+    /// True when the carded results screen is showing with the gap on: the panes
+    /// become self-contained frosted tiles floating on the bare desktop, so the
+    /// window backdrop and the full-width hint/copyright strip are dropped. Other
+    /// screens (command mode, settings, help, empty states) keep the backdrop.
+    private var showsFloatingCards: Bool {
+        usesPanes
+            && !isCommandMode
+            && !appUIState.showsThemeSettings
+            && !showsHelpScreen
+            && !isTranslationQuery
+            // The AI answer has its own multi-column layouts (answer + suggestions)
+            // that don't map onto the three-pane grid, so it keeps the classic
+            // backdrop and full-width hint bar.
+            && !aiAnswer.isActive
+            && !(isClipboardQuery && displayedResults.isEmpty)
+            && !(isRecentQuery && displayedResults.isEmpty)
+    }
+
+    /// Wraps a home-screen pane in its own rounded, frosted card so the inner gap
+    /// reads as real separation between "windows". A no-op when the gap is 0,
+    /// preserving the classic flat layout exactly. Each card carries its own blur
+    /// so it stays legible even once the window backdrop is removed.
+    @ViewBuilder
+    private func paneCard(padding: CGFloat, @ViewBuilder _ content: () -> some View) -> some View {
+        if showsFloatingCards {
+            content()
+                .padding(padding)
+                .background {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(themeStore.controlFillColor())
+                        .background(.black.opacity(0.30), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .background {
+                            VisualEffectBlur(material: themeStore.settings.blurMaterial.material)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                )
+                // Lift each pane off the backdrop so the three parts read as
+                // separate floating tiles rather than sections of one box.
+                .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 4)
+        } else {
+            content()
+        }
+    }
+
+    /// Background wrapper for the unified top row (search + running apps). A
+    /// frosted floating tile when the panes are floating, otherwise the classic
+    /// rounded search-bar fill - so the merged bar looks consistent on every
+    /// screen, gap or no gap.
+    @ViewBuilder
+    private func topRowBar<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        if showsFloatingCards {
+            paneCard(padding: 0) { content() }
+        } else {
+            content()
+                .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+    }
+
+    /// The selected result eligible for the right-hand preview pane, or nil when
+    /// the list should span full width (suggestions, nothing selected, etc.).
+    private var previewResult: LauncherResult? {
+        guard pickedKeys.isEmpty,
+              !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
+              let selectedID = selectedResultID,
+              let selectedResult = displayedResults.first(where: { $0.id == selectedID }),
+              AppConstants.Launcher.WebSuggestion.text(fromResultID: selectedResult.id) == nil
+        else { return nil }
+        return selectedResult
+    }
+
+    /// Whether a right-hand pane (picked list or preview) is currently shown.
+    private var hasRightPane: Bool { !pickedKeys.isEmpty || previewResult != nil }
+
+    private var copyrightLink: some View {
+        Link("© 2026 by Kunkka", destination: URL(string: "https://github.com/kunkka19xx")!)
+            .font(themeStore.uiFont(size: CGFloat(max(9, themeStore.settings.fontSize - 4)), weight: .regular))
+            .foregroundStyle(themeStore.fontColor(opacityMultiplier: 0.50))
     }
 
     private var resultsDivider: some View {
@@ -929,7 +1079,9 @@ struct LauncherView: View {
     @ViewBuilder
     private func borderOverlay(cornerRadius: CGFloat) -> some View {
         let borderWidth = themeStore.borderLineWidth()
-        if borderWidth > 0 {
+        // With inner gap on the panes float on the bare backdrop, so drop the
+        // outer window outline (keep it only to surface the sudo warning).
+        if borderWidth > 0 && (!showsFloatingCards || hasSudoWarning) {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(
                     hasSudoWarning ? Color.orange.opacity(0.95) : themeStore.borderColor(),
@@ -952,12 +1104,14 @@ struct LauncherView: View {
         }
     }
 
+    @ViewBuilder
     private var copyrightOverlay: some View {
-        Link("© 2026 by Kunkka", destination: URL(string: "https://github.com/kunkka19xx")!)
-            .font(themeStore.uiFont(size: CGFloat(max(9, themeStore.settings.fontSize - 4)), weight: .regular))
-            .foregroundStyle(themeStore.fontColor(opacityMultiplier: 0.50))
-            .padding(.trailing, 10)
-            .padding(.bottom, 8)
+        // When floating, the copyright moves into the right-hand card footer.
+        if !showsFloatingCards {
+            copyrightLink
+                .padding(.trailing, 10)
+                .padding(.bottom, 8)
+        }
     }
 
     @ViewBuilder

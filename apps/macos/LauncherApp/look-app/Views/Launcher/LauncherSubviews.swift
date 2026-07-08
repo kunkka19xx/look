@@ -6,6 +6,10 @@ struct SearchInputBar: View {
     let isQueryFocused: FocusState<Bool>.Binding
     let activeCommand: AppCommand?
     let themeStore: ThemeStore
+    /// When false the field draws no background of its own - used when it lives
+    /// inside a shared top-row pane that already supplies one, so the search
+    /// input and running-apps icons read as a single unified bar.
+    var showsBackground: Bool = true
     let onSubmit: () -> Void
     let onExitCommandMode: () -> Void
 
@@ -46,7 +50,12 @@ struct SearchInputBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background {
+            if showsBackground {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(themeStore.controlFillColor())
+            }
+        }
     }
 }
 
