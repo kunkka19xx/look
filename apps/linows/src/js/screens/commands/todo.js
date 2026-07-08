@@ -5,7 +5,6 @@
 // Save (Ctrl+S). No autosave.
 
 import { todoList, todoSave } from '../../ipc.js';
-import * as banner from '../../components/banner.js';
 import {
   listChecks, barChart, flame, plus, save as saveIcon, calendarPlus,
   trash as trashIcon, search as searchIcon, check as checkIcon, activity, calendar, zap,
@@ -47,6 +46,7 @@ let onQuickChange = null;
 // --- DOM refs ---
 let panel, searchBar, searchInput, statsBar, toolbar;
 let countEl, addDateBtn, saveBtn, daysEl, statsEl, tooltipEl;
+let toastEl, toastTimer;
 
 export function init() {
   panel = document.getElementById('cmd-panel-todo');
@@ -59,6 +59,7 @@ export function init() {
   saveBtn = document.getElementById('cmd-todo-save-btn');
   daysEl = document.getElementById('cmd-todo-days');
   statsEl = document.getElementById('cmd-todo-stats');
+  toastEl = document.getElementById('cmd-todo-toast');
 
   document.getElementById('cmd-todo-search-icon').innerHTML = searchIcon;
   document.getElementById('cmd-todo-stats-icon').innerHTML = barChart;
@@ -140,8 +141,19 @@ export function exit() {
   visible = false;
   panel.hidden = true;
   tooltipEl.hidden = true;
+  toastEl.classList.remove('show');
   editingAddKey = null;
   editingTaskRef = null;
+}
+
+// In-panel capsule toast at the panel bottom, matching the macOS TodoView
+// savedToast overlay (the global banner belongs to the home screen).
+function showToast(html, isError, secs) {
+  toastEl.innerHTML = html;
+  toastEl.classList.toggle('cmd-todo-toast-error', isError);
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), secs * 1000);
 }
 
 // Anchored above the hovered cell, clamped to the window edges.
@@ -243,10 +255,10 @@ async function persist() {
   try {
     await todoSave(tasks);
     dirty = false;
-    banner.show('Saved', 'success', SAVE_TOAST_SECS);
+    showToast(`${checkIcon} Saved`, false, SAVE_TOAST_SECS);
     renderToolbar();
   } catch (err) {
-    banner.show(`Save failed: ${err}`, 'error', 2.0);
+    showToast(`Save failed: ${escapeHtml(String(err))}`, true, 2.0);
   }
 }
 

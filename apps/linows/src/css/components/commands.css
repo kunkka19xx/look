@@ -82,6 +82,7 @@
 }
 
 .cmd-panel {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -810,6 +811,40 @@
   height: 6px;
   border-radius: 50%;
   background: var(--accent-color);
+}
+
+/* Save confirmation capsule, overlaid at the panel bottom like macOS */
+.cmd-todo-toast {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--accent-color);
+  color: var(--on-accent-color, #fff);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.cmd-todo-toast.show {
+  opacity: 1;
+}
+
+.cmd-todo-toast svg {
+  width: 13px;
+  height: 13px;
+}
+
+.cmd-todo-toast-error {
+  background: var(--color-danger);
 }
 
 /* Day cards */
