@@ -450,7 +450,7 @@ struct LauncherView: View {
         }
 
         if isClipboardQuery {
-            return ["Enter copy clip", "Delete remove clip", "Cmd+H help", "Cmd+/ command mode"]
+            return ["Enter copy clip", "Delete remove clip"]
         }
 
         // The home screen replaces the "Cmd+/ command mode" hint with a
@@ -611,9 +611,12 @@ struct LauncherView: View {
                 if showsHelpScreen {
                     showsHelpScreen = false
                 }
-                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery {
-                    // These render synthetic results (clip history / prefix menu /
-                    // command menu); no backend search, just re-seed the selection.
+                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery || isTranslationQuery {
+                    // These render their own panels (clip history / prefix menu /
+                    // command menu / translation), not backend results. Skip the
+                    // search + AI answer entirely - otherwise a background AI
+                    // activation flips the floating layout and flashes the old
+                    // backdrop while typing. Translation only fires on Enter.
                     aiAnswer.cancel()
                     setInitialSelection()
                 } else {
@@ -805,18 +808,34 @@ struct LauncherView: View {
             if isCommandMode {
                 commandModeView
             } else if isTranslationQuery {
-                LookupDefinitionPanelView(
-                    definition: lookupDefinition,
-                    emptyHint: translationEmptyHint,
-                    isWebMode: isWebTranslationQuery,
-                    themeStore: themeStore
-                )
+                floatingPanel {
+                    LookupDefinitionPanelView(
+                        definition: lookupDefinition,
+                        emptyHint: translationEmptyHint,
+                        isWebMode: isWebTranslationQuery,
+                        themeStore: themeStore
+                    )
+                }
             } else if showsHelpScreen {
                 LauncherHelpScreenView(themeStore: themeStore)
             } else if isClipboardQuery && displayedResults.isEmpty {
-                ClipboardEmptyStateView(themeStore: themeStore)
+                // The empty clipboard screen is naturally two columns (history /
+                // how-to), so float it as the same two-card grid as the results.
+                if showsFloatingCards {
+                    twoPaneGrid(hasRight: true) {
+                        ClipboardEmptyInfoView(themeStore: themeStore)
+                    } right: {
+                        ClipboardEmptyHelpView(themeStore: themeStore)
+                    }
+                } else {
+                    ClipboardEmptyStateView(themeStore: themeStore)
+                }
             } else if isRecentQuery && displayedResults.isEmpty {
-                RecentEmptyStateView(themeStore: themeStore)
+                floatingPanel { RecentEmptyStateView(themeStore: themeStore) }
+            } else if hidesResultsForEmptyQuery {
+                // Empty query while floating: rest with just the top bar, nothing
+                // below. A spacer keeps the bar pinned to the top.
+                Spacer(minLength: 0)
             } else {
                 resultsRow
             }
@@ -825,9 +844,10 @@ struct LauncherView: View {
                 Spacer(minLength: 0)
             }
 
-            // When floating, the hint bar lives inside the left card instead of
-            // as a full-width strip below the panes.
-            if !showsFloatingCards && !isKillConfirmationVisible && !isDeleteConfirmationVisible {
+            // The hint bar lives inside the left card only on the floating results
+            // grid; every other state (classic, translation, empty panels) keeps
+            // the full-width bar below.
+            if !showsFloatingGrid && !isKillConfirmationVisible && !isDeleteConfirmationVisible {
                 HintBar(hint: currentHint, todo: todoQuickView, themeStore: themeStore)
             }
         }
@@ -862,111 +882,179 @@ struct LauncherView: View {
     private var resultsRow: some View {
         if aiAnswer.isActive {
             if displayedResults.isEmpty {
-                // Nothing actionable underneath, let the answer fill the panel.
-                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
-                    .frame(maxHeight: .infinity)
+                aiAnswerOnlyRow
             } else if backendFilteredResults.isEmpty {
-                // Knowledge lookup: the answer is the headline and the only rows
-                // are web suggestions. Two columns: answer on the left at a
-                // comfortable reading measure, suggestion list pinned on the
-                // right so it stays visible and keyboard-navigable. Both fill the
-                // panel height so the layout matches the normal results screen
-                // and the hint bar stays pinned to the bottom.
-                HStack(alignment: .top, spacing: 8) {
-                    AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    resultsListAndPreview
-                        .frame(width: AppConstants.Launcher.aiAnswerSuggestionColumnWidth)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                }
-                .frame(maxHeight: .infinity)
+                aiKnowledgeLookupRow
             } else {
-                // Local file/app results coexist with the answer. Keep the answer
-                // capped on top so the results list keeps its full-width preview
-                // pane instead of being squeezed into a third column.
-                VStack(spacing: 8) {
-                    AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
-                        .frame(maxHeight: 240)
-                    resultsListAndPreview
-                }
+                aiAnswerWithResultsRow
             }
         } else {
             resultsListAndPreview
         }
     }
 
+    /// Answer fills the panel (no rows underneath). Floats as a single card that
+    /// also carries the hint footer.
+    @ViewBuilder
+    private var aiAnswerOnlyRow: some View {
+        if showsFloatingCards {
+            twoPaneGrid(hasRight: false) {
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+            } right: {
+                EmptyView()
+            }
+        } else {
+            AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                .frame(maxHeight: .infinity)
+        }
+    }
+
+    /// Knowledge lookup: AI answer beside the web-suggestion list. Floats as the
+    /// same two-card grid as the app results (answer holds the hints, suggestions
+    /// hold the copyright).
+    @ViewBuilder
+    private var aiKnowledgeLookupRow: some View {
+        if showsFloatingCards {
+            twoPaneGrid(hasRight: true) {
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+            } right: {
+                ResultsListView(
+                    results: displayedResults,
+                    selectedID: selectedResultID,
+                    pickedKeys: Set(pickedKeys),
+                    themeStore: themeStore,
+                    onSelect: { selectedResultID = $0 },
+                    onOpen: { _ in openSelectedApp() }
+                )
+            }
+        } else {
+            // Answer on the left at a comfortable reading measure; suggestion list
+            // pinned to a fixed-width column on the right.
+            HStack(alignment: .top, spacing: 8) {
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                resultsListAndPreview
+                    .frame(width: AppConstants.Launcher.aiAnswerSuggestionColumnWidth)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
+            .frame(maxHeight: .infinity)
+        }
+    }
+
+    /// Local file/app results coexist with the answer: answer capped on top so the
+    /// results grid below keeps its full-width preview pane (and its in-card hints).
+    @ViewBuilder
+    private var aiAnswerWithResultsRow: some View {
+        VStack(spacing: showsFloatingCards ? innerGap : 8) {
+            aiAnswerCard
+                .frame(maxHeight: 240)
+            resultsListAndPreview
+        }
+    }
+
+    /// The AI answer as a frosted floating tile (plain card when not floating).
+    @ViewBuilder
+    private var aiAnswerCard: some View {
+        if showsFloatingCards {
+            paneCard(padding: 6) {
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        } else {
+            AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+        }
+    }
+
     @ViewBuilder
     private var resultsListAndPreview: some View {
-        // With inner gap on, the list and preview become separate frosted cards
-        // divided by empty space, each carrying a slice of the old bottom bar
-        // (hints in the left card, copyright in the right); with it off, they
-        // share one row split by a hairline and the hint bar lives full-width.
+        twoPaneGrid(hasRight: hasRightPane) {
+            ResultsListView(
+                results: displayedResults,
+                selectedID: selectedResultID,
+                pickedKeys: Set(pickedKeys),
+                themeStore: themeStore,
+                onSelect: { selectedResultID = $0 },
+                onOpen: { _ in openSelectedApp() }
+            )
+        } right: {
+            if !pickedKeys.isEmpty {
+                PickedItemsPanel(
+                    pickedKeys: pickedKeys,
+                    pickedByKey: pickedResultsByKey,
+                    themeStore: themeStore,
+                    onRemove: { removePicked(key: $0) },
+                    onClearAll: { clearAllPicked() },
+                    onOpenAll: { openAllPicked() }
+                )
+            } else if let selectedResult = previewResult {
+                ResultPreviewView(
+                    result: selectedResult,
+                    onDeleteClipboard: selectedResult.kind == .clipboard
+                        ? { deleteClipboardResult(resultID: selectedResult.id) }
+                        : nil
+                )
+            }
+        }
+    }
+
+    /// The two-card home grid shared by the results screen and the clipboard
+    /// empty state: a left card and an optional right card, separated by the
+    /// inner gap when floating or a hairline when not. On the floating grid the
+    /// hint bar lives in the left card and the copyright in the right.
+    @ViewBuilder
+    private func twoPaneGrid<L: View, R: View>(
+        hasRight: Bool,
+        @ViewBuilder left: () -> L,
+        @ViewBuilder right: () -> R
+    ) -> some View {
         HStack(spacing: showsFloatingCards ? innerGap : 0) {
             paneCard(padding: showsFloatingCards ? 6 : 0) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ResultsListView(
-                        results: displayedResults,
-                        selectedID: selectedResultID,
-                        pickedKeys: Set(pickedKeys),
-                        themeStore: themeStore,
-                        onSelect: { selectedResultID = $0 },
-                        onOpen: { _ in openSelectedApp() }
-                    )
-                    .frame(maxHeight: .infinity)
-
-                    if showsFloatingCards {
-                        cardFooter {
-                            HintBar(hint: currentHint, todo: todoQuickView, themeStore: themeStore)
-                            Spacer(minLength: 8)
-                            // No right pane → copyright has nowhere else to go.
-                            if !hasRightPane { copyrightLink }
-                        }
-                    }
-                }
+                leftPaneCardBody(hasRight: hasRight) { left() }
             }
 
-            if !pickedKeys.isEmpty {
+            if hasRight {
                 if !showsFloatingCards { resultsDivider }
                 paneCard(padding: showsFloatingCards ? 6 : 0) {
-                    rightPaneCardBody {
-                        PickedItemsPanel(
-                            pickedKeys: pickedKeys,
-                            pickedByKey: pickedResultsByKey,
-                            themeStore: themeStore,
-                            onRemove: { removePicked(key: $0) },
-                            onClearAll: { clearAllPicked() },
-                            onOpenAll: { openAllPicked() }
-                        )
-                    }
-                }
-            } else if let selectedResult = previewResult {
-                if !showsFloatingCards { resultsDivider }
-                paneCard(padding: showsFloatingCards ? 6 : 0) {
-                    rightPaneCardBody {
-                        ResultPreviewView(
-                            result: selectedResult,
-                            onDeleteClipboard: selectedResult.kind == .clipboard
-                                ? { deleteClipboardResult(resultID: selectedResult.id) }
-                                : nil
-                        )
-                    }
+                    rightPaneCardBody { right() }
                 }
             }
         }
     }
 
-    /// Right-hand card contents plus, when panes are on, the copyright footer.
+    /// Left card contents plus, when floating, the hint footer (with the
+    /// copyright appended if there is no right card to hold it).
+    @ViewBuilder
+    private func leftPaneCardBody<Content: View>(hasRight: Bool, @ViewBuilder _ content: () -> Content) -> some View {
+        if showsFloatingCards {
+            VStack(alignment: .leading, spacing: 0) {
+                content()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                cardFooter {
+                    HintBar(hint: currentHint, todo: todoQuickView, themeStore: themeStore)
+                    Spacer(minLength: 8)
+                    // No right card → copyright has nowhere else to go.
+                    if !hasRight { copyrightLink }
+                }
+            }
+        } else {
+            content()
+        }
+    }
+
+    /// Right card contents plus, when floating, the copyright footer.
     @ViewBuilder
     private func rightPaneCardBody<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            content()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            if showsFloatingCards {
+        if showsFloatingCards {
+            VStack(alignment: .leading, spacing: 0) {
+                content()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 cardFooter {
                     Spacer(minLength: 0)
                     copyrightLink
                 }
             }
+        } else {
+            content()
         }
     }
 
@@ -990,18 +1078,37 @@ struct LauncherView: View {
     /// become self-contained frosted tiles floating on the bare desktop, so the
     /// window backdrop and the full-width hint/copyright strip are dropped. Other
     /// screens (command mode, settings, help, empty states) keep the backdrop.
+    /// Gate for the floating layout. Kept intentionally CHEAP and STABLE: it
+    /// depends only on the coarse mode (gap on, not command/settings/help/AI),
+    /// never on the query text or the live result count. That stability matters -
+    /// this decides whether the expensive window + per-card blur views exist, so
+    /// letting it flip per keystroke (e.g. as clipboard/translation results stream
+    /// in) churned NSVisualEffectViews on the main thread and froze typing.
     private var showsFloatingCards: Bool {
         usesPanes
             && !isCommandMode
             && !appUIState.showsThemeSettings
             && !showsHelpScreen
+    }
+
+    /// True when the floating content is the two-card grid (results or clipboard
+    /// empty) that carries its hint + copyright inside the cards. Translation and
+    /// the recent-empty state float as a single card and keep the bottom bar.
+    /// Only gates a `Text`, so it may read live state.
+    private var showsFloatingGrid: Bool {
+        showsFloatingCards
             && !isTranslationQuery
-            // The AI answer has its own multi-column layouts (answer + suggestions)
-            // that don't map onto the three-pane grid, so it keeps the classic
-            // backdrop and full-width hint bar.
-            && !aiAnswer.isActive
-            && !(isClipboardQuery && displayedResults.isEmpty)
             && !(isRecentQuery && displayedResults.isEmpty)
+    }
+
+    private var isQueryEmpty: Bool {
+        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// With an empty query on the floating home screen, rest as just the search
+    /// bar - hide the results columns (and the hint bar) below it.
+    private var hidesResultsForEmptyQuery: Bool {
+        showsFloatingCards && isQueryEmpty
     }
 
     /// Wraps a home-screen pane in its own rounded, frosted card so the inner gap
@@ -1045,6 +1152,21 @@ struct LauncherView: View {
         } else {
             content()
                 .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+    }
+
+    /// Wraps a single-panel home state (translation, clipboard/recent empty) in a
+    /// frosted floating card when floating, so it keeps a background once the
+    /// window backdrop is removed. A no-op otherwise.
+    @ViewBuilder
+    private func floatingPanel<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        if showsFloatingCards {
+            paneCard(padding: 0) {
+                content()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        } else {
+            content()
         }
     }
 
@@ -1106,8 +1228,9 @@ struct LauncherView: View {
 
     @ViewBuilder
     private var copyrightOverlay: some View {
-        // When floating, the copyright moves into the right-hand card footer.
-        if !showsFloatingCards {
+        // On the floating results grid the copyright moves into the right-hand
+        // card footer; otherwise it stays in the panel's bottom-right corner.
+        if !showsFloatingGrid {
             copyrightLink
                 .padding(.trailing, 10)
                 .padding(.bottom, 8)
