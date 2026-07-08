@@ -190,6 +190,8 @@ function hideToast() {
   }
 }
 
+// Stats reads directly from the in-memory task map, so block navigation while
+// Tasks is dirty to avoid implying the unsaved state has already been persisted.
 function canOpenStats() {
   if (page === 'tasks' && dirty) {
     showToast('Save changes before opening Stats', 'error', 2.0);
