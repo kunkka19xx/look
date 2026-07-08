@@ -21,6 +21,11 @@ arch_disable_blur=false
 # Running apps switcher: none, right
 running_apps_placement=right
 
+# Home-screen inner gap in px (0-24). 0 keeps the classic framed panel;
+# above 0 the home screen splits into floating tiles separated by this gap.
+# Shared with the macOS app (ThemeSettings.innerGap).
+inner_gap=0
+
 # Web answers - show an inline answer card for question-like queries
 # (currency/weather/crypto via the network, Wikipedia/DuckDuckGo lookups,
 # and Google autocomplete suggestions). Set to false to disable all network

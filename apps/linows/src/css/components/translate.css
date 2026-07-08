@@ -1,8 +1,7 @@
-/* Translation panel - slots into the main-pane grid's results row, spanning
- * both columns since translate mode hides the preview side. */
+/* Translation panel - replaces the results row in the main-pane stack
+ * (translate mode hides both result columns). */
 .translate-panel {
-  grid-row: 3;
-  grid-column: 1 / -1;
+  flex: 1;
   display: flex;
   flex-direction: column;
   padding: 10px 14px;

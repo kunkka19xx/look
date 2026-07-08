@@ -356,6 +356,22 @@ export function clear() {
   }
 }
 
+// Right half of the clipboard empty state - the "How to use" tips card that
+// pairs with the results list's "Clipboard History" info (macOS
+// ClipboardEmptyHelpView). Static content, safe as innerHTML.
+export function showClipboardHelp() {
+  if (!panel) return;
+  currentPath = null;
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="preview-clip-help">
+      <div class="preview-clip-help-title">How to use</div>
+      <div class="preview-clip-help-line">• Type <kbd>c"</kbd> to list latest 10 clips</div>
+      <div class="preview-clip-help-line">• Type <kbd>c"mail</kbd> to filter</div>
+      <div class="preview-clip-help-line">• Press <kbd>Enter</kbd> to copy selected item</div>
+    </div>`;
+}
+
 function infoRow(label, value) {
   const row = document.createElement('div');
   row.className = 'preview-info-row';

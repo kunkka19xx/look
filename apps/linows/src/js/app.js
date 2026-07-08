@@ -17,6 +17,7 @@ import * as platform from './platform.js';
 import * as aiAnswer from './components/ai-answer.js';
 import { State as AiState } from './components/ai-answer.js';
 import * as aiCard from './components/ai-answer-card.js';
+import * as layout from './layout.js';
 import { load } from './html-loader.js';
 import {
   onWindowShown, onIndexReady, requestIndexRefresh, getQuickFolders, copyFilesToClipboard,
@@ -33,9 +34,12 @@ import {
 // (apps/macos/.../LauncherView.swift:302) so both platforms surface the same
 // shortcuts in the same modes. Style stays per-platform: linows uses the
 // colon + bold-bullet format, macOS keeps its space-separated form.
-const HINT_MAIN = 'Enter: Open \u2022 Ctrl+F: Reveal \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+// "Ctrl+F: Reveal" was dropped from the home hint (still works, still listed
+// in Settings > Shortcuts); the clipboard hint keeps only its first two items
+// so it fits one line in the left card footer when the panes float.
+const HINT_MAIN = 'Enter: Open \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
 const HINT_TRANSLATE = 'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
-const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Delete: Remove clip \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Delete: Remove clip';
 // Discovery-menu hints \u2014 mirror macOS prefixSuggestion / commandSuggestion
 // hint bars (LauncherView.swift hintItems).
 const HINT_PREFIX_DISCOVERY = 'Enter: Pick prefix \u2022 Up/Down: Move \u2022 Esc: Clear \u2022 Ctrl+H: Help';
@@ -77,9 +81,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   mountUpdateWidget(document.getElementById('settings-about'), { label: 'About' });
   mountUpdateWidget(document.getElementById('help-update'));
 
-  // Hint bar: always at bottom, shared by all screens
+  // Hint bar: at the bottom, shared by all screens. In the floating grid,
+  // layout.js relocates the message span into the left card footer and the
+  // copyright into the right card footer.
   app.insertAdjacentHTML('beforeend',
-    `<div class="hint-bar" id="hint-bar"><span></span><span class="hint-bar-copy">\u00A9 2026 by <a class="hint-bar-link" href="#">Kunkka</a></span></div>`);
+    `<div class="hint-bar" id="hint-bar"><span id="hint-message"></span><span class="hint-bar-copy">\u00A9 2026 by <a class="hint-bar-link" href="#">Kunkka</a></span></div>`);
 
   // Load command panels into cmd-main
   const cmdMain = document.getElementById('cmd-main');
@@ -97,10 +103,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   const resultsList = document.getElementById('results-list');
   const previewPanel = document.getElementById('preview-panel');
   const hintBar = document.getElementById('hint-bar');
-  const hintMessage = hintBar.querySelector('span');
+  const hintMessage = document.getElementById('hint-message');
   const contentArea = document.getElementById('search-content');
   const resultsArea = document.getElementById('results-area');
   const aiCardEl = document.getElementById('ai-answer-card');
+  const helpScreen = document.getElementById('help-screen');
+
+  // Floating "inner-gap" layout state (classes on .launcher-window)
+  layout.init();
+  layout.initHints({
+    hintBar,
+    hintMessage,
+    copyright: hintBar.querySelector('.hint-bar-copy'),
+    leftFooter: document.getElementById('results-footer'),
+    rightFooter: document.getElementById('preview-footer'),
+  });
 
   // Todo quick view: when today has tasks, the last main-hint item
   // ("Ctrl+/: Command mode") is swapped for a clickable "Todo X/Y" stat with
@@ -201,6 +218,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   settings.init(() => {
     queryInput.value = '';
     search.handleQueryInput('');
+    layout.setQuery({ empty: true, translate: false });
     queryInput.focus();
     renderMainHint();
   });
@@ -286,6 +304,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     lastResults = items;
     results.render(items);
     applyAiLayoutMode();
+    // Recent-empty renders as one wide card, which sends the hint bar back
+    // to the bottom while the panes float (macOS showsFloatingGrid).
+    layout.setRecentEmpty(search.isRecentMode() && items.length === 0);
+    // Clipboard with no clips: the same two-card grid as normal results -
+    // "Clipboard History" info on the left, "How to use" on the right
+    // (macOS ClipboardEmptyInfoView / ClipboardEmptyHelpView).
+    if (search.isClipboardMode() && items.length === 0) {
+      previewPanel.hidden = false;
+      preview.showClipboardHelp();
+    }
     if (isPrefixedQuery(query)) {
       aiAnswer.cancel();
       return;
@@ -350,6 +378,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (tryCommandPrefix(value)) return;
 
     search.handleQueryInput(value);
+    layout.setQuery({ empty: value === '', translate: search.isTranslateMode() });
     if (search.isTranslateMode()) {
       setHint(hintMessage, HINT_TRANSLATE);
       resultsList.hidden = true;
@@ -359,6 +388,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (search.isClipboardMode()) {
       setHint(hintMessage, HINT_CLIPBOARD);
       resultsList.hidden = false;
+      results.setEmptyState({ mode: 'clipboard' });
       runningApps.setSuspended(false);
       if (runningApps.isEnabled()) runningApps.refresh();
       translatePanel.hide();
@@ -473,6 +503,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // area, and a stale card would peek through. Matches macOS, which
     // calls aiAnswer.cancel() whenever it switches into command mode.
     aiAnswer.cancel();
+    layout.setCommandMode(true);
     updateCommandHintBar();
     commands.enter();
     commands.setOnCommandChange(updateCommandHintBar);
@@ -512,6 +543,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderMainHint();
     queryInput.value = '';
     search.handleQueryInput('');
+    layout.setCommandMode(false);
+    layout.setQuery({ empty: true, translate: false });
     queryInput.focus();
     runningApps.setSuspended(false);
     if (runningApps.isEnabled()) runningApps.refresh();
