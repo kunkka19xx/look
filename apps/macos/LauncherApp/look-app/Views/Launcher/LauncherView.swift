@@ -724,9 +724,10 @@ struct LauncherView: View {
     @ViewBuilder
     private func borderedPanel(windowCornerRadius: CGFloat, contentSpacing: CGFloat, contentPadding: CGFloat) -> some View {
         ZStack {
-            // Floating panes are self-contained frosted tiles, so the window
-            // backdrop is dropped entirely and they sit on the bare desktop.
-            if !showsFloatingCards {
+            // When the content floats free (floating panes, or resting on an empty
+            // query) the window backdrop is dropped entirely and the tiles sit on
+            // the bare desktop.
+            if !barFloatsFree {
                 themedBackground
             }
 
@@ -741,7 +742,7 @@ struct LauncherView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .font(themeStore.uiFont())
             .foregroundStyle(themeStore.fontColor())
-            .background(.black.opacity(showsFloatingCards ? 0 : 0.16), in: RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous))
+            .background(.black.opacity(barFloatsFree ? 0 : 0.16), in: RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous))
             .contentShape(Rectangle())
             .onTapGesture { focusActiveInput() }
         }
@@ -793,11 +794,10 @@ struct LauncherView: View {
                             .frame(maxWidth: .infinity)
                         }
                     }
-                } else if showsFloatingCards {
-                    // No running apps, floating: keep the search bar a frosted tile.
-                    topRowBar { searchInputBar(showsBackground: false) }
                 } else {
-                    searchInputBar()
+                    // No running apps: the search field is the whole bar; the
+                    // chrome (classic fill or frosted tile) comes from topRowBar.
+                    topRowBar { searchInputBar(showsBackground: false) }
                 }
             }
 
@@ -847,7 +847,7 @@ struct LauncherView: View {
             // The hint bar lives inside the left card only on the floating results
             // grid; every other state (classic, translation, empty panels) keeps
             // the full-width bar below.
-            if !showsFloatingGrid && !isKillConfirmationVisible && !isDeleteConfirmationVisible {
+            if !showsFloatingGrid && !hidesResultsForEmptyQuery && !isKillConfirmationVisible && !isDeleteConfirmationVisible {
                 HintBar(hint: currentHint, todo: todoQuickView, themeStore: themeStore)
             }
         }
@@ -1105,10 +1105,22 @@ struct LauncherView: View {
         query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// With an empty query on the floating home screen, rest as just the search
-    /// bar - hide the results columns (and the hint bar) below it.
+    /// With an empty query on the home screen, rest as just the search bar - hide
+    /// the results columns and the hint bar below it. Applies in both modes (gap
+    /// or no gap), so an empty launcher is always just the top bar.
     private var hidesResultsForEmptyQuery: Bool {
-        showsFloatingCards && isQueryEmpty
+        isQueryEmpty
+            && !isCommandMode
+            && !appUIState.showsThemeSettings
+            && !showsHelpScreen
+    }
+
+    /// True whenever the panel has no backdrop box and its content floats freely
+    /// on the desktop: either the panes are floating, or we're resting on an empty
+    /// query. In both cases the top bar becomes a self-contained frosted tile so
+    /// it stays legible on the bare desktop.
+    private var barFloatsFree: Bool {
+        showsFloatingCards || hidesResultsForEmptyQuery
     }
 
     /// Wraps a home-screen pane in its own rounded, frosted card so the inner gap
@@ -1117,7 +1129,7 @@ struct LauncherView: View {
     /// so it stays legible even once the window backdrop is removed.
     @ViewBuilder
     private func paneCard(padding: CGFloat, @ViewBuilder _ content: () -> some View) -> some View {
-        if showsFloatingCards {
+        if barFloatsFree {
             content()
                 .padding(padding)
                 .background {
@@ -1145,14 +1157,13 @@ struct LauncherView: View {
     /// frosted floating tile when the panes are floating, otherwise the classic
     /// rounded search-bar fill - so the merged bar looks consistent on every
     /// screen, gap or no gap.
-    @ViewBuilder
     private func topRowBar<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        if showsFloatingCards {
-            paneCard(padding: 0) { content() }
-        } else {
-            content()
-                .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
+        // Apply the chrome as ONE stable modifier (not an if/else that swaps the
+        // subtree) so the search field keeps its identity - and its keyboard
+        // focus - when the bar flips between the classic fill and the frosted
+        // floating tile, e.g. typing the first character out of the empty-rest
+        // state at gap 0.
+        content().modifier(TopBarChrome(floats: barFloatsFree, themeStore: themeStore))
     }
 
     /// Wraps a single-panel home state (translation, clipboard/recent empty) in a
@@ -1201,9 +1212,9 @@ struct LauncherView: View {
     @ViewBuilder
     private func borderOverlay(cornerRadius: CGFloat) -> some View {
         let borderWidth = themeStore.borderLineWidth()
-        // With inner gap on the panes float on the bare backdrop, so drop the
-        // outer window outline (keep it only to surface the sudo warning).
-        if borderWidth > 0 && (!showsFloatingCards || hasSudoWarning) {
+        // When the content floats free the panes sit on the bare desktop, so drop
+        // the outer window outline (keep it only to surface the sudo warning).
+        if borderWidth > 0 && (!barFloatsFree || hasSudoWarning) {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(
                     hasSudoWarning ? Color.orange.opacity(0.95) : themeStore.borderColor(),
@@ -1229,8 +1240,9 @@ struct LauncherView: View {
     @ViewBuilder
     private var copyrightOverlay: some View {
         // On the floating results grid the copyright moves into the right-hand
-        // card footer; otherwise it stays in the panel's bottom-right corner.
-        if !showsFloatingGrid {
+        // card footer; on the empty-rest screen it's hidden entirely; otherwise it
+        // stays in the panel's bottom-right corner.
+        if !showsFloatingGrid && !hidesResultsForEmptyQuery {
             copyrightLink
                 .padding(.trailing, 10)
                 .padding(.bottom, 8)
@@ -1274,6 +1286,40 @@ struct LauncherView: View {
     }
 
 
+}
+
+/// Chrome for the unified top bar, applied as a single always-present modifier so
+/// the wrapped search field keeps a stable identity (and keyboard focus) as the
+/// bar flips between the classic rounded fill and the frosted floating tile.
+private struct TopBarChrome: ViewModifier {
+    let floats: Bool
+    let themeStore: ThemeStore
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                if floats {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(themeStore.controlFillColor())
+                        .background(.black.opacity(0.30), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .background {
+                            VisualEffectBlur(material: themeStore.settings.blurMaterial.material)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                } else {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(themeStore.controlFillColor())
+                }
+            }
+            .overlay {
+                if floats {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                }
+            }
+            .shadow(color: floats ? .black.opacity(0.25) : .clear,
+                    radius: floats ? 7 : 0, x: 0, y: floats ? 3 : 0)
+    }
 }
 
 private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar: View, DeleteBar: View>: ViewModifier {
