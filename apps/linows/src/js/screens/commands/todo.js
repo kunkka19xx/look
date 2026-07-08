@@ -190,14 +190,27 @@ function hideToast() {
   }
 }
 
+function canOpenStats() {
+  if (page === 'tasks' && dirty) {
+    showToast('Save changes before opening Stats', 'error', 2.0);
+    return false;
+  }
+  return true;
+}
+
 export function handleKey(e) {
   // Ctrl+N flips Tasks/Stats, Ctrl+S saves; same pair as macOS Cmd+N/Cmd+S.
   if (e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === 'n' || e.key === 'N')) {
+    if (page === 'tasks' && !canOpenStats()) {
+      e.preventDefault();
+      return true;
+    }
     e.preventDefault();
     setPage(page === 'tasks' ? 'stats' : 'tasks');
     return true;
   }
   if (e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
+    if (page !== 'tasks') return false; //prevent user saves state in stats tab
     e.preventDefault();
     persist();
     return true;
@@ -450,6 +463,9 @@ const dateSearchText = (date, diff) =>
 // --- Rendering ---
 
 function setPage(p) {
+  if (p === 'stats' && !canOpenStats()) {
+    return;
+  }
   page = p;
   tooltipEl.hidden = true;
   searchBar.hidden = p !== 'tasks';
