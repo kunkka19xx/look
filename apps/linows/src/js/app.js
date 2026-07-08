@@ -17,6 +17,7 @@ import * as platform from './platform.js';
 import * as aiAnswer from './components/ai-answer.js';
 import { State as AiState } from './components/ai-answer.js';
 import * as aiCard from './components/ai-answer-card.js';
+import * as layout from './layout.js';
 import { load } from './html-loader.js';
 import {
   onWindowShown, onIndexReady, requestIndexRefresh, getQuickFolders, copyFilesToClipboard,
@@ -33,13 +34,27 @@ import {
 // (apps/macos/.../LauncherView.swift:302) so both platforms surface the same
 // shortcuts in the same modes. Style stays per-platform: linows uses the
 // colon + bold-bullet format, macOS keeps its space-separated form.
-const HINT_MAIN = 'Enter: Open \u2022 Ctrl+F: Reveal \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+// "Ctrl+F: Reveal" was dropped from the home hint (still works, still listed
+// in Settings > Shortcuts); the clipboard hint keeps only its first two items
+// so it fits one line in the left card footer when the panes float.
+const HINT_MAIN = 'Enter: Open \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
 const HINT_TRANSLATE = 'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
-const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Delete: Remove clip \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Delete: Remove clip';
 // Discovery-menu hints \u2014 mirror macOS prefixSuggestion / commandSuggestion
 // hint bars (LauncherView.swift hintItems).
 const HINT_PREFIX_DISCOVERY = 'Enter: Pick prefix \u2022 Up/Down: Move \u2022 Esc: Clear \u2022 Ctrl+H: Help';
 const HINT_COMMAND_DISCOVERY = 'Enter: Run command \u2022 Up/Down: Move \u2022 Esc: Clear \u2022 Ctrl+H: Help';
+
+// Per-command hint lines while command mode is active; `shell` doubles as
+// the fallback for commands without a dedicated line.
+const COMMAND_HINTS = {
+  pomo: 'Space: Start/pause \u2022 R: Reset \u2022 P: Music \u2022 Esc: Back \u2022 Tab/Ctrl+1-6: Switch',
+  todo: 'Ctrl+N: Switch page \u2022 Ctrl+S: Save \u2022 Tab/Ctrl+1-6: Switch \u2022 Esc: Back',
+  kill: 'Y: Confirm \u2022 N: Cancel \u2022 Tab/Ctrl+1-6: Switch \u2022 Esc: Back',
+  sys: 'Esc: Back \u2022 Tab/Ctrl+1-6: Switch \u2022 Ctrl+/: Command mode \u2022 Ctrl+Shift+,: Settings',
+  calc: 'Enter: Evaluate \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back',
+  shell: 'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back',
+};
 
 // Hint constants are static, authored in code \u2014 safe to set as innerHTML so
 // each bullet renders through `.hint-sep` (accent color, bold) for clearer
@@ -54,7 +69,7 @@ const KILL_FEEDBACK_DELAY_MS = 300;
 
 // Layout modes applied to #results-area when the AI card is visible.
 // Stacked: card capped above results in col 1.
-// Two-col: wide card spans both cols + 320 px suggestion column on the right.
+// Two-col: answer card left, suggestion list right, equal columns.
 const AI_LAYOUT_CLASSES = ['ai-mode-full', 'ai-mode-two-col', 'ai-mode-stacked'];
 const AI_LAYOUT_STACKED = 'ai-mode-stacked';
 const AI_LAYOUT_TWO_COL = 'ai-mode-two-col';
@@ -77,9 +92,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   mountUpdateWidget(document.getElementById('settings-about'), { label: 'About' });
   mountUpdateWidget(document.getElementById('help-update'));
 
-  // Hint bar: always at bottom, shared by all screens
+  // Hint bar: at the bottom, shared by all screens. In the floating grid,
+  // layout.js relocates the message span into the left card footer and the
+  // copyright into the right card footer.
   app.insertAdjacentHTML('beforeend',
-    `<div class="hint-bar" id="hint-bar"><span></span><span class="hint-bar-copy">\u00A9 2026 by <a class="hint-bar-link" href="#">Kunkka</a></span></div>`);
+    `<div class="hint-bar" id="hint-bar"><span id="hint-message"></span><span class="hint-bar-copy">\u00A9 2026 by <a class="hint-bar-link" href="#">Kunkka</a></span></div>`);
 
   // Load command panels into cmd-main
   const cmdMain = document.getElementById('cmd-main');
@@ -97,10 +114,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   const resultsList = document.getElementById('results-list');
   const previewPanel = document.getElementById('preview-panel');
   const hintBar = document.getElementById('hint-bar');
-  const hintMessage = hintBar.querySelector('span');
+  const hintMessage = document.getElementById('hint-message');
   const contentArea = document.getElementById('search-content');
   const resultsArea = document.getElementById('results-area');
   const aiCardEl = document.getElementById('ai-answer-card');
+  const helpScreen = document.getElementById('help-screen');
+  const previewCol = document.getElementById('preview-col');
+  const previewFooter = document.getElementById('preview-footer');
+
+  // Floating "inner-gap" layout state (classes on .launcher-window)
+  layout.init();
+  layout.initHints({
+    hintBar,
+    hintMessage,
+    copyright: hintBar.querySelector('.hint-bar-copy'),
+    leftFooter: document.getElementById('results-footer'),
+    rightFooter: previewFooter,
+  });
 
   // Todo quick view: when today has tasks, the last main-hint item
   // ("Ctrl+/: Command mode") is swapped for a clickable "Todo X/Y" stat with
@@ -198,12 +228,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     },
   });
-  settings.init(() => {
+  // Shared "back to the empty home screen" reset, used when leaving
+  // settings or command mode.
+  function resetHomeQuery() {
     queryInput.value = '';
     search.handleQueryInput('');
-    queryInput.focus();
+    layout.setQuery({ empty: true, translate: false });
     renderMainHint();
-  });
+    queryInput.focus();
+  }
+
+  settings.init(resetHomeQuery);
   settings.restoreOnStartup();
 
   // Running apps strip
@@ -286,6 +321,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     lastResults = items;
     results.render(items);
     applyAiLayoutMode();
+    // Recent-empty renders as one wide card, which sends the hint bar back
+    // to the bottom while the panes float (macOS showsFloatingGrid).
+    layout.setRecentEmpty(search.isRecentMode() && items.length === 0);
+    // Clipboard with no clips: the same two-card grid as normal results -
+    // "Clipboard History" info on the left, "How to use" on the right
+    // (macOS ClipboardEmptyInfoView / ClipboardEmptyHelpView).
+    if (search.isClipboardMode() && items.length === 0) {
+      previewPanel.hidden = false;
+      preview.showClipboardHelp();
+    }
     if (isPrefixedQuery(query)) {
       aiAnswer.cancel();
       return;
@@ -302,18 +347,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   // mode. Now the only thing that matters is "are there any local rows":
   //   - has local results → stacked (card capped 240 px above rows, both
   //     in col 1; search-bar and rows stay aligned)
-  //   - no local results  → two-col (wide card + 320 px suggestion column
-  //     on the right; alignment intentionally broken so the answer reads
-  //     at a comfortable measure)
-  // The 320 px column may be empty briefly while suggestions load, or
+  //   - no local results  → two-col (answer card left, suggestion list
+  //     right, equal columns - the same two-pane grid as normal results,
+  //     matching macOS twoPaneGrid)
+  // The suggestion column may be empty briefly while suggestions load, or
   // permanently for queries that get none (e.g. "1+1=?"). Stable layout
   // matters more than the empty column for those edge cases.
   function applyAiLayoutMode() {
     if (!resultsArea) return;
     resultsArea.classList.remove(...AI_LAYOUT_CLASSES);
-    if (lastAiState === AiState.idle) return;
-    const hasLocal = lastResults.some((r) => webSuggestionFromResultId(r.id) == null);
-    resultsArea.classList.add(hasLocal ? AI_LAYOUT_STACKED : AI_LAYOUT_TWO_COL);
+    let mode = null;
+    if (lastAiState !== AiState.idle) {
+      const hasLocal = lastResults.some((r) => webSuggestionFromResultId(r.id) == null);
+      mode = hasLocal ? AI_LAYOUT_STACKED : AI_LAYOUT_TWO_COL;
+      resultsArea.classList.add(mode);
+    }
+    // Two-col hosts the suggestion list in the right pane; every other mode
+    // keeps it under the search column. Same element either way, so
+    // selection, keyboard nav and the results.js container ref all survive
+    // the move (which only happens on an actual mode transition).
+    if (mode === AI_LAYOUT_TWO_COL) {
+      if (resultsList.parentElement !== previewCol) {
+        previewCol.insertBefore(resultsList, previewFooter);
+      }
+    } else if (resultsList.parentElement !== resultsArea) {
+      resultsArea.appendChild(resultsList);
+    }
   }
 
   // :cmd <args> live trigger: jumps straight into that command's panel with
@@ -344,44 +403,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     return true;
   }
 
-  // Search on input
+  // Search on input. Translate owns the whole content row; every other mode
+  // shows the results list, wakes the running-apps strip and then only
+  // differs in hint text, preview visibility and empty-state flavor.
   queryInput.addEventListener('input', (e) => {
     const value = e.target.value;
     if (tryCommandPrefix(value)) return;
 
     search.handleQueryInput(value);
-    if (search.isTranslateMode()) {
+    const translating = search.isTranslateMode();
+    layout.setQuery({ empty: value === '', translate: translating });
+    resultsList.hidden = translating;
+    runningApps.setSuspended(translating);
+
+    if (translating) {
       setHint(hintMessage, HINT_TRANSLATE);
-      resultsList.hidden = true;
       previewPanel.hidden = true;
-      runningApps.setSuspended(true);
       if (!translatePanel.isActive()) translatePanel.showPlaceholder();
-    } else if (search.isClipboardMode()) {
+      return;
+    }
+    if (runningApps.isEnabled()) runningApps.refresh();
+    translatePanel.hide();
+
+    if (search.isClipboardMode()) {
       setHint(hintMessage, HINT_CLIPBOARD);
-      resultsList.hidden = false;
-      runningApps.setSuspended(false);
-      if (runningApps.isEnabled()) runningApps.refresh();
-      translatePanel.hide();
-    } else if (search.isPrefixHintMode()) {
-      setHint(hintMessage, HINT_PREFIX_DISCOVERY);
-      resultsList.hidden = false;
+      results.setEmptyState({ mode: 'clipboard' });
+    } else if (search.isPrefixHintMode() || search.isCommandHintMode()) {
+      setHint(hintMessage, search.isPrefixHintMode() ? HINT_PREFIX_DISCOVERY : HINT_COMMAND_DISCOVERY);
       previewPanel.hidden = true;
-      runningApps.setSuspended(false);
-      if (runningApps.isEnabled()) runningApps.refresh();
-      translatePanel.hide();
-    } else if (search.isCommandHintMode()) {
-      setHint(hintMessage, HINT_COMMAND_DISCOVERY);
-      resultsList.hidden = false;
-      previewPanel.hidden = true;
-      runningApps.setSuspended(false);
-      if (runningApps.isEnabled()) runningApps.refresh();
-      translatePanel.hide();
     } else {
       renderMainHint();
-      resultsList.hidden = false;
-      runningApps.setSuspended(false);
-      if (runningApps.isEnabled()) runningApps.refresh();
-      translatePanel.hide();
       // While the AI card is active, the results list holds web-suggestion
       // rows. Those routinely return empty (DDG rate-limits, transient
       // failures); render nothing instead of "No results" so the right
@@ -473,6 +524,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // area, and a stale card would peek through. Matches macOS, which
     // calls aiAnswer.cancel() whenever it switches into command mode.
     aiAnswer.cancel();
+    layout.setModal('command', true);
     updateCommandHintBar();
     commands.enter();
     commands.setOnCommandChange(updateCommandHintBar);
@@ -480,28 +532,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function updateCommandHintBar() {
     const cmd = commands.getActiveCommand();
-    if (cmd === 'pomo') {
-      setHint(hintMessage,
-        'Space: Start/pause \u2022 R: Reset \u2022 P: Music \u2022 Esc: Back \u2022 Tab/Ctrl+1-6: Switch');
-    } else if (cmd === 'todo') {
-      setHint(hintMessage,
-        'Ctrl+N: Switch page \u2022 Ctrl+S: Save \u2022 Tab/Ctrl+1-6: Switch \u2022 Esc: Back');
-    } else if (cmd === 'kill') {
-      setHint(hintMessage,
-        'Y: Confirm \u2022 N: Cancel \u2022 Tab/Ctrl+1-6: Switch \u2022 Esc: Back');
-    } else if (cmd === 'sys') {
-      setHint(hintMessage,
-        'Esc: Back \u2022 Tab/Ctrl+1-6: Switch \u2022 Ctrl+/: Command mode \u2022 Ctrl+Shift+,: Settings');
-    } else if (cmd === 'calc') {
-      setHint(hintMessage,
-        'Enter: Evaluate \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back');
-    } else if (cmd === 'shell') {
-      setHint(hintMessage,
-        'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back');
-    } else {
-      setHint(hintMessage,
-        'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back');
-    }
+    setHint(hintMessage, COMMAND_HINTS[cmd] || COMMAND_HINTS.shell);
   }
 
   function exitCommandMode() {
@@ -509,10 +540,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     resultsList.hidden = false;
     previewPanel.hidden = false;
     translatePanel.hide();
-    renderMainHint();
-    queryInput.value = '';
-    search.handleQueryInput('');
-    queryInput.focus();
+    layout.setModal('command', false);
+    resetHomeQuery();
     runningApps.setSuspended(false);
     if (runningApps.isEnabled()) runningApps.refresh();
   }

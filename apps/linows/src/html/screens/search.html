@@ -1,12 +1,18 @@
 <div class="main-pane" id="search-content">
-  <div class="search-bar" id="search-bar">
-    <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" stroke-width="1.5"/>
-      <line x1="10.5" y1="10.5" x2="15" y2="15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-    </svg>
-    <input id="query" type="text" placeholder="Search..." autofocus spellcheck="false" autocomplete="off" />
+  <!-- Top bar: search field + running-apps strip merged into one full-width
+       bar (macOS topRowBar). Everything in here stays permanently mounted;
+       looks change only via class toggles on .launcher-window, so #query
+       never loses focus across the classic/floating flip. -->
+  <div class="top-bar pane-tile" id="top-bar">
+    <div class="search-bar" id="search-bar">
+      <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="10.5" y1="10.5" x2="15" y2="15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <input id="query" type="text" placeholder="Type whatever you want" autofocus spellcheck="false" autocomplete="off" />
+    </div>
+    <div class="running-apps-strip" id="running-apps-strip" hidden></div>
   </div>
-  <div class="running-apps-strip" id="running-apps-strip" hidden></div>
 
   <div class="banner" id="banner" hidden>
     <span class="banner-text"></span>
@@ -25,14 +31,22 @@
     </div>
   </div>
 
-  <!-- Results area lives in column 1 of the main grid alongside the search
-       bar, so its rows share the same effective width - their right edges
-       line up exactly with the search bar's right edge (mirrors macOS, where
-       both are siblings in the left panel). The preview pane lives in
-       column 2 with the running-apps strip. -->
-  <div class="results-area" id="results-area">
-    <div class="ai-card" id="ai-answer-card" hidden></div>
-    <div class="results-list" id="results-list"></div>
+  <!-- Results row: list column + preview column. At gap 0 the two columns
+       share the classic framed panel with a hairline divider; at gap > 0
+       each column is its own floating tile. The footers are empty in
+       classic mode; the floating grid moves the hint text into the left
+       one and the copyright into the right one (js/layout.js). -->
+  <div class="results-row" id="results-row">
+    <div class="pane-col pane-tile" id="results-col">
+      <div class="results-area" id="results-area">
+        <div class="ai-card" id="ai-answer-card" hidden></div>
+        <div class="results-list" id="results-list"></div>
+      </div>
+      <div class="pane-footer" id="results-footer"></div>
+    </div>
+    <div class="pane-col pane-tile" id="preview-col">
+      <div class="preview-panel" id="preview-panel" hidden></div>
+      <div class="pane-footer" id="preview-footer"></div>
+    </div>
   </div>
-  <div class="preview-panel" id="preview-panel" hidden></div>
 </div>

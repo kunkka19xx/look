@@ -5,6 +5,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
   padding: 8px var(--content-padding);
   border-bottom: var(--border-thickness) solid var(--divider-color);
   animation: banner-in 200ms ease-out;
@@ -37,19 +38,41 @@
   color: var(--font-color);
 }
 
-.banner-success { background: rgba(166, 227, 161, 0.12); }
-.banner-success .banner-text { color: var(--color-success); }
+.banner-success {
+  background: rgba(166, 227, 161, 0.12);
+}
+.banner-success .banner-text {
+  color: var(--color-success);
+}
 
-.banner-error { background: rgba(243, 139, 168, 0.12); }
-.banner-error .banner-text { color: var(--color-danger); }
+.banner-error {
+  background: rgba(243, 139, 168, 0.12);
+}
+.banner-error .banner-text {
+  color: var(--color-danger);
+}
 
-.banner-info { background: rgba(137, 180, 250, 0.12); }
-.banner-info .banner-text { color: var(--color-info); }
+.banner-info {
+  background: rgba(137, 180, 250, 0.12);
+}
+.banner-info .banner-text {
+  color: var(--color-info);
+}
 
-.banner-warning { background: rgba(250, 179, 135, 0.12); }
-.banner-warning .banner-text { color: var(--color-warning); }
+.banner-warning {
+  background: rgba(250, 179, 135, 0.12);
+}
+.banner-warning .banner-text {
+  color: var(--color-warning);
+}
 
 @keyframes banner-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

@@ -77,38 +77,46 @@ html[data-os="windows"] .launcher-window {
   -webkit-backdrop-filter: none !important;
 }
 
-/* Main pane: 50/50 grid so the search bar's right edge lines up exactly with
- * the result rows' right edge (and, when visible, the running-apps strip
- * sits in column 2 above the preview pane, right-aligned to the same border).
- * The split applies whenever there's anything in column 2: either the
- * running-apps strip up top or the preview pane below (the latter lives
- * inside `.results-area`, so we test for its presence in the DOM via :has). */
+/* Same guard for the floating tiles. Readability without blur is already
+ * covered: applytint() forces a near-opaque --bg-tint in these environments,
+ * and the tiles reuse it as their tint layer. */
+[data-compositor="hyprland"] .pane-tile,
+[data-disable-blur] .pane-tile {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Main pane: vertical stack - unified top bar (search + running apps),
+ * transient banner/confirm rows, then the two-column results row. */
 .main-pane {
-  display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: auto auto 1fr;
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
 
-.main-pane:has(.running-apps-strip:not([hidden])),
-.main-pane:has(.preview-panel:not([hidden])) {
-  grid-template-columns: 1fr 1fr;
+/* Top bar: search field + running-apps strip merged into one full-width bar
+ * (macOS topRowBar). The 10px search-strip gap is fixed; it never tracks
+ * --inner-gap. */
+.top-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin: var(--content-padding) var(--content-padding) 12px;
+  padding: var(--input-padding-y) var(--input-padding-x);
+  background-color: var(--control-fill);
+  border-radius: 10px;
 }
 
 .search-bar {
   position: relative;
-  grid-row: 1;
-  grid-column: 1;
+  flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: var(--content-padding) var(--content-padding) 12px;
-  padding: var(--input-padding-y) var(--input-padding-x);
-  background: var(--control-fill);
-  border-radius: var(--control-radius);
 }
 
 .search-icon {
@@ -137,16 +145,77 @@ html[data-os="windows"] .launcher-window {
   overflow: hidden;
 }
 
-/* Results area: column 1 only by default, so its width matches the search
- * bar's column exactly. The AI card sits on top, the engine results list
- * below, both inheriting the same 50 % width as the search bar above them;
- * which is what makes the search-bar right edge line up with the result rows
- * in normal browsing and stacked AI mode. The two-col AI mode (knowledge
- * lookup) deliberately overrides this so the answer card can read at a
- * comfortable measure. */
+/* Results row: list column + preview column. Column 2 collapses whenever
+ * the preview pane is hidden (discovery rows, picked-empty, AI modes) so
+ * the list spans the full width - same behavior the old 2x2 grid had. */
+.results-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.results-row:has(.preview-panel[hidden]):not(:has(.ai-mode-two-col)),
+.results-row:has(.ai-mode-full) {
+  grid-template-columns: 1fr;
+}
+
+.results-row:has(.preview-panel[hidden]):not(:has(.ai-mode-two-col)) #preview-col,
+.results-row:has(.ai-mode-full) #preview-col {
+  display: none;
+}
+
+/* Two-col AI (knowledge lookup): app.js moves the suggestion list into the
+ * right pane, so the lookup renders through the same two equal columns as
+ * normal results (macOS twoPaneGrid) - same tiles, same footers. The
+ * preview panel itself has nothing to show next to a search list. */
+.results-row:has(.ai-mode-two-col) .preview-panel {
+  display: none;
+}
+
+#preview-col > .results-list {
+  flex: 1;
+  border-left: 1px solid var(--divider-color);
+}
+
+.floating #preview-col > .results-list {
+  border-left: none;
+}
+
+/* Translation owns the whole content row; hide the (empty) results columns
+ * so their floating tiles don't paint behind the translate panel. */
+.main-pane.translating .results-row {
+  display: none;
+}
+
+.pane-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Per-card footers. Empty and collapsed in classic mode; the floating grid
+ * moves the hint text / copyright into them (js/layout.js placeHints). */
+.pane-footer {
+  display: none;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 6px 10px 2px;
+}
+
+.floating-grid .pane-footer {
+  display: flex;
+}
+
+#preview-footer {
+  justify-content: flex-end;
+}
+
+/* Results area: the AI card sits on top, the engine results list below. */
 .results-area {
-  grid-row: 3;
-  grid-column: 1;
+  flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -165,53 +234,20 @@ html[data-os="windows"] .launcher-window {
   flex: 1;
 }
 
-/* Two-col: only web suggestions, no local results. Card extends across both
- * grid columns so the answer reads at a comfortable measure; suggestions
- * pin to a 320 px column on the right (matches macOS
- * AppConstants.Launcher.aiAnswerSuggestionColumnWidth). Preview pane is
- * suppressed; nothing useful to preview alongside a search list.
- * Search-bar/results alignment is deliberately broken here: the wider card
- * is the visual signal that the launcher has switched into knowledge mode.
- *
- * Tight inner gap (4 px) between the card and the suggestion column;
- * the card and the suggestion rows already carry their own borders and
- * background fills, so anything more reads as wasted gutter. Outer edges
- * still keep the standard content-padding so the columns aren't flush
- * against the window border. */
-.results-area.ai-mode-two-col {
-  grid-column: 1 / -1;
-  flex-direction: row;
-  align-items: stretch;
-  gap: 4px;
-}
-.results-area.ai-mode-two-col .ai-card {
-  flex: 1;
-  margin-right: 0;
-}
-.results-area.ai-mode-two-col .results-list {
-  flex: 0 0 320px;
-  width: 320px;
-}
-.results-area.ai-mode-two-col .result-row-web-suggest {
-  margin-left: 2px;
-  margin-right: 4px;
-  padding-left: 4px;
-}
-.results-area.ai-mode-two-col ~ .preview-panel {
-  display: none;
-}
-
-/* Card alone fills the column; results-list hidden. */
+/* Two-col (only web suggestions, no local results) and full (card alone):
+ * the card fills its column. In two-col the suggestion list lives in the
+ * right pane, moved there by app.js applyAiLayoutMode, equal width. */
+.results-area.ai-mode-two-col .ai-card,
 .results-area.ai-mode-full .ai-card {
   flex: 1;
 }
 .results-area.ai-mode-full .results-list {
   display: none;
 }
-/* When the card is alone, the preview pane in column 2 has nothing useful
- * to show; hide it so the answer card can read at a comfortable measure. */
-.results-area.ai-mode-full ~ .preview-panel {
-  display: none;
+#preview-col .result-row-web-suggest {
+  margin-left: 2px;
+  margin-right: 4px;
+  padding-left: 4px;
 }
 
 .results-list {
@@ -227,8 +263,7 @@ html[data-os="windows"] .launcher-window {
 }
 
 .preview-panel {
-  grid-row: 3;
-  grid-column: 2;
+  flex: 1;
   min-width: 0;
   min-height: 0;
   /* Fixed 1px (not var(--border-thickness)) so the column divider stays
@@ -247,12 +282,19 @@ html[data-os="windows"] .launcher-window {
   flex-shrink: 0;
 }
 
-.hint-bar span {
+/* Shared hint-text styling for both homes: the classic bottom bar and the
+ * floating-grid card footers. */
+.hint-bar span,
+.pane-footer span {
   font-size: calc(var(--font-size) - 1px);
   color: var(--font-muted);
 }
 
-.hint-bar .hint-sep {
+/* Both homes: the floating grid relocates the hint text and copyright from
+ * the bottom bar into the card footers. Scoped to keep specificity above
+ * the container `span` rules. */
+.hint-bar .hint-sep,
+.pane-footer .hint-sep {
   color: var(--accent-color);
   font-weight: 700;
   font-size: 1.25em;
@@ -261,7 +303,8 @@ html[data-os="windows"] .launcher-window {
   margin: 0 3px;
 }
 
-.hint-bar .hint-bar-copy {
+.hint-bar .hint-bar-copy,
+.pane-footer .hint-bar-copy {
   font-size: 10px;
   color: var(--font-muted);
   opacity: 0.6;
@@ -334,7 +377,7 @@ html[data-os="windows"] .launcher-window {
 .dev-badge {
   position: absolute;
   top: 50%;
-  right: var(--content-padding);
+  right: 0;
   transform: translateY(-50%);
   font-size: 9px;
   font-weight: 700;
@@ -343,4 +386,117 @@ html[data-os="windows"] .launcher-window {
   background: #e05252;
   padding: 1px 5px;
   border-radius: 3px;
+}
+
+/* --- Floating "inner-gap" layout ---------------------------------------
+ * Class states set by js/layout.js on .launcher-window:
+ *   .floating      - gap > 0 on the home screen: 3 frosted tiles, no box
+ *   .resting       - empty query on the home screen: just the top bar
+ *   .bar-free      - floating OR resting: window backdrop/border dropped
+ *   .floating-grid - floating two-card state: hints move into card footers
+ */
+
+/* barFloatsFree: no window backdrop box; tiles float on the bare desktop. */
+.launcher-window.bar-free {
+  background: transparent;
+  border-color: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.launcher-window.bar-free::before {
+  opacity: 0;
+}
+
+/* Frosted tile (macOS paneCard). Fill = control-fill over the user's tint;
+ * the tint layer reuses --bg-tint (computed from the Tint Color/Opacity
+ * sliders) so tile opacity follows the same settings as the classic window
+ * backdrop. The background image is NOT a background layer here: it renders
+ * as the ::before overlay below, mirroring the classic window's stacking
+ * (image above tint, under content) so ui_bg_opacity / ui_bg_blur / an
+ * opaque tint all behave identically in both modes. */
+.bar-free .pane-tile {
+  --tile-radius: 12px;
+  position: relative;
+  /* Keep the negative-z image overlay inside this tile's stacking context
+   * (above the tile fill, below its content). */
+  isolation: isolate;
+  background-color: transparent;
+  background-image:
+    linear-gradient(var(--control-fill), var(--control-fill)),
+    linear-gradient(var(--bg-tint), var(--bg-tint));
+  backdrop-filter: blur(var(--blur-radius, 0px));
+  -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
+  border: var(--border-thickness) solid var(--border-color);
+  border-radius: var(--tile-radius);
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.25);
+}
+
+/* This tile's slice of the panel background image: sized to the whole panel
+ * and shifted by the tile's own offset (set by js/layout.js), so adjacent
+ * tiles read as one continuous picture cut apart by the transparent gaps.
+ * clip-path (not overflow) confines the blur so footers can still overflow
+ * popovers like the todo bubble. */
+.bar-free .pane-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--bg-image, none);
+  /* Drawn-image rect computed by js/layout.js from the image's natural size
+   * and ui_bg_layout, matching the classic backdrop's cover/center math. */
+  background-size: var(--bg-draw-w, 100%) var(--bg-draw-h, 100%);
+  background-position: calc(-1 * var(--tile-x, 0px)) calc(-1 * var(--tile-y, 0px));
+  background-repeat: var(--bg-repeat, no-repeat);
+  opacity: var(--bg-image-opacity, 0.62);
+  filter: blur(var(--bg-image-blur, 10px));
+  clip-path: inset(0 round var(--tile-radius));
+  pointer-events: none;
+}
+
+/* Uniform gaps: bar-to-columns equals column-to-column equals --inner-gap.
+ * The outer inset keeps tiles off the (invisible) window edge so shadows
+ * are not clipped. */
+.floating .top-bar {
+  margin-bottom: var(--inner-gap);
+}
+
+.floating .results-row {
+  margin: 0 var(--content-padding) var(--content-padding);
+  column-gap: var(--inner-gap);
+}
+
+.floating .pane-col {
+  padding: 6px;
+}
+
+.floating .preview-panel {
+  border-left: none;
+}
+
+/* Two-col AI while floating: the tile provides the card chrome, so the
+ * answer card sheds its own and the answer reads as one clean tile. */
+.floating .results-area.ai-mode-two-col .ai-card {
+  margin: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Translation renders as a single floating card + classic bottom hint. */
+.floating .translate-panel {
+  margin: 0 var(--content-padding);
+}
+
+/* Empty-query resting state: just the frosted top bar on the desktop -
+ * no columns, no hint bar, no copyright. Applies at gap 0 too. */
+.resting .results-row,
+.resting #hint-bar {
+  display: none;
+}
+
+/* Floating grid: hints/copyright live in the card footers instead. */
+.floating-grid #hint-bar {
+  display: none;
 }

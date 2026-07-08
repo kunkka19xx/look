@@ -1,6 +1,7 @@
 import { getConfig, setConfig, forceIndexRefresh, reloadConfig, resetConfig, listFonts, pickFolder, pickImage, setAutostart, getAutostart, listCandidateDrives } from '../ipc.js';
 import * as banner from '../components/banner.js';
 import * as platform from '../platform.js';
+import * as layout from '../layout.js';
 
 let screen = null;
 let active = false;
@@ -87,6 +88,8 @@ const CSS_MAP = {
   ui_border_green: applyBorderColor,
   ui_border_blue: applyBorderColor,
   ui_border_opacity: applyBorderColor,
+  // Same key as macOS ThemeSettings.innerGap; layout.js clamps to 0-24.
+  inner_gap: (v) => layout.setInnerGap(parseFloat(v)),
 };
 
 function markCustomTheme() {
@@ -566,6 +569,9 @@ export async function reloadFromFile() {
     // Border thickness
     if (map.ui_border_thickness) CSS_MAP.ui_border_thickness(map.ui_border_thickness);
 
+    // Floating layout gap
+    CSS_MAP.inner_gap(map.inner_gap || 0);
+
     // Background image
     if (map.ui_bg_image) {
       applyBackgroundImage(map.ui_bg_image);
@@ -591,6 +597,7 @@ export async function reloadFromFile() {
 
 export async function enter(contentArea, searchBar) {
   active = true;
+  layout.setModal('settings', true);
   contentArea.style.display = 'none';
   searchBar.style.display = 'none';
   screen.style.display = '';
@@ -600,6 +607,7 @@ export async function enter(contentArea, searchBar) {
 
 export function exit(contentArea, searchBar) {
   active = false;
+  layout.setModal('settings', false);
   screen.style.display = 'none';
   contentArea.style.display = '';
   searchBar.style.display = '';
@@ -678,6 +686,9 @@ export async function restoreOnStartup() {
       CSS_MAP.ui_border_thickness(map.ui_border_thickness);
     }
 
+    // Floating layout gap
+    CSS_MAP.inner_gap(map.inner_gap || 0);
+
     // Background image
     if (map.ui_bg_image) {
       applyBackgroundImage(map.ui_bg_image);
@@ -706,7 +717,7 @@ function switchTab(tabId) {
 }
 
 function updateSettingsHint() {
-  const hint = document.querySelector('#hint-bar span');
+  const hint = document.getElementById('hint-message');
   if (!hint) return;
   if (activeTab === 'advanced') {
     hint.textContent = 'Save Config applies changes immediately. Ctrl+Shift+; is only needed after editing .look.config manually.';
@@ -1037,20 +1048,26 @@ function applyBackgroundImage(path) {
   // on Windows so WebView2 doesn't reject the custom scheme).
   const src = window.__TAURI__.core.convertFileSrc(path);
   document.documentElement.style.setProperty('--bg-image', `url("${src}")`);
+  // The floating tiles need the image's natural size to slice it with the
+  // same cover/center geometry the window backdrop uses.
+  layout.setBackgroundImage(src);
 }
 
 function clearBackgroundImage() {
   document.documentElement.style.removeProperty('--bg-image');
+  layout.setBackgroundImage(null);
 }
 
-function applyBgLayout(layout) {
+function applyBgLayout(mode) {
   const sizeMap = { center: 'auto', fill: 'cover', stretch: '100% 100%', duplicate: 'auto' };
   const repeatMap = { center: 'no-repeat', fill: 'no-repeat', stretch: 'no-repeat', duplicate: 'repeat' };
-  document.documentElement.style.setProperty('--bg-size', sizeMap[layout] || 'cover');
-  document.documentElement.style.setProperty('--bg-repeat', repeatMap[layout] || 'no-repeat');
+  document.documentElement.style.setProperty('--bg-size', sizeMap[mode] || 'cover');
+  document.documentElement.style.setProperty('--bg-repeat', repeatMap[mode] || 'no-repeat');
+  layout.setBackgroundLayout(mode);
 }
 
 function formatValue(key, v) {
+  if (key === 'inner_gap') return String(Math.round(v));
   return v.toFixed(2);
 }
 

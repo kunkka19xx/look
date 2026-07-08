@@ -371,3 +371,32 @@
   background: rgba(255, 255, 255, 0.12);
   border-radius: 4px;
 }
+
+/* Clipboard-empty "How to use" tips (pairs with the results list's
+ * "Clipboard History" info card). */
+.preview-clip-help {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.preview-clip-help-title {
+  font-size: var(--font-size);
+  font-weight: 600;
+  color: var(--font-color);
+}
+
+.preview-clip-help-line {
+  font-size: calc(var(--font-size) - 1px);
+  color: var(--font-secondary);
+}
+
+.preview-clip-help-line kbd {
+  font: inherit;
+  font-weight: 600;
+  padding: 1px 6px;
+  margin: 0 2px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}

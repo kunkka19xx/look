@@ -39,7 +39,10 @@
   --corner-radius: 0;
   --control-radius: 8px;
   --input-padding-x: 12px;
-  --input-padding-y: 10px;
+  --input-padding-y: 8px;
+
+  /* Floating "inner-gap" layout (0 = classic framed panel) */
+  --inner-gap: 0px;
 }
 
 /* Tokyo Night */

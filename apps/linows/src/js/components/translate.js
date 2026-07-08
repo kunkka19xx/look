@@ -22,7 +22,7 @@ export function showPlaceholder() {
   hide();
   active = true;
   const panel = document.createElement('div');
-  panel.className = 'translate-panel';
+  panel.className = 'translate-panel pane-tile';
   const placeholder = document.createElement('div');
   placeholder.className = 'translate-placeholder';
   placeholder.innerHTML = '<div class="translate-placeholder-icon">' + globeLg + '</div>' +
@@ -46,7 +46,7 @@ export async function perform(text) {
   if (panel) panel.remove();
 
   panel = document.createElement('div');
-  panel.className = 'translate-panel';
+  panel.className = 'translate-panel pane-tile';
   container.appendChild(panel);
 
   // Source header: bold text + WEB badge

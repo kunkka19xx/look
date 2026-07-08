@@ -1,15 +1,16 @@
-/* Running apps strip - top-right cell of the .main-pane grid (column 2).
- * Locked to the same column as .preview-panel so its outer extent always
- * matches the preview pane below. */
+/* Running apps strip - right end of the unified top bar, sharing the bar's
+ * background with the search field (no inner box). Capped at half the bar
+ * so a long strip never squeezes the input. */
 .running-apps-strip {
-  grid-row: 1;
-  grid-column: 2;
   display: flex;
   min-width: 0;
+  max-width: 50%;
+  flex-shrink: 0;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  margin: var(--content-padding) var(--content-padding) 12px;
+  padding-right: 6px;
+  overflow: hidden;
 }
 
 /* `display: flex` above wins over the UA `[hidden] { display: none }` rule
@@ -31,14 +32,14 @@
 }
 
 .running-app-icon {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   border-radius: 22%;
   color: var(--font-muted);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   overflow: hidden;
   opacity: 0.82;

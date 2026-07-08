@@ -33,6 +33,17 @@ export function setEmptyState(state) {
 }
 
 function renderEmptyState() {
+  // Left half of the clipboard empty state; the preview column shows the
+  // "How to use" half (macOS ClipboardEmptyInfoView / ClipboardEmptyHelpView).
+  if (emptyState.mode === 'clipboard') {
+    return `
+      <div class="empty-state empty-state-rich">
+        <div class="empty-state-icon">${clipboardIcon}</div>
+        <div class="empty-state-title">Clipboard History</div>
+        <div class="empty-state-body">No clipboard items yet</div>
+        <div class="empty-state-help">Copy any text, then search with <kbd>c"word</kbd> to find it here.</div>
+      </div>`;
+  }
   if (emptyState.mode === 'recent') {
     return `
       <div class="empty-state empty-state-rich">

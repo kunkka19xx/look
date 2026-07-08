@@ -45,6 +45,22 @@
 
         <div class="settings-divider"></div>
 
+        <!-- Layout -->
+        <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Layout</span></div>
+        <div class="settings-section">
+          <div class="settings-row" data-key="inner_gap">
+            <label class="settings-label">Inner Gap</label>
+            <input type="range" class="settings-slider" min="0" max="24" step="1" value="0" />
+            <span class="settings-slider-value">0</span>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label"></label>
+            <span class="settings-hint-text">0 = classic panel; above 0 the home screen splits into floating tiles</span>
+          </div>
+        </div>
+
+        <div class="settings-divider"></div>
+
         <!-- Tint Color -->
         <div class="settings-section-header"><span class="settings-section-arrow">&#9654;</span><span>Tint Color</span></div>
         <div class="settings-section">
@@ -416,12 +432,11 @@
           </div>
         </div>
 
+        <!-- About / update status. Advanced tab only, at the bottom of its
+             scroll area - matches macOS (ThemeSettingsView+Advanced
+             aboutSection). -->
+        <div class="settings-about" id="settings-about"></div>
       </div>
-
-      <!-- About / update status. Lives inside the scroll area so it sits
-           at the bottom of the settings panel and scrolls with the rest of
-           the content; matches the macOS layout. -->
-      <div class="settings-about" id="settings-about"></div>
     </div>
   </div>
 </div>

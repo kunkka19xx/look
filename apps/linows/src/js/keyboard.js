@@ -8,6 +8,7 @@ import * as runningApps from './components/running-apps.js';
 import { trash as trashIcon } from './icons.js';
 import { prefixFromResultId, commandIdFromResultId, webSuggestionFromResultId } from './catalog.js';
 import * as platform from './platform.js';
+import * as layout from './layout.js';
 
 // The quick-folder pin for the OS trash: `Trash` on Linux/macOS,
 // `Recycle Bin` on Windows (id is `quickfolder:<lowercased title>`).
@@ -142,6 +143,7 @@ function handleKeyDown(e) {
     if (e.key === 'Escape') {
       e.preventDefault();
       helpScreen.hidden = true;
+      layout.setModal('help', false);
       return;
     }
     return; // swallow all other keys while help is open
@@ -461,6 +463,7 @@ async function copyClipboardEntry() {
 function toggleHelp() {
   if (!helpScreen) return;
   helpScreen.hidden = !helpScreen.hidden;
+  layout.setModal('help', !helpScreen.hidden);
 }
 
 async function removeClipboardEntry() {
