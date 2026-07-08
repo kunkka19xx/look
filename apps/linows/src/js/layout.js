@@ -11,12 +11,12 @@ const GAP_MIN = 0;
 const GAP_MAX = 24;
 
 let innerGap = 0;
-let commandMode = false;
-let settingsOpen = false;
-let helpOpen = false;
 let queryEmpty = true;
 let translateQuery = false;
 let recentEmptyQuery = false;
+
+// Modal screens that suspend the floating home layout entirely.
+const modal = { command: false, settings: false, help: false };
 
 let win = null;
 let mainPane = null;
@@ -63,18 +63,8 @@ export function setInnerGap(gap) {
   apply();
 }
 
-export function setCommandMode(on) {
-  commandMode = !!on;
-  apply();
-}
-
-export function setSettingsOpen(on) {
-  settingsOpen = !!on;
-  apply();
-}
-
-export function setHelpOpen(on) {
-  helpOpen = !!on;
+export function setModal(screen, on) {
+  modal[screen] = !!on;
   apply();
 }
 
@@ -132,9 +122,9 @@ function drawnImageRect(winRect) {
 
 function apply() {
   if (!win) return;
-  const modal = commandMode || settingsOpen || helpOpen;
-  const floating = innerGap > 0 && !modal; // showsFloatingCards
-  const resting = queryEmpty && !modal; // hidesResultsForEmptyQuery
+  const onHome = !modal.command && !modal.settings && !modal.help;
+  const floating = innerGap > 0 && onHome; // showsFloatingCards
+  const resting = queryEmpty && onHome; // hidesResultsForEmptyQuery
   const barFree = floating || resting; // barFloatsFree
   const floatingGrid = floating && !translateQuery && !recentEmptyQuery;
 

@@ -209,18 +209,11 @@ html[data-os="windows"] .launcher-window {
   display: flex;
 }
 
-.pane-footer span {
-  font-size: calc(var(--font-size) - 1px);
-  color: var(--font-muted);
-}
-
 #preview-footer {
   justify-content: flex-end;
 }
 
-/* Results area: the AI card sits on top, the engine results list below.
- * The two-col AI mode (knowledge lookup) deliberately widens out of the
- * half-width column so the answer card can read at a comfortable measure. */
+/* Results area: the AI card sits on top, the engine results list below. */
 .results-area {
   flex: 1;
   min-width: 0;
@@ -241,24 +234,20 @@ html[data-os="windows"] .launcher-window {
   flex: 1;
 }
 
-/* Two-col: only web suggestions, no local results. The answer card fills
- * the left column; the suggestion list lives in the right pane (moved there
- * by app.js applyAiLayoutMode), equal width. */
-.results-area.ai-mode-two-col .ai-card {
-  flex: 1;
-}
-#preview-col .result-row-web-suggest {
-  margin-left: 2px;
-  margin-right: 4px;
-  padding-left: 4px;
-}
-
-/* Card alone fills the column; results-list hidden. */
+/* Two-col (only web suggestions, no local results) and full (card alone):
+ * the card fills its column. In two-col the suggestion list lives in the
+ * right pane, moved there by app.js applyAiLayoutMode, equal width. */
+.results-area.ai-mode-two-col .ai-card,
 .results-area.ai-mode-full .ai-card {
   flex: 1;
 }
 .results-area.ai-mode-full .results-list {
   display: none;
+}
+#preview-col .result-row-web-suggest {
+  margin-left: 2px;
+  margin-right: 4px;
+  padding-left: 4px;
 }
 
 .results-list {
@@ -293,7 +282,10 @@ html[data-os="windows"] .launcher-window {
   flex-shrink: 0;
 }
 
-.hint-bar span {
+/* Shared hint-text styling for both homes: the classic bottom bar and the
+ * floating-grid card footers. */
+.hint-bar span,
+.pane-footer span {
   font-size: calc(var(--font-size) - 1px);
   color: var(--font-muted);
 }
@@ -424,6 +416,7 @@ html[data-os="windows"] .launcher-window {
  * (image above tint, under content) so ui_bg_opacity / ui_bg_blur / an
  * opaque tint all behave identically in both modes. */
 .bar-free .pane-tile {
+  --tile-radius: 12px;
   position: relative;
   /* Keep the negative-z image overlay inside this tile's stacking context
    * (above the tile fill, below its content). */
@@ -435,7 +428,7 @@ html[data-os="windows"] .launcher-window {
   backdrop-filter: blur(var(--blur-radius, 0px));
   -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
   border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 12px;
+  border-radius: var(--tile-radius);
   box-shadow: 0 3px 7px rgba(0, 0, 0, 0.25);
 }
 
@@ -457,7 +450,7 @@ html[data-os="windows"] .launcher-window {
   background-repeat: var(--bg-repeat, no-repeat);
   opacity: var(--bg-image-opacity, 0.62);
   filter: blur(var(--bg-image-blur, 10px));
-  clip-path: inset(0 round 12px);
+  clip-path: inset(0 round var(--tile-radius));
   pointer-events: none;
 }
 

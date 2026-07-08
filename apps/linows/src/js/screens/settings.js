@@ -597,7 +597,7 @@ export async function reloadFromFile() {
 
 export async function enter(contentArea, searchBar) {
   active = true;
-  layout.setSettingsOpen(true);
+  layout.setModal('settings', true);
   contentArea.style.display = 'none';
   searchBar.style.display = 'none';
   screen.style.display = '';
@@ -607,7 +607,7 @@ export async function enter(contentArea, searchBar) {
 
 export function exit(contentArea, searchBar) {
   active = false;
-  layout.setSettingsOpen(false);
+  layout.setModal('settings', false);
   screen.style.display = 'none';
   contentArea.style.display = '';
   searchBar.style.display = '';

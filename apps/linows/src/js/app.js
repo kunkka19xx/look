@@ -45,6 +45,17 @@ const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Delete: Remove clip';
 const HINT_PREFIX_DISCOVERY = 'Enter: Pick prefix \u2022 Up/Down: Move \u2022 Esc: Clear \u2022 Ctrl+H: Help';
 const HINT_COMMAND_DISCOVERY = 'Enter: Run command \u2022 Up/Down: Move \u2022 Esc: Clear \u2022 Ctrl+H: Help';
 
+// Per-command hint lines while command mode is active; `shell` doubles as
+// the fallback for commands without a dedicated line.
+const COMMAND_HINTS = {
+  pomo: 'Space: Start/pause \u2022 R: Reset \u2022 P: Music \u2022 Esc: Back \u2022 Tab/Ctrl+1-6: Switch',
+  todo: 'Ctrl+N: Switch page \u2022 Ctrl+S: Save \u2022 Tab/Ctrl+1-6: Switch \u2022 Esc: Back',
+  kill: 'Y: Confirm \u2022 N: Cancel \u2022 Tab/Ctrl+1-6: Switch \u2022 Esc: Back',
+  sys: 'Esc: Back \u2022 Tab/Ctrl+1-6: Switch \u2022 Ctrl+/: Command mode \u2022 Ctrl+Shift+,: Settings',
+  calc: 'Enter: Evaluate \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back',
+  shell: 'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back',
+};
+
 // Hint constants are static, authored in code \u2014 safe to set as innerHTML so
 // each bullet renders through `.hint-sep` (accent color, bold) for clearer
 // visual separation between key/action pairs.
@@ -58,7 +69,7 @@ const KILL_FEEDBACK_DELAY_MS = 300;
 
 // Layout modes applied to #results-area when the AI card is visible.
 // Stacked: card capped above results in col 1.
-// Two-col: wide card spans both cols + 320 px suggestion column on the right.
+// Two-col: answer card left, suggestion list right, equal columns.
 const AI_LAYOUT_CLASSES = ['ai-mode-full', 'ai-mode-two-col', 'ai-mode-stacked'];
 const AI_LAYOUT_STACKED = 'ai-mode-stacked';
 const AI_LAYOUT_TWO_COL = 'ai-mode-two-col';
@@ -118,7 +129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     hintMessage,
     copyright: hintBar.querySelector('.hint-bar-copy'),
     leftFooter: document.getElementById('results-footer'),
-    rightFooter: document.getElementById('preview-footer'),
+    rightFooter: previewFooter,
   });
 
   // Todo quick view: when today has tasks, the last main-hint item
@@ -217,13 +228,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     },
   });
-  settings.init(() => {
+  // Shared "back to the empty home screen" reset, used when leaving
+  // settings or command mode.
+  function resetHomeQuery() {
     queryInput.value = '';
     search.handleQueryInput('');
     layout.setQuery({ empty: true, translate: false });
-    queryInput.focus();
     renderMainHint();
-  });
+    queryInput.focus();
+  }
+
+  settings.init(resetHomeQuery);
   settings.restoreOnStartup();
 
   // Running apps strip
@@ -388,46 +403,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     return true;
   }
 
-  // Search on input
+  // Search on input. Translate owns the whole content row; every other mode
+  // shows the results list, wakes the running-apps strip and then only
+  // differs in hint text, preview visibility and empty-state flavor.
   queryInput.addEventListener('input', (e) => {
     const value = e.target.value;
     if (tryCommandPrefix(value)) return;
 
     search.handleQueryInput(value);
-    layout.setQuery({ empty: value === '', translate: search.isTranslateMode() });
-    if (search.isTranslateMode()) {
+    const translating = search.isTranslateMode();
+    layout.setQuery({ empty: value === '', translate: translating });
+    resultsList.hidden = translating;
+    runningApps.setSuspended(translating);
+
+    if (translating) {
       setHint(hintMessage, HINT_TRANSLATE);
-      resultsList.hidden = true;
       previewPanel.hidden = true;
-      runningApps.setSuspended(true);
       if (!translatePanel.isActive()) translatePanel.showPlaceholder();
-    } else if (search.isClipboardMode()) {
+      return;
+    }
+    if (runningApps.isEnabled()) runningApps.refresh();
+    translatePanel.hide();
+
+    if (search.isClipboardMode()) {
       setHint(hintMessage, HINT_CLIPBOARD);
-      resultsList.hidden = false;
       results.setEmptyState({ mode: 'clipboard' });
-      runningApps.setSuspended(false);
-      if (runningApps.isEnabled()) runningApps.refresh();
-      translatePanel.hide();
-    } else if (search.isPrefixHintMode()) {
-      setHint(hintMessage, HINT_PREFIX_DISCOVERY);
-      resultsList.hidden = false;
+    } else if (search.isPrefixHintMode() || search.isCommandHintMode()) {
+      setHint(hintMessage, search.isPrefixHintMode() ? HINT_PREFIX_DISCOVERY : HINT_COMMAND_DISCOVERY);
       previewPanel.hidden = true;
-      runningApps.setSuspended(false);
-      if (runningApps.isEnabled()) runningApps.refresh();
-      translatePanel.hide();
-    } else if (search.isCommandHintMode()) {
-      setHint(hintMessage, HINT_COMMAND_DISCOVERY);
-      resultsList.hidden = false;
-      previewPanel.hidden = true;
-      runningApps.setSuspended(false);
-      if (runningApps.isEnabled()) runningApps.refresh();
-      translatePanel.hide();
     } else {
       renderMainHint();
-      resultsList.hidden = false;
-      runningApps.setSuspended(false);
-      if (runningApps.isEnabled()) runningApps.refresh();
-      translatePanel.hide();
       // While the AI card is active, the results list holds web-suggestion
       // rows. Those routinely return empty (DDG rate-limits, transient
       // failures); render nothing instead of "No results" so the right
@@ -519,7 +524,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // area, and a stale card would peek through. Matches macOS, which
     // calls aiAnswer.cancel() whenever it switches into command mode.
     aiAnswer.cancel();
-    layout.setCommandMode(true);
+    layout.setModal('command', true);
     updateCommandHintBar();
     commands.enter();
     commands.setOnCommandChange(updateCommandHintBar);
@@ -527,28 +532,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function updateCommandHintBar() {
     const cmd = commands.getActiveCommand();
-    if (cmd === 'pomo') {
-      setHint(hintMessage,
-        'Space: Start/pause \u2022 R: Reset \u2022 P: Music \u2022 Esc: Back \u2022 Tab/Ctrl+1-6: Switch');
-    } else if (cmd === 'todo') {
-      setHint(hintMessage,
-        'Ctrl+N: Switch page \u2022 Ctrl+S: Save \u2022 Tab/Ctrl+1-6: Switch \u2022 Esc: Back');
-    } else if (cmd === 'kill') {
-      setHint(hintMessage,
-        'Y: Confirm \u2022 N: Cancel \u2022 Tab/Ctrl+1-6: Switch \u2022 Esc: Back');
-    } else if (cmd === 'sys') {
-      setHint(hintMessage,
-        'Esc: Back \u2022 Tab/Ctrl+1-6: Switch \u2022 Ctrl+/: Command mode \u2022 Ctrl+Shift+,: Settings');
-    } else if (cmd === 'calc') {
-      setHint(hintMessage,
-        'Enter: Evaluate \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back');
-    } else if (cmd === 'shell') {
-      setHint(hintMessage,
-        'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back');
-    } else {
-      setHint(hintMessage,
-        'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back');
-    }
+    setHint(hintMessage, COMMAND_HINTS[cmd] || COMMAND_HINTS.shell);
   }
 
   function exitCommandMode() {
@@ -556,12 +540,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     resultsList.hidden = false;
     previewPanel.hidden = false;
     translatePanel.hide();
-    renderMainHint();
-    queryInput.value = '';
-    search.handleQueryInput('');
-    layout.setCommandMode(false);
-    layout.setQuery({ empty: true, translate: false });
-    queryInput.focus();
+    layout.setModal('command', false);
+    resetHomeQuery();
     runningApps.setSuspended(false);
     if (runningApps.isEnabled()) runningApps.refresh();
   }

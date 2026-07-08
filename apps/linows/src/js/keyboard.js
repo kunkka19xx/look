@@ -143,7 +143,7 @@ function handleKeyDown(e) {
     if (e.key === 'Escape') {
       e.preventDefault();
       helpScreen.hidden = true;
-      layout.setHelpOpen(false);
+      layout.setModal('help', false);
       return;
     }
     return; // swallow all other keys while help is open
@@ -463,7 +463,7 @@ async function copyClipboardEntry() {
 function toggleHelp() {
   if (!helpScreen) return;
   helpScreen.hidden = !helpScreen.hidden;
-  layout.setHelpOpen(!helpScreen.hidden);
+  layout.setModal('help', !helpScreen.hidden);
 }
 
 async function removeClipboardEntry() {
