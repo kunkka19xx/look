@@ -76,6 +76,12 @@ struct LauncherView: View {
     @State var pidToRestoreOnHide: pid_t?
     @StateObject var runningAppsService = RunningAppsService()
 
+    /// Live size of the whole panel, captured so a background image can be
+    /// cropped into each floating tile at its correct window position (the tiles
+    /// share one aligned image, cut apart by the gaps). See `tileBackground`.
+    @State private var panelSize: CGSize = .zero
+    static let panelCoordinateSpace = "launcherPanel"
+
     var runningAppsPlacement: RunningAppsPlacement {
         themeStore.settings.runningAppsPlacement
     }
@@ -450,13 +456,13 @@ struct LauncherView: View {
         }
 
         if isClipboardQuery {
-            return ["Enter copy clip", "Delete remove clip", "Cmd+H help", "Cmd+/ command mode"]
+            return ["Enter copy clip", "Delete remove clip"]
         }
 
         // The home screen replaces the "Cmd+/ command mode" hint with a
         // clickable today done/total quick view (see todoQuickView), so it
         // is intentionally omitted here.
-        return ["Enter open", "Cmd+F reveal", "Cmd+H help"]
+        return ["Enter open", "Cmd+H help"]
     }
 
     /// True when the launcher is on its default/home screen (the state
@@ -569,7 +575,10 @@ struct LauncherView: View {
 
     var body: some View {
         let windowCornerRadius = AppConstants.Launcher.windowCornerRadius
-        let contentSpacing: CGFloat = isCommandMode ? 8 : 12
+        // When floating, use a single uniform gap between the top row and the
+        // columns so it matches the horizontal gap between the columns (i3 style);
+        // otherwise keep the classic fixed spacing.
+        let contentSpacing: CGFloat = showsFloatingCards ? innerGap : (isCommandMode ? 8 : 12)
         let contentPadding: CGFloat = isCommandMode ? 10 : 14
 
         // Running apps render inside the search bar (see panelContent), not as a
@@ -608,9 +617,12 @@ struct LauncherView: View {
                 if showsHelpScreen {
                     showsHelpScreen = false
                 }
-                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery {
-                    // These render synthetic results (clip history / prefix menu /
-                    // command menu); no backend search, just re-seed the selection.
+                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery || isTranslationQuery {
+                    // These render their own panels (clip history / prefix menu /
+                    // command menu / translation), not backend results. Skip the
+                    // search + AI answer entirely - otherwise a background AI
+                    // activation flips the floating layout and flashes the old
+                    // backdrop while typing. Translation only fires on Enter.
                     aiAnswer.cancel()
                     setInitialSelection()
                 } else {
@@ -718,7 +730,13 @@ struct LauncherView: View {
     @ViewBuilder
     private func borderedPanel(windowCornerRadius: CGFloat, contentSpacing: CGFloat, contentPadding: CGFloat) -> some View {
         ZStack {
-            themedBackground
+            // When the content floats free (floating panes, or resting on an empty
+            // query) the blur + tint backdrop box is dropped so the tiles sit on
+            // the bare desktop. A background image, if set, is cropped into each
+            // tile (see tileBackground) rather than filling the gaps.
+            if !barFloatsFree {
+                themedBackground
+            }
 
             VStack(alignment: .leading, spacing: contentSpacing) {
                 panelContent
@@ -731,11 +749,18 @@ struct LauncherView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .font(themeStore.uiFont())
             .foregroundStyle(themeStore.fontColor())
-            .background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous))
+            .background(.black.opacity(barFloatsFree ? 0 : 0.16), in: RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous))
             .contentShape(Rectangle())
             .onTapGesture { focusActiveInput() }
         }
-        .background(Color.clear)
+        .coordinateSpace(name: Self.panelCoordinateSpace)
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { panelSize = geo.size }
+                    .onChange(of: geo.size) { _, newSize in panelSize = newSize }
+            }
+        )
         .clipShape(RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous))
         .overlay { borderOverlay(cornerRadius: windowCornerRadius) }
         .modifier(PanelDecorationsModifier(
@@ -747,14 +772,14 @@ struct LauncherView: View {
         .layoutPriority(1)
     }
 
-    @ViewBuilder
-    private var searchInputBar: some View {
+    private func searchInputBar(showsBackground: Bool = true) -> some View {
         SearchInputBar(
             text: $query,
             isCommandMode: $isCommandMode,
             isQueryFocused: $isQueryFocused,
             activeCommand: activeCommand,
             themeStore: themeStore,
+            showsBackground: showsBackground,
             onSubmit: handleSubmit,
             onExitCommandMode: exitCommandMode
         )
@@ -767,21 +792,26 @@ struct LauncherView: View {
         } else {
             if !isCommandMode && !showsHelpScreen {
                 if shouldShowRunningAppsStrip {
-                    // Split the search-bar row in half: search field on the
-                    // left, running-apps icons on the right. No floating strip,
-                    // no window resize - toggled via Settings → Running Apps.
-                    HStack(alignment: .center, spacing: 10) {
-                        searchInputBar
+                    // The search field and running-apps icons always share one
+                    // background so they read as a single unified bar: a frosted
+                    // tile when floating, the classic rounded fill otherwise. The
+                    // search field drops its own box since the bar supplies it.
+                    topRowBar {
+                        HStack(alignment: .center, spacing: 10) {
+                            searchInputBar(showsBackground: false)
+                                .frame(maxWidth: .infinity)
+                            RunningAppsStripView(
+                                service: runningAppsService,
+                                themeStore: themeStore,
+                                onActivate: { key in _ = activateRunningApp(forKey: key) }
+                            )
                             .frame(maxWidth: .infinity)
-                        RunningAppsStripView(
-                            service: runningAppsService,
-                            themeStore: themeStore,
-                            onActivate: { key in _ = activateRunningApp(forKey: key) }
-                        )
-                        .frame(maxWidth: .infinity)
+                        }
                     }
                 } else {
-                    searchInputBar
+                    // No running apps: the search field is the whole bar; the
+                    // chrome (classic fill or frosted tile) comes from topRowBar.
+                    topRowBar { searchInputBar(showsBackground: false) }
                 }
             }
 
@@ -792,18 +822,34 @@ struct LauncherView: View {
             if isCommandMode {
                 commandModeView
             } else if isTranslationQuery {
-                LookupDefinitionPanelView(
-                    definition: lookupDefinition,
-                    emptyHint: translationEmptyHint,
-                    isWebMode: isWebTranslationQuery,
-                    themeStore: themeStore
-                )
+                floatingPanel {
+                    LookupDefinitionPanelView(
+                        definition: lookupDefinition,
+                        emptyHint: translationEmptyHint,
+                        isWebMode: isWebTranslationQuery,
+                        themeStore: themeStore
+                    )
+                }
             } else if showsHelpScreen {
                 LauncherHelpScreenView(themeStore: themeStore)
             } else if isClipboardQuery && displayedResults.isEmpty {
-                ClipboardEmptyStateView(themeStore: themeStore)
+                // The empty clipboard screen is naturally two columns (history /
+                // how-to), so float it as the same two-card grid as the results.
+                if showsFloatingCards {
+                    twoPaneGrid(hasRight: true) {
+                        ClipboardEmptyInfoView(themeStore: themeStore)
+                    } right: {
+                        ClipboardEmptyHelpView(themeStore: themeStore)
+                    }
+                } else {
+                    ClipboardEmptyStateView(themeStore: themeStore)
+                }
             } else if isRecentQuery && displayedResults.isEmpty {
-                RecentEmptyStateView(themeStore: themeStore)
+                floatingPanel { RecentEmptyStateView(themeStore: themeStore) }
+            } else if hidesResultsForEmptyQuery {
+                // Empty query while floating: rest with just the top bar, nothing
+                // below. A spacer keeps the bar pinned to the top.
+                Spacer(minLength: 0)
             } else {
                 resultsRow
             }
@@ -812,7 +858,10 @@ struct LauncherView: View {
                 Spacer(minLength: 0)
             }
 
-            if !isKillConfirmationVisible && !isDeleteConfirmationVisible {
+            // The hint bar lives inside the left card only on the floating results
+            // grid; every other state (classic, translation, empty panels) keeps
+            // the full-width bar below.
+            if !showsFloatingGrid && !hidesResultsForEmptyQuery && !isKillConfirmationVisible && !isDeleteConfirmationVisible {
                 HintBar(hint: currentHint, todo: todoQuickView, themeStore: themeStore)
             }
         }
@@ -847,42 +896,92 @@ struct LauncherView: View {
     private var resultsRow: some View {
         if aiAnswer.isActive {
             if displayedResults.isEmpty {
-                // Nothing actionable underneath, let the answer fill the panel.
-                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
-                    .frame(maxHeight: .infinity)
+                aiAnswerOnlyRow
             } else if backendFilteredResults.isEmpty {
-                // Knowledge lookup: the answer is the headline and the only rows
-                // are web suggestions. Two columns: answer on the left at a
-                // comfortable reading measure, suggestion list pinned on the
-                // right so it stays visible and keyboard-navigable. Both fill the
-                // panel height so the layout matches the normal results screen
-                // and the hint bar stays pinned to the bottom.
-                HStack(alignment: .top, spacing: 8) {
-                    AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    resultsListAndPreview
-                        .frame(width: AppConstants.Launcher.aiAnswerSuggestionColumnWidth)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                }
-                .frame(maxHeight: .infinity)
+                aiKnowledgeLookupRow
             } else {
-                // Local file/app results coexist with the answer. Keep the answer
-                // capped on top so the results list keeps its full-width preview
-                // pane instead of being squeezed into a third column.
-                VStack(spacing: 8) {
-                    AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
-                        .frame(maxHeight: 240)
-                    resultsListAndPreview
-                }
+                aiAnswerWithResultsRow
             }
         } else {
             resultsListAndPreview
         }
     }
 
+    /// Answer fills the panel (no rows underneath). Floats as a single card that
+    /// also carries the hint footer.
+    @ViewBuilder
+    private var aiAnswerOnlyRow: some View {
+        if showsFloatingCards {
+            twoPaneGrid(hasRight: false) {
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+            } right: {
+                EmptyView()
+            }
+        } else {
+            AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                .frame(maxHeight: .infinity)
+        }
+    }
+
+    /// Knowledge lookup: AI answer beside the web-suggestion list. Floats as the
+    /// same two-card grid as the app results (answer holds the hints, suggestions
+    /// hold the copyright).
+    @ViewBuilder
+    private var aiKnowledgeLookupRow: some View {
+        if showsFloatingCards {
+            twoPaneGrid(hasRight: true) {
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+            } right: {
+                ResultsListView(
+                    results: displayedResults,
+                    selectedID: selectedResultID,
+                    pickedKeys: Set(pickedKeys),
+                    themeStore: themeStore,
+                    onSelect: { selectedResultID = $0 },
+                    onOpen: { _ in openSelectedApp() }
+                )
+            }
+        } else {
+            // Answer on the left at a comfortable reading measure; suggestion list
+            // pinned to a fixed-width column on the right.
+            HStack(alignment: .top, spacing: 8) {
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                resultsListAndPreview
+                    .frame(width: AppConstants.Launcher.aiAnswerSuggestionColumnWidth)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
+            .frame(maxHeight: .infinity)
+        }
+    }
+
+    /// Local file/app results coexist with the answer: answer capped on top so the
+    /// results grid below keeps its full-width preview pane (and its in-card hints).
+    @ViewBuilder
+    private var aiAnswerWithResultsRow: some View {
+        VStack(spacing: showsFloatingCards ? innerGap : 8) {
+            aiAnswerCard
+                .frame(maxHeight: 240)
+            resultsListAndPreview
+        }
+    }
+
+    /// The AI answer as a frosted floating tile (plain card when not floating).
+    @ViewBuilder
+    private var aiAnswerCard: some View {
+        if showsFloatingCards {
+            paneCard(padding: 6) {
+                AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        } else {
+            AIAnswerCardView(controller: aiAnswer, themeStore: themeStore)
+        }
+    }
+
     @ViewBuilder
     private var resultsListAndPreview: some View {
-        HStack(spacing: 0) {
+        twoPaneGrid(hasRight: hasRightPane) {
             ResultsListView(
                 results: displayedResults,
                 selectedID: selectedResultID,
@@ -891,9 +990,8 @@ struct LauncherView: View {
                 onSelect: { selectedResultID = $0 },
                 onOpen: { _ in openSelectedApp() }
             )
-
+        } right: {
             if !pickedKeys.isEmpty {
-                resultsDivider
                 PickedItemsPanel(
                     pickedKeys: pickedKeys,
                     pickedByKey: pickedResultsByKey,
@@ -902,13 +1000,7 @@ struct LauncherView: View {
                     onClearAll: { clearAllPicked() },
                     onOpenAll: { openAllPicked() }
                 )
-            } else if !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
-                      let selectedID = selectedResultID,
-                      let selectedResult = displayedResults.first(where: { $0.id == selectedID }),
-                      // Search suggestions have nothing to preview - let the list
-                      // span full width instead of showing an empty pane.
-                      AppConstants.Launcher.WebSuggestion.text(fromResultID: selectedResult.id) == nil {
-                resultsDivider
+            } else if let selectedResult = previewResult {
                 ResultPreviewView(
                     result: selectedResult,
                     onDeleteClipboard: selectedResult.kind == .clipboard
@@ -917,6 +1009,252 @@ struct LauncherView: View {
                 )
             }
         }
+    }
+
+    /// The two-card home grid shared by the results screen and the clipboard
+    /// empty state: a left card and an optional right card, separated by the
+    /// inner gap when floating or a hairline when not. On the floating grid the
+    /// hint bar lives in the left card and the copyright in the right.
+    @ViewBuilder
+    private func twoPaneGrid<L: View, R: View>(
+        hasRight: Bool,
+        @ViewBuilder left: () -> L,
+        @ViewBuilder right: () -> R
+    ) -> some View {
+        HStack(spacing: showsFloatingCards ? innerGap : 0) {
+            paneCard(padding: showsFloatingCards ? 6 : 0) {
+                leftPaneCardBody(hasRight: hasRight) { left() }
+            }
+
+            if hasRight {
+                if !showsFloatingCards { resultsDivider }
+                paneCard(padding: showsFloatingCards ? 6 : 0) {
+                    rightPaneCardBody { right() }
+                }
+            }
+        }
+    }
+
+    /// Left card contents plus, when floating, the hint footer (with the
+    /// copyright appended if there is no right card to hold it).
+    @ViewBuilder
+    private func leftPaneCardBody<Content: View>(hasRight: Bool, @ViewBuilder _ content: () -> Content) -> some View {
+        if showsFloatingCards {
+            VStack(alignment: .leading, spacing: 0) {
+                content()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                cardFooter {
+                    HintBar(hint: currentHint, todo: todoQuickView, themeStore: themeStore)
+                    Spacer(minLength: 8)
+                    // No right card → copyright has nowhere else to go.
+                    if !hasRight { copyrightLink }
+                }
+            }
+        } else {
+            content()
+        }
+    }
+
+    /// Right card contents plus, when floating, the copyright footer.
+    @ViewBuilder
+    private func rightPaneCardBody<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        if showsFloatingCards {
+            VStack(alignment: .leading, spacing: 0) {
+                content()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                cardFooter {
+                    Spacer(minLength: 0)
+                    copyrightLink
+                }
+            }
+        } else {
+            content()
+        }
+    }
+
+    /// A thin footer strip inside a floating card holding a slice of the old
+    /// full-width hint bar.
+    @ViewBuilder
+    private func cardFooter<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 0) {
+            content()
+        }
+        .padding(.horizontal, 6)
+        .padding(.top, 6)
+        .padding(.bottom, 2)
+    }
+
+    /// i3-style inner gap between the three home panes (0 = classic flat layout).
+    private var innerGap: CGFloat { CGFloat(themeStore.settings.innerGap) }
+    private var usesPanes: Bool { innerGap > 0 }
+
+    /// True when the carded results screen is showing with the gap on: the panes
+    /// become self-contained frosted tiles floating on the bare desktop, so the
+    /// window backdrop and the full-width hint/copyright strip are dropped. Other
+    /// screens (command mode, settings, help, empty states) keep the backdrop.
+    /// Gate for the floating layout. Kept intentionally CHEAP and STABLE: it
+    /// depends only on the coarse mode (gap on, not command/settings/help/AI),
+    /// never on the query text or the live result count. That stability matters -
+    /// this decides whether the expensive window + per-card blur views exist, so
+    /// letting it flip per keystroke (e.g. as clipboard/translation results stream
+    /// in) churned NSVisualEffectViews on the main thread and froze typing.
+    private var showsFloatingCards: Bool {
+        usesPanes
+            && !isCommandMode
+            && !appUIState.showsThemeSettings
+            && !showsHelpScreen
+    }
+
+    /// True when the floating content is the two-card grid (results or clipboard
+    /// empty) that carries its hint + copyright inside the cards. Translation and
+    /// the recent-empty state float as a single card and keep the bottom bar.
+    /// Only gates a `Text`, so it may read live state.
+    private var showsFloatingGrid: Bool {
+        showsFloatingCards
+            && !isTranslationQuery
+            && !(isRecentQuery && displayedResults.isEmpty)
+    }
+
+    private var isQueryEmpty: Bool {
+        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// With an empty query on the home screen, rest as just the search bar - hide
+    /// the results columns and the hint bar below it. Applies in both modes (gap
+    /// or no gap), so an empty launcher is always just the top bar.
+    private var hidesResultsForEmptyQuery: Bool {
+        isQueryEmpty
+            && !isCommandMode
+            && !appUIState.showsThemeSettings
+            && !showsHelpScreen
+    }
+
+    /// True whenever the panel has no backdrop box and its content floats freely
+    /// on the desktop: either the panes are floating, or we're resting on an empty
+    /// query. In both cases the top bar becomes a self-contained frosted tile so
+    /// it stays legible on the bare desktop.
+    private var barFloatsFree: Bool {
+        showsFloatingCards || hidesResultsForEmptyQuery
+    }
+
+    /// Wraps a home-screen pane in its own rounded, frosted card so the inner gap
+    /// reads as real separation between "windows". A no-op when the gap is 0,
+    /// preserving the classic flat layout exactly. Each card carries its own blur
+    /// so it stays legible even once the window backdrop is removed.
+    @ViewBuilder
+    private func paneCard(padding: CGFloat, @ViewBuilder _ content: () -> some View) -> some View {
+        if barFloatsFree {
+            content()
+                .padding(padding)
+                .background { tileBackground(cornerRadius: 12, floats: true) }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                )
+                // Lift each pane off the backdrop so the three parts read as
+                // separate floating tiles rather than sections of one box.
+                .shadow(color: .black.opacity(0.25), radius: 7, x: 0, y: 3)
+        } else {
+            content()
+        }
+    }
+
+    /// The frosted surface shared by every floating tile (top bar + columns). When
+    /// a background image is set, each tile shows its own aligned slice of that
+    /// image (cropped to the tile's window position) instead of a blurred desktop,
+    /// so the tiles read as separate windows onto one image. A dark scrim + tint
+    /// on top keeps the tile content legible.
+    @ViewBuilder
+    private func tileBackground(cornerRadius: CGFloat, floats: Bool) -> some View {
+        if floats {
+            ZStack {
+                if let image = themeStore.backgroundImage {
+                    croppedBackgroundImage(image)
+                } else {
+                    VisualEffectBlur(material: themeStore.settings.blurMaterial.material)
+                }
+                Color.black.opacity(0.30)
+                themeStore.controlFillColor()
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        } else {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(themeStore.controlFillColor())
+        }
+    }
+
+    /// The slice of the full-panel background image that sits behind this tile:
+    /// the image is sized to the whole panel and offset by the tile's origin in
+    /// the panel coordinate space, so adjacent tiles show a continuous image cut
+    /// apart by the gaps.
+    @ViewBuilder
+    private func croppedBackgroundImage(_ image: NSImage) -> some View {
+        GeometryReader { tileGeo in
+            let frame = tileGeo.frame(in: .named(Self.panelCoordinateSpace))
+            backgroundImageView(image: image)
+                .frame(width: panelSize.width, height: panelSize.height)
+                .offset(x: -frame.minX, y: -frame.minY)
+                .blur(radius: themeStore.settings.backgroundImageBlur)
+        }
+    }
+
+    /// Background wrapper for the unified top row (search + running apps). A
+    /// frosted floating tile when the panes are floating, otherwise the classic
+    /// rounded search-bar fill - so the merged bar looks consistent on every
+    /// screen, gap or no gap.
+    private func topRowBar<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        // Apply the chrome as a STABLE modifier chain (background/overlay/shadow
+        // always present, only their values change) - never an if/else that swaps
+        // the subtree - so the search field keeps its identity and its keyboard
+        // focus when the bar flips between the classic fill and the frosted tile
+        // (e.g. typing the first character out of the empty-rest state at gap 0).
+        let floats = barFloatsFree
+        return content()
+            .background { tileBackground(cornerRadius: floats ? 12 : 10, floats: floats) }
+            .overlay {
+                if floats {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                }
+            }
+            .shadow(color: floats ? .black.opacity(0.25) : .clear,
+                    radius: floats ? 7 : 0, x: 0, y: floats ? 3 : 0)
+    }
+
+    /// Wraps a single-panel home state (translation, clipboard/recent empty) in a
+    /// frosted floating card when floating, so it keeps a background once the
+    /// window backdrop is removed. A no-op otherwise.
+    @ViewBuilder
+    private func floatingPanel<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        if showsFloatingCards {
+            paneCard(padding: 0) {
+                content()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        } else {
+            content()
+        }
+    }
+
+    /// The selected result eligible for the right-hand preview pane, or nil when
+    /// the list should span full width (suggestions, nothing selected, etc.).
+    private var previewResult: LauncherResult? {
+        guard pickedKeys.isEmpty,
+              !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
+              let selectedID = selectedResultID,
+              let selectedResult = displayedResults.first(where: { $0.id == selectedID }),
+              AppConstants.Launcher.WebSuggestion.text(fromResultID: selectedResult.id) == nil
+        else { return nil }
+        return selectedResult
+    }
+
+    /// Whether a right-hand pane (picked list or preview) is currently shown.
+    private var hasRightPane: Bool { !pickedKeys.isEmpty || previewResult != nil }
+
+    private var copyrightLink: some View {
+        Link("© 2026 by Kunkka", destination: URL(string: "https://github.com/kunkka19xx")!)
+            .font(themeStore.uiFont(size: CGFloat(max(9, themeStore.settings.fontSize - 4)), weight: .regular))
+            .foregroundStyle(themeStore.fontColor(opacityMultiplier: 0.50))
     }
 
     private var resultsDivider: some View {
@@ -929,7 +1267,9 @@ struct LauncherView: View {
     @ViewBuilder
     private func borderOverlay(cornerRadius: CGFloat) -> some View {
         let borderWidth = themeStore.borderLineWidth()
-        if borderWidth > 0 {
+        // When the content floats free the panes sit on the bare desktop, so drop
+        // the outer window outline (keep it only to surface the sudo warning).
+        if borderWidth > 0 && (!barFloatsFree || hasSudoWarning) {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(
                     hasSudoWarning ? Color.orange.opacity(0.95) : themeStore.borderColor(),
@@ -952,12 +1292,16 @@ struct LauncherView: View {
         }
     }
 
+    @ViewBuilder
     private var copyrightOverlay: some View {
-        Link("© 2026 by Kunkka", destination: URL(string: "https://github.com/kunkka19xx")!)
-            .font(themeStore.uiFont(size: CGFloat(max(9, themeStore.settings.fontSize - 4)), weight: .regular))
-            .foregroundStyle(themeStore.fontColor(opacityMultiplier: 0.50))
-            .padding(.trailing, 10)
-            .padding(.bottom, 8)
+        // On the floating results grid the copyright moves into the right-hand
+        // card footer; on the empty-rest screen it's hidden entirely; otherwise it
+        // stays in the panel's bottom-right corner.
+        if !showsFloatingGrid && !hidesResultsForEmptyQuery {
+            copyrightLink
+                .padding(.trailing, 10)
+                .padding(.bottom, 8)
+        }
     }
 
     @ViewBuilder

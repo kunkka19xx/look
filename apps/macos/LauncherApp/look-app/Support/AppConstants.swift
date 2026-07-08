@@ -249,12 +249,12 @@ enum AppConstants {
         }
 
         enum RunningAppsStrip {
-            static let iconSize: CGFloat = 34
+            static let iconSize: CGFloat = 30
             static let horizontalPadding: CGFloat = 6
             static let verticalPadding: CGFloat = 10
             static let itemGap: CGFloat = 8
             // Slack on each end of the strip to keep the active ring from being clipped.
-            static let edgeSlack: CGFloat = 8
+            static let edgeSlack: CGFloat = 6
             static let maxItems = 9
 
             static var width: CGFloat { iconSize + horizontalPadding * 2 + edgeSlack }

@@ -6,6 +6,10 @@ struct SearchInputBar: View {
     let isQueryFocused: FocusState<Bool>.Binding
     let activeCommand: AppCommand?
     let themeStore: ThemeStore
+    /// When false the field draws no background of its own - used when it lives
+    /// inside a shared top-row pane that already supplies one, so the search
+    /// input and running-apps icons read as a single unified bar.
+    var showsBackground: Bool = true
     let onSubmit: () -> Void
     let onExitCommandMode: () -> Void
 
@@ -45,8 +49,13 @@ struct SearchInputBar: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.vertical, 8)
+        .background {
+            if showsBackground {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(themeStore.controlFillColor())
+            }
+        }
     }
 }
 
@@ -353,46 +362,65 @@ struct ClipboardEmptyStateView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "doc.on.clipboard")
-                        .foregroundStyle(themeStore.accentColor())
-                    Text("Clipboard History")
-                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 1), weight: .semibold))
-                }
-
-                Text("No clipboard items yet")
-                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
-                    .foregroundStyle(themeStore.secondaryTextColor())
-
-                Text("Copy any text, then search with c\"word to find it here.")
-                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                    .foregroundStyle(themeStore.secondaryTextColor())
-                    .lineLimit(2)
-
-                Spacer(minLength: 0)
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            ClipboardEmptyInfoView(themeStore: themeStore)
 
             Rectangle()
                 .fill(themeStore.dividerColor())
                 .frame(width: 1)
                 .padding(.vertical, 4)
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("How to use")
-                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
-                    .foregroundStyle(themeStore.fontColor())
-                Text("• Type c\" to list latest 10 clips\n• Type c\"mail to filter\n• Press Enter to copy selected item")
-                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                    .foregroundStyle(themeStore.secondaryTextColor())
-                    .lineSpacing(4)
-                Spacer(minLength: 0)
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            ClipboardEmptyHelpView(themeStore: themeStore)
         }
+    }
+}
+
+/// Left half of the clipboard empty state - split out so the launcher can render
+/// it as its own card (matching the results list) when the panes are floating.
+struct ClipboardEmptyInfoView: View {
+    let themeStore: ThemeStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "doc.on.clipboard")
+                    .foregroundStyle(themeStore.accentColor())
+                Text("Clipboard History")
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 1), weight: .semibold))
+            }
+
+            Text("No clipboard items yet")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
+                .foregroundStyle(themeStore.secondaryTextColor())
+
+            Text("Copy any text, then search with c\"word to find it here.")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                .foregroundStyle(themeStore.secondaryTextColor())
+                .lineLimit(2)
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+/// Right half of the clipboard empty state (the "How to use" tips).
+struct ClipboardEmptyHelpView: View {
+    let themeStore: ThemeStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("How to use")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
+                .foregroundStyle(themeStore.fontColor())
+            Text("• Type c\" to list latest 10 clips\n• Type c\"mail to filter\n• Press Enter to copy selected item")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                .foregroundStyle(themeStore.secondaryTextColor())
+                .lineSpacing(4)
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
