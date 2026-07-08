@@ -1135,7 +1135,7 @@ struct LauncherView: View {
                 )
                 // Lift each pane off the backdrop so the three parts read as
                 // separate floating tiles rather than sections of one box.
-                .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 4)
+                .shadow(color: .black.opacity(0.25), radius: 7, x: 0, y: 3)
         } else {
             content()
         }
