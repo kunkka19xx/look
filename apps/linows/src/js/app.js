@@ -108,6 +108,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const resultsArea = document.getElementById('results-area');
   const aiCardEl = document.getElementById('ai-answer-card');
   const helpScreen = document.getElementById('help-screen');
+  const previewCol = document.getElementById('preview-col');
+  const previewFooter = document.getElementById('preview-footer');
 
   // Floating "inner-gap" layout state (classes on .launcher-window)
   layout.init();
@@ -330,18 +332,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   // mode. Now the only thing that matters is "are there any local rows":
   //   - has local results → stacked (card capped 240 px above rows, both
   //     in col 1; search-bar and rows stay aligned)
-  //   - no local results  → two-col (wide card + 320 px suggestion column
-  //     on the right; alignment intentionally broken so the answer reads
-  //     at a comfortable measure)
-  // The 320 px column may be empty briefly while suggestions load, or
+  //   - no local results  → two-col (answer card left, suggestion list
+  //     right, equal columns - the same two-pane grid as normal results,
+  //     matching macOS twoPaneGrid)
+  // The suggestion column may be empty briefly while suggestions load, or
   // permanently for queries that get none (e.g. "1+1=?"). Stable layout
   // matters more than the empty column for those edge cases.
   function applyAiLayoutMode() {
     if (!resultsArea) return;
     resultsArea.classList.remove(...AI_LAYOUT_CLASSES);
-    if (lastAiState === AiState.idle) return;
-    const hasLocal = lastResults.some((r) => webSuggestionFromResultId(r.id) == null);
-    resultsArea.classList.add(hasLocal ? AI_LAYOUT_STACKED : AI_LAYOUT_TWO_COL);
+    let mode = null;
+    if (lastAiState !== AiState.idle) {
+      const hasLocal = lastResults.some((r) => webSuggestionFromResultId(r.id) == null);
+      mode = hasLocal ? AI_LAYOUT_STACKED : AI_LAYOUT_TWO_COL;
+      resultsArea.classList.add(mode);
+    }
+    // Two-col hosts the suggestion list in the right pane; every other mode
+    // keeps it under the search column. Same element either way, so
+    // selection, keyboard nav and the results.js container ref all survive
+    // the move (which only happens on an actual mode transition).
+    if (mode === AI_LAYOUT_TWO_COL) {
+      if (resultsList.parentElement !== previewCol) {
+        previewCol.insertBefore(resultsList, previewFooter);
+      }
+    } else if (resultsList.parentElement !== resultsArea) {
+      resultsArea.appendChild(resultsList);
+    }
   }
 
   // :cmd <args> live trigger: jumps straight into that command's panel with

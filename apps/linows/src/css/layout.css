@@ -156,16 +156,31 @@ html[data-os="windows"] .launcher-window {
   overflow: hidden;
 }
 
-.results-row:has(.preview-panel[hidden]),
-.results-row:has(.ai-mode-two-col),
+.results-row:has(.preview-panel[hidden]):not(:has(.ai-mode-two-col)),
 .results-row:has(.ai-mode-full) {
   grid-template-columns: 1fr;
 }
 
-.results-row:has(.preview-panel[hidden]) #preview-col,
-.results-row:has(.ai-mode-two-col) #preview-col,
+.results-row:has(.preview-panel[hidden]):not(:has(.ai-mode-two-col)) #preview-col,
 .results-row:has(.ai-mode-full) #preview-col {
   display: none;
+}
+
+/* Two-col AI (knowledge lookup): app.js moves the suggestion list into the
+ * right pane, so the lookup renders through the same two equal columns as
+ * normal results (macOS twoPaneGrid) - same tiles, same footers. The
+ * preview panel itself has nothing to show next to a search list. */
+.results-row:has(.ai-mode-two-col) .preview-panel {
+  display: none;
+}
+
+#preview-col > .results-list {
+  flex: 1;
+  border-left: 1px solid var(--divider-color);
+}
+
+.floating #preview-col > .results-list {
+  border-left: none;
 }
 
 /* Translation owns the whole content row; hide the (empty) results columns
@@ -226,33 +241,13 @@ html[data-os="windows"] .launcher-window {
   flex: 1;
 }
 
-/* Two-col: only web suggestions, no local results. Card extends across both
- * grid columns so the answer reads at a comfortable measure; suggestions
- * pin to a 320 px column on the right (matches macOS
- * AppConstants.Launcher.aiAnswerSuggestionColumnWidth). Preview pane is
- * suppressed; nothing useful to preview alongside a search list.
- * Search-bar/results alignment is deliberately broken here: the wider card
- * is the visual signal that the launcher has switched into knowledge mode.
- *
- * Tight inner gap (4 px) between the card and the suggestion column;
- * the card and the suggestion rows already carry their own borders and
- * background fills, so anything more reads as wasted gutter. Outer edges
- * still keep the standard content-padding so the columns aren't flush
- * against the window border. */
-.results-area.ai-mode-two-col {
-  flex-direction: row;
-  align-items: stretch;
-  gap: 4px;
-}
+/* Two-col: only web suggestions, no local results. The answer card fills
+ * the left column; the suggestion list lives in the right pane (moved there
+ * by app.js applyAiLayoutMode), equal width. */
 .results-area.ai-mode-two-col .ai-card {
   flex: 1;
-  margin-right: 0;
 }
-.results-area.ai-mode-two-col .results-list {
-  flex: 0 0 320px;
-  width: 320px;
-}
-.results-area.ai-mode-two-col .result-row-web-suggest {
+#preview-col .result-row-web-suggest {
   margin-left: 2px;
   margin-right: 4px;
   padding-left: 4px;
@@ -486,10 +481,14 @@ html[data-os="windows"] .launcher-window {
   border-left: none;
 }
 
-/* Two-col AI (knowledge lookup) inside a floating tile: the card-column gap
- * tracks the inner gap instead of the tight classic 4px. */
-.floating .results-area.ai-mode-two-col {
-  gap: var(--inner-gap);
+/* Two-col AI while floating: the tile provides the card chrome, so the
+ * answer card sheds its own and the answer reads as one clean tile. */
+.floating .results-area.ai-mode-two-col .ai-card {
+  margin: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 /* Translation renders as a single floating card + classic bottom hint. */
