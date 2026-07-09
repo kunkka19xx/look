@@ -7,6 +7,8 @@
 // state - so the floating gate below reads coarse mode only (gap setting,
 // command/settings/help), never query text or result counts.
 
+import * as platform from './platform.js';
+
 const GAP_MIN = 0;
 const GAP_MAX = 24;
 
@@ -120,11 +122,21 @@ function drawnImageRect(winRect) {
   return { x: 0, y: 0, w: winRect.width, h: winRect.height };
 }
 
+// Re-evaluate the floating gate after environment state changes at runtime
+// (the settings blur-fallback toggle flips data-disable-blur).
+export function refresh() {
+  apply();
+}
+
 function apply() {
   if (!win) return;
+  // Degraded-rendering environments keep the classic framed panel: both the
+  // gaps and the resting bar depend on real transparency. Still coarse -
+  // platform info is static and the attribute only flips from settings.
+  const supported = platform.floatingSupported();
   const onHome = !modal.command && !modal.settings && !modal.help;
-  const floating = innerGap > 0 && onHome; // showsFloatingCards
-  const resting = queryEmpty && onHome; // hidesResultsForEmptyQuery
+  const floating = supported && innerGap > 0 && onHome; // showsFloatingCards
+  const resting = supported && queryEmpty && onHome; // hidesResultsForEmptyQuery
   const barFree = floating || resting; // barFloatsFree
   const floatingGrid = floating && !translateQuery && !recentEmptyQuery;
 

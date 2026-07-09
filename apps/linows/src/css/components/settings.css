@@ -195,6 +195,13 @@ html:not([data-os="linux"]) .settings-linux-only {
   color: var(--font-secondary);
 }
 
+/* Rows disabled because the environment can't render the feature
+ * (e.g. Inner Gap without a compositing-capable stack). */
+.settings-row-disabled {
+  opacity: 0.45;
+}
+
+
 /* Slider - full width, no wrapper needed */
 .settings-slider {
   flex: 1;

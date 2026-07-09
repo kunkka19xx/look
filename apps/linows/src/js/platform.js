@@ -16,6 +16,34 @@ export async function init() {
   // semantics: the Rust eval runs once at setup, so a page reload (dev hot
   // reload) would otherwise lose the attribute and square the corners.
   document.documentElement.setAttribute('data-transparent', String(hasCompositor()));
+  // Virtual GPU (VM): hardware acceleration is already off backend-side, but
+  // software compositing still ghost-renders backdrop-filter layers. Force
+  // the blur fallback without touching the user's config.
+  if (blurForcedOff()) {
+    document.documentElement.setAttribute('data-disable-blur', '');
+  }
+}
+
+// True when the blur fallback is forced by the platform (VM GPU) rather than
+// the arch_disable_blur config toggle. Settings must not remove the
+// attribute in this case.
+export function blurForcedOff() {
+  return info?.virtual_gpu ?? false;
+}
+
+// The floating inner-gap layout depends on see-through gaps and frosted
+// tiles, so it needs WebKitGTK to composite translucency faithfully. That
+// rules out the same environments applytint() degrades on: no compositor
+// (bare X11/i3 - "transparent" pixels come out opaque, gaps read as empty
+// boxes), the VM software-rendering fallback, and the ghost-rendering
+// stacks where blur is dropped (Hyprland auto, Arch toggle). Those render
+// the classic framed panel regardless of the inner_gap setting; the config
+// value stays untouched and applies again on a capable setup.
+export function floatingSupported() {
+  return hasCompositor()
+    && !blurForcedOff()
+    && compositor() !== 'hyprland'
+    && !document.documentElement.hasAttribute('data-disable-blur');
 }
 
 export function os() {

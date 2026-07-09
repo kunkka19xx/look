@@ -89,6 +89,10 @@ pub struct PlatformInfo {
     /// Exposed to the frontend so CSS can branch on compositor-specific bugs
     /// (e.g. WebKitGTK backdrop-filter glitches on Hyprland).
     pub compositor: Option<String>,
+    /// True when a virtual GPU was detected at startup (VM). Hardware
+    /// acceleration is already off; the frontend must also drop backdrop
+    /// blur or software compositing ghost-renders stale layers.
+    pub virtual_gpu: bool,
 }
 
 #[tauri::command]
@@ -107,10 +111,17 @@ pub fn get_platform() -> PlatformInfo {
     #[cfg(not(target_os = "linux"))]
     let compositor: Option<String> = None;
 
+    #[cfg(target_os = "linux")]
+    let virtual_gpu = linux::gpu::virtual_gpu_detected();
+
+    #[cfg(not(target_os = "linux"))]
+    let virtual_gpu = false;
+
     PlatformInfo {
         os,
         has_compositor,
         compositor,
+        virtual_gpu,
     }
 }
 

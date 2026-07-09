@@ -360,11 +360,13 @@ export function init(exitFn) {
     const on = e.target.checked;
     if (on) {
       document.documentElement.setAttribute('data-disable-blur', '');
-    } else {
+    } else if (!platform.blurForcedOff()) {
       document.documentElement.removeAttribute('data-disable-blur');
     }
     saveConfig({ arch_disable_blur: on ? 'true' : 'false' });
     applytint();
+    updateInnerGapAvailability();
+    layout.refresh();
   });
 
   document.getElementById('settings-launch-login').addEventListener('change', (e) => {
@@ -735,9 +737,21 @@ async function loadConfigMap() {
   return map;
 }
 
+// Environments that can't render the floating layout (see
+// platform.floatingSupported) get the slider disabled; the config value is
+// preserved so it applies again on a capable setup.
+function updateInnerGapAvailability() {
+  const row = document.querySelector('.settings-row[data-key="inner_gap"]');
+  if (!row) return;
+  const ok = platform.floatingSupported();
+  row.querySelector('.settings-slider').disabled = !ok;
+  row.classList.toggle('settings-row-disabled', !ok);
+}
+
 async function loadConfig() {
   try {
     const cfg = await getConfig();
+    updateInnerGapAvailability();
 
     const map = {};
     for (const entry of cfg.entries) map[entry.key] = entry.value;
@@ -805,7 +819,7 @@ async function loadConfig() {
     document.getElementById('settings-arch-disable-blur').checked = map.arch_disable_blur === 'true';
     if (map.arch_disable_blur === 'true') {
       document.documentElement.setAttribute('data-disable-blur', '');
-    } else {
+    } else if (!platform.blurForcedOff()) {
       document.documentElement.removeAttribute('data-disable-blur');
     }
 
