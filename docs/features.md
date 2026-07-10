@@ -18,6 +18,7 @@ This document tracks what `look` supports today and what is planned next.
 - scoped query prefixes: `a"`, `f"`, `d"`, `r"`, and `rc"` (recent files/folders, newest first - blends opened-through-Look with recently added/changed on disk; macOS for now)
 - path-fragment friendly matching (slash-biased queries)
 - open with `Enter`, reveal in Finder with `Cmd+F`
+- folder browse (macOS): with a folder result selected, `Right` moves the selection into the preview pane's folder listing - `Up`/`Down` move the highlight there, `Right` on a subfolder drills into it, `Left` steps back up (returning to the results list at the first folder), `Enter` opens the highlighted child, `Esc` returns to the results list
 - copy selected file/folder path/content handle with `Cmd+C`
 - multi-pick files/folders with `Cmd+P` (toggle); picked set is mirrored to the system pasteboard for paste anywhere. `Cmd+Shift+P` clears the set
 - move selected file/folder (or all picked items) to the Trash with `Cmd+D` - recoverable, no confirmation (macOS only for now)

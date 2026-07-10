@@ -6,6 +6,11 @@ struct ResultPreviewView: View {
     @EnvironmentObject private var themeStore: ThemeStore
     let result: LauncherResult
     var onDeleteClipboard: (() -> Void)? = nil
+    // Folder-browse (keyboard navigation of the listing): the launcher owns
+    // the listing + highlighted row while browsing, so the pane renders that
+    // state instead of its self-loaded listing.
+    var folderListingOverride: FolderListing? = nil
+    var folderSelectionIndex: Int? = nil
 
     @State private var folderListing: FolderListing?
     @State private var trashItemCount: Int?
@@ -131,7 +136,7 @@ struct ResultPreviewView: View {
                                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
                                             .foregroundStyle(themeStore.secondaryTextColor())
                                     }
-                                } else if let listing = folderListing,
+                                } else if let listing = folderListingOverride ?? folderListing,
                                    let counts = folderCountText(listing) {
                                     Text(counts)
                                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
@@ -159,7 +164,11 @@ struct ResultPreviewView: View {
                     if isTrash {
                         TrashSummaryView(itemCount: trashItemCount, themeStore: themeStore)
                     } else {
-                        FolderPreviewView(path: result.path, listing: folderListing)
+                        FolderPreviewView(
+                            path: result.path,
+                            listing: folderListingOverride ?? folderListing,
+                            selectedIndex: folderSelectionIndex
+                        )
                     }
                 }
 

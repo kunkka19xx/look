@@ -6,6 +6,9 @@ struct FolderPreviewView: View {
     @EnvironmentObject private var themeStore: ThemeStore
     let path: String
     let listing: FolderListing?
+    // Highlighted row while the keyboard selection lives in this pane
+    // (folder-browse); nil renders the classic static preview.
+    var selectedIndex: Int? = nil
 
     private var rowFont: Font {
         themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular)
@@ -47,24 +50,33 @@ struct FolderPreviewView: View {
 
     @ViewBuilder
     private func list(_ listing: FolderListing) -> some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(listing.items.enumerated()), id: \.offset) { index, entry in
-                    if index > 0,
-                       entry.isDir == false,
-                       listing.items[index - 1].isDir == true {
-                        Divider()
-                            .padding(.vertical, 4)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(listing.items.enumerated()), id: \.offset) { index, entry in
+                        if index > 0,
+                           entry.isDir == false,
+                           listing.items[index - 1].isDir == true {
+                            Divider()
+                                .padding(.vertical, 4)
+                        }
+                        row(entry, isSelected: index == selectedIndex)
+                            .id(index)
                     }
-                    row(entry)
-                }
 
-                if listing.truncated {
-                    Text("Showing \(listing.items.count) of \(listing.folderCount + listing.fileCount)")
-                        .font(sizeFont)
-                        .foregroundStyle(themeStore.mutedTextColor())
-                        .padding(.vertical, 6)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    if listing.truncated {
+                        Text("Showing \(listing.items.count) of \(listing.folderCount + listing.fileCount)")
+                            .font(sizeFont)
+                            .foregroundStyle(themeStore.mutedTextColor())
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                }
+            }
+            .onChange(of: selectedIndex) { _, newIndex in
+                guard let newIndex else { return }
+                withAnimation(.easeOut(duration: 0.12)) {
+                    proxy.scrollTo(newIndex, anchor: nil)
                 }
             }
         }
@@ -73,7 +85,7 @@ struct FolderPreviewView: View {
     }
 
     @ViewBuilder
-    private func row(_ entry: FolderEntry) -> some View {
+    private func row(_ entry: FolderEntry, isSelected: Bool) -> some View {
         HStack(spacing: 8) {
             Image(nsImage: icon(for: entry))
                 .resizable()
@@ -87,6 +99,12 @@ struct FolderPreviewView: View {
 
             Spacer(minLength: 8)
 
+            if entry.isDir, isSelected {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(themeStore.mutedTextColor())
+            }
+
             if !entry.isDir, let size = entry.size {
                 Text(formatSize(size))
                     .font(sizeFont)
@@ -96,6 +114,10 @@ struct FolderPreviewView: View {
         .contentShape(Rectangle())
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+        .background(
+            isSelected ? themeStore.selectionFillColor() : .clear,
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+        )
         .onTapGesture { open(entry) }
     }
 }

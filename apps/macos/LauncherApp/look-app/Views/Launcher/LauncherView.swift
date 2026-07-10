@@ -71,6 +71,13 @@ struct LauncherView: View {
     @State var killListRefreshTick: Int = 0
     @State var recentlyKilledPIDs: Set<Int32> = []
     @State var showsHelpScreen = false
+    // Folder-browse (see LauncherView+FolderBrowse): arrow-key navigation of
+    // the preview pane's folder listing. Stack of drilled folder paths; empty
+    // = the selection lives in the results list as usual.
+    @State var browseStack: [String] = []
+    @State var browseListing: FolderListing?
+    @State var browseLoadTask: Task<Void, Never>?
+    @State var browseIndex = 0
     @State var focusRequestToken: UInt64 = 0
     @State var lookupDefinition: LookupDefinition?
     @State var pidToRestoreOnHide: pid_t?
@@ -434,6 +441,11 @@ struct LauncherView: View {
             return ["Enter run", "Tab select", "Cmd+1-6 switch", "Esc back"]
         }
 
+        if isFolderBrowseMode {
+            let folderName = currentBrowsePath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? ""
+            return ["Browsing \(folderName)", "↑↓ move", "→ into folder", "← back", "Enter open", "Esc list"]
+        }
+
         if let command = extractTranslationQuery(from: query.trimmingCharacters(in: .whitespacesAndNewlines)) {
             switch command {
             case .network:
@@ -459,6 +471,12 @@ struct LauncherView: View {
             return ["Enter copy clip", "Delete remove clip"]
         }
 
+        // Surface the browse affordance whenever a folder row is selected.
+        if let selectedResultID,
+            displayedResults.first(where: { $0.id == selectedResultID })?.kind == .folder {
+            return ["Enter open", "→ browse folder", "Cmd+H help"]
+        }
+
         // The home screen replaces the "Cmd+/ command mode" hint with a
         // clickable today done/total quick view (see todoQuickView), so it
         // is intentionally omitted here.
@@ -469,7 +487,9 @@ struct LauncherView: View {
     /// whose hint falls through to the list above), where the /todo quick
     /// view is shown in place of the command-mode hint.
     var isHomeHintScreen: Bool {
-        guard !appUIState.showsThemeSettings, !isCommandMode, !showsHelpScreen else { return false }
+        guard !appUIState.showsThemeSettings, !isCommandMode, !showsHelpScreen,
+            !isFolderBrowseMode
+        else { return false }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if extractTranslationQuery(from: trimmed) != nil { return false }
         if isPrefixSuggestionQuery || isCommandSuggestionQuery || isClipboardQuery { return false }
@@ -607,6 +627,11 @@ struct LauncherView: View {
             if pendingEmptyTrashCount != nil {
                 pendingEmptyTrashCount = nil
             }
+            // Typing while the preview selection is active returns the
+            // selection to the results list - the edit runs a fresh search.
+            if isFolderBrowseMode {
+                exitFolderBrowse()
+            }
             if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
                 aiAnswer.cancel()
                 enterCommandMode(commandID: cmd.id, prefilledInput: cmd.args)
@@ -636,6 +661,13 @@ struct LauncherView: View {
             // Google autocomplete rows (appended after engine results). Self-gates
             // by mode and the online-features flag; never blocks search.
             refreshWebSuggestions()
+        }
+        .onChange(of: selectedResultID) { _, _ in
+            // Picking a different result (mouse click, arriving search
+            // results) returns the selection to the results list.
+            if isFolderBrowseMode {
+                exitFolderBrowse()
+            }
         }
         .onReceive(clipboardStore.$entries) { _ in
             refreshClipboardSelectionIfNeeded()
@@ -1005,7 +1037,9 @@ struct LauncherView: View {
                     result: selectedResult,
                     onDeleteClipboard: selectedResult.kind == .clipboard
                         ? { deleteClipboardResult(resultID: selectedResult.id) }
-                        : nil
+                        : nil,
+                    folderListingOverride: isFolderBrowseMode ? browseListing : nil,
+                    folderSelectionIndex: isFolderBrowseMode ? browseIndex : nil
                 )
             }
         }
@@ -1247,6 +1281,9 @@ struct LauncherView: View {
     /// The selected result eligible for the right-hand preview pane, or nil when
     /// the list should span full width (suggestions, nothing selected, etc.).
     private var previewResult: LauncherResult? {
+        // Drilled below the selected folder: preview the folder actually
+        // being listed (see LauncherView+FolderBrowse).
+        if let browsePreviewResult { return browsePreviewResult }
         guard pickedKeys.isEmpty,
               !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
               let selectedID = selectedResultID,

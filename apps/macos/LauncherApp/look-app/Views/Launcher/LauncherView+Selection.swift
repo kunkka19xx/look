@@ -133,6 +133,7 @@ extension LauncherView {
                 moveSelection(.up, shouldAutocompleteCommand: true, preferCommandListInCommandMode: true)
             },
             onArrowDown: {
+                if handleBrowseArrowDown() { return }
                 if isCommandMode {
                     if activeCommandID == AppConstants.Launcher.Command.kill {
                         moveSelection(.down)
@@ -142,6 +143,7 @@ extension LauncherView {
                 }
             },
             onArrowUp: {
+                if handleBrowseArrowUp() { return }
                 if isCommandMode {
                     if activeCommandID == AppConstants.Launcher.Command.kill {
                         moveSelection(.up)
@@ -150,6 +152,16 @@ extension LauncherView {
                     moveSelection(.up)
                 }
             },
+            onArrowRight: {
+                handleBrowseArrowRight()
+            },
+            onArrowLeft: {
+                handleBrowseArrowLeft()
+            },
+            onExitFolderBrowse: {
+                exitFolderBrowse()
+            },
+            folderBrowseActive: { isFolderBrowseMode },
             onEnterCommandMode: {
                 if !isCommandMode {
                     enterCommandMode()

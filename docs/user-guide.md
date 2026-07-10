@@ -280,6 +280,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Enter`: open selected result / run command
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
 - `Up` / `Down`: move selection (and in `kill`, move process selection)
+- `Right` / `Left` (macOS): with a folder result selected, `Right` moves the selection into the preview pane's folder listing (`Up`/`Down` move the highlight, `Right` on a subfolder drills in, `Enter` opens the highlighted item); `Left` steps back up, returning to the results list at the first folder. `Esc` also returns to the list
 - `Cmd+/`: command mode
 - `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:todo`): jump to a command directly from the home screen
 - `Cmd+1`..`Cmd+6`: in command mode, direct command switch (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`)

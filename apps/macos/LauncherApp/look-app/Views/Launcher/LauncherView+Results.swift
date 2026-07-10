@@ -8,6 +8,10 @@ nonisolated private let openLaunchLog = Logger(subsystem: "noah-code.Look", cate
 
 extension LauncherView {
     func openSelectedApp() {
+        // Enter while the preview-pane selection is active opens the
+        // highlighted child instead of the results-list row.
+        if openPreviewSelectionIfActive() { return }
+
         guard let selectedResultID,
             let selected = displayedResults.first(where: { $0.id == selectedResultID })
         else { return }
@@ -464,6 +468,13 @@ extension LauncherView {
             // background index refresh below is async and would otherwise leave
             // the now-gone items visible (and un-previewable) until the next search.
             backendResults.removeAll { trashed.contains($0.id) }
+
+            // Cmd+D acts on the results-list selection; if that folder was
+            // being browsed in the preview, the browse target may be gone -
+            // return the selection to the results list.
+            if isFolderBrowseMode, !trashed.isEmpty {
+                exitFolderBrowse()
+            }
 
             // Keep selection valid if it pointed at a now-removed row.
             if let selectedResultID, !displayedResults.contains(where: { $0.id == selectedResultID }) {

@@ -216,6 +216,13 @@ enum AppConstants {
             ]
         }
 
+        enum FolderBrowse {
+            // Rows synthesized while browsing a folder's children with the
+            // arrow keys. Not indexed candidates - openSelectedApp skips
+            // usage recording for them (same rule as QuickFolder rows).
+            static let resultIDPrefix = "browse-item:"
+        }
+
         enum Clipboard {
             static let resultIDPrefix = "clipboard:"
             static let resultPath = "clipboard://history"

@@ -162,6 +162,9 @@ extension LauncherView {
         isQueryFocused = false
         // Don't leave a stale Empty Trash confirmation to reappear on next show.
         pendingEmptyTrashCount = nil
+        // Nor a stale folder-browse session - next show starts from the
+        // pre-browse query.
+        resetFolderBrowseStateOnHide()
         let wasVisible = window.isVisible
         window.orderOut(nil)
         hotkeyLog.notice("hide: orderOut wasVisible=\(wasVisible) restore=\(restorePreviousApp)")

@@ -18,6 +18,8 @@ let package = Package(
                 "Support/AppConstants.swift",
                 "Support/Launcher/LauncherSearchLogic.swift",
                 "Support/Launcher/DeleteTargetLogic.swift",
+                "Support/Launcher/FolderBrowseLogic.swift",
+                "Support/FolderListingService.swift",
                 "Support/Launcher/BridgeErrorMapping.swift",
                 "Support/SingleInstanceLock.swift",
                 "Models/LauncherResult.swift",

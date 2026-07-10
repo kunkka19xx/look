@@ -24,6 +24,13 @@ final class KeyboardSelectionMonitor {
         onPrevious: @escaping @MainActor () -> Void,
         onArrowDown: (@MainActor () -> Void)? = nil,
         onArrowUp: (@MainActor () -> Void)? = nil,
+        // Folder-browse navigation. Both return whether they consumed the
+        // key; false lets the event through so the caret keeps moving in the
+        // query field.
+        onArrowRight: (@MainActor () -> Bool)? = nil,
+        onArrowLeft: (@MainActor () -> Bool)? = nil,
+        onExitFolderBrowse: (@MainActor () -> Void)? = nil,
+        folderBrowseActive: @escaping @MainActor () -> Bool = { false },
         onEnterCommandMode: @escaping @MainActor () -> Void,
         onExitCommandMode: @escaping @MainActor () -> Void,
         onHideLauncher: @escaping @MainActor () -> Void,
@@ -209,6 +216,11 @@ final class KeyboardSelectionMonitor {
                     return nil
                 }
 
+                if folderBrowseActive() {
+                    onExitFolderBrowse?()
+                    return nil
+                }
+
                 if inCommandMode() {
                     if flags.contains(.shift) {
                         onHideLauncher()
@@ -276,6 +288,22 @@ final class KeyboardSelectionMonitor {
                     onNext()
                 }
                 return nil
+            }
+
+            // Right/Left drive folder browsing only when the handler reports
+            // the key as consumed; otherwise they stay text-caret keys.
+            if event.keyCode == 124, let onArrowRight {
+                if onArrowRight() {
+                    return nil
+                }
+                return event
+            }
+
+            if event.keyCode == 123, let onArrowLeft {
+                if onArrowLeft() {
+                    return nil
+                }
+                return event
             }
 
             return event
