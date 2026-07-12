@@ -53,6 +53,13 @@ pub(crate) fn path_match_score(query: &str, path: &str) -> Option<i64> {
     }
 
     if path.contains(normalized) {
+        // A path that ends with the query is the folder the user named; paths
+        // that merely contain it mid-string are its descendants, so rank the
+        // exact target above them (otherwise ties break alphabetically and a
+        // child like `.../domain/commands` can outrank `.../domain`).
+        if path.ends_with(normalized) {
+            return Some(1_500);
+        }
         return Some(1_350);
     }
 
@@ -323,6 +330,17 @@ mod tests {
     fn path_match_multi_segment_fuzzy() {
         let score = path_match_score("Users/Documents", "/Users/test/Documents/notes.txt");
         assert!(score.is_some());
+    }
+
+    #[test]
+    fn path_match_exact_target_outranks_descendants() {
+        let query = "kunkka-coffee/domain";
+        let exact = path_match_score(query, "/users/x/git/kunkka-coffee/domain");
+        let child = path_match_score(query, "/users/x/git/kunkka-coffee/domain/commands");
+        assert!(
+            exact > child,
+            "the named folder ({exact:?}) should beat its child ({child:?})"
+        );
     }
 
     #[test]
