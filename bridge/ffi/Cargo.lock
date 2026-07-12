@@ -280,6 +280,7 @@ dependencies = [
  "look-answers",
  "look-engine",
  "look-indexing",
+ "look-ranking",
  "look-storage",
  "look-todo",
  "notify",

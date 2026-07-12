@@ -121,7 +121,8 @@ extension LauncherView {
 
         guard themeStore.settings.aiEnabled,
               !isCommandMode, !isClipboardQuery, !isPrefixSuggestionQuery,
-              !isCommandSuggestionQuery, !isTranslationQuery, trimmed.count >= 2
+              !isCommandSuggestionQuery, !isTranslationQuery,
+              trimmed.count >= AppConstants.Launcher.minSuggestionQueryLength
         else {
             if !webSuggestions.isEmpty { webSuggestions = [] }
             return
@@ -142,6 +143,39 @@ extension LauncherView {
                 // selection. For a query with no local results selection is nil,
                 // so re-seed it onto the first suggestion, otherwise Enter on a
                 // suggestion-only list does nothing.
+                if selectedResultID == nil {
+                    setInitialSelection()
+                }
+            }
+        }
+    }
+
+    /// Fetches previously-opened URLs matching the current query, debounced and
+    /// off the main thread (the lookup opens the DB). Self-gating - clears the
+    /// rows in any non-applicable mode. Mirrors `refreshWebSuggestions`.
+    func refreshRecentURLs() {
+        recentURLTask?.cancel()
+        let currentQuery = query
+        let trimmed = currentQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard allowsSuggestionRows, !isTranslationQuery,
+              trimmed.count >= AppConstants.Launcher.minSuggestionQueryLength
+        else {
+            if !recentURLEntries.isEmpty { recentURLEntries = [] }
+            return
+        }
+
+        recentURLTask = Task {
+            try? await Task.sleep(nanoseconds: AppConstants.Launcher.searchDebounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            let limit = AppConstants.Launcher.WebURL.recentLimit
+            let entries = await Task.detached(priority: .userInitiated) {
+                bridge.recentURLs(query: currentQuery, limit: limit)
+            }.value
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard query == currentQuery, !isCommandMode else { return }
+                recentURLEntries = entries
                 if selectedResultID == nil {
                     setInitialSelection()
                 }

@@ -42,6 +42,8 @@ struct LauncherView: View {
     @State var backendResults: [LauncherResult] = []
     @State var webSuggestions: [String] = []
     @State var webSuggestionTask: Task<Void, Never>?
+    @State var recentURLEntries: [URLHistoryEntry] = []
+    @State var recentURLTask: Task<Void, Never>?
     @State var selectedResultID: String?
     @State var pickedKeys: [String] = []
     @State var pickedResultsByKey: [String: LauncherResult] = [:]
@@ -353,7 +355,7 @@ struct LauncherView: View {
     /// hand like `prefixSuggestionResults`; `openSelectedApp` recognises the id
     /// prefix and runs a web search instead of opening a file.
     var webSuggestionResults: [LauncherResult] {
-        guard !isCommandMode, !isClipboardQuery, !isPrefixSuggestionQuery, !isCommandSuggestionQuery else { return [] }
+        guard allowsSuggestionRows else { return [] }
         return webSuggestions.enumerated().map { index, text in
             LauncherResult(
                 id: "\(AppConstants.Launcher.WebSuggestion.resultIDPrefix)\(text)",
@@ -366,11 +368,29 @@ struct LauncherView: View {
         }
     }
 
+    // URL-aware rows (urlResult, recentURLResults, mergeByScore) live in
+    // LauncherView+URLResults.swift.
+
     var displayedResults: [LauncherResult] {
         if isPrefixSuggestionQuery { return prefixSuggestionResults }
         if isCommandSuggestionQuery { return commandSuggestionResults }
         if isClipboardQuery { return clipboardResults }
-        return backendFilteredResults + webSuggestionResults
+        // Recent URLs interleave with local results by frecency; web-search rows
+        // stay last.
+        let ranked = mergeByScore(backendFilteredResults, recentURLResults)
+        let tail = webSuggestionResults
+        guard let urlResult else {
+            return ranked + tail
+        }
+        // Structural matches can't be a file/search, so rank on top. A bare-host
+        // match must never take the default slot from a real local result, so it
+        // sits after the backend results (issue #232).
+        switch urlResult.tier {
+        case .structural:
+            return [urlResult.result] + ranked + tail
+        case .bareHost:
+            return ranked + [urlResult.result] + tail
+        }
     }
 
     var isTranslationQuery: Bool {
@@ -598,6 +618,7 @@ struct LauncherView: View {
             bannerTask?.cancel()
             lookupPreviewTask?.cancel()
             webSuggestionTask?.cancel()
+            recentURLTask?.cancel()
             keyboardMonitor.stop()
             clipboardStore.setMonitoringMode(.background)
         }
@@ -636,6 +657,8 @@ struct LauncherView: View {
             // Google autocomplete rows (appended after engine results). Self-gates
             // by mode and the online-features flag; never blocks search.
             refreshWebSuggestions()
+            // Previously-opened URLs matching the query (url-history spec).
+            refreshRecentURLs()
         }
         .onReceive(clipboardStore.$entries) { _ in
             refreshClipboardSelectionIfNeeded()
@@ -1251,7 +1274,8 @@ struct LauncherView: View {
               !isPrefixSuggestionQuery, !isCommandSuggestionQuery,
               let selectedID = selectedResultID,
               let selectedResult = displayedResults.first(where: { $0.id == selectedID }),
-              AppConstants.Launcher.WebSuggestion.text(fromResultID: selectedResult.id) == nil
+              AppConstants.Launcher.WebSuggestion.text(fromResultID: selectedResult.id) == nil,
+              AppConstants.Launcher.WebURL.url(fromResultID: selectedResult.id) == nil
         else { return nil }
         return selectedResult
     }

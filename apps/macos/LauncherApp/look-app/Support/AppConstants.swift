@@ -174,6 +174,28 @@ enum AppConstants {
             }
         }
 
+        // Synthesized "Open <url>" row for a URL-like query (issue #232). Told
+        // apart from real candidates by id; the resolved URL is encoded in it.
+        enum WebURL {
+            static let resultIDPrefix = "weburl:"
+            // Max previously-opened URLs suggested for the current query.
+            static let recentLimit = 5
+            // Row subtitles: the live-classified row vs a row from history.
+            static let openSubtitle = "Open in browser"
+            static let recentSubtitle = "Recently opened"
+
+            /// Encodes the resolved URL into a synthetic result id.
+            static func resultID(url: String) -> String {
+                "\(resultIDPrefix)\(url)"
+            }
+
+            /// Recovers the resolved URL encoded in a result id, or nil.
+            static func url(fromResultID resultID: String) -> String? {
+                guard resultID.hasPrefix(resultIDPrefix) else { return nil }
+                return String(resultID.dropFirst(resultIDPrefix.count))
+            }
+        }
+
         enum Finder {
             static let appName = "finder"
             static let appPath = "/System/Library/CoreServices/Finder.app"
@@ -238,6 +260,9 @@ enum AppConstants {
 
         static let defaultSearchLimit = 40
         static let searchDebounceNanoseconds: UInt64 = 70_000_000
+        // Shortest query that triggers debounced suggestion lookups (web search
+        // autocomplete, recent URLs). Single characters match too much to be useful.
+        static let minSuggestionQueryLength = 2
         static let windowCornerRadius: CGFloat = 16
         static let commandListMaxHeight: CGFloat = 180
         static let commandResultFontSize: CGFloat = 18

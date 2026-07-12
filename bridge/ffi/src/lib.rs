@@ -7,6 +7,7 @@ mod seed_api;
 mod state;
 mod todo_api;
 mod translate_api;
+mod url_history_api;
 mod usage_api;
 
 use look_engine::QueryEngine;
@@ -173,6 +174,33 @@ pub extern "C" fn look_duckduckgo_answer_json(query: *const c_char) -> *mut c_ch
 pub extern "C" fn look_wikipedia_answer_json(search_term: *const c_char) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         answers_api::look_wikipedia_answer_json_impl(search_term)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// URL classification JSON for `query` (a `UrlMatch` object or `null`).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_classify_url_json(query: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        answers_api::look_classify_url_json_impl(query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Records that `url` was opened through the launcher. Returns false on failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_record_url_hit(url: *const c_char) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        url_history_api::look_record_url_hit_impl(url)
+    }))
+    .unwrap_or(false)
+}
+
+/// JSON array of up to `limit` remembered URLs matching `query` (or `[]`).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_recent_urls_json(query: *const c_char, limit: u32) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        url_history_api::look_recent_urls_json_impl(query, limit)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

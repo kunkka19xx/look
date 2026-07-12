@@ -48,6 +48,18 @@ private func look_duckduckgo_answer_json(_ query: UnsafePointer<CChar>?) -> Unsa
 nonisolated
 private func look_wikipedia_answer_json(_ searchTerm: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_classify_url_json")
+nonisolated
+private func look_classify_url_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_record_url_hit")
+nonisolated
+private func look_record_url_hit(_ url: UnsafePointer<CChar>?) -> Bool
+
+@_silgen_name("look_recent_urls_json")
+nonisolated
+private func look_recent_urls_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_definitional_entity_json")
 nonisolated
 private func look_definitional_entity_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -229,6 +241,36 @@ final class EngineBridge: @unchecked Sendable {
         return list
     }
 
+    /// Classifies `query` as a URL, or nil to leave it as a search term.
+    /// Network-free; shares the Rust core's tier rules and TLD list with linows.
+    nonisolated func classifyURL(query: String) -> URLMatch? {
+        let ptr = query.withCString { look_classify_url_json($0) }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        let raw = String(cString: ptr)
+        guard raw != "null", let data = raw.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(URLMatch.self, from: data)
+    }
+
+    /// Records that `url` was opened through the launcher, for later re-open
+    /// suggestions. Fire-and-forget; opens the shared look.db (own connection).
+    @discardableResult
+    nonisolated func recordURLHit(url: String) -> Bool {
+        url.withCString { look_record_url_hit($0) }
+    }
+
+    /// Up to `limit` previously-opened URLs matching `query`, most-recent first.
+    /// Opens the shared look.db - call off the main thread.
+    nonisolated func recentURLs(query: String, limit: Int) -> [URLHistoryEntry] {
+        let ptr = query.withCString { look_recent_urls_json($0, UInt32(limit)) }
+        guard let ptr else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return (try? decoder.decode([URLHistoryEntry].self, from: data)) ?? []
+    }
+
     /// The entity from a definitional query ("what is vim" -> "vim"), or nil.
     /// Network-free heuristic in the Rust core.
     nonisolated func definitionalEntity(query: String) -> String? {
@@ -279,6 +321,31 @@ nonisolated struct TranslationResult: Decodable {
     let original: String
     let translated: String
     let error: BridgeError?
+}
+
+/// Wire shape of `look_answers::UrlMatch`: the resolved openable URL and how
+/// certain the classification is. `tier` decodes the lowercased Rust enum
+/// (`structural` / `barehost`).
+nonisolated struct URLMatch: Decodable {
+    enum Tier: String, Decodable {
+        case structural
+        case bareHost = "barehost"
+    }
+
+    let url: String
+    let tier: Tier
+}
+
+/// Wire shape of a `url_history` row (see url-history spec), decoded with
+/// `.convertFromSnakeCase`. `title` is reserved and nil today.
+nonisolated struct URLHistoryEntry: Decodable {
+    let url: String
+    let title: String?
+    let hitCount: Int
+    let lastUsedAtUnixS: Int
+    /// Frecency rank from the Rust core (same `rank_score` as apps/files), used
+    /// to place recent URLs among local results rather than a fixed threshold.
+    let score: Int
 }
 
 private nonisolated struct SearchPayload: Decodable {

@@ -20,9 +20,11 @@ mod parse;
 mod sources;
 mod translate;
 mod types;
+mod url;
 
 pub use translate::{TranslateError, Translation, translate};
 pub use types::Answer;
+pub use url::{UrlMatch, UrlTier, classify_url};
 
 /// Resolve a one-shot instant answer (currency, weather, or crypto) for `query`,
 /// or `None` if the query matches no provider or every source fails. Performs
