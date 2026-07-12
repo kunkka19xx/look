@@ -17,7 +17,7 @@ has no cross-platform implementation, so we share the *declaration* and keep the
 
 | Piece | Location | Scope |
 |-------|----------|-------|
-| **Descriptor** — what it is: id, match, control kind, on/off labels, key, info fields | `core/qactions` catalog | shared, all OSes |
+| **Descriptor** — what it is: id, match, control kind, on/off labels, info fields | `core/qactions` catalog | shared, all OSes |
 | **Adapter** — how it runs: read + set the OS state (`state()` / `apply()`) | `apps/<platform>/…/QuickActions/Controls/<Name>Control.swift` | native, per OS |
 | **Registration** — wire the adapter to its action id | `…/QuickActions/ActionAdapterRegistry.swift` | native, one line |
 
@@ -26,11 +26,38 @@ separately register it with the search engine. If an OS has no adapter for a
 declared action, the panel still shows the info and marks the action unavailable
 there, rather than the action vanishing inconsistently.
 
+## File map
+
+The three files you touch are grouped together; the rest is framework you leave
+alone. (The repo organizes by layer, `Support/` vs `Views/`, so the framework
+pieces sit with their peers rather than in one feature folder.)
+
+You edit:
+
+```
+core/qactions/src/lib.rs                                  declare the descriptor
+apps/macos/…/Support/QuickActions/
+  Controls/<Name>Control.swift                            your adapter (copy Bluetooth)
+  ActionAdapterRegistry.swift                             one line: "id": Control()
+```
+
+Framework, for reference only, do not edit:
+
+```
+apps/macos/…/Support/QuickActions/SystemControl.swift     the adapter contract
+apps/macos/…/Support/QuickActions/QuickActionModels.swift decodes the descriptor
+apps/macos/…/Support/UI/ToggleSwitch.swift                reusable switch component
+apps/macos/…/Views/Launcher/QuickActionsSection.swift     renders the controls
+apps/macos/…/Views/Launcher/LauncherView+QuickActions.swift  loads state, runs actions
+bridge/ffi/src/qactions_api.rs                            exposes the catalog to Swift
+```
+
 ## Steps
 
 1. **Declare** the descriptor once in the shared `core/qactions` catalog: id,
    what result it matches (`setting:<x>`, an app kind, a bundle id), the control
-   kind (toggle/button), on/off labels, the key hint, and any info fields.
+   kind (toggle/button), on/off labels, and any info fields. The key hint is
+   derived from the control kind (a toggle shows `⌘O`), so you do not set it.
 2. **Implement** the adapter. Copy the reference (`BluetoothControl.swift`),
    rename the type, and fill in `state()` and `apply(_:)`. Keep **all**
    OS-specific and private-API code inside this one file.

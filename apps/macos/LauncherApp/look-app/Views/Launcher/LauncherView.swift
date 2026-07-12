@@ -44,6 +44,10 @@ struct LauncherView: View {
     @State var webSuggestionTask: Task<Void, Never>?
     @State var recentURLEntries: [URLHistoryEntry] = []
     @State var recentURLTask: Task<Void, Never>?
+    // Quick Actions for the selected result (see docs/writing-controls.md).
+    @State var quickActionDescriptors: [QuickActionDescriptor] = []
+    @State var quickActionStates: [String: ActionState] = [:]
+    @State var quickActionTask: Task<Void, Never>?
     @State var selectedResultID: String?
     @State var pickedKeys: [String] = []
     @State var pickedResultsByKey: [String: LauncherResult] = [:]
@@ -660,6 +664,10 @@ struct LauncherView: View {
             // Previously-opened URLs matching the query (url-history spec).
             refreshRecentURLs()
         }
+        .onChange(of: selectedResultID) { _, _ in
+            // Load Quick Actions + read their live state for the new selection.
+            refreshQuickActions()
+        }
         .onReceive(clipboardStore.$entries) { _ in
             refreshClipboardSelectionIfNeeded()
         }
@@ -1015,8 +1023,14 @@ struct LauncherView: View {
                     onOpenAll: { openAllPicked() }
                 )
             } else if let selectedResult = previewResult {
+                // Info + actions panel: the preview plus any Quick Actions.
                 ResultPreviewView(
                     result: selectedResult,
+                    quickActions: quickActionDescriptors,
+                    quickActionStates: quickActionStates,
+                    onRunQuickAction: { descriptor, intent in
+                        runQuickAction(descriptor, intent: intent)
+                    },
                     onDeleteClipboard: selectedResult.kind == .clipboard
                         ? { deleteClipboardResult(resultID: selectedResult.id) }
                         : nil

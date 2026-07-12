@@ -38,9 +38,6 @@ pub struct ActionDescriptor {
     pub control: ControlKind,
     pub on_label: Option<String>,
     pub off_label: Option<String>,
-    /// Keyboard hint shown in the panel. Navigation is Cmd+J / Cmd+K; this is the
-    /// per-action label a control may show (e.g. the toggle key).
-    pub key_hint: String,
     pub info: Vec<InfoFieldSpec>,
 }
 
@@ -54,7 +51,6 @@ pub fn descriptor(action_id: &str) -> Option<ActionDescriptor> {
             control: ControlKind::Toggle,
             on_label: Some("On".to_string()),
             off_label: Some("Off".to_string()),
-            key_hint: "cmd+j".to_string(),
             info: vec![InfoFieldSpec {
                 label: "Status".to_string(),
                 value_key: "status".to_string(),

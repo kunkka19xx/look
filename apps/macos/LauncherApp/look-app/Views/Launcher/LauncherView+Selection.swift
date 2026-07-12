@@ -225,6 +225,9 @@ extension LauncherView {
             },
             deleteConfirmationActive: { [self] in
                 pendingEmptyTrashCount != nil
+            },
+            onToggleQuickAction: { [self] in
+                togglePrimaryQuickAction()
             }
         )
     }

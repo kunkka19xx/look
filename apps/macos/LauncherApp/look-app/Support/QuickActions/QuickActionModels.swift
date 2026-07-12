@@ -26,7 +26,6 @@ struct QuickActionDescriptor: Decodable, Equatable, Identifiable {
     let control: QuickActionControlKind
     let onLabel: String?
     let offLabel: String?
-    let keyHint: String
     let info: [QuickActionInfoField]
 
     var id: String { actionId }

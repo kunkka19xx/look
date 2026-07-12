@@ -291,6 +291,7 @@
 				INFOPLIST_KEY_CFBundleIconFile = AppIcon;
 				INFOPLIST_KEY_LSMultipleInstancesProhibited = NO;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Look uses Finder to empty the Trash and read how many items it contains.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Look reads and toggles Bluetooth power from the launcher's quick actions.";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				OTHER_LDFLAGS = (
@@ -333,6 +334,7 @@
 				INFOPLIST_KEY_CFBundleIconFile = AppIcon;
 				INFOPLIST_KEY_LSMultipleInstancesProhibited = NO;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Look uses Finder to empty the Trash and read how many items it contains.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Look reads and toggles Bluetooth power from the launcher's quick actions.";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				OTHER_LDFLAGS = (

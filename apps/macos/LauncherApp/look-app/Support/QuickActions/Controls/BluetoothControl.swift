@@ -32,6 +32,11 @@ private func IOBluetoothPreferenceSetControllerPowerState(_ state: Int32)
 struct BluetoothControl: SystemControl {
     private static let log = Logger(subsystem: "noah-code.Look", category: "actions.bluetooth")
 
+    /// How long to wait for the controller to apply a power change, and how often
+    /// to re-check while waiting. The controller applies asynchronously (~100ms).
+    private static let settleTimeout: TimeInterval = 1.5
+    private static let pollInterval: UInt64 = 80_000_000  // 80ms in nanoseconds
+
     private func isPoweredOn() -> Bool {
         IOBluetoothPreferenceGetControllerPowerState() == 1
     }
@@ -53,10 +58,25 @@ struct BluetoothControl: SystemControl {
         }
 
         IOBluetoothPreferenceSetControllerPowerState(target ? 1 : 0)
-        // The controller applies the change asynchronously, so we report the
-        // intended result optimistically; the panel re-reads `state()` shortly
-        // after and will reflect reality if the change did not take.
-        Self.log.debug("bluetooth apply -> target=\(target, privacy: .public)")
+        // The controller applies the change asynchronously (~100ms), so wait
+        // until the power state actually reflects the target before returning.
+        // Otherwise an immediate `state()` read would still see the old value
+        // and the panel would trail a press behind.
+        let settled = await waitForPowerState(target)
+        Self.log.debug("bluetooth apply -> target=\(target, privacy: .public) settled=\(settled, privacy: .public)")
+        guard settled else {
+            return .failed("Could not turn Bluetooth \(target ? "on" : "off")")
+        }
         return .ok(banner: "Bluetooth \(target ? "on" : "off")")
+    }
+
+    /// Polls the power state until it reaches `target` or the settle timeout.
+    private func waitForPowerState(_ target: Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(Self.settleTimeout)
+        while Date() < deadline {
+            if isPoweredOn() == target { return true }
+            try? await Task.sleep(nanoseconds: Self.pollInterval)
+        }
+        return isPoweredOn() == target
     }
 }
