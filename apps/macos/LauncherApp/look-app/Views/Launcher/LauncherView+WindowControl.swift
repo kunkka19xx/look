@@ -138,6 +138,7 @@ extension LauncherView {
         NSApplication.shared.activate(ignoringOtherApps: true)
 
         if let window = launcherWindow() {
+            positionOnActiveScreen(window)
             window.makeKeyAndOrderFront(nil)
             activateLauncherModeAndFocus()
             let frameStr = NSStringFromRect(window.frame)
@@ -148,9 +149,24 @@ extension LauncherView {
         openWindow(id: "main")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             NSApplication.shared.activate(ignoringOtherApps: true)
-            launcherWindow()?.makeKeyAndOrderFront(nil)
+            if let window = launcherWindow() {
+                positionOnActiveScreen(window)
+                window.makeKeyAndOrderFront(nil)
+            }
             activateLauncherModeAndFocus()
         }
+    }
+
+    /// Places the launcher at its fixed Spotlight-style position on whichever
+    /// screen currently holds the mouse cursor. Called on every show so the
+    /// launcher always appears on the display the user is working on (issue
+    /// #260). The window is not draggable, so its position is owned entirely here.
+    func positionOnActiveScreen(_ window: NSWindow) {
+        let cursor = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(cursor, $0.frame, false) })
+            ?? NSScreen.main
+        else { return }
+        window.setFrame(WindowAutoScale.spotlightFrame(on: screen), display: true)
     }
 
     func hideLauncherWindow(restorePreviousApp: Bool = true) {

@@ -704,18 +704,9 @@ struct LauncherView: View {
             NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
         ) { _ in
             if launcherWindow()?.isVisible == true {
-                let log = Logger(subsystem: "noah-code.Look", category: "window-resize")
-                // Dragging the launcher across screens triggers a
-                // programmatic resize, which briefly drops Look's frontmost
-                // status and fires this notification. Ignore the auto-hide
-                // when that just happened - the user is still interacting
-                // with the launcher, not switching to another app.
-                if WindowAutoScale.didProgrammaticallyResizeRecently() {
-                    log.debug("didResignActiveNotification ignored (within \(WindowAutoScale.resizeSettleWindow, privacy: .public)s of a programmatic resize)")
-                } else {
-                    log.debug("didResignActiveNotification -> hideLauncherWindow(restorePreviousApp: false)")
-                    hideLauncherWindow(restorePreviousApp: false)
-                }
+                Logger(subsystem: "noah-code.Look", category: "window-resize")
+                    .debug("didResignActiveNotification -> hideLauncherWindow(restorePreviousApp: false)")
+                hideLauncherWindow(restorePreviousApp: false)
             }
             refreshClipboardMonitoringMode()
         }
