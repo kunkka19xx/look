@@ -320,7 +320,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // like `t"who is` would otherwise fire isEntityLookup and pull Wikipedia.
   search.setOnResults((items, query) => {
     lastResults = items;
-    results.render(items);
+    results.render(items, query);
     applyAiLayoutMode();
     // Recent-empty renders as one wide card, which sends the hint bar back
     // to the bottom while the panes float (macOS showsFloatingGrid).
