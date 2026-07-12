@@ -166,7 +166,12 @@ extension LauncherView {
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(cursor, $0.frame, false) })
             ?? NSScreen.main
         else { return }
-        window.setFrame(WindowAutoScale.spotlightFrame(on: screen), display: true)
+        let frame = WindowAutoScale.spotlightFrame(on: screen)
+        // Log the real screen + placement so the spotlight fraction can be
+        // calibrated from actual displays rather than estimates.
+        let topGap = screen.visibleFrame.maxY - frame.maxY
+        hotkeyLog.debug("position: visible=\(NSStringFromRect(screen.visibleFrame), privacy: .public) frame=\(NSStringFromRect(frame), privacy: .public) topGap=\(topGap, privacy: .public)")
+        window.setFrame(frame, display: true)
     }
 
     func hideLauncherWindow(restorePreviousApp: Bool = true) {

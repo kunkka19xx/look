@@ -22,9 +22,11 @@ enum WindowAutoScale {
     static let baseWidth: CGFloat = 860
     static let baseHeight: CGFloat = 600
 
-    /// Fraction of the screen's visible height between its top edge and the top
-    /// of the launcher window, biasing the panel upward like Spotlight.
-    static let spotlightTopFraction: CGFloat = 0.15
+    /// Extra points to lift the launcher above vertical center. The window is
+    /// centered on the screen (middle - height/2), then raised by this so the
+    /// search bar sits a little above center like Spotlight. Absolute, so
+    /// placement is consistent on any display size or orientation.
+    static let spotlightLift: CGFloat = 25
 
     static func ratio(forScreenHeightPoints h: CGFloat) -> CGFloat {
         guard h > 1080 else { return 1.0 }
@@ -48,15 +50,18 @@ enum WindowAutoScale {
         )
     }
 
-    /// Frame that places the scaled launcher horizontally centered and biased
-    /// toward the top (Spotlight-style) within the screen's visibleFrame, so it
-    /// clears the menu bar and Dock. The launcher opens here on every show.
+    /// Frame that places the scaled launcher horizontally centered, with its
+    /// search bar (the window's top edge) a little above the screen's vertical
+    /// center, so results grow downward from just above center - Spotlight-style,
+    /// consistent on any display size or orientation. Clamped to stay fully
+    /// within the visible area so it never runs off a short display.
     static func spotlightFrame(on screen: NSScreen) -> NSRect {
         let size = size(for: screen)
         let visible = screen.visibleFrame
-        let x = visible.origin.x + (visible.width - size.width) / 2
-        let topGap = visible.height * spotlightTopFraction
-        let y = max(visible.minY, visible.maxY - topGap - size.height)
+        let x = visible.midX - size.width / 2
+        // middle + height/2 + lift = window top; center the panel, then lift it.
+        let windowTop = visible.midY + size.height / 2 + spotlightLift
+        let y = min(max(windowTop - size.height, visible.minY), visible.maxY - size.height)
         return NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
     }
 }
