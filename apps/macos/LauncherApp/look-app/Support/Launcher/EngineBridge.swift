@@ -60,6 +60,10 @@ private func look_record_url_hit(_ url: UnsafePointer<CChar>?) -> Bool
 nonisolated
 private func look_recent_urls_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_qactions_json")
+nonisolated
+private func look_qactions_json(_ resultID: UnsafePointer<CChar>?, _ kind: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_definitional_entity_json")
 nonisolated
 private func look_definitional_entity_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -269,6 +273,23 @@ final class EngineBridge: @unchecked Sendable {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return (try? decoder.decode([URLHistoryEntry].self, from: data)) ?? []
+    }
+
+    /// Quick Action descriptors for a result, from the shared `look_qactions`
+    /// catalog (see docs/writing-controls.md). Empty when the result has none.
+    /// Pure catalog lookup - cheap, safe to call while typing.
+    nonisolated func quickActions(forResultID resultID: String, kind: String) -> [QuickActionDescriptor] {
+        let ptr = resultID.withCString { idCstr in
+            kind.withCString { kindCstr in
+                look_qactions_json(idCstr, kindCstr)
+            }
+        }
+        guard let ptr else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return (try? decoder.decode([QuickActionDescriptor].self, from: data)) ?? []
     }
 
     /// The entity from a definitional query ("what is vim" -> "vim"), or nil.
