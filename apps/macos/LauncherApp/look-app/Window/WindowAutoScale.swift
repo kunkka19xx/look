@@ -13,7 +13,7 @@ import Foundation
 /// NSScreen height on a 2× Retina 4K is already 1080 points, matching
 /// the Tauri `logical_h = physical_h / scale` derivation.
 ///
-/// The launcher is not draggable: it opens at a fixed Spotlight-style
+/// The launcher is not draggable: it opens at a fixed
 /// position on whichever screen holds the mouse cursor, recomputed on
 /// every show (see `LauncherView.toggleWindowVisibility`).
 enum WindowAutoScale {

@@ -109,7 +109,7 @@ struct WindowConfigurator: NSViewRepresentable {
         window.toolbar = nil
         window.isOpaque = false
         window.backgroundColor = .clear
-        // The launcher is not user-movable: it opens at a fixed Spotlight-style
+        // The launcher is not user-movable: it opens at a fixed
         // position on the active (cursor) screen every show, so movement would
         // only let its position drift out of sync. See toggleWindowVisibility.
         window.isMovableByWindowBackground = false

@@ -118,7 +118,9 @@ extension LauncherView {
         let win = launcherWindow()
         let isActive = NSApplication.shared.isActive
         let visibleWindowCount = NSApplication.shared.windows.filter { $0.isVisible }.count
-        hotkeyLog.notice("toggle: isActive=\(isActive) windowCount=\(NSApplication.shared.windows.count) visibleCount=\(visibleWindowCount) keyWindow=\(NSApplication.shared.keyWindow != nil) winIsVisible=\(win?.isVisible ?? false) winIsHidden=\(NSApp.isHidden)")
+        hotkeyLog.notice(
+            "toggle: isActive=\(isActive) windowCount=\(NSApplication.shared.windows.count) visibleCount=\(visibleWindowCount) keyWindow=\(NSApplication.shared.keyWindow != nil) winIsVisible=\(win?.isVisible ?? false) winIsHidden=\(NSApp.isHidden)"
+        )
 
         if let window = win, window.isVisible && isActive {
             hotkeyLog.notice("toggle: -> HIDE branch")
@@ -142,7 +144,9 @@ extension LauncherView {
             window.makeKeyAndOrderFront(nil)
             activateLauncherModeAndFocus()
             let frameStr = NSStringFromRect(window.frame)
-            hotkeyLog.notice("toggle: SHOW done - visible=\(window.isVisible) onActiveSpace=\(window.isOnActiveSpace) frame=\(frameStr, privacy: .public)")
+            hotkeyLog.notice(
+                "toggle: SHOW done - visible=\(window.isVisible) onActiveSpace=\(window.isOnActiveSpace) frame=\(frameStr, privacy: .public)"
+            )
             return
         }
 
@@ -157,20 +161,23 @@ extension LauncherView {
         }
     }
 
-    /// Places the launcher at its fixed Spotlight-style position on whichever
+    /// Places the launcher at its fixed position on whichever
     /// screen currently holds the mouse cursor. Called on every show so the
     /// launcher always appears on the display the user is working on (issue
     /// #260). The window is not draggable, so its position is owned entirely here.
     func positionOnActiveScreen(_ window: NSWindow) {
         let cursor = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(cursor, $0.frame, false) })
-            ?? NSScreen.main
+        guard
+            let screen = NSScreen.screens.first(where: { NSMouseInRect(cursor, $0.frame, false) })
+                ?? NSScreen.main
         else { return }
         let frame = WindowAutoScale.spotlightFrame(on: screen)
         // Log the real screen + placement so the spotlight fraction can be
         // calibrated from actual displays rather than estimates.
         let topGap = screen.visibleFrame.maxY - frame.maxY
-        hotkeyLog.debug("position: visible=\(NSStringFromRect(screen.visibleFrame), privacy: .public) frame=\(NSStringFromRect(frame), privacy: .public) topGap=\(topGap, privacy: .public)")
+        hotkeyLog.debug(
+            "position: visible=\(NSStringFromRect(screen.visibleFrame), privacy: .public) frame=\(NSStringFromRect(frame), privacy: .public) topGap=\(topGap, privacy: .public)"
+        )
         window.setFrame(frame, display: true)
     }
 
