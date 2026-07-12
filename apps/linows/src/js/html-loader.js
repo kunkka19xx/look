@@ -4,7 +4,7 @@
  * @param {HTMLElement} container - element to append the loaded HTML into
  */
 export async function load(path, container) {
-  const res = await fetch(path);
-  const html = await res.text();
-  container.insertAdjacentHTML('beforeend', html);
+    const res = await fetch(path);
+    const html = await res.text();
+    container.insertAdjacentHTML('beforeend', html);
 }

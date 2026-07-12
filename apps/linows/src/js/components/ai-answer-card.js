@@ -26,33 +26,32 @@ let cardEl = null;
 // clicks; centralised here so the `('browser', '')` magic args don't drift
 // between sites.
 function openUrl(url) {
-  if (url) openPath(url, 'browser', '');
+    if (url) openPath(url, 'browser', '');
 }
 
 export function init(el) {
-  cardEl = el;
+    cardEl = el;
 }
 
 export function update(snapshot) {
-  if (!cardEl) return;
-  const { state, question, items } = snapshot;
+    if (!cardEl) return;
+    const { state, question, items } = snapshot;
 
-  if (state === State.idle) {
-    cardEl.hidden = true;
-    cardEl.innerHTML = '';
-    return;
-  }
+    if (state === State.idle) {
+        cardEl.hidden = true;
+        cardEl.innerHTML = '';
+        return;
+    }
 
-  const headerLabel = question || 'Web answer';
-  const streamingDot = state === State.streaming
-    ? '<span class="ai-spinner" aria-label="Loading"></span>'
-    : '';
+    const headerLabel = question || 'Web answer';
+    const streamingDot =
+        state === State.streaming ? '<span class="ai-spinner" aria-label="Loading"></span>' : '';
 
-  const blocks = items.map(renderBlock).join('');
-  const status = renderStatusLine(state, items.length === 0);
+    const blocks = items.map(renderBlock).join('');
+    const status = renderStatusLine(state, items.length === 0);
 
-  cardEl.hidden = false;
-  cardEl.innerHTML = `
+    cardEl.hidden = false;
+    cardEl.innerHTML = `
     <div class="ai-card-header">
       <span class="ai-card-icon">${sparkles}</span>
       <span class="ai-card-question">${escapeHtml(headerLabel)}</span>
@@ -65,18 +64,18 @@ export function update(snapshot) {
     </div>
   `;
 
-  wireBlockHandlers();
+    wireBlockHandlers();
 }
 
 function renderBlock(item) {
-  const hasUrl = !!item.url;
-  const sourceClass = hasUrl ? 'ai-card-source ai-card-source-linked' : 'ai-card-source';
-  const chevron = hasUrl ? `<span class="ai-card-source-chevron">${arrowUpRight}</span>` : '';
-  const image = item.imageUrl
-    ? `<img class="ai-card-image" src="${escapeAttr(item.imageUrl)}" alt="" data-url="${escapeAttr(item.url || '')}" />`
-    : '';
+    const hasUrl = !!item.url;
+    const sourceClass = hasUrl ? 'ai-card-source ai-card-source-linked' : 'ai-card-source';
+    const chevron = hasUrl ? `<span class="ai-card-source-chevron">${arrowUpRight}</span>` : '';
+    const image = item.imageUrl
+        ? `<img class="ai-card-image" src="${escapeAttr(item.imageUrl)}" alt="" data-url="${escapeAttr(item.url || '')}" />`
+        : '';
 
-  return `
+    return `
     <div class="ai-card-block">
       <div class="ai-card-block-head">
         <span class="${sourceClass}" data-url="${escapeAttr(item.url || '')}">
@@ -95,44 +94,44 @@ function renderBlock(item) {
 }
 
 function renderStatusLine(state, isEmpty) {
-  if (!isEmpty) return '';
-  if (state === State.streaming) return `<div class="ai-card-status">Thinking…</div>`;
-  if (state === State.failed) return `<div class="ai-card-status">Couldn't find an answer.</div>`;
-  return '';
+    if (!isEmpty) return '';
+    if (state === State.streaming) return `<div class="ai-card-status">Thinking…</div>`;
+    if (state === State.failed) return `<div class="ai-card-status">Couldn't find an answer.</div>`;
+    return '';
 }
 
 // Bind a click handler to every matching child inside the card. Small
 // helper to keep wireBlockHandlers terse - the three click handlers all
 // share the same querySelectorAll + addEventListener boilerplate.
 function bindClick(selector, handler) {
-  cardEl.querySelectorAll(selector).forEach((el) => {
-    el.addEventListener('click', (e) => handler(el, e));
-  });
+    cardEl.querySelectorAll(selector).forEach((el) => {
+        el.addEventListener('click', (e) => handler(el, e));
+    });
 }
 
 function wireBlockHandlers() {
-  bindClick('.ai-card-source-linked', (el) => openUrl(el.dataset.url));
-  bindClick('.ai-card-image[data-url]', (el) => openUrl(el.dataset.url));
-  bindClick('.ai-card-copy', async (el, e) => {
-    e.stopPropagation();
-    const text = (el.dataset.text || '').trim();
-    if (!text) return;
-    try {
-      await copyToClipboard(text);
-      banner.show('Copied answer', 'success', COPY_OK_BANNER_S);
-    } catch {
-      banner.show('Copy failed', 'error', COPY_FAIL_BANNER_S);
-    }
-  });
+    bindClick('.ai-card-source-linked', (el) => openUrl(el.dataset.url));
+    bindClick('.ai-card-image[data-url]', (el) => openUrl(el.dataset.url));
+    bindClick('.ai-card-copy', async (el, e) => {
+        e.stopPropagation();
+        const text = (el.dataset.text || '').trim();
+        if (!text) return;
+        try {
+            await copyToClipboard(text);
+            banner.show('Copied answer', 'success', COPY_OK_BANNER_S);
+        } catch {
+            banner.show('Copy failed', 'error', COPY_FAIL_BANNER_S);
+        }
+    });
 }
 
 function escapeHtml(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 function escapeAttr(s) {
-  return escapeHtml(s).replace(/"/g, '&quot;');
+    return escapeHtml(s).replace(/"/g, '&quot;');
 }

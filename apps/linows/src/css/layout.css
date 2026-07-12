@@ -1,47 +1,47 @@
 .launcher-window {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  background: var(--bg-tint);
-  backdrop-filter: blur(var(--blur-radius, 0px));
-  -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
-  border: var(--border-thickness) solid var(--border-color);
-  border-radius: var(--corner-radius);
-  overflow: hidden;
-  font-family: var(--font-family);
-  font-size: var(--font-size);
-  color: var(--font-color);
-  user-select: none;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--bg-tint);
+    backdrop-filter: blur(var(--blur-radius, 0px));
+    -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
+    border: var(--border-thickness) solid var(--border-color);
+    border-radius: var(--corner-radius);
+    overflow: hidden;
+    font-family: var(--font-family);
+    font-size: var(--font-size);
+    color: var(--font-color);
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* Background image layer (behind tint) */
 .launcher-window::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: var(--bg-image, none);
-  background-size: var(--bg-size, cover);
-  background-repeat: var(--bg-repeat, no-repeat);
-  background-position: center;
-  opacity: var(--bg-image-opacity, 0.62);
-  filter: blur(var(--bg-image-blur, 10px));
-  z-index: 0;
-  pointer-events: none;
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: var(--bg-image, none);
+    background-size: var(--bg-size, cover);
+    background-repeat: var(--bg-repeat, no-repeat);
+    background-position: center;
+    opacity: var(--bg-image-opacity, 0.62);
+    filter: blur(var(--bg-image-blur, 10px));
+    z-index: 0;
+    pointer-events: none;
 }
 
 /* Ensure content sits above bg image */
 .launcher-window > * {
-  position: relative;
-  z-index: 1;
+    position: relative;
+    z-index: 1;
 }
 
 /* Linux font rendering: boost base weight to match macOS SF Pro appearance */
 [data-os="linux"] .launcher-window {
-  font-weight: 500;
-  letter-spacing: 0.01em;
+    font-weight: 500;
+    letter-spacing: 0.01em;
 }
 
 /* Windows: DWM can't round per-pixel-alpha (`transparent: true`) windows;
@@ -57,11 +57,11 @@
  * [data-transparent] path and is untouched. */
 html[data-os="windows"],
 html[data-os="windows"] body {
-  background: transparent !important;
+    background: transparent !important;
 }
 
 html[data-os="windows"] .launcher-window {
-  border-radius: 16px;
+    border-radius: 16px;
 }
 
 /* WebKitGTK ghost-rendering workaround. Hyprland users hit this automatically
@@ -73,8 +73,8 @@ html[data-os="windows"] .launcher-window {
 [data-compositor="hyprland"] .launcher-window::before,
 [data-disable-blur] .launcher-window,
 [data-disable-blur] .launcher-window::before {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
 /* Same guard for the floating tiles. Readability without blur is already
@@ -82,88 +82,88 @@ html[data-os="windows"] .launcher-window {
  * and the tiles reuse it as their tint layer. */
 [data-compositor="hyprland"] .pane-tile,
 [data-disable-blur] .pane-tile {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
 /* Main pane: vertical stack - unified top bar (search + running apps),
  * transient banner/confirm rows, then the two-column results row. */
 .main-pane {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* Top bar: search field + running-apps strip merged into one full-width bar
  * (macOS topRowBar). The 10px search-strip gap is fixed; it never tracks
  * --inner-gap. */
 .top-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-  margin: var(--content-padding) var(--content-padding) 12px;
-  padding: var(--input-padding-y) var(--input-padding-x);
-  background-color: var(--control-fill);
-  border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    margin: var(--content-padding) var(--content-padding) 12px;
+    padding: var(--input-padding-y) var(--input-padding-x);
+    background-color: var(--control-fill);
+    border-radius: 10px;
 }
 
 .search-bar {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .search-icon {
-  width: 16px;
-  height: 16px;
-  color: var(--font-muted);
-  flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    color: var(--font-muted);
+    flex-shrink: 0;
 }
 
 #query {
-  flex: 1;
-  font-size: calc(var(--font-size) + 1px);
-  font-weight: 500;
-  color: var(--font-color);
-  caret-color: var(--accent-color);
+    flex: 1;
+    font-size: calc(var(--font-size) + 1px);
+    font-weight: 500;
+    color: var(--font-color);
+    caret-color: var(--accent-color);
 }
 
 #query::placeholder {
-  color: var(--font-muted);
+    color: var(--font-muted);
 }
 
 /* Generic .content-area wrapper used by other screens (settings, commands). */
 .content-area {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
+    display: flex;
+    flex: 1;
+    overflow: hidden;
 }
 
 /* Results row: list column + preview column. Column 2 collapses whenever
  * the preview pane is hidden (discovery rows, picked-empty, AI modes) so
  * the list spans the full width - same behavior the old 2x2 grid had. */
 .results-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .results-row:has(.preview-panel[hidden]):not(:has(.ai-mode-two-col)),
 .results-row:has(.ai-mode-full) {
-  grid-template-columns: 1fr;
+    grid-template-columns: 1fr;
 }
 
 .results-row:has(.preview-panel[hidden]):not(:has(.ai-mode-two-col)) #preview-col,
 .results-row:has(.ai-mode-full) #preview-col {
-  display: none;
+    display: none;
 }
 
 /* Two-col AI (knowledge lookup): app.js moves the suggestion list into the
@@ -171,67 +171,67 @@ html[data-os="windows"] .launcher-window {
  * normal results (macOS twoPaneGrid) - same tiles, same footers. The
  * preview panel itself has nothing to show next to a search list. */
 .results-row:has(.ai-mode-two-col) .preview-panel {
-  display: none;
+    display: none;
 }
 
 #preview-col > .results-list {
-  flex: 1;
-  border-left: 1px solid var(--divider-color);
+    flex: 1;
+    border-left: 1px solid var(--divider-color);
 }
 
 .floating #preview-col > .results-list {
-  border-left: none;
+    border-left: none;
 }
 
 /* Translation owns the whole content row; hide the (empty) results columns
  * so their floating tiles don't paint behind the translate panel. */
 .main-pane.translating .results-row {
-  display: none;
+    display: none;
 }
 
 .pane-col {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
 }
 
 /* Per-card footers. Empty and collapsed in classic mode; the floating grid
  * moves the hint text / copyright into them (js/layout.js placeHints). */
 .pane-footer {
-  display: none;
-  align-items: center;
-  flex-shrink: 0;
-  padding: 6px 10px 2px;
+    display: none;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 6px 10px 2px;
 }
 
 .floating-grid .pane-footer {
-  display: flex;
+    display: flex;
 }
 
 #preview-footer {
-  justify-content: flex-end;
+    justify-content: flex-end;
 }
 
 /* Results area: the AI card sits on top, the engine results list below. */
 .results-area {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow: hidden;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
 }
 
 /* Stacked: card capped at 240 px on top, results-list fills the rest.
  * Search-bar and result rows stay aligned (both in col 1). */
 .results-area.ai-mode-stacked .ai-card {
-  flex-shrink: 0;
-  max-height: 240px;
+    flex-shrink: 0;
+    max-height: 240px;
 }
 .results-area.ai-mode-stacked .results-list {
-  flex: 1;
+    flex: 1;
 }
 
 /* Two-col (only web suggestions, no local results) and full (card alone):
@@ -239,55 +239,55 @@ html[data-os="windows"] .launcher-window {
  * right pane, moved there by app.js applyAiLayoutMode, equal width. */
 .results-area.ai-mode-two-col .ai-card,
 .results-area.ai-mode-full .ai-card {
-  flex: 1;
+    flex: 1;
 }
 .results-area.ai-mode-full .results-list {
-  display: none;
+    display: none;
 }
 #preview-col .result-row-web-suggest {
-  margin-left: 2px;
-  margin-right: 4px;
-  padding-left: 4px;
+    margin-left: 2px;
+    margin-right: 4px;
+    padding-left: 4px;
 }
 
 .results-list {
-  min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--row-spacing) 0;
-  scrollbar-width: none;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--row-spacing) 0;
+    scrollbar-width: none;
 }
 
 .results-list::-webkit-scrollbar {
-  display: none;
+    display: none;
 }
 
 .preview-panel {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  /* Fixed 1px (not var(--border-thickness)) so the column divider stays
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    /* Fixed 1px (not var(--border-thickness)) so the column divider stays
    * a hairline even when the user raises the window-border thickness. */
-  border-left: 1px solid var(--divider-color);
-  padding: var(--content-padding);
-  overflow-y: auto;
+    border-left: 1px solid var(--divider-color);
+    padding: var(--content-padding);
+    overflow-y: auto;
 }
 
 /* Hint bar */
 .hint-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px var(--content-padding);
-  flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px var(--content-padding);
+    flex-shrink: 0;
 }
 
 /* Shared hint-text styling for both homes: the classic bottom bar and the
  * floating-grid card footers. */
 .hint-bar span,
 .pane-footer span {
-  font-size: calc(var(--font-size) - 1px);
-  color: var(--font-muted);
+    font-size: calc(var(--font-size) - 1px);
+    color: var(--font-muted);
 }
 
 /* Both homes: the floating grid relocates the hint text and copyright from
@@ -295,97 +295,97 @@ html[data-os="windows"] .launcher-window {
  * the container `span` rules. */
 .hint-bar .hint-sep,
 .pane-footer .hint-sep {
-  color: var(--accent-color);
-  font-weight: 700;
-  font-size: 1.25em;
-  line-height: 1;
-  vertical-align: middle;
-  margin: 0 3px;
+    color: var(--accent-color);
+    font-weight: 700;
+    font-size: 1.25em;
+    line-height: 1;
+    vertical-align: middle;
+    margin: 0 3px;
 }
 
 .hint-bar .hint-bar-copy,
 .pane-footer .hint-bar-copy {
-  font-size: 10px;
-  color: var(--font-muted);
-  opacity: 0.6;
-  flex-shrink: 0;
+    font-size: 10px;
+    color: var(--font-muted);
+    opacity: 0.6;
+    flex-shrink: 0;
 }
 
 /* Todo quick view: "Todo X/Y" stat in the main hint bar. Hover reveals the
    unfinished-tasks bubble; click jumps into /todo. */
 .hint-todo {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  color: var(--accent-color) !important;
-  font-weight: 600;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    color: var(--accent-color) !important;
+    font-weight: 600;
 }
 
 .hint-todo svg {
-  width: 12px;
-  height: 12px;
+    width: 12px;
+    height: 12px;
 }
 
 .hint-todo-bubble {
-  display: none;
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: 0;
-  width: 240px;
-  padding: 10px 12px;
-  background: var(--bg-tint);
-  border: 1px solid var(--divider-color);
-  border-radius: 10px;
-  cursor: default;
-  z-index: 10;
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 0;
+    width: 240px;
+    padding: 10px 12px;
+    background: var(--bg-tint);
+    border: 1px solid var(--divider-color);
+    border-radius: 10px;
+    cursor: default;
+    z-index: 10;
 }
 
 .hint-todo:hover .hint-todo-bubble {
-  display: block;
+    display: block;
 }
 
 .hint-todo-bubble-title {
-  font-size: calc(var(--font-size) - 3px);
-  font-weight: 600;
-  color: var(--font-muted);
-  margin-bottom: 4px;
+    font-size: calc(var(--font-size) - 3px);
+    font-weight: 600;
+    color: var(--font-muted);
+    margin-bottom: 4px;
 }
 
 .hint-todo-bubble-task {
-  font-size: calc(var(--font-size) - 2px);
-  font-weight: 400;
-  color: var(--font-color);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+    font-size: calc(var(--font-size) - 2px);
+    font-weight: 400;
+    color: var(--font-color);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 .hint-bar-link {
-  color: var(--font-muted);
-  text-decoration: none;
-  cursor: pointer;
+    color: var(--font-muted);
+    text-decoration: none;
+    cursor: pointer;
 }
 
 .hint-bar-link:hover {
-  color: var(--accent-color);
-  text-decoration: underline;
+    color: var(--accent-color);
+    text-decoration: underline;
 }
 
 .dev-badge {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  transform: translateY(-50%);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: #fff;
-  background: #e05252;
-  padding: 1px 5px;
-  border-radius: 3px;
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #fff;
+    background: #e05252;
+    padding: 1px 5px;
+    border-radius: 3px;
 }
 
 /* --- Floating "inner-gap" layout ---------------------------------------
@@ -398,14 +398,14 @@ html[data-os="windows"] .launcher-window {
 
 /* barFloatsFree: no window backdrop box; tiles float on the bare desktop. */
 .launcher-window.bar-free {
-  background: transparent;
-  border-color: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+    background: transparent;
+    border-color: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .launcher-window.bar-free::before {
-  opacity: 0;
+    opacity: 0;
 }
 
 /* Frosted tile (macOS paneCard). Fill = control-fill over the user's tint;
@@ -416,20 +416,20 @@ html[data-os="windows"] .launcher-window {
  * (image above tint, under content) so ui_bg_opacity / ui_bg_blur / an
  * opaque tint all behave identically in both modes. */
 .bar-free .pane-tile {
-  --tile-radius: 12px;
-  position: relative;
-  /* Keep the negative-z image overlay inside this tile's stacking context
+    --tile-radius: 12px;
+    position: relative;
+    /* Keep the negative-z image overlay inside this tile's stacking context
    * (above the tile fill, below its content). */
-  isolation: isolate;
-  background-color: transparent;
-  background-image:
-    linear-gradient(var(--control-fill), var(--control-fill)),
-    linear-gradient(var(--bg-tint), var(--bg-tint));
-  backdrop-filter: blur(var(--blur-radius, 0px));
-  -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
-  border: var(--border-thickness) solid var(--border-color);
-  border-radius: var(--tile-radius);
-  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.25);
+    isolation: isolate;
+    background-color: transparent;
+    background-image:
+        linear-gradient(var(--control-fill), var(--control-fill)),
+        linear-gradient(var(--bg-tint), var(--bg-tint));
+    backdrop-filter: blur(var(--blur-radius, 0px));
+    -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
+    border: var(--border-thickness) solid var(--border-color);
+    border-radius: var(--tile-radius);
+    box-shadow: 0 3px 7px rgba(0, 0, 0, 0.25);
 }
 
 /* This tile's slice of the panel background image: sized to the whole panel
@@ -438,65 +438,65 @@ html[data-os="windows"] .launcher-window {
  * clip-path (not overflow) confines the blur so footers can still overflow
  * popovers like the todo bubble. */
 .bar-free .pane-tile::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image: var(--bg-image, none);
-  /* Drawn-image rect computed by js/layout.js from the image's natural size
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image: var(--bg-image, none);
+    /* Drawn-image rect computed by js/layout.js from the image's natural size
    * and ui_bg_layout, matching the classic backdrop's cover/center math. */
-  background-size: var(--bg-draw-w, 100%) var(--bg-draw-h, 100%);
-  background-position: calc(-1 * var(--tile-x, 0px)) calc(-1 * var(--tile-y, 0px));
-  background-repeat: var(--bg-repeat, no-repeat);
-  opacity: var(--bg-image-opacity, 0.62);
-  filter: blur(var(--bg-image-blur, 10px));
-  clip-path: inset(0 round var(--tile-radius));
-  pointer-events: none;
+    background-size: var(--bg-draw-w, 100%) var(--bg-draw-h, 100%);
+    background-position: calc(-1 * var(--tile-x, 0px)) calc(-1 * var(--tile-y, 0px));
+    background-repeat: var(--bg-repeat, no-repeat);
+    opacity: var(--bg-image-opacity, 0.62);
+    filter: blur(var(--bg-image-blur, 10px));
+    clip-path: inset(0 round var(--tile-radius));
+    pointer-events: none;
 }
 
 /* Uniform gaps: bar-to-columns equals column-to-column equals --inner-gap.
  * The outer inset keeps tiles off the (invisible) window edge so shadows
  * are not clipped. */
 .floating .top-bar {
-  margin-bottom: var(--inner-gap);
+    margin-bottom: var(--inner-gap);
 }
 
 .floating .results-row {
-  margin: 0 var(--content-padding) var(--content-padding);
-  column-gap: var(--inner-gap);
+    margin: 0 var(--content-padding) var(--content-padding);
+    column-gap: var(--inner-gap);
 }
 
 .floating .pane-col {
-  padding: 6px;
+    padding: 6px;
 }
 
 .floating .preview-panel {
-  border-left: none;
+    border-left: none;
 }
 
 /* Two-col AI while floating: the tile provides the card chrome, so the
  * answer card sheds its own and the answer reads as one clean tile. */
 .floating .results-area.ai-mode-two-col .ai-card {
-  margin: 0;
-  background: none;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
+    margin: 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
 }
 
 /* Translation renders as a single floating card + classic bottom hint. */
 .floating .translate-panel {
-  margin: 0 var(--content-padding);
+    margin: 0 var(--content-padding);
 }
 
 /* Empty-query resting state: just the frosted top bar on the desktop -
  * no columns, no hint bar, no copyright. Applies at gap 0 too. */
 .resting .results-row,
 .resting #hint-bar {
-  display: none;
+    display: none;
 }
 
 /* Floating grid: hints/copyright live in the card footers instead. */
 .floating-grid #hint-bar {
-  display: none;
+    display: none;
 }

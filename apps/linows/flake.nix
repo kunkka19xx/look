@@ -65,6 +65,7 @@
               cargo-tauri
               xdg-desktop-portal
               xdg-desktop-portal-gtk
+              prettier
             ];
 
             buildInputs = with pkgs; [

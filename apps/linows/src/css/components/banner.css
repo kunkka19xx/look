@@ -1,78 +1,78 @@
 /* Banner notifications */
 .banner {
-  grid-row: 2;
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-  padding: 8px var(--content-padding);
-  border-bottom: var(--border-thickness) solid var(--divider-color);
-  animation: banner-in 200ms ease-out;
+    grid-row: 2;
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    padding: 8px var(--content-padding);
+    border-bottom: var(--border-thickness) solid var(--divider-color);
+    animation: banner-in 200ms ease-out;
 }
 
 /* `display: flex` above wins over the UA `[hidden] { display: none }` rule
  * (author CSS beats user-agent specificity). Re-assert the hide. */
 .banner[hidden] {
-  display: none;
+    display: none;
 }
 
 .banner-text {
-  flex: 1;
-  font-size: calc(var(--font-size) - 1px);
-  font-weight: 500;
-  /* Sticky health notices join multiple issues with newlines. */
-  white-space: pre-line;
+    flex: 1;
+    font-size: calc(var(--font-size) - 1px);
+    font-weight: 500;
+    /* Sticky health notices join multiple issues with newlines. */
+    white-space: pre-line;
 }
 
 .banner-dismiss {
-  border: none;
-  background: none;
-  font-size: calc(var(--font-size) - 1px);
-  font-family: var(--font-family);
-  color: var(--font-muted);
-  cursor: pointer;
+    border: none;
+    background: none;
+    font-size: calc(var(--font-size) - 1px);
+    font-family: var(--font-family);
+    color: var(--font-muted);
+    cursor: pointer;
 }
 
 .banner-dismiss:hover {
-  color: var(--font-color);
+    color: var(--font-color);
 }
 
 .banner-success {
-  background: rgba(166, 227, 161, 0.12);
+    background: rgba(166, 227, 161, 0.12);
 }
 .banner-success .banner-text {
-  color: var(--color-success);
+    color: var(--color-success);
 }
 
 .banner-error {
-  background: rgba(243, 139, 168, 0.12);
+    background: rgba(243, 139, 168, 0.12);
 }
 .banner-error .banner-text {
-  color: var(--color-danger);
+    color: var(--color-danger);
 }
 
 .banner-info {
-  background: rgba(137, 180, 250, 0.12);
+    background: rgba(137, 180, 250, 0.12);
 }
 .banner-info .banner-text {
-  color: var(--color-info);
+    color: var(--color-info);
 }
 
 .banner-warning {
-  background: rgba(250, 179, 135, 0.12);
+    background: rgba(250, 179, 135, 0.12);
 }
 .banner-warning .banner-text {
-  color: var(--color-warning);
+    color: var(--color-warning);
 }
 
 @keyframes banner-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }

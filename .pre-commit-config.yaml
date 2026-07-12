@@ -75,6 +75,12 @@ repos:
         pass_filenames: false
         types: [rust]
 
+      - id: prettier-linows
+        name: prettier (linows js/html/css, auto-fix)
+        entry: bash -c 'command -v prettier >/dev/null && prettier --write "$@" || echo "Skipping prettier (run inside nix develop)"' --
+        language: system
+        files: ^apps/linows/src/.*\.(js|html|css)$
+
       - id: secrets
         name: Detect secrets
         entry: bash -c 'grep -rnE "(password|secret|token|api_key|apikey|private_key)" --include="*.rs" --include="*.toml" --include="*.yaml" --include="*.yml" --exclude-dir=target . | grep -v "^[^\:]+\:\s*//\|#" || true'

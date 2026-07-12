@@ -1,122 +1,122 @@
 /* Catppuccin Mocha (Default Theme) */
 :root {
-  /* Background tint - Catppuccin Mocha base #1e1e2e */
-  --bg-tint: #1e1e2e;
+    /* Background tint - Catppuccin Mocha base #1e1e2e */
+    --bg-tint: #1e1e2e;
 
-  /* Text hierarchy */
-  --font-color: #dce0f5;
-  --font-secondary: #c8cee0;
-  --font-muted: rgba(180, 187, 210, 0.82);
+    /* Text hierarchy */
+    --font-color: #dce0f5;
+    --font-secondary: #c8cee0;
+    --font-muted: rgba(180, 187, 210, 0.82);
 
-  /* Border - surface2 #585b70 */
-  --border-color: rgba(88, 91, 112, 0.28);
-  --border-thickness: 1px;
+    /* Border - surface2 #585b70 */
+    --border-color: rgba(88, 91, 112, 0.28);
+    --border-thickness: 1px;
 
-  /* Surfaces - surface0 #313244, surface1 #45475a, overlay0 #6c7086 */
-  --panel-fill: rgba(49, 50, 68, 0.50);
-  --control-fill: rgba(69, 71, 90, 0.50);
-  --divider-color: rgba(88, 91, 112, 0.32);
-  --selection-fill: rgba(88, 91, 112, 0.40);
+    /* Surfaces - surface0 #313244, surface1 #45475a, overlay0 #6c7086 */
+    --panel-fill: rgba(49, 50, 68, 0.5);
+    --control-fill: rgba(69, 71, 90, 0.5);
+    --divider-color: rgba(88, 91, 112, 0.32);
+    --selection-fill: rgba(88, 91, 112, 0.4);
 
-  /* Accent & semantic - blue #89b4fa */
-  --accent-color: #89b4fa;
-  --on-accent-color: #1e1e2e;
-  --color-success: #a6e3a1;
-  --color-warning: #fab387;
-  --color-danger: #f38ba8;
-  --color-info: #89b4fa;
+    /* Accent & semantic - blue #89b4fa */
+    --accent-color: #89b4fa;
+    --on-accent-color: #1e1e2e;
+    --color-success: #a6e3a1;
+    --color-warning: #fab387;
+    --color-danger: #f38ba8;
+    --color-info: #89b4fa;
 
-  /* Typography */
-  --font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
-  --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", monospace;
-  --font-size: 14px;
+    /* Typography */
+    --font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", monospace;
+    --font-size: 14px;
 
-  /* Spacing */
-  --content-padding: 14px;
-  --row-height: 38px;
-  --row-spacing: 4px;
-  --icon-size: 22px;
-  --corner-radius: 0;
-  --control-radius: 8px;
-  --input-padding-x: 12px;
-  --input-padding-y: 8px;
+    /* Spacing */
+    --content-padding: 14px;
+    --row-height: 38px;
+    --row-spacing: 4px;
+    --icon-size: 22px;
+    --corner-radius: 0;
+    --control-radius: 8px;
+    --input-padding-x: 12px;
+    --input-padding-y: 8px;
 
-  /* Floating "inner-gap" layout (0 = classic framed panel) */
-  --inner-gap: 0px;
+    /* Floating "inner-gap" layout (0 = classic framed panel) */
+    --inner-gap: 0px;
 }
 
 /* Tokyo Night */
 [data-theme="tokyo-night"] {
-  --bg-tint: rgba(26, 27, 38, 0.60);
-  --font-color: rgba(214, 222, 245, 0.98);
-  --font-secondary: rgba(189, 204, 230, 1.0);
-  --font-muted: rgba(143, 163, 199, 0.78);
-  --panel-fill: rgba(15, 23, 46, 0.38);
-  --control-fill: rgba(36, 43, 71, 0.34);
-  --divider-color: rgba(102, 102, 112, 0.28);
-  --selection-fill: rgba(97, 120, 184, 0.28);
-  --accent-color: rgba(133, 184, 250, 1.0);
-  --border-color: rgba(169, 177, 214, 0.10);
+    --bg-tint: rgba(26, 27, 38, 0.6);
+    --font-color: rgba(214, 222, 245, 0.98);
+    --font-secondary: rgba(189, 204, 230, 1);
+    --font-muted: rgba(143, 163, 199, 0.78);
+    --panel-fill: rgba(15, 23, 46, 0.38);
+    --control-fill: rgba(36, 43, 71, 0.34);
+    --divider-color: rgba(102, 102, 112, 0.28);
+    --selection-fill: rgba(97, 120, 184, 0.28);
+    --accent-color: rgba(133, 184, 250, 1);
+    --border-color: rgba(169, 177, 214, 0.1);
 }
 
 /* Rose Pine */
 [data-theme="rose-pine"] {
-  --bg-tint: rgba(25, 23, 36, 0.58);
-  --font-color: rgba(242, 237, 232, 0.98);
-  --font-secondary: rgba(224, 214, 207, 1.0);
-  --font-muted: rgba(189, 178, 168, 0.78);
-  --panel-fill: rgba(33, 28, 43, 0.38);
-  --control-fill: rgba(51, 46, 64, 0.34);
-  --divider-color: rgba(102, 102, 112, 0.28);
-  --selection-fill: rgba(148, 133, 168, 0.28);
-  --accent-color: rgba(184, 156, 199, 1.0);
-  --border-color: rgba(224, 222, 244, 0.10);
+    --bg-tint: rgba(25, 23, 36, 0.58);
+    --font-color: rgba(242, 237, 232, 0.98);
+    --font-secondary: rgba(224, 214, 207, 1);
+    --font-muted: rgba(189, 178, 168, 0.78);
+    --panel-fill: rgba(33, 28, 43, 0.38);
+    --control-fill: rgba(51, 46, 64, 0.34);
+    --divider-color: rgba(102, 102, 112, 0.28);
+    --selection-fill: rgba(148, 133, 168, 0.28);
+    --accent-color: rgba(184, 156, 199, 1);
+    --border-color: rgba(224, 222, 244, 0.1);
 }
 
 /* Gruvbox */
 [data-theme="gruvbox"] {
-  --bg-tint: rgba(40, 40, 40, 0.60);
-  --font-color: rgba(237, 227, 201, 0.98);
-  --font-secondary: rgba(222, 204, 163, 1.0);
-  --font-muted: rgba(184, 163, 122, 0.78);
-  --panel-fill: rgba(36, 28, 23, 0.38);
-  --control-fill: rgba(54, 43, 33, 0.34);
-  --divider-color: rgba(102, 102, 112, 0.28);
-  --selection-fill: rgba(189, 138, 66, 0.28);
-  --accent-color: rgba(219, 184, 102, 1.0);
-  --border-color: rgba(235, 219, 178, 0.10);
+    --bg-tint: rgba(40, 40, 40, 0.6);
+    --font-color: rgba(237, 227, 201, 0.98);
+    --font-secondary: rgba(222, 204, 163, 1);
+    --font-muted: rgba(184, 163, 122, 0.78);
+    --panel-fill: rgba(36, 28, 23, 0.38);
+    --control-fill: rgba(54, 43, 33, 0.34);
+    --divider-color: rgba(102, 102, 112, 0.28);
+    --selection-fill: rgba(189, 138, 66, 0.28);
+    --accent-color: rgba(219, 184, 102, 1);
+    --border-color: rgba(235, 219, 178, 0.1);
 }
 
 /* Dracula */
 [data-theme="dracula"] {
-  --bg-tint: rgba(40, 42, 54, 0.58);
-  --font-color: rgba(248, 248, 250, 0.98);
-  --font-secondary: rgba(235, 222, 250, 1.0);
-  --font-muted: rgba(196, 189, 217, 0.78);
-  --panel-fill: rgba(28, 25, 46, 0.38);
-  --control-fill: rgba(54, 51, 77, 0.34);
-  --divider-color: rgba(102, 102, 112, 0.28);
-  --selection-fill: rgba(158, 133, 201, 0.28);
-  --accent-color: rgba(163, 191, 250, 1.0);
-  --border-color: rgba(248, 248, 242, 0.10);
+    --bg-tint: rgba(40, 42, 54, 0.58);
+    --font-color: rgba(248, 248, 250, 0.98);
+    --font-secondary: rgba(235, 222, 250, 1);
+    --font-muted: rgba(196, 189, 217, 0.78);
+    --panel-fill: rgba(28, 25, 46, 0.38);
+    --control-fill: rgba(54, 51, 77, 0.34);
+    --divider-color: rgba(102, 102, 112, 0.28);
+    --selection-fill: rgba(158, 133, 201, 0.28);
+    --accent-color: rgba(163, 191, 250, 1);
+    --border-color: rgba(248, 248, 242, 0.1);
 }
 
 /* Kanagawa */
 [data-theme="kanagawa"] {
-  --bg-tint: rgba(22, 22, 29, 0.60);
-  --font-color: rgba(222, 219, 201, 0.98);
-  --font-secondary: rgba(204, 199, 168, 1.0);
-  --font-muted: rgba(168, 161, 128, 0.78);
-  --panel-fill: rgba(25, 31, 36, 0.38);
-  --control-fill: rgba(46, 51, 61, 0.34);
-  --divider-color: rgba(102, 102, 112, 0.28);
-  --selection-fill: rgba(128, 122, 97, 0.28);
-  --accent-color: rgba(117, 166, 209, 1.0);
-  --border-color: rgba(220, 215, 186, 0.10);
+    --bg-tint: rgba(22, 22, 29, 0.6);
+    --font-color: rgba(222, 219, 201, 0.98);
+    --font-secondary: rgba(204, 199, 168, 1);
+    --font-muted: rgba(168, 161, 128, 0.78);
+    --panel-fill: rgba(25, 31, 36, 0.38);
+    --control-fill: rgba(46, 51, 61, 0.34);
+    --divider-color: rgba(102, 102, 112, 0.28);
+    --selection-fill: rgba(128, 122, 97, 0.28);
+    --accent-color: rgba(117, 166, 209, 1);
+    --border-color: rgba(220, 215, 186, 0.1);
 }
 
 /* Transparency-capable environments (macOS, Windows, Wayland, X11 with compositor) */
 [data-transparent="true"] {
-  --bg-tint: rgba(30, 30, 46, 0.85);
-  --corner-radius: 16px;
+    --bg-tint: rgba(30, 30, 46, 0.85);
+    --corner-radius: 16px;
 }
