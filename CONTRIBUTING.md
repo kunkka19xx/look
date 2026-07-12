@@ -44,6 +44,10 @@ Please include:
 
 User-facing feature documentation lives in `docs/` (`features.md`, `user-guide.md`) and is enough for end users and most contributors. Maintainers may also keep internal design specs under `specs/` (purpose, behavior, edge cases, non-goals); that directory is `.gitignore`d and not required reading.
 
+## Adding a Quick Action control
+
+Quick Actions are the interactive toggles/buttons in the launcher's right panel (e.g. Bluetooth on/off). Adding one is designed to be small: one shared descriptor, one native adapter file, one registry line. See [docs/writing-controls.md](docs/writing-controls.md) for the step-by-step guide and the reference implementation.
+
 ## Development setup
 
 [DEVELOPMENT.md](DEVELOPMENT.md) has the full per-platform prerequisites and build walkthrough. In short: Rust stable plus GNU Make everywhere, with Xcode on macOS and Visual Studio 2022 Build Tools (Desktop C++ workload) for the Tauri app on Windows and Linux.

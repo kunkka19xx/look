@@ -277,6 +277,7 @@ Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, plus C
 - [Architecture](docs/architecture.md) - how the Swift app + Rust core fit together
 - [Features](docs/features.md) - what's shipped, what's planned
 - [Contributing](CONTRIBUTING.md) - how to contribute
+- [Writing a control](docs/writing-controls.md) - add a Quick Action toggle/button to the panel
 - [Development](DEVELOPMENT.md) - building locally, repo layout, release process
 
 ## Scope

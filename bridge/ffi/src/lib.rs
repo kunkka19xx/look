@@ -1,6 +1,7 @@
 #![allow(unsafe_code)]
 
 mod answers_api;
+mod qactions_api;
 mod runtime_config;
 mod search_api;
 mod seed_api;
@@ -201,6 +202,15 @@ pub extern "C" fn look_record_url_hit(url: *const c_char) -> bool {
 pub extern "C" fn look_recent_urls_json(query: *const c_char, limit: u32) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         url_history_api::look_recent_urls_json_impl(query, limit)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Quick Action descriptors JSON for the result `(result_id, kind)` (or `[]`).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_qactions_json(result_id: *const c_char, kind: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        qactions_api::look_qactions_json_impl(result_id, kind)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

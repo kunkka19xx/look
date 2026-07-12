@@ -280,6 +280,7 @@ dependencies = [
  "look-answers",
  "look-engine",
  "look-indexing",
+ "look-qactions",
  "look-ranking",
  "look-storage",
  "look-todo",
@@ -298,6 +299,13 @@ dependencies = [
 [[package]]
 name = "look-matching"
 version = "0.1.0"
+
+[[package]]
+name = "look-qactions"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "look-ranking"

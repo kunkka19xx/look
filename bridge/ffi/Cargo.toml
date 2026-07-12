@@ -11,6 +11,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 look-answers = { path = "../../core/answers" }
 look-engine = { path = "../../core/engine" }
 look-indexing = { path = "../../core/indexing" }
+look-qactions = { path = "../../core/qactions" }
 look-ranking = { path = "../../core/ranking" }
 look-storage = { path = "../../core/storage" }
 look-todo = { path = "../../core/todo" }
