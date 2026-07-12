@@ -26,6 +26,7 @@ apps/linows/
       sysinfo.rs         System info (OS, memory, CPU, battery, uptime, disk)
       todo.rs            Daily tasks (shared look-todo store in look.db)
       translate.rs       Translation
+      weburl.rs          URL-like query detection + opened-URL history (shared core)
       autostart.rs       Autostart management
       platform/          Platform-specific code
         linux/           Icons, WM detection, Wayland shortcuts, GNOME ext, …

@@ -259,3 +259,19 @@ export async function wikipediaAnswer(term) {
 export async function webSuggestions(query, limit) {
   return invoke('web_suggestions', { query, limit });
 }
+
+// URL-like queries + opened-URL history (issue #232 / url-history spec).
+// classifyUrl returns `{ url, tier }` or null; recentUrls returns rows
+// `{ url, title, hit_count, last_used_at_unix_s, score }` in frecency order.
+
+export async function classifyUrl(query) {
+  return invoke('classify_url', { query });
+}
+
+export async function recordUrlHit(url) {
+  return invoke('record_url_hit', { url });
+}
+
+export async function recentUrls(query, limit) {
+  return invoke('recent_urls', { query, limit });
+}

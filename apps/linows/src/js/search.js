@@ -1,13 +1,18 @@
-import { search as ipcSearch, getClipboardHistory, webSuggestions as ipcWebSuggestions } from './ipc.js';
+import {
+  search as ipcSearch, getClipboardHistory, webSuggestions as ipcWebSuggestions,
+  classifyUrl as ipcClassifyUrl, recentUrls as ipcRecentUrls,
+} from './ipc.js';
 import {
   isPrefixSuggestionQuery, isCommandSuggestionQuery, isPrefixedQuery,
   prefixSuggestionResults, commandSuggestionResults, webSuggestionResults,
+  webUrlResult, WEB_URL_OPEN_SUBTITLE, WEB_URL_RECENT_SUBTITLE,
 } from './catalog.js';
 
 const DEBOUNCE_MS = 70;
 const MIN_QUICK_FOLDER_PREFIX = 2;
 const SEARCH_LIMIT = 40;
 const WEB_SUGGESTIONS_LIMIT = 6;
+const RECENT_URL_LIMIT = 5;
 const MIN_WEB_SUGGESTION_QUERY_LENGTH = 2;
 const CLIPBOARD_TITLE_MAX_CHARS = 80;
 let debounceTimer = null;
@@ -33,6 +38,12 @@ let lastEnginePayload = [];
 let lastWebSuggestions = [];
 let lastQueryString = null;
 let webInFlight = false;
+// URL rows (issue #232 + url-history spec): the live "Open <url>" match for
+// the current query and previously-opened URLs matching it. Reset on every
+// input (both are local and fast, so no cross-query caching like the flaky
+// web suggestions need) and refilled by fetchUrlRows.
+let lastUrlMatch = null;
+let lastRecentUrls = [];
 
 /** Resolved by the backend (Windows: SHGetKnownFolderPath; *nix: $HOME/<name>).
  *  Empty until setQuickFolders is called at boot. */
@@ -90,6 +101,8 @@ export function handleQueryInput(query) {
   // or returns empty (DuckDuckGo /ac/ is occasionally flaky).
   queryVersion += 1;
   lastEnginePayload = [];
+  lastUrlMatch = null;
+  lastRecentUrls = [];
   if (query !== lastQueryString) {
     lastWebSuggestions = [];
   }
@@ -162,7 +175,15 @@ export function handleQueryInput(query) {
   const wantsWeb = aiEnabled && !isPrefixedQuery(query)
     && query.trim().length >= MIN_WEB_SUGGESTION_QUERY_LENGTH;
   webInFlight = wantsWeb;
-  debounceTimer = setTimeout(() => performSearch(query, myVersion), DEBOUNCE_MS);
+  // URL rows share the engine debounce: both are local round-trips, and the
+  // URL leg must not run per keystroke ahead of it (SQLite open per call).
+  // Unlike web suggestions they ignore the AI gate - opening a typed address
+  // is a launcher action, not a web answer.
+  const wantsUrlRows = !isPrefixedQuery(query);
+  debounceTimer = setTimeout(() => {
+    performSearch(query, myVersion);
+    if (wantsUrlRows) fetchUrlRows(query, myVersion);
+  }, DEBOUNCE_MS);
   if (wantsWeb) {
     webSuggestionTimer = setTimeout(() => fetchWebSuggestions(query, myVersion), DEBOUNCE_MS);
   }
@@ -216,12 +237,76 @@ async function fetchWebSuggestions(query, version) {
   }
 }
 
+// Classification + history lookup for the current query. Both run in one leg
+// so a single publish paints them together; each response is version-checked
+// like the other legs. Best-effort: on failure the query simply has no URL
+// rows.
+async function fetchUrlRows(query, version) {
+  try {
+    const [match, recents] = await Promise.all([
+      ipcClassifyUrl(query),
+      ipcRecentUrls(query.trim(), RECENT_URL_LIMIT),
+    ]);
+    if (isStale(version)) return;
+    lastUrlMatch = match || null;
+    lastRecentUrls = Array.isArray(recents) ? recents : [];
+  } catch (err) {
+    console.warn('URL rows failed:', err);
+    if (isStale(version)) return;
+    lastUrlMatch = null;
+    lastRecentUrls = [];
+  }
+  publish(query, version);
+}
+
+// Stable score-descending merge of engine results and recent-URL rows, so a
+// frequently/recently opened URL rises exactly as far as its frecency earns
+// against local matches. Both inputs are already score-sorted; on ties the
+// local result stays ahead, so a URL never displaces an equally-ranked
+// app/file. Mirrors macOS LauncherView+URLResults.mergeByScore.
+function mergeByScore(local, recents) {
+  if (recents.length === 0) return local;
+  const merged = [];
+  let i = 0;
+  let j = 0;
+  while (i < local.length && j < recents.length) {
+    if (recents[j].score > local[i].score) {
+      merged.push(recents[j]);
+      j += 1;
+    } else {
+      merged.push(local[i]);
+      i += 1;
+    }
+  }
+  merged.push(...local.slice(i), ...recents.slice(j));
+  return merged;
+}
+
 function publish(query, version) {
   if (isStale(version) || !onResultsCallback) return;
   const suggestionRows = aiEnabled && lastWebSuggestions.length
     ? webSuggestionResults(lastWebSuggestions)
     : [];
-  const combined = [...lastEnginePayload, ...suggestionRows];
+  // Recent URLs interleave with engine results by frecency, deduped against
+  // the live row so the same address never appears twice. The live row's
+  // placement follows its tier (issue #232): a structural match (scheme,
+  // port, path, localhost/IP) can't be a file or search, so it ranks top; a
+  // bare host.tld must never steal the default slot from a real local
+  // result, so it sits after them. Web-search rows stay last.
+  const liveUrl = lastUrlMatch ? lastUrlMatch.url : null;
+  const recentRows = lastRecentUrls
+    .filter((e) => e.url !== liveUrl)
+    .map((e) => webUrlResult(e.url, WEB_URL_RECENT_SUBTITLE, e.score));
+  const ranked = mergeByScore(lastEnginePayload, recentRows);
+  let combined;
+  if (!lastUrlMatch) {
+    combined = [...ranked, ...suggestionRows];
+  } else {
+    const liveRow = webUrlResult(liveUrl, WEB_URL_OPEN_SUBTITLE, 0);
+    combined = lastUrlMatch.tier === 'structural'
+      ? [liveRow, ...ranked, ...suggestionRows]
+      : [...ranked, liveRow, ...suggestionRows];
+  }
   // Hold an empty render while web suggestions are still loading. The
   // engine returns instantly (~50 ms) but DDG /ac/ takes 500 ms-2 s; on a
   // fresh query we'd otherwise paint "No results" for a couple of seconds

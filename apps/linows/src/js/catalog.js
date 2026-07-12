@@ -3,13 +3,14 @@
 // `"` menu, the `:` menu, and the Help screen can't drift. linows omits
 // `tw"` (no dictionary lookup yet).
 
-import { calculator, timer, listChecks, xCircle, terminal, info } from './icons.js';
+import { calculator, timer, listChecks, xCircle, terminal, info, globe } from './icons.js';
 
 // Synthetic-row id namespaces: the renderer and Enter/click handlers tell
 // synthetic rows apart from real candidates by id prefix.
 const PREFIX_HINT_ID = 'prefixhint:';
 const COMMAND_HINT_ID = 'cmdhint:';
 const WEB_SUGGEST_ID = 'websuggest:';
+const WEB_URL_ID = 'weburl:';
 const DISCOVERY_CHAR = '"';
 
 // Google-autocomplete row glyph: Lucide `search` (mirrors macOS, which uses
@@ -137,4 +138,27 @@ export function webSuggestionResults(suggestions) {
 
 export function webSuggestionFromResultId(resultId) {
   return resultId?.startsWith(WEB_SUGGEST_ID) ? resultId.slice(WEB_SUGGEST_ID.length) : null;
+}
+
+// Synthesized "Open <url>" rows (issue #232 + url-history spec). One shape
+// shared by the live-classified row and history rows, so the open handler and
+// preview key off the same id encoding. Mirrors macOS
+// AppConstants.Launcher.WebURL.
+export const WEB_URL_OPEN_SUBTITLE = 'Open in browser';
+export const WEB_URL_RECENT_SUBTITLE = 'Recently opened';
+
+export function webUrlResult(url, subtitle, score) {
+  return {
+    id: `${WEB_URL_ID}${url}`,
+    kind: 'app',
+    title: url,
+    subtitle,
+    path: url,
+    score,
+    iconSvg: globe,
+  };
+}
+
+export function webUrlFromResultId(resultId) {
+  return resultId?.startsWith(WEB_URL_ID) ? resultId.slice(WEB_URL_ID.length) : null;
 }

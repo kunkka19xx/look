@@ -27,7 +27,8 @@ import {
   getConfig,
 } from './ipc.js';
 import {
-  prefixFromResultId, commandIdFromResultId, webSuggestionFromResultId, isPrefixedQuery,
+  prefixFromResultId, commandIdFromResultId, webSuggestionFromResultId, webUrlFromResultId,
+  isPrefixedQuery,
 } from './catalog.js';
 
 // Item count and structure mirror the macOS app's `LauncherView.hintItems`
@@ -335,9 +336,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       aiAnswer.cancel();
       return;
     }
-    const localCount = items.filter((r) => webSuggestionFromResultId(r.id) == null).length;
+    const localCount = items.filter((r) => !isSyntheticSuggestionRow(r)).length;
     aiAnswer.update(query, localCount);
   });
+
+  // Synthesized suggestion rows (Google autocomplete, URL open/history) are
+  // not local results: they never count toward the AI knowledge-lookup
+  // trigger or the stacked/two-col layout choice.
+  function isSyntheticSuggestionRow(r) {
+    return webSuggestionFromResultId(r.id) != null || webUrlFromResultId(r.id) != null;
+  }
 
   // Pick stacked / two-col purely from the local-result count, ignoring the
   // controller state and the suggestion-arrival timing. This is what
@@ -358,7 +366,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     resultsArea.classList.remove(...AI_LAYOUT_CLASSES);
     let mode = null;
     if (lastAiState !== AiState.idle) {
-      const hasLocal = lastResults.some((r) => webSuggestionFromResultId(r.id) == null);
+      const hasLocal = lastResults.some((r) => !isSyntheticSuggestionRow(r));
       mode = hasLocal ? AI_LAYOUT_STACKED : AI_LAYOUT_TWO_COL;
       resultsArea.classList.add(mode);
     }
@@ -470,6 +478,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (suggestionText != null) {
       const url = `https://www.google.com/search?q=${encodeURIComponent(suggestionText)}`;
       import('./ipc.js').then(({ openPath }) => openPath(url, 'browser', ''));
+      return;
+    }
+    // URL row: same behavior on click as on Enter (keyboard.js openSelected).
+    const urlTarget = webUrlFromResultId(item.id);
+    if (urlTarget != null) {
+      import('./ipc.js').then(({ openPath, recordUrlHit }) => {
+        openPath(urlTarget, 'browser', '');
+        recordUrlHit(urlTarget);
+      });
       return;
     }
 

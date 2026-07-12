@@ -1,12 +1,12 @@
 import * as results from './components/results.js';
 import * as search from './search.js';
 import * as translatePanel from './components/translate.js';
-import { openPath, recordUsage, revealPath, hideWindow, copyFilesToClipboard, copyToClipboard, deleteClipboardEntry, trashPaths, countTrashItems, emptyTrash, requestIndexRefresh } from './ipc.js';
+import { openPath, recordUsage, recordUrlHit, revealPath, hideWindow, copyFilesToClipboard, copyToClipboard, deleteClipboardEntry, trashPaths, countTrashItems, emptyTrash, requestIndexRefresh } from './ipc.js';
 import * as banner from './components/banner.js';
 import * as confirm from './components/confirm.js';
 import * as runningApps from './components/running-apps.js';
 import { trash as trashIcon } from './icons.js';
-import { prefixFromResultId, commandIdFromResultId, webSuggestionFromResultId } from './catalog.js';
+import { prefixFromResultId, commandIdFromResultId, webSuggestionFromResultId, webUrlFromResultId } from './catalog.js';
 import * as platform from './platform.js';
 import * as layout from './layout.js';
 
@@ -401,6 +401,15 @@ async function openSelected() {
   if (suggestionText != null) {
     const url = `https://www.google.com/search?q=${encodeURIComponent(suggestionText)}`;
     openPath(url, 'browser', '');
+    return;
+  }
+  // URL row (live or from history) → open the resolved address in the
+  // default browser and remember it for faster re-open later. Recording is
+  // fire-and-forget; a store failure never blocks the open.
+  const urlTarget = webUrlFromResultId(item.id);
+  if (urlTarget != null) {
+    openPath(urlTarget, 'browser', '');
+    recordUrlHit(urlTarget);
     return;
   }
 

@@ -21,6 +21,7 @@ mod sysinfo;
 mod todo;
 mod translate;
 mod trash;
+mod weburl;
 
 #[cfg(target_os = "linux")]
 use platform::linux::gpu;
@@ -673,6 +674,11 @@ fn main() {
             answers::duckduckgo_answer,
             answers::wikipedia_answer,
             answers::web_suggestions,
+            // URL-like queries + opened-URL history (shared core, same
+            // url_history table macOS uses)
+            weburl::classify_url,
+            weburl::record_url_hit,
+            weburl::recent_urls,
             // Clipboard
             clipboard::get_clipboard_history,
             clipboard::delete_clipboard_entry,
