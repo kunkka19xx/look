@@ -123,11 +123,11 @@ private struct QuickActionControl: View {
         case .unavailable(let reason):
             statusRow(label: field.label, value: reason)
         case .list(let items):
-            // A "Status: N connected" summary line, then one row per device.
+            // A summary line (e.g. "Status: N connected"), then one row per item.
             VStack(alignment: .leading, spacing: Layout.itemSpacing) {
                 statusRow(label: field.label, value: connectedSummary(items))
                 ForEach(items, id: \.self) { item in
-                    DeviceRow(item: item, hintFont: hintFont, themeStore: themeStore) {
+                    ListItemRow(item: item, hintFont: hintFont, themeStore: themeStore) {
                         onActivateItem(item)
                     }
                 }
@@ -191,9 +191,10 @@ private struct QuickActionControl: View {
     }
 }
 
-/// One paired-device row: a connection dot, the name, and a "Connected" marker.
-/// Clickable to connect/disconnect, with a hover highlight so it reads as active.
-private struct DeviceRow: View {
+/// One actionable list item: a state dot, its label, clickable to act on it
+/// (e.g. connect/disconnect a paired device), with a hover highlight. Generic -
+/// any control whose info resolves to a `.list` renders its items through this.
+private struct ListItemRow: View {
     let item: QuickActionListItem
     let hintFont: Font
     let themeStore: ThemeStore

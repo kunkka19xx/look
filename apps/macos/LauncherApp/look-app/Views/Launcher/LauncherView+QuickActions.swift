@@ -56,15 +56,12 @@ extension LauncherView {
         quickActionTask = Task {
             for descriptor in descriptors {
                 guard !Task.isCancelled else { return }
-                let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId)
-                let state = await adapter?.state() ?? .unavailable("Not supported on this Mac")
-                let info = await adapter?.info(keys: descriptor.info.map(\.valueKey)) ?? [:]
+                let (state, info) = await readQuickAction(descriptor)
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     // Drop the read if the selection moved on while we awaited.
                     guard selectedResultID == resultID else { return }
-                    quickActionStates[descriptor.actionId] = state
-                    quickActionInfo[descriptor.actionId] = info
+                    apply(state: state, info: info, for: descriptor)
                 }
             }
         }
@@ -134,13 +131,26 @@ extension LauncherView {
     /// Re-reads one action's live state + info after an apply, so the toggle and
     /// device list stay truthful without a full refresh.
     private func reloadQuickAction(_ descriptor: QuickActionDescriptor) async {
-        guard let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId) else { return }
+        let (state, info) = await readQuickAction(descriptor)
+        await MainActor.run { apply(state: state, info: info, for: descriptor) }
+    }
+
+    /// Reads an action's live state and info from its adapter (or `.unavailable`
+    /// when no adapter is registered on this OS). Shared by the initial load and
+    /// the post-apply reload.
+    private func readQuickAction(_ descriptor: QuickActionDescriptor) async -> (ActionState, [String: InfoValue]) {
+        guard let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId) else {
+            return (.unavailable("Not supported on this Mac"), [:])
+        }
         let state = await adapter.state()
         let info = await adapter.info(keys: descriptor.info.map(\.valueKey))
-        await MainActor.run {
-            quickActionStates[descriptor.actionId] = state
-            quickActionInfo[descriptor.actionId] = info
-        }
+        return (state, info)
+    }
+
+    /// Stores a read result into the panel state. Main-actor only.
+    private func apply(state: ActionState, info: [String: InfoValue], for descriptor: QuickActionDescriptor) {
+        quickActionStates[descriptor.actionId] = state
+        quickActionInfo[descriptor.actionId] = info
     }
 
     private func showOutcomeBanner(_ outcome: ActionOutcome, fallback: String) {
