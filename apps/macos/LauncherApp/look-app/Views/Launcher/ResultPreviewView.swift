@@ -10,6 +10,7 @@ struct ResultPreviewView: View {
     var quickActions: [QuickActionDescriptor] = []
     var quickActionStates: [String: ActionState] = [:]
     var quickActionInfo: [String: [String: InfoValue]] = [:]
+    var pendingQuickActionItems: Set<String> = []
     var onRunQuickAction: (QuickActionDescriptor, ActionIntent) -> Void = { _, _ in }
     var onActivateQuickActionItem: (QuickActionDescriptor, QuickActionListItem) -> Void = { _, _ in }
     var onDeleteClipboard: (() -> Void)? = nil
@@ -164,6 +165,7 @@ struct ResultPreviewView: View {
                         descriptors: quickActions,
                         states: quickActionStates,
                         info: quickActionInfo,
+                        pendingItems: pendingQuickActionItems,
                         themeStore: themeStore,
                         onRun: onRunQuickAction,
                         onActivateItem: onActivateQuickActionItem

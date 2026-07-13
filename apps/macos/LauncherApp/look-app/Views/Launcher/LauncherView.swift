@@ -50,6 +50,10 @@ struct LauncherView: View {
     // Resolved info values per action (actionId -> valueKey -> value), e.g. the
     // Bluetooth "status" key resolving to the paired-device list.
     @State var quickActionInfo: [String: [String: InfoValue]] = [:]
+    // In-flight action keys (an action id for a toggle, an item id for a list
+    // row), so a second press can't race a running connect/toggle. Keys don't
+    // collide: action ids are short slugs, item ids are device addresses.
+    @State var pendingQuickActions: Set<String> = []
     @State var quickActionTask: Task<Void, Never>?
     @State var selectedResultID: String?
     @State var pickedKeys: [String] = []
@@ -1045,6 +1049,7 @@ struct LauncherView: View {
                     quickActions: quickActionDescriptors,
                     quickActionStates: quickActionStates,
                     quickActionInfo: quickActionInfo,
+                    pendingQuickActionItems: pendingQuickActions,
                     onRunQuickAction: { descriptor, intent in
                         runQuickAction(descriptor, intent: intent)
                     },

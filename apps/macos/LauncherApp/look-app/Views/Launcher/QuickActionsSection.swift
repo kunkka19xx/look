@@ -12,6 +12,8 @@ struct QuickActionsSection: View {
     let states: [String: ActionState]
     /// actionId -> valueKey -> resolved info value (device list, status, ...).
     let info: [String: [String: InfoValue]]
+    /// Item ids currently applying (connecting/disconnecting), rendered as busy.
+    let pendingItems: Set<String>
     let themeStore: ThemeStore
     /// A control was activated by click (Cmd+O runs the same path).
     var onRun: (QuickActionDescriptor, ActionIntent) -> Void = { _, _ in }
@@ -29,6 +31,7 @@ struct QuickActionsSection: View {
                     descriptor: descriptor,
                     state: states[descriptor.actionId],
                     info: info[descriptor.actionId] ?? [:],
+                    pendingItems: pendingItems,
                     themeStore: themeStore,
                     onRun: { intent in onRun(descriptor, intent) },
                     onActivateItem: { item in onActivateItem(descriptor, item) }
@@ -43,6 +46,7 @@ private struct QuickActionControl: View {
     let descriptor: QuickActionDescriptor
     let state: ActionState?
     let info: [String: InfoValue]
+    let pendingItems: Set<String>
     let themeStore: ThemeStore
     let onRun: (ActionIntent) -> Void
     let onActivateItem: (QuickActionListItem) -> Void
@@ -127,7 +131,12 @@ private struct QuickActionControl: View {
             VStack(alignment: .leading, spacing: Layout.itemSpacing) {
                 statusRow(label: field.label, value: connectedSummary(items))
                 ForEach(items, id: \.self) { item in
-                    ListItemRow(item: item, hintFont: hintFont, themeStore: themeStore) {
+                    ListItemRow(
+                        item: item,
+                        isPending: item.id.map(pendingItems.contains) ?? false,
+                        hintFont: hintFont,
+                        themeStore: themeStore
+                    ) {
                         onActivateItem(item)
                     }
                 }
@@ -196,6 +205,7 @@ private struct QuickActionControl: View {
 /// any control whose info resolves to a `.list` renders its items through this.
 private struct ListItemRow: View {
     let item: QuickActionListItem
+    let isPending: Bool
     let hintFont: Font
     let themeStore: ThemeStore
     let onActivate: () -> Void
@@ -210,7 +220,11 @@ private struct ListItemRow: View {
         static let dotSize: CGFloat = 7
         static let restOpacity = 0.10
         static let hoverOpacity = 0.28
+        static let pendingOpacity = 0.5
     }
+
+    /// Clickable only when it has an id and isn't already applying.
+    private var isActionable: Bool { item.id != nil && !isPending }
 
     var body: some View {
         Button(action: onActivate) {
@@ -229,18 +243,17 @@ private struct ListItemRow: View {
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.vertical, Layout.verticalPadding)
             .background(
-                themeStore.dividerColor().opacity(hovering ? Layout.hoverOpacity : Layout.restOpacity),
+                themeStore.dividerColor().opacity(hovering && isActionable ? Layout.hoverOpacity : Layout.restOpacity),
                 in: RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(item.id == nil)
-        .onHover { inside in
-            hovering = inside
-            if item.id != nil {
-                inside ? NSCursor.pointingHand.push() : NSCursor.pop()
-            }
-        }
+        .disabled(!isActionable)
+        .opacity(isPending ? Layout.pendingOpacity : 1)
+        // Native pointer (macOS 15+) avoids the unbalanced NSCursor push/pop
+        // stack that would leave a stuck cursor when a row is removed on reload.
+        .pointerStyle(isActionable ? .link : nil)
+        .onHover { hovering = $0 }
     }
 }

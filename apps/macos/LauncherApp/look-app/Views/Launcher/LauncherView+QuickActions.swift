@@ -80,6 +80,10 @@ extension LauncherView {
             showBanner("\(descriptor.title) is not available", style: .info, duration: Banner.unavailable)
             return
         }
+        // Ignore a re-press while this action is still applying.
+        let key = descriptor.actionId
+        guard !pendingQuickActions.contains(key) else { return }
+        let resultID = selectedResultID
 
         // A toggle press means "the opposite of the state I am looking at", so
         // resolve it to an explicit target before it reaches the adapter:
@@ -102,10 +106,14 @@ extension LauncherView {
             quickActionStates[descriptor.actionId] = on ? .on : .off
         }
 
+        pendingQuickActions.insert(key)
         Task {
             let outcome = await adapter.apply(intent)
-            await MainActor.run { showOutcomeBanner(outcome, fallback: "\(descriptor.title) done") }
-            await reloadQuickAction(descriptor)
+            await MainActor.run {
+                pendingQuickActions.remove(key)
+                showOutcomeBanner(outcome, fallback: "\(descriptor.title) done")
+            }
+            await reloadQuickAction(descriptor, resultID: resultID)
         }
     }
 
@@ -114,25 +122,35 @@ extension LauncherView {
     /// can take a moment; the outcome banner replaces it when it finishes.
     func activateQuickActionItem(_ descriptor: QuickActionDescriptor, item: QuickActionListItem) {
         guard let itemId = item.id,
-            let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId)
+            let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId),
+            !pendingQuickActions.contains(itemId)  // ignore a re-click while in flight
         else { return }
+        let resultID = selectedResultID
 
         let disconnecting = item.on == true
         let progress = disconnecting ? "Disconnecting from \(item.label)…" : "Connecting to \(item.label)…"
         showBanner(progress, style: .info, duration: Banner.inProgress)
 
+        pendingQuickActions.insert(itemId)
         Task {
             let outcome = await adapter.applyItem(itemId, intent: .toggle)
-            await MainActor.run { showOutcomeBanner(outcome, fallback: "Done") }
-            await reloadQuickAction(descriptor)
+            await MainActor.run {
+                pendingQuickActions.remove(itemId)
+                showOutcomeBanner(outcome, fallback: "Done")
+            }
+            await reloadQuickAction(descriptor, resultID: resultID)
         }
     }
 
     /// Re-reads one action's live state + info after an apply, so the toggle and
-    /// device list stay truthful without a full refresh.
-    private func reloadQuickAction(_ descriptor: QuickActionDescriptor) async {
+    /// device list stay truthful without a full refresh. Drops the write if the
+    /// selection changed while the (slow) apply was in flight.
+    private func reloadQuickAction(_ descriptor: QuickActionDescriptor, resultID: String?) async {
         let (state, info) = await readQuickAction(descriptor)
-        await MainActor.run { apply(state: state, info: info, for: descriptor) }
+        await MainActor.run {
+            guard selectedResultID == resultID else { return }
+            apply(state: state, info: info, for: descriptor)
+        }
     }
 
     /// Reads an action's live state and info from its adapter (or `.unavailable`
