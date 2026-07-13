@@ -6,13 +6,16 @@
 // switch does the same, the outcome shows as a banner and state is re-read
 // after apply. A stale-token guard drops late reads when the selection moves.
 
-import { quickActions, quickActionState, quickActionApply } from '../ipc.js';
+import { quickActions, quickActionState, quickActionApply, quickActionApplyItem } from '../ipc.js';
 import * as banner from './banner.js';
 
 // Banner durations (seconds), matching macOS Banner constants.
 const BANNER_SUCCESS = 1.2;
 const BANNER_ERROR = 1.6;
 const BANNER_PERMISSION = 2.2;
+// Matches the backend device-action timeout, so the "Connecting…" toast stays
+// up for the whole wait and the outcome banner takes over when it lands.
+const DEVICE_PENDING = 6;
 
 const TOGGLE_HINT = 'Ctrl+O';
 
@@ -152,29 +155,25 @@ function applyStatus(handle, status) {
     }
 
     for (const [key, field] of handle.infoFields) {
-        renderInfoField(field, status.info[key]);
+        renderInfoField(handle, field, status.info[key]);
     }
 }
 
 // Fill one info field's container from its resolved value: a plain label/value
 // row for text, or a labelled header plus one row per item for a list (e.g.
-// each connected Bluetooth device), mirroring the folder listing.
-function renderInfoField({ container, label }, value) {
+// each paired Bluetooth device), mirroring the folder listing. List items with
+// an `id` are clickable and toggle that item (connect/disconnect a device).
+function renderInfoField(handle, { container, label }, value) {
     container.innerHTML = '';
     if (value?.kind === 'list') {
-        container.appendChild(infoRow(label, `${value.items.length} connected`));
+        const connected = value.items.filter((it) => it.on === true).length;
+        container.appendChild(
+            infoRow(label, connected === 0 ? 'None connected' : `${connected} connected`),
+        );
         const list = document.createElement('div');
         list.className = 'qaction-device-list';
-        for (const name of value.items) {
-            const row = document.createElement('div');
-            row.className = 'qaction-device-row';
-            row.appendChild(document.createElement('span')).className = 'qaction-device-dot';
-            const nameEl = document.createElement('span');
-            nameEl.className = 'qaction-device-name';
-            nameEl.textContent = name;
-            nameEl.title = name;
-            row.appendChild(nameEl);
-            list.appendChild(row);
+        for (const item of value.items) {
+            list.appendChild(deviceRow(handle, item));
         }
         container.appendChild(list);
         return;
@@ -185,6 +184,27 @@ function renderInfoField({ container, label }, value) {
         row.querySelector('.preview-info-value').classList.add('qaction-info-unavailable');
     }
     container.appendChild(row);
+}
+
+// One device row: a connection dot + name. When the item carries an `id` it is
+// a clickable button that toggles that device's connection.
+function deviceRow(handle, item) {
+    const actionable = item.id != null;
+    const row = document.createElement(actionable ? 'button' : 'div');
+    row.className = 'qaction-device-row';
+    row.classList.toggle('is-connected', item.on === true);
+    if (actionable) {
+        row.type = 'button';
+        row.tabIndex = -1;
+        row.addEventListener('click', () => runItem(handle, item));
+    }
+    row.appendChild(document.createElement('span')).className = 'qaction-device-dot';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'qaction-device-name';
+    nameEl.textContent = item.label;
+    nameEl.title = item.label;
+    row.appendChild(nameEl);
+    return row;
 }
 
 // A label/value row matching the panel's other metadata rows.
@@ -222,6 +242,30 @@ async function run(handle, intent) {
     }
 
     const outcome = await quickActionApply(handle.descriptor.action_id, intent);
+    finishAction(handle, outcome, myToken);
+}
+
+// Toggle one list item (connect/disconnect a device), then reconcile as `run`.
+async function runItem(handle, item) {
+    if (inFlight) return;
+    inFlight = true;
+    const myToken = token;
+    // Connecting can take a few seconds; show immediate feedback so the click
+    // doesn't feel dead. The outcome banner replaces this when it lands.
+    const connecting = item.on !== true;
+    banner.show(
+        `${connecting ? 'Connecting to' : 'Disconnecting'} ${item.label}…`,
+        'info',
+        DEVICE_PENDING,
+    );
+    const outcome = await quickActionApplyItem(handle.descriptor.action_id, item.id, 'toggle');
+    finishAction(handle, outcome, myToken);
+}
+
+// Shared tail for run/runItem: show the outcome banner and re-read state so the
+// panel reflects reality. Late responses (selection moved) drop on the token;
+// clear() resets `inFlight` in that case, so we needn't reset it here.
+async function finishAction(handle, outcome, myToken) {
     if (token !== myToken) return;
     showOutcome(handle.descriptor, outcome);
 

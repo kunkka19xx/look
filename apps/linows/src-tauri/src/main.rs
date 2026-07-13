@@ -685,6 +685,7 @@ fn main() {
             qactions::quick_actions,
             qactions::quick_action_state,
             qactions::quick_action_apply,
+            qactions::quick_action_apply_item,
             // Clipboard
             clipboard::get_clipboard_history,
             clipboard::delete_clipboard_entry,

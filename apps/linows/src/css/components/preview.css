@@ -536,23 +536,45 @@
 .qaction-device-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
     margin: 2px 0 2px 2px;
 }
 
+/* Clickable row: connects if the device is off, disconnects if it is on. */
 .qaction-device-row {
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
-    padding: 2px 0;
+    width: 100%;
+    padding: 4px 6px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    outline: none;
 }
 
+.qaction-device-row:hover {
+    background: var(--control-fill);
+}
+
+/* Hollow dot = paired but disconnected; filled accent = connected. */
 .qaction-device-dot {
-    width: 6px;
-    height: 6px;
+    width: 7px;
+    height: 7px;
     flex-shrink: 0;
+    box-sizing: border-box;
     border-radius: 50%;
+    border: 1.5px solid var(--font-muted);
+    background: transparent;
+}
+
+.qaction-device-row.is-connected .qaction-device-dot {
+    border-color: var(--accent-color);
     background: var(--accent-color);
 }
 

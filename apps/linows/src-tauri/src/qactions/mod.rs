@@ -70,14 +70,24 @@ pub enum InfoValue {
     Text {
         text: String,
     },
-    /// A set of items the panel renders one-per-row (e.g. each connected
-    /// Bluetooth device), instead of squeezing them into a single value.
+    /// A set of items the panel renders one-per-row (e.g. each paired Bluetooth
+    /// device), instead of squeezing them into a single value.
     List {
-        items: Vec<String>,
+        items: Vec<ListItem>,
     },
     Unavailable {
         reason: String,
     },
+}
+
+/// One entry in an [`InfoValue::List`]. An `id` makes the row actionable via
+/// [`SystemControl::apply_item`]; `on` drives an on/off marker (e.g. whether a
+/// device is currently connected). Both are optional so a list can be plain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ListItem {
+    pub id: Option<String>,
+    pub label: String,
+    pub on: Option<bool>,
 }
 
 /// The adapter a contributor implements per control - the one linows file you
@@ -96,6 +106,15 @@ pub trait SystemControl: Send + Sync {
 
     /// Perform `intent` and report the outcome.
     fn apply(&self, intent: ActionIntent) -> ActionOutcome;
+
+    /// Act on one item of a list-valued info field (e.g. connect/disconnect a
+    /// specific device). Defaults to unsupported: most controls have no
+    /// per-item actions.
+    fn apply_item(&self, _item_id: &str, _intent: ActionIntent) -> ActionOutcome {
+        ActionOutcome::Failed {
+            message: "No per-item action".to_string(),
+        }
+    }
 }
 
 /// Resolves an action id to its native adapter - the one-line-per-control
@@ -160,6 +179,26 @@ pub async fn quick_action_state(action_id: String, info_keys: Vec<String>) -> Qu
 pub async fn quick_action_apply(action_id: String, intent: ActionIntent) -> ActionOutcome {
     async_runtime::spawn_blocking(move || match adapter(&action_id) {
         Some(control) => control.apply(intent),
+        None => ActionOutcome::Failed {
+            message: UNAVAILABLE_ON_OS.to_string(),
+        },
+    })
+    .await
+    .unwrap_or_else(|_| ActionOutcome::Failed {
+        message: "Action failed".to_string(),
+    })
+}
+
+/// Run an intent against one list item of an action (e.g. toggle a device's
+/// connection). Like `quick_action_apply`, but targets an item by id.
+#[tauri::command]
+pub async fn quick_action_apply_item(
+    action_id: String,
+    item_id: String,
+    intent: ActionIntent,
+) -> ActionOutcome {
+    async_runtime::spawn_blocking(move || match adapter(&action_id) {
+        Some(control) => control.apply_item(&item_id, intent),
         None => ActionOutcome::Failed {
             message: UNAVAILABLE_ON_OS.to_string(),
         },

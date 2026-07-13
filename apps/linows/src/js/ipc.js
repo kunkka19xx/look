@@ -169,6 +169,10 @@ export async function quickActionApply(actionId, intent) {
     return invoke('quick_action_apply', { actionId, intent });
 }
 
+export async function quickActionApplyItem(actionId, itemId, intent) {
+    return invoke('quick_action_apply_item', { actionId, itemId, intent });
+}
+
 // Todo: full-set load/save against the shared look-todo store. Tasks are
 // `{ id, name, done, due_date, created_at_unix_s }` (same JSON contract as
 // the macOS FFI bridge).

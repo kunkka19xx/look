@@ -17,7 +17,9 @@
 //! LD_LIBRARY_PATH scrubbing that an in-process call avoids entirely.
 
 use crate::platform::linux::dbus;
-use crate::qactions::{ActionIntent, ActionOutcome, ActionState, InfoValue, SystemControl};
+use crate::qactions::{
+    ActionIntent, ActionOutcome, ActionState, InfoValue, ListItem, SystemControl,
+};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use zbus::zvariant::{OwnedObjectPath, OwnedValue};
@@ -36,15 +38,28 @@ const NO_ADAPTER: &str = "Bluetooth hardware not found";
 const SETTLE_TIMEOUT: Duration = Duration::from_millis(1500);
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
 
+/// How long to wait for a device Connect/Disconnect before reporting failure.
+/// BlueZ's own call can hang up to ~25s when a device is off or out of range;
+/// 6s is plenty for a nearby device and keeps the shared D-Bus runtime from
+/// stalling other calls (e.g. window focus) for long.
+const DEVICE_ACTION_TIMEOUT: Duration = Duration::from_secs(6);
+
 /// `a{oa{sa{sv}}}` - the BlueZ object tree from `GetManagedObjects`.
 type ManagedObjects = HashMap<OwnedObjectPath, HashMap<String, HashMap<String, OwnedValue>>>;
+
+/// A paired device from the BlueZ tree.
+struct Device {
+    path: OwnedObjectPath,
+    alias: String,
+    connected: bool,
+}
 
 /// The BlueZ facts the panel needs, from one `GetManagedObjects` call.
 struct Snapshot {
     adapter_path: OwnedObjectPath,
     powered: bool,
-    /// Aliases of currently connected devices.
-    connected: Vec<String>,
+    /// Paired devices, connected ones first, for the interactive device list.
+    devices: Vec<Device>,
 }
 
 /// Toggles and reports Linux system Bluetooth power. Action id: `"bluetooth"`.
@@ -68,12 +83,22 @@ impl SystemControl for BluetoothControl {
             Ok(s) if !s.powered => InfoValue::Text {
                 text: "Off".to_string(),
             },
-            Ok(s) if s.connected.is_empty() => InfoValue::Text {
-                text: "On, not connected".to_string(),
+            Ok(s) if s.devices.is_empty() => InfoValue::Text {
+                text: "On, no paired devices".to_string(),
             },
-            // One row per connected device: a comma-joined line gets unreadable
-            // (and wraps mid-word) once more than a couple are paired.
-            Ok(s) => InfoValue::List { items: s.connected },
+            // One clickable row per paired device (connect/disconnect); a
+            // comma-joined line gets unreadable once more than a couple pair.
+            Ok(s) => InfoValue::List {
+                items: s
+                    .devices
+                    .into_iter()
+                    .map(|d| ListItem {
+                        id: Some(d.path.to_string()),
+                        label: d.alias,
+                        on: Some(d.connected),
+                    })
+                    .collect(),
+            },
             Err(reason) => InfoValue::Unavailable { reason },
         };
         values.insert("status".to_string(), value);
@@ -110,6 +135,37 @@ impl SystemControl for BluetoothControl {
             banner: Some(format!("Bluetooth {}", on_off(target))),
         }
     }
+
+    fn apply_item(&self, item_id: &str, intent: ActionIntent) -> ActionOutcome {
+        if !matches!(intent, ActionIntent::Toggle) {
+            return ActionOutcome::Failed {
+                message: "Devices can only be connected or disconnected".to_string(),
+            };
+        }
+        // item_id is a BlueZ device object path. Re-read its live connection so
+        // a click flips the real state (not a stale rendered one) and gives us
+        // a name for the banner.
+        let Some((connected, alias)) = device_state(item_id) else {
+            return ActionOutcome::Failed {
+                message: "Device is no longer available".to_string(),
+            };
+        };
+        let connect = !connected;
+        let (verb_ok, verb_fail) = if connect {
+            ("Connected to", "connect to")
+        } else {
+            ("Disconnected from", "disconnect from")
+        };
+        if set_device_connected(item_id, connect) {
+            ActionOutcome::Ok {
+                banner: Some(format!("{verb_ok} {alias}")),
+            }
+        } else {
+            ActionOutcome::Failed {
+                message: format!("Failed to {verb_fail} {alias}"),
+            }
+        }
+    }
 }
 
 fn on_off(on: bool) -> &'static str {
@@ -143,18 +199,66 @@ fn snapshot() -> Result<Snapshot, String> {
         .ok_or_else(|| NO_ADAPTER.to_string())?;
     let powered = prop_bool(adapter_props, "Powered").unwrap_or(false);
 
-    let mut connected: Vec<String> = objects
-        .values()
-        .filter_map(|ifaces| ifaces.get(DEVICE_IFACE))
-        .filter(|props| prop_bool(props, "Connected").unwrap_or(false))
-        .filter_map(|props| prop_str(props, "Alias").or_else(|| prop_str(props, "Address")))
+    let mut devices: Vec<Device> = objects
+        .iter()
+        .filter_map(|(path, ifaces)| {
+            let props = ifaces.get(DEVICE_IFACE)?;
+            // Only devices we have paired with - the ones a user can re-connect.
+            if !prop_bool(props, "Paired").unwrap_or(false) {
+                return None;
+            }
+            Some(Device {
+                path: path.clone(),
+                alias: prop_str(props, "Alias").or_else(|| prop_str(props, "Address"))?,
+                connected: prop_bool(props, "Connected").unwrap_or(false),
+            })
+        })
         .collect();
-    connected.sort();
+    // Connected first, then alphabetical, so the active devices lead the list.
+    devices.sort_by(|a, b| {
+        b.connected
+            .cmp(&a.connected)
+            .then_with(|| a.alias.to_lowercase().cmp(&b.alias.to_lowercase()))
+    });
 
     Ok(Snapshot {
         adapter_path,
         powered,
-        connected,
+        devices,
+    })
+}
+
+/// Read one device's live `Connected` state and display name by object path.
+fn device_state(path: &str) -> Option<(bool, String)> {
+    let conn = dbus::system()?;
+    dbus::runtime().block_on(async {
+        let proxy = zbus::Proxy::new(conn, BLUEZ_DEST, path, DEVICE_IFACE)
+            .await
+            .ok()?;
+        let connected: bool = proxy.get_property("Connected").await.ok()?;
+        let alias = proxy
+            .get_property::<String>("Alias")
+            .await
+            .unwrap_or_else(|_| "device".to_string());
+        Some((connected, alias))
+    })
+}
+
+/// Call `Connect`/`Disconnect` on a device, bounded by `DEVICE_ACTION_TIMEOUT`.
+/// Returns whether it completed within the window.
+fn set_device_connected(path: &str, connect: bool) -> bool {
+    let Some(conn) = dbus::system() else {
+        return false;
+    };
+    let method = if connect { "Connect" } else { "Disconnect" };
+    dbus::runtime().block_on(async {
+        let Ok(proxy) = zbus::Proxy::new(conn, BLUEZ_DEST, path, DEVICE_IFACE).await else {
+            return false;
+        };
+        matches!(
+            tokio::time::timeout(DEVICE_ACTION_TIMEOUT, proxy.call_method(method, &())).await,
+            Ok(Ok(_))
+        )
     })
 }
 
