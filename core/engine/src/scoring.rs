@@ -73,7 +73,7 @@ pub(crate) fn path_match_score(query: &str, path: &str) -> Option<i64> {
 
     let mut cursor = 0usize;
     let mut total_gap = 0usize;
-    for token in tokens {
+    for &token in &tokens {
         let remaining = &path[cursor..];
         let found_at = remaining.find(token)?;
         total_gap += found_at;
@@ -81,7 +81,19 @@ pub(crate) fn path_match_score(query: &str, path: &str) -> Option<i64> {
     }
 
     let penalty = (total_gap as i64).min(250);
-    Some(1_050 - penalty)
+    let mut score = 1_050 - penalty;
+    // Fuzzy edition of the ends_with rule above: descendants walk the same
+    // tokens with the same gaps as the folder the user named (trailing path
+    // is free), so they would tie and alphabetical order could put a child
+    // like `.../domain/commands` first. When the query's last segment names
+    // the path's final component, boost the named entry above them. The cap
+    // (1_050 + 150) keeps every fuzzy match below the literal 1_350/1_500.
+    if let (Some(&last_token), Some(last_slash)) = (tokens.last(), path.rfind('/'))
+        && path[last_slash + 1..].contains(last_token)
+    {
+        score += 150;
+    }
+    Some(score)
 }
 
 pub(crate) fn kind_bias(candidate: &Candidate) -> i64 {
@@ -340,6 +352,41 @@ mod tests {
         assert!(
             exact > child,
             "the named folder ({exact:?}) should beat its child ({child:?})"
+        );
+    }
+
+    #[test]
+    fn path_match_fuzzy_target_outranks_descendants() {
+        // "kunkka-co" is a partial segment, so the literal contains/ends_with
+        // branch never fires and the token walk decides the order.
+        let query = "kunkka-co/domain";
+        let exact = path_match_score(query, "/users/x/git/kunkka-coffee/domain");
+        let child = path_match_score(query, "/users/x/git/kunkka-coffee/domain/commands");
+        assert!(exact.is_some());
+        assert!(
+            exact > child,
+            "the named folder ({exact:?}) should beat its child ({child:?})"
+        );
+    }
+
+    #[test]
+    fn path_match_fuzzy_partial_last_segment_outranks_descendants() {
+        let query = "kunkka-co/dom";
+        let exact = path_match_score(query, "/users/x/git/kunkka-coffee/domain");
+        let child = path_match_score(query, "/users/x/git/kunkka-coffee/domain/commands");
+        assert!(
+            exact > child,
+            "a partial last segment ({exact:?}) should still beat the child ({child:?})"
+        );
+    }
+
+    #[test]
+    fn path_match_fuzzy_bonus_stays_below_literal_match() {
+        let fuzzy = path_match_score("kunkka-co/domain", "/users/x/git/kunkka-coffee/domain");
+        let literal = path_match_score("coffee/domain", "/users/x/git/kunkka-coffee/domain/file");
+        assert!(
+            fuzzy < literal,
+            "fuzzy + bonus ({fuzzy:?}) must not outrank a literal substring match ({literal:?})"
         );
     }
 
