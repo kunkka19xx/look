@@ -11,7 +11,7 @@ struct ResultPreviewView: View {
     var quickActionStates: [String: ActionState] = [:]
     var quickActionInfo: [String: [String: InfoValue]] = [:]
     var onRunQuickAction: (QuickActionDescriptor, ActionIntent) -> Void = { _, _ in }
-    var onActivateQuickActionItem: (QuickActionDescriptor, String) -> Void = { _, _ in }
+    var onActivateQuickActionItem: (QuickActionDescriptor, QuickActionListItem) -> Void = { _, _ in }
     var onDeleteClipboard: (() -> Void)? = nil
 
     @State private var folderListing: FolderListing?

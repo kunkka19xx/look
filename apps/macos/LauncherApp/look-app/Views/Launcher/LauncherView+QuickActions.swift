@@ -14,6 +14,9 @@ extension LauncherView {
         static let error: TimeInterval = 1.6
         static let needsPermission: TimeInterval = 2.2
         static let unavailable: TimeInterval = 1.4
+        /// "Connecting to…" stays until the outcome replaces it; long enough to
+        /// outlast a device connect that times out (deviceActionTimeout + buffer).
+        static let inProgress: TimeInterval = 8
     }
 
     /// The selected result, if it is a real candidate (not a synthesized row).
@@ -110,9 +113,17 @@ extension LauncherView {
     }
 
     /// Connects/disconnects a list item (a paired device) when its row is
-    /// clicked in the panel.
-    func activateQuickActionItem(_ descriptor: QuickActionDescriptor, itemId: String) {
-        guard let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId) else { return }
+    /// clicked. Shows an immediate "Connecting to…" banner because the operation
+    /// can take a moment; the outcome banner replaces it when it finishes.
+    func activateQuickActionItem(_ descriptor: QuickActionDescriptor, item: QuickActionListItem) {
+        guard let itemId = item.id,
+            let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId)
+        else { return }
+
+        let disconnecting = item.on == true
+        let progress = disconnecting ? "Disconnecting from \(item.label)…" : "Connecting to \(item.label)…"
+        showBanner(progress, style: .info, duration: Banner.inProgress)
+
         Task {
             let outcome = await adapter.applyItem(itemId, intent: .toggle)
             await MainActor.run { showOutcomeBanner(outcome, fallback: "Done") }

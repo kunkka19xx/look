@@ -1048,8 +1048,8 @@ struct LauncherView: View {
                     onRunQuickAction: { descriptor, intent in
                         runQuickAction(descriptor, intent: intent)
                     },
-                    onActivateQuickActionItem: { descriptor, itemId in
-                        activateQuickActionItem(descriptor, itemId: itemId)
+                    onActivateQuickActionItem: { descriptor, item in
+                        activateQuickActionItem(descriptor, item: item)
                     },
                     onDeleteClipboard: selectedResult.kind == .clipboard
                         ? { deleteClipboardResult(resultID: selectedResult.id) }

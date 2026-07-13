@@ -16,7 +16,7 @@ struct QuickActionsSection: View {
     /// A control was activated by click (Cmd+O runs the same path).
     var onRun: (QuickActionDescriptor, ActionIntent) -> Void = { _, _ in }
     /// A list item (e.g. a device row) was clicked to connect/disconnect.
-    var onActivateItem: (QuickActionDescriptor, String) -> Void = { _, _ in }
+    var onActivateItem: (QuickActionDescriptor, QuickActionListItem) -> Void = { _, _ in }
 
     private enum Layout {
         static let rowSpacing: CGFloat = 6
@@ -31,7 +31,7 @@ struct QuickActionsSection: View {
                     info: info[descriptor.actionId] ?? [:],
                     themeStore: themeStore,
                     onRun: { intent in onRun(descriptor, intent) },
-                    onActivateItem: { itemId in onActivateItem(descriptor, itemId) }
+                    onActivateItem: { item in onActivateItem(descriptor, item) }
                 )
             }
         }
@@ -45,7 +45,7 @@ private struct QuickActionControl: View {
     let info: [String: InfoValue]
     let themeStore: ThemeStore
     let onRun: (ActionIntent) -> Void
-    let onActivateItem: (String) -> Void
+    let onActivateItem: (QuickActionListItem) -> Void
 
     private enum Layout {
         static let sectionSpacing: CGFloat = 4
@@ -55,11 +55,9 @@ private struct QuickActionControl: View {
         static let verticalPadding: CGFloat = 8
         static let cornerRadius: CGFloat = 8
         static let rowBackgroundOpacity = 0.18
-        static let itemBackgroundOpacity = 0.10
         static let toggleKeyHint = "⌘O"
         static let hintFontSizeDelta: CGFloat = 3
         static let minHintFontSize: CGFloat = 10
-        static let dotSize: CGFloat = 7
         static let itemSpacing: CGFloat = 3
         static let listTopPadding: CGFloat = 2
     }
@@ -136,42 +134,13 @@ private struct QuickActionControl: View {
         case .list(let items):
             VStack(spacing: Layout.itemSpacing) {
                 ForEach(items, id: \.self) { item in
-                    deviceRow(item)
+                    DeviceRow(item: item, hintFont: hintFont, themeStore: themeStore) {
+                        onActivateItem(item)
+                    }
                 }
             }
             .padding(.top, Layout.listTopPadding)
         }
-    }
-
-    private func deviceRow(_ item: QuickActionListItem) -> some View {
-        Button {
-            if let id = item.id { onActivateItem(id) }
-        } label: {
-            HStack(spacing: Layout.controlSpacing) {
-                Circle()
-                    .fill(item.on == true ? Color.green : Color.clear)
-                    .overlay(Circle().strokeBorder(themeStore.mutedTextColor(), lineWidth: item.on == true ? 0 : 1))
-                    .frame(width: Layout.dotSize, height: Layout.dotSize)
-                Text(item.label)
-                    .font(hintFont)
-                    .foregroundStyle(themeStore.fontColor())
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                if item.on == true {
-                    Text("Connected")
-                        .font(hintFont)
-                        .foregroundStyle(themeStore.mutedTextColor())
-                }
-            }
-            .padding(.horizontal, Layout.horizontalPadding)
-            .padding(.vertical, Layout.verticalPadding / 2)
-            .background(
-                themeStore.dividerColor().opacity(Layout.itemBackgroundOpacity),
-                in: RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(item.id == nil)
     }
 
     // MARK: - Helpers
@@ -201,5 +170,62 @@ private struct QuickActionControl: View {
         Text(text)
             .font(themeStore.uiFont(size: hintFontSize, weight: .semibold))
             .foregroundStyle(themeStore.mutedTextColor())
+    }
+}
+
+/// One paired-device row: a connection dot, the name, and a "Connected" marker.
+/// Clickable to connect/disconnect, with a hover highlight so it reads as active.
+private struct DeviceRow: View {
+    let item: QuickActionListItem
+    let hintFont: Font
+    let themeStore: ThemeStore
+    let onActivate: () -> Void
+
+    @State private var hovering = false
+
+    private enum Layout {
+        static let spacing: CGFloat = 8
+        static let horizontalPadding: CGFloat = 10
+        static let verticalPadding: CGFloat = 4
+        static let cornerRadius: CGFloat = 8
+        static let dotSize: CGFloat = 7
+        static let restOpacity = 0.10
+        static let hoverOpacity = 0.28
+    }
+
+    var body: some View {
+        Button(action: onActivate) {
+            HStack(spacing: Layout.spacing) {
+                Circle()
+                    .fill(item.on == true ? Color.green : Color.clear)
+                    .overlay(Circle().strokeBorder(themeStore.mutedTextColor(), lineWidth: item.on == true ? 0 : 1))
+                    .frame(width: Layout.dotSize, height: Layout.dotSize)
+                Text(item.label)
+                    .font(hintFont)
+                    .foregroundStyle(themeStore.fontColor())
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if item.on == true {
+                    Text("Connected")
+                        .font(hintFont)
+                        .foregroundStyle(themeStore.mutedTextColor())
+                }
+            }
+            .padding(.horizontal, Layout.horizontalPadding)
+            .padding(.vertical, Layout.verticalPadding)
+            .background(
+                themeStore.dividerColor().opacity(hovering ? Layout.hoverOpacity : Layout.restOpacity),
+                in: RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(item.id == nil)
+        .onHover { inside in
+            hovering = inside
+            if item.id != nil {
+                inside ? NSCursor.pointingHand.push() : NSCursor.pop()
+            }
+        }
     }
 }

@@ -36,6 +36,9 @@ struct BluetoothControl: SystemControl {
     /// to re-check while waiting. The controller applies asynchronously (~100ms).
     private static let settleTimeout: TimeInterval = 1.5
     private static let pollInterval: UInt64 = 80_000_000  // 80ms in nanoseconds
+    /// Give a device connection this long before reporting failure. Matches the
+    /// linows adapter's device-action timeout.
+    static let deviceActionTimeout: TimeInterval = 6
 
     private func isPoweredOn() -> Bool {
         IOBluetoothPreferenceGetControllerPowerState() == 1
@@ -60,28 +63,38 @@ struct BluetoothControl: SystemControl {
     }
 
     /// Connects/disconnects a paired device. `itemId` is its Bluetooth address.
+    /// Connecting uses IOBluetooth's async API so the UI never blocks on the
+    /// handshake; disconnecting is quick and done inline.
     func applyItem(_ itemId: String, intent: ActionIntent) async -> ActionOutcome {
         guard intent == .toggle else {
             return .failed("Devices can only be connected or disconnected")
         }
-        // The whole lookup + connect stays on the main actor (IOBluetoothDevice
-        // is @MainActor); only the Sendable outcome crosses back.
-        return await MainActor.run {
+        let found = await MainActor.run { () -> (name: String, connected: Bool)? in
             guard let device = Self.pairedDevices().first(where: { $0.addressString == itemId }) else {
-                return .failed("Device is no longer available")
+                return nil
             }
-            let name = device.name ?? itemId
-            let connect = !device.isConnected()
-            let result: IOReturn = connect ? device.openConnection() : device.closeConnection()
-            guard result == kIOReturnSuccess else {
-                return .failed(connect ? "Failed to connect to \(name)" : "Failed to disconnect from \(name)")
-            }
-            return .ok(banner: connect ? "Connected to \(name)" : "Disconnected from \(name)")
+            return (device.name ?? itemId, device.isConnected())
         }
+        guard let found else { return .failed("Device is no longer available") }
+
+        if found.connected {
+            let result = await MainActor.run { () -> IOReturn in
+                Self.pairedDevices().first(where: { $0.addressString == itemId })?.closeConnection() ?? kIOReturnNoDevice
+            }
+            return result == kIOReturnSuccess
+                ? .ok(banner: "Disconnected from \(found.name)")
+                : .failed("Failed to disconnect from \(found.name)")
+        }
+
+        let connector = await BluetoothConnector()
+        let status = await connector.connect(address: itemId, timeout: Self.deviceActionTimeout)
+        return status == kIOReturnSuccess
+            ? .ok(banner: "Connected to \(found.name)")
+            : .failed("Failed to connect to \(found.name)")
     }
 
     @MainActor
-    private static func pairedDevices() -> [IOBluetoothDevice] {
+    fileprivate static func pairedDevices() -> [IOBluetoothDevice] {
         (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice]) ?? []
     }
 
@@ -133,5 +146,46 @@ struct BluetoothControl: SystemControl {
             try? await Task.sleep(nanoseconds: Self.pollInterval)
         }
         return isPoweredOn() == target
+    }
+}
+
+/// Bridges `IOBluetoothDevice`'s async connection callback to Swift concurrency,
+/// so a connect never blocks the UI thread. `openConnection(_:)` returns
+/// immediately and `connectionComplete(_:status:)` fires on the run loop; a
+/// timeout guards a device that never answers. Retained by the awaiting task
+/// until the continuation resumes.
+@MainActor
+private final class BluetoothConnector: NSObject {
+    private var continuation: CheckedContinuation<IOReturn, Never>?
+    private var timeoutTask: Task<Void, Never>?
+
+    func connect(address: String, timeout: TimeInterval) async -> IOReturn {
+        guard let device = BluetoothControl.pairedDevices().first(where: { $0.addressString == address }) else {
+            return kIOReturnNoDevice
+        }
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            let initiated = device.openConnection(self)
+            if initiated != kIOReturnSuccess {
+                finish(initiated)
+                return
+            }
+            timeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                self?.finish(kIOReturnTimeout)
+            }
+        }
+    }
+
+    @objc func connectionComplete(_ device: IOBluetoothDevice!, status: IOReturn) {
+        finish(status)
+    }
+
+    private func finish(_ status: IOReturn) {
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        continuation?.resume(returning: status)
+        continuation = nil
     }
 }
