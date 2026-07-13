@@ -9,6 +9,13 @@
 //! Adapters block (D-Bus, CLIs), so state/apply run on the blocking pool,
 //! mirroring `answers.rs`.
 
+// Every `SystemControl` adapter is Linux-only today (see `controls`), so on
+// other targets nothing constructs the success-path states/outcomes/values of
+// the shared types below - they exist only to serialize back to the frontend.
+// Silence the resulting dead_code lint off Linux; a future non-Linux adapter
+// would use them and this lifts on its own.
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
+
 pub mod controls;
 
 use serde::{Deserialize, Serialize};
