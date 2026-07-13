@@ -81,14 +81,25 @@ extension LauncherView {
             return
         }
 
-        // Flip a toggle immediately for instant feedback; the re-read below
-        // confirms (and corrects it if the change did not take).
+        // A toggle press means "the opposite of the state I am looking at", so
+        // resolve it to an explicit target before it reaches the adapter:
+        // apply(.toggle) flips the LIVE state, which does the opposite of what
+        // the user asked whenever the panel is stale (the system changed while
+        // the launcher was hidden). An unknown displayed state keeps the blind
+        // toggle.
+        var intent = intent
         if intent == .toggle {
             switch quickActionStates[descriptor.actionId] {
-            case .on?: quickActionStates[descriptor.actionId] = .off
-            case .off?: quickActionStates[descriptor.actionId] = .on
+            case .on?: intent = .setOn(false)
+            case .off?: intent = .setOn(true)
             default: break
             }
+        }
+
+        // Show the target immediately for instant feedback; the re-read below
+        // confirms (and corrects it if the change did not take).
+        if case .setOn(let on) = intent {
+            quickActionStates[descriptor.actionId] = on ? .on : .off
         }
 
         Task {
