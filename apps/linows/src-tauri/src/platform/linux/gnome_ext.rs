@@ -32,6 +32,7 @@ const EXTENSIONS_DISABLED_MSG: &str = "GNOME user extensions are turned off, so 
      org.gnome.shell disable-user-extensions false";
 
 /// Install the GNOME Shell extension if not already present, then enable it.
+
 pub fn ensure_installed() {
     let ext_dir = extension_dir();
     let metadata_path = ext_dir.join("metadata.json");
@@ -79,7 +80,10 @@ fn install_current_version(
         return;
     }
     eprintln!("[look] Installed GNOME Shell extension: {EXT_UUID} (manual, needs re-login)");
-    crate::health::report(crate::health::ISSUE_GNOME_EXT, RELOGIN_MSG.to_string());
+    crate::health::report(
+        crate::health::ISSUE_GNOME_EXT,
+        not_loaded_message(user_extensions_disabled()).to_string(),
+    );
     enable_extension();
 }
 
@@ -124,19 +128,26 @@ fn verify_running_later(changed: bool) {
         });
         match err.map(|e| classify_dbus_error(&e)) {
             Some(ExtensionError::NotRunning) => {
-                if user_extensions_disabled() {
+                let disabled = user_extensions_disabled();
+                if disabled || changed {
                     crate::health::report(
                         crate::health::ISSUE_GNOME_EXT,
-                        EXTENSIONS_DISABLED_MSG.to_string(),
+                        not_loaded_message(disabled).to_string(),
                     );
-                } else if changed {
-                    crate::health::report(crate::health::ISSUE_GNOME_EXT, RELOGIN_MSG.to_string());
                 }
             }
             Some(ExtensionError::Stale) => warn_stale_extension_once(),
             _ => {}
         }
     });
+}
+
+fn not_loaded_message(user_extensions_disabled: bool) -> &'static str {
+    if user_extensions_disabled {
+        EXTENSIONS_DISABLED_MSG
+    } else {
+        RELOGIN_MSG
+    }
 }
 
 /// Whether GNOME's global "disable all user extensions" switch is on. When it

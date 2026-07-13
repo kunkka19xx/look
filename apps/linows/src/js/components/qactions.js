@@ -241,8 +241,9 @@ async function run(handle, intent) {
         setSwitch(handle, !handle.isOn);
     }
 
-    const outcome = await quickActionApply(handle.descriptor.action_id, intent);
-    finishAction(handle, outcome, myToken);
+    await applyAndReconcile(handle, myToken, () =>
+        quickActionApply(handle.descriptor.action_id, intent),
+    );
 }
 
 // Toggle one list item (connect/disconnect a device), then reconcile as `run`.
@@ -258,22 +259,33 @@ async function runItem(handle, item) {
         'info',
         DEVICE_PENDING,
     );
-    const outcome = await quickActionApplyItem(handle.descriptor.action_id, item.id, 'toggle');
-    finishAction(handle, outcome, myToken);
+    await applyAndReconcile(handle, myToken, () =>
+        quickActionApplyItem(handle.descriptor.action_id, item.id, 'toggle'),
+    );
 }
 
-// Shared tail for run/runItem: show the outcome banner and re-read state so the
-// panel reflects reality. Late responses (selection moved) drop on the token;
-// clear() resets `inFlight` in that case, so we needn't reset it here.
-async function finishAction(handle, outcome, myToken) {
-    if (token !== myToken) return;
-    showOutcome(handle.descriptor, outcome);
+// Shared body for run/runItem: apply, show the outcome, and re-read state so the
+// panel reflects reality. Everything is wrapped so a rejected IPC (backend
+// error/panic, Tauri failure) still releases `inFlight` - otherwise the control
+// wedges until the selection changes. Late responses (selection moved) drop on
+// the token guard; `finally` only releases `inFlight` while we still own the
+// current token (clear() already reset it for a newer run otherwise).
+async function applyAndReconcile(handle, myToken, apply) {
+    try {
+        const outcome = await apply();
+        if (token !== myToken) return;
+        showOutcome(handle.descriptor, outcome);
 
-    const keys = handle.descriptor.info.map((f) => f.value_key);
-    const status = await quickActionState(handle.descriptor.action_id, keys);
-    if (token !== myToken) return;
-    applyStatus(handle, status);
-    inFlight = false;
+        const keys = handle.descriptor.info.map((f) => f.value_key);
+        const status = await quickActionState(handle.descriptor.action_id, keys);
+        if (token !== myToken) return;
+        applyStatus(handle, status);
+    } catch (err) {
+        console.error('quick action failed', err);
+        if (token === myToken) showOutcome(handle.descriptor, null);
+    } finally {
+        if (token === myToken) inFlight = false;
+    }
 }
 
 function showOutcome(descriptor, outcome) {
