@@ -489,6 +489,17 @@ html[data-os="windows"] .launcher-window {
     margin: 0 var(--content-padding);
 }
 
+/* Floating/resting: the transient banner floats as an inset, rounded pill
+ * aligned with the tiles, instead of a full-width bar that overhangs the
+ * (invisible) window edges. The bottom margin keeps it off the results tiles
+ * with the same inner-gap rhythm; the top bar already spaces it from above. */
+.bar-free #banner {
+    margin: 0 var(--content-padding) var(--inner-gap);
+    border-radius: 10px;
+    border-bottom: none;
+    box-shadow: 0 3px 7px rgba(0, 0, 0, 0.25);
+}
+
 /* Empty-query resting state: just the frosted top bar on the desktop -
  * no columns, no hint bar, no copyright. Applies at gap 0 too. */
 .resting .results-row,
