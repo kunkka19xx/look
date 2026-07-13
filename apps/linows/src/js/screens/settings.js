@@ -329,12 +329,14 @@ export function init(exitFn) {
         if (!file) return;
         document.getElementById('settings-bg-path').textContent = file;
         applyBackgroundImage(file);
+        applytint();
         saveConfig({ ui_bg_image: file });
     });
 
     document.getElementById('settings-clear-bg').addEventListener('click', () => {
         document.getElementById('settings-bg-path').textContent = 'No background image';
         clearBackgroundImage();
+        applytint();
         saveConfig({ ui_bg_image: '' });
     });
 
@@ -415,8 +417,8 @@ export function init(exitFn) {
             await reloadConfig();
             await forceIndexRefresh();
             await loadConfig();
-            applyThemePreset('');
             clearBackgroundImage();
+            applyThemePreset('');
             banner.show('Config reset to defaults', 'success', 1.5);
         } catch {
             banner.show('Reset failed', 'error', 1.5);
@@ -615,6 +617,17 @@ export async function reloadFromFile() {
         await reloadConfig();
         const map = await loadConfigMap();
 
+        // Background image - apply BEFORE the tint pass: effectiveBlurOpacity
+        // keys off whether a bg image is present.
+        if (map.ui_bg_image) {
+            applyBackgroundImage(map.ui_bg_image);
+            if (map.ui_bg_layout) applyBgLayout(map.ui_bg_layout);
+            if (map.ui_bg_opacity) CSS_MAP.ui_bg_opacity(map.ui_bg_opacity);
+            if (map.ui_bg_blur) CSS_MAP.ui_bg_blur(map.ui_bg_blur);
+        } else {
+            clearBackgroundImage();
+        }
+
         // Theme
         const theme = map.ui_theme || '';
         applyThemePreset(theme);
@@ -639,16 +652,6 @@ export async function reloadFromFile() {
         // Floating layout gap
         CSS_MAP.inner_gap(map.inner_gap || 0);
 
-        // Background image
-        if (map.ui_bg_image) {
-            applyBackgroundImage(map.ui_bg_image);
-            if (map.ui_bg_layout) applyBgLayout(map.ui_bg_layout);
-            if (map.ui_bg_opacity) CSS_MAP.ui_bg_opacity(map.ui_bg_opacity);
-            if (map.ui_bg_blur) CSS_MAP.ui_bg_blur(map.ui_bg_blur);
-        } else {
-            clearBackgroundImage();
-        }
-
         // If settings screen is open, refresh the UI sliders too
         if (active) await loadConfig();
 
@@ -670,6 +673,10 @@ export async function enter(contentArea, searchBar) {
     screen.style.display = '';
     updateSettingsHint();
     await loadConfig();
+    // Tint alpha includes the Settings Blur multiplier only while `active`,
+    // so recompute on entry and exit. Without the exit pass the multiplied
+    // alpha leaks into the launcher until restart.
+    applytint();
 }
 
 export function exit(contentArea, searchBar) {
@@ -678,6 +685,7 @@ export function exit(contentArea, searchBar) {
     screen.style.display = 'none';
     contentArea.style.display = '';
     searchBar.style.display = '';
+    applytint();
     if (onExit) onExit();
 }
 
@@ -712,6 +720,15 @@ export async function restoreOnStartup() {
         // already opaque if the user toggled it.
         if (map.arch_disable_blur === 'true') {
             document.documentElement.setAttribute('data-disable-blur', '');
+        }
+
+        // Background image - restore BEFORE the tint pass: effectiveBlurOpacity
+        // keys off whether a bg image is present.
+        if (map.ui_bg_image) {
+            applyBackgroundImage(map.ui_bg_image);
+            if (map.ui_bg_layout) applyBgLayout(map.ui_bg_layout);
+            if (map.ui_bg_opacity) CSS_MAP.ui_bg_opacity(map.ui_bg_opacity);
+            if (map.ui_bg_blur) CSS_MAP.ui_bg_blur(map.ui_bg_blur);
         }
 
         // Pre-populate user-controlled sliders from config so the preset's
@@ -758,14 +775,6 @@ export async function restoreOnStartup() {
 
         // Floating layout gap
         CSS_MAP.inner_gap(map.inner_gap || 0);
-
-        // Background image
-        if (map.ui_bg_image) {
-            applyBackgroundImage(map.ui_bg_image);
-            if (map.ui_bg_layout) applyBgLayout(map.ui_bg_layout);
-            if (map.ui_bg_opacity) CSS_MAP.ui_bg_opacity(map.ui_bg_opacity);
-            if (map.ui_bg_blur) CSS_MAP.ui_bg_blur(map.ui_bg_blur);
-        }
     } catch {
         // Config may not exist yet
     }
@@ -1108,6 +1117,19 @@ function getSliderVal(key) {
     return parseFloat(row.querySelector('.settings-slider')?.value || 0);
 }
 
+function hasBgImage() {
+    return document.documentElement.style.getPropertyValue('--bg-image') !== '';
+}
+
+// Blur Opacity scales the tint down so the frosted layer shows through. That
+// layer is the in-page bg image: backdrop-filter can't blur behind the
+// window (compositor territory), so without a bg image the reduction is raw
+// see-through-to-desktop. Only apply it when a bg image exists; otherwise
+// Tint Opacity alone decides the window alpha.
+function effectiveBlurOpacity(blurA) {
+    return hasBgImage() ? blurA : 1.0;
+}
+
 function applytint() {
     const r = Math.round(getSliderVal('ui_tint_red') * 255);
     const g = Math.round(getSliderVal('ui_tint_green') * 255);
@@ -1128,7 +1150,7 @@ function applytint() {
         return;
     }
     const tintA = getSliderVal('ui_tint_opacity');
-    const blurA = getSliderVal('ui_blur_opacity') || 0.95;
+    const blurA = effectiveBlurOpacity(getSliderVal('ui_blur_opacity') || 0.95);
     const settingsBlur = active ? getSliderVal('settings_blur_multiplier') || 0.5 : 1.0;
     const a = tintA * blurA * settingsBlur;
     document.documentElement.style.setProperty(
@@ -1181,8 +1203,7 @@ function applyTintFromMap(map) {
         return;
     }
     const tintA = parseFloat(map.ui_tint_opacity ?? 0.95);
-    const blurA = parseFloat(map.ui_blur_opacity ?? 0.95);
-    const settingsBlur = parseFloat(map.settings_blur_multiplier ?? 0.5);
+    const blurA = effectiveBlurOpacity(parseFloat(map.ui_blur_opacity ?? 0.95));
     const a = tintA * blurA;
     document.documentElement.style.setProperty(
         '--bg-tint',
