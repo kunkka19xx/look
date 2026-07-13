@@ -718,6 +718,19 @@ struct LauncherView: View {
             }
             refreshClipboardMonitoringMode()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)
+        ) { notification in
+            // Quick-action state is cached and otherwise refreshed only when
+            // the selection changes. The window keeps its query and selection
+            // across hide/show, so on re-show the panel would keep states read
+            // before the hide - stale whenever the system changed underneath
+            // (e.g. Bluetooth flipped in Control Center). Re-read on every show.
+            guard let window = notification.object as? NSWindow,
+                window === launcherWindow()
+            else { return }
+            refreshQuickActions()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in
             reloadConfig()
         }
