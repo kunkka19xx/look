@@ -1,33 +1,37 @@
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  scrollbar-width: none;
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    scrollbar-width: none;
 }
 
-html, body {
-  height: 100%;
-  overflow: hidden;
-  background: var(--bg-tint);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+html,
+body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-tint);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* Compositor-capable: transparent body so desktop shows through */
-[data-transparent="true"], [data-transparent="true"] body {
-  background: transparent;
+[data-transparent="true"],
+[data-transparent="true"] body {
+    background: transparent;
 }
 
 input {
-  border: none;
-  outline: none;
-  background: none;
-  font: inherit;
-  color: inherit;
+    border: none;
+    outline: none;
+    background: none;
+    font: inherit;
+    color: inherit;
 }
 
 ::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
+    width: 0;
+    height: 0;
+    display: none;
 }

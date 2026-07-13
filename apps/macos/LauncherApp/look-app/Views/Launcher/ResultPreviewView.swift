@@ -5,10 +5,20 @@ import UniformTypeIdentifiers
 struct ResultPreviewView: View {
     @EnvironmentObject private var themeStore: ThemeStore
     let result: LauncherResult
+    /// Quick Actions for this result, rendered beneath the header (info + actions
+    /// panel). Empty for results with no actions.
+    var quickActions: [QuickActionDescriptor] = []
+    var quickActionStates: [String: ActionState] = [:]
+    var onRunQuickAction: (QuickActionDescriptor, ActionIntent) -> Void = { _, _ in }
     var onDeleteClipboard: (() -> Void)? = nil
 
     @State private var folderListing: FolderListing?
     @State private var trashItemCount: Int?
+
+    /// A System Settings pane result (its "path" is a URL scheme, not a file).
+    private var isSetting: Bool {
+        result.id.hasPrefix("setting:")
+    }
 
     /// The pinned Trash quick folder is TCC-protected, so it can't be listed
     /// like a normal folder - it gets a Finder-backed summary instead.
@@ -147,6 +157,15 @@ struct ResultPreviewView: View {
                     Spacer()
                 }
 
+                if !quickActions.isEmpty {
+                    QuickActionsSection(
+                        descriptors: quickActions,
+                        states: quickActionStates,
+                        themeStore: themeStore,
+                        onRun: onRunQuickAction
+                    )
+                }
+
                 if result.kind == .file {
                     if QuickLookPreviewService.isTextFile(path: result.path) {
                         TextFilePreview(path: result.path, maxHeight: .infinity)
@@ -169,18 +188,22 @@ struct ResultPreviewView: View {
 
                 InfoRow(label: "Kind", value: result.kind.rawValue.capitalized)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Path")
-                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
-                        .foregroundStyle(themeStore.mutedTextColor())
-                    Text(result.path)
-                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
-                        .foregroundStyle(themeStore.secondaryTextColor())
-                        .lineLimit(3)
-                }
+                // Settings panes have a URL-scheme "path" and a meaningless file
+                // date; hide both for them (only the actions matter there).
+                if !isSetting {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Path")
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                            .foregroundStyle(themeStore.mutedTextColor())
+                        Text(result.path)
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                            .foregroundStyle(themeStore.secondaryTextColor())
+                            .lineLimit(3)
+                    }
 
-                if let modified = info.modified {
-                    InfoRow(label: "Modified", value: modified)
+                    if let modified = info.modified {
+                        InfoRow(label: "Modified", value: modified)
+                    }
                 }
 
                 if result.kind != .file && result.kind != .folder {

@@ -11,6 +11,7 @@
 //!    - Hyprland: `hyprctl keyword bind ...`
 
 use super::host_command;
+use crate::health;
 use std::sync::Mutex;
 
 /// Saved original value of activate-window-menu before Look disabled it.
@@ -78,9 +79,12 @@ where
             // KDE registers via async D-Bus alongside the Toggle service below.
             Compositor::Kde => {}
             Compositor::Other => {
-                eprintln!(
-                    "[look] Unknown Wayland compositor: Alt+Space must be bound manually.\n\
-                     [look] Bind your hotkey to run: {TOGGLE_CMD}"
+                health::report(
+                    health::ISSUE_HOTKEY,
+                    format!(
+                        "This compositor has no supported hotkey API, so Alt+Space \
+                         is not set up. Bind a key manually to run: {TOGGLE_CMD}"
+                    ),
                 );
             }
         }
@@ -97,20 +101,34 @@ where
                 let toggle = on_toggle.clone();
                 tokio::task::spawn(async move {
                     if let Err(e) = run_kde_keybinding(move || toggle()).await {
-                        eprintln!(
-                            "[look] KDE keybinding error: {e}\n\
-                             [look] Bind your hotkey manually to run: {TOGGLE_CMD}"
+                        health::report(
+                            health::ISSUE_HOTKEY,
+                            format!(
+                                "KDE hotkey registration failed ({e}). Bind a key \
+                                 manually to run: {TOGGLE_CMD}"
+                            ),
                         );
                     }
                 });
             }
 
             if let Err(e) = run_dbus_service(move || on_toggle()).await {
-                eprintln!("[look] D-Bus service error: {e}");
-                // The KDE task toggles via the kglobalaccel signal alone;
-                // keep it alive.
                 if compositor == Compositor::Kde {
+                    // The KDE task toggles via the kglobalaccel signal alone;
+                    // keep it alive.
+                    eprintln!("[look] D-Bus service error: {e}");
                     std::future::pending::<()>().await;
+                } else {
+                    // Every other compositor binding toggles by calling this
+                    // service, so the hotkey is dead without it.
+                    health::report(
+                        health::ISSUE_HOTKEY,
+                        format!(
+                            "Look's D-Bus service failed to start ({e}), so the \
+                             Alt+Space binding cannot reach the app. Restart Look \
+                             to retry."
+                        ),
+                    );
                 }
             }
         });
@@ -135,11 +153,23 @@ fn ensure_sway_keybinding() {
         .output();
 
     // Bind Alt+Space to toggle Look via D-Bus
-    let _ = host_command("swaymsg")
+    let bound = host_command("swaymsg")
         .arg(format!("bindsym Alt+space exec {TOGGLE_CMD}"))
-        .output();
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
 
-    eprintln!("[look] Registered Sway keybinding: Alt+Space → Look toggle");
+    if bound {
+        eprintln!("[look] Registered Sway keybinding: Alt+Space → Look toggle");
+    } else {
+        health::report(
+            health::ISSUE_HOTKEY,
+            format!(
+                "Failed to register Alt+Space via swaymsg. Bind a key manually \
+                 to run: {TOGGLE_CMD}"
+            ),
+        );
+    }
 }
 
 fn cleanup_sway_keybinding() {
@@ -165,14 +195,9 @@ hl.window_rule({{ name = "look-noborder", match = {{ class = "lookapp" }}, borde
 hl.bind("ALT + space", hl.dsp.exec_cmd("{TOGGLE_CMD}"))"#
     );
 
-    let result = host_command("hyprctl").args(["eval", &lua]).output();
+    let used_lua = hyprctl_ok(host_command("hyprctl").args(["eval", &lua]).output());
 
-    let used_lua = result
-        .as_ref()
-        .map(|o| o.status.success() && !String::from_utf8_lossy(&o.stdout).contains("error"))
-        .unwrap_or(false);
-
-    if !used_lua {
+    let bound = used_lua || {
         // Fallback: legacy keyword syntax for older Hyprland
         let _ = host_command("hyprctl")
             .args(["keyword", "windowrulev2", "float, class:lookapp"])
@@ -180,12 +205,32 @@ hl.bind("ALT + space", hl.dsp.exec_cmd("{TOGGLE_CMD}"))"#
         let _ = host_command("hyprctl")
             .args(["keyword", "windowrulev2", "noborder, class:lookapp"])
             .output();
-        let _ = host_command("hyprctl")
-            .args(["keyword", "bind", &format!("ALT,space,exec,{TOGGLE_CMD}")])
-            .output();
-    }
+        hyprctl_ok(
+            host_command("hyprctl")
+                .args(["keyword", "bind", &format!("ALT,space,exec,{TOGGLE_CMD}")])
+                .output(),
+        )
+    };
 
-    eprintln!("[look] Registered Hyprland keybinding: Alt+Space → Look toggle");
+    if bound {
+        eprintln!("[look] Registered Hyprland keybinding: Alt+Space → Look toggle");
+    } else {
+        health::report(
+            health::ISSUE_HOTKEY,
+            format!(
+                "Failed to register Alt+Space via hyprctl. Bind a key manually \
+                 to run: {TOGGLE_CMD}"
+            ),
+        );
+    }
+}
+
+/// hyprctl exits 0 even for some rejected commands, reporting the failure as
+/// "error" text on stdout instead - check both.
+fn hyprctl_ok(result: std::io::Result<std::process::Output>) -> bool {
+    result
+        .map(|o| o.status.success() && !String::from_utf8_lossy(&o.stdout).contains("error"))
+        .unwrap_or(false)
 }
 
 fn cleanup_hyprland_keybinding() {
@@ -230,8 +275,8 @@ fn ensure_gnome_keybinding() {
         return;
     }
 
-    gsettings_set_at(KEYBINDING_SCHEMA, "name", "'Look Toggle'", KEYBINDING_PATH);
-    gsettings_set_at(
+    let mut ok = gsettings_set_at(KEYBINDING_SCHEMA, "name", "'Look Toggle'", KEYBINDING_PATH);
+    ok &= gsettings_set_at(
         KEYBINDING_SCHEMA,
         "command",
         &format!("'{TOGGLE_CMD}'"),
@@ -251,21 +296,31 @@ fn ensure_gnome_keybinding() {
             .collect::<Vec<_>>()
             .join(", ")
     );
-    gsettings_set(MEDIA_KEYS_SCHEMA, "custom-keybindings", &new_value);
+    ok &= gsettings_set(MEDIA_KEYS_SCHEMA, "custom-keybindings", &new_value);
 
     // Write the binding last, toggling it when it was shadowed: dconf drops
     // same-value writes and gsd only re-grabs on a change notification.
     if already_bound {
         gsettings_set_at(KEYBINDING_SCHEMA, "binding", "''", KEYBINDING_PATH);
     }
-    gsettings_set_at(
+    ok &= gsettings_set_at(
         KEYBINDING_SCHEMA,
         "binding",
         "'<Alt>space'",
         KEYBINDING_PATH,
     );
 
-    eprintln!("[look] Registered GNOME keybinding: Alt+Space → Look toggle");
+    if ok {
+        eprintln!("[look] Registered GNOME keybinding: Alt+Space → Look toggle");
+    } else {
+        health::report(
+            health::ISSUE_HOTKEY,
+            format!(
+                "Failed to register Alt+Space via gsettings. Bind a key manually \
+                 to run: {TOGGLE_CMD}"
+            ),
+        );
+    }
 }
 
 /// Disable GNOME's default Alt+Space (window menu) if it holds the key,
@@ -425,9 +480,13 @@ where
     if granted.contains(&QT_ALT_SPACE) {
         eprintln!("[look] Registered KDE keybinding: Alt+Space → Look toggle");
     } else {
-        eprintln!(
-            "[look] KDE assigned {granted:?} instead of Alt+Space. Rebind it in \
-             System Settings → Shortcuts → Look, or bind a key to run: {TOGGLE_CMD}"
+        health::report(
+            health::ISSUE_HOTKEY,
+            format!(
+                "KDE assigned a different key than Alt+Space (it may be taken). \
+                 Rebind it in System Settings → Shortcuts → Look, or bind a key \
+                 to run: {TOGGLE_CMD}"
+            ),
         );
     }
 
@@ -533,10 +592,12 @@ fn gsettings_get(schema: &str, key: &str) -> String {
         .to_string()
 }
 
-fn gsettings_set(schema: &str, key: &str, value: &str) {
-    let _ = host_command("gsettings")
+fn gsettings_set(schema: &str, key: &str, value: &str) -> bool {
+    host_command("gsettings")
         .args(["set", schema, key, value])
-        .output();
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 fn gsettings_get_at(schema: &str, key: &str, path: &str) -> String {
@@ -550,10 +611,12 @@ fn gsettings_get_at(schema: &str, key: &str, path: &str) -> String {
         .to_string()
 }
 
-fn gsettings_set_at(schema: &str, key: &str, value: &str, path: &str) {
-    let _ = host_command("gsettings")
+fn gsettings_set_at(schema: &str, key: &str, value: &str, path: &str) -> bool {
+    host_command("gsettings")
         .args(["set", &format!("{schema}:{path}"), key, value])
-        .output();
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 fn parse_gsettings_array(s: &str) -> Vec<String> {

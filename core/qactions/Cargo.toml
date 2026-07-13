@@ -1,0 +1,8 @@
+[package]
+name = "look-qactions"
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

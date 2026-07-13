@@ -8,7 +8,17 @@
 
 use crate::config;
 use crate::consts;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
+
+/// Set once by detect_and_disable_virtual_gpu() at startup; read by
+/// get_platform so the frontend can force the blur fallback in VMs
+/// (software rendering + backdrop-filter ghost-renders).
+static VIRTUAL_GPU: AtomicBool = AtomicBool::new(false);
+
+pub fn virtual_gpu_detected() -> bool {
+    VIRTUAL_GPU.load(Ordering::Relaxed)
+}
 
 /// Detect if running inside a VM with a virtual GPU that doesn't support EGL.
 /// Returns true if GPU acceleration should be disabled.
@@ -47,6 +57,7 @@ pub fn detect_and_disable_virtual_gpu() -> bool {
             .unwrap_or(false)
     };
     if detected {
+        VIRTUAL_GPU.store(true, Ordering::Relaxed);
         unsafe {
             std::env::set_var("WEBKIT_DISABLE_GPU", "1");
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");

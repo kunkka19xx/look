@@ -7,6 +7,7 @@ mod query;
 pub mod result;
 mod scoring;
 mod search;
+pub mod url_history;
 
 pub use action::{ActionKind, LaunchAction};
 use config::RuntimeConfig;

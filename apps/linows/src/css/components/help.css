@@ -3,7 +3,7 @@
  * convention). */
 html:not([data-os="windows"]) .help-windows-only,
 html:not([data-os="linux"]) .help-linux-only {
-  display: none;
+    display: none;
 }
 
 /* Help screen overlay - uses an opaque dark base under the translucent
@@ -11,96 +11,96 @@ html:not([data-os="linux"]) .help-linux-only {
  * still overlays the base, preserving the user's chosen theme color hue
  * while the base provides full opacity. */
 .help-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: rgba(20, 22, 30, 0.97);
-  background-image: linear-gradient(var(--bg-tint), var(--bg-tint));
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(20, 22, 30, 0.97);
+    background-image: linear-gradient(var(--bg-tint), var(--bg-tint));
 }
 
 .help-overlay[hidden] {
-  display: none;
+    display: none;
 }
 
 .help-panel {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: 12px 14px;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 14px;
 }
 
 .help-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
 }
 
 .help-title {
-  font-size: calc(var(--font-size) + 4px);
-  font-weight: 600;
-  color: var(--font-color);
+    font-size: calc(var(--font-size) + 4px);
+    font-weight: 600;
+    color: var(--font-color);
 }
 
 .help-close-hint {
-  font-size: calc(var(--font-size) - 2px);
-  color: var(--font-muted);
+    font-size: calc(var(--font-size) - 2px);
+    color: var(--font-muted);
 }
 
 .help-subtitle {
-  font-size: calc(var(--font-size) - 1px);
-  color: var(--font-secondary);
-  padding: 4px 0 8px;
-  flex-shrink: 0;
+    font-size: calc(var(--font-size) - 1px);
+    color: var(--font-secondary);
+    padding: 4px 0 8px;
+    flex-shrink: 0;
 }
 
 .help-body {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .help-body::-webkit-scrollbar {
-  width: 0;
-  display: none;
+    width: 0;
+    display: none;
 }
 
 .help-section-title {
-  font-size: var(--font-size);
-  font-weight: 600;
-  color: var(--font-secondary);
-  padding: 12px 0 4px;
+    font-size: var(--font-size);
+    font-weight: 600;
+    color: var(--font-secondary);
+    padding: 12px 0 4px;
 }
 
 .help-section-title:first-child {
-  padding-top: 4px;
+    padding-top: 4px;
 }
 
 .help-item {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 3px 0;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 3px 0;
 }
 
 .help-item kbd {
-  font-family: var(--font-mono);
-  font-size: calc(var(--font-size) - 2px);
-  font-weight: 400;
-  color: var(--font-color);
-  background: rgba(255, 255, 255, 0.14);
-  padding: 3px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: calc(var(--font-size) - 2px);
+    font-weight: 400;
+    color: var(--font-color);
+    background: rgba(255, 255, 255, 0.14);
+    padding: 3px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
 }
 
 .help-item span {
-  font-size: calc(var(--font-size) - 1px);
-  color: var(--font-secondary);
+    font-size: calc(var(--font-size) - 1px);
+    color: var(--font-secondary);
 }

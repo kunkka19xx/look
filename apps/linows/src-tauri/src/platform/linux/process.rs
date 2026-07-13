@@ -186,26 +186,42 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
             eprintln!("[list_gui] wlr app_ids: {:?}", app_ids);
         }
         if !app_ids.is_empty() {
+            // StartupWMClass is a third matching axis besides the stem forms:
+            // Wayland Electron apps keep their X11 class as app_id, and variant
+            // packages don't carry it in the stem (discord-ptb.desktop declares
+            // StartupWMClass=discord while the toplevel app_id is "discord").
+            let wm_classes: HashMap<String, String> = scan_desktop_files()
+                .into_iter()
+                .filter_map(|de| {
+                    let wc = de.wm_class?.to_lowercase();
+                    if wc.is_empty() {
+                        None
+                    } else {
+                        Some((de.path, wc))
+                    }
+                })
+                .collect();
             return all
                 .into_iter()
                 .filter(|app| {
+                    let Some(ref id) = app.desktop_id else {
+                        return false;
+                    };
+                    let Some(path) = id.strip_prefix("app:") else {
+                        return false;
+                    };
                     // Match desktop file stem (e.g. "org.mozilla.firefox" or "firefox")
                     // against toplevel app_ids
-                    if let Some(ref id) = app.desktop_id {
-                        let stem = id
-                            .strip_prefix("app:")
-                            .and_then(|p| {
-                                std::path::Path::new(p).file_stem().and_then(|f| f.to_str())
-                            })
-                            .unwrap_or("");
-                        let stem_lower = stem.to_lowercase();
-                        // Try full stem and last segment (for reverse-DNS like org.mozilla.firefox)
-                        let short = stem_lower.rsplit('.').next().unwrap_or("");
-                        app_ids.contains(&stem_lower)
-                            || (!short.is_empty() && app_ids.contains(short))
-                    } else {
-                        false
-                    }
+                    let stem = Path::new(path)
+                        .file_stem()
+                        .and_then(|f| f.to_str())
+                        .unwrap_or("");
+                    let stem_lower = stem.to_lowercase();
+                    // Try full stem and last segment (for reverse-DNS like org.mozilla.firefox)
+                    let short = stem_lower.rsplit('.').next().unwrap_or("");
+                    app_ids.contains(&stem_lower)
+                        || (!short.is_empty() && app_ids.contains(short))
+                        || wm_classes.get(path).is_some_and(|wc| app_ids.contains(wc))
                 })
                 .collect();
         }

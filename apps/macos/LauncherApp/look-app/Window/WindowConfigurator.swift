@@ -1,5 +1,4 @@
 import AppKit
-import OSLog
 import SwiftUI
 
 struct WindowConfigurator: NSViewRepresentable {
@@ -110,7 +109,11 @@ struct WindowConfigurator: NSViewRepresentable {
         window.toolbar = nil
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.isMovableByWindowBackground = true
+        // The launcher is not user-movable: it opens at a fixed
+        // position on the active (cursor) screen every show, so movement would
+        // only let its position drift out of sync. See toggleWindowVisibility.
+        window.isMovableByWindowBackground = false
+        window.isMovable = false
         window.hasShadow = false
         window.setContentBorderThickness(0, for: .maxY)
         window.collectionBehavior.insert(.moveToActiveSpace)
@@ -136,26 +139,10 @@ struct WindowConfigurator: NSViewRepresentable {
             contentView.layer?.masksToBounds = true
         }
 
+        // Initial placement; toggleWindowVisibility re-places it on the active
+        // screen every show, so this only seeds a sane frame before first show.
         if let screen = window.screen ?? NSScreen.main {
-            window.setFrame(WindowAutoScale.centeredFrame(on: screen), display: true)
-        }
-
-        // Re-apply scaling when the window crosses to a different display.
-        // Position is preserved (top-left anchor) - only size changes,
-        // since the macOS launcher is user-draggable.
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.didChangeScreenNotification,
-            object: window,
-            queue: .main
-        ) { note in
-            guard let w = note.object as? NSWindow else { return }
-            Logger(subsystem: "noah-code.Look", category: "window-resize")
-                .debug("didChangeScreenNotification fired - scheduling resize")
-            // The observer is registered with `queue: .main`, so this already
-            // runs on the main actor - assert it to reach the isolated method.
-            MainActor.assumeIsolated {
-                WindowAutoScale.scheduleResize(for: w)
-            }
+            window.setFrame(WindowAutoScale.spotlightFrame(on: screen), display: true)
         }
     }
 }

@@ -27,6 +27,15 @@ extension LauncherView {
             return
         }
 
+        // URL-like query row (live or from history): open the resolved address
+        // in the default browser and remember it for faster re-open later.
+        if let urlString = AppConstants.Launcher.WebURL.url(fromResultID: selected.id) {
+            openURLScheme(urlString)
+            bridge.recordURLHit(url: urlString)
+            hideLauncherWindow(restorePreviousApp: false)
+            return
+        }
+
         // Command-discovery row: enter that command's panel (empty input).
         if let commandID = AppConstants.Launcher.CommandSuggestion.commandID(fromResultID: selected.id) {
             enterCommandMode(commandID: commandID, prefilledInput: "")

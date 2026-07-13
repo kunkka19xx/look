@@ -37,6 +37,11 @@ extension ThemeSettingsView {
                     .overlay(.white.opacity(0.1))
                     .padding(.vertical, 4)
 
+                sectionHeader("Layout")
+
+                LabeledSlider(title: "Inner Gap", value: $settings.innerGap, range: 0...24)
+                    .help("i3-style gap between the top row, results list and preview. 0 = flat layout; higher turns each into its own card.")
+
                 sectionHeader("Tint Color")
 
                 LabeledSlider(title: "Red", value: $settings.tintRed, range: 0...1)

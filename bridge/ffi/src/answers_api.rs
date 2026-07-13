@@ -51,6 +51,13 @@ pub(crate) fn look_wikipedia_answer_json_impl(search_term: *const c_char) -> *mu
     )
 }
 
+/// Serialized `UrlMatch` object for `query`, or the JSON literal `null` when the
+/// query is not a URL.
+pub(crate) fn look_classify_url_json_impl(query: *const c_char) -> *mut c_char {
+    let query = cstr_to_string(query);
+    json_cstring(look_answers::classify_url(&query).and_then(|m| serde_json::to_string(&m).ok()))
+}
+
 /// The definitional entity for `query` as a JSON string, or the JSON literal `null`.
 pub(crate) fn look_definitional_entity_json_impl(query: *const c_char) -> *mut c_char {
     let query = cstr_to_string(query);

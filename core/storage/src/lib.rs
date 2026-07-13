@@ -10,6 +10,12 @@ const SEARCH_ENGINE_GOOGLE: &str = "google";
 const SEARCH_ENGINE_BING: &str = "bing";
 const MAX_CANDIDATE_PREALLOC: usize = 10_000;
 
+/// Hard cap on `url_history` rows. Retention is capacity-bound: after each write
+/// the least-recently-used rows beyond this many are pruned, so the table size
+/// never depends on how many distinct URLs the user has opened (see url-history
+/// spec). Kept modest - history is a convenience cache, not a system of record.
+const MAX_URL_HISTORY_ROWS: usize = 500;
+
 const SETTINGS_KEY_WEB_SEARCH_ENABLED: &str = "web_search_enabled";
 const SETTINGS_KEY_WEB_SEARCH_ENGINE: &str = "web_search_engine";
 const SETTINGS_TRUE: &str = "true";
@@ -63,6 +69,16 @@ impl From<rusqlite::Error> for StorageError {
 }
 
 pub type StorageResult<T> = Result<T, StorageError>;
+
+/// One remembered URL the user opened through the launcher (see url-history spec).
+/// `title` is reserved for a future title-search signal and is `None` today.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UrlHistoryEntry {
+    pub url: String,
+    pub title: Option<String>,
+    pub hit_count: u64,
+    pub last_used_at_unix_s: i64,
+}
 
 pub struct SqliteStore {
     conn: Connection,
@@ -404,6 +420,78 @@ impl SqliteStore {
         Ok(())
     }
 
+    /// Records that `url` was opened: inserts it or bumps its hit count and
+    /// last-used time, then prunes the least-recently-used rows beyond the
+    /// capacity cap so the table stays bounded. Best-effort at the call site -
+    /// the launcher never blocks an open on this.
+    pub fn record_url_hit(&self, url: &str) -> StorageResult<()> {
+        let url = url.trim();
+        if url.is_empty() {
+            return Ok(());
+        }
+        let now = current_unix_s()?;
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "INSERT INTO url_history(url, hit_count, last_used_at_unix_s) VALUES (?1, 1, ?2)
+             ON CONFLICT(url) DO UPDATE SET
+                 hit_count = hit_count + 1,
+                 last_used_at_unix_s = ?2",
+            params![url, now],
+        )?;
+        // Capacity-bound retention: keep only the most-recently-used rows.
+        tx.execute(
+            "DELETE FROM url_history WHERE url NOT IN (
+               SELECT url FROM url_history
+               ORDER BY last_used_at_unix_s DESC, url ASC
+               LIMIT ?1
+             )",
+            params![MAX_URL_HISTORY_ROWS as i64],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Up to `limit` remembered URLs matching `query` (substring, case-insensitive
+    /// over the URL), most-recently-used first. An empty query returns the most
+    /// recent overall. Used to suggest previously-opened URLs while typing.
+    pub fn recent_urls(&self, query: &str, limit: usize) -> StorageResult<Vec<UrlHistoryEntry>> {
+        let query = query.trim();
+        let limit = limit as i64;
+        let map_row = |row: &rusqlite::Row| -> rusqlite::Result<UrlHistoryEntry> {
+            let hit_count: i64 = row.get(2)?;
+            Ok(UrlHistoryEntry {
+                url: row.get(0)?,
+                title: row.get(1)?,
+                hit_count: hit_count.max(0) as u64,
+                last_used_at_unix_s: row.get(3)?,
+            })
+        };
+
+        let rows = if query.is_empty() {
+            let mut stmt = self.conn.prepare(
+                "SELECT url, title, hit_count, last_used_at_unix_s FROM url_history
+                 ORDER BY last_used_at_unix_s DESC, url ASC LIMIT ?1",
+            )?;
+            let mapped = stmt.query_map(params![limit], map_row)?;
+            mapped.collect::<rusqlite::Result<Vec<_>>>()?
+        } else {
+            // Escape LIKE metacharacters so a typed `%` or `_` is literal.
+            let escaped = query
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            let pattern = format!("%{escaped}%");
+            let mut stmt = self.conn.prepare(
+                "SELECT url, title, hit_count, last_used_at_unix_s FROM url_history
+                 WHERE url LIKE ?1 ESCAPE '\\'
+                 ORDER BY last_used_at_unix_s DESC, url ASC LIMIT ?2",
+            )?;
+            let mapped = stmt.query_map(params![pattern, limit], map_row)?;
+            mapped.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        Ok(rows)
+    }
+
     pub fn delete_stale_candidates(&mut self, older_than_unix_s: i64) -> StorageResult<usize> {
         let tx = self.conn.transaction()?;
         tx.execute(
@@ -645,7 +733,21 @@ impl SqliteStore {
               CREATE TABLE IF NOT EXISTS index_state (
                   source TEXT PRIMARY KEY,
                   last_indexed_at_unix_s INTEGER NOT NULL
-              );",
+              );
+
+              -- URLs opened through the launcher, for fast re-open later. Keyed
+              -- on the resolved/normalized URL so github.com and https://github.com
+              -- collapse to one row. Independent of `candidates` (never touched by
+              -- reindex prune); capacity-bound via MAX_URL_HISTORY_ROWS.
+              CREATE TABLE IF NOT EXISTS url_history (
+                  url                 TEXT PRIMARY KEY,
+                  title               TEXT,
+                  hit_count           INTEGER NOT NULL DEFAULT 0,
+                  last_used_at_unix_s INTEGER NOT NULL
+              );
+
+              CREATE INDEX IF NOT EXISTS idx_url_history_last_used
+                  ON url_history(last_used_at_unix_s);",
         )?;
 
         ensure_column_exists(&self.conn, "candidates", "indexed_at_unix_s", "INTEGER")?;
@@ -1309,5 +1411,64 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM usage_events", [], |row| row.get(0))
             .expect("count remaining usage");
         assert_eq!(remaining, 1);
+    }
+
+    #[test]
+    fn url_history_records_dedups_and_matches() {
+        let store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+
+        store
+            .record_url_hit("https://github.com")
+            .expect("record 1");
+        store
+            .record_url_hit("https://github.com")
+            .expect("record 2");
+        store
+            .record_url_hit("https://crates.io")
+            .expect("record other");
+
+        // Repeat opens collapse to one row and accumulate hit_count.
+        let all = store.recent_urls("", 10).expect("recent all");
+        assert_eq!(all.len(), 2);
+        let gh = all
+            .iter()
+            .find(|e| e.url == "https://github.com")
+            .expect("github entry");
+        assert_eq!(gh.hit_count, 2);
+
+        // Substring match over the URL, ignoring the scheme.
+        let matched = store.recent_urls("github", 10).expect("recent github");
+        assert_eq!(matched.len(), 1);
+        assert_eq!(matched[0].url, "https://github.com");
+
+        // A typed LIKE metacharacter is treated literally, not as a wildcard.
+        assert!(store.recent_urls("%", 10).expect("recent pct").is_empty());
+    }
+
+    #[test]
+    fn url_history_prunes_to_capacity() {
+        let store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        // One past the cap, each with a distinct, increasing last-used time.
+        for i in 0..=MAX_URL_HISTORY_ROWS {
+            store
+                .conn
+                .execute(
+                    "INSERT INTO url_history(url, hit_count, last_used_at_unix_s)
+                     VALUES (?1, 1, ?2)",
+                    params![format!("https://site{i}.com"), i as i64],
+                )
+                .expect("seed url");
+        }
+        // A fresh record triggers the capacity prune inside record_url_hit.
+        store.record_url_hit("https://newest.com").expect("record");
+
+        let count: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM url_history", [], |row| row.get(0))
+            .expect("count");
+        assert_eq!(count, MAX_URL_HISTORY_ROWS as i64);
+        // The oldest (site0) was evicted; the newest survives.
+        assert!(store.recent_urls("site0.com", 5).expect("q").is_empty());
+        assert_eq!(store.recent_urls("newest", 5).expect("q").len(), 1);
     }
 }
