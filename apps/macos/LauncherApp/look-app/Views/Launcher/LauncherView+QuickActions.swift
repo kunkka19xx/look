@@ -2,11 +2,11 @@ import Foundation
 
 /// Quick Actions - data loading and execution for the info+actions panel (see
 /// docs/writing-controls.md). Descriptors come from the shared `look_qactions`
-/// catalog; each action's live state and its execution come from a native
-/// `SystemControl` adapter resolved by `actionId`.
+/// catalog; each action's live state, info (e.g. paired devices), and execution
+/// come from a native `SystemControl` adapter resolved by `actionId`.
 ///
-/// Interaction: a `.toggle` control is flipped with Cmd+O (no navigation).
-/// Multi-choice controls (future) will move between options with Cmd+J/K.
+/// Interaction: a `.toggle` control is flipped with Cmd+O; a list item (e.g. a
+/// paired device) is connected/disconnected by clicking its row.
 extension LauncherView {
     /// Banner durations (seconds) for action outcomes.
     private enum Banner {
@@ -31,37 +31,37 @@ extension LauncherView {
     var hasToggleQuickAction: Bool { toggleQuickAction != nil }
 
     /// Loads the selected result's Quick Actions and reads each one's live state
-    /// off the main thread. Cancels any in-flight read so a stale result never
-    /// populates the panel. Called on selection/query change.
+    /// and info off the main thread. Cancels any in-flight read so a stale result
+    /// never populates the panel. Called on selection/query change.
     func refreshQuickActions() {
         quickActionTask?.cancel()
 
         guard let result = selectedResultForActions else {
             if !quickActionDescriptors.isEmpty { quickActionDescriptors = [] }
             if !quickActionStates.isEmpty { quickActionStates = [:] }
+            if !quickActionInfo.isEmpty { quickActionInfo = [:] }
             return
         }
 
         let descriptors = bridge.quickActions(forResultID: result.id, kind: result.kind.rawValue)
         quickActionDescriptors = descriptors
         quickActionStates = [:]
+        quickActionInfo = [:]
         guard !descriptors.isEmpty else { return }
 
         let resultID = result.id
         quickActionTask = Task {
             for descriptor in descriptors {
                 guard !Task.isCancelled else { return }
-                let state: ActionState
-                if let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId) {
-                    state = await adapter.state()
-                } else {
-                    state = .unavailable("Not supported on this Mac")
-                }
+                let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId)
+                let state = await adapter?.state() ?? .unavailable("Not supported on this Mac")
+                let info = await adapter?.info(keys: descriptor.info.map(\.valueKey)) ?? [:]
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     // Drop the read if the selection moved on while we awaited.
                     guard selectedResultID == resultID else { return }
                     quickActionStates[descriptor.actionId] = state
+                    quickActionInfo[descriptor.actionId] = info
                 }
             }
         }
@@ -74,7 +74,7 @@ extension LauncherView {
     }
 
     /// Runs a specific action's intent (from a click or a key), shows the
-    /// outcome, and refreshes its state. Shared by the toggle switch and Cmd+O.
+    /// outcome, and reloads its state + info. Shared by the toggle and Cmd+O.
     func runQuickAction(_ descriptor: QuickActionDescriptor, intent: ActionIntent) {
         guard let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId) else {
             showBanner("\(descriptor.title) is not available", style: .info, duration: Banner.unavailable)
@@ -104,20 +104,42 @@ extension LauncherView {
 
         Task {
             let outcome = await adapter.apply(intent)
-            await MainActor.run {
-                switch outcome {
-                case .ok(let banner):
-                    showBanner(banner ?? "\(descriptor.title) done", style: .success, duration: Banner.success)
-                case .failed(let message):
-                    showBanner(message, style: .error, duration: Banner.error)
-                case .needsPermission(let message):
-                    showBanner(message, style: .info, duration: Banner.needsPermission)
-                }
-            }
-            let state = await adapter.state()
-            await MainActor.run {
-                quickActionStates[descriptor.actionId] = state
-            }
+            await MainActor.run { showOutcomeBanner(outcome, fallback: "\(descriptor.title) done") }
+            await reloadQuickAction(descriptor)
+        }
+    }
+
+    /// Connects/disconnects a list item (a paired device) when its row is
+    /// clicked in the panel.
+    func activateQuickActionItem(_ descriptor: QuickActionDescriptor, itemId: String) {
+        guard let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId) else { return }
+        Task {
+            let outcome = await adapter.applyItem(itemId, intent: .toggle)
+            await MainActor.run { showOutcomeBanner(outcome, fallback: "Done") }
+            await reloadQuickAction(descriptor)
+        }
+    }
+
+    /// Re-reads one action's live state + info after an apply, so the toggle and
+    /// device list stay truthful without a full refresh.
+    private func reloadQuickAction(_ descriptor: QuickActionDescriptor) async {
+        guard let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId) else { return }
+        let state = await adapter.state()
+        let info = await adapter.info(keys: descriptor.info.map(\.valueKey))
+        await MainActor.run {
+            quickActionStates[descriptor.actionId] = state
+            quickActionInfo[descriptor.actionId] = info
+        }
+    }
+
+    private func showOutcomeBanner(_ outcome: ActionOutcome, fallback: String) {
+        switch outcome {
+        case .ok(let banner):
+            showBanner(banner ?? fallback, style: .success, duration: Banner.success)
+        case .failed(let message):
+            showBanner(message, style: .error, duration: Banner.error)
+        case .needsPermission(let message):
+            showBanner(message, style: .info, duration: Banner.needsPermission)
         }
     }
 }

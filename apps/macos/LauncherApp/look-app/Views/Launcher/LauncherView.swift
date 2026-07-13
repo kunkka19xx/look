@@ -47,6 +47,9 @@ struct LauncherView: View {
     // Quick Actions for the selected result (see docs/writing-controls.md).
     @State var quickActionDescriptors: [QuickActionDescriptor] = []
     @State var quickActionStates: [String: ActionState] = [:]
+    // Resolved info values per action (actionId -> valueKey -> value), e.g. the
+    // Bluetooth "status" key resolving to the paired-device list.
+    @State var quickActionInfo: [String: [String: InfoValue]] = [:]
     @State var quickActionTask: Task<Void, Never>?
     @State var selectedResultID: String?
     @State var pickedKeys: [String] = []
@@ -1041,8 +1044,12 @@ struct LauncherView: View {
                     result: selectedResult,
                     quickActions: quickActionDescriptors,
                     quickActionStates: quickActionStates,
+                    quickActionInfo: quickActionInfo,
                     onRunQuickAction: { descriptor, intent in
                         runQuickAction(descriptor, intent: intent)
+                    },
+                    onActivateQuickActionItem: { descriptor, itemId in
+                        activateQuickActionItem(descriptor, itemId: itemId)
                     },
                     onDeleteClipboard: selectedResult.kind == .clipboard
                         ? { deleteClipboardResult(resultID: selectedResult.id) }

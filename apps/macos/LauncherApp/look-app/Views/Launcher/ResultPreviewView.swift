@@ -9,7 +9,9 @@ struct ResultPreviewView: View {
     /// panel). Empty for results with no actions.
     var quickActions: [QuickActionDescriptor] = []
     var quickActionStates: [String: ActionState] = [:]
+    var quickActionInfo: [String: [String: InfoValue]] = [:]
     var onRunQuickAction: (QuickActionDescriptor, ActionIntent) -> Void = { _, _ in }
+    var onActivateQuickActionItem: (QuickActionDescriptor, String) -> Void = { _, _ in }
     var onDeleteClipboard: (() -> Void)? = nil
 
     @State private var folderListing: FolderListing?
@@ -161,8 +163,10 @@ struct ResultPreviewView: View {
                     QuickActionsSection(
                         descriptors: quickActions,
                         states: quickActionStates,
+                        info: quickActionInfo,
                         themeStore: themeStore,
-                        onRun: onRunQuickAction
+                        onRun: onRunQuickAction,
+                        onActivateItem: onActivateQuickActionItem
                     )
                 }
 
