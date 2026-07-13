@@ -21,6 +21,7 @@ import {
     webUrlFromResultId,
     WEB_URL_OPEN_SUBTITLE,
 } from '../catalog.js';
+import * as qactions from './qactions.js';
 
 let panel = null;
 let currentPath = null;
@@ -39,6 +40,7 @@ export function update(result) {
     if (!result) {
         panel.hidden = true;
         currentPath = null;
+        qactions.clear();
         return;
     }
 
@@ -53,6 +55,9 @@ export function update(result) {
     }
     panel.hidden = false;
     panel.innerHTML = '';
+    // The panel was wiped: invalidate any in-flight Quick Actions render so a
+    // late response can't append a stale section for the previous result.
+    qactions.clear();
 
     if (result.kind === 'clipboard') {
         renderClipboardPreview(result);
@@ -126,6 +131,13 @@ export function update(result) {
     header.appendChild(headerText);
     panel.appendChild(header);
 
+    // Quick Actions slot - directly beneath the header, above the preview and
+    // metadata rows, matching macOS ResultPreviewView (QuickActionsSection
+    // renders right after the header). A fixed slot keeps the position stable
+    // while the section fills in asynchronously.
+    const qactionsSlot = document.createElement('div');
+    panel.appendChild(qactionsSlot);
+
     // Preview placeholder - sits between header and metadata (matches macOS order)
     const previewSlot = document.createElement('div');
     previewSlot.className = 'preview-slot';
@@ -141,6 +153,11 @@ export function update(result) {
     } else {
         renderFileMeta(metaWrap, previewSlot, result, headerSub);
     }
+
+    // Quick Actions - interactive controls for results the shared catalog
+    // marks actionable (settings toggles). Fills the slot beneath the header;
+    // appends nothing for the rest.
+    qactions.render(qactionsSlot, result);
 }
 
 function renderClipboardPreview(result) {
@@ -394,6 +411,7 @@ export function clear() {
         panel.hidden = true;
         panel.innerHTML = '';
         currentPath = null;
+        qactions.clear();
     }
 }
 
@@ -403,6 +421,7 @@ export function clear() {
 export function showClipboardHelp() {
     if (!panel) return;
     currentPath = null;
+    qactions.clear();
     panel.hidden = false;
     panel.innerHTML = `
     <div class="preview-clip-help">

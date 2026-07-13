@@ -81,7 +81,16 @@ fn binding_for(result_id: &str, _kind: &str) -> Option<&'static str> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+fn binding_for(result_id: &str, _kind: &str) -> Option<&'static str> {
+    // Ids come from core/engine/src/platform/linux/settings_catalog.rs.
+    match result_id {
+        "setting:bluetooth" => Some("bluetooth"),
+        _ => None,
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn binding_for(_result_id: &str, _kind: &str) -> Option<&'static str> {
     None
 }
@@ -102,6 +111,16 @@ mod tests {
     #[test]
     fn unknown_action_is_none() {
         assert!(descriptor("nope").is_none());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_bluetooth_setting_resolves_to_the_toggle() {
+        let found = descriptors_for("setting:bluetooth", "app");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].action_id, "bluetooth");
+        // A non-actionable result yields nothing.
+        assert!(descriptors_for("setting:sound", "app").is_empty());
     }
 
     #[cfg(target_os = "macos")]

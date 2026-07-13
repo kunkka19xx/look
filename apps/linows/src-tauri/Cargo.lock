@@ -2491,6 +2491,13 @@ name = "look-matching"
 version = "0.1.0"
 
 [[package]]
+name = "look-qactions"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "look-ranking"
 version = "0.1.0"
 dependencies = [
@@ -2523,6 +2530,7 @@ dependencies = [
  "futures-util",
  "look-answers",
  "look-engine",
+ "look-qactions",
  "look-storage",
  "look-todo",
  "notify",
