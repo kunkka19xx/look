@@ -525,3 +525,41 @@
     background: var(--accent-color);
     color: var(--on-accent-color);
 }
+
+/* Connected-device list: one row per device under the status header, so many
+   paired devices stay readable instead of a comma-run that wraps mid-word. */
+.qaction-info-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.qaction-device-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 2px 0 2px 2px;
+}
+
+.qaction-device-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 2px 0;
+}
+
+.qaction-device-dot {
+    width: 6px;
+    height: 6px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--accent-color);
+}
+
+.qaction-device-name {
+    font-size: calc(var(--font-size) - 1px);
+    color: var(--font-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

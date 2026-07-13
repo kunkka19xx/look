@@ -67,8 +67,17 @@ pub enum ActionOutcome {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum InfoValue {
-    Text { text: String },
-    Unavailable { reason: String },
+    Text {
+        text: String,
+    },
+    /// A set of items the panel renders one-per-row (e.g. each connected
+    /// Bluetooth device), instead of squeezing them into a single value.
+    List {
+        items: Vec<String>,
+    },
+    Unavailable {
+        reason: String,
+    },
 }
 
 /// The adapter a contributor implements per control - the one linows file you

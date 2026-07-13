@@ -14,7 +14,6 @@ const BANNER_SUCCESS = 1.2;
 const BANNER_ERROR = 1.6;
 const BANNER_PERMISSION = 2.2;
 
-const VALUE_PLACEHOLDER = '…';
 const TOGGLE_HINT = 'Ctrl+O';
 
 let token = 0; // bumped on every render/clear; async work checks it
@@ -56,30 +55,11 @@ export function togglePrimary() {
 }
 
 // One action row: title, the control for its kind, key hint, plus the
-// descriptor's info rows above it. Returns a handle used to feed async
+// descriptor's info rows below it. Returns a handle used to feed async
 // state/info updates into the DOM.
 function buildAction(section, descriptor) {
-    const infoValues = new Map();
-    if (descriptor.info.length > 0) {
-        const meta = document.createElement('div');
-        meta.className = 'preview-meta';
-        for (const field of descriptor.info) {
-            const row = document.createElement('div');
-            row.className = 'preview-info-row';
-            const label = document.createElement('span');
-            label.className = 'preview-info-label';
-            label.textContent = field.label;
-            row.appendChild(label);
-            const value = document.createElement('span');
-            value.className = 'preview-info-value';
-            value.textContent = VALUE_PLACEHOLDER;
-            row.appendChild(value);
-            meta.appendChild(row);
-            infoValues.set(field.value_key, value);
-        }
-        section.appendChild(meta);
-    }
-
+    // Control row first, so the toggle sits directly under the header and the
+    // status (with its per-device rows) reads beneath it.
     const row = document.createElement('div');
     row.className = 'qaction-row';
 
@@ -93,13 +73,29 @@ function buildAction(section, descriptor) {
     row.appendChild(controlWrap);
     section.appendChild(row);
 
+    // Info fields (e.g. Status + connected devices) render below the control.
+    // Each field owns a container the async status fills, so a value can render
+    // as a single row (text) or a header plus one row per item (list).
+    const infoFields = new Map();
+    if (descriptor.info.length > 0) {
+        const meta = document.createElement('div');
+        meta.className = 'preview-meta';
+        for (const field of descriptor.info) {
+            const container = document.createElement('div');
+            container.className = 'qaction-info-field';
+            meta.appendChild(container);
+            infoFields.set(field.value_key, { container, label: field.label });
+        }
+        section.appendChild(meta);
+    }
+
     const handle = {
         descriptor,
         available: false,
         isOn: null,
         switchEl: null,
         controlWrap,
-        infoValues,
+        infoFields,
     };
 
     if (descriptor.control === 'toggle') {
@@ -155,15 +151,55 @@ function applyStatus(handle, status) {
         }
     }
 
-    for (const [key, el] of handle.infoValues) {
-        const value = status.info[key];
-        if (value?.kind === 'text') {
-            el.textContent = value.text;
-        } else {
-            el.textContent = value?.reason || 'Unavailable';
-            el.classList.add('qaction-info-unavailable');
-        }
+    for (const [key, field] of handle.infoFields) {
+        renderInfoField(field, status.info[key]);
     }
+}
+
+// Fill one info field's container from its resolved value: a plain label/value
+// row for text, or a labelled header plus one row per item for a list (e.g.
+// each connected Bluetooth device), mirroring the folder listing.
+function renderInfoField({ container, label }, value) {
+    container.innerHTML = '';
+    if (value?.kind === 'list') {
+        container.appendChild(infoRow(label, `${value.items.length} connected`));
+        const list = document.createElement('div');
+        list.className = 'qaction-device-list';
+        for (const name of value.items) {
+            const row = document.createElement('div');
+            row.className = 'qaction-device-row';
+            row.appendChild(document.createElement('span')).className = 'qaction-device-dot';
+            const nameEl = document.createElement('span');
+            nameEl.className = 'qaction-device-name';
+            nameEl.textContent = name;
+            nameEl.title = name;
+            row.appendChild(nameEl);
+            list.appendChild(row);
+        }
+        container.appendChild(list);
+        return;
+    }
+    const text = value?.kind === 'text' ? value.text : value?.reason || 'Unavailable';
+    const row = infoRow(label, text);
+    if (value?.kind !== 'text') {
+        row.querySelector('.preview-info-value').classList.add('qaction-info-unavailable');
+    }
+    container.appendChild(row);
+}
+
+// A label/value row matching the panel's other metadata rows.
+function infoRow(label, value) {
+    const row = document.createElement('div');
+    row.className = 'preview-info-row';
+    const labelEl = document.createElement('span');
+    labelEl.className = 'preview-info-label';
+    labelEl.textContent = label;
+    row.appendChild(labelEl);
+    const valueEl = document.createElement('span');
+    valueEl.className = 'preview-info-value';
+    valueEl.textContent = value;
+    row.appendChild(valueEl);
+    return row;
 }
 
 function setSwitch(handle, on) {

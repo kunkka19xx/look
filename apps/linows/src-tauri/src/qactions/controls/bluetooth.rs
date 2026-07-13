@@ -71,9 +71,9 @@ impl SystemControl for BluetoothControl {
             Ok(s) if s.connected.is_empty() => InfoValue::Text {
                 text: "On, not connected".to_string(),
             },
-            Ok(s) => InfoValue::Text {
-                text: format!("Connected to {}", s.connected.join(", ")),
-            },
+            // One row per connected device: a comma-joined line gets unreadable
+            // (and wraps mid-word) once more than a couple are paired.
+            Ok(s) => InfoValue::List { items: s.connected },
             Err(reason) => InfoValue::Unavailable { reason },
         };
         values.insert("status".to_string(), value);
