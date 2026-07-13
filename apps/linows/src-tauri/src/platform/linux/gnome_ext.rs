@@ -32,7 +32,6 @@ const EXTENSIONS_DISABLED_MSG: &str = "GNOME user extensions are turned off, so 
      org.gnome.shell disable-user-extensions false";
 
 /// Install the GNOME Shell extension if not already present, then enable it.
-
 pub fn ensure_installed() {
     let ext_dir = extension_dir();
     let metadata_path = ext_dir.join("metadata.json");

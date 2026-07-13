@@ -5,28 +5,45 @@ use look_indexing::{Candidate, CandidateKind};
 use std::sync::mpsc;
 
 pub fn discover_system_settings_entries(tx: mpsc::SyncSender<Candidate>) {
-    // Only emit settings if the settings app is available on this system.
-    // e.g. gnome-control-center on GNOME, skip on i3/sway/minimal distros.
-    if !platform::has_settings_app() {
+    // With a settings app (gnome-control-center family), emit the whole catalog.
+    // e.g. gnome-control-center on GNOME, skipped on i3/sway/minimal distros.
+    if platform::has_settings_app() {
+        for entry in platform::settings_catalog() {
+            emit_entry(&tx, entry);
+        }
+
+        // Windows extras: classic .cpl / .msc / .exe applets that Settings
+        // doesn't cover (env vars, Device Manager, Services, Registry, Task
+        // Manager, …). Paths use the `look-cmd://` scheme so the Tauri launcher
+        // knows to spawn them via Command::new rather than ShellExecute.
+        #[cfg(target_os = "windows")]
+        emit_windows_control_panel_entries(&tx);
         return;
     }
-    for entry in platform::settings_catalog() {
-        let mut candidate = Candidate::new(
-            &candidate_id(entry),
-            CandidateKind::App,
-            entry.title,
-            &target_path(entry),
-        );
-        candidate.subtitle = Some(subtitle(entry).into());
-        let _ = tx.send(candidate);
-    }
 
-    // Windows extras: classic .cpl / .msc / .exe applets that Settings doesn't
-    // cover (env vars, Device Manager, Services, Registry, Task Manager, …).
-    // Paths use the `look-cmd://` scheme so the Tauri launcher knows to spawn
-    // them via Command::new rather than ShellExecute.
-    #[cfg(target_os = "windows")]
-    emit_windows_control_panel_entries(&tx);
+    // No settings app (KDE, sway, i3, minimal): the panel targets are
+    // gnome-control-center URLs that won't open here, so we skip them - except
+    // Bluetooth, whose quick action toggles and lists devices over BlueZ, which
+    // is desktop-agnostic. Surface just that one when a controller is present.
+    #[cfg(target_os = "linux")]
+    if platform::bluetooth_present()
+        && let Some(entry) = platform::settings_catalog()
+            .iter()
+            .find(|e| e.target == "bluetooth")
+    {
+        emit_entry(&tx, entry);
+    }
+}
+
+fn emit_entry(tx: &mpsc::SyncSender<Candidate>, entry: &SettingsCatalogEntry) {
+    let mut candidate = Candidate::new(
+        &candidate_id(entry),
+        CandidateKind::App,
+        entry.title,
+        &target_path(entry),
+    );
+    candidate.subtitle = Some(subtitle(entry).into());
+    let _ = tx.send(candidate);
 }
 
 #[cfg(target_os = "windows")]
@@ -162,7 +179,16 @@ mod tests {
             }
             total
         } else {
-            0
+            // The only no-settings-app case is Linux, which still surfaces the
+            // Bluetooth entry alone when a controller is present.
+            #[cfg(target_os = "linux")]
+            {
+                usize::from(platform::bluetooth_present())
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                0
+            }
         };
         assert_eq!(discovered.len(), expected_len);
 
