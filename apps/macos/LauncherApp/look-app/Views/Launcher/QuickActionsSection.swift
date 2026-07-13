@@ -110,29 +110,22 @@ private struct QuickActionControl: View {
     private var infoFields: some View {
         ForEach(descriptor.info, id: \.valueKey) { field in
             if let value = info[field.valueKey] {
-                infoField(value)
+                infoField(field, value)
             }
         }
     }
 
     @ViewBuilder
-    private func infoField(_ value: InfoValue) -> some View {
+    private func infoField(_ field: QuickActionInfoField, _ value: InfoValue) -> some View {
         switch value {
         case .text(let text):
-            // The toggle already conveys plain On/Off; only show extra detail.
-            if text != "On" && text != "Off" {
-                Text(text)
-                    .font(hintFont)
-                    .foregroundStyle(themeStore.mutedTextColor())
-                    .padding(.horizontal, Layout.horizontalPadding)
-            }
+            statusRow(label: field.label, value: text)
         case .unavailable(let reason):
-            Text(reason)
-                .font(hintFont)
-                .foregroundStyle(themeStore.mutedTextColor())
-                .padding(.horizontal, Layout.horizontalPadding)
+            statusRow(label: field.label, value: reason)
         case .list(let items):
-            VStack(spacing: Layout.itemSpacing) {
+            // A "Status: N connected" summary line, then one row per device.
+            VStack(alignment: .leading, spacing: Layout.itemSpacing) {
+                statusRow(label: field.label, value: connectedSummary(items))
                 ForEach(items, id: \.self) { item in
                     DeviceRow(item: item, hintFont: hintFont, themeStore: themeStore) {
                         onActivateItem(item)
@@ -141,6 +134,26 @@ private struct QuickActionControl: View {
             }
             .padding(.top, Layout.listTopPadding)
         }
+    }
+
+    /// A label/value line matching `InfoRow` (Kind, Path), used for the status.
+    private func statusRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(infoFont)
+                .foregroundStyle(themeStore.mutedTextColor())
+            Spacer(minLength: 0)
+            Text(value)
+                .font(infoFont)
+                .foregroundStyle(themeStore.secondaryTextColor())
+                .lineLimit(1)
+        }
+        .padding(.horizontal, Layout.horizontalPadding)
+    }
+
+    private func connectedSummary(_ items: [QuickActionListItem]) -> String {
+        let connected = items.filter { $0.on == true }.count
+        return "\(connected) connected"
     }
 
     // MARK: - Helpers
@@ -164,6 +177,11 @@ private struct QuickActionControl: View {
 
     private var hintFont: Font {
         themeStore.uiFont(size: hintFontSize, weight: .regular)
+    }
+
+    /// Label/value font for info rows, matching `InfoRow` (Kind, Path, Status).
+    private var infoFont: Font {
+        themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular)
     }
 
     private func keyHint(_ text: String) -> some View {
@@ -196,8 +214,9 @@ private struct DeviceRow: View {
     var body: some View {
         Button(action: onActivate) {
             HStack(spacing: Layout.spacing) {
+                // Filled dot = connected, hollow = paired but not connected.
                 Circle()
-                    .fill(item.on == true ? Color.green : Color.clear)
+                    .fill(item.on == true ? themeStore.fontColor() : Color.clear)
                     .overlay(Circle().strokeBorder(themeStore.mutedTextColor(), lineWidth: item.on == true ? 0 : 1))
                     .frame(width: Layout.dotSize, height: Layout.dotSize)
                 Text(item.label)
@@ -205,11 +224,6 @@ private struct DeviceRow: View {
                     .foregroundStyle(themeStore.fontColor())
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                if item.on == true {
-                    Text("Connected")
-                        .font(hintFont)
-                        .foregroundStyle(themeStore.mutedTextColor())
-                }
             }
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.vertical, Layout.verticalPadding)
