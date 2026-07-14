@@ -129,7 +129,7 @@ private struct QuickActionControl: View {
         case .list(let items):
             // A summary line (e.g. "Status: N connected"), then one row per item.
             VStack(alignment: .leading, spacing: Layout.itemSpacing) {
-                statusRow(label: field.label, value: connectedSummary(items))
+                statusRow(label: field.label, value: listSummary(items))
                 ForEach(items, id: \.self) { item in
                     ListItemRow(
                         item: item,
@@ -160,7 +160,12 @@ private struct QuickActionControl: View {
         .padding(.horizontal, Layout.horizontalPadding)
     }
 
-    private func connectedSummary(_ items: [QuickActionListItem]) -> String {
+    /// Summary shown next to a list's label. A connectivity list (items carry an
+    /// on/off marker) reports how many are on; a plain list just reports its size.
+    private func listSummary(_ items: [QuickActionListItem]) -> String {
+        guard items.contains(where: { $0.on != nil }) else {
+            return "\(items.count)"
+        }
         let connected = items.filter { $0.on == true }.count
         return "\(connected) connected"
     }
@@ -229,10 +234,11 @@ private struct ListItemRow: View {
     var body: some View {
         Button(action: onActivate) {
             HStack(spacing: Layout.spacing) {
-                // Filled dot = connected, hollow = paired but not connected.
+                // Filled = on, hollow = off, invisible = no on/off (plain item).
+                // The clear placeholder keeps labels aligned across a mixed list.
                 Circle()
                     .fill(item.on == true ? themeStore.fontColor() : Color.clear)
-                    .overlay(Circle().strokeBorder(themeStore.mutedTextColor(), lineWidth: item.on == true ? 0 : 1))
+                    .overlay(Circle().strokeBorder(themeStore.mutedTextColor(), lineWidth: item.on == false ? 1 : 0))
                     .frame(width: Layout.dotSize, height: Layout.dotSize)
                 Text(item.label)
                     .font(hintFont)
