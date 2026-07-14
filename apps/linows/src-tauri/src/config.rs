@@ -105,6 +105,10 @@ fn default_config_contents() -> String {
          file_scan_depth=4\n\
          file_scan_limit=8000\n\
          file_exclude_paths=\n\
+         ignored_patterns_sample=\n\
+         # File ignore patterns. Format: ignored_patterns_<group>=Pattern1|Pattern2|Pattern3\n\
+         # ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp\n\
+         # ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm\n\
          lazy_indexing_enabled=true\n\
          skip_dir_names=node_modules,target,build,dist,.git,vendor,out,coverage,tmp,cache,venv\n\
          \n",

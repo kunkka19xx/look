@@ -200,6 +200,7 @@ dependencies = [
 name = "look-engine"
 version = "0.1.0"
 dependencies = [
+ "globset",
  "ignore",
  "look-indexing",
  "look-matching",

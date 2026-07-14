@@ -1,6 +1,7 @@
 use crate::config::RuntimeConfig;
 use crate::index::{FILE_CANDIDATE_ID_PREFIX, FOLDER_CANDIDATE_ID_PREFIX};
-use crate::platform::paths::{candidate_id_path_component, path_is_same_or_child};
+use crate::platform::paths::{PathPolicy, candidate_id_path_component, path_is_same_or_child};
+use globset::Glob;
 use ignore::WalkBuilder;
 use look_indexing::{Candidate, CandidateKind};
 use std::sync::mpsc;
@@ -44,6 +45,12 @@ fn walk_files(
     let root_path = path.to_string();
     let exclude_paths = config.file_exclude_paths.clone();
     let skip_dir_names = config.skip_dir_names.clone();
+    let ignored_file_matchers = config
+        .ignored_file_patterns
+        .iter()
+        .filter_map(|pattern| Glob::new(pattern).ok())
+        .map(|glob| glob.compile_matcher())
+        .collect::<Vec<_>>();
     walker
         .hidden(false)
         .git_ignore(false)
@@ -116,6 +123,14 @@ fn walk_files(
         }
 
         if path_buf.is_file() {
+            let normalized_path = PathPolicy::for_base(path_str).normalize_for_matching(path_str);
+            if ignored_file_matchers
+                .iter()
+                .any(|matcher| matcher.is_match(&normalized_path))
+            {
+                continue;
+            }
+
             *file_count += 1;
             let key = format!(
                 "{FILE_CANDIDATE_ID_PREFIX}{}",

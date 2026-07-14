@@ -1,6 +1,7 @@
+use globset::Glob;
 use crate::normalize::normalize_for_search;
 use crate::platform;
-use crate::platform::paths::expand_with_home;
+use crate::platform::paths::{PathPolicy, expand_with_home};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -81,6 +82,7 @@ pub struct RuntimeConfig {
     pub file_scan_limit: usize,
     pub file_exclude_paths: Vec<String>,
     pub skip_dir_names: Vec<String>,
+    pub ignored_file_patterns: Vec<String>,
     pub lazy_indexing_enabled: bool,
     pub search_aliases: HashMap<String, Vec<String>>,
 }
@@ -110,6 +112,7 @@ impl Default for RuntimeConfig {
                 .iter()
                 .map(|value| value.to_string())
                 .collect(),
+            ignored_file_patterns: Vec::new(),
             lazy_indexing_enabled: LAZY_INDEXING_ENABLED,
             search_aliases: default_search_aliases(),
         }
@@ -285,6 +288,24 @@ impl RuntimeConfig {
                 "lazy_indexing_enabled" => {
                     if let Some(parsed) = parse_bool(value) {
                         self.lazy_indexing_enabled = parsed;
+                    }
+                }
+                _ if key.strip_prefix("ignored_patterns_").is_some() => {
+                    let parsed = parse_pattern_values(value);
+                    for pattern in parsed {
+                        let expanded = expand_path(&pattern, home.as_deref());
+                        let normalized = PathPolicy::for_base(&expanded)
+                            .normalize_for_matching(&expanded);
+                        if Glob::new(&normalized).is_err() {
+                            continue;
+                        }
+                        if !self
+                            .ignored_file_patterns
+                            .iter()
+                            .any(|existing| existing == &normalized)
+                        {
+                            self.ignored_file_patterns.push(normalized);
+                        }
                     }
                 }
                 _ if key.strip_prefix("alias_").is_some() => {
@@ -719,6 +740,17 @@ fn parse_alias_values(value: &str) -> Vec<String> {
         let normalized = normalize_for_search(raw.trim());
         if !normalized.is_empty() && !values.iter().any(|entry| entry == &normalized) {
             values.push(normalized);
+        }
+    }
+    values
+}
+
+fn parse_pattern_values(value: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    for raw in value.split('|') {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() && !values.iter().any(|entry| entry == trimmed) {
+            values.push(trimmed.to_string());
         }
     }
     values
