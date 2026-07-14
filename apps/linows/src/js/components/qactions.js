@@ -22,6 +22,7 @@ const TOGGLE_HINT = 'Ctrl+O';
 let token = 0; // bumped on every render/clear; async work checks it
 let primary = null; // handle of the first toggle action (drives Ctrl+O)
 let handles = []; // every rendered action, so a re-show can re-read their state
+let sectionEl = null; // current section, to reflect the in-flight lock in the UI
 let inFlight = false; // debounce: one apply at a time
 // Item ids currently applying (connecting/disconnecting), rendered as busy so a
 // re-click is ignored and the row reads as in-progress. Mirrors macOS pendingItems.
@@ -31,8 +32,18 @@ export function clear() {
     token += 1;
     primary = null;
     handles = [];
+    sectionEl = null;
     inFlight = false;
     pendingItems.clear();
+}
+
+// Single source of truth for the "one action at a time" lock. Flagging the
+// section busy lets CSS render every other control (the toggle, non-pending
+// device rows) inert while an action applies, so nothing looks clickable that
+// the inFlight guard would silently swallow.
+function setBusy(busy) {
+    inFlight = busy;
+    sectionEl?.classList.toggle('is-busy', busy);
 }
 
 /**
@@ -48,6 +59,7 @@ export async function render(container, result) {
 
     const section = document.createElement('div');
     section.className = 'preview-qactions';
+    sectionEl = section;
 
     for (const descriptor of descriptors) {
         const handle = buildAction(section, descriptor);
@@ -257,7 +269,7 @@ function setSwitch(handle, on) {
 // outcome, and re-read the state so the panel reflects what really happened.
 async function run(handle, intent) {
     if (inFlight) return;
-    inFlight = true;
+    setBusy(true);
     const myToken = token;
 
     // A toggle press means "the opposite of the state I am looking at", so
@@ -279,7 +291,7 @@ async function run(handle, intent) {
 // Toggle one list item (connect/disconnect a device), then reconcile as `run`.
 async function runItem(handle, item, row) {
     if (inFlight || pendingItems.has(item.id)) return;
-    inFlight = true;
+    setBusy(true);
     const myToken = token;
     // Mark the row busy so it dims and stops taking clicks while it applies.
     pendingItems.add(item.id);
@@ -327,7 +339,7 @@ async function applyAndReconcile(handle, myToken, apply, onApplied) {
         onApplied?.();
         if (token === myToken) showOutcome(handle.descriptor, null);
     } finally {
-        if (token === myToken) inFlight = false;
+        if (token === myToken) setBusy(false);
     }
 }
 
