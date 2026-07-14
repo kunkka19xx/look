@@ -18,22 +18,32 @@ pub fn discover_system_settings_entries(tx: mpsc::SyncSender<Candidate>) {
         // knows to spawn them via Command::new rather than ShellExecute.
         #[cfg(target_os = "windows")]
         emit_windows_control_panel_entries(&tx);
-        return;
+    } else {
+        emit_settings_fallback_entries(&tx);
     }
+}
 
-    // No settings app (KDE, sway, i3, minimal): the panel targets are
-    // gnome-control-center URLs that won't open here, so we skip them - except
-    // Bluetooth, whose quick action toggles and lists devices over BlueZ, which
-    // is desktop-agnostic. Surface just that one when a controller is present.
-    #[cfg(target_os = "linux")]
+/// No settings app (KDE, sway, i3, minimal): the panel targets are
+/// gnome-control-center URLs that won't open here, so we skip them - except
+/// Bluetooth, whose quick action toggles and lists devices over BlueZ, which
+/// is desktop-agnostic. Surface just that one when a controller is present.
+#[cfg(target_os = "linux")]
+fn emit_settings_fallback_entries(tx: &mpsc::SyncSender<Candidate>) {
     if platform::bluetooth_present()
         && let Some(entry) = platform::settings_catalog()
             .iter()
             .find(|e| e.target == "bluetooth")
     {
-        emit_entry(&tx, entry);
+        emit_entry(tx, entry);
     }
 }
+
+/// Only Linux has a fallback: elsewhere a missing settings app means there is
+/// nothing to surface. Kept as a real function so the branch above reads the same
+/// on every platform, rather than an early return that dangles once the Linux-only
+/// tail is compiled out.
+#[cfg(not(target_os = "linux"))]
+fn emit_settings_fallback_entries(_tx: &mpsc::SyncSender<Candidate>) {}
 
 fn emit_entry(tx: &mpsc::SyncSender<Candidate>, entry: &SettingsCatalogEntry) {
     let mut candidate = Candidate::new(
