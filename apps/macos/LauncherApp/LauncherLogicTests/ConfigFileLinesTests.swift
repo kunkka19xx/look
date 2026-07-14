@@ -166,6 +166,30 @@ final class ConfigFileLinesTests: XCTestCase {
         XCTAssertEqual(ConfigFileLines.render(lines), "app_scan_depth=3\ninner_gap=10\n")
     }
 
+    func testStripCommentKeepsHashInsideAValue() {
+        // A `#` in a path is part of the value. Cutting at the first `#` anywhere would
+        // truncate the background image path on read.
+        XCTAssertEqual(
+            ConfigFileLines.stripComment("ui_background_image=/Users/me/pic#1.png"),
+            "ui_background_image=/Users/me/pic#1.png"
+        )
+        XCTAssertEqual(ConfigFileLines.stripComment("ui_font_size=14  # note"), "ui_font_size=14  ")
+        XCTAssertEqual(ConfigFileLines.stripComment("# UI theme"), "")
+    }
+
+    func testKeyValuesRoundTripsAValueContainingHash() {
+        let values = ConfigFileLines.keyValues("ui_background_image=/Users/me/pic#1.png\n")
+
+        XCTAssertEqual(values["ui_background_image"], "/Users/me/pic#1.png")
+    }
+
+    func testUpsertMatchesAKeyWhoseValueContainsHash() {
+        var lines = ConfigFileLines.parse("ui_background_image=/Users/me/pic#1.png\n")
+        ConfigFileLines.upsert(&lines, key: "ui_background_image", value: "/Users/me/other.png")
+
+        XCTAssertEqual(ConfigFileLines.render(lines), "ui_background_image=/Users/me/other.png\n")
+    }
+
     func testKeyValuesIgnoresCommentsAndBlanks() {
         let values = ConfigFileLines.keyValues("# a comment\n\nui_font_size=14  # trailing\napp_scan_depth=3\n")
 

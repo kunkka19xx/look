@@ -109,7 +109,13 @@ enum PomoPersistence {
     static func save(_ snapshot: Snapshot) {
         let path = ConfigPathResolver.resolvedPath()
         var lines: [String] = []
-        if let raw = try? String(contentsOfFile: path, encoding: .utf8) {
+        if FileManager.default.fileExists(atPath: path) {
+            // Only the pomo keys are upserted below, so writing on top of a failed read
+            // would truncate the whole config to those few lines. A config we cannot
+            // read is one we must not overwrite.
+            guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else {
+                return
+            }
             lines = ConfigFileLines.parse(raw)
         }
         ConfigFileLines.upsert(&lines, key: sessionsKey, value: encodeSessions(snapshot.sessions))

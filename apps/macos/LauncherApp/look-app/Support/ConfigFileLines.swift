@@ -120,11 +120,21 @@ enum ConfigFileLines {
         return values
     }
 
+    /// Drops a trailing comment. `#` only starts one at the beginning of the line or
+    /// after whitespace, so it survives inside a value: cutting at the first `#`
+    /// anywhere would truncate a path like `/Users/me/pic#1.png` down to `/Users/me/pic`
+    /// on read, silently corrupting the setting.
     static func stripComment(_ line: String) -> String {
-        guard let start = line.firstIndex(of: Character(commentPrefix)) else {
-            return line
+        var index = line.startIndex
+        while index < line.endIndex {
+            if line[index] == Character(commentPrefix),
+               index == line.startIndex || line[line.index(before: index)].isWhitespace
+            {
+                return String(line[..<index])
+            }
+            index = line.index(after: index)
         }
-        return String(line[..<start])
+        return line
     }
 
     private static func isComment(_ trimmedLine: String) -> Bool {

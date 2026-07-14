@@ -587,11 +587,20 @@ fn user_home_dir() -> Option<String> {
         })
 }
 
+/// Drops a trailing comment. `#` only starts one at the beginning of the line or after
+/// whitespace, so it survives inside a value: cutting at the first `#` anywhere would
+/// truncate a path like `/Users/me/pic#1.png` down to `/Users/me/pic`, silently
+/// corrupting the setting. Must stay in step with the macOS reader
+/// (`ConfigFileLines.stripComment`), since both parse the same file.
 fn strip_comments(value: &str) -> &str {
+    let mut previous_is_whitespace = true;
+    for (index, character) in value.char_indices() {
+        if character == '#' && previous_is_whitespace {
+            return &value[..index];
+        }
+        previous_is_whitespace = character.is_whitespace();
+    }
     value
-        .split_once('#')
-        .map(|(prefix, _)| prefix)
-        .unwrap_or(value)
 }
 
 /// Every key the user's config already accounts for, so the update pass knows what
@@ -981,6 +990,22 @@ mod tests {
         assert!(contents.contains("alias_chat=Slack|Discord|Telegram|Messages"));
         assert!(contents.contains("alias_music=Spotify|Apple Music|Music"));
         assert!(contents.contains("alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave"));
+    }
+
+    #[test]
+    fn strip_comments_keeps_hash_inside_values() {
+        // A `#` in a path is part of the value, not the start of a comment.
+        assert_eq!(
+            strip_comments("file_exclude_paths=/Users/me/pic#1.png"),
+            "file_exclude_paths=/Users/me/pic#1.png"
+        );
+        // A `#` after whitespace still starts a trailing comment.
+        assert_eq!(
+            strip_comments("file_scan_depth=6  # my note"),
+            "file_scan_depth=6  "
+        );
+        // And a full-line comment is still a comment.
+        assert_eq!(strip_comments("# UI theme"), "");
     }
 
     #[test]

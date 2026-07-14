@@ -174,7 +174,15 @@ final class ThemeStore: ObservableObject {
         let path = Self.configPath()
         Self.ensureDefaultConfigFileExists(at: path)
 
-        var lines = ConfigFileLines.parse((try? String(contentsOf: path, encoding: .utf8)) ?? "")
+        // A failed read must not fall through to an empty parse. The upserts below only
+        // know this store's own keys, so saving on top of nothing would write those back
+        // and drop every other setting, comment, and blank line in the file. An
+        // unreadable config (bad permissions, not valid UTF-8) is a reason to fail the
+        // save, not to rewrite the file from scratch.
+        guard let raw = try? String(contentsOf: path, encoding: .utf8) else {
+            return false
+        }
+        var lines = ConfigFileLines.parse(raw)
 
         ConfigFileLines.upsert(&lines, key: "ui_tint_red", value: String(format: "%.2f", settings.tintRed))
         ConfigFileLines.upsert(&lines, key: "ui_tint_green", value: String(format: "%.2f", settings.tintGreen))
