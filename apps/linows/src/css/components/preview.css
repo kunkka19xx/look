@@ -562,6 +562,16 @@
     background: var(--control-fill);
 }
 
+/* Busy while a connect/disconnect is applying: dimmed and non-interactive. */
+.qaction-device-row.is-pending {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.qaction-device-row.is-pending:hover {
+    background: none;
+}
+
 /* Hollow dot = paired but disconnected; filled accent = connected. */
 .qaction-device-dot {
     width: 7px;

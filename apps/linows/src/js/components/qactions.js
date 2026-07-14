@@ -21,12 +21,18 @@ const TOGGLE_HINT = 'Ctrl+O';
 
 let token = 0; // bumped on every render/clear; async work checks it
 let primary = null; // handle of the first toggle action (drives Ctrl+O)
+let handles = []; // every rendered action, so a re-show can re-read their state
 let inFlight = false; // debounce: one apply at a time
+// Item ids currently applying (connecting/disconnecting), rendered as busy so a
+// re-click is ignored and the row reads as in-progress. Mirrors macOS pendingItems.
+const pendingItems = new Set();
 
 export function clear() {
     token += 1;
     primary = null;
+    handles = [];
     inFlight = false;
+    pendingItems.clear();
 }
 
 /**
@@ -45,11 +51,26 @@ export async function render(container, result) {
 
     for (const descriptor of descriptors) {
         const handle = buildAction(section, descriptor);
+        handles.push(handle);
         if (descriptor.control === 'toggle' && !primary) primary = handle;
         loadStatus(handle, myToken);
     }
 
     container.appendChild(section);
+}
+
+/**
+ * Re-read every rendered action's state/info in place (no DOM rebuild). Called
+ * when the window is re-shown: it keeps its query and selection across
+ * hide/show, so the panel would otherwise render states read before the hide,
+ * stale whenever the system changed underneath (e.g. Bluetooth flipped
+ * elsewhere). Mirrors macOS refreshQuickActions on the window becoming key.
+ * Skipped mid-apply so it can't clobber the optimistic state a press just set.
+ */
+export function refresh() {
+    if (inFlight) return;
+    const myToken = token;
+    for (const handle of handles) loadStatus(handle, myToken);
 }
 
 /** Flip the selected result's primary toggle (Ctrl+O). */
@@ -187,16 +208,20 @@ function renderInfoField(handle, { container, label }, value) {
 }
 
 // One device row: a connection dot + name. When the item carries an `id` it is
-// a clickable button that toggles that device's connection.
+// a clickable button that toggles that device's connection. A row whose id is
+// still applying renders busy (dimmed, non-interactive) until the outcome lands.
 function deviceRow(handle, item) {
     const actionable = item.id != null;
+    const pending = actionable && pendingItems.has(item.id);
     const row = document.createElement(actionable ? 'button' : 'div');
     row.className = 'qaction-device-row';
     row.classList.toggle('is-connected', item.on === true);
+    row.classList.toggle('is-pending', pending);
     if (actionable) {
         row.type = 'button';
         row.tabIndex = -1;
-        row.addEventListener('click', () => runItem(handle, item));
+        row.disabled = pending;
+        row.addEventListener('click', () => runItem(handle, item, row));
     }
     row.appendChild(document.createElement('span')).className = 'qaction-device-dot';
     const nameEl = document.createElement('span');
@@ -235,22 +260,31 @@ async function run(handle, intent) {
     inFlight = true;
     const myToken = token;
 
-    // Flip a toggle immediately for instant feedback; the re-read below
-    // confirms (and corrects it if the change did not take).
+    // A toggle press means "the opposite of the state I am looking at", so
+    // resolve it to an explicit target before it reaches the adapter: a blind
+    // toggle flips the LIVE state, doing the opposite of what the user asked
+    // whenever the panel is stale. An unknown displayed state keeps the blind
+    // toggle. Flip immediately for instant feedback; the re-read below confirms.
+    let payload = intent;
     if (intent === 'toggle' && handle.isOn != null) {
+        payload = { set_on: !handle.isOn };
         setSwitch(handle, !handle.isOn);
     }
 
     await applyAndReconcile(handle, myToken, () =>
-        quickActionApply(handle.descriptor.action_id, intent),
+        quickActionApply(handle.descriptor.action_id, payload),
     );
 }
 
 // Toggle one list item (connect/disconnect a device), then reconcile as `run`.
-async function runItem(handle, item) {
-    if (inFlight) return;
+async function runItem(handle, item, row) {
+    if (inFlight || pendingItems.has(item.id)) return;
     inFlight = true;
     const myToken = token;
+    // Mark the row busy so it dims and stops taking clicks while it applies.
+    pendingItems.add(item.id);
+    row.classList.add('is-pending');
+    row.disabled = true;
     // Connecting can take a few seconds; show immediate feedback so the click
     // doesn't feel dead. The outcome banner replaces this when it lands.
     const connecting = item.on !== true;
@@ -259,8 +293,13 @@ async function runItem(handle, item) {
         'info',
         DEVICE_PENDING,
     );
-    await applyAndReconcile(handle, myToken, () =>
-        quickActionApplyItem(handle.descriptor.action_id, item.id, 'toggle'),
+    await applyAndReconcile(
+        handle,
+        myToken,
+        () => quickActionApplyItem(handle.descriptor.action_id, item.id, 'toggle'),
+        // Clear pending before the reconcile re-renders the list, so the fresh
+        // rows read from the real state instead of inheriting the busy marker.
+        () => pendingItems.delete(item.id),
     );
 }
 
@@ -270,9 +309,12 @@ async function runItem(handle, item) {
 // wedges until the selection changes. Late responses (selection moved) drop on
 // the token guard; `finally` only releases `inFlight` while we still own the
 // current token (clear() already reset it for a newer run otherwise).
-async function applyAndReconcile(handle, myToken, apply) {
+// `onApplied` (optional) runs the moment apply() resolves, before the re-read,
+// so per-item pending state clears ahead of the list rebuild.
+async function applyAndReconcile(handle, myToken, apply, onApplied) {
     try {
         const outcome = await apply();
+        onApplied?.();
         if (token !== myToken) return;
         showOutcome(handle.descriptor, outcome);
 
@@ -282,6 +324,7 @@ async function applyAndReconcile(handle, myToken, apply) {
         applyStatus(handle, status);
     } catch (err) {
         console.error('quick action failed', err);
+        onApplied?.();
         if (token === myToken) showOutcome(handle.descriptor, null);
     } finally {
         if (token === myToken) inFlight = false;

@@ -114,6 +114,7 @@ impl SystemControl for BluetoothControl {
         };
         let target = match intent {
             ActionIntent::Toggle => !snapshot.powered,
+            ActionIntent::SetOn(on) => on,
             ActionIntent::Run => {
                 return ActionOutcome::Failed {
                     message: "Bluetooth has no run action".to_string(),

@@ -42,10 +42,16 @@ pub enum ActionState {
 
 /// What the user asked a control to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum ActionIntent {
-    /// Flip a boolean control (on <-> off).
+    /// Flip a boolean control against its live state (on <-> off).
     Toggle,
+    /// Drive a boolean control to an explicit target. The panel resolves a
+    /// toggle press to this against the state it is showing, so a press does
+    /// what the user sees even when the panel is stale (the system changed
+    /// while the window was hidden); a blind `Toggle` would flip the live state
+    /// and do the opposite. Wire form: `{ "set_on": true }`.
+    SetOn(bool),
     /// Trigger a non-toggle action (a plain button).
     Run,
 }
