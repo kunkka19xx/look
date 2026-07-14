@@ -560,24 +560,23 @@ final class ThemeStore: ObservableObject {
         URL(fileURLWithPath: ConfigPathResolver.resolvedPath())
     }
 
-    /// Writes the default config when there is none, and repairs the shape of one that
-    /// already exists. Runs at launch and on reload, so a config that earlier builds
-    /// filled with duplicate headers and blank lines is cleaned without the user having
-    /// to go and save something. Rewrites only when normalizing actually changes the
-    /// file: an unconditional write would bump the mtime on every launch and wake the
-    /// config watcher for nothing.
+    /// Writes the default config when there is none, and otherwise undoes the damage
+    /// left by builds that duplicated their own section header on every save. Runs at
+    /// launch and on reload, so an affected config heals without the user having to go
+    /// and save something.
+    ///
+    /// A config that does not carry the damage is left byte-identical, not merely
+    /// equivalent: rewriting it would reformat a layout the user chose, and would bump
+    /// the mtime and wake the config watcher on every launch.
     private static func ensureDefaultConfigFileExists(at path: URL) {
         guard FileManager.default.fileExists(atPath: path.path) else {
             try? defaultConfigContents.write(to: path, atomically: true, encoding: .utf8)
             return
         }
 
-        guard let raw = try? String(contentsOf: path, encoding: .utf8) else {
-            return
-        }
-
-        let repaired = ConfigFileLines.render(ConfigFileLines.parse(raw))
-        guard repaired != raw else {
+        guard let raw = try? String(contentsOf: path, encoding: .utf8),
+              let repaired = ConfigFileLines.repairingLegacyDamage(raw)
+        else {
             return
         }
 

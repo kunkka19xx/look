@@ -30,28 +30,46 @@ enum ConfigFileLines {
         return lines
     }
 
-    /// Normalizes, then joins with exactly one trailing newline. Feeding the result
-    /// back through `parse` and `render` yields the same text, so repeated saves
-    /// cannot grow the file.
+    /// Joins with exactly one trailing newline, preserving the file's shape. A write
+    /// changes only the keys the caller upserted or removed: blank lines, comments,
+    /// and their order all survive, because an update must never reformat a config the
+    /// user is entitled to lay out however they like.
     static func render(_ lines: [String]) -> String {
-        normalize(lines).joined(separator: "\n") + "\n"
+        lines.joined(separator: "\n") + "\n"
     }
 
-    /// Collapses blank-line runs, trims leading and trailing blanks, and keeps only
-    /// the first occurrence of each distinct comment. A repeated comment is the same
-    /// text as one already present, so dropping it removes nothing the reader did not
-    /// already have. Every key line survives.
-    static func normalize(_ lines: [String]) -> [String] {
+    /// The section header that builds before this type emitted as garbage. They tested
+    /// for it by comparing against its comment-stripped form (always the empty string,
+    /// so never a match) and appended a fresh copy plus a blank line on every save.
+    /// Named here only so the damage can be recognised and undone. Nothing in normal
+    /// operation reads it, and no writer may depend on it being present.
+    private static let legacySectionHeader = "# UI theme"
+
+    /// Undoes the damage described on `legacySectionHeader`, returning nil when there is
+    /// nothing to undo.
+    ///
+    /// Deliberately narrow. It repairs a file only when it carries the signature of the
+    /// bug (the legacy header more than once), and even then it removes only the surplus
+    /// copies of that one header plus the blank runs they came with. A hand-written
+    /// config, including one that repeats `####` dividers or spaces sections with double
+    /// blanks, matches no signature and is returned untouched.
+    static func repairingLegacyDamage(_ raw: String) -> String? {
+        let lines = parse(raw)
+        guard lines.filter({ trim($0) == legacySectionHeader }).count > 1 else {
+            return nil
+        }
+
         var kept: [String] = []
-        var seenComments: Set<String> = []
+        var keptHeader = false
 
         for line in lines {
             let trimmed = trim(line)
 
-            if isComment(trimmed) {
-                guard seenComments.insert(trimmed).inserted else {
+            if trimmed == legacySectionHeader {
+                guard !keptHeader else {
                     continue
                 }
+                keptHeader = true
                 kept.append(line)
                 continue
             }
@@ -67,7 +85,8 @@ enum ConfigFileLines {
             kept.removeLast()
         }
 
-        return kept
+        let repaired = render(kept)
+        return repaired == raw ? nil : repaired
     }
 
     /// Rewrites `key` in place, or appends it when absent.

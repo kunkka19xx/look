@@ -2,12 +2,59 @@ import XCTest
 @testable import LauncherLogic
 
 final class ConfigFileLinesTests: XCTestCase {
+    // ── A write touches only the keys it was asked to touch ─────────────
+
+    func testWritingAKeyLeavesEveryOtherLineUntouched() {
+        let original = """
+        # look configuration
+
+        ##########
+        # indexing
+        ##########
+        app_scan_depth=3
+
+
+        # UI theme
+        ui_font_size=14
+
+        """
+
+        var lines = ConfigFileLines.parse(original)
+        ConfigFileLines.upsert(&lines, key: "ui_font_size", value: "18")
+
+        // Every comment, blank run, and divider survives exactly as written. Only the
+        // one requested value differs.
+        XCTAssertEqual(ConfigFileLines.render(lines), original.replacingOccurrences(
+            of: "ui_font_size=14",
+            with: "ui_font_size=18"
+        ))
+    }
+
+    func testAddingAKeyAppendsItAndChangesNothingElse() {
+        let original = "# look configuration\n\napp_scan_depth=3\n"
+
+        var lines = ConfigFileLines.parse(original)
+        ConfigFileLines.upsert(&lines, key: "inner_gap", value: "10")
+
+        XCTAssertEqual(ConfigFileLines.render(lines), "# look configuration\n\napp_scan_depth=3\ninner_gap=10\n")
+    }
+
+    func testRemovingAKeyDropsOnlyThatLine() {
+        let original = "# UI theme\nui_background_image=/tmp/a.jpg\nui_font_size=14\n"
+
+        var lines = ConfigFileLines.parse(original)
+        ConfigFileLines.remove(&lines, key: "ui_background_image")
+
+        XCTAssertEqual(ConfigFileLines.render(lines), "# UI theme\nui_font_size=14\n")
+    }
+
     func testRepeatedSaveCyclesDoNotGrowTheFile() {
         // The regression this guards: both writers rendered with
-        // `lines.joined(separator: "\n") + "\n"` over a parse that keeps the trailing
+        // `lines.joined(separator: "\n") + "\n"` over a parse that kept the trailing
         // empty element, so every save appended one more blank line. The pomo timer
         // saves often, which is how configs reached dozens of trailing blanks.
-        var text = "app_scan_depth=3\nui_font_size=14\n"
+        var text = "app_scan_depth=3\n\n# UI theme\nui_font_size=14\n"
+        let expected = "app_scan_depth=3\n\n# UI theme\nui_font_size=14\npomo_timer_style=modern\n"
 
         for _ in 0..<50 {
             var lines = ConfigFileLines.parse(text)
@@ -15,56 +62,108 @@ final class ConfigFileLinesTests: XCTestCase {
             text = ConfigFileLines.render(lines)
         }
 
-        XCTAssertEqual(text, "app_scan_depth=3\nui_font_size=14\npomo_timer_style=modern\n")
+        XCTAssertEqual(text, expected)
     }
 
-    func testRepairIsANoOpOnAnAlreadyCleanFile() {
-        // Launch repairs the config in place, but must leave a clean file byte-identical:
-        // an unconditional rewrite would bump the mtime and wake the config watcher on
-        // every launch.
-        let clean = """
-        # look configuration
+    // ── Legacy damage repair, and its refusal to touch anything else ────
 
+    func testRepairRemovesSurplusLegacyHeadersAndTheirBlankRuns() {
+        let scarred = "# UI theme\nui_font_size=14\n\n# UI theme\n\n\n# UI theme\ninner_gap=10\n\n\n"
+
+        let repaired = ConfigFileLines.repairingLegacyDamage(scarred)
+
+        // The run of surplus headers and blanks collapses to a single blank separator.
+        // Trailing blanks go entirely.
+        XCTAssertEqual(repaired, "# UI theme\nui_font_size=14\n\ninner_gap=10\n")
+    }
+
+    func testRepairIsIdempotent() {
+        let scarred = "# UI theme\nui_font_size=14\n\n# UI theme\n\n# UI theme\n"
+
+        guard let once = ConfigFileLines.repairingLegacyDamage(scarred) else {
+            return XCTFail("damaged config should have been repaired")
+        }
+
+        XCTAssertNil(ConfigFileLines.repairingLegacyDamage(once), "a repaired config must not be rewritten again")
+    }
+
+    func testRepairLeavesAnUndamagedConfigAlone() {
+        // No signature, so no rewrite: not even a reformat. Returning nil is what keeps
+        // launch from bumping the mtime and waking the config watcher.
+        let clean = "# look configuration\n\napp_scan_depth=3\n\n# UI theme\nui_font_size=14\n"
+
+        XCTAssertNil(ConfigFileLines.repairingLegacyDamage(clean))
+    }
+
+    func testRepairDoesNotReformatAHandWrittenConfig() {
+        // Repeated `####` dividers and double blank lines are a layout the user chose.
+        // The file carries no damage signature, so it must come back untouched.
+        let handWritten = """
+        ##########
+        # indexing
+        ##########
         app_scan_depth=3
 
-        # UI theme
+
+        ##########
+        # theme
+        ##########
         ui_font_size=14
 
         """
 
-        XCTAssertEqual(ConfigFileLines.render(ConfigFileLines.parse(clean)), clean)
+        XCTAssertNil(ConfigFileLines.repairingLegacyDamage(handWritten))
     }
 
-    func testRepairCleansAScarredFileInOnePass() {
-        let scarred = "# UI theme\nui_font_size=14\n\n# UI theme\n\n\n# UI theme\n\n\n\n"
+    func testRepairKeepsRepeatedMigrationMarkers() {
+        // Two `# Added by look update` blocks are legitimate: each came from a separate
+        // migration. Only the legacy header is surplus.
+        let scarred = """
+        # Added by look update
+        app_exclude_paths=
 
-        let repaired = ConfigFileLines.render(ConfigFileLines.parse(scarred))
+        # UI theme
 
-        XCTAssertEqual(repaired, "# UI theme\nui_font_size=14\n")
-        XCTAssertEqual(ConfigFileLines.render(ConfigFileLines.parse(repaired)), repaired)
+        # UI theme
+        # Added by look update
+        file_scan_extra_roots=
+
+        """
+
+        let repaired = ConfigFileLines.repairingLegacyDamage(scarred)
+
+        XCTAssertEqual(repaired, """
+        # Added by look update
+        app_exclude_paths=
+
+        # UI theme
+
+        # Added by look update
+        file_scan_extra_roots=
+
+        """)
     }
 
-    func testRenderEndsWithExactlyOneTrailingNewline() {
-        let rendered = ConfigFileLines.render(["app_scan_depth=3", "", ""])
+    func testRepairNeverLosesAKey() {
+        let scarred = "app_scan_depth=3\n# UI theme\n\n# UI theme\nui_font_size=14\n\n# UI theme\ninner_gap=10\n"
 
-        XCTAssertEqual(rendered, "app_scan_depth=3\n")
+        guard let repaired = ConfigFileLines.repairingLegacyDamage(scarred) else {
+            return XCTFail("damaged config should have been repaired")
+        }
+
+        let values = ConfigFileLines.keyValues(repaired)
+        XCTAssertEqual(values["app_scan_depth"], "3")
+        XCTAssertEqual(values["ui_font_size"], "14")
+        XCTAssertEqual(values["inner_gap"], "10")
     }
 
-    func testUpsertRewritesInPlaceAndAppendsWhenAbsent() {
-        var lines = ConfigFileLines.parse("# UI theme\nui_font_size=14\n")
+    // ── Parsing ────────────────────────────────────────────────────────
 
-        ConfigFileLines.upsert(&lines, key: "ui_font_size", value: "18")
+    func testParseDropsTheTerminatingNewlineSoAppendsDoNotSitBehindABlank() {
+        var lines = ConfigFileLines.parse("app_scan_depth=3\n")
         ConfigFileLines.upsert(&lines, key: "inner_gap", value: "10")
 
-        XCTAssertEqual(ConfigFileLines.render(lines), "# UI theme\nui_font_size=18\ninner_gap=10\n")
-    }
-
-    func testRemoveDropsOnlyTheNamedKey() {
-        var lines = ConfigFileLines.parse("pomo_music_folder=/tmp\npomo_timer_style=modern\n")
-
-        ConfigFileLines.remove(&lines, key: "pomo_music_folder")
-
-        XCTAssertEqual(ConfigFileLines.render(lines), "pomo_timer_style=modern\n")
+        XCTAssertEqual(ConfigFileLines.render(lines), "app_scan_depth=3\ninner_gap=10\n")
     }
 
     func testKeyValuesIgnoresCommentsAndBlanks() {
@@ -73,138 +172,5 @@ final class ConfigFileLinesTests: XCTestCase {
         XCTAssertEqual(values["ui_font_size"], "14")
         XCTAssertEqual(values["app_scan_depth"], "3")
         XCTAssertNil(values["# a comment"])
-    }
-
-    func testDuplicateCommentsCollapseToTheFirstOccurrence() {
-        // The regression this guards: a writer that could not detect its own header
-        // appended one copy plus a blank line on every save.
-        let normalized = ConfigFileLines.normalize([
-            "# UI theme",
-            "ui_font_size=14",
-            "",
-            "# UI theme",
-            "",
-            "# UI theme",
-            "",
-            "# UI theme",
-        ])
-
-        XCTAssertEqual(normalized, [
-            "# UI theme",
-            "ui_font_size=14",
-        ])
-    }
-
-    func testRepeatedCommentIsDroppedEvenWhenKeysFollowIt() {
-        let normalized = ConfigFileLines.normalize([
-            "# UI theme",
-            "ui_font_size=14",
-            "",
-            "# UI theme",
-            "ui_border_red=0.80",
-        ])
-
-        XCTAssertEqual(normalized, [
-            "# UI theme",
-            "ui_font_size=14",
-            "",
-            "ui_border_red=0.80",
-        ])
-    }
-
-    func testDistinctUserCommentsAreNeverTouched() {
-        let input = [
-            "# look configuration",
-            "# Backend indexing",
-            "app_scan_depth=3",
-            "",
-            "# my own note about this value",
-            "file_scan_depth=6",
-        ]
-
-        XCTAssertEqual(ConfigFileLines.normalize(input), input)
-    }
-
-    func testTrailingCommentSurvivesWhenNotADuplicate() {
-        let input = [
-            "app_scan_depth=3",
-            "",
-            "# TODO revisit the scan roots",
-        ]
-
-        XCTAssertEqual(ConfigFileLines.normalize(input), input)
-    }
-
-    func testBlankRunsCollapseAndEdgeBlanksAreDropped() {
-        let normalized = ConfigFileLines.normalize([
-            "",
-            "",
-            "app_scan_depth=3",
-            "",
-            "",
-            "",
-            "ui_font_size=14",
-            "",
-            "",
-        ])
-
-        XCTAssertEqual(normalized, [
-            "app_scan_depth=3",
-            "",
-            "ui_font_size=14",
-        ])
-    }
-
-    func testKeyLinesAreNeverLost() {
-        let scarred = [
-            "app_scan_depth=3",
-            "# UI theme",
-            "",
-            "# UI theme",
-            "ui_font_size=14",
-            "",
-            "# Added by look update",
-            "alias_note=Notion|Obsidian",
-            "",
-            "# UI theme",
-        ]
-
-        let normalized = ConfigFileLines.normalize(scarred)
-        let keys = normalized.filter { !$0.hasPrefix("#") && !$0.isEmpty }
-
-        XCTAssertEqual(keys, [
-            "app_scan_depth=3",
-            "ui_font_size=14",
-            "alias_note=Notion|Obsidian",
-        ])
-    }
-
-    func testNormalizeIsIdempotent() {
-        let scarred = [
-            "app_scan_depth=3",
-            "",
-            "# UI theme",
-            "",
-            "# UI theme",
-            "",
-            "",
-            "# UI theme",
-            "ui_font_size=14",
-            "",
-        ]
-
-        let once = ConfigFileLines.normalize(scarred)
-
-        XCTAssertEqual(once, ConfigFileLines.normalize(once))
-    }
-
-    func testConfigWithNoCommentsAtAllIsPreserved() {
-        // A user who stripped every comment by hand must not have anything re-added.
-        let input = [
-            "app_scan_depth=3",
-            "ui_font_size=14",
-        ]
-
-        XCTAssertEqual(ConfigFileLines.normalize(input), input)
     }
 }
