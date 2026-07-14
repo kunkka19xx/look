@@ -228,6 +228,9 @@ extension LauncherView {
             },
             onToggleQuickAction: { [self] in
                 togglePrimaryQuickAction()
+            },
+            hasToggleQuickAction: { [self] in
+                hasToggleQuickAction
             }
         )
     }

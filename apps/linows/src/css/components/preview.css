@@ -562,6 +562,27 @@
     background: var(--control-fill);
 }
 
+/* Busy while a connect/disconnect is applying: dimmed and non-interactive. */
+.qaction-device-row.is-pending {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.qaction-device-row.is-pending:hover {
+    background: none;
+}
+
+/* One action at a time: while any control is applying, the others (the toggle,
+   a plain button, every non-pending device row) go inert so nothing looks
+   clickable that the in-flight guard would silently swallow. The applying row
+   keeps its own .is-pending styling. */
+.preview-qactions.is-busy .qaction-toggle,
+.preview-qactions.is-busy .qaction-button,
+.preview-qactions.is-busy .qaction-device-row:not(.is-pending) {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
 /* Hollow dot = paired but disconnected; filled accent = connected. */
 .qaction-device-dot {
     width: 7px;

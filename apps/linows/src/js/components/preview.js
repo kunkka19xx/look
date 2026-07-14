@@ -415,6 +415,13 @@ export function clear() {
     }
 }
 
+// Re-read the current result's Quick Action states in place. Called when the
+// window is re-shown: the selection survives hide/show, so a cached state can
+// be stale if the system changed while hidden (e.g. Bluetooth flipped).
+export function refreshQuickActions() {
+    qactions.refresh();
+}
+
 // Right half of the clipboard empty state - the "How to use" tips card that
 // pairs with the results list's "Clipboard History" info (macOS
 // ClipboardEmptyHelpView). Static content, safe as innerHTML.
