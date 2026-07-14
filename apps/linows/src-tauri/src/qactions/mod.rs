@@ -9,12 +9,12 @@
 //! Adapters block (D-Bus, CLIs), so state/apply run on the blocking pool,
 //! mirroring `answers.rs`.
 
-// Every `SystemControl` adapter is Linux-only today (see `controls`), so on
-// other targets nothing constructs the success-path states/outcomes/values of
-// the shared types below - they exist only to serialize back to the frontend.
-// Silence the resulting dead_code lint off Linux; a future non-Linux adapter
-// would use them and this lifts on its own.
-#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
+// Adapters exist for Linux and Windows (see `controls`); on any other target
+// nothing constructs the success-path states/outcomes/values of the shared
+// types below - they exist only to serialize back to the frontend. Silence the
+// resulting dead_code lint there; a future adapter would use them and this
+// lifts on its own.
+#![cfg_attr(not(any(target_os = "linux", target_os = "windows")), allow(dead_code))]
 
 pub mod controls;
 
@@ -141,7 +141,15 @@ fn adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "windows")]
+fn adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
+    match action_id {
+        "bluetooth" => Some(&controls::bluetooth_windows::BluetoothControl),
+        _ => None,
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 fn adapter(_action_id: &str) -> Option<&'static dyn SystemControl> {
     None
 }
