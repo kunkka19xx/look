@@ -47,6 +47,10 @@ struct LauncherView: View {
     // Quick Actions for the selected result (see docs/writing-controls.md).
     @State var quickActionDescriptors: [QuickActionDescriptor] = []
     @State var quickActionStates: [String: ActionState] = [:]
+    // The result `quickActionStates`/`quickActionInfo` were read for. Lets a refresh
+    // of the SAME result keep showing what it already resolved, instead of blanking
+    // the panel back to "loading" on every window show and re-render.
+    @State var quickActionsLoadedResultID: String?
     // Resolved info values per action (actionId -> valueKey -> value), e.g. the
     // Bluetooth "status" key resolving to the paired-device list.
     @State var quickActionInfo: [String: [String: InfoValue]] = [:]
@@ -1050,6 +1054,7 @@ struct LauncherView: View {
                     quickActionStates: quickActionStates,
                     quickActionInfo: quickActionInfo,
                     pendingQuickActionItems: pendingQuickActions,
+                    busyQuickActionIds: busyQuickActionIds,
                     onRunQuickAction: { descriptor, intent in
                         runQuickAction(descriptor, intent: intent)
                     },

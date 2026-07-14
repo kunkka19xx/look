@@ -11,6 +11,9 @@ struct ResultPreviewView: View {
     var quickActionStates: [String: ActionState] = [:]
     var quickActionInfo: [String: [String: InfoValue]] = [:]
     var pendingQuickActionItems: Set<String> = []
+    /// Actions with something applying: their controls render inert (see
+    /// `LauncherView.busyQuickActionIds`).
+    var busyQuickActionIds: Set<String> = []
     var onRunQuickAction: (QuickActionDescriptor, ActionIntent) -> Void = { _, _ in }
     var onActivateQuickActionItem: (QuickActionDescriptor, QuickActionListItem) -> Void = { _, _ in }
     var onDeleteClipboard: (() -> Void)? = nil
@@ -166,6 +169,7 @@ struct ResultPreviewView: View {
                         states: quickActionStates,
                         info: quickActionInfo,
                         pendingItems: pendingQuickActionItems,
+                        busyActionIds: busyQuickActionIds,
                         themeStore: themeStore,
                         onRun: onRunQuickAction,
                         onActivateItem: onActivateQuickActionItem

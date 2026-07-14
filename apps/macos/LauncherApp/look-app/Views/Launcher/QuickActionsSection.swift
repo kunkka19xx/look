@@ -14,6 +14,9 @@ struct QuickActionsSection: View {
     let info: [String: [String: InfoValue]]
     /// Item ids currently applying (connecting/disconnecting), rendered as busy.
     let pendingItems: Set<String>
+    /// Actions with something applying. Their other controls go inert, so nothing looks
+    /// clickable that the guard in `runQuickAction` would silently swallow.
+    let busyActionIds: Set<String>
     let themeStore: ThemeStore
     /// A control was activated by click (Cmd+O runs the same path).
     var onRun: (QuickActionDescriptor, ActionIntent) -> Void = { _, _ in }
@@ -32,6 +35,7 @@ struct QuickActionsSection: View {
                     state: states[descriptor.actionId],
                     info: info[descriptor.actionId] ?? [:],
                     pendingItems: pendingItems,
+                    isBusy: busyActionIds.contains(descriptor.actionId),
                     themeStore: themeStore,
                     onRun: { intent in onRun(descriptor, intent) },
                     onActivateItem: { item in onActivateItem(descriptor, item) }
@@ -47,6 +51,8 @@ private struct QuickActionControl: View {
     let state: ActionState?
     let info: [String: InfoValue]
     let pendingItems: Set<String>
+    /// Something under this action is applying, so its controls stop taking input.
+    let isBusy: Bool
     let themeStore: ThemeStore
     let onRun: (ActionIntent) -> Void
     let onActivateItem: (QuickActionListItem) -> Void
@@ -59,6 +65,8 @@ private struct QuickActionControl: View {
         static let verticalPadding: CGFloat = 8
         static let cornerRadius: CGFloat = 8
         static let rowBackgroundOpacity = 0.18
+        /// Matches the pending row's dim, and the linows `.is-busy` rule.
+        static let busyOpacity = 0.5
         static let toggleKeyHint = "⌘O"
         static let hintFontSizeDelta: CGFloat = 3
         static let minHintFontSize: CGFloat = 10
@@ -94,17 +102,25 @@ private struct QuickActionControl: View {
         if case .unavailable(let reason)? = state {
             Text(reason).font(hintFont).foregroundStyle(themeStore.mutedTextColor())
         } else {
-            switch descriptor.control {
-            case .toggle:
-                HStack(spacing: Layout.controlSpacing) {
-                    ToggleSwitch(isOn: isOn, themeStore: themeStore) { onRun(.toggle) }
-                    keyHint(Layout.toggleKeyHint)
+            Group {
+                switch descriptor.control {
+                case .toggle:
+                    HStack(spacing: Layout.controlSpacing) {
+                        ToggleSwitch(isOn: isOn, themeStore: themeStore) { onRun(.toggle) }
+                        keyHint(Layout.toggleKeyHint)
+                    }
+                case .button:
+                    Button(descriptor.title) { onRun(.run) }
+                        .buttonStyle(.borderless)
+                        .font(hintFont)
                 }
-            case .button:
-                Button(descriptor.title) { onRun(.run) }
-                    .buttonStyle(.borderless)
-                    .font(hintFont)
             }
+            // While one of this action's devices is connecting, its own control stops
+            // taking input rather than looking live and being swallowed by the guard.
+            // `ToggleSwitch` already dims itself for an unresolved state, so only dim
+            // here when there is a resolved state to dim.
+            .disabled(isBusy)
+            .opacity(isBusy && isOn != nil ? Layout.busyOpacity : 1)
         }
     }
 
@@ -131,9 +147,13 @@ private struct QuickActionControl: View {
             VStack(alignment: .leading, spacing: Layout.itemSpacing) {
                 statusRow(label: field.label, value: listSummary(items))
                 ForEach(items, id: \.self) { item in
+                    let isPending = item.id.map(pendingItems.contains) ?? false
                     ListItemRow(
                         item: item,
-                        isPending: item.id.map(pendingItems.contains) ?? false,
+                        isPending: isPending,
+                        // A sibling row is inert while another device applies. The
+                        // applying row keeps its own pending styling.
+                        isBusy: isBusy && !isPending,
                         hintFont: hintFont,
                         themeStore: themeStore
                     ) {
@@ -211,6 +231,8 @@ private struct QuickActionControl: View {
 private struct ListItemRow: View {
     let item: QuickActionListItem
     let isPending: Bool
+    /// Another control under the same action is applying, so this row goes inert.
+    let isBusy: Bool
     let hintFont: Font
     let themeStore: ThemeStore
     let onActivate: () -> Void
@@ -228,8 +250,9 @@ private struct ListItemRow: View {
         static let pendingOpacity = 0.5
     }
 
-    /// Clickable only when it has an id and isn't already applying.
-    private var isActionable: Bool { item.id != nil && !isPending }
+    /// Clickable only when it has an id, isn't already applying, and no sibling control
+    /// under the same action is applying either.
+    private var isActionable: Bool { item.id != nil && !isPending && !isBusy }
 
     var body: some View {
         Button(action: onActivate) {
@@ -256,7 +279,7 @@ private struct ListItemRow: View {
         }
         .buttonStyle(.plain)
         .disabled(!isActionable)
-        .opacity(isPending ? Layout.pendingOpacity : 1)
+        .opacity(isPending || isBusy ? Layout.pendingOpacity : 1)
         // Native pointer (macOS 15+) avoids the unbalanced NSCursor push/pop
         // stack that would leave a stuck cursor when a row is removed on reload.
         .pointerStyle(isActionable ? .link : nil)
