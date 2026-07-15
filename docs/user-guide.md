@@ -247,7 +247,7 @@ Backend-related keys:
 
 File-only settings (no Settings UI):
 
-These keys have no control in the Settings screens. Edit `~/.look.config` directly, then reload with `Cmd+Shift+;` or restart Look. Out-of-range or unparseable values fall back to the listed default. More keys will be added here over time.
+These keys have no control in the Settings screens. Edit `~/.look.config` directly, then reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux/Windows), or restart Look. Out-of-range or unparseable values fall back to the listed default. More keys will be added here over time.
 
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
 
