@@ -820,7 +820,7 @@ file_exclude_paths=
 ignored_patterns_sample=
 # File ignore patterns. Gitignore-style path globs: *, **, ?, [abc].
 # Format: ignored_patterns_<group>=Pattern1|Pattern2|Pattern3
-# macOS/Linux usually use ~/... or /... ; on Windows, C:\... is the safest documented form and ~ expands to your home dir.
+# macOS/Linux usually use ~/... or /... ; on Windows, C:\\... is the safest documented form and ~ expands to your home dir.
 # ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp
 # ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm
 # ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part
