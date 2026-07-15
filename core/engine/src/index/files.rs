@@ -262,7 +262,10 @@ mod tests {
         config.file_scan_limit = 100;
         config.ignored_file_patterns = vec![
             root.join("*.log").to_string_lossy().into_owned(),
-            root.join("**").join("*.db-wal").to_string_lossy().into_owned(),
+            root.join("**")
+                .join("*.db-wal")
+                .to_string_lossy()
+                .into_owned(),
         ];
 
         let (tx, rx) = mpsc::sync_channel(128);
