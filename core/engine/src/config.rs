@@ -1,4 +1,4 @@
-use globset::Glob;
+use globset::GlobBuilder;
 use crate::normalize::normalize_for_search;
 use crate::platform;
 use crate::platform::paths::{PathPolicy, expand_with_home};
@@ -296,7 +296,9 @@ impl RuntimeConfig {
                         let expanded = expand_path(&pattern, home.as_deref());
                         let normalized = PathPolicy::for_base(&expanded)
                             .normalize_for_matching(&expanded);
-                        if Glob::new(&normalized).is_err() {
+                        let mut builder = GlobBuilder::new(&normalized);
+                        builder.literal_separator(true);
+                        if builder.build().is_err() {
                             continue;
                         }
                         if !self
