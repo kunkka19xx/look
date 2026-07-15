@@ -49,7 +49,8 @@ fn walk_files(
         .ignored_file_patterns
         .iter()
         .filter_map(|pattern| {
-            let mut builder = GlobBuilder::new(pattern);
+            let normalized_pattern = PathPolicy::for_base(pattern).normalize_for_matching(pattern);
+            let mut builder = GlobBuilder::new(&normalized_pattern);
             builder.literal_separator(true);
             builder.build().ok()
         })
