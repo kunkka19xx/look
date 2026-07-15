@@ -166,6 +166,8 @@ fn should_exclude_path(path: &str, file_exclude_paths: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{discover_local_files_and_folders, should_exclude_path};
+    use crate::platform::paths::PathPolicy;
+    use globset::GlobBuilder;
     use crate::config::RuntimeConfig;
     use look_indexing::CandidateKind;
     use std::sync::mpsc;
@@ -179,6 +181,19 @@ mod tests {
                 .expect("system time should be after epoch")
                 .as_nanos()
         ))
+    }
+
+    fn windows_style_ignored_pattern_matches(pattern: &str, path: &str) -> bool {
+        let policy = PathPolicy::for_base(pattern);
+        let normalized_pattern = policy.normalize_for_matching(pattern);
+        let normalized_path = policy.normalize_for_matching(path);
+        let mut builder = GlobBuilder::new(&normalized_pattern);
+        builder.literal_separator(true);
+        builder
+            .build()
+            .expect("pattern should compile")
+            .compile_matcher()
+            .is_match(&normalized_path)
     }
 
     #[test]
@@ -339,5 +354,21 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ignored_patterns_windows_style_paths_match_consistently() {
+        // Case:
+        // - pattern = C:\Users\me\AppData\Local\Temp\**\*.etl
+        // - path = C:/Users/me/AppData/Local/Temp/nested/trace.etl
+        // - unrelated = C:/Users/me/AppData/Local/Temp/nested/trace.log
+        assert!(windows_style_ignored_pattern_matches(
+            r"C:\Users\me\AppData\Local\Temp\**\*.etl",
+            "C:/Users/me/AppData/Local/Temp/nested/trace.etl"
+        ));
+        assert!(!windows_style_ignored_pattern_matches(
+            r"C:\Users\me\AppData\Local\Temp\**\*.etl",
+            "C:/Users/me/AppData/Local/Temp/nested/trace.log"
+        ));
     }
 }

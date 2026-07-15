@@ -1112,7 +1112,10 @@ mod tests {
         let mut config = RuntimeConfig::default();
         config.apply_from_file(&tmp);
 
-        assert_eq!(config.ignored_file_patterns.len(), 1);
+        assert_eq!(
+            config.ignored_file_patterns,
+            vec!["c:/users/me/appdata/local/temp/**/*.etl".to_string()]
+        );
 
         let _ = std::fs::remove_file(&tmp);
     }
