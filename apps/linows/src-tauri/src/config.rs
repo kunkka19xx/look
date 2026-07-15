@@ -177,6 +177,15 @@ pub fn clipboard_history_limit() -> usize {
     let Ok(contents) = std::fs::read_to_string(&path) else {
         return CLIPBOARD_HISTORY_LIMIT_DEFAULT;
     };
+    parse_clipboard_history_limit(&contents)
+}
+
+/// Parses `clipboard_history_limit` out of raw config file contents. Split from
+/// `clipboard_history_limit` so the parsing rules can be unit-tested without touching
+/// the filesystem or the shared `LOOK_CONFIG_PATH` env var. The last assignment wins
+/// (matching how the file is applied line by line); returns the default when the key is
+/// absent, unparseable, or outside [10, 100].
+fn parse_clipboard_history_limit(contents: &str) -> usize {
     let mut last_value: Option<&str> = None;
     for raw_line in contents.lines() {
         let line = strip_inline_comment(raw_line).trim();
@@ -214,4 +223,116 @@ pub fn config_file_path() -> std::path::PathBuf {
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".to_string());
     std::path::PathBuf::from(home).join(CONFIG_FILE)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_key_falls_back_to_default() {
+        assert_eq!(parse_clipboard_history_limit(""), CLIPBOARD_HISTORY_LIMIT_DEFAULT);
+        assert_eq!(
+            parse_clipboard_history_limit("file_scan_limit=8000\nai_enabled=true\n"),
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
+    }
+
+    #[test]
+    fn valid_in_range_value_is_used() {
+        assert_eq!(parse_clipboard_history_limit("clipboard_history_limit=50\n"), 50);
+    }
+
+    #[test]
+    fn boundary_values_are_accepted() {
+        assert_eq!(parse_clipboard_history_limit("clipboard_history_limit=10\n"), 10);
+        assert_eq!(parse_clipboard_history_limit("clipboard_history_limit=100\n"), 100);
+    }
+
+    #[test]
+    fn out_of_range_values_fall_back_to_default() {
+        // Below min, above max, and zero all revert to the default rather than clamp.
+        assert_eq!(
+            parse_clipboard_history_limit("clipboard_history_limit=9\n"),
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
+        assert_eq!(
+            parse_clipboard_history_limit("clipboard_history_limit=101\n"),
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
+        assert_eq!(
+            parse_clipboard_history_limit("clipboard_history_limit=0\n"),
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
+    }
+
+    #[test]
+    fn non_numeric_and_negative_values_fall_back_to_default() {
+        assert_eq!(
+            parse_clipboard_history_limit("clipboard_history_limit=abc\n"),
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
+        // `-5` is not a valid usize, so parsing fails and we fall back.
+        assert_eq!(
+            parse_clipboard_history_limit("clipboard_history_limit=-5\n"),
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
+        assert_eq!(
+            parse_clipboard_history_limit("clipboard_history_limit=\n"),
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
+    }
+
+    #[test]
+    fn surrounding_whitespace_is_ignored() {
+        assert_eq!(parse_clipboard_history_limit("  clipboard_history_limit = 42 \n"), 42);
+    }
+
+    #[test]
+    fn trailing_inline_comment_is_stripped() {
+        assert_eq!(
+            parse_clipboard_history_limit("clipboard_history_limit=50   # bumped for my workflow\n"),
+            50
+        );
+        // The comment must not smuggle an out-of-range value past the range check.
+        assert_eq!(
+            parse_clipboard_history_limit("clipboard_history_limit=999 # too big\n"),
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
+    }
+
+    #[test]
+    fn commented_out_line_is_not_read() {
+        assert_eq!(
+            parse_clipboard_history_limit("# clipboard_history_limit=50\n"),
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
+    }
+
+    #[test]
+    fn key_must_match_exactly_not_as_a_suffix() {
+        // A different key that merely ends with the name must not match.
+        assert_eq!(
+            parse_clipboard_history_limit("my_clipboard_history_limit=50\n"),
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
+    }
+
+    #[test]
+    fn last_assignment_wins() {
+        assert_eq!(
+            parse_clipboard_history_limit(
+                "clipboard_history_limit=20\nclipboard_history_limit=80\n"
+            ),
+            80
+        );
+        // When the last duplicate is invalid the whole lookup falls back to the default,
+        // even though an earlier line held a valid value.
+        assert_eq!(
+            parse_clipboard_history_limit(
+                "clipboard_history_limit=50\nclipboard_history_limit=oops\n"
+            ),
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
+    }
 }
