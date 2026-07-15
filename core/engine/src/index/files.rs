@@ -2,10 +2,13 @@ use crate::config::RuntimeConfig;
 use crate::index::{FILE_CANDIDATE_ID_PREFIX, FOLDER_CANDIDATE_ID_PREFIX};
 use crate::platform::paths::{PathPolicy, candidate_id_path_component, path_is_same_or_child};
 use globset::GlobBuilder;
+use globset::GlobMatcher;
 use ignore::WalkBuilder;
 use look_indexing::{Candidate, CandidateKind};
 use std::sync::mpsc;
 use std::time::UNIX_EPOCH;
+
+type IgnoredFileMatcher = (PathPolicy, GlobMatcher);
 
 fn modified_unix_s(metadata: Option<&std::fs::Metadata>) -> Option<i64> {
     metadata?
@@ -49,13 +52,16 @@ fn walk_files(
         .ignored_file_patterns
         .iter()
         .filter_map(|pattern| {
-            let normalized_pattern = PathPolicy::for_base(pattern).normalize_for_matching(pattern);
+            let policy = PathPolicy::for_base(pattern);
+            let normalized_pattern = policy.normalize_for_matching(pattern);
             let mut builder = GlobBuilder::new(&normalized_pattern);
             builder.literal_separator(true);
-            builder.build().ok()
+            builder
+                .build()
+                .ok()
+                .map(|glob| (policy, glob.compile_matcher()))
         })
-        .map(|glob| glob.compile_matcher())
-        .collect::<Vec<_>>();
+        .collect::<Vec<IgnoredFileMatcher>>();
     walker
         .hidden(false)
         .git_ignore(false)
@@ -128,11 +134,13 @@ fn walk_files(
         }
 
         if path_buf.is_file() {
-            let normalized_path = PathPolicy::for_base(path_str).normalize_for_matching(path_str);
-            if ignored_file_matchers
-                .iter()
-                .any(|matcher| matcher.is_match(&normalized_path))
-            {
+            // Normalize the candidate with the same policy used for the
+            // pattern. Without this, a Windows pattern like `C:\tmp\*.log`
+            // becomes lowercase `c:/...`, while walker output like
+            // `C:/tmp/debug.log` can keep its original case and miss the glob.
+            if ignored_file_matchers.iter().any(|(policy, glob_matcher)| {
+                glob_matcher.is_match(policy.normalize_for_matching(path_str))
+            }) {
                 continue;
             }
 
@@ -371,5 +379,21 @@ mod tests {
             r"C:\Users\me\AppData\Local\Temp\**\*.etl",
             "C:/Users/me/AppData/Local/Temp/nested/trace.log"
         ));
+    }
+
+    #[test]
+    fn ignored_patterns_match_windows_backslash_pattern_against_slash_candidate() {
+        let pattern = r"C:\Users\me\Temp\*.log";
+        let policy = PathPolicy::for_base(pattern);
+        let normalized_pattern = policy.normalize_for_matching(pattern);
+        let mut builder = GlobBuilder::new(&normalized_pattern);
+        builder.literal_separator(true);
+        let matcher = builder
+            .build()
+            .expect("pattern should compile")
+            .compile_matcher();
+
+        assert!(matcher.is_match(policy.normalize_for_matching("C:/Users/me/Temp/debug.log")));
+        assert!(!matcher.is_match(policy.normalize_for_matching("C:/Users/me/Temp/debug.txt")));
     }
 }
