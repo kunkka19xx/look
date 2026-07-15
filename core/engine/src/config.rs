@@ -824,6 +824,15 @@ mod tests {
     }
 
     #[test]
+    fn parse_pattern_values_trims_and_deduplicates_entries() {
+        // Case: " ~/Project/**/*.log | | ~/Project/**/*.tmp | ~/Project/**/*.log "
+        let parsed = parse_pattern_values(
+            " ~/Project/**/*.log | | ~/Project/**/*.tmp | ~/Project/**/*.log ",
+        );
+        assert_eq!(parsed, vec!["~/Project/**/*.log", "~/Project/**/*.tmp"]);
+    }
+
+    #[test]
     fn expand_path_supports_home_tokens() {
         let home = Some("/Users/demo");
         assert_eq!(expand_path("~/Projects", home), "/Users/demo/Projects");
@@ -1009,6 +1018,99 @@ mod tests {
 
         config.apply_from_file(&tmp);
         assert!(!config.search_aliases.contains_key("note"));
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn ignored_pattern_entries_are_loaded_from_config() {
+        // Case:
+        // ignored_patterns_logs=/Users/demo/Project/**/*.log | /Users/demo/Project/**/*.tmp
+        // ignored_patterns_more=/Users/demo/Project/**/*.tmp|[invalid
+        // lazy_indexing_enabled=false
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-ignored-patterns-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(
+            &tmp,
+            "ignored_patterns_logs=/Users/demo/Project/**/*.log | /Users/demo/Project/**/*.tmp\nignored_patterns_more=/Users/demo/Project/**/*.tmp|[invalid\nlazy_indexing_enabled=false\n",
+        )
+        .expect("should write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        config.apply_from_file(&tmp);
+
+        assert_eq!(
+            config.ignored_file_patterns,
+            vec![
+                "/Users/demo/Project/**/*.log".to_string(),
+                "/Users/demo/Project/**/*.tmp".to_string()
+            ]
+        );
+        assert!(!config.lazy_indexing_enabled);
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn ignored_pattern_empty_values_do_not_fail_parsing() {
+        // Case:
+        // ignored_patterns_empty=
+        // ignored_patterns_spaces= |  |
+        // lazy_indexing_enabled=false
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-ignored-patterns-empty-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(
+            &tmp,
+            "ignored_patterns_empty=\nignored_patterns_spaces= |  |\nlazy_indexing_enabled=false\n",
+        )
+        .expect("should write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        config.apply_from_file(&tmp);
+
+        assert!(config.ignored_file_patterns.is_empty());
+        assert!(!config.lazy_indexing_enabled);
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn ignored_pattern_windows_style_path_is_accepted() {
+        // Case: ignored_patterns_windows=C:\Users\me\AppData\Local\Temp\**\*.etl
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-ignored-patterns-windows-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(
+            &tmp,
+            r"ignored_patterns_windows=C:\Users\me\AppData\Local\Temp\**\*.etl
+",
+        )
+        .expect("should write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        config.apply_from_file(&tmp);
+
+        assert_eq!(config.ignored_file_patterns.len(), 1);
 
         let _ = std::fs::remove_file(&tmp);
     }

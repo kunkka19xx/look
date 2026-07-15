@@ -161,7 +161,21 @@ fn should_exclude_path(path: &str, file_exclude_paths: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::should_exclude_path;
+    use super::{discover_local_files_and_folders, should_exclude_path};
+    use crate::config::RuntimeConfig;
+    use look_indexing::CandidateKind;
+    use std::sync::mpsc;
+
+    fn temp_path(prefix: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "look-files-test-{prefix}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ))
+    }
 
     #[test]
     fn excludes_nested_paths_and_exact_matches() {
@@ -210,5 +224,116 @@ mod tests {
             "C:/Users/demo/Downloads/cache/a.txt",
             &excludes
         ));
+    }
+
+    #[test]
+    fn ignored_patterns_skip_matching_files_but_keep_other_entries() {
+        let root = temp_path("ignored-patterns");
+        let nested = root.join("nested");
+        std::fs::create_dir_all(&nested).expect("should create test directories");
+        std::fs::write(root.join("debug.log"), "log").expect("should write log file");
+        std::fs::write(root.join("notes.md"), "notes").expect("should write notes file");
+        std::fs::write(nested.join("state.db-wal"), "wal").expect("should write wal file");
+
+        let mut config = RuntimeConfig::default();
+        config.file_scan_roots = vec![root.to_string_lossy().into_owned()];
+        config.file_scan_extra_roots.clear();
+        config.file_scan_depth = 4;
+        config.file_scan_limit = 100;
+        let root_str = root.to_string_lossy().into_owned();
+        config.ignored_file_patterns = vec![
+            format!("{root_str}/*.log"),
+            format!("{root_str}/**/*.db-wal"),
+        ];
+
+        let (tx, rx) = mpsc::sync_channel(128);
+        discover_local_files_and_folders(&config, tx);
+        let candidates = rx.try_iter().collect::<Vec<_>>();
+
+        assert!(candidates.iter().any(|candidate| {
+            candidate.kind == CandidateKind::File && candidate.title.as_ref() == "notes.md"
+        }));
+        assert!(candidates.iter().any(|candidate| {
+            candidate.kind == CandidateKind::Folder && candidate.title.as_ref() == "nested"
+        }));
+        assert!(
+            !candidates
+                .iter()
+                .any(|candidate| candidate.title.as_ref() == "debug.log")
+        );
+        assert!(
+            !candidates
+                .iter()
+                .any(|candidate| candidate.title.as_ref() == "state.db-wal")
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ignored_patterns_do_not_consume_file_scan_limit() {
+        let root = temp_path("ignored-pattern-limit");
+        std::fs::create_dir_all(&root).expect("should create test directory");
+        std::fs::write(root.join("debug.log"), "log").expect("should write ignored file");
+        std::fs::write(root.join("notes.md"), "notes").expect("should write kept file");
+
+        let mut config = RuntimeConfig::default();
+        config.file_scan_roots = vec![root.to_string_lossy().into_owned()];
+        config.file_scan_extra_roots.clear();
+        config.file_scan_depth = 2;
+        config.file_scan_limit = 1;
+        let root_str = root.to_string_lossy().into_owned();
+        config.ignored_file_patterns = vec![format!("{root_str}/*.log")];
+
+        let (tx, rx) = mpsc::sync_channel(32);
+        discover_local_files_and_folders(&config, tx);
+        let candidates = rx.try_iter().collect::<Vec<_>>();
+
+        let file_titles = candidates
+            .iter()
+            .filter(|candidate| candidate.kind == CandidateKind::File)
+            .map(|candidate| candidate.title.as_ref())
+            .collect::<Vec<_>>();
+        assert_eq!(file_titles, vec!["notes.md"]);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ignored_patterns_folder_scoped_glob_only_matches_direct_children() {
+        // Case:
+        // - root/direct.tmp
+        // - root/nested/child.tmp
+        // - ignored_file_patterns = [root/*.tmp]
+        let root = temp_path("ignored-pattern-direct-children");
+        let nested = root.join("nested");
+        std::fs::create_dir_all(&nested).expect("should create test directories");
+        std::fs::write(root.join("direct.tmp"), "tmp").expect("should write direct file");
+        std::fs::write(nested.join("child.tmp"), "tmp").expect("should write nested file");
+
+        let mut config = RuntimeConfig::default();
+        config.file_scan_roots = vec![root.to_string_lossy().into_owned()];
+        config.file_scan_extra_roots.clear();
+        config.file_scan_depth = 4;
+        config.file_scan_limit = 10;
+        let root_str = root.to_string_lossy().into_owned();
+        config.ignored_file_patterns = vec![format!("{root_str}/*.tmp")];
+
+        let (tx, rx) = mpsc::sync_channel(32);
+        discover_local_files_and_folders(&config, tx);
+        let candidates = rx.try_iter().collect::<Vec<_>>();
+
+        assert!(
+            !candidates
+                .iter()
+                .any(|candidate| candidate.title.as_ref() == "direct.tmp")
+        );
+        assert!(
+            candidates
+                .iter()
+                .any(|candidate| candidate.title.as_ref() == "child.tmp")
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
