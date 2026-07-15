@@ -166,9 +166,9 @@ fn should_exclude_path(path: &str, file_exclude_paths: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{discover_local_files_and_folders, should_exclude_path};
+    use crate::config::RuntimeConfig;
     use crate::platform::paths::PathPolicy;
     use globset::GlobBuilder;
-    use crate::config::RuntimeConfig;
     use look_indexing::CandidateKind;
     use std::sync::mpsc;
 

@@ -1,7 +1,7 @@
-use globset::GlobBuilder;
 use crate::normalize::normalize_for_search;
 use crate::platform;
 use crate::platform::paths::{PathPolicy, expand_with_home};
+use globset::GlobBuilder;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -294,8 +294,8 @@ impl RuntimeConfig {
                     let parsed = parse_pattern_values(value);
                     for pattern in parsed {
                         let expanded = expand_path(&pattern, home.as_deref());
-                        let normalized = PathPolicy::for_base(&expanded)
-                            .normalize_for_matching(&expanded);
+                        let normalized =
+                            PathPolicy::for_base(&expanded).normalize_for_matching(&expanded);
                         let mut builder = GlobBuilder::new(&normalized);
                         builder.literal_separator(true);
                         if builder.build().is_err() {
