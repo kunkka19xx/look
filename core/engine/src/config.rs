@@ -418,9 +418,12 @@ file_scan_depth=4\n\
 file_scan_limit=8000\n\
 file_exclude_paths=\n\
 ignored_patterns_sample=\n\
-# File ignore patterns. Format: ignored_patterns_<group>=Pattern1|Pattern2|Pattern3\n\
+# File ignore patterns. Gitignore-style path globs: *, **, ?, [abc].\n\
+# Format: ignored_patterns_<group>=Pattern1|Pattern2|Pattern3\n\
+# macOS/Linux usually use ~/... or /... ; on Windows, C:\\... is the safest documented form and ~ expands to your home dir.\n\
 # ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp\n\
 # ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm\n\
+# ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part\n\
 lazy_indexing_enabled=true\n\
 skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data,deriveddata,pods,vendor,out,coverage,tmp,cache,venv\n\
 \n\
