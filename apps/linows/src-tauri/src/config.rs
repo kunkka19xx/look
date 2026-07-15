@@ -153,6 +153,22 @@ pub const CLIPBOARD_HISTORY_LIMIT_DEFAULT: usize = 10;
 pub const CLIPBOARD_HISTORY_LIMIT_MIN: usize = 10;
 pub const CLIPBOARD_HISTORY_LIMIT_MAX: usize = 100;
 
+/// Drops a trailing comment. `#` only starts one at the beginning of the line or after
+/// whitespace, so it survives inside a value: cutting at the first `#` anywhere would
+/// truncate a path like `/Users/me/pic#1.png` down to `/Users/me/pic`, silently
+/// corrupting the setting. Must stay in step with the cross-platform reader
+/// in `core/engine/src/config.rs` (`strip_comments`), since both parse the same file.
+fn strip_inline_comment(value: &str) -> &str {
+    let mut previous_is_whitespace = true;
+    for (index, character) in value.char_indices() {
+        if character == '#' && previous_is_whitespace {
+            return &value[..index];
+        }
+        previous_is_whitespace = character.is_whitespace();
+    }
+    value
+}
+
 /// How many clipboard clips to keep, read from `clipboard_history_limit` in the
 /// config file. Returns the default (10) when the key is absent, unparseable, or
 /// outside the accepted [10, 100] range.
@@ -161,23 +177,27 @@ pub fn clipboard_history_limit() -> usize {
     let Ok(contents) = std::fs::read_to_string(&path) else {
         return CLIPBOARD_HISTORY_LIMIT_DEFAULT;
     };
-    for line in contents.lines() {
-        let line = line.trim();
+    let mut last_value: Option<&str> = None;
+    for raw_line in contents.lines() {
+        let line = strip_inline_comment(raw_line).trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
         if let Some((key, value)) = line.split_once('=')
             && key.trim() == CLIPBOARD_HISTORY_LIMIT_KEY
         {
-            return match value.trim().parse::<usize>() {
-                Ok(parsed)
-                    if (CLIPBOARD_HISTORY_LIMIT_MIN..=CLIPBOARD_HISTORY_LIMIT_MAX)
-                        .contains(&parsed) =>
-                {
-                    parsed
-                }
-                _ => CLIPBOARD_HISTORY_LIMIT_DEFAULT,
-            };
+            last_value = Some(value.trim());
+        }
+    }
+    if let Some(value) = last_value {
+        match value.parse::<usize>() {
+            Ok(parsed)
+                if (CLIPBOARD_HISTORY_LIMIT_MIN..=CLIPBOARD_HISTORY_LIMIT_MAX)
+                    .contains(&parsed) =>
+            {
+                return parsed;
+            }
+            _ => {}
         }
     }
     CLIPBOARD_HISTORY_LIMIT_DEFAULT
