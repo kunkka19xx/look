@@ -260,10 +260,9 @@ mod tests {
         config.file_scan_extra_roots.clear();
         config.file_scan_depth = 4;
         config.file_scan_limit = 100;
-        let root_str = root.to_string_lossy().into_owned();
         config.ignored_file_patterns = vec![
-            format!("{root_str}/*.log"),
-            format!("{root_str}/**/*.db-wal"),
+            root.join("*.log").to_string_lossy().into_owned(),
+            root.join("**").join("*.db-wal").to_string_lossy().into_owned(),
         ];
 
         let (tx, rx) = mpsc::sync_channel(128);
@@ -302,8 +301,7 @@ mod tests {
         config.file_scan_extra_roots.clear();
         config.file_scan_depth = 2;
         config.file_scan_limit = 1;
-        let root_str = root.to_string_lossy().into_owned();
-        config.ignored_file_patterns = vec![format!("{root_str}/*.log")];
+        config.ignored_file_patterns = vec![root.join("*.log").to_string_lossy().into_owned()];
 
         let (tx, rx) = mpsc::sync_channel(32);
         discover_local_files_and_folders(&config, tx);
@@ -336,8 +334,7 @@ mod tests {
         config.file_scan_extra_roots.clear();
         config.file_scan_depth = 4;
         config.file_scan_limit = 10;
-        let root_str = root.to_string_lossy().into_owned();
-        config.ignored_file_patterns = vec![format!("{root_str}/*.tmp")];
+        config.ignored_file_patterns = vec![root.join("*.tmp").to_string_lossy().into_owned()];
 
         let (tx, rx) = mpsc::sync_channel(32);
         discover_local_files_and_folders(&config, tx);
