@@ -231,7 +231,10 @@ mod tests {
 
     #[test]
     fn missing_key_falls_back_to_default() {
-        assert_eq!(parse_clipboard_history_limit(""), CLIPBOARD_HISTORY_LIMIT_DEFAULT);
+        assert_eq!(
+            parse_clipboard_history_limit(""),
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
         assert_eq!(
             parse_clipboard_history_limit("file_scan_limit=8000\nai_enabled=true\n"),
             CLIPBOARD_HISTORY_LIMIT_DEFAULT
@@ -240,13 +243,22 @@ mod tests {
 
     #[test]
     fn valid_in_range_value_is_used() {
-        assert_eq!(parse_clipboard_history_limit("clipboard_history_limit=50\n"), 50);
+        assert_eq!(
+            parse_clipboard_history_limit("clipboard_history_limit=50\n"),
+            50
+        );
     }
 
     #[test]
     fn boundary_values_are_accepted() {
-        assert_eq!(parse_clipboard_history_limit("clipboard_history_limit=10\n"), 10);
-        assert_eq!(parse_clipboard_history_limit("clipboard_history_limit=100\n"), 100);
+        assert_eq!(
+            parse_clipboard_history_limit("clipboard_history_limit=10\n"),
+            10
+        );
+        assert_eq!(
+            parse_clipboard_history_limit("clipboard_history_limit=100\n"),
+            100
+        );
     }
 
     #[test]
@@ -285,13 +297,18 @@ mod tests {
 
     #[test]
     fn surrounding_whitespace_is_ignored() {
-        assert_eq!(parse_clipboard_history_limit("  clipboard_history_limit = 42 \n"), 42);
+        assert_eq!(
+            parse_clipboard_history_limit("  clipboard_history_limit = 42 \n"),
+            42
+        );
     }
 
     #[test]
     fn trailing_inline_comment_is_stripped() {
         assert_eq!(
-            parse_clipboard_history_limit("clipboard_history_limit=50   # bumped for my workflow\n"),
+            parse_clipboard_history_limit(
+                "clipboard_history_limit=50   # bumped for my workflow\n"
+            ),
             50
         );
         // The comment must not smuggle an out-of-range value past the range check.
