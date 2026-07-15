@@ -397,6 +397,9 @@ file_exclude_paths=\n\
 lazy_indexing_enabled=true\n\
 skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data,deriveddata,pods,vendor,out,coverage,tmp,cache,venv\n\
 \n\
+# Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
+clipboard_history_limit=10\n\
+\n\
 # UI theme\n\
 ui_tint_red=0.08\n\
 ui_tint_green=0.10\n\

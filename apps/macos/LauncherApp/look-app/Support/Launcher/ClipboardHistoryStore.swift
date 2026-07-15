@@ -53,8 +53,28 @@ final class ClipboardHistoryStore: ObservableObject {
 
     @Published private(set) var entries: [ClipboardHistoryEntry] = []
 
-    private let maxEntries = AppConstants.Launcher.Clipboard.maxEntries
+    private let maxEntries = ClipboardHistoryStore.resolveMaxEntries()
     private let maxStoredCharacters = AppConstants.Launcher.Clipboard.maxStoredCharacters
+
+    /// Reads `clipboard_history_limit` from `~/.look.config`, falling back to the
+    /// default (10) when the key is missing, unparseable, or outside the accepted
+    /// [10, 100] range. Read once at init: changing the limit takes effect on relaunch,
+    /// matching how the rest of the config is loaded.
+    private static func resolveMaxEntries() -> Int {
+        let fallback = AppConstants.Launcher.Clipboard.maxEntries
+        let path = ConfigPathResolver.resolvedPath()
+        guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return fallback
+        }
+        let values = ConfigFileLines.keyValues(raw)
+        guard let rawValue = values[AppConstants.Launcher.Clipboard.historyLimitConfigKey],
+              let parsed = Int(rawValue.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return fallback
+        }
+        let lower = AppConstants.Launcher.Clipboard.minEntries
+        let upper = AppConstants.Launcher.Clipboard.maxEntriesLimit
+        return (lower...upper).contains(parsed) ? parsed : fallback
+    }
     private var monitoringMode: MonitoringMode = .foreground
     // nonisolated(unsafe) so the nonisolated deinit can call invalidate()
     // on these without going through the actor.

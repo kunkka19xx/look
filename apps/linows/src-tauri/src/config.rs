@@ -127,6 +127,9 @@ fn default_config_contents() -> String {
         "# Running apps switcher: none, right\n\
          running_apps_placement=right\n\
          \n\
+         # Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
+         clipboard_history_limit=10\n\
+         \n\
          # Home-screen inner gap in px (0-24). 0 keeps the classic framed panel;\n\
          # above 0 the home screen splits into floating tiles separated by this gap.\n\
          inner_gap=0\n\
@@ -144,6 +147,41 @@ fn default_config_contents() -> String {
 
 pub const ENV_CONFIG_PATH: &str = "LOOK_CONFIG_PATH";
 const CONFIG_FILE: &str = ".look.config";
+
+const CLIPBOARD_HISTORY_LIMIT_KEY: &str = "clipboard_history_limit";
+pub const CLIPBOARD_HISTORY_LIMIT_DEFAULT: usize = 10;
+pub const CLIPBOARD_HISTORY_LIMIT_MIN: usize = 10;
+pub const CLIPBOARD_HISTORY_LIMIT_MAX: usize = 100;
+
+/// How many clipboard clips to keep, read from `clipboard_history_limit` in the
+/// config file. Returns the default (10) when the key is absent, unparseable, or
+/// outside the accepted [10, 100] range.
+pub fn clipboard_history_limit() -> usize {
+    let path = config_file_path();
+    let Ok(contents) = std::fs::read_to_string(&path) else {
+        return CLIPBOARD_HISTORY_LIMIT_DEFAULT;
+    };
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=')
+            && key.trim() == CLIPBOARD_HISTORY_LIMIT_KEY
+        {
+            return match value.trim().parse::<usize>() {
+                Ok(parsed)
+                    if (CLIPBOARD_HISTORY_LIMIT_MIN..=CLIPBOARD_HISTORY_LIMIT_MAX)
+                        .contains(&parsed) =>
+                {
+                    parsed
+                }
+                _ => CLIPBOARD_HISTORY_LIMIT_DEFAULT,
+            };
+        }
+    }
+    CLIPBOARD_HISTORY_LIMIT_DEFAULT
+}
 
 pub fn config_file_path() -> std::path::PathBuf {
     if let Ok(custom) = std::env::var(ENV_CONFIG_PATH) {
