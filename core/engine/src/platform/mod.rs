@@ -118,3 +118,14 @@ pub(crate) fn has_settings_app() -> bool {
             .unwrap_or(false)
     }
 }
+
+/// Whether a Bluetooth controller is present. Cheap filesystem probe, no D-Bus:
+/// BlueZ exposes each controller as `/sys/class/bluetooth/hciN`. Lets us surface
+/// the Bluetooth control on desktops without a settings app (KDE, sway, i3, ...),
+/// where its BlueZ-backed toggle and device list still work.
+#[cfg(target_os = "linux")]
+pub(crate) fn bluetooth_present() -> bool {
+    std::fs::read_dir("/sys/class/bluetooth")
+        .map(|mut entries| entries.any(|e| e.is_ok()))
+        .unwrap_or(false)
+}

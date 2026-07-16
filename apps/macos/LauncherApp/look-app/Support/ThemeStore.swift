@@ -174,81 +174,79 @@ final class ThemeStore: ObservableObject {
         let path = Self.configPath()
         Self.ensureDefaultConfigFileExists(at: path)
 
-        var lines = ((try? String(contentsOf: path, encoding: .utf8)) ?? "")
-            .split(omittingEmptySubsequences: false, whereSeparator: \ .isNewline)
-            .map(String.init)
-
-        if !lines.contains(where: { stripComment($0).trimmingCharacters(in: .whitespacesAndNewlines) == "# UI theme" }) {
-            if !lines.isEmpty, !(lines.last?.isEmpty ?? true) {
-                lines.append("")
-            }
-            lines.append("# UI theme")
+        // A failed read must not fall through to an empty parse. The upserts below only
+        // know this store's own keys, so saving on top of nothing would write those back
+        // and drop every other setting, comment, and blank line in the file. An
+        // unreadable config (bad permissions, not valid UTF-8) is a reason to fail the
+        // save, not to rewrite the file from scratch.
+        guard let raw = try? String(contentsOf: path, encoding: .utf8) else {
+            return false
         }
+        var lines = ConfigFileLines.parse(raw)
 
-        upsertConfigLine(&lines, key: "ui_tint_red", value: String(format: "%.2f", settings.tintRed))
-        upsertConfigLine(&lines, key: "ui_tint_green", value: String(format: "%.2f", settings.tintGreen))
-        upsertConfigLine(&lines, key: "ui_tint_blue", value: String(format: "%.2f", settings.tintBlue))
-        upsertConfigLine(&lines, key: "ui_tint_opacity", value: String(format: "%.2f", settings.tintOpacity))
-        upsertConfigLine(&lines, key: "ui_blur_material", value: settings.blurMaterial.rawValue)
-        upsertConfigLine(&lines, key: "ui_blur_opacity", value: String(format: "%.2f", settings.blurOpacity))
-        upsertConfigLine(&lines, key: "ui_font_name", value: settings.fontName)
-        upsertConfigLine(&lines, key: "ui_font_size", value: String(format: "%.0f", settings.fontSize))
-        upsertConfigLine(&lines, key: "ui_font_red", value: String(format: "%.2f", settings.fontRed))
-        upsertConfigLine(&lines, key: "ui_font_green", value: String(format: "%.2f", settings.fontGreen))
-        upsertConfigLine(&lines, key: "ui_font_blue", value: String(format: "%.2f", settings.fontBlue))
-        upsertConfigLine(&lines, key: "ui_font_opacity", value: String(format: "%.2f", settings.fontOpacity))
-        upsertConfigLine(&lines, key: "ui_border_thickness", value: String(format: "%.2f", settings.borderThickness))
-        upsertConfigLine(&lines, key: "ui_border_red", value: String(format: "%.2f", settings.borderRed))
-        upsertConfigLine(&lines, key: "ui_border_green", value: String(format: "%.2f", settings.borderGreen))
-        upsertConfigLine(&lines, key: "ui_border_blue", value: String(format: "%.2f", settings.borderBlue))
-        upsertConfigLine(&lines, key: "ui_border_opacity", value: String(format: "%.2f", settings.borderOpacity))
-        upsertConfigLine(&lines, key: "file_scan_depth", value: String(settings.fileScanDepth))
-        upsertConfigLine(&lines, key: "file_scan_limit", value: String(settings.fileScanLimit))
-        upsertConfigLine(
+        ConfigFileLines.upsert(&lines, key: "ui_tint_red", value: String(format: "%.2f", settings.tintRed))
+        ConfigFileLines.upsert(&lines, key: "ui_tint_green", value: String(format: "%.2f", settings.tintGreen))
+        ConfigFileLines.upsert(&lines, key: "ui_tint_blue", value: String(format: "%.2f", settings.tintBlue))
+        ConfigFileLines.upsert(&lines, key: "ui_tint_opacity", value: String(format: "%.2f", settings.tintOpacity))
+        ConfigFileLines.upsert(&lines, key: "ui_blur_material", value: settings.blurMaterial.rawValue)
+        ConfigFileLines.upsert(&lines, key: "ui_blur_opacity", value: String(format: "%.2f", settings.blurOpacity))
+        ConfigFileLines.upsert(&lines, key: "ui_font_name", value: settings.fontName)
+        ConfigFileLines.upsert(&lines, key: "ui_font_size", value: String(format: "%.0f", settings.fontSize))
+        ConfigFileLines.upsert(&lines, key: "ui_font_red", value: String(format: "%.2f", settings.fontRed))
+        ConfigFileLines.upsert(&lines, key: "ui_font_green", value: String(format: "%.2f", settings.fontGreen))
+        ConfigFileLines.upsert(&lines, key: "ui_font_blue", value: String(format: "%.2f", settings.fontBlue))
+        ConfigFileLines.upsert(&lines, key: "ui_font_opacity", value: String(format: "%.2f", settings.fontOpacity))
+        ConfigFileLines.upsert(&lines, key: "ui_border_thickness", value: String(format: "%.2f", settings.borderThickness))
+        ConfigFileLines.upsert(&lines, key: "ui_border_red", value: String(format: "%.2f", settings.borderRed))
+        ConfigFileLines.upsert(&lines, key: "ui_border_green", value: String(format: "%.2f", settings.borderGreen))
+        ConfigFileLines.upsert(&lines, key: "ui_border_blue", value: String(format: "%.2f", settings.borderBlue))
+        ConfigFileLines.upsert(&lines, key: "ui_border_opacity", value: String(format: "%.2f", settings.borderOpacity))
+        ConfigFileLines.upsert(&lines, key: "file_scan_depth", value: String(settings.fileScanDepth))
+        ConfigFileLines.upsert(&lines, key: "file_scan_limit", value: String(settings.fileScanLimit))
+        ConfigFileLines.upsert(
             &lines,
             key: "lazy_indexing_enabled",
             value: settings.lazyIndexingEnabled ? "true" : "false"
         )
-        upsertConfigLine(
+        ConfigFileLines.upsert(
             &lines,
             key: "file_exclude_paths",
             value: excludedFolderPaths.map(escapeCSVToken).joined(separator: ",")
         )
-        upsertConfigLine(
+        ConfigFileLines.upsert(
             &lines,
             key: "file_scan_extra_roots",
             value: extraFileScanRoots.map(escapeCSVToken).joined(separator: ",")
         )
-        upsertConfigLine(&lines, key: "backend_log_level", value: settings.backendLogLevel.rawValue)
-        upsertConfigLine(&lines, key: "launch_at_login", value: settings.launchAtLogin ? "true" : "false")
+        ConfigFileLines.upsert(&lines, key: "backend_log_level", value: settings.backendLogLevel.rawValue)
+        ConfigFileLines.upsert(&lines, key: "launch_at_login", value: settings.launchAtLogin ? "true" : "false")
 
         // Background image
         if let bgPath = settings.backgroundImagePath, !bgPath.isEmpty {
-            upsertConfigLine(&lines, key: "ui_background_image", value: bgPath)
-            upsertConfigLine(&lines, key: "ui_background_image_mode", value: settings.backgroundImageMode.rawValue)
-            upsertConfigLine(&lines, key: "ui_background_image_opacity", value: String(format: "%.2f", settings.backgroundImageOpacity))
-            upsertConfigLine(&lines, key: "ui_background_image_blur", value: String(format: "%.1f", settings.backgroundImageBlur))
+            ConfigFileLines.upsert(&lines, key: "ui_background_image", value: bgPath)
+            ConfigFileLines.upsert(&lines, key: "ui_background_image_mode", value: settings.backgroundImageMode.rawValue)
+            ConfigFileLines.upsert(&lines, key: "ui_background_image_opacity", value: String(format: "%.2f", settings.backgroundImageOpacity))
+            ConfigFileLines.upsert(&lines, key: "ui_background_image_blur", value: String(format: "%.1f", settings.backgroundImageBlur))
         } else {
-            removeConfigLine(&lines, key: "ui_background_image")
-            removeConfigLine(&lines, key: "ui_background_image_mode")
-            removeConfigLine(&lines, key: "ui_background_image_opacity")
-            removeConfigLine(&lines, key: "ui_background_image_blur")
+            ConfigFileLines.remove(&lines, key: "ui_background_image")
+            ConfigFileLines.remove(&lines, key: "ui_background_image_mode")
+            ConfigFileLines.remove(&lines, key: "ui_background_image_opacity")
+            ConfigFileLines.remove(&lines, key: "ui_background_image_blur")
         }
 
         // Settings blur multiplier
-        upsertConfigLine(&lines, key: "settings_blur_multiplier", value: String(format: "%.2f", settings.settingsBlurMultiplier))
+        ConfigFileLines.upsert(&lines, key: "settings_blur_multiplier", value: String(format: "%.2f", settings.settingsBlurMultiplier))
 
         // Running apps switcher
-        upsertConfigLine(&lines, key: "running_apps_placement", value: settings.runningAppsPlacement.rawValue)
-        upsertConfigLine(&lines, key: "inner_gap", value: String(format: "%.0f", settings.innerGap))
+        ConfigFileLines.upsert(&lines, key: "running_apps_placement", value: settings.runningAppsPlacement.rawValue)
+        ConfigFileLines.upsert(&lines, key: "inner_gap", value: String(format: "%.0f", settings.innerGap))
 
         // Apple Intelligence / AI features
-        upsertConfigLine(&lines, key: "ai_enabled", value: settings.aiEnabled ? "true" : "false")
-        upsertConfigLine(&lines, key: "ai_provider", value: settings.aiProvider.rawValue)
+        ConfigFileLines.upsert(&lines, key: "ai_enabled", value: settings.aiEnabled ? "true" : "false")
+        ConfigFileLines.upsert(&lines, key: "ai_provider", value: settings.aiProvider.rawValue)
 
-        let payload = lines.joined(separator: "\n") + "\n"
         do {
-            try payload.write(to: path, atomically: true, encoding: .utf8)
+            try ConfigFileLines.render(lines).write(to: path, atomically: true, encoding: .utf8)
             _ = applyLaunchAtLoginSetting()
             return true
         } catch {
@@ -405,7 +403,7 @@ final class ThemeStore: ObservableObject {
         extraFileScanRoots = []
 
         for line in raw.split(whereSeparator: \ .isNewline) {
-            let stripped = stripComment(String(line)).trimmingCharacters(in: .whitespacesAndNewlines)
+            let stripped = ConfigFileLines.stripComment(String(line)).trimmingCharacters(in: .whitespacesAndNewlines)
             if stripped.isEmpty {
                 continue
             }
@@ -570,19 +568,27 @@ final class ThemeStore: ObservableObject {
         URL(fileURLWithPath: ConfigPathResolver.resolvedPath())
     }
 
+    /// Writes the default config when there is none, and otherwise undoes the damage
+    /// left by builds that duplicated their own section header on every save. Runs at
+    /// launch and on reload, so an affected config heals without the user having to go
+    /// and save something.
+    ///
+    /// A config that does not carry the damage is left byte-identical, not merely
+    /// equivalent: rewriting it would reformat a layout the user chose, and would bump
+    /// the mtime and wake the config watcher on every launch.
     private static func ensureDefaultConfigFileExists(at path: URL) {
-        if FileManager.default.fileExists(atPath: path.path) {
+        guard FileManager.default.fileExists(atPath: path.path) else {
+            try? defaultConfigContents.write(to: path, atomically: true, encoding: .utf8)
             return
         }
 
-        try? defaultConfigContents.write(to: path, atomically: true, encoding: .utf8)
-    }
-
-    private func stripComment(_ line: String) -> String {
-        guard let index = line.firstIndex(of: "#") else {
-            return line
+        guard let raw = try? String(contentsOf: path, encoding: .utf8),
+              let repaired = ConfigFileLines.repairingLegacyDamage(raw)
+        else {
+            return
         }
-        return String(line[..<index])
+
+        try? repaired.write(to: path, atomically: true, encoding: .utf8)
     }
 
     private func parseUnitDouble(_ value: String) -> Double? {
@@ -633,26 +639,6 @@ final class ThemeStore: ObservableObject {
             return .underWindowBackground
         default:
             return LauncherBlurMaterial(rawValue: value)
-        }
-    }
-
-    private func upsertConfigLine(_ lines: inout [String], key: String, value: String) {
-        let wanted = "\(key)="
-        for index in lines.indices {
-            let trimmed = stripComment(lines[index]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.hasPrefix(wanted) {
-                lines[index] = "\(key)=\(value)"
-                return
-            }
-        }
-        lines.append("\(key)=\(value)")
-    }
-
-    private func removeConfigLine(_ lines: inout [String], key: String) {
-        let wanted = "\(key)="
-        lines.removeAll { line in
-            let trimmed = stripComment(line).trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.hasPrefix(wanted)
         }
     }
 

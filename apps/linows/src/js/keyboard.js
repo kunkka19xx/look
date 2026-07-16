@@ -17,6 +17,7 @@ import {
 } from './ipc.js';
 import * as banner from './components/banner.js';
 import * as confirm from './components/confirm.js';
+import * as qactions from './components/qactions.js';
 import * as runningApps from './components/running-apps.js';
 import { trash as trashIcon } from './icons.js';
 import {
@@ -310,6 +311,16 @@ function handleKeyDown(e) {
                 e.preventDefault();
                 if (isDiscoveryMode()) break;
                 handleTrashShortcut();
+            }
+            break;
+
+        case 'o':
+            // Ctrl+O flips the selected result's toggle Quick Action
+            // (Bluetooth, ...). Mirrors Cmd+O on macOS; no-op when the
+            // selection has none.
+            if (e.ctrlKey && !e.shiftKey && !e.altKey) {
+                e.preventDefault();
+                qactions.togglePrimary();
             }
             break;
     }

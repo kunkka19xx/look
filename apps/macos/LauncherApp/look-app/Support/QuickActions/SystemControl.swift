@@ -41,6 +41,25 @@ enum ActionOutcome: Equatable {
     case needsPermission(String)
 }
 
+/// One entry in an `InfoValue.list`. An `id` makes the row actionable via
+/// `SystemControl.applyItem` (e.g. connect/disconnect a device); `on` drives an
+/// on/off marker (e.g. whether a device is connected). Both optional so a list
+/// can be plain, read-only rows.
+struct QuickActionListItem: Equatable, Hashable {
+    let id: String?
+    let label: String
+    let on: Bool?
+}
+
+/// A resolved info-field value. The shared descriptor declares `label` +
+/// `valueKey`; the adapter resolves the key to what to display: a single line
+/// (`text`), one row per item (`list`, e.g. paired devices), or `unavailable`.
+enum InfoValue: Equatable {
+    case text(String)
+    case list([QuickActionListItem])
+    case unavailable(String)
+}
+
 /// The adapter a contributor implements per control. Keep it small and pure:
 /// read state, apply an intent, return an outcome. Async so controls backed by
 /// AppleScript, a CLI, or the network can await without blocking the UI; simple
@@ -50,7 +69,24 @@ protocol SystemControl: Sendable {
     /// control does not apply on this machine.
     func state() async -> ActionState
 
+    /// Resolve the descriptor's info `valueKey`s to display values. Controls
+    /// without info fields keep the default (no info shown).
+    func info(keys: [String]) async -> [String: InfoValue]
+
     /// Perform `intent` and report the outcome. Best-effort: never throw, never
     /// block; surface problems as `.failed` / `.needsPermission`.
     func apply(_ intent: ActionIntent) async -> ActionOutcome
+
+    /// Act on one item of a list-valued info field (e.g. connect/disconnect a
+    /// specific device). Defaults to unsupported: most controls have no per-item
+    /// actions.
+    func applyItem(_ itemId: String, intent: ActionIntent) async -> ActionOutcome
+}
+
+extension SystemControl {
+    func info(keys: [String]) async -> [String: InfoValue] { [:] }
+
+    func applyItem(_ itemId: String, intent: ActionIntent) async -> ActionOutcome {
+        .failed("This action has no per-item actions")
+    }
 }

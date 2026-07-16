@@ -430,3 +430,179 @@
     background: rgba(255, 255, 255, 0.12);
     border-radius: 4px;
 }
+
+/* ============ Quick Actions ============ */
+/* The interactive section beneath the metadata rows (components/qactions.js).
+   Row layout mirrors macOS QuickActionsSection: title left, control + key
+   hint right, on a subtly filled rounded row. */
+
+.preview-qactions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+    /* Sits directly under the header (which owns the gap above); this spaces it
+       from the Version/Kind rows below, matching macOS stack spacing. */
+    margin-bottom: 12px;
+}
+
+.qaction-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--control-fill);
+    border-radius: 8px;
+}
+
+.qaction-title {
+    font-size: var(--font-size);
+    font-weight: 500;
+    color: var(--font-color);
+}
+
+.qaction-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.qaction-hint {
+    font-size: calc(var(--font-size) - 3px);
+    font-weight: 600;
+    color: var(--font-muted);
+}
+
+.qaction-unavailable,
+.qaction-info-unavailable {
+    font-size: calc(var(--font-size) - 3px);
+    color: var(--font-muted);
+}
+
+.qaction-toggle {
+    position: relative;
+    width: 34px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 10px;
+    background: var(--selection-fill);
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.qaction-toggle.is-on {
+    background: var(--accent-color);
+}
+
+.qaction-toggle-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--on-accent-color);
+    transition: transform 0.15s ease;
+}
+
+.qaction-toggle.is-on .qaction-toggle-knob {
+    transform: translateX(14px);
+}
+
+.qaction-button {
+    padding: 4px 10px;
+    border: none;
+    border-radius: 6px;
+    background: var(--selection-fill);
+    color: var(--font-color);
+    font-size: calc(var(--font-size) - 1px);
+    cursor: pointer;
+}
+
+.qaction-button:hover {
+    background: var(--accent-color);
+    color: var(--on-accent-color);
+}
+
+/* Connected-device list: one row per device under the status header, so many
+   paired devices stay readable instead of a comma-run that wraps mid-word. */
+.qaction-info-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.qaction-device-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin: 2px 0 2px 2px;
+}
+
+/* Clickable row: connects if the device is off, disconnects if it is on. */
+.qaction-device-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    width: 100%;
+    padding: 4px 6px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    outline: none;
+}
+
+.qaction-device-row:hover {
+    background: var(--control-fill);
+}
+
+/* Busy while a connect/disconnect is applying: dimmed and non-interactive. */
+.qaction-device-row.is-pending {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.qaction-device-row.is-pending:hover {
+    background: none;
+}
+
+/* One action at a time: while any control is applying, the others (the toggle,
+   a plain button, every non-pending device row) go inert so nothing looks
+   clickable that the in-flight guard would silently swallow. The applying row
+   keeps its own .is-pending styling. */
+.preview-qactions.is-busy .qaction-toggle,
+.preview-qactions.is-busy .qaction-button,
+.preview-qactions.is-busy .qaction-device-row:not(.is-pending) {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* Hollow dot = paired but disconnected; filled accent = connected. */
+.qaction-device-dot {
+    width: 7px;
+    height: 7px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 1.5px solid var(--font-muted);
+    background: transparent;
+}
+
+.qaction-device-row.is-connected .qaction-device-dot {
+    border-color: var(--accent-color);
+    background: var(--accent-color);
+}
+
+.qaction-device-name {
+    font-size: calc(var(--font-size) - 1px);
+    color: var(--font-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

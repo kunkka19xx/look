@@ -15,6 +15,7 @@ mod highlight;
 mod music;
 mod platform;
 mod process;
+mod qactions;
 mod shell;
 mod state;
 mod sysinfo;
@@ -679,6 +680,12 @@ fn main() {
             weburl::classify_url,
             weburl::record_url_hit,
             weburl::recent_urls,
+            // Quick Actions (shared look-qactions catalog; adapters live in
+            // qactions/controls, see docs/writing-controls.md)
+            qactions::quick_actions,
+            qactions::quick_action_state,
+            qactions::quick_action_apply,
+            qactions::quick_action_apply_item,
             // Clipboard
             clipboard::get_clipboard_history,
             clipboard::delete_clipboard_entry,

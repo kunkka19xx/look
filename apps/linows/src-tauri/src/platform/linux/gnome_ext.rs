@@ -24,6 +24,13 @@ const EXTENSION_JS: &str = include_str!("../../gnome-shell-extension/extension.j
 const RELOGIN_MSG: &str = "Log out and back in to finish enabling Look's GNOME \
      extension (it focuses already-running app windows).";
 
+/// User-facing notice when GNOME's global "disable all user extensions" switch
+/// is on: no re-login helps here, the switch itself has to be cleared, so the
+/// message names the exact command instead of the (useless) re-login advice.
+const EXTENSIONS_DISABLED_MSG: &str = "GNOME user extensions are turned off, so Look \
+     can't focus already-running app windows. Enable them: gsettings set \
+     org.gnome.shell disable-user-extensions false";
+
 /// Install the GNOME Shell extension if not already present, then enable it.
 pub fn ensure_installed() {
     let ext_dir = extension_dir();
@@ -42,7 +49,7 @@ pub fn ensure_installed() {
     if needs_install {
         install_current_version(&ext_dir, &metadata_path, &extension_path);
     }
-    verify_running_later();
+    verify_running_later(needs_install);
 }
 
 fn install_current_version(
@@ -72,7 +79,10 @@ fn install_current_version(
         return;
     }
     eprintln!("[look] Installed GNOME Shell extension: {EXT_UUID} (manual, needs re-login)");
-    crate::health::report(crate::health::ISSUE_GNOME_EXT, RELOGIN_MSG.to_string());
+    crate::health::report(
+        crate::health::ISSUE_GNOME_EXT,
+        not_loaded_message(user_extensions_disabled()).to_string(),
+    );
     enable_extension();
 }
 
@@ -82,11 +92,22 @@ fn install_current_version(
 const VERIFY_DELAY: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Verify in the background that the running shell actually loaded the
-/// extension, and report a re-login/stale notice when it didn't. Alt+Space
-/// works without the extension, but focus-existing-window and multi-monitor
-/// placement silently degrade - exactly the failures users can't diagnose.
-fn verify_running_later() {
-    std::thread::spawn(|| {
+/// extension, and surface the *right* fix when it didn't:
+///
+/// - GNOME's global user-extensions switch is off: always flag it (a re-login
+///   won't help, only clearing the switch does), regardless of `changed`.
+/// - Otherwise, only nag to re-login when we just wrote a new copy this session
+///   (`changed`): if we did not touch it, its absence is the user's own choice
+///   (they disabled just ours) or a re-login still pending from an earlier
+///   update, and re-reporting it on every launch is noise.
+/// - A stale version already loaded in the shell is always flagged - our newer
+///   on-disk copy needs a re-login to take effect.
+///
+/// Alt+Space works without the extension, but focus-existing-window and
+/// multi-monitor placement silently degrade, so a genuine blocker is worth the
+/// notice.
+fn verify_running_later(changed: bool) {
+    std::thread::spawn(move || {
         std::thread::sleep(VERIFY_DELAY);
         let Some(conn) = dbus_conn() else {
             return;
@@ -106,12 +127,40 @@ fn verify_running_later() {
         });
         match err.map(|e| classify_dbus_error(&e)) {
             Some(ExtensionError::NotRunning) => {
-                crate::health::report(crate::health::ISSUE_GNOME_EXT, RELOGIN_MSG.to_string());
+                let disabled = user_extensions_disabled();
+                if disabled || changed {
+                    crate::health::report(
+                        crate::health::ISSUE_GNOME_EXT,
+                        not_loaded_message(disabled).to_string(),
+                    );
+                }
             }
             Some(ExtensionError::Stale) => warn_stale_extension_once(),
             _ => {}
         }
     });
+}
+
+fn not_loaded_message(user_extensions_disabled: bool) -> &'static str {
+    if user_extensions_disabled {
+        EXTENSIONS_DISABLED_MSG
+    } else {
+        RELOGIN_MSG
+    }
+}
+
+/// Whether GNOME's global "disable all user extensions" switch is on. When it
+/// is, the shell refuses to load any `~/.local/share` extension no matter what
+/// the enabled list says, so ours can never claim its D-Bus name and a re-login
+/// changes nothing - the switch has to be cleared. Defaults to `false` (not the
+/// blocker) if gsettings is missing or the key can't be read.
+fn user_extensions_disabled() -> bool {
+    super::host_command("gsettings")
+        .args(["get", "org.gnome.shell", "disable-user-extensions"])
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .is_some_and(|out| String::from_utf8_lossy(&out.stdout).trim() == "true")
 }
 
 /// Build a zip of the extension in /tmp and install via `gnome-extensions install --force`.

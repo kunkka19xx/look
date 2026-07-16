@@ -186,6 +186,7 @@ extension LauncherView {
     func reloadConfig() {
         let result = themeStore.reloadFromConfig()
         let backendReloaded = bridge.reloadConfig()
+        clipboardStore.reloadFromConfig()
 
         // Sync settings blur multiplier to AppUIState
         if let blurMultiplier = result.settingsBlurMultiplier {

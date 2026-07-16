@@ -552,6 +552,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         queryInput.select();
         requestIndexRefresh();
         runningApps.refresh();
+        // Quick-action state is cached from the last render; the system may have
+        // changed while hidden (Bluetooth flipped elsewhere), so re-read it.
+        preview.refreshQuickActions();
         // Re-read todos when nothing would be lost, so the quick view stays
         // fresh across day rollovers and edits from other Look clients.
         todoCmd.reloadIfClean();

@@ -397,6 +397,9 @@ file_exclude_paths=\n\
 lazy_indexing_enabled=true\n\
 skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data,deriveddata,pods,vendor,out,coverage,tmp,cache,venv\n\
 \n\
+# Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
+clipboard_history_limit=10\n\
+\n\
 # UI theme\n\
 ui_tint_red=0.08\n\
 ui_tint_green=0.10\n\
@@ -587,31 +590,69 @@ fn user_home_dir() -> Option<String> {
         })
 }
 
+/// Drops a trailing comment. `#` only starts one at the beginning of the line or after
+/// whitespace, so it survives inside a value: cutting at the first `#` anywhere would
+/// truncate a path like `/Users/me/pic#1.png` down to `/Users/me/pic`, silently
+/// corrupting the setting. Must stay in step with the macOS reader
+/// (`ConfigFileLines.stripComment`), since both parse the same file.
 fn strip_comments(value: &str) -> &str {
+    let mut previous_is_whitespace = true;
+    for (index, character) in value.char_indices() {
+        if character == '#' && previous_is_whitespace {
+            return &value[..index];
+        }
+        previous_is_whitespace = character.is_whitespace();
+    }
     value
-        .split_once('#')
-        .map(|(prefix, _)| prefix)
-        .unwrap_or(value)
 }
 
+/// Every key the user's config already accounts for, so the update pass knows what
+/// not to append.
+///
+/// A key the user commented out counts as accounted for. Stripping the comment first
+/// would read `# lazy_indexing_enabled=false` as a blank line, and the update would
+/// helpfully append the key right back: commenting a key out would not stick. Absence
+/// and a commented-out key both mean "use the default", so resurrecting it changes no
+/// behaviour today, but it does rewrite a config the user deliberately arranged.
 fn parse_config_keys(contents: &str) -> HashSet<String> {
     let mut keys = HashSet::new();
     for raw_line in contents.lines() {
-        let line = strip_comments(raw_line).trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        let Some((key, _)) = line.split_once('=') else {
-            continue;
-        };
-
-        let key = key.trim();
-        if !key.is_empty() {
+        if let Some(key) =
+            assigned_key(strip_comments(raw_line)).or_else(|| commented_out_key(raw_line))
+        {
             keys.insert(key.to_string());
         }
     }
     keys
+}
+
+/// The key in an `key=value` assignment, if the line is one.
+fn assigned_key(line: &str) -> Option<&str> {
+    let (key, _) = line.trim().split_once('=')?;
+    let key = key.trim();
+    (!key.is_empty()).then_some(key)
+}
+
+/// The key in a commented-out assignment such as `# lazy_indexing_enabled=false`.
+///
+/// Prose comments can contain `=` too. The generated config ships
+/// `# Search aliases ... Format: alias_<keyword>=Term1|Term2|Term3`, whose left side is
+/// a sentence, not a key. So the candidate only counts when it looks like a key.
+fn commented_out_key(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('#') {
+        return None;
+    }
+
+    let key = assigned_key(trimmed.trim_start_matches('#'))?;
+    is_config_key_shaped(key).then_some(key)
+}
+
+fn is_config_key_shaped(key: &str) -> bool {
+    !key.is_empty()
+        && key
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 fn parse_csv(value: &str) -> Vec<String> {
@@ -952,6 +993,83 @@ mod tests {
         assert!(contents.contains("alias_chat=Slack|Discord|Telegram|Messages"));
         assert!(contents.contains("alias_music=Spotify|Apple Music|Music"));
         assert!(contents.contains("alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave"));
+    }
+
+    #[test]
+    fn strip_comments_keeps_hash_inside_values() {
+        // A `#` in a path is part of the value, not the start of a comment.
+        assert_eq!(
+            strip_comments("file_exclude_paths=/Users/me/pic#1.png"),
+            "file_exclude_paths=/Users/me/pic#1.png"
+        );
+        // A `#` after whitespace still starts a trailing comment.
+        assert_eq!(
+            strip_comments("file_scan_depth=6  # my note"),
+            "file_scan_depth=6  "
+        );
+        // And a full-line comment is still a comment.
+        assert_eq!(strip_comments("# UI theme"), "");
+    }
+
+    #[test]
+    fn commented_out_key_is_not_resurrected_by_update() {
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-commented-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(&tmp, "app_scan_depth=3\n# lazy_indexing_enabled=false\n")
+            .expect("should write temporary config");
+
+        ensure_default_config_file(&tmp);
+        let contents = std::fs::read_to_string(&tmp).expect("should read migrated config");
+
+        assert!(
+            contents.contains("# lazy_indexing_enabled=false"),
+            "the user's commented-out key should survive"
+        );
+        assert_eq!(
+            contents.matches("\nlazy_indexing_enabled=").count(),
+            0,
+            "a commented-out key must not be appended back as a live key"
+        );
+        assert!(
+            contents.contains("\nfile_scan_limit=8000"),
+            "keys the user never mentioned must still be appended, or the update did nothing \
+             and this test would pass for the wrong reason"
+        );
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn parse_config_keys_reads_live_and_commented_out_assignments() {
+        let keys = parse_config_keys(
+            "app_scan_depth=3\n# lazy_indexing_enabled=false\n#file_scan_limit=8000\n",
+        );
+
+        assert!(keys.contains("app_scan_depth"));
+        assert!(keys.contains("lazy_indexing_enabled"));
+        assert!(
+            keys.contains("file_scan_limit"),
+            "a `#key=value` with no space still names a key"
+        );
+    }
+
+    #[test]
+    fn parse_config_keys_ignores_prose_comments_that_contain_equals() {
+        // The generated config ships this line. Its left side is a sentence, not a key,
+        // and misreading it as one would suppress a real key from the update.
+        let keys = parse_config_keys(
+            "# Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3\n\
+             # Backend indexing (file_scan_depth: 1-12)\n",
+        );
+
+        assert!(keys.is_empty(), "prose comments name no keys, got {keys:?}");
     }
 
     #[test]
