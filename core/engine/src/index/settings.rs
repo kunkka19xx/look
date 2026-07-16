@@ -2,6 +2,7 @@ use crate::index::SETTINGS_CANDIDATE_ID_PREFIX;
 use crate::platform;
 use crate::platform::SettingsCatalogEntry;
 use look_indexing::{Candidate, CandidateKind};
+#[cfg(target_os = "macos")]
 use std::collections::HashMap;
 use std::sync::mpsc;
 
