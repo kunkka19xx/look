@@ -1,17 +1,17 @@
 use crate::config::RuntimeConfig;
 use crate::index::{FILE_CANDIDATE_ID_PREFIX, FOLDER_CANDIDATE_ID_PREFIX};
 use crate::platform::paths::{
-    PathPolicy, candidate_id_path_component, compile_ignore_matcher, path_is_same_or_child,
+    PathPolicy, candidate_id_path_component, compile_ignore_glob, path_is_same_or_child,
 };
-use globset::GlobMatcher;
+use globset::{GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
 use look_indexing::{Candidate, CandidateKind};
 use std::sync::mpsc;
 use std::time::UNIX_EPOCH;
 
-// Matchers grouped by their path policy so a candidate is normalized once per
-// distinct policy per file, instead of once per pattern in the match closure.
-type IgnoredFileMatchers = Vec<(PathPolicy, Vec<GlobMatcher>)>;
+// One `GlobSet` per path policy: a candidate is normalized once per distinct
+// policy and matched against all patterns of that policy in a single pass.
+type IgnoredFileMatchers = Vec<(PathPolicy, GlobSet)>;
 
 fn modified_unix_s(metadata: Option<&std::fs::Metadata>) -> Option<i64> {
     metadata?
@@ -28,9 +28,12 @@ pub fn discover_local_files_and_folders(config: &RuntimeConfig, tx: mpsc::SyncSe
     roots.sort();
     roots.dedup();
 
+    // Compile the ignore matchers once, not once per root.
+    let ignored_file_matchers = build_ignored_matchers(&config.ignored_file_patterns);
+
     let mut file_count = 0usize;
     for root in &roots {
-        walk_files(root, config, &tx, &mut file_count);
+        walk_files(root, config, &ignored_file_matchers, &tx, &mut file_count);
         if file_count >= config.file_scan_limit {
             break;
         }
@@ -40,6 +43,7 @@ pub fn discover_local_files_and_folders(config: &RuntimeConfig, tx: mpsc::SyncSe
 fn walk_files(
     path: &str,
     config: &RuntimeConfig,
+    ignored_file_matchers: &IgnoredFileMatchers,
     tx: &mpsc::SyncSender<Candidate>,
     file_count: &mut usize,
 ) {
@@ -51,7 +55,6 @@ fn walk_files(
     let root_path = path.to_string();
     let exclude_paths = config.file_exclude_paths.clone();
     let skip_dir_names = config.skip_dir_names.clone();
-    let ignored_file_matchers = group_ignored_matchers_by_policy(&config.ignored_file_patterns);
     walker
         .hidden(false)
         .git_ignore(false)
@@ -128,11 +131,8 @@ fn walk_files(
             // pattern. Without this, a Windows pattern like `C:\tmp\*.log`
             // becomes lowercase `c:/...`, while walker output like
             // `C:/tmp/debug.log` can keep its original case and miss the glob.
-            if ignored_file_matchers.iter().any(|(policy, glob_matchers)| {
-                let normalized = policy.normalize_for_matching(path_str);
-                glob_matchers
-                    .iter()
-                    .any(|matcher| matcher.is_match(&normalized))
+            if ignored_file_matchers.iter().any(|(policy, glob_set)| {
+                glob_set.is_match(&*policy.normalize_for_matching(path_str))
             }) {
                 continue;
             }
@@ -150,18 +150,27 @@ fn walk_files(
     }
 }
 
-fn group_ignored_matchers_by_policy(patterns: &[String]) -> IgnoredFileMatchers {
-    let mut groups: IgnoredFileMatchers = Vec::new();
-    for (policy, matcher) in patterns
+fn build_ignored_matchers(patterns: &[String]) -> IgnoredFileMatchers {
+    let mut groups: Vec<(PathPolicy, GlobSetBuilder)> = Vec::new();
+    for (policy, glob) in patterns
         .iter()
-        .filter_map(|pattern| compile_ignore_matcher(pattern))
+        .filter_map(|pattern| compile_ignore_glob(pattern))
     {
         match groups.iter_mut().find(|(existing, _)| *existing == policy) {
-            Some((_, matchers)) => matchers.push(matcher),
-            None => groups.push((policy, vec![matcher])),
+            Some((_, builder)) => {
+                builder.add(glob);
+            }
+            None => {
+                let mut builder = GlobSetBuilder::new();
+                builder.add(glob);
+                groups.push((policy, builder));
+            }
         }
     }
     groups
+        .into_iter()
+        .filter_map(|(policy, builder)| builder.build().ok().map(|set| (policy, set)))
+        .collect()
 }
 
 fn should_skip_dir(name: &str, skip_dir_names: &[String]) -> bool {
@@ -203,7 +212,7 @@ mod tests {
             return false;
         };
         let normalized_path = policy.normalize_for_matching(path);
-        matcher.is_match(&normalized_path)
+        matcher.is_match(&*normalized_path)
     }
 
     #[test]
@@ -390,7 +399,7 @@ mod tests {
         let pattern = r"C:\Users\me\Temp\*.log";
         let (policy, matcher) = compile_ignore_matcher(pattern).expect("pattern should compile");
 
-        assert!(matcher.is_match(policy.normalize_for_matching("C:/Users/me/Temp/debug.log")));
-        assert!(!matcher.is_match(policy.normalize_for_matching("C:/Users/me/Temp/debug.txt")));
+        assert!(matcher.is_match(&*policy.normalize_for_matching("C:/Users/me/Temp/debug.log")));
+        assert!(!matcher.is_match(&*policy.normalize_for_matching("C:/Users/me/Temp/debug.txt")));
     }
 }

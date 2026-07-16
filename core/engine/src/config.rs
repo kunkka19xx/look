@@ -1162,7 +1162,7 @@ mod tests {
         // backslashes, on-disk casing.
         let candidate = r"C:\Users\Me\Temp\nested\trace.etl";
         let ignored = matchers.iter().any(|(policy, glob_matcher)| {
-            glob_matcher.is_match(policy.normalize_for_matching(candidate))
+            glob_matcher.is_match(&*policy.normalize_for_matching(candidate))
         });
 
         assert!(

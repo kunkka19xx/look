@@ -1,4 +1,5 @@
-use globset::{GlobBuilder, GlobMatcher};
+use globset::{Glob, GlobBuilder};
+use std::borrow::Cow;
 use std::path::Path;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -46,20 +47,17 @@ impl PathPolicy {
         Self::current()
     }
 
-    pub(crate) fn normalize_for_matching(&self, path: &str) -> String {
-        let mut normalized = match self.style {
-            PathStyle::Windows => path.replace('\\', "/"),
-            PathStyle::Posix => path.to_string(),
-        };
-        while normalized.len() > 1 && normalized.ends_with('/') {
-            normalized.pop();
+    pub(crate) fn normalize_for_matching<'a>(&self, path: &'a str) -> Cow<'a, str> {
+        match self.style {
+            // Posix candidates already use `/` and the right case, so the
+            // common Linux path only trims trailing slashes and borrows.
+            PathStyle::Posix => Cow::Borrowed(trim_trailing_slashes(path)),
+            PathStyle::Windows => {
+                let mut normalized = path.replace('\\', "/");
+                normalized.truncate(trim_trailing_slashes(&normalized).len());
+                Cow::Owned(normalized.to_lowercase())
+            }
         }
-
-        if matches!(self.style, PathStyle::Windows) {
-            return normalized.to_lowercase();
-        }
-
-        normalized
     }
 
     pub(crate) fn is_same_or_child(&self, path: &str, parent: &str) -> bool {
@@ -69,8 +67,8 @@ impl PathPolicy {
             return false;
         }
 
-        normalized_path == normalized_parent
-            || normalized_path.starts_with(&(normalized_parent + "/"))
+        let parent_prefix = format!("{normalized_parent}/");
+        normalized_path == normalized_parent || normalized_path.starts_with(parent_prefix.as_str())
     }
 
     pub(crate) fn join(&self, base: &str, child: &str) -> String {
@@ -112,15 +110,28 @@ impl PathPolicy {
     }
 }
 
-pub(crate) fn compile_ignore_matcher(pattern: &str) -> Option<(PathPolicy, GlobMatcher)> {
+/// Compile one ignore pattern into its path policy and glob. The caller groups
+/// globs by policy into a `GlobSet` so every candidate is matched against all
+/// patterns of a policy in a single pass.
+pub(crate) fn compile_ignore_glob(pattern: &str) -> Option<(PathPolicy, Glob)> {
     let policy = PathPolicy::for_base(pattern);
     let normalized_pattern = policy.normalize_for_matching(pattern);
     let mut builder = GlobBuilder::new(&normalized_pattern);
     builder.literal_separator(true);
-    builder
-        .build()
-        .ok()
-        .map(|glob| (policy, glob.compile_matcher()))
+    builder.build().ok().map(|glob| (policy, glob))
+}
+
+#[cfg(test)]
+pub(crate) fn compile_ignore_matcher(pattern: &str) -> Option<(PathPolicy, globset::GlobMatcher)> {
+    compile_ignore_glob(pattern).map(|(policy, glob)| (policy, glob.compile_matcher()))
+}
+
+fn trim_trailing_slashes(path: &str) -> &str {
+    let mut end = path.len();
+    while end > 1 && path.as_bytes()[end - 1] == b'/' {
+        end -= 1;
+    }
+    &path[..end]
 }
 
 fn separator_for_style(style: PathStyle) -> char {
@@ -260,7 +271,7 @@ mod tests {
             style: PathStyle::Posix,
         };
 
-        assert_eq!(policy.normalize_for_matching("/tmp/a\\b "), "/tmp/a\\b ");
+        assert_eq!(&*policy.normalize_for_matching("/tmp/a\\b "), "/tmp/a\\b ");
     }
 
     #[test]
