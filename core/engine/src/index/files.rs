@@ -9,7 +9,9 @@ use look_indexing::{Candidate, CandidateKind};
 use std::sync::mpsc;
 use std::time::UNIX_EPOCH;
 
-type IgnoredFileMatcher = (PathPolicy, GlobMatcher);
+// Matchers grouped by their path policy so a candidate is normalized once per
+// distinct policy per file, instead of once per pattern in the match closure.
+type IgnoredFileMatchers = Vec<(PathPolicy, Vec<GlobMatcher>)>;
 
 fn modified_unix_s(metadata: Option<&std::fs::Metadata>) -> Option<i64> {
     metadata?
@@ -49,11 +51,7 @@ fn walk_files(
     let root_path = path.to_string();
     let exclude_paths = config.file_exclude_paths.clone();
     let skip_dir_names = config.skip_dir_names.clone();
-    let ignored_file_matchers = config
-        .ignored_file_patterns
-        .iter()
-        .filter_map(|pattern| compile_ignore_matcher(pattern))
-        .collect::<Vec<IgnoredFileMatcher>>();
+    let ignored_file_matchers = group_ignored_matchers_by_policy(&config.ignored_file_patterns);
     walker
         .hidden(false)
         .git_ignore(false)
@@ -130,8 +128,11 @@ fn walk_files(
             // pattern. Without this, a Windows pattern like `C:\tmp\*.log`
             // becomes lowercase `c:/...`, while walker output like
             // `C:/tmp/debug.log` can keep its original case and miss the glob.
-            if ignored_file_matchers.iter().any(|(policy, glob_matcher)| {
-                glob_matcher.is_match(policy.normalize_for_matching(path_str))
+            if ignored_file_matchers.iter().any(|(policy, glob_matchers)| {
+                let normalized = policy.normalize_for_matching(path_str);
+                glob_matchers
+                    .iter()
+                    .any(|matcher| matcher.is_match(&normalized))
             }) {
                 continue;
             }
@@ -147,6 +148,20 @@ fn walk_files(
             let _ = tx.send(candidate);
         }
     }
+}
+
+fn group_ignored_matchers_by_policy(patterns: &[String]) -> IgnoredFileMatchers {
+    let mut groups: IgnoredFileMatchers = Vec::new();
+    for (policy, matcher) in patterns
+        .iter()
+        .filter_map(|pattern| compile_ignore_matcher(pattern))
+    {
+        match groups.iter_mut().find(|(existing, _)| *existing == policy) {
+            Some((_, matchers)) => matchers.push(matcher),
+            None => groups.push((policy, vec![matcher])),
+        }
+    }
+    groups
 }
 
 fn should_skip_dir(name: &str, skip_dir_names: &[String]) -> bool {
@@ -168,7 +183,7 @@ fn should_exclude_path(path: &str, file_exclude_paths: &[String]) -> bool {
 mod tests {
     use super::{discover_local_files_and_folders, should_exclude_path};
     use crate::config::RuntimeConfig;
-    use crate::platform::paths::{PathPolicy, compile_ignore_matcher};
+    use crate::platform::paths::compile_ignore_matcher;
     use look_indexing::CandidateKind;
     use std::sync::mpsc;
 
@@ -249,18 +264,19 @@ mod tests {
         std::fs::write(root.join("notes.md"), "notes").expect("should write notes file");
         std::fs::write(nested.join("state.db-wal"), "wal").expect("should write wal file");
 
-        let mut config = RuntimeConfig::default();
-        config.file_scan_roots = vec![root.to_string_lossy().into_owned()];
-        config.file_scan_extra_roots.clear();
-        config.file_scan_depth = 4;
-        config.file_scan_limit = 100;
-        config.ignored_file_patterns = vec![
-            root.join("*.log").to_string_lossy().into_owned(),
-            root.join("**")
-                .join("*.db-wal")
-                .to_string_lossy()
-                .into_owned(),
-        ];
+        let config = RuntimeConfig {
+            file_scan_roots: vec![root.to_string_lossy().into_owned()],
+            file_scan_depth: 4,
+            file_scan_limit: 100,
+            ignored_file_patterns: vec![
+                root.join("*.log").to_string_lossy().into_owned(),
+                root.join("**")
+                    .join("*.db-wal")
+                    .to_string_lossy()
+                    .into_owned(),
+            ],
+            ..Default::default()
+        };
 
         let (tx, rx) = mpsc::sync_channel(128);
         discover_local_files_and_folders(&config, tx);
@@ -293,12 +309,13 @@ mod tests {
         std::fs::write(root.join("debug.log"), "log").expect("should write ignored file");
         std::fs::write(root.join("notes.md"), "notes").expect("should write kept file");
 
-        let mut config = RuntimeConfig::default();
-        config.file_scan_roots = vec![root.to_string_lossy().into_owned()];
-        config.file_scan_extra_roots.clear();
-        config.file_scan_depth = 2;
-        config.file_scan_limit = 1;
-        config.ignored_file_patterns = vec![root.join("*.log").to_string_lossy().into_owned()];
+        let config = RuntimeConfig {
+            file_scan_roots: vec![root.to_string_lossy().into_owned()],
+            file_scan_depth: 2,
+            file_scan_limit: 1,
+            ignored_file_patterns: vec![root.join("*.log").to_string_lossy().into_owned()],
+            ..Default::default()
+        };
 
         let (tx, rx) = mpsc::sync_channel(32);
         discover_local_files_and_folders(&config, tx);
@@ -326,12 +343,13 @@ mod tests {
         std::fs::write(root.join("direct.tmp"), "tmp").expect("should write direct file");
         std::fs::write(nested.join("child.tmp"), "tmp").expect("should write nested file");
 
-        let mut config = RuntimeConfig::default();
-        config.file_scan_roots = vec![root.to_string_lossy().into_owned()];
-        config.file_scan_extra_roots.clear();
-        config.file_scan_depth = 4;
-        config.file_scan_limit = 10;
-        config.ignored_file_patterns = vec![root.join("*.tmp").to_string_lossy().into_owned()];
+        let config = RuntimeConfig {
+            file_scan_roots: vec![root.to_string_lossy().into_owned()],
+            file_scan_depth: 4,
+            file_scan_limit: 10,
+            ignored_file_patterns: vec![root.join("*.tmp").to_string_lossy().into_owned()],
+            ..Default::default()
+        };
 
         let (tx, rx) = mpsc::sync_channel(32);
         discover_local_files_and_folders(&config, tx);

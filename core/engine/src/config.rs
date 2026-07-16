@@ -1,7 +1,7 @@
 use crate::normalize::normalize_for_search;
 use crate::platform;
 #[cfg(test)]
-use crate::platform::paths::PathPolicy;
+use crate::platform::paths::compile_ignore_matcher;
 use crate::platform::paths::expand_with_home;
 use globset::GlobBuilder;
 use std::collections::{HashMap, HashSet};
@@ -1155,16 +1155,7 @@ mod tests {
         let matchers = config
             .ignored_file_patterns
             .iter()
-            .filter_map(|pattern| {
-                let policy = PathPolicy::for_base(pattern);
-                let normalized_pattern = policy.normalize_for_matching(pattern);
-                let mut builder = GlobBuilder::new(&normalized_pattern);
-                builder.literal_separator(true);
-                builder
-                    .build()
-                    .ok()
-                    .map(|glob| (policy, glob.compile_matcher()))
-            })
+            .filter_map(|pattern| compile_ignore_matcher(pattern))
             .collect::<Vec<_>>();
 
         // Candidate as the `ignore` walker emits it on Windows: native
