@@ -18,7 +18,7 @@ has no cross-platform implementation, so we share the *declaration* and keep the
 | Piece | Location | Scope |
 |-------|----------|-------|
 | **Descriptor** — what it is: id, match, control kind, on/off labels, info fields | `core/qactions` catalog | shared, all OSes |
-| **Adapter** — how it runs: read + set the OS state (`state()` / `apply()`) | macOS: `…/QuickActions/Controls/<Name>Control.swift`; linows: `…/src-tauri/src/qactions/controls/<name>.rs` | native, per OS |
+| **Adapter** — how it runs: read + set the OS state (`state()` / `apply()`) | macOS: `…/QuickActions/Controls/<Name>Control.swift`; linows: `…/src-tauri/src/qactions/controls/<name>.rs` (Linux) and `<name>_windows.rs` (Windows), each `cfg`-gated | native, per OS |
 | **Registration** — wire the adapter to its action id | macOS: `…/QuickActions/ActionAdapterRegistry.swift`; linows: `qactions/mod.rs` `adapter()` | native, one line |
 
 A control is searchable **and** actionable from its single descriptor; you do not
@@ -40,8 +40,10 @@ apps/macos/…/Support/QuickActions/
   Controls/<Name>Control.swift                            macOS adapter (copy Bluetooth)
   ActionAdapterRegistry.swift                             one line: "id": Control()
 apps/linows/src-tauri/src/qactions/
-  controls/<name>.rs                                      linows adapter (copy bluetooth.rs)
-  mod.rs                                                  one line in adapter()
+  controls/<name>.rs                                      linows Linux adapter (copy bluetooth.rs)
+  controls/<name>_windows.rs                              linows Windows adapter (copy bluetooth_windows.rs)
+  controls/mod.rs                                         cfg-gate each per-OS module
+  mod.rs                                                  one line per OS in adapter()
 ```
 
 Framework, for reference only, do not edit:
@@ -124,5 +126,22 @@ blocking pool.
 Read [`BluetoothControl.swift`](../apps/macos/LauncherApp/look-app/Support/QuickActions/Controls/BluetoothControl.swift)
 (macOS, quarantines a private API) or
 [`bluetooth.rs`](../apps/linows/src-tauri/src/qactions/controls/bluetooth.rs)
-(linows, talks to BlueZ over D-Bus) first: each is a complete, commented
+(linows Linux, talks to BlueZ over D-Bus) first: each is a complete, commented
 adapter and the template every other control follows.
+
+### Windows Bluetooth
+
+[`bluetooth_windows.rs`](../apps/linows/src-tauri/src/qactions/controls/bluetooth_windows.rs)
+is the Windows peer. Power on/off goes through the WinRT
+`Windows.Devices.Radios` API (the same surface as the OS Quick Settings toggle,
+no elevation needed); WinRT calls block on `IAsyncOperation::get()`, which is
+fine on the blocking pool. `ensure_mta()` keeps the process in an MTA so those
+calls work on pooled threads. The paired-device list comes from WinRT
+`DeviceInformation` (classic + LE).
+
+Connect/disconnect has no WinRT equivalent of BlueZ's per-device
+`Connect`/`Disconnect`, so `apply_item` drops to the Win32
+`BluetoothSetServiceState` API (in the `winbt` module), which acts per installed
+service. Only classic devices are actionable: their row `id` is the Bluetooth
+address, which `apply_item` uses to find the `BLUETOOTH_DEVICE_INFO` and toggle
+its services. LE devices have no `id` and stay display-only.

@@ -37,6 +37,12 @@ wayland-protocols-wlr = { version = "0.3", features = ["client"], default-featur
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = [
+    "Foundation",
+    "Foundation_Collections",
+    "Devices_Radios",
+    "Devices_Bluetooth",
+    "Devices_Enumeration",
+    "Win32_Devices_Bluetooth",
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_NetworkManagement_IpHelper",
