@@ -252,28 +252,26 @@ These keys have no control in the Settings screens. Edit `~/.look.config` direct
 
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
 
-Ignore-pattern note:
-
 - `ignored_patterns_<group>` uses gitignore-style path glob syntax: `*`, `**`, `?`, `[abc]`
-- macOS/Linux normally use `/` paths like `~/Library/...` or `/home/name/...`
-- Windows is verified with native absolute paths like `C:\Users\me\...`; `~` is expanded against your home directory before matching
-- macOS works the same way; common roots are `~/Library/...`, `~/Documents/...`, `~/Downloads/...`
-- values are separated with `|`, and all `ignored_patterns_*` entries are merged together
-- patterns apply to files only; they do not exclude folders from traversal
+    - macOS/Linux normally use `/` paths like `~/Library/...` or `/home/name/...`
+    - Windows is verified with native absolute paths like `C:\Users\me\...`; `~` is expanded against your home directory before matching
+    - macOS works the same way; common roots are `~/Library/...`, `~/Documents/...`, `~/Downloads/...`
+    - values are separated with `|`, and all `ignored_patterns_*` entries are merged together
+    - patterns apply to files only; they do not exclude folders from traversal
 
-Examples:
+    Examples:
 
-- `ignored_patterns_macos=~/Library/Application Support/Code/logs/**/*.log|~/Library/Caches/**/*.tmp`
-- `ignored_patterns_windows=C:\Users\me\AppData\Local\Temp\**\*.etl|C:\Users\me\Downloads\**\*.tmp`
-- `ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp`
-- `ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm`
-- `ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part`
+    - `ignored_patterns_macos=~/Library/Application Support/Code/logs/**/*.log|~/Library/Caches/**/*.tmp`
+    - `ignored_patterns_windows=C:\Users\me\AppData\Local\Temp\**\*.etl|C:\Users\me\Downloads\**\*.tmp`
+    - `ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp`
+    - `ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm`
+    - `ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part`
 
-Quick matching guide:
+    Quick matching guide:
 
-- `*` matches within one path segment: `~/Downloads/*.tmp`
-- `**` matches across nested folders: `~/Downloads/**/*.tmp`
-- keep patterns path-scoped when possible; `*.log` works but is usually too broad
+    - `*` matches within one path segment: `~/Downloads/*.tmp`
+    - `**` matches across nested folders: `~/Downloads/**/*.tmp`
+    - keep patterns path-scoped when possible; `*.log` works but is usually too broad
 
 Alias note:
 
