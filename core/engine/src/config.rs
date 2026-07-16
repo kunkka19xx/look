@@ -1,8 +1,8 @@
 use crate::normalize::normalize_for_search;
 use crate::platform;
-use crate::platform::paths::expand_with_home;
 #[cfg(test)]
 use crate::platform::paths::PathPolicy;
+use crate::platform::paths::expand_with_home;
 use globset::GlobBuilder;
 use std::collections::{HashMap, HashSet};
 use std::env;
