@@ -1126,6 +1126,60 @@ mod tests {
         let _ = std::fs::remove_file(&tmp);
     }
 
+    // End-to-end across the seam the other tests skip: a Windows pattern goes
+    // through the real config parse-and-store step, then is matched the exact
+    // way `walk_files` (index/files.rs) does. The Windows tests elsewhere build
+    // matchers from the raw pattern and never feed config's STORED output back
+    // into the walk matcher, which is where the Windows path breaks.
+    #[test]
+    fn windows_pattern_from_config_ignores_backslash_candidate() {
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-ignored-patterns-walk-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+        std::fs::write(
+            &tmp,
+            "ignored_patterns_win=C:\\Users\\me\\Temp\\**\\*.etl\n",
+        )
+        .expect("should write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        config.apply_from_file(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+
+        // Rebuild matchers exactly like `walk_files`, from the STORED patterns.
+        let matchers = config
+            .ignored_file_patterns
+            .iter()
+            .filter_map(|pattern| {
+                let policy = PathPolicy::for_base(pattern);
+                let normalized_pattern = policy.normalize_for_matching(pattern);
+                let mut builder = GlobBuilder::new(&normalized_pattern);
+                builder.literal_separator(true);
+                builder
+                    .build()
+                    .ok()
+                    .map(|glob| (policy, glob.compile_matcher()))
+            })
+            .collect::<Vec<_>>();
+
+        // Candidate as the `ignore` walker emits it on Windows: native
+        // backslashes, on-disk casing.
+        let candidate = r"C:\Users\Me\Temp\nested\trace.etl";
+        let ignored = matchers.iter().any(|(policy, glob_matcher)| {
+            glob_matcher.is_match(policy.normalize_for_matching(candidate))
+        });
+
+        assert!(
+            ignored,
+            "a Windows pattern loaded from config should ignore the matching backslash candidate"
+        );
+    }
+
     #[test]
     fn default_config_contents_include_alias_entries() {
         let contents = default_config_contents();
