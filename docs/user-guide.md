@@ -100,7 +100,7 @@ Path-like queries (for example `git/project/readme`) are also supported and bias
 
 Clipboard mode (`c"`):
 
-- stores recent text clips for the running app session,
+- stores recent text clips for the running app session (history size is configurable via `clipboard_history_limit`, see File-only settings below),
 - `Enter` on a clipboard row copies that content back to clipboard.
 
 Translation mode (`t"`/`tw"`):
@@ -244,6 +244,12 @@ Backend-related keys:
 - `skip_dir_names`
 - `alias_<keyword>` (for app + System Settings query aliases, for example `alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq`)
 - `backend_log_level`, `launch_at_login`
+
+File-only settings (no Settings UI):
+
+These keys have no control in the Settings screens. Edit `~/.look.config` directly, then reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux/Windows), or restart Look. Out-of-range or unparseable values fall back to the listed default. More keys will be added here over time.
+
+- `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
 
 Alias note:
 

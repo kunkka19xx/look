@@ -19,7 +19,7 @@ notify = "6"
 open = "5"
 base64 = "0.22"
 rodio = "0.20"
-arboard = "3"
+arboard = { version = "3", features = ["wayland-data-control"] }
 dirs = "6"
 tauri-plugin-dialog = "2"
 trash = "5"

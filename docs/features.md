@@ -27,7 +27,7 @@ This document tracks what `look` supports today and what is planned next.
 ### Clipboard and translation
 
 - clipboard history mode with `c"` prefix
-- in-memory clipboard history (latest text clips); file/folder copies are excluded
+- in-memory clipboard history (recent text clips, size set by `clipboard_history_limit`, default 10, range 10 to 100); file/folder copies are excluded
 - quick translation with `t"...`
 - dictionary lookup panel with `tw"...`
 

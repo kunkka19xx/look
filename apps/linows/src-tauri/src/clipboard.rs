@@ -4,7 +4,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-const MAX_ENTRIES: usize = 10;
 const MAX_ENTRY_BYTES: usize = 30_000;
 const POLL_MS: u64 = 500;
 
@@ -19,6 +18,7 @@ pub struct ClipboardEntry {
 struct ClipboardState {
     entries: Vec<ClipboardEntry>,
     last_text: String,
+    max_entries: usize,
 }
 
 static STATE: Mutex<Option<ClipboardState>> = Mutex::new(None);
@@ -63,9 +63,15 @@ pub fn mark_self_write() {
 
 /// Start background clipboard polling thread.
 pub fn start_monitor() {
-    let entries = load_entries();
+    let max_entries = crate::config::clipboard_history_limit();
+    let mut entries = load_entries();
+    entries.truncate(max_entries);
     let last_text = entries.first().map(|e| e.text.clone()).unwrap_or_default();
-    *STATE.lock().unwrap() = Some(ClipboardState { entries, last_text });
+    *STATE.lock().unwrap() = Some(ClipboardState {
+        entries,
+        last_text,
+        max_entries,
+    });
 
     std::thread::spawn(|| {
         let mut clipboard = match arboard::Clipboard::new() {
@@ -116,10 +122,26 @@ pub fn start_monitor() {
             };
 
             state.entries.insert(0, entry);
-            state.entries.truncate(MAX_ENTRIES);
+            state.entries.truncate(state.max_entries);
             save_entries(&state.entries);
         }
     });
+}
+
+/// Re-reads the clipboard section of `~/.look.config` and applies it to the running
+/// monitor (trimming and persisting any entries beyond a lowered limit), so file-only
+/// clipboard settings take effect on config reload without a restart. One reload entry
+/// point for the whole subsystem: adding a clipboard key means another apply line here,
+/// not a new function wired into `reload_config`.
+pub fn reload_from_config() {
+    let mut lock = STATE.lock().unwrap();
+    if let Some(state) = lock.as_mut() {
+        state.max_entries = crate::config::clipboard_history_limit();
+        if state.entries.len() > state.max_entries {
+            state.entries.truncate(state.max_entries);
+            save_entries(&state.entries);
+        }
+    }
 }
 
 #[tauri::command]
