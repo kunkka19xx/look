@@ -54,6 +54,9 @@ pub(crate) fn discover_macos_installed_apps(
     macos::discover_installed_apps(config, tx)
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) use macos::{SETTINGS_EXTENSIONS_DIR, read_spotlight_display_name};
+
 #[cfg(target_os = "linux")]
 pub(crate) fn discover_linux_installed_apps(
     config: &crate::config::RuntimeConfig,

@@ -82,6 +82,7 @@ pub struct RuntimeConfig {
     pub file_exclude_paths: Vec<String>,
     pub skip_dir_names: Vec<String>,
     pub lazy_indexing_enabled: bool,
+    pub spotlight_localized_app_names: bool,
     pub search_aliases: HashMap<String, Vec<String>>,
 }
 
@@ -111,6 +112,7 @@ impl Default for RuntimeConfig {
                 .map(|value| value.to_string())
                 .collect(),
             lazy_indexing_enabled: LAZY_INDEXING_ENABLED,
+            spotlight_localized_app_names: true,
             search_aliases: default_search_aliases(),
         }
     }
@@ -287,6 +289,11 @@ impl RuntimeConfig {
                         self.lazy_indexing_enabled = parsed;
                     }
                 }
+                "spotlight_localized_app_names" => {
+                    if let Some(parsed) = parse_bool(value) {
+                        self.spotlight_localized_app_names = parsed;
+                    }
+                }
                 _ if key.strip_prefix("alias_").is_some() => {
                     if let Some(alias_key) = key.strip_prefix("alias_") {
                         apply_alias_override(alias_key, value, &mut self.search_aliases);
@@ -395,6 +402,7 @@ file_scan_depth=4\n\
 file_scan_limit=8000\n\
 file_exclude_paths=\n\
 lazy_indexing_enabled=true\n\
+spotlight_localized_app_names=true\n\
 skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data,deriveddata,pods,vendor,out,coverage,tmp,cache,venv\n\
 \n\
 # UI theme\n\
