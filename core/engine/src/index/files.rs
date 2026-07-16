@@ -100,9 +100,6 @@ fn walk_files(
             break;
         }
 
-        // Read mtime from the walker's entry metadata before consuming `entry`,
-        // so the recent view can rank by when files appeared/changed on disk.
-        let modified_at = modified_unix_s(entry.metadata().ok().as_ref());
         let path_buf = entry.into_path();
         let Some(path_str) = path_buf.to_str() else {
             continue;
@@ -114,7 +111,16 @@ fn walk_files(
         let Some(name) = path_buf.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
-        if path_buf.is_dir() {
+
+        // One stat per entry, reused for both kind and mtime. `fs::metadata`
+        // follows symlinks, matching the old `Path::is_dir`/`is_file` calls,
+        // which each did their own separate stat on top of the mtime read.
+        let Ok(metadata) = std::fs::metadata(&path_buf) else {
+            continue;
+        };
+        let modified_at = modified_unix_s(Some(&metadata));
+
+        if metadata.is_dir() {
             let key = format!(
                 "{FOLDER_CANDIDATE_ID_PREFIX}{}",
                 candidate_id_path_component(path_str)
@@ -126,7 +132,7 @@ fn walk_files(
             continue;
         }
 
-        if path_buf.is_file() {
+        if metadata.is_file() {
             // Normalize the candidate with the same policy used for the
             // pattern. Without this, a Windows pattern like `C:\tmp\*.log`
             // becomes lowercase `c:/...`, while walker output like
