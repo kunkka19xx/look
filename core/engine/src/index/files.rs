@@ -1,7 +1,8 @@
 use crate::config::RuntimeConfig;
 use crate::index::{FILE_CANDIDATE_ID_PREFIX, FOLDER_CANDIDATE_ID_PREFIX};
-use crate::platform::paths::{PathPolicy, candidate_id_path_component, path_is_same_or_child};
-use globset::GlobBuilder;
+use crate::platform::paths::{
+    PathPolicy, candidate_id_path_component, compile_ignore_matcher, path_is_same_or_child,
+};
 use globset::GlobMatcher;
 use ignore::WalkBuilder;
 use look_indexing::{Candidate, CandidateKind};
@@ -51,16 +52,7 @@ fn walk_files(
     let ignored_file_matchers = config
         .ignored_file_patterns
         .iter()
-        .filter_map(|pattern| {
-            let policy = PathPolicy::for_base(pattern);
-            let normalized_pattern = policy.normalize_for_matching(pattern);
-            let mut builder = GlobBuilder::new(&normalized_pattern);
-            builder.literal_separator(true);
-            builder
-                .build()
-                .ok()
-                .map(|glob| (policy, glob.compile_matcher()))
-        })
+        .filter_map(|pattern| compile_ignore_matcher(pattern))
         .collect::<Vec<IgnoredFileMatcher>>();
     walker
         .hidden(false)
@@ -176,8 +168,7 @@ fn should_exclude_path(path: &str, file_exclude_paths: &[String]) -> bool {
 mod tests {
     use super::{discover_local_files_and_folders, should_exclude_path};
     use crate::config::RuntimeConfig;
-    use crate::platform::paths::PathPolicy;
-    use globset::GlobBuilder;
+    use crate::platform::paths::{PathPolicy, compile_ignore_matcher};
     use look_indexing::CandidateKind;
     use std::sync::mpsc;
 
@@ -193,16 +184,11 @@ mod tests {
     }
 
     fn windows_style_ignored_pattern_matches(pattern: &str, path: &str) -> bool {
-        let policy = PathPolicy::for_base(pattern);
-        let normalized_pattern = policy.normalize_for_matching(pattern);
+        let Some((policy, matcher)) = compile_ignore_matcher(pattern) else {
+            return false;
+        };
         let normalized_path = policy.normalize_for_matching(path);
-        let mut builder = GlobBuilder::new(&normalized_pattern);
-        builder.literal_separator(true);
-        builder
-            .build()
-            .expect("pattern should compile")
-            .compile_matcher()
-            .is_match(&normalized_path)
+        matcher.is_match(&normalized_path)
     }
 
     #[test]
@@ -384,14 +370,7 @@ mod tests {
     #[test]
     fn ignored_patterns_match_windows_backslash_pattern_against_slash_candidate() {
         let pattern = r"C:\Users\me\Temp\*.log";
-        let policy = PathPolicy::for_base(pattern);
-        let normalized_pattern = policy.normalize_for_matching(pattern);
-        let mut builder = GlobBuilder::new(&normalized_pattern);
-        builder.literal_separator(true);
-        let matcher = builder
-            .build()
-            .expect("pattern should compile")
-            .compile_matcher();
+        let (policy, matcher) = compile_ignore_matcher(pattern).expect("pattern should compile");
 
         assert!(matcher.is_match(policy.normalize_for_matching("C:/Users/me/Temp/debug.log")));
         assert!(!matcher.is_match(policy.normalize_for_matching("C:/Users/me/Temp/debug.txt")));

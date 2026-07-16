@@ -1120,7 +1120,7 @@ mod tests {
 
         assert_eq!(
             config.ignored_file_patterns,
-            vec!["c:/users/me/appdata/local/temp/**/*.etl".to_string()]
+            vec![r"C:\Users\me\AppData\Local\Temp\**\*.etl".to_string()]
         );
 
         let _ = std::fs::remove_file(&tmp);

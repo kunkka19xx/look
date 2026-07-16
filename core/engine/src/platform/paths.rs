@@ -1,3 +1,4 @@
+use globset::{GlobBuilder, GlobMatcher};
 use std::path::Path;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -109,6 +110,17 @@ impl PathPolicy {
     pub(crate) fn id_component(&self, path: &str) -> String {
         self.normalize_for_matching(path).to_lowercase()
     }
+}
+
+pub(crate) fn compile_ignore_matcher(pattern: &str) -> Option<(PathPolicy, GlobMatcher)> {
+    let policy = PathPolicy::for_base(pattern);
+    let normalized_pattern = policy.normalize_for_matching(pattern);
+    let mut builder = GlobBuilder::new(&normalized_pattern);
+    builder.literal_separator(true);
+    builder
+        .build()
+        .ok()
+        .map(|glob| (policy, glob.compile_matcher()))
 }
 
 fn separator_for_style(style: PathStyle) -> char {
