@@ -1,6 +1,8 @@
 use crate::normalize::normalize_for_search;
 use crate::platform;
-use crate::platform::paths::{PathPolicy, expand_with_home};
+use crate::platform::paths::expand_with_home;
+#[cfg(test)]
+use crate::platform::paths::PathPolicy;
 use globset::GlobBuilder;
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -294,9 +296,7 @@ impl RuntimeConfig {
                     let parsed = parse_pattern_values(value);
                     for pattern in parsed {
                         let expanded = expand_path(&pattern, home.as_deref());
-                        let normalized =
-                            PathPolicy::for_base(&expanded).normalize_for_matching(&expanded);
-                        let mut builder = GlobBuilder::new(&normalized);
+                        let mut builder = GlobBuilder::new(&expanded);
                         builder.literal_separator(true);
                         if builder.build().is_err() {
                             continue;
@@ -304,9 +304,9 @@ impl RuntimeConfig {
                         if !self
                             .ignored_file_patterns
                             .iter()
-                            .any(|existing| existing == &normalized)
+                            .any(|existing| existing == &expanded)
                         {
-                            self.ignored_file_patterns.push(normalized);
+                            self.ignored_file_patterns.push(expanded);
                         }
                     }
                 }
