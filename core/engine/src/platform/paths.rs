@@ -211,9 +211,14 @@ pub(crate) fn looks_like_absolute_path(path: &str) -> bool {
 }
 
 pub(crate) fn expand_with_home(value: &str, home: Option<&str>) -> String {
-    if value.starts_with("~/") {
+    // Accept both `~/` and the Windows-native `~\` home prefix. `join_path`
+    // then re-emits the tail with the separator that matches `home`.
+    if let Some(rest) = value
+        .strip_prefix("~/")
+        .or_else(|| value.strip_prefix("~\\"))
+    {
         return home
-            .map(|prefix| join_path(prefix, value.trim_start_matches("~/")))
+            .map(|prefix| join_path(prefix, rest))
             .unwrap_or_else(|| value.to_string());
     }
 
@@ -296,6 +301,21 @@ mod tests {
         );
         assert_eq!(expand_with_home("/tmp", Some("/Users/demo")), "/tmp");
         assert_eq!(expand_with_home("~/Desktop", Some("/")), "/Desktop");
+    }
+
+    #[test]
+    fn expand_with_home_handles_windows_backslash_tilde() {
+        // `~\` is the native Windows home form; it must expand against a Windows
+        // home the same way `~/` does, keeping the tail intact.
+        let home = Some("C:\\Users\\demo");
+        assert_eq!(
+            expand_with_home("~\\AppData\\Local\\Temp\\*.etl", home),
+            "C:\\Users\\demo\\AppData\\Local\\Temp\\*.etl"
+        );
+        assert_eq!(
+            expand_with_home("~\\Downloads\\*.tmp", Some("/Users/demo")),
+            "/Users/demo/Downloads\\*.tmp"
+        );
     }
 
     #[test]

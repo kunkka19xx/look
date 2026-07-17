@@ -1171,6 +1171,41 @@ mod tests {
         );
     }
 
+    // Full flow for the Windows home form `~\`, across both steps the other
+    // tests split: config.rs splits + dedups the raw values and stores each one
+    // home-expanded (raw, not policy-normalized); files.rs builds the matcher
+    // from that stored string. Uses an explicit Windows home so the assertion is
+    // deterministic regardless of the machine's real HOME.
+    #[test]
+    fn home_tilde_pattern_from_config_ignores_backslash_candidate() {
+        let home = Some("C:\\Users\\me");
+
+        // Step 1 (config.rs): split on `|`, trim, drop the duplicate.
+        let raw = parse_pattern_values(r" ~\Temp\**\*.log | ~\Temp\**\*.log | ~\Temp\**\*.log ");
+        assert_eq!(raw, vec![r"~\Temp\**\*.log".to_string()]);
+
+        // Step 2 (config.rs): store each home-expanded, still raw (un-normalized).
+        let stored: Vec<String> = raw
+            .iter()
+            .map(|pattern| expand_path(pattern, home))
+            .collect();
+        assert_eq!(stored, vec![r"C:\Users\me\Temp\**\*.log".to_string()]);
+
+        // Step 3 (files.rs): build the matcher from the stored pattern and match
+        // a candidate as the walker emits it on Windows (backslashes, on-disk
+        // casing).
+        let (policy, matcher) = compile_ignore_matcher(&stored[0]).expect("pattern should compile");
+        assert!(
+            matcher.is_match(&*policy.normalize_for_matching(r"C:\Users\Me\Temp\nested\trace.log")),
+            "a ~\\ home pattern from config should ignore the matching candidate"
+        );
+        // A different extension under the same dir stays visible.
+        assert!(
+            !matcher
+                .is_match(&*policy.normalize_for_matching(r"C:\Users\Me\Temp\nested\trace.txt"))
+        );
+    }
+
     #[test]
     fn default_config_contents_include_alias_entries() {
         let contents = default_config_contents();
