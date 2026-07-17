@@ -2,13 +2,20 @@ use crate::index::SETTINGS_CANDIDATE_ID_PREFIX;
 use crate::platform;
 use crate::platform::SettingsCatalogEntry;
 use look_indexing::{Candidate, CandidateKind};
+use std::collections::HashMap;
 use std::sync::mpsc;
 
 pub fn discover_system_settings_entries(tx: mpsc::SyncSender<Candidate>) {
     // With a settings app (gnome-control-center family), emit the whole catalog.
     // e.g. gnome-control-center on GNOME, skipped on i3/sway/minimal distros.
     if platform::has_settings_app() {
+        #[cfg(target_os = "macos")]
+        let localized = build_localized_title_map();
+
         for entry in platform::settings_catalog() {
+            #[cfg(target_os = "macos")]
+            emit_entry_localized(&tx, entry, &localized);
+            #[cfg(not(target_os = "macos"))]
             emit_entry(&tx, entry);
         }
 
@@ -45,11 +52,77 @@ fn emit_settings_fallback_entries(tx: &mpsc::SyncSender<Candidate>) {
 #[cfg(not(target_os = "linux"))]
 fn emit_settings_fallback_entries(_tx: &mpsc::SyncSender<Candidate>) {}
 
+#[cfg(not(target_os = "macos"))]
 fn emit_entry(tx: &mpsc::SyncSender<Candidate>, entry: &SettingsCatalogEntry) {
     let mut candidate = Candidate::new(
         &candidate_id(entry),
         CandidateKind::App,
         entry.title,
+        &target_path(entry),
+    );
+    candidate.subtitle = Some(subtitle(entry).into());
+    let _ = tx.send(candidate);
+}
+
+#[cfg(target_os = "macos")]
+fn build_localized_title_map() -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let Ok(entries) = std::fs::read_dir(platform::SETTINGS_EXTENSIONS_DIR) else {
+        return map;
+    };
+
+    let catalog_targets: HashMap<&str, &SettingsCatalogEntry> = platform::settings_catalog()
+        .iter()
+        .map(|e| (e.target, e))
+        .collect();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("appex") {
+            continue;
+        }
+        let Some(path_str) = path.to_str() else {
+            continue;
+        };
+
+        let plist_path = format!("{path_str}/Contents/Info.plist");
+        let Ok(value) = plist::Value::from_file(&plist_path) else {
+            continue;
+        };
+        let Some(dict) = value.as_dictionary() else {
+            continue;
+        };
+        let Some(bundle_id) = dict.get("CFBundleIdentifier").and_then(|v| v.as_string()) else {
+            continue;
+        };
+
+        if let Some(catalog_entry) = catalog_targets.get(bundle_id)
+            && let Some(localized) = platform::read_spotlight_display_name(path_str, ".appex")
+        {
+            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            if localized != catalog_entry.title && localized != stem {
+                map.insert(bundle_id.to_string(), localized);
+            }
+        }
+    }
+
+    map
+}
+
+#[cfg(target_os = "macos")]
+fn emit_entry_localized(
+    tx: &mpsc::SyncSender<Candidate>,
+    entry: &SettingsCatalogEntry,
+    localized: &HashMap<String, String>,
+) {
+    let title = localized
+        .get(entry.target)
+        .map(|s| s.as_str())
+        .unwrap_or(entry.title);
+    let mut candidate = Candidate::new(
+        &candidate_id(entry),
+        CandidateKind::App,
+        title,
         &target_path(entry),
     );
     candidate.subtitle = Some(subtitle(entry).into());
