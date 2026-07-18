@@ -2,7 +2,8 @@ mod apps;
 mod settings_catalog;
 
 use std::env;
-use std::process::Command;
+
+use objc2_foundation::{NSArray, NSBundle, NSLocale, NSString};
 
 pub(crate) const APP_SCAN_ROOTS: &[&str] = &[
     "/Applications",
@@ -27,8 +28,7 @@ pub(crate) use settings_catalog::SETTINGS_CATALOG;
 
 /// macOS 13+ only. Settings panes use `.appex` extensions under
 /// `/System/Library/ExtensionKit/Extensions/`. On macOS 12 and earlier,
-/// they use `.prefPane` bundles in `/System/Library/PreferencePanes/`
-/// and localization via Spotlight is unavailable.
+/// they use `.prefPane` bundles in `/System/Library/PreferencePanes/`.
 pub(crate) const SETTINGS_EXTENSIONS_DIR: &str = "/System/Library/ExtensionKit/Extensions";
 
 pub(crate) fn additional_app_scan_roots() -> Vec<String> {
@@ -39,40 +39,121 @@ pub(crate) fn additional_app_scan_roots() -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Returns the Spotlight `kMDItemDisplayName` for the given path, with
-/// the file suffix (`.app` or `.appex`) stripped. Returns `None` on
-/// any failure — the caller should fall back to plist or filename stem.
-pub(crate) fn read_spotlight_display_name(path: &str, strip_suffix: &str) -> Option<String> {
-    let output = Command::new("mdls")
-        .args(["-name", "kMDItemDisplayName", "-raw", path])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "look index: mdls failed for {path}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return None;
-    }
-    let raw = String::from_utf8(output.stdout).ok()?;
-    let name = raw.trim().strip_suffix(strip_suffix).unwrap_or(raw.trim());
-    if name.is_empty() {
-        return None;
-    }
-    Some(name.to_string())
+/// Returns the bundle name localized for the user's preferred languages.
+pub(crate) fn read_localized_display_name(path: &str, strip_suffix: &str) -> Option<String> {
+    let path_string = NSString::from_str(path);
+    let bundle = NSBundle::bundleWithPath(&path_string)?;
+    objc2::available!(macos = 15.4)
+        .then(|| read_bundle_name_for_user_languages(&bundle, path, strip_suffix))
+        .flatten()
 }
 
-pub(crate) fn read_app_display_name(app_path: &str, use_spotlight: bool) -> Option<String> {
-    if use_spotlight && let Some(name) = read_spotlight_display_name(app_path, ".app") {
-        return Some(name);
+pub(crate) fn read_bundle_identifier(path: &str) -> Option<String> {
+    let path_string = NSString::from_str(path);
+    let bundle = NSBundle::bundleWithPath(&path_string)?;
+    bundle
+        .bundleIdentifier()
+        .map(|identifier| identifier.to_string())
+}
+
+/// `NSBundle` normally resolves resources in the host app's localization
+/// context. Supply the user's global preferences so another app bundle uses
+/// the same localization Finder would choose.
+fn read_bundle_name_for_user_languages(
+    bundle: &NSBundle,
+    path: &str,
+    strip_suffix: &str,
+) -> Option<String> {
+    let localizations = NSLocale::preferredLanguages();
+    read_bundle_name_for_languages(bundle, path, strip_suffix, &localizations)
+}
+
+fn read_bundle_name_for_languages(
+    bundle: &NSBundle,
+    path: &str,
+    strip_suffix: &str,
+    localizations: &NSArray<NSString>,
+) -> Option<String> {
+    let table = NSString::from_str("InfoPlist");
+
+    for key in ["CFBundleDisplayName", "CFBundleName"] {
+        let key = NSString::from_str(key);
+        let fallback = bundle
+            .objectForInfoDictionaryKey(&key)
+            .and_then(|value| value.downcast::<NSString>().ok());
+        let name = bundle.localizedStringForKey_value_table_localizations(
+            &key,
+            fallback.as_deref(),
+            Some(&table),
+            localizations,
+        );
+        if fallback.is_none() && name == key {
+            continue;
+        }
+        if let Some(name) = normalize_display_name(&name.to_string(), path, strip_suffix) {
+            return Some(name);
+        }
+    }
+    None
+}
+
+fn normalize_display_name(display_name: &str, path: &str, strip_suffix: &str) -> Option<String> {
+    let name = display_name.trim();
+    if name.is_empty() || name == path {
+        return None;
     }
 
-    let plist_path = format!("{app_path}/Contents/Info.plist");
-    let value = plist::Value::from_file(&plist_path).ok()?;
-    let dict = value.as_dictionary()?;
-    dict.get("CFBundleDisplayName")
-        .or_else(|| dict.get("CFBundleName"))
-        .and_then(|v| v.as_string())
-        .map(|s| s.to_string())
+    let name = name.strip_suffix(strip_suffix).unwrap_or(name).trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_bundle_name_for_languages;
+    use objc2_foundation::{NSArray, NSBundle, NSString};
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn bundle_name_uses_explicit_localization_for_infoplist_strings() {
+        if !objc2::available!(macos = 15.4) {
+            return;
+        }
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock after Unix epoch")
+            .as_nanos();
+        let app = std::env::temp_dir().join(format!("look-localized-name-{unique}.app"));
+        let resources = app.join("Contents/Resources/zh-Hans.lproj");
+        fs::create_dir_all(&resources).expect("create test bundle resources");
+        fs::write(
+            app.join("Contents/Info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>test.look.localized-name</string>
+<key>CFBundleDisplayName</key><string>English Fixture</string>
+</dict></plist>"#,
+        )
+        .expect("write test bundle Info.plist");
+        fs::write(
+            resources.join("InfoPlist.strings"),
+            "\"CFBundleDisplayName\" = \"\u{672c}\u{5730}\u{5316}\u{6d4b}\u{8bd5}\";\n",
+        )
+        .expect("write localized display name");
+
+        let app_path = app.to_str().expect("UTF-8 test bundle path");
+        let app_path_string = NSString::from_str(app_path);
+        let bundle = NSBundle::bundleWithPath(&app_path_string).expect("load test bundle");
+        let language = NSString::from_str("zh-Hans");
+        let languages = NSArray::from_slice(&[&*language]);
+        let name = read_bundle_name_for_languages(&bundle, app_path, ".app", &languages);
+
+        fs::remove_dir_all(&app).expect("remove test bundle");
+        assert_eq!(
+            name.as_deref(),
+            Some("\u{672c}\u{5730}\u{5316}\u{6d4b}\u{8bd5}")
+        );
+    }
 }

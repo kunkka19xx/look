@@ -6,13 +6,20 @@ use look_indexing::{Candidate, CandidateKind};
 use std::collections::HashMap;
 use std::sync::mpsc;
 
-pub fn discover_system_settings_entries(tx: mpsc::SyncSender<Candidate>) {
+pub fn discover_system_settings_entries(
+    localized_app_names: bool,
+    tx: mpsc::SyncSender<Candidate>,
+) {
     if !platform::has_settings_app() {
         return;
     }
 
     #[cfg(target_os = "macos")]
-    let localized = build_localized_title_map();
+    let localized = localized_app_names
+        .then(build_localized_title_map)
+        .unwrap_or_default();
+    #[cfg(not(target_os = "macos"))]
+    let _ = localized_app_names;
 
     for entry in platform::settings_catalog() {
         #[cfg(target_os = "macos")]
@@ -57,19 +64,12 @@ fn build_localized_title_map() -> HashMap<String, String> {
             continue;
         };
 
-        let plist_path = format!("{path_str}/Contents/Info.plist");
-        let Ok(value) = plist::Value::from_file(&plist_path) else {
-            continue;
-        };
-        let Some(dict) = value.as_dictionary() else {
-            continue;
-        };
-        let Some(bundle_id) = dict.get("CFBundleIdentifier").and_then(|v| v.as_string()) else {
+        let Some(bundle_id) = platform::read_bundle_identifier(path_str) else {
             continue;
         };
 
-        if let Some(catalog_entry) = catalog_targets.get(bundle_id)
-            && let Some(localized) = platform::read_spotlight_display_name(path_str, ".appex")
+        if let Some(catalog_entry) = catalog_targets.get(bundle_id.as_str())
+            && let Some(localized) = platform::read_localized_display_name(path_str, ".appex")
         {
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
             if localized != catalog_entry.title && localized != stem {
@@ -218,13 +218,31 @@ mod tests {
 
     #[test]
     fn discovery_outputs_valid_settings_candidates() {
+        let discovered = discover_settings(false);
+
+        assert_valid_settings_candidates(discovered);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn localized_discovery_outputs_valid_settings_candidates() {
+        let discovered = discover_settings(true);
+
+        assert_valid_settings_candidates(discovered);
+    }
+
+    fn discover_settings(localized_app_names: bool) -> Vec<Candidate> {
         let (tx, rx) = mpsc::sync_channel(64);
         let producer = std::thread::spawn(move || {
-            discover_system_settings_entries(tx);
+            discover_system_settings_entries(localized_app_names, tx);
         });
-        let discovered: Vec<Candidate> = rx.into_iter().collect();
+        let discovered = rx.into_iter().collect();
         producer.join().expect("settings discovery thread panicked");
 
+        discovered
+    }
+
+    fn assert_valid_settings_candidates(discovered: Vec<Candidate>) {
         let expected_len = if platform::has_settings_app() {
             #[allow(unused_mut)]
             let mut total = platform::settings_catalog().len();

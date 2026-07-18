@@ -16,7 +16,7 @@ pub(crate) fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSend
         walk_apps(
             &root,
             config.app_scan_depth,
-            config.spotlight_localized_app_names,
+            config.localized_app_names,
             &tx,
             &config.app_exclude_paths,
             &config.app_exclude_names,
@@ -53,7 +53,7 @@ fn merged_app_scan_roots(
 fn walk_apps(
     path: &str,
     depth: usize,
-    use_spotlight: bool,
+    use_localized_names: bool,
     tx: &mpsc::SyncSender<Candidate>,
     app_exclude_paths: &[String],
     app_exclude_names: &[String],
@@ -91,15 +91,17 @@ fn walk_apps(
         }
 
         if app_path_str.ends_with(".app") {
-            let title =
-                macos::read_app_display_name(app_path_str, use_spotlight).unwrap_or_else(|| {
-                    app_path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("App")
-                        .to_string()
-                });
-            if should_exclude_app_name(&title, app_exclude_names) {
+            let bundle_name = app_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("App");
+            let title = if use_localized_names {
+                macos::read_localized_display_name(app_path_str, ".app")
+            } else {
+                None
+            }
+            .unwrap_or_else(|| bundle_name.to_string());
+            if should_exclude_app(&title, bundle_name, app_exclude_names) {
                 continue;
             }
 
@@ -117,7 +119,7 @@ fn walk_apps(
             walk_apps(
                 app_path_str,
                 depth - 1,
-                use_spotlight,
+                use_localized_names,
                 tx,
                 app_exclude_paths,
                 app_exclude_names,
@@ -144,9 +146,17 @@ fn should_exclude_app_name(name: &str, app_exclude_names: &[String]) -> bool {
     })
 }
 
+fn should_exclude_app(title: &str, bundle_name: &str, app_exclude_names: &[String]) -> bool {
+    should_exclude_app_name(title, app_exclude_names)
+        || should_exclude_app_name(bundle_name, app_exclude_names)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{merged_app_scan_roots, should_exclude_app_name, should_exclude_path, walk_apps};
+    use super::{
+        merged_app_scan_roots, should_exclude_app, should_exclude_app_name, should_exclude_path,
+        walk_apps,
+    };
     use look_indexing::Candidate;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -317,5 +327,12 @@ mod tests {
         drop(tx);
 
         assert!(rx.into_iter().collect::<Vec<_>>().is_empty());
+    }
+
+    #[test]
+    fn excludes_app_when_bundle_name_differs_from_localized_title() {
+        let excludes = vec!["WeChat".to_string()];
+        assert!(should_exclude_app("微信", "WeChat", &excludes));
+        assert!(should_exclude_app("WeChat", "微信", &excludes));
     }
 }

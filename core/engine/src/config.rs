@@ -82,7 +82,7 @@ pub struct RuntimeConfig {
     pub file_exclude_paths: Vec<String>,
     pub skip_dir_names: Vec<String>,
     pub lazy_indexing_enabled: bool,
-    pub spotlight_localized_app_names: bool,
+    pub localized_app_names: bool,
     pub search_aliases: HashMap<String, Vec<String>>,
 }
 
@@ -112,7 +112,7 @@ impl Default for RuntimeConfig {
                 .map(|value| value.to_string())
                 .collect(),
             lazy_indexing_enabled: LAZY_INDEXING_ENABLED,
-            spotlight_localized_app_names: true,
+            localized_app_names: false,
             search_aliases: default_search_aliases(),
         }
     }
@@ -289,9 +289,9 @@ impl RuntimeConfig {
                         self.lazy_indexing_enabled = parsed;
                     }
                 }
-                "spotlight_localized_app_names" => {
+                "localized_app_names" => {
                     if let Some(parsed) = parse_bool(value) {
-                        self.spotlight_localized_app_names = parsed;
+                        self.localized_app_names = parsed;
                     }
                 }
                 _ if key.strip_prefix("alias_").is_some() => {
@@ -402,7 +402,7 @@ file_scan_depth=4\n\
 file_scan_limit=8000\n\
 file_exclude_paths=\n\
 lazy_indexing_enabled=true\n\
-spotlight_localized_app_names=true\n\
+localized_app_names=false\n\
 skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data,deriveddata,pods,vendor,out,coverage,tmp,cache,venv\n\
 \n\
 # UI theme\n\
@@ -881,6 +881,29 @@ mod tests {
     #[test]
     fn default_config_contents_include_lazy_indexing_enabled() {
         assert!(default_config_contents().contains("lazy_indexing_enabled=true"));
+    }
+
+    #[test]
+    fn localized_app_names_defaults_to_false_and_loads_from_config() {
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-localized-app-names-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(&tmp, "localized_app_names=true\n").expect("should write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        assert!(!config.localized_app_names);
+
+        config.apply_from_file(&tmp);
+        assert!(config.localized_app_names);
+        assert!(default_config_contents().contains("localized_app_names=false"));
+
+        let _ = std::fs::remove_file(&tmp);
     }
 
     #[test]
