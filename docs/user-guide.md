@@ -96,6 +96,8 @@ Don't remember the prefixes? Type a single `"` to open a menu listing every pref
 
 Path-like queries (for example `git/project/readme`) are also supported and bias path matches.
 
+URL-like queries are detected automatically (no prefix). Type a URL and Look offers an **Open in browser** row: a structural URL (with a scheme, port, path, or `localhost`/IP - e.g. `http://localhost:3000` or `example.com/docs`) ranks at the top, while a bare `host.tld` (e.g. `github.com`) ranks after your local results so it never displaces a real match. URLs you open this way come back as **Recently opened** rows, ranked by frecency and filtered as you type.
+
 ## Clipboard and translation
 
 Clipboard mode (`c"`):
