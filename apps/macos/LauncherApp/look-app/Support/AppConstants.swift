@@ -146,7 +146,7 @@ enum AppConstants {
                 Entry(prefix: QueryPrefix.regex, argHint: "pattern", description: "Regex search"),
                 Entry(
                     prefix: QueryPrefix.clipboard, argHint: "word",
-                    description: "Clipboard history search (latest 10 text clips)"),
+                    description: "Clipboard history search (recent text clips)"),
                 Entry(prefix: QueryPrefix.translate, argHint: "word", description: "Web translate (VI/EN/JA)"),
                 Entry(
                     prefix: QueryPrefix.translateWord, argHint: "word",
@@ -241,7 +241,13 @@ enum AppConstants {
         enum Clipboard {
             static let resultIDPrefix = "clipboard:"
             static let resultPath = "clipboard://history"
+            // How many clips history keeps. `maxEntries` is the default/fallback used
+            // when `clipboard_history_limit` in ~/.look.config is absent or out of the
+            // [minEntries, maxEntriesLimit] range. See ClipboardHistoryStore.
             static let maxEntries = 10
+            static let minEntries = 10
+            static let maxEntriesLimit = 100
+            static let historyLimitConfigKey = "clipboard_history_limit"
             static let maxStoredCharacters = 30_000
             static let foregroundPollInterval: TimeInterval = 0.35
             static let backgroundPollInterval: TimeInterval = 0.9

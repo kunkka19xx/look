@@ -10,6 +10,7 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 look-answers = { path = "../../../core/answers" }
 look-engine = { path = "../../../core/engine" }
+look-qactions = { path = "../../../core/qactions" }
 look-storage = { path = "../../../core/storage" }
 look-todo = { path = "../../../core/todo" }
 serde = { version = "1", features = ["derive"] }
@@ -18,7 +19,7 @@ notify = "6"
 open = "5"
 base64 = "0.22"
 rodio = "0.20"
-arboard = "3"
+arboard = { version = "3", features = ["wayland-data-control"] }
 dirs = "6"
 tauri-plugin-dialog = "2"
 trash = "5"
@@ -26,7 +27,7 @@ trash = "5"
 [target.'cfg(target_os = "linux")'.dependencies]
 x11rb = { version = "0.13", features = ["allow-unsafe-code"] }
 zbus = "5"
-tokio = { version = "1.52.3", features = ["rt"] }
+tokio = { version = "1.52.3", features = ["rt", "time"] }
 # StreamExt for zbus signal streams.
 futures-util = { version = "0.3", default-features = false }
 webkit2gtk = "2.0"
@@ -36,6 +37,12 @@ wayland-protocols-wlr = { version = "0.3", features = ["client"], default-featur
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = [
+    "Foundation",
+    "Foundation_Collections",
+    "Devices_Radios",
+    "Devices_Bluetooth",
+    "Devices_Enumeration",
+    "Win32_Devices_Bluetooth",
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_NetworkManagement_IpHelper",

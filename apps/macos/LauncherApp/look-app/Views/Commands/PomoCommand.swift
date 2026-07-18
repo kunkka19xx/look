@@ -95,7 +95,7 @@ enum PomoPersistence {
         guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else {
             return Snapshot(sessions: PomoCommand.defaultSessions(), timerStyle: .modern, musicFolderPath: nil)
         }
-        let kv = parseKeyValues(raw)
+        let kv = ConfigFileLines.keyValues(raw)
         let sessions = kv[sessionsKey].flatMap(decodeSessions) ?? PomoCommand.defaultSessions()
         let style = kv[timerStyleKey].flatMap(PomoTimerStyle.init(rawValue:)) ?? .modern
         let folder = kv[musicFolderKey]?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -109,18 +109,23 @@ enum PomoPersistence {
     static func save(_ snapshot: Snapshot) {
         let path = ConfigPathResolver.resolvedPath()
         var lines: [String] = []
-        if let raw = try? String(contentsOfFile: path, encoding: .utf8) {
-            lines = raw.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
+        if FileManager.default.fileExists(atPath: path) {
+            // Only the pomo keys are upserted below, so writing on top of a failed read
+            // would truncate the whole config to those few lines. A config we cannot
+            // read is one we must not overwrite.
+            guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else {
+                return
+            }
+            lines = ConfigFileLines.parse(raw)
         }
-        upsert(&lines, key: sessionsKey, value: encodeSessions(snapshot.sessions))
-        upsert(&lines, key: timerStyleKey, value: snapshot.timerStyle.rawValue)
+        ConfigFileLines.upsert(&lines, key: sessionsKey, value: encodeSessions(snapshot.sessions))
+        ConfigFileLines.upsert(&lines, key: timerStyleKey, value: snapshot.timerStyle.rawValue)
         if let folder = snapshot.musicFolderPath, !folder.isEmpty {
-            upsert(&lines, key: musicFolderKey, value: folder)
+            ConfigFileLines.upsert(&lines, key: musicFolderKey, value: folder)
         } else {
-            remove(&lines, key: musicFolderKey)
+            ConfigFileLines.remove(&lines, key: musicFolderKey)
         }
-        let payload = lines.joined(separator: "\n") + "\n"
-        try? payload.write(toFile: path, atomically: true, encoding: .utf8)
+        try? ConfigFileLines.render(lines).write(toFile: path, atomically: true, encoding: .utf8)
     }
 
     // ── Encoding ────────────────────────────────────────────────────────
@@ -151,47 +156,6 @@ enum PomoPersistence {
         return result.isEmpty ? nil : result
     }
 
-    // ── Lightweight config-line helpers ────────────────────────────────
-    // Same `upsert`/`remove` pattern as ThemeStore but local to pomo so
-    // we don't have to widen ThemeStore's private API.
-
-    private static func parseKeyValues(_ raw: String) -> [String: String] {
-        var out: [String: String] = [:]
-        for line in raw.split(whereSeparator: \.isNewline) {
-            let stripped = stripComment(String(line)).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let eq = stripped.firstIndex(of: "=") else { continue }
-            let key = String(stripped[..<eq]).trimmingCharacters(in: .whitespacesAndNewlines)
-            let value = String(stripped[stripped.index(after: eq)...]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !key.isEmpty {
-                out[key] = value
-            }
-        }
-        return out
-    }
-
-    private static func stripComment(_ line: String) -> String {
-        guard let i = line.firstIndex(of: "#") else { return line }
-        return String(line[..<i])
-    }
-
-    private static func upsert(_ lines: inout [String], key: String, value: String) {
-        let prefix = "\(key)="
-        for idx in lines.indices {
-            let trimmed = stripComment(lines[idx]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.hasPrefix(prefix) {
-                lines[idx] = "\(key)=\(value)"
-                return
-            }
-        }
-        lines.append("\(key)=\(value)")
-    }
-
-    private static func remove(_ lines: inout [String], key: String) {
-        let prefix = "\(key)="
-        lines.removeAll { line in
-            stripComment(line).trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(prefix)
-        }
-    }
 }
 
 // ── Notifications: phase-transition pings ─────────────────────────────

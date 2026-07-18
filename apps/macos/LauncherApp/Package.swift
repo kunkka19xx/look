@@ -16,6 +16,7 @@ let package = Package(
             sources: [
                 "Support/Launcher/HintText.swift",
                 "Support/AppConstants.swift",
+                "Support/ConfigFileLines.swift",
                 "Support/Launcher/LauncherSearchLogic.swift",
                 "Support/Launcher/DeleteTargetLogic.swift",
                 "Support/Launcher/BridgeErrorMapping.swift",

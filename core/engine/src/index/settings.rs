@@ -10,37 +10,66 @@ pub fn discover_system_settings_entries(
     localized_app_names: bool,
     tx: mpsc::SyncSender<Candidate>,
 ) {
-    if !platform::has_settings_app() {
-        return;
-    }
-
-    #[cfg(target_os = "macos")]
-    let localized = localized_app_names
-        .then(build_localized_title_map)
-        .unwrap_or_default();
-    #[cfg(not(target_os = "macos"))]
-    let _ = localized_app_names;
-
-    for entry in platform::settings_catalog() {
+    // With a settings app (gnome-control-center family), emit the whole catalog.
+    // e.g. gnome-control-center on GNOME, skipped on i3/sway/minimal distros.
+    if platform::has_settings_app() {
         #[cfg(target_os = "macos")]
-        {
-            emit_entry_localized(&tx, entry, &localized);
-        }
+        let localized = localized_app_names
+            .then(build_localized_title_map)
+            .unwrap_or_default();
         #[cfg(not(target_os = "macos"))]
-        {
-            let mut candidate = Candidate::new(
-                &candidate_id(entry),
-                CandidateKind::App,
-                entry.title,
-                &target_path(entry),
-            );
-            candidate.subtitle = Some(subtitle(entry).into());
-            let _ = tx.send(candidate);
-        }
-    }
+        let _ = localized_app_names;
 
-    #[cfg(target_os = "windows")]
-    emit_windows_control_panel_entries(&tx);
+        for entry in platform::settings_catalog() {
+            #[cfg(target_os = "macos")]
+            emit_entry_localized(&tx, entry, &localized);
+            #[cfg(not(target_os = "macos"))]
+            emit_entry(&tx, entry);
+        }
+
+        // Windows extras: classic .cpl / .msc / .exe applets that Settings
+        // doesn't cover (env vars, Device Manager, Services, Registry, Task
+        // Manager, …). Paths use the `look-cmd://` scheme so the Tauri launcher
+        // knows to spawn them via Command::new rather than ShellExecute.
+        #[cfg(target_os = "windows")]
+        emit_windows_control_panel_entries(&tx);
+    } else {
+        emit_settings_fallback_entries(&tx);
+    }
+}
+
+/// No settings app (KDE, sway, i3, minimal): the panel targets are
+/// gnome-control-center URLs that won't open here, so we skip them - except
+/// Bluetooth, whose quick action toggles and lists devices over BlueZ, which
+/// is desktop-agnostic. Surface just that one when a controller is present.
+#[cfg(target_os = "linux")]
+fn emit_settings_fallback_entries(tx: &mpsc::SyncSender<Candidate>) {
+    if platform::bluetooth_present()
+        && let Some(entry) = platform::settings_catalog()
+            .iter()
+            .find(|e| e.target == "bluetooth")
+    {
+        emit_entry(tx, entry);
+    }
+}
+
+/// Only Linux has a fallback: elsewhere a missing settings app means there is
+/// nothing to surface. Kept as a real function so the branch above reads the same
+/// on every platform, rather than an early return that dangles once the Linux-only
+/// tail is compiled out.
+#[cfg(not(target_os = "linux"))]
+fn emit_settings_fallback_entries(_tx: &mpsc::SyncSender<Candidate>) {}
+
+#[cfg(not(target_os = "macos"))]
+fn emit_entry(tx: &mpsc::SyncSender<Candidate>, entry: &SettingsCatalogEntry) {
+    let mut candidate = Candidate::new(
+        &candidate_id(entry),
+        CandidateKind::App,
+        entry.title,
+        &target_path(entry),
+    );
+    candidate.subtitle = Some(subtitle(entry).into());
+    let _ = tx.send(candidate);
 }
 
 #[cfg(target_os = "macos")]
@@ -218,17 +247,13 @@ mod tests {
 
     #[test]
     fn discovery_outputs_valid_settings_candidates() {
-        let discovered = discover_settings(false);
-
-        assert_valid_settings_candidates(discovered);
+        assert_valid_settings_candidates(discover_settings(false));
     }
 
     #[cfg(target_os = "macos")]
     #[test]
     fn localized_discovery_outputs_valid_settings_candidates() {
-        let discovered = discover_settings(true);
-
-        assert_valid_settings_candidates(discovered);
+        assert_valid_settings_candidates(discover_settings(true));
     }
 
     fn discover_settings(localized_app_names: bool) -> Vec<Candidate> {
@@ -252,7 +277,16 @@ mod tests {
             }
             total
         } else {
-            0
+            // The only no-settings-app case is Linux, which still surfaces the
+            // Bluetooth entry alone when a controller is present.
+            #[cfg(target_os = "linux")]
+            {
+                usize::from(platform::bluetooth_present())
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                0
+            }
         };
         assert_eq!(discovered.len(), expected_len);
 

@@ -20,3 +20,10 @@ pub fn session() -> Option<&'static zbus::Connection> {
     CONN.get_or_init(|| runtime().block_on(async { zbus::Connection::session().await.ok() }))
         .as_ref()
 }
+
+/// Cached D-Bus system connection (system services like BlueZ).
+pub fn system() -> Option<&'static zbus::Connection> {
+    static CONN: OnceLock<Option<zbus::Connection>> = OnceLock::new();
+    CONN.get_or_init(|| runtime().block_on(async { zbus::Connection::system().await.ok() }))
+        .as_ref()
+}

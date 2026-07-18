@@ -46,7 +46,8 @@ final class KeyboardSelectionMonitor {
         onConfirmDelete: (@MainActor () -> Void)? = nil,
         onCancelDelete: (@MainActor () -> Void)? = nil,
         deleteConfirmationActive: @escaping @MainActor () -> Bool = { false },
-        onToggleQuickAction: (@MainActor () -> Void)? = nil
+        onToggleQuickAction: (@MainActor () -> Void)? = nil,
+        hasToggleQuickAction: @escaping @MainActor () -> Bool = { false }
     ) {
         guard monitor == nil else { return }
         self.isKillConfirmationActive = killConfirmationActive
@@ -149,9 +150,14 @@ final class KeyboardSelectionMonitor {
 
             // Cmd+O toggles the selected result's toggle Quick Action (Bluetooth,
             // etc.). Multi-choice controls will use Cmd+J/K in a later pass.
-            if (event.keyCode == 31 || event.charactersIgnoringModifiers?.lowercased() == "o")
+            // Match on the typed character only, not a hardware keyCode: 31 is
+            // the physical ANSI-O position, which types another letter on
+            // Dvorak/Colemak and would hijack that chord. Only swallow the
+            // event when the selection actually has a toggle to act on.
+            if event.charactersIgnoringModifiers?.lowercased() == "o"
                 && flags == [.command]
                 && !inCommandMode()
+                && hasToggleQuickAction()
             {
                 onToggleQuickAction?()
                 return nil

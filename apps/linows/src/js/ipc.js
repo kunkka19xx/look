@@ -153,6 +153,26 @@ export async function translate(text, targetLang) {
     return invoke('translate', { text, targetLang });
 }
 
+// Quick Actions: descriptors come from the shared look-qactions catalog;
+// state/apply go through the native adapter for the action id
+// (see docs/writing-controls.md).
+
+export async function quickActions(resultId, kind) {
+    return invoke('quick_actions', { resultId, kind });
+}
+
+export async function quickActionState(actionId, infoKeys) {
+    return invoke('quick_action_state', { actionId, infoKeys });
+}
+
+export async function quickActionApply(actionId, intent) {
+    return invoke('quick_action_apply', { actionId, intent });
+}
+
+export async function quickActionApplyItem(actionId, itemId, intent) {
+    return invoke('quick_action_apply_item', { actionId, itemId, intent });
+}
+
 // Todo: full-set load/save against the shared look-todo store. Tasks are
 // `{ id, name, done, due_date, created_at_unix_s }` (same JSON contract as
 // the macOS FFI bridge).

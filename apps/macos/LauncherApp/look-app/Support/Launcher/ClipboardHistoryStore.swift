@@ -53,8 +53,54 @@ final class ClipboardHistoryStore: ObservableObject {
 
     @Published private(set) var entries: [ClipboardHistoryEntry] = []
 
-    private let maxEntries = AppConstants.Launcher.Clipboard.maxEntries
+    private var maxEntries = ClipboardHistoryStore.resolveMaxEntries()
     private let maxStoredCharacters = AppConstants.Launcher.Clipboard.maxStoredCharacters
+
+    /// Re-reads the clipboard section of `~/.look.config` and applies it live, so file-only
+    /// clipboard settings take effect on config reload (`Cmd+Shift+;`) without a restart.
+    /// Matches the `reloadFromConfig()` convention used by ThemeStore. Every clipboard key
+    /// is applied from a single parse here, so adding a key is one more `apply` line below,
+    /// not a new reload method.
+    func reloadFromConfig() {
+        let values = ClipboardHistoryStore.loadConfigValues()
+        applyMaxEntries(ClipboardHistoryStore.resolveMaxEntries(from: values))
+    }
+
+    private func applyMaxEntries(_ newValue: Int) {
+        guard newValue != maxEntries else { return }
+        maxEntries = newValue
+        if entries.count > maxEntries {
+            entries.removeLast(entries.count - maxEntries)
+        }
+    }
+
+    /// Reads every `key=value` pair from the active config file once, or an empty map when
+    /// the file is missing/unreadable. One parse feeds all clipboard settings.
+    private static func loadConfigValues() -> [String: String] {
+        let path = ConfigPathResolver.resolvedPath()
+        guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return [:]
+        }
+        return ConfigFileLines.keyValues(raw)
+    }
+
+    private static func resolveMaxEntries() -> Int {
+        resolveMaxEntries(from: loadConfigValues())
+    }
+
+    /// Resolves `clipboard_history_limit` from already-parsed config values, falling back to
+    /// the default (10) when the key is missing, unparseable, or outside the accepted
+    /// [10, 100] range.
+    private static func resolveMaxEntries(from values: [String: String]) -> Int {
+        let fallback = AppConstants.Launcher.Clipboard.maxEntries
+        guard let rawValue = values[AppConstants.Launcher.Clipboard.historyLimitConfigKey],
+              let parsed = Int(rawValue.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return fallback
+        }
+        let lower = AppConstants.Launcher.Clipboard.minEntries
+        let upper = AppConstants.Launcher.Clipboard.maxEntriesLimit
+        return (lower...upper).contains(parsed) ? parsed : fallback
+    }
     private var monitoringMode: MonitoringMode = .foreground
     // nonisolated(unsafe) so the nonisolated deinit can call invalidate()
     // on these without going through the actor.

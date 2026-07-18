@@ -47,6 +47,17 @@ struct LauncherView: View {
     // Quick Actions for the selected result (see docs/writing-controls.md).
     @State var quickActionDescriptors: [QuickActionDescriptor] = []
     @State var quickActionStates: [String: ActionState] = [:]
+    // The result `quickActionStates`/`quickActionInfo` were read for. Lets a refresh
+    // of the SAME result keep showing what it already resolved, instead of blanking
+    // the panel back to "loading" on every window show and re-render.
+    @State var quickActionsLoadedResultID: String?
+    // Resolved info values per action (actionId -> valueKey -> value), e.g. the
+    // Bluetooth "status" key resolving to the paired-device list.
+    @State var quickActionInfo: [String: [String: InfoValue]] = [:]
+    // In-flight action keys (an action id for a toggle, an item id for a list
+    // row), so a second press can't race a running connect/toggle. Keys don't
+    // collide: action ids are short slugs, item ids are device addresses.
+    @State var pendingQuickActions: Set<String> = []
     @State var quickActionTask: Task<Void, Never>?
     @State var selectedResultID: String?
     @State var pickedKeys: [String] = []
@@ -718,6 +729,19 @@ struct LauncherView: View {
             }
             refreshClipboardMonitoringMode()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)
+        ) { notification in
+            // Quick-action state is cached and otherwise refreshed only when
+            // the selection changes. The window keeps its query and selection
+            // across hide/show, so on re-show the panel would keep states read
+            // before the hide - stale whenever the system changed underneath
+            // (e.g. Bluetooth flipped in Control Center). Re-read on every show.
+            guard let window = notification.object as? NSWindow,
+                window === launcherWindow()
+            else { return }
+            refreshQuickActions()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in
             reloadConfig()
         }
@@ -1028,8 +1052,14 @@ struct LauncherView: View {
                     result: selectedResult,
                     quickActions: quickActionDescriptors,
                     quickActionStates: quickActionStates,
+                    quickActionInfo: quickActionInfo,
+                    pendingQuickActionItems: pendingQuickActions,
+                    busyQuickActionIds: busyQuickActionIds,
                     onRunQuickAction: { descriptor, intent in
                         runQuickAction(descriptor, intent: intent)
+                    },
+                    onActivateQuickActionItem: { descriptor, item in
+                        activateQuickActionItem(descriptor, item: item)
                     },
                     onDeleteClipboard: selectedResult.kind == .clipboard
                         ? { deleteClipboardResult(resultID: selectedResult.id) }

@@ -100,7 +100,7 @@ Path-like queries (for example `git/project/readme`) are also supported and bias
 
 Clipboard mode (`c"`):
 
-- stores recent text clips for the running app session,
+- stores recent text clips for the running app session (history size is configurable via `clipboard_history_limit`, see File-only settings below),
 - `Enter` on a clipboard row copies that content back to clipboard.
 
 Translation mode (`t"`/`tw"`):
@@ -240,10 +240,38 @@ Backend-related keys:
 
 - `app_scan_roots`, `app_scan_depth`, `app_exclude_paths`, `app_exclude_names`
 - `file_scan_roots`, `file_scan_extra_roots`, `file_scan_depth`, `file_scan_limit`, `file_exclude_paths`
+- `ignored_patterns_<group>` (path-aware file ignore globs, merged across all groups)
 - `lazy_indexing_enabled`
 - `skip_dir_names`
 - `alias_<keyword>` (for app + System Settings query aliases, for example `alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq`)
 - `backend_log_level`, `launch_at_login`
+
+File-only settings (no Settings UI):
+
+These keys have no control in the Settings screens. Edit `~/.look.config` directly, then reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux/Windows), or restart Look. Out-of-range or unparseable values fall back to the listed default. More keys will be added here over time.
+
+- `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
+
+- `ignored_patterns_<group>` uses gitignore-style path glob syntax: `*`, `**`, `?`, `[abc]`
+    - macOS/Linux normally use `/` paths like `~/Library/...` or `/home/name/...`
+    - Windows is verified with native absolute paths like `C:\Users\me\...`; `~` is expanded against your home directory before matching
+    - macOS works the same way; common roots are `~/Library/...`, `~/Documents/...`, `~/Downloads/...`
+    - values are separated with `|`, and all `ignored_patterns_*` entries are merged together
+    - patterns apply to files only; they do not exclude folders from traversal
+
+    Examples:
+
+    - `ignored_patterns_macos=~/Library/Application Support/Code/logs/**/*.log|~/Library/Caches/**/*.tmp`
+    - `ignored_patterns_windows=C:\Users\me\AppData\Local\Temp\**\*.etl|C:\Users\me\Downloads\**\*.tmp`
+    - `ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp`
+    - `ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm`
+    - `ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part`
+
+    Quick matching guide:
+
+    - `*` matches within one path segment: `~/Downloads/*.tmp`
+    - `**` matches across nested folders: `~/Downloads/**/*.tmp`
+    - keep patterns path-scoped when possible; `*.log` works but is usually too broad
 
 Alias note:
 

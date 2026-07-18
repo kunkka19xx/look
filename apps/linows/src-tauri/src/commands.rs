@@ -315,6 +315,7 @@ pub fn reload_config(state: State<'_, AppState>) -> bool {
     // read on every refresh). When the user explicitly reloads, drop the cache
     // so the next bootstrap picks up their edits.
     RuntimeConfig::invalidate_cache();
+    crate::clipboard::reload_from_config();
     state.request_index_refresh()
 }
 

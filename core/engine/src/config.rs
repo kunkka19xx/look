@@ -1,6 +1,9 @@
 use crate::normalize::normalize_for_search;
 use crate::platform;
+#[cfg(test)]
+use crate::platform::paths::compile_ignore_matcher;
 use crate::platform::paths::expand_with_home;
+use globset::GlobBuilder;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -81,6 +84,7 @@ pub struct RuntimeConfig {
     pub file_scan_limit: usize,
     pub file_exclude_paths: Vec<String>,
     pub skip_dir_names: Vec<String>,
+    pub ignored_file_patterns: Vec<String>,
     pub lazy_indexing_enabled: bool,
     pub localized_app_names: bool,
     pub search_aliases: HashMap<String, Vec<String>>,
@@ -111,6 +115,7 @@ impl Default for RuntimeConfig {
                 .iter()
                 .map(|value| value.to_string())
                 .collect(),
+            ignored_file_patterns: Vec::new(),
             lazy_indexing_enabled: LAZY_INDEXING_ENABLED,
             localized_app_names: false,
             search_aliases: default_search_aliases(),
@@ -289,6 +294,24 @@ impl RuntimeConfig {
                         self.lazy_indexing_enabled = parsed;
                     }
                 }
+                _ if key.strip_prefix("ignored_patterns_").is_some() => {
+                    let parsed = parse_pattern_values(value);
+                    for pattern in parsed {
+                        let expanded = expand_path(&pattern, home.as_deref());
+                        let mut builder = GlobBuilder::new(&expanded);
+                        builder.literal_separator(true);
+                        if builder.build().is_err() {
+                            continue;
+                        }
+                        if !self
+                            .ignored_file_patterns
+                            .iter()
+                            .any(|existing| existing == &expanded)
+                        {
+                            self.ignored_file_patterns.push(expanded);
+                        }
+                    }
+                }
                 "localized_app_names" => {
                     if let Some(parsed) = parse_bool(value) {
                         self.localized_app_names = parsed;
@@ -401,9 +424,19 @@ file_scan_extra_roots=\n\
 file_scan_depth=4\n\
 file_scan_limit=8000\n\
 file_exclude_paths=\n\
+ignored_patterns_sample=\n\
+# File ignore patterns. Gitignore-style path globs: *, **, ?, [abc].\n\
+# Format: ignored_patterns_<group>=Pattern1|Pattern2|Pattern3\n\
+# macOS/Linux usually use ~/... or /... ; on Windows, C:\\... is the safest documented form and ~ expands to your home dir.\n\
+# ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp\n\
+# ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm\n\
+# ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part\n\
 lazy_indexing_enabled=true\n\
 localized_app_names=false\n\
 skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data,deriveddata,pods,vendor,out,coverage,tmp,cache,venv\n\
+\n\
+# Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
+clipboard_history_limit=10\n\
 \n\
 # UI theme\n\
 ui_tint_red=0.08\n\
@@ -595,31 +628,69 @@ fn user_home_dir() -> Option<String> {
         })
 }
 
+/// Drops a trailing comment. `#` only starts one at the beginning of the line or after
+/// whitespace, so it survives inside a value: cutting at the first `#` anywhere would
+/// truncate a path like `/Users/me/pic#1.png` down to `/Users/me/pic`, silently
+/// corrupting the setting. Must stay in step with the macOS reader
+/// (`ConfigFileLines.stripComment`), since both parse the same file.
 fn strip_comments(value: &str) -> &str {
+    let mut previous_is_whitespace = true;
+    for (index, character) in value.char_indices() {
+        if character == '#' && previous_is_whitespace {
+            return &value[..index];
+        }
+        previous_is_whitespace = character.is_whitespace();
+    }
     value
-        .split_once('#')
-        .map(|(prefix, _)| prefix)
-        .unwrap_or(value)
 }
 
+/// Every key the user's config already accounts for, so the update pass knows what
+/// not to append.
+///
+/// A key the user commented out counts as accounted for. Stripping the comment first
+/// would read `# lazy_indexing_enabled=false` as a blank line, and the update would
+/// helpfully append the key right back: commenting a key out would not stick. Absence
+/// and a commented-out key both mean "use the default", so resurrecting it changes no
+/// behaviour today, but it does rewrite a config the user deliberately arranged.
 fn parse_config_keys(contents: &str) -> HashSet<String> {
     let mut keys = HashSet::new();
     for raw_line in contents.lines() {
-        let line = strip_comments(raw_line).trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        let Some((key, _)) = line.split_once('=') else {
-            continue;
-        };
-
-        let key = key.trim();
-        if !key.is_empty() {
+        if let Some(key) =
+            assigned_key(strip_comments(raw_line)).or_else(|| commented_out_key(raw_line))
+        {
             keys.insert(key.to_string());
         }
     }
     keys
+}
+
+/// The key in an `key=value` assignment, if the line is one.
+fn assigned_key(line: &str) -> Option<&str> {
+    let (key, _) = line.trim().split_once('=')?;
+    let key = key.trim();
+    (!key.is_empty()).then_some(key)
+}
+
+/// The key in a commented-out assignment such as `# lazy_indexing_enabled=false`.
+///
+/// Prose comments can contain `=` too. The generated config ships
+/// `# Search aliases ... Format: alias_<keyword>=Term1|Term2|Term3`, whose left side is
+/// a sentence, not a key. So the candidate only counts when it looks like a key.
+fn commented_out_key(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('#') {
+        return None;
+    }
+
+    let key = assigned_key(trimmed.trim_start_matches('#'))?;
+    is_config_key_shaped(key).then_some(key)
+}
+
+fn is_config_key_shaped(key: &str) -> bool {
+    !key.is_empty()
+        && key
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 fn parse_csv(value: &str) -> Vec<String> {
@@ -694,6 +765,17 @@ fn parse_alias_values(value: &str) -> Vec<String> {
     values
 }
 
+fn parse_pattern_values(value: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    for raw in value.split('|') {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() && !values.iter().any(|entry| entry == trimmed) {
+            values.push(trimmed.to_string());
+        }
+    }
+    values
+}
+
 fn apply_alias_override(alias_key: &str, value: &str, aliases: &mut HashMap<String, Vec<String>>) {
     let normalized_key = normalize_for_search(alias_key.trim());
     if normalized_key.is_empty() {
@@ -755,6 +837,15 @@ mod tests {
         // UNC roots are stored with every backslash doubled and decode back.
         let parsed = parse_csv(r"\\\\server\\share\\apps,/Users/demo/Apps");
         assert_eq!(parsed, vec![r"\\server\share\apps", "/Users/demo/Apps"]);
+    }
+
+    #[test]
+    fn parse_pattern_values_trims_and_deduplicates_entries() {
+        // Case: " ~/Project/**/*.log | | ~/Project/**/*.tmp | ~/Project/**/*.log "
+        let parsed = parse_pattern_values(
+            " ~/Project/**/*.log | | ~/Project/**/*.tmp | ~/Project/**/*.log ",
+        );
+        assert_eq!(parsed, vec!["~/Project/**/*.log", "~/Project/**/*.tmp"]);
     }
 
     #[test]
@@ -894,7 +985,7 @@ mod tests {
                 .as_nanos()
         ));
 
-        std::fs::write(&tmp, "localized_app_names=true\n").expect("should write temporary config");
+        std::fs::write(&tmp, "localized_app_names=true\n").expect("write temporary config");
 
         let mut config = RuntimeConfig::default();
         assert!(!config.localized_app_names);
@@ -971,6 +1062,182 @@ mod tests {
     }
 
     #[test]
+    fn ignored_pattern_entries_are_loaded_from_config() {
+        // Case:
+        // ignored_patterns_logs=/Users/demo/Project/**/*.log | /Users/demo/Project/**/*.tmp
+        // ignored_patterns_more=/Users/demo/Project/**/*.tmp|[invalid
+        // lazy_indexing_enabled=false
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-ignored-patterns-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(
+            &tmp,
+            "ignored_patterns_logs=/Users/demo/Project/**/*.log | /Users/demo/Project/**/*.tmp\nignored_patterns_more=/Users/demo/Project/**/*.tmp|[invalid\nlazy_indexing_enabled=false\n",
+        )
+        .expect("should write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        config.apply_from_file(&tmp);
+
+        assert_eq!(
+            config.ignored_file_patterns,
+            vec![
+                "/Users/demo/Project/**/*.log".to_string(),
+                "/Users/demo/Project/**/*.tmp".to_string()
+            ]
+        );
+        assert!(!config.lazy_indexing_enabled);
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn ignored_pattern_empty_values_do_not_fail_parsing() {
+        // Case:
+        // ignored_patterns_empty=
+        // ignored_patterns_spaces= |  |
+        // lazy_indexing_enabled=false
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-ignored-patterns-empty-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(
+            &tmp,
+            "ignored_patterns_empty=\nignored_patterns_spaces= |  |\nlazy_indexing_enabled=false\n",
+        )
+        .expect("should write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        config.apply_from_file(&tmp);
+
+        assert!(config.ignored_file_patterns.is_empty());
+        assert!(!config.lazy_indexing_enabled);
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn ignored_pattern_windows_style_path_is_accepted() {
+        // Case: ignored_patterns_windows=C:\Users\me\AppData\Local\Temp\**\*.etl
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-ignored-patterns-windows-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(
+            &tmp,
+            r"ignored_patterns_windows=C:\Users\me\AppData\Local\Temp\**\*.etl
+",
+        )
+        .expect("should write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        config.apply_from_file(&tmp);
+
+        assert_eq!(
+            config.ignored_file_patterns,
+            vec![r"C:\Users\me\AppData\Local\Temp\**\*.etl".to_string()]
+        );
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    // End-to-end across the seam the other tests skip: a Windows pattern goes
+    // through the real config parse-and-store step, then is matched the exact
+    // way `walk_files` (index/files.rs) does. The Windows tests elsewhere build
+    // matchers from the raw pattern and never feed config's STORED output back
+    // into the walk matcher, which is where the Windows path breaks.
+    #[test]
+    fn windows_pattern_from_config_ignores_backslash_candidate() {
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-ignored-patterns-walk-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+        std::fs::write(
+            &tmp,
+            "ignored_patterns_win=C:\\Users\\me\\Temp\\**\\*.etl\n",
+        )
+        .expect("should write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        config.apply_from_file(&tmp);
+        let _ = std::fs::remove_file(&tmp);
+
+        // Rebuild matchers exactly like `walk_files`, from the STORED patterns.
+        let matchers = config
+            .ignored_file_patterns
+            .iter()
+            .filter_map(|pattern| compile_ignore_matcher(pattern))
+            .collect::<Vec<_>>();
+
+        // Candidate as the `ignore` walker emits it on Windows: native
+        // backslashes, on-disk casing.
+        let candidate = r"C:\Users\Me\Temp\nested\trace.etl";
+        let ignored = matchers.iter().any(|(policy, glob_matcher)| {
+            glob_matcher.is_match(&*policy.normalize_for_matching(candidate))
+        });
+
+        assert!(
+            ignored,
+            "a Windows pattern loaded from config should ignore the matching backslash candidate"
+        );
+    }
+
+    // Full flow for the Windows home form `~\`, across both steps the other
+    // tests split: config.rs splits + dedups the raw values and stores each one
+    // home-expanded (raw, not policy-normalized); files.rs builds the matcher
+    // from that stored string. Uses an explicit Windows home so the assertion is
+    // deterministic regardless of the machine's real HOME.
+    #[test]
+    fn home_tilde_pattern_from_config_ignores_backslash_candidate() {
+        let home = Some("C:\\Users\\me");
+
+        // Step 1 (config.rs): split on `|`, trim, drop the duplicate.
+        let raw = parse_pattern_values(r" ~\Temp\**\*.log | ~\Temp\**\*.log | ~\Temp\**\*.log ");
+        assert_eq!(raw, vec![r"~\Temp\**\*.log".to_string()]);
+
+        // Step 2 (config.rs): store each home-expanded, still raw (un-normalized).
+        let stored: Vec<String> = raw
+            .iter()
+            .map(|pattern| expand_path(pattern, home))
+            .collect();
+        assert_eq!(stored, vec![r"C:\Users\me\Temp\**\*.log".to_string()]);
+
+        // Step 3 (files.rs): build the matcher from the stored pattern and match
+        // a candidate as the walker emits it on Windows (backslashes, on-disk
+        // casing).
+        let (policy, matcher) = compile_ignore_matcher(&stored[0]).expect("pattern should compile");
+        assert!(
+            matcher.is_match(&*policy.normalize_for_matching(r"C:\Users\Me\Temp\nested\trace.log")),
+            "a ~\\ home pattern from config should ignore the matching candidate"
+        );
+        // A different extension under the same dir stays visible.
+        assert!(
+            !matcher
+                .is_match(&*policy.normalize_for_matching(r"C:\Users\Me\Temp\nested\trace.txt"))
+        );
+    }
+
+    #[test]
     fn default_config_contents_include_alias_entries() {
         let contents = default_config_contents();
         assert!(contents.contains("alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq"));
@@ -983,6 +1250,83 @@ mod tests {
         assert!(contents.contains("alias_chat=Slack|Discord|Telegram|Messages"));
         assert!(contents.contains("alias_music=Spotify|Apple Music|Music"));
         assert!(contents.contains("alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave"));
+    }
+
+    #[test]
+    fn strip_comments_keeps_hash_inside_values() {
+        // A `#` in a path is part of the value, not the start of a comment.
+        assert_eq!(
+            strip_comments("file_exclude_paths=/Users/me/pic#1.png"),
+            "file_exclude_paths=/Users/me/pic#1.png"
+        );
+        // A `#` after whitespace still starts a trailing comment.
+        assert_eq!(
+            strip_comments("file_scan_depth=6  # my note"),
+            "file_scan_depth=6  "
+        );
+        // And a full-line comment is still a comment.
+        assert_eq!(strip_comments("# UI theme"), "");
+    }
+
+    #[test]
+    fn commented_out_key_is_not_resurrected_by_update() {
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-commented-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(&tmp, "app_scan_depth=3\n# lazy_indexing_enabled=false\n")
+            .expect("should write temporary config");
+
+        ensure_default_config_file(&tmp);
+        let contents = std::fs::read_to_string(&tmp).expect("should read migrated config");
+
+        assert!(
+            contents.contains("# lazy_indexing_enabled=false"),
+            "the user's commented-out key should survive"
+        );
+        assert_eq!(
+            contents.matches("\nlazy_indexing_enabled=").count(),
+            0,
+            "a commented-out key must not be appended back as a live key"
+        );
+        assert!(
+            contents.contains("\nfile_scan_limit=8000"),
+            "keys the user never mentioned must still be appended, or the update did nothing \
+             and this test would pass for the wrong reason"
+        );
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn parse_config_keys_reads_live_and_commented_out_assignments() {
+        let keys = parse_config_keys(
+            "app_scan_depth=3\n# lazy_indexing_enabled=false\n#file_scan_limit=8000\n",
+        );
+
+        assert!(keys.contains("app_scan_depth"));
+        assert!(keys.contains("lazy_indexing_enabled"));
+        assert!(
+            keys.contains("file_scan_limit"),
+            "a `#key=value` with no space still names a key"
+        );
+    }
+
+    #[test]
+    fn parse_config_keys_ignores_prose_comments_that_contain_equals() {
+        // The generated config ships this line. Its left side is a sentence, not a key,
+        // and misreading it as one would suppress a real key from the update.
+        let keys = parse_config_keys(
+            "# Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3\n\
+             # Backend indexing (file_scan_depth: 1-12)\n",
+        );
+
+        assert!(keys.is_empty(), "prose comments name no keys, got {keys:?}");
     }
 
     #[test]

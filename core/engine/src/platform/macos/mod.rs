@@ -56,9 +56,6 @@ pub(crate) fn read_bundle_identifier(path: &str) -> Option<String> {
         .map(|identifier| identifier.to_string())
 }
 
-/// `NSBundle` normally resolves resources in the host app's localization
-/// context. Supply the user's global preferences so another app bundle uses
-/// the same localization Finder would choose.
 fn read_bundle_name_for_user_languages(
     bundle: &NSBundle,
     path: &str,
