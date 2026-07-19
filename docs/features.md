@@ -29,6 +29,7 @@ This document tracks what `look` supports today and what is planned next.
 
 - clipboard history mode with `c"` prefix
 - in-memory clipboard history (recent text clips, size set by `clipboard_history_limit`, default 10, range 10 to 100); file/folder copies are excluded
+- remove the selected clipboard history item with `Cmd+D` / `Ctrl+D`
 - quick translation with `t"...`
 - dictionary lookup panel with `tw"...`
 

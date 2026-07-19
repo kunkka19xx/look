@@ -7,6 +7,12 @@ import Foundation
 /// `NSWorkspace.recycle` call, icons, and state; everything here is data-in /
 /// data-out so it's deterministic under test.
 enum DeleteTargetLogic {
+    /// Clipboard rows reuse Cmd+D for history removal instead of entering the
+    /// file/folder Trash flow.
+    static func removesClipboardHistory(_ result: LauncherResult?) -> Bool {
+        result?.kind == .clipboard
+    }
+
     /// Filters a set of candidate results down to those that can be trashed:
     /// only `.file`/`.folder` kinds, excluding URL-scheme "paths" (settings
     /// panes, custom schemes) and anything no longer present on disk.

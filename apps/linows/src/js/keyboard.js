@@ -339,7 +339,11 @@ function handleKeyDown(e) {
             if (e.ctrlKey && !e.shiftKey && !e.altKey) {
                 e.preventDefault();
                 if (isDiscoveryMode()) break;
-                handleTrashShortcut();
+                if (search.isClipboardMode()) {
+                    removeClipboardEntry();
+                } else {
+                    handleTrashShortcut();
+                }
             }
             break;
 

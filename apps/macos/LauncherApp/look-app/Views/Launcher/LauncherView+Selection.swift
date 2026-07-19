@@ -220,6 +220,11 @@ extension LauncherView {
                 pendingKillCandidate != nil
             },
             onRequestDelete: { [self] in
+                let selected = displayedResults.first { $0.id == selectedResultID }
+                if DeleteTargetLogic.removesClipboardHistory(selected), let selected {
+                    deleteClipboardResult(resultID: selected.id)
+                    return
+                }
                 requestDeleteSelection()
             },
             onConfirmDelete: { [self] in
