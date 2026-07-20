@@ -90,13 +90,15 @@ fn walk_apps(
             continue;
         }
 
-        if app_path_str.ends_with(".app") {
+        if app_path_str.ends_with(macos::APP_BUNDLE_EXTENSION) {
             let bundle_name = app_path
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("App");
             let title = if use_localized_names {
-                macos::read_localized_display_name(app_path_str, ".app")
+                objc2::rc::autoreleasepool(|_| {
+                    macos::read_localized_display_name(app_path_str, macos::APP_BUNDLE_EXTENSION)
+                })
             } else {
                 None
             }
@@ -139,9 +141,17 @@ fn should_exclude_path(path: &str, app_exclude_paths: &[String]) -> bool {
 }
 
 fn should_exclude_app_name(name: &str, app_exclude_names: &[String]) -> bool {
-    let normalized_name = name.trim().trim_end_matches(".app").trim().to_lowercase();
+    let normalized_name = name
+        .trim()
+        .trim_end_matches(macos::APP_BUNDLE_EXTENSION)
+        .trim()
+        .to_lowercase();
     app_exclude_names.iter().any(|entry| {
-        let normalized_exclude = entry.trim().trim_end_matches(".app").trim().to_lowercase();
+        let normalized_exclude = entry
+            .trim()
+            .trim_end_matches(macos::APP_BUNDLE_EXTENSION)
+            .trim()
+            .to_lowercase();
         !normalized_exclude.is_empty() && normalized_exclude == normalized_name
     })
 }

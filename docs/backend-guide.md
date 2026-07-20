@@ -96,7 +96,7 @@ Runtime file: `~/.look.config` (or `LOOK_CONFIG_PATH`).
 - `file_scan_roots`, `file_scan_extra_roots`, `file_scan_depth` (default: 4, range: 1-12), `file_scan_limit` (default: 4000, range: 500-50000), `file_exclude_paths`
 - `skip_dir_names`
 - `lazy_indexing_enabled` (default: true) - when true, launcher-open refresh runs only when the index is dirty
-- `localized_app_names` (default: false, macOS only) - when true, uses Foundation bundle metadata to resolve localized display names for apps and System Settings entries at index time; bundles without a matching localized value use their default display name or filename
+- `localized_app_names` (default: false, macOS 15.4+) - when true, uses Foundation bundle metadata to resolve localized display names for apps and System Settings entries at index time. Older macOS versions keep non-localized names. Foundation may retain metadata for indexed bundles for the process lifetime, increasing memory use with large app catalogs.
 - `backend_log_level`
 - `launch_at_login`
 

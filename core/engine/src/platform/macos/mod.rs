@@ -22,6 +22,11 @@ pub(crate) const FILE_SCAN_ROOT_SUFFIXES: &[&str] = &["Desktop", "Documents", "D
 
 pub(crate) const SETTINGS_URL_SCHEME_PREFIX: &str = "x-apple.systempreferences:";
 pub(crate) const SETTINGS_SUBTITLE_PREFIX: &str = "System Settings ";
+pub(crate) const APP_BUNDLE_EXTENSION: &str = ".app";
+pub(crate) const SETTINGS_BUNDLE_EXTENSION: &str = ".appex";
+pub(crate) const SETTINGS_EXTENSION_NAME: &str = "appex";
+const INFO_PLIST_STRINGS_TABLE: &str = "InfoPlist";
+const DISPLAY_NAME_KEYS: [&str; 2] = ["CFBundleDisplayName", "CFBundleName"];
 
 pub(crate) use apps::discover_installed_apps;
 pub(crate) use settings_catalog::SETTINGS_CATALOG;
@@ -30,6 +35,10 @@ pub(crate) use settings_catalog::SETTINGS_CATALOG;
 /// `/System/Library/ExtensionKit/Extensions/`. On macOS 12 and earlier,
 /// they use `.prefPane` bundles in `/System/Library/PreferencePanes/`.
 pub(crate) const SETTINGS_EXTENSIONS_DIR: &str = "/System/Library/ExtensionKit/Extensions";
+
+pub(crate) fn localized_names_available() -> bool {
+    objc2::available!(macos = 15.4)
+}
 
 pub(crate) fn additional_app_scan_roots() -> Vec<String> {
     env::var("HOME")
@@ -41,11 +50,12 @@ pub(crate) fn additional_app_scan_roots() -> Vec<String> {
 
 /// Returns the bundle name localized for the user's preferred languages.
 pub(crate) fn read_localized_display_name(path: &str, strip_suffix: &str) -> Option<String> {
+    if !localized_names_available() {
+        return None;
+    }
     let path_string = NSString::from_str(path);
     let bundle = NSBundle::bundleWithPath(&path_string)?;
-    objc2::available!(macos = 15.4)
-        .then(|| read_bundle_name_for_user_languages(&bundle, path, strip_suffix))
-        .flatten()
+    read_bundle_name_for_user_languages(&bundle, path, strip_suffix)
 }
 
 pub(crate) fn read_bundle_identifier(path: &str) -> Option<String> {
@@ -71,9 +81,9 @@ fn read_bundle_name_for_languages(
     strip_suffix: &str,
     localizations: &NSArray<NSString>,
 ) -> Option<String> {
-    let table = NSString::from_str("InfoPlist");
+    let table = NSString::from_str(INFO_PLIST_STRINGS_TABLE);
 
-    for key in ["CFBundleDisplayName", "CFBundleName"] {
+    for key in DISPLAY_NAME_KEYS {
         let key = NSString::from_str(key);
         let fallback = bundle
             .objectForInfoDictionaryKey(&key)
@@ -106,14 +116,24 @@ fn normalize_display_name(display_name: &str, path: &str, strip_suffix: &str) ->
 
 #[cfg(test)]
 mod tests {
-    use super::read_bundle_name_for_languages;
+    use super::{APP_BUNDLE_EXTENSION, localized_names_available, read_bundle_name_for_languages};
     use objc2_foundation::{NSArray, NSBundle, NSString};
     use std::fs;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TempBundle(PathBuf);
+
+    impl Drop for TempBundle {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
 
     #[test]
     fn bundle_name_uses_explicit_localization_for_infoplist_strings() {
-        if !objc2::available!(macos = 15.4) {
+        if !localized_names_available() {
+            eprintln!("skipping: localized bundle names need macOS 15.4+");
             return;
         }
 
@@ -121,11 +141,13 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("system clock after Unix epoch")
             .as_nanos();
-        let app = std::env::temp_dir().join(format!("look-localized-name-{unique}.app"));
-        let resources = app.join("Contents/Resources/zh-Hans.lproj");
+        let app = TempBundle(std::env::temp_dir().join(format!(
+            "look-localized-name-{unique}{APP_BUNDLE_EXTENSION}"
+        )));
+        let resources = app.0.join("Contents/Resources/zh-Hans.lproj");
         fs::create_dir_all(&resources).expect("create test bundle resources");
         fs::write(
-            app.join("Contents/Info.plist"),
+            app.0.join("Contents/Info.plist"),
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -140,14 +162,14 @@ mod tests {
         )
         .expect("write localized display name");
 
-        let app_path = app.to_str().expect("UTF-8 test bundle path");
+        let app_path = app.0.to_str().expect("UTF-8 test bundle path");
         let app_path_string = NSString::from_str(app_path);
         let bundle = NSBundle::bundleWithPath(&app_path_string).expect("load test bundle");
         let language = NSString::from_str("zh-Hans");
         let languages = NSArray::from_slice(&[&*language]);
-        let name = read_bundle_name_for_languages(&bundle, app_path, ".app", &languages);
+        let name =
+            read_bundle_name_for_languages(&bundle, app_path, APP_BUNDLE_EXTENSION, &languages);
 
-        fs::remove_dir_all(&app).expect("remove test bundle");
         assert_eq!(
             name.as_deref(),
             Some("\u{672c}\u{5730}\u{5316}\u{6d4b}\u{8bd5}")

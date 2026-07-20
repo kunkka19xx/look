@@ -74,10 +74,13 @@ fn emit_entry(tx: &mpsc::SyncSender<Candidate>, entry: &SettingsCatalogEntry) {
 
 #[cfg(target_os = "macos")]
 fn build_localized_title_map() -> HashMap<String, String> {
-    let mut map = HashMap::new();
+    if !platform::localized_names_available() {
+        return HashMap::new();
+    }
     let Ok(entries) = std::fs::read_dir(platform::SETTINGS_EXTENSIONS_DIR) else {
-        return map;
+        return HashMap::new();
     };
+    let mut map = HashMap::new();
 
     let catalog_targets: HashMap<&str, &SettingsCatalogEntry> = platform::settings_catalog()
         .iter()
@@ -86,25 +89,30 @@ fn build_localized_title_map() -> HashMap<String, String> {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("appex") {
+        if path.extension().and_then(|s| s.to_str()) != Some(platform::SETTINGS_EXTENSION_NAME) {
             continue;
         }
         let Some(path_str) = path.to_str() else {
             continue;
         };
 
-        let Some(bundle_id) = platform::read_bundle_identifier(path_str) else {
-            continue;
-        };
+        objc2::rc::autoreleasepool(|_| {
+            let Some(bundle_id) = platform::read_bundle_identifier(path_str) else {
+                return;
+            };
 
-        if let Some(catalog_entry) = catalog_targets.get(bundle_id.as_str())
-            && let Some(localized) = platform::read_localized_display_name(path_str, ".appex")
-        {
-            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            if localized != catalog_entry.title && localized != stem {
-                map.insert(bundle_id.to_string(), localized);
+            if let Some(catalog_entry) = catalog_targets.get(bundle_id.as_str())
+                && let Some(localized) = platform::read_localized_display_name(
+                    path_str,
+                    platform::SETTINGS_BUNDLE_EXTENSION,
+                )
+            {
+                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                if localized != catalog_entry.title && localized != stem {
+                    map.insert(bundle_id, localized);
+                }
             }
-        }
+        });
     }
 
     map
