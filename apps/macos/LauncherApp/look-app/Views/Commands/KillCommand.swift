@@ -123,7 +123,34 @@ struct KillCommand {
             return [candidates[num - 1]]
         }
 
-        return candidates.filter { $0.displayName.lowercased().contains(searchTerm.lowercased()) }
+        return candidates
+            .compactMap { candidate -> (Candidate, Int)? in
+                guard let score = ProcessSearchLogic.score(
+                    query: searchTerm,
+                    name: candidate.displayName,
+                    pid: candidate.pid
+                ) else {
+                    return nil
+                }
+                return (candidate, score)
+            }
+            .sorted { lhs, rhs in
+                if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
+                return lhs.0.displayName.localizedCaseInsensitiveCompare(rhs.0.displayName)
+                    == .orderedAscending
+            }
+            .enumerated()
+            .map { index, match in
+                let candidate = match.0
+                return Candidate(
+                    id: candidate.id,
+                    displayName: candidate.displayName,
+                    pid: candidate.pid,
+                    icon: candidate.icon,
+                    number: index + 1,
+                    detail: candidate.detail
+                )
+            }
     }
 
     static func kill(pid: Int32, name: String, completion: @escaping (String) -> Void) {

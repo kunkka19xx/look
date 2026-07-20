@@ -1,3 +1,5 @@
+import { rankProcesses } from './process-search.mjs';
+
 const MAX_PORT = 65535;
 const PORT_DEBOUNCE_MS = 200;
 
@@ -143,8 +145,7 @@ function filterProcesses(query) {
         }
         return;
     } else {
-        const q = query.toLowerCase();
-        filteredProcesses = baseProcessList.filter((p) => p.name.toLowerCase().includes(q));
+        filteredProcesses = rankProcesses(query, baseProcessList);
     }
     selectedIndex = Math.min(selectedIndex, Math.max(0, filteredProcesses.length - 1));
 }

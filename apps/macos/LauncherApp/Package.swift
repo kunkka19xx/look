@@ -18,6 +18,7 @@ let package = Package(
                 "Support/AppConstants.swift",
                 "Support/ConfigFileLines.swift",
                 "Support/Launcher/LauncherSearchLogic.swift",
+                "Support/Launcher/ProcessSearchLogic.swift",
                 "Support/Launcher/DeleteTargetLogic.swift",
                 "Support/Launcher/BridgeErrorMapping.swift",
                 "Support/SingleInstanceLock.swift",
