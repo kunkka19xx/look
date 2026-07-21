@@ -31,7 +31,12 @@
           # 0.40) uses cfg_select!, stable only since Rust 1.95, so the default
           # toolchain fails to build it. Pin the build toolchain to match the
           # devShell instead of relying on nixpkgs' older default.
-          rustToolchain = pkgs.rust-bin.stable."1.95.0".default;
+          #
+          # `minimal` (cargo + rustc + rust-std) rather than `default`: building
+          # never invokes clippy or rustfmt, and `default` also drags in
+          # rust-docs, which is 632 MiB unpacked. The devShell keeps `default`
+          # because contributors do want those tools.
+          rustToolchain = pkgs.rust-bin.stable."1.95.0".minimal;
           rustPlatform = pkgs.makeRustPlatform {
             cargo = rustToolchain;
             rustc = rustToolchain;

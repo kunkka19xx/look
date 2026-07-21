@@ -50,6 +50,12 @@ rustPlatform.buildRustPackage {
 
   buildAndTestSubdir = "apps/linows/src-tauri";
 
+  # buildRustPackage runs `cargo test` by default, which recompiles the
+  # workspace as test harnesses on top of the release build. `ci.yml` already
+  # runs `cargo test --locked` for this same manifest on Linux, with a warm
+  # cargo cache, so doing it again here only lengthens the Nix build.
+  doCheck = false;
+
   nativeBuildInputs = [
     pkg-config
     wrapGAppsHook3
