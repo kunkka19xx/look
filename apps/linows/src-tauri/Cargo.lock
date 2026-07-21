@@ -2459,6 +2459,8 @@ dependencies = [
  "look-matching",
  "look-ranking",
  "look-storage",
+ "objc2",
+ "objc2-foundation",
  "regex",
  "serde",
  "serde_json",

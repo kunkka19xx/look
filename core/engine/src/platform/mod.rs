@@ -54,6 +54,12 @@ pub(crate) fn discover_macos_installed_apps(
     macos::discover_installed_apps(config, tx)
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) use macos::{
+    SETTINGS_BUNDLE_EXTENSION, SETTINGS_EXTENSION_NAME, SETTINGS_EXTENSIONS_DIR,
+    localized_names_available, read_bundle_identifier, read_localized_display_name,
+};
+
 #[cfg(target_os = "linux")]
 pub(crate) fn discover_linux_installed_apps(
     config: &crate::config::RuntimeConfig,

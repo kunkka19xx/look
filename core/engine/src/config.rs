@@ -86,6 +86,7 @@ pub struct RuntimeConfig {
     pub skip_dir_names: Vec<String>,
     pub ignored_file_patterns: Vec<String>,
     pub lazy_indexing_enabled: bool,
+    pub localized_app_names: bool,
     pub search_aliases: HashMap<String, Vec<String>>,
 }
 
@@ -116,6 +117,7 @@ impl Default for RuntimeConfig {
                 .collect(),
             ignored_file_patterns: Vec::new(),
             lazy_indexing_enabled: LAZY_INDEXING_ENABLED,
+            localized_app_names: false,
             search_aliases: default_search_aliases(),
         }
     }
@@ -310,6 +312,11 @@ impl RuntimeConfig {
                         }
                     }
                 }
+                "localized_app_names" => {
+                    if let Some(parsed) = parse_bool(value) {
+                        self.localized_app_names = parsed;
+                    }
+                }
                 _ if key.strip_prefix("alias_").is_some() => {
                     if let Some(alias_key) = key.strip_prefix("alias_") {
                         apply_alias_override(alias_key, value, &mut self.search_aliases);
@@ -425,6 +432,8 @@ ignored_patterns_sample=\n\
 # ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm\n\
 # ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part\n\
 lazy_indexing_enabled=true\n\
+# macOS 15.4+ only. Enabling this may increase memory use by caching bundle metadata.\n\
+localized_app_names=false\n\
 skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data,deriveddata,pods,vendor,out,coverage,tmp,cache,venv\n\
 \n\
 # Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
@@ -964,6 +973,29 @@ mod tests {
     #[test]
     fn default_config_contents_include_lazy_indexing_enabled() {
         assert!(default_config_contents().contains("lazy_indexing_enabled=true"));
+    }
+
+    #[test]
+    fn localized_app_names_defaults_to_false_and_loads_from_config() {
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-localized-app-names-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+
+        std::fs::write(&tmp, "localized_app_names=true\n").expect("write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        assert!(!config.localized_app_names);
+
+        config.apply_from_file(&tmp);
+        assert!(config.localized_app_names);
+        assert!(default_config_contents().contains("localized_app_names=false"));
+
+        let _ = std::fs::remove_file(&tmp);
     }
 
     #[test]
