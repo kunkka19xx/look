@@ -567,7 +567,7 @@ async function removeClipboardEntry() {
     const item = results.getSelected();
     if (!item || item.kind !== 'clipboard') return;
     try {
-        await deleteClipboardEntry(item.clipIndex);
+        await deleteClipboardEntry(item.clipTimestamp, item.clipText);
         // Re-trigger search to refresh the list
         search.handleQueryInput(queryInput.value);
     } catch (err) {

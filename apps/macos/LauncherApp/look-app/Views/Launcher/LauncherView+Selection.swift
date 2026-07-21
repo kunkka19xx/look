@@ -220,6 +220,11 @@ extension LauncherView {
                 pendingKillCandidate != nil
             },
             onRequestDelete: { [self] in
+                guard DeleteTargetLogic.allowsKeyboardDelete(
+                    isCommandMode: isCommandMode,
+                    showsThemeSettings: appUIState.showsThemeSettings,
+                    showsHelpScreen: showsHelpScreen
+                ) else { return }
                 let selected = displayedResults.first { $0.id == selectedResultID }
                 if DeleteTargetLogic.removesClipboardHistory(selected), let selected {
                     deleteClipboardResult(resultID: selected.id)

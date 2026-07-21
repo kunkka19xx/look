@@ -113,8 +113,8 @@ export async function getClipboardHistory(query = '') {
     return invoke('get_clipboard_history', { query });
 }
 
-export async function deleteClipboardEntry(index) {
-    return invoke('delete_clipboard_entry', { index });
+export async function deleteClipboardEntry(timestamp, text) {
+    return invoke('delete_clipboard_entry', { timestamp, text });
 }
 
 export async function copyToClipboard(text) {

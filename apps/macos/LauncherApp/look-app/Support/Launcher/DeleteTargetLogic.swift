@@ -7,6 +7,16 @@ import Foundation
 /// `NSWorkspace.recycle` call, icons, and state; everything here is data-in /
 /// data-out so it's deterministic under test.
 enum DeleteTargetLogic {
+    /// Keyboard deletion is disabled while another launcher surface owns the
+    /// window, so a selection hidden behind an overlay cannot be mutated.
+    static func allowsKeyboardDelete(
+        isCommandMode: Bool,
+        showsThemeSettings: Bool,
+        showsHelpScreen: Bool
+    ) -> Bool {
+        !isCommandMode && !showsThemeSettings && !showsHelpScreen
+    }
+
     /// Clipboard rows reuse Cmd+D for history removal instead of entering the
     /// file/folder Trash flow.
     static func removesClipboardHistory(_ result: LauncherResult?) -> Bool {

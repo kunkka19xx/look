@@ -192,7 +192,7 @@ function renderClipboardPreview(result) {
     delBtn.className = 'preview-clip-delete';
     delBtn.innerHTML = trashIcon + ' Delete';
     delBtn.addEventListener('click', async () => {
-        await deleteClipboardEntry(result.clipIndex);
+        await deleteClipboardEntry(result.clipTimestamp, result.clipText);
         if (onClipDelete) onClipDelete();
     });
     header.appendChild(delBtn);

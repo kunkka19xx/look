@@ -8,6 +8,40 @@ final class DeleteTargetLogicTests: XCTestCase {
 
     // MARK: - shortcut routing
 
+    func testCmdDIsDisabledWhileAnotherLauncherSurfaceIsVisible() {
+        XCTAssertFalse(
+            DeleteTargetLogic.allowsKeyboardDelete(
+                isCommandMode: true,
+                showsThemeSettings: false,
+                showsHelpScreen: false
+            )
+        )
+        XCTAssertFalse(
+            DeleteTargetLogic.allowsKeyboardDelete(
+                isCommandMode: false,
+                showsThemeSettings: true,
+                showsHelpScreen: false
+            )
+        )
+        XCTAssertFalse(
+            DeleteTargetLogic.allowsKeyboardDelete(
+                isCommandMode: false,
+                showsThemeSettings: false,
+                showsHelpScreen: true
+            )
+        )
+    }
+
+    func testCmdDIsEnabledForTheNormalResultsSurface() {
+        XCTAssertTrue(
+            DeleteTargetLogic.allowsKeyboardDelete(
+                isCommandMode: false,
+                showsThemeSettings: false,
+                showsHelpScreen: false
+            )
+        )
+    }
+
     func testCmdDRemovesClipboardHistoryRows() {
         let clip = result("clipboard:42", .clipboard, path: "clipboard://history")
         XCTAssertTrue(DeleteTargetLogic.removesClipboardHistory(clip))
