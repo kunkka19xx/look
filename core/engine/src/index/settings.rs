@@ -2,7 +2,6 @@ use crate::index::SETTINGS_CANDIDATE_ID_PREFIX;
 use crate::platform;
 use crate::platform::SettingsCatalogEntry;
 use look_indexing::{Candidate, CandidateKind};
-#[cfg(target_os = "macos")]
 use std::collections::HashMap;
 use std::sync::mpsc;
 
@@ -13,18 +12,10 @@ pub fn discover_system_settings_entries(
     // With a settings app (gnome-control-center family), emit the whole catalog.
     // e.g. gnome-control-center on GNOME, skipped on i3/sway/minimal distros.
     if platform::has_settings_app() {
-        #[cfg(target_os = "macos")]
-        let localized = localized_app_names
-            .then(build_localized_title_map)
-            .unwrap_or_default();
-        #[cfg(not(target_os = "macos"))]
-        let _ = localized_app_names;
+        let localized = localized_titles(localized_app_names);
 
         for entry in platform::settings_catalog() {
-            #[cfg(target_os = "macos")]
-            emit_entry_localized(&tx, entry, &localized);
-            #[cfg(not(target_os = "macos"))]
-            emit_entry(&tx, entry);
+            emit_entry(&tx, entry, &display_title(entry, &localized));
         }
 
         // Windows extras: classic .cpl / .msc / .exe applets that Settings
@@ -49,7 +40,7 @@ fn emit_settings_fallback_entries(tx: &mpsc::SyncSender<Candidate>) {
             .iter()
             .find(|e| e.target == "bluetooth")
     {
-        emit_entry(tx, entry);
+        emit_entry(tx, entry, entry.title);
     }
 }
 
@@ -60,74 +51,7 @@ fn emit_settings_fallback_entries(tx: &mpsc::SyncSender<Candidate>) {
 #[cfg(not(target_os = "linux"))]
 fn emit_settings_fallback_entries(_tx: &mpsc::SyncSender<Candidate>) {}
 
-#[cfg(not(target_os = "macos"))]
-fn emit_entry(tx: &mpsc::SyncSender<Candidate>, entry: &SettingsCatalogEntry) {
-    let mut candidate = Candidate::new(
-        &candidate_id(entry),
-        CandidateKind::App,
-        entry.title,
-        &target_path(entry),
-    );
-    candidate.subtitle = Some(subtitle(entry).into());
-    let _ = tx.send(candidate);
-}
-
-#[cfg(target_os = "macos")]
-fn build_localized_title_map() -> HashMap<String, String> {
-    if !platform::localized_names_available() {
-        return HashMap::new();
-    }
-    let Ok(entries) = std::fs::read_dir(platform::SETTINGS_EXTENSIONS_DIR) else {
-        return HashMap::new();
-    };
-    let mut map = HashMap::new();
-
-    let catalog_targets: HashMap<&str, &SettingsCatalogEntry> = platform::settings_catalog()
-        .iter()
-        .map(|e| (e.target, e))
-        .collect();
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some(platform::SETTINGS_EXTENSION_NAME) {
-            continue;
-        }
-        let Some(path_str) = path.to_str() else {
-            continue;
-        };
-
-        objc2::rc::autoreleasepool(|_| {
-            let Some(bundle_id) = platform::read_bundle_identifier(path_str) else {
-                return;
-            };
-
-            if let Some(catalog_entry) = catalog_targets.get(bundle_id.as_str())
-                && let Some(localized) = platform::read_localized_display_name(
-                    path_str,
-                    platform::SETTINGS_BUNDLE_EXTENSION,
-                )
-            {
-                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-                if localized != catalog_entry.title && localized != stem {
-                    map.insert(bundle_id, localized);
-                }
-            }
-        });
-    }
-
-    map
-}
-
-#[cfg(target_os = "macos")]
-fn emit_entry_localized(
-    tx: &mpsc::SyncSender<Candidate>,
-    entry: &SettingsCatalogEntry,
-    localized: &HashMap<String, String>,
-) {
-    let title = localized
-        .get(entry.target)
-        .map(|s| s.as_str())
-        .unwrap_or(entry.title);
+fn emit_entry(tx: &mpsc::SyncSender<Candidate>, entry: &SettingsCatalogEntry, title: &str) {
     let mut candidate = Candidate::new(
         &candidate_id(entry),
         CandidateKind::App,
@@ -136,6 +60,38 @@ fn emit_entry_localized(
     );
     candidate.subtitle = Some(subtitle(entry).into());
     let _ = tx.send(candidate);
+}
+
+/// Localized pane names, keyed by `SettingsCatalogEntry::target`. Only macOS
+/// has a source for these, so everywhere else this stays empty and the catalog
+/// titles are used verbatim.
+type LocalizedTitles = HashMap<&'static str, String>;
+
+fn localized_titles(localized_app_names: bool) -> LocalizedTitles {
+    if !localized_app_names {
+        return LocalizedTitles::new();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        platform::localized_settings_titles(platform::settings_catalog())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        LocalizedTitles::new()
+    }
+}
+
+/// Renders a pane as `<localized> (<English>)` when the two differ.
+///
+/// Keeping the catalog title in the *title* is what makes the English name
+/// stay searchable: settings subtitles are only scored for settings-shaped
+/// queries, so a title that dropped the English name would make the pane
+/// unreachable by queries like `wifi` on a non-English system.
+fn display_title(entry: &SettingsCatalogEntry, localized: &LocalizedTitles) -> String {
+    match localized.get(entry.target) {
+        Some(localized_title) => format!("{localized_title} ({})", entry.title),
+        None => entry.title.to_string(),
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -262,6 +218,63 @@ mod tests {
     #[test]
     fn localized_discovery_outputs_valid_settings_candidates() {
         assert_valid_settings_candidates(discover_settings(true));
+    }
+
+    /// The English catalog title has to survive localization, otherwise queries
+    /// like `wifi` stop reaching the pane on a non-English system.
+    #[test]
+    fn localized_title_keeps_the_english_catalog_title() {
+        // "Bluetooth" in Simplified Chinese.
+        const LOCALIZED_NAME: &str = "蓝牙";
+        let entry = &platform::settings_catalog()[0];
+        let localized = LocalizedTitles::from([(entry.target, LOCALIZED_NAME.to_string())]);
+
+        let title = display_title(entry, &localized);
+
+        assert!(title.contains(LOCALIZED_NAME), "missing localized name");
+        assert!(
+            title.contains(entry.title),
+            "missing English catalog title: {title}"
+        );
+    }
+
+    /// End-to-end guard for the same thing, through the real query engine:
+    /// settings subtitles are only scored for settings-shaped queries, so the
+    /// pane is reachable by its English name only while that name is in the
+    /// title. `wifi` is not one of the settings query hints, which makes it the
+    /// case that regressed when the title was replaced outright.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn english_query_still_reaches_a_localized_pane() {
+        // "Wi-Fi" in Simplified Chinese, as System Settings shows it.
+        const LOCALIZED_WIFI: &str = "无线局域网";
+        let entry = platform::settings_catalog()
+            .iter()
+            .find(|entry| entry.title == "Wi-Fi")
+            .expect("catalog has a Wi-Fi pane");
+        let localized = LocalizedTitles::from([(entry.target, LOCALIZED_WIFI.to_string())]);
+
+        let (tx, rx) = mpsc::sync_channel(1);
+        emit_entry(&tx, entry, &display_title(entry, &localized));
+        drop(tx);
+        let engine = crate::QueryEngine::new(rx.into_iter().collect());
+
+        assert_eq!(engine.search("wifi", 5).len(), 1, "English query lost it");
+        assert_eq!(
+            engine.search(LOCALIZED_WIFI, 5).len(),
+            1,
+            "localized query lost it"
+        );
+    }
+
+    /// No localized entry means no decoration: the title stays exactly what the
+    /// catalog says on every platform.
+    #[test]
+    fn untranslated_title_is_the_catalog_title_verbatim() {
+        let entry = &platform::settings_catalog()[0];
+        let localized = localized_titles(false);
+
+        assert_eq!(display_title(entry, &localized), entry.title);
     }
 
     fn discover_settings(localized_app_names: bool) -> Vec<Candidate> {
