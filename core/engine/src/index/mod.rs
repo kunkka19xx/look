@@ -49,7 +49,7 @@ pub fn discover_candidates_stream_scoped(
             apps::discover_installed_apps(&config, tx.clone());
         }
         if scope.settings {
-            settings::discover_system_settings_entries(tx.clone());
+            settings::discover_system_settings_entries(config.localized_app_names, tx.clone());
         }
         drop(tx);
 
