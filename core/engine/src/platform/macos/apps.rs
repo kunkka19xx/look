@@ -5,23 +5,61 @@ use crate::platform::paths::{candidate_id_path_component, path_is_same_or_child}
 use look_indexing::{Candidate, CandidateKind};
 use std::collections::HashSet;
 use std::fs;
+use std::path::Path;
 use std::sync::mpsc;
 
+/// Used when a bundle path has no readable file stem, which should not happen
+/// for a real `.app` but keeps the candidate from having an empty title.
+const FALLBACK_APP_NAME: &str = "App";
+
 pub(crate) fn discover_installed_apps(config: &RuntimeConfig, tx: mpsc::SyncSender<Candidate>) {
+    let mut bundles = Vec::new();
     for root in merged_app_scan_roots(
         &config.app_scan_roots,
         &macos::additional_app_scan_roots(),
         macos::REQUIRED_APP_SCAN_ROOTS,
     ) {
-        walk_apps(
+        collect_app_bundles(
             &root,
             config.app_scan_depth,
-            config.localized_app_names,
-            &tx,
             &config.app_exclude_paths,
-            &config.app_exclude_names,
+            &mut bundles,
         );
     }
+
+    // Resolved in one batch rather than inline in the walk: each name costs an
+    // Info.plist read, and batching lets those run on a thread pool.
+    let localized = if config.localized_app_names {
+        macos::read_localized_display_names(&bundles, macos::APP_BUNDLE_EXTENSION)
+    } else {
+        vec![None; bundles.len()]
+    };
+
+    for (path, localized) in bundles.iter().zip(localized) {
+        emit_app(&tx, path, localized, &config.app_exclude_names);
+    }
+}
+
+fn emit_app(
+    tx: &mpsc::SyncSender<Candidate>,
+    path: &str,
+    localized: Option<String>,
+    app_exclude_names: &[String],
+) {
+    let bundle_name = Path::new(path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or(FALLBACK_APP_NAME);
+    let title = localized.unwrap_or_else(|| bundle_name.to_string());
+    if should_exclude_app(&title, bundle_name, app_exclude_names) {
+        return;
+    }
+
+    let key = format!(
+        "{APP_CANDIDATE_ID_PREFIX}{}",
+        candidate_id_path_component(path)
+    );
+    let _ = tx.send(Candidate::new(&key, CandidateKind::App, &title, path));
 }
 
 fn merged_app_scan_roots(
@@ -50,13 +88,14 @@ fn merged_app_scan_roots(
     out
 }
 
-fn walk_apps(
+/// Appends every `.app` bundle under `path` to `out`. Naming is left to the
+/// caller so the Info.plist reads can be batched across the whole scan instead
+/// of happening one directory entry at a time.
+fn collect_app_bundles(
     path: &str,
     depth: usize,
-    use_localized_names: bool,
-    tx: &mpsc::SyncSender<Candidate>,
     app_exclude_paths: &[String],
-    app_exclude_names: &[String],
+    out: &mut Vec<String>,
 ) {
     if should_exclude_path(path, app_exclude_paths) {
         return;
@@ -91,41 +130,9 @@ fn walk_apps(
         }
 
         if app_path_str.ends_with(macos::APP_BUNDLE_EXTENSION) {
-            let bundle_name = app_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("App");
-            let title = if use_localized_names {
-                objc2::rc::autoreleasepool(|_| {
-                    macos::read_localized_display_name(app_path_str, macos::APP_BUNDLE_EXTENSION)
-                })
-            } else {
-                None
-            }
-            .unwrap_or_else(|| bundle_name.to_string());
-            if should_exclude_app(&title, bundle_name, app_exclude_names) {
-                continue;
-            }
-
-            let key = format!(
-                "{APP_CANDIDATE_ID_PREFIX}{}",
-                candidate_id_path_component(app_path_str)
-            );
-            let _ = tx.send(Candidate::new(
-                &key,
-                CandidateKind::App,
-                &title,
-                app_path_str,
-            ));
+            out.push(app_path_str.to_string());
         } else if is_dir {
-            walk_apps(
-                app_path_str,
-                depth - 1,
-                use_localized_names,
-                tx,
-                app_exclude_paths,
-                app_exclude_names,
-            );
+            collect_app_bundles(app_path_str, depth - 1, app_exclude_paths, out);
         }
     }
 }
@@ -140,22 +147,24 @@ fn should_exclude_path(path: &str, app_exclude_paths: &[String]) -> bool {
     })
 }
 
+fn normalize_app_name(name: &str) -> String {
+    let name = name.trim();
+    name.strip_suffix(macos::APP_BUNDLE_EXTENSION)
+        .unwrap_or(name)
+        .trim()
+        .to_lowercase()
+}
+
 fn should_exclude_app_name(name: &str, app_exclude_names: &[String]) -> bool {
-    let normalized_name = name
-        .trim()
-        .trim_end_matches(macos::APP_BUNDLE_EXTENSION)
-        .trim()
-        .to_lowercase();
+    let normalized_name = normalize_app_name(name);
     app_exclude_names.iter().any(|entry| {
-        let normalized_exclude = entry
-            .trim()
-            .trim_end_matches(macos::APP_BUNDLE_EXTENSION)
-            .trim()
-            .to_lowercase();
+        let normalized_exclude = normalize_app_name(entry);
         !normalized_exclude.is_empty() && normalized_exclude == normalized_name
     })
 }
 
+/// Excludes on either name: `app_exclude_names` is written by hand, so it
+/// holds whichever of the two the user happened to see in the launcher.
 fn should_exclude_app(title: &str, bundle_name: &str, app_exclude_names: &[String]) -> bool {
     should_exclude_app_name(title, app_exclude_names)
         || should_exclude_app_name(bundle_name, app_exclude_names)
@@ -164,43 +173,14 @@ fn should_exclude_app(title: &str, bundle_name: &str, app_exclude_names: &[Strin
 #[cfg(test)]
 mod tests {
     use super::{
-        merged_app_scan_roots, should_exclude_app, should_exclude_app_name, should_exclude_path,
-        walk_apps,
+        collect_app_bundles, emit_app, merged_app_scan_roots, should_exclude_app,
+        should_exclude_app_name, should_exclude_path,
     };
+    use crate::platform::macos::test_support::TempDir;
     use look_indexing::Candidate;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::mpsc;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    struct TempDir {
-        path: PathBuf,
-    }
-
-    impl TempDir {
-        fn new(name: &str) -> Self {
-            let unique = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("system time after epoch")
-                .as_nanos();
-            let path = std::env::temp_dir().join(format!(
-                "look-macos-apps-{name}-{}-{unique}",
-                std::process::id()
-            ));
-            fs::create_dir_all(&path).expect("create temp dir");
-            Self { path }
-        }
-
-        fn path(&self) -> &Path {
-            &self.path
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.path);
-        }
-    }
 
     fn create_app(root: &Path, name: &str) -> PathBuf {
         let app = root.join(name);
@@ -213,19 +193,27 @@ mod tests {
         std::os::unix::fs::symlink(target, link).expect("create symlink");
     }
 
-    fn collect_apps(root: &Path) -> Vec<Candidate> {
-        let (tx, rx) = mpsc::sync_channel(16);
-        let empty = Vec::<String>::new();
-        walk_apps(
+    /// Mirrors `discover_installed_apps` without a `RuntimeConfig`: walk, then
+    /// emit with no localized names.
+    fn collect_apps_excluding(root: &Path, app_exclude_names: &[String]) -> Vec<Candidate> {
+        let mut bundles = Vec::new();
+        collect_app_bundles(
             root.to_str().expect("utf-8 temp path"),
             3,
-            false,
-            &tx,
-            &empty,
-            &empty,
+            &[],
+            &mut bundles,
         );
+
+        let (tx, rx) = mpsc::sync_channel(16);
+        for path in &bundles {
+            emit_app(&tx, path, None, app_exclude_names);
+        }
         drop(tx);
         rx.into_iter().collect()
+    }
+
+    fn collect_apps(root: &Path) -> Vec<Candidate> {
+        collect_apps_excluding(root, &[])
     }
 
     #[test]
@@ -324,19 +312,49 @@ mod tests {
     fn excludes_app_by_bundle_filename() {
         let tmp = TempDir::new("exclude-filename");
         create_app(tmp.path(), "Client Riot.app");
-        let (tx, rx) = mpsc::sync_channel(16);
-        let empty = Vec::<String>::new();
-        walk_apps(
+
+        let apps = collect_apps_excluding(tmp.path(), &["Client Riot".to_string()]);
+
+        assert!(apps.is_empty());
+    }
+
+    /// The walk and the name resolution are separate passes zipped back
+    /// together, so the collected order is the contract between them.
+    #[test]
+    fn collected_bundles_are_the_app_directories_only() {
+        let tmp = TempDir::new("collect-bundles");
+        create_app(tmp.path(), "Alpha.app");
+        create_app(tmp.path(), "Beta.app");
+        fs::create_dir_all(tmp.path().join("Not An App")).expect("create plain dir");
+
+        let mut bundles = Vec::new();
+        collect_app_bundles(
             tmp.path().to_str().expect("utf-8 temp path"),
             3,
-            false,
-            &tx,
-            &empty,
-            &["Client Riot".to_string()],
+            &[],
+            &mut bundles,
         );
+        bundles.sort();
+
+        assert_eq!(bundles.len(), 2);
+        assert!(bundles[0].ends_with("Alpha.app"));
+        assert!(bundles[1].ends_with("Beta.app"));
+    }
+
+    /// A localized title is used verbatim; the bundle file name is the fallback.
+    #[test]
+    fn emitted_title_prefers_the_localized_name() {
+        let tmp = TempDir::new("emit-title");
+        let app = create_app(tmp.path(), "WeChat.app");
+        let path = app.to_str().expect("utf-8 app path");
+
+        let (tx, rx) = mpsc::sync_channel(2);
+        emit_app(&tx, path, Some("微信".to_string()), &[]);
+        emit_app(&tx, path, None, &[]);
         drop(tx);
 
-        assert!(rx.into_iter().collect::<Vec<_>>().is_empty());
+        let titles: Vec<String> = rx.into_iter().map(|c| c.title.to_string()).collect();
+        assert_eq!(titles, vec!["微信".to_string(), "WeChat".to_string()]);
     }
 
     #[test]
