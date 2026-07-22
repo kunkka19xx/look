@@ -19,6 +19,10 @@ on:
       - "apps/linows/flake.nix"
       - "apps/linows/flake.lock"
 
+concurrency:
+  group: ci-nix-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -27,14 +31,19 @@ jobs:
 
       - uses: DeterminateSystems/nix-installer-action@main
 
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-
+      # Pushes populate the cache so later runs reuse the dependency closure
+      # instead of recompiling it. Fork PRs cannot read secrets, so the token
+      # is empty there and the action falls back to read-only automatically.
       - uses: cachix/cachix-action@v15
         with:
           name: look
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
+      # -L streams the derivation's build log. Without it nix buffers the whole
+      # compile into one silent block, which makes a slow or stuck build
+      # impossible to diagnose from the Actions log.
       - name: Build
-        run: nix build ./apps/linows#default
+        run: nix build ./apps/linows#default -L
 
       - name: Verify version
         run: ./result/bin/lookapp --version

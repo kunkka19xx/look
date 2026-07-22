@@ -432,7 +432,9 @@ ignored_patterns_sample=\n\
 # ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm\n\
 # ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part\n\
 lazy_indexing_enabled=true\n\
-# macOS 15.4+ only. Enabling this may increase memory use by caching bundle metadata.\n\
+# Localized app and System Settings names. macOS 15.4+ only. Slows the first\n\
+# index pass (~3ms -> ~35ms on a 134-app machine) and caches bundle metadata\n\
+# for the process lifetime.\n\
 localized_app_names=false\n\
 skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data,deriveddata,pods,vendor,out,coverage,tmp,cache,venv\n\
 \n\
