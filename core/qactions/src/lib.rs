@@ -351,8 +351,10 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for tile in launchpad_layout() {
             if let Some(ch) = tile.mnemonic {
+                // Shells match mnemonics case-insensitively, so `b` and `B`
+                // would collide at runtime and leave one tile unreachable.
                 assert!(
-                    seen.insert(ch),
+                    seen.insert(ch.to_ascii_lowercase()),
                     "duplicate mnemonic {ch} on {}",
                     tile.action_id
                 );

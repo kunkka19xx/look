@@ -291,17 +291,17 @@ private struct LaunchpadActionTile: View {
             .background(
                 frostedTile(
                     themeStore: themeStore,
-                    tint: (confirming || micMuted) ? themeStore.dangerColor() : nil,
-                    tintOpacity: (confirming || micMuted) ? launchpadDangerTintOpacity : 0
+                    tint: (confirming || micMuted) ? tint : nil,
+                    tintOpacity: (confirming || micMuted) ? launchpadAlertTintOpacity : 0
                 )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Const.cornerRadius, style: .continuous)
                     .strokeBorder(
-                        (confirming || micMuted || isDanger)
-                            ? tint.opacity(0.3)
-                            : themeStore.dividerColor().opacity(0.4),
-                        lineWidth: 1
+                        (confirming || micMuted)
+                            ? tint.opacity(launchpadAlertBorderOpacity)
+                            : themeStore.dividerColor().opacity(launchpadRestingBorderOpacity),
+                        lineWidth: launchpadBorderWidth
                     )
             )
         }
@@ -379,7 +379,17 @@ private struct LaunchpadMediaTile: View {
 /// so launchpad tiles read with the same depth as the rest of the floating UI.
 private let launchpadTileScrimOpacity = 0.30
 private let launchpadOnTintOpacity = 0.22
-private let launchpadDangerTintOpacity = 0.16
+/// Backs both the red confirm state and the amber muted-mic state, so the tile
+/// takes its hue from `tint` rather than baking one in here.
+private let launchpadAlertTintOpacity = 0.16
+
+/// Tile borders. Every tile rests on the same neutral divider so the strip reads
+/// as one surface; colour is reserved for a state the user just entered, an
+/// on-state toggle or an armed confirm, never for a tile sitting idle.
+private let launchpadBorderWidth: CGFloat = 1
+private let launchpadRestingBorderOpacity = 0.4
+private let launchpadOnBorderOpacity = 0.35
+private let launchpadAlertBorderOpacity = 0.3
 
 /// The frosted surface every launchpad tile sits on: the same
 /// blur + dark-scrim + control-fill stack the app uses for its floating tiles
@@ -403,7 +413,9 @@ private func tileBorder(isOn: Bool, themeStore: ThemeStore) -> some View {
     let radius = AppConstants.Launcher.Launchpad.cornerRadius
     return RoundedRectangle(cornerRadius: radius, style: .continuous)
         .strokeBorder(
-            isOn ? themeStore.accentColor().opacity(0.35) : themeStore.dividerColor().opacity(0.4),
-            lineWidth: 1
+            isOn
+                ? themeStore.accentColor().opacity(launchpadOnBorderOpacity)
+                : themeStore.dividerColor().opacity(launchpadRestingBorderOpacity),
+            lineWidth: launchpadBorderWidth
         )
 }
