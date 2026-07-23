@@ -23,9 +23,9 @@ final class LaunchpadController {
     /// each control's `state()` read.
     private(set) var systemStates: [String: ActionState] = [:]
 
-    /// Mic mute state (true = muted); rendered amber when muted. Mock until a Mic
-    /// adapter lands.
-    private(set) var micMuted = false
+    /// Mic mute state (true = muted); rendered amber when muted. Backed by the
+    /// Mic adapter: muted means its state read as `.off` (input volume 0).
+    var micMuted: Bool { systemStates[LaunchpadActionID.mic] == .off }
 
     /// Latest resolved weather for the Weather tile, or nil until the first
     /// successful fetch (the tile shows a placeholder meanwhile).
@@ -237,16 +237,11 @@ final class LaunchpadController {
         }
     }
 
-    /// Fallback behavior for tiles without a native adapter: flip local state.
+    /// Fallback behavior for toggle tiles without a native adapter: flip local
+    /// state. (Focus and Saver, until their adapters land.)
     private func activateMock(_ tile: LaunchpadTileModel) {
-        switch tile.actionId {
-        case LaunchpadActionID.mic:
-            micMuted.toggle()
-            onBanner?(micMuted ? "Mic muted" : "Mic on")
-        default:
-            if tile.role == .toggle {
-                toggles[tile.actionId] = !(toggles[tile.actionId] ?? false)
-            }
+        if tile.role == .toggle {
+            toggles[tile.actionId] = !(toggles[tile.actionId] ?? false)
         }
     }
 }
