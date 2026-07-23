@@ -70,6 +70,10 @@ struct LauncherView: View {
     @State var activeCommandID: String?
     @State var commandFeedback = ""
     @State var keyboardMonitor = KeyboardSelectionMonitor()
+    /// Empty-state launchpad: the decoded tile layout (from the shared catalog)
+    /// and the controller holding its interactive state.
+    @State var launchpadTiles: [LaunchpadTileModel] = []
+    @State var launchpadController = LaunchpadController()
     @State var searchTask: Task<Void, Never>?
     @State var latestSearchID: UInt64 = 0
     @State var bannerMessage: String?
@@ -623,6 +627,8 @@ struct LauncherView: View {
         .ignoresSafeArea()
         .onAppear {
             refreshSearchResults()
+            configureLaunchpadIfNeeded()
+            Task { await launchpadController.refreshWeather() }
             startKeyboardNavigationIfNeeded()
             focusActiveInput()
             refreshClipboardMonitoringMode()
@@ -893,8 +899,16 @@ struct LauncherView: View {
             } else if isRecentQuery && displayedResults.isEmpty {
                 floatingPanel { RecentEmptyStateView(themeStore: themeStore) }
             } else if hidesResultsForEmptyQuery {
-                // Empty query while floating: rest with just the top bar, nothing
-                // below. A spacer keeps the bar pinned to the top.
+                // Empty query while floating: the launchpad control strip sits
+                // below the top bar; a spacer keeps them pinned to the top. When
+                // the catalog fails to decode we fall back to the bare rest state.
+                if !launchpadTiles.isEmpty {
+                    EmptyStateLaunchpadView(
+                        tiles: launchpadTiles,
+                        controller: launchpadController,
+                        themeStore: themeStore
+                    )
+                }
                 Spacer(minLength: 0)
             } else {
                 resultsRow
@@ -1180,7 +1194,7 @@ struct LauncherView: View {
     /// With an empty query on the home screen, rest as just the search bar - hide
     /// the results columns and the hint bar below it. Applies in both modes (gap
     /// or no gap), so an empty launcher is always just the top bar.
-    private var hidesResultsForEmptyQuery: Bool {
+    var hidesResultsForEmptyQuery: Bool {
         isQueryEmpty
             && !isCommandMode
             && !appUIState.showsThemeSettings

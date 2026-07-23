@@ -231,6 +231,15 @@ extension LauncherView {
             },
             hasToggleQuickAction: { [self] in
                 hasToggleQuickAction
+            },
+            isLaunchpadActive: { [self] in
+                isLaunchpadActive
+            },
+            onLaunchpadMnemonic: { [self] character in
+                handleLaunchpadMnemonic(character)
+            },
+            onLaunchpadEscape: { [self] in
+                cancelLaunchpadConfirmIfNeeded()
             }
         )
     }

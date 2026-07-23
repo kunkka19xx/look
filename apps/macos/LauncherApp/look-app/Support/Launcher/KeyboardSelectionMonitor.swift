@@ -47,7 +47,10 @@ final class KeyboardSelectionMonitor {
         onCancelDelete: (@MainActor () -> Void)? = nil,
         deleteConfirmationActive: @escaping @MainActor () -> Bool = { false },
         onToggleQuickAction: (@MainActor () -> Void)? = nil,
-        hasToggleQuickAction: @escaping @MainActor () -> Bool = { false }
+        hasToggleQuickAction: @escaping @MainActor () -> Bool = { false },
+        isLaunchpadActive: @escaping @MainActor () -> Bool = { false },
+        onLaunchpadMnemonic: (@MainActor (Character) -> Bool)? = nil,
+        onLaunchpadEscape: (@MainActor () -> Bool)? = nil
     ) {
         guard monitor == nil else { return }
         self.isKillConfirmationActive = killConfirmationActive
@@ -68,6 +71,20 @@ final class KeyboardSelectionMonitor {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                     onEnterCommandMode()
                 }
+                return nil
+            }
+
+            // Empty-state launchpad mnemonics (⌘B/⌘W/⌘T/...). Only fires when the
+            // launchpad is on screen, so it never shadows the result-oriented
+            // chords below (Cmd+F reveal, Cmd+P pick, etc.) once the user types.
+            // Match on the typed character, not a keyCode, so it holds on
+            // non-QWERTY layouts (same rationale as the Cmd+O handler).
+            if flags == [.command],
+                isLaunchpadActive(),
+                let handler = onLaunchpadMnemonic,
+                let character = event.charactersIgnoringModifiers?.first,
+                handler(character)
+            {
                 return nil
             }
 
@@ -212,6 +229,12 @@ final class KeyboardSelectionMonitor {
             }
 
             if event.keyCode == 53 {
+                // A pending launchpad Restart / Shut Down confirm swallows Escape
+                // to dismiss the prompt rather than hiding the launcher.
+                if let onLaunchpadEscape, onLaunchpadEscape() {
+                    return nil
+                }
+
                 if onDismissHelpIfVisible() {
                     return nil
                 }

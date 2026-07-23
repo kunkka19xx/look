@@ -64,6 +64,10 @@ private func look_recent_urls_json(_ query: UnsafePointer<CChar>?, _ limit: UInt
 nonisolated
 private func look_qactions_json(_ resultID: UnsafePointer<CChar>?, _ kind: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_quick_actions_launchpad_json")
+nonisolated
+private func look_quick_actions_launchpad_json() -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_definitional_entity_json")
 nonisolated
 private func look_definitional_entity_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -290,6 +294,18 @@ final class EngineBridge: @unchecked Sendable {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return (try? decoder.decode([QuickActionDescriptor].self, from: data)) ?? []
+    }
+
+    /// The empty-state launchpad layout from the shared `look_qactions` catalog:
+    /// fixed tile order, sizes, and mnemonics. Pure catalog lookup, cheap. Empty
+    /// only on an unexpected decode failure.
+    nonisolated func launchpadLayout() -> [LaunchpadTileModel] {
+        guard let ptr = look_quick_actions_launchpad_json() else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return (try? decoder.decode([LaunchpadTileModel].self, from: data)) ?? []
     }
 
     /// The entity from a definitional query ("what is vim" -> "vim"), or nil.

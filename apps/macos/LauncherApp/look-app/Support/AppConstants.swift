@@ -330,6 +330,38 @@ enum AppConstants {
             }
         }
 
+        /// Empty-state launchpad: a 6-column bento of L/M/S tiles shown below the
+        /// search bar when the query is empty. Sizing/timing only; the tile order,
+        /// labels, and mnemonics come from the shared `look_qactions` catalog.
+        enum Launchpad {
+            static let columns = 6
+            static let rowHeight: CGFloat = 76
+            static let gap: CGFloat = 8
+            static let cornerRadius: CGFloat = 12
+            static let outerTopPadding: CGFloat = 8
+
+            /// The L slot rotates Todo <-> Pomo every this often when both apply.
+            static let lSlotRotateSeconds: TimeInterval = 5
+            /// The Todo tile cycles its next-task name at this cadence.
+            static let todoTaskRotateSeconds: TimeInterval = 2.6
+            /// The Clock tile only needs minute resolution; refresh coarsely.
+            static let clockTickSeconds: TimeInterval = 20
+            /// Crossfade duration for the L slot swap.
+            static let rotateFadeSeconds: TimeInterval = 0.45
+
+            static let titleFontSize: CGFloat = 12.5
+            static let valueFontSize: CGFloat = 22
+            static let captionFontSize: CGFloat = 10.5
+            static let smallLabelFontSize: CGFloat = 10.5
+
+            /// Placeholder values used while the layout-only pass has no live
+            /// system reads wired up (see docs; controls land per follow-up PR).
+            static let mockBatteryValue = "84%"
+            static let mockNowPlayingTitle = "Not playing"
+            /// Placeholder shown in the Weather tile until the live source lands.
+            static let weatherPlaceholderValue = "--°"
+        }
+
         static let commandCatalog: [AppCommand] = [
             AppCommand(id: Command.calc, title: "calc (⌘1)", detail: "Evaluate math expression", placeholder: "Type math expression"),
             AppCommand(id: Command.pomo, title: "pomo (⌘2)", detail: "Pomodoro focus timer", placeholder: "Manage focus sessions"),
