@@ -41,6 +41,9 @@ let settingsModule = null;
 let settingsContentArea = null;
 let settingsSearchBar = null;
 let helpScreen = null;
+// Re-asserts the empty-state control strip after a screen open/close (set by
+// app.js). The strip must step aside for settings/help and return afterwards.
+let syncHomeFn = null;
 
 export function init(inputEl) {
     queryInput = inputEl;
@@ -85,6 +88,10 @@ export function setSettingsMode(mod, contentArea, searchBar) {
     settingsSearchBar = searchBar;
 }
 
+export function setSyncHome(fn) {
+    syncHomeFn = fn;
+}
+
 function handleKeyDown(e) {
     if (confirm.isActive()) {
         const k = e.key;
@@ -119,6 +126,7 @@ function handleKeyDown(e) {
             if (commandMode?.isActive()) commandMode.exit();
             settingsModule.enter(settingsContentArea, settingsSearchBar);
         }
+        syncHomeFn?.();
         return;
     }
 
@@ -171,6 +179,7 @@ function handleKeyDown(e) {
             e.preventDefault();
             helpScreen.hidden = true;
             layout.setModal('help', false);
+            syncHomeFn?.();
             return;
         }
         return; // swallow all other keys while help is open
@@ -518,6 +527,7 @@ function toggleHelp() {
     if (!helpScreen) return;
     helpScreen.hidden = !helpScreen.hidden;
     layout.setModal('help', !helpScreen.hidden);
+    syncHomeFn?.();
 }
 
 async function removeClipboardEntry() {

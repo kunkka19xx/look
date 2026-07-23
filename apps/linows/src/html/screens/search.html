@@ -53,6 +53,11 @@
        each column is its own floating tile. The footers are empty in
        classic mode; the floating grid moves the hint text into the left
        one and the copyright into the right one (js/layout.js). -->
+    <!-- Empty-state control strip (super actions). Shown only when the query is
+       empty on the home screen; hidden the moment the user types, when the
+       results row takes over. Built by js/components/superactions.js. -->
+    <div class="control-strip" id="control-strip" hidden></div>
+
     <div class="results-row" id="results-row">
         <div class="pane-col pane-tile" id="results-col">
             <div class="results-area" id="results-area">

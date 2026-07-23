@@ -13,6 +13,7 @@ import * as settings from './screens/settings.js';
 import { mountUpdateWidget } from './screens/update_widget.js';
 import * as translatePanel from './components/translate.js';
 import * as runningApps from './components/running-apps.js';
+import * as superactions from './components/superactions.js';
 import * as platform from './platform.js';
 import * as aiAnswer from './components/ai-answer.js';
 import { State as AiState } from './components/ai-answer.js';
@@ -195,11 +196,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         return (
             !commands.isActive() &&
             !settings.isActive() &&
+            helpScreen?.hidden !== false &&
             !search.isTranslateMode() &&
             !search.isClipboardMode() &&
             !search.isPrefixHintMode() &&
             !search.isCommandHintMode()
         );
+    }
+
+    // The empty-state control strip (super actions) stands in for the results
+    // row whenever the query is empty on the bare home screen. Single source of
+    // truth: any transition that changes the query or the active screen calls
+    // this, and the strip renders itself only when it should.
+    function syncControlStrip() {
+        superactions.setVisible(queryInput.value === '' && isHomeHintContext());
     }
 
     todoCmd.setOnQuickChange((stat) => {
@@ -260,11 +270,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         search.handleQueryInput('');
         layout.setQuery({ empty: true, translate: false });
         renderMainHint();
+        syncControlStrip();
         queryInput.focus();
     }
 
     settings.init(resetHomeQuery);
     settings.restoreOnStartup();
+
+    // Empty-state super-actions control strip
+    superactions.init(document.getElementById('control-strip'));
 
     // Running apps strip
     runningApps.init(document.getElementById('running-apps-strip'));
@@ -465,6 +479,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         search.handleQueryInput(value);
         const translating = search.isTranslateMode();
         layout.setQuery({ empty: value === '', translate: translating });
+        syncControlStrip();
         resultsList.hidden = translating;
         runningApps.setSuspended(translating);
 
@@ -558,6 +573,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Re-read todos when nothing would be lost, so the quick view stays
         // fresh across day rollovers and edits from other Look clients.
         todoCmd.reloadIfClean();
+        // The window keeps its query across hide/show; re-assert the strip so an
+        // empty-query re-open lands back on the launchpad.
+        syncControlStrip();
     });
 
     onIndexReady(() => {
@@ -583,11 +601,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     getQuickFolders().then((folders) => {
         search.setQuickFolders(folders || []);
         search.handleQueryInput('');
+        syncControlStrip();
     });
 
     // --- Command mode helpers ---
 
     function enterCommandMode() {
+        superactions.setVisible(false);
         resultsList.hidden = true;
         previewPanel.hidden = true;
         runningApps.setSuspended(true);
@@ -739,4 +759,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Expose enterCommandMode and settings for keyboard
     keyboard.setEnterCommandMode(enterCommandMode);
     keyboard.setSettingsMode(settings, contentArea, queryInput.parentElement);
+    // Settings and Help open/close from keyboard.js; let it re-assert the
+    // control strip so it steps aside for those screens and returns after.
+    keyboard.setSyncHome(syncControlStrip);
 });

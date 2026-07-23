@@ -1,0 +1,396 @@
+/* Super actions - empty-state launchpad control strip (issue #288).
+ * A bento of L/M/S tiles shown in place of the results row when the query is
+ * empty. Tiles reuse the frosted-card treatment of the floating panes so they
+ * read the same on a bare desktop (bar-free) and inside the classic frame. */
+
+/* When the strip is up it owns the space: the results row and hint bar step
+ * aside. Keyed off the html-level class set by superactions.setVisible so the
+ * swap works in both classic and floating modes. */
+html.controls-open .results-row,
+html.controls-open #hint-bar {
+    display: none;
+}
+
+.control-strip {
+    flex: 1;
+    min-height: 0;
+    padding: 0 var(--content-padding) var(--content-padding);
+    overflow: hidden;
+}
+
+.control-strip-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    grid-template-rows: repeat(3, minmax(74px, 1fr));
+    grid-template-areas:
+        "todo todo bt    wifi batt weather"
+        "todo todo theme keep scr  weather"
+        "mic  rst  shut  play play play";
+    gap: 8px;
+    height: 100%;
+    max-height: 260px;
+}
+
+/* --- Tile base -------------------------------------------------------------
+ * control-fill over the user's tint, so the card carries its own surface on
+ * the bare desktop (bar-free) exactly like .pane-tile does. */
+.ctl-tile {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    text-align: left;
+    color: var(--font-color);
+    background-image:
+        linear-gradient(var(--control-fill), var(--control-fill)),
+        linear-gradient(var(--bg-tint), var(--bg-tint));
+    backdrop-filter: blur(var(--blur-radius, 0px));
+    -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
+    border: var(--border-thickness) solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 3px 7px rgba(0, 0, 0, 0.22);
+    cursor: pointer;
+    transition:
+        border-color 0.12s ease,
+        transform 0.06s ease;
+    overflow: hidden;
+}
+
+.ctl-tile:hover {
+    border-color: color-mix(in srgb, var(--accent-color) 40%, var(--border-color));
+}
+
+.ctl-tile:active {
+    transform: scale(0.985);
+}
+
+/* Active toggle: accent wash + border, icon and state pick up the accent. */
+.ctl-tile.is-active {
+    background-image:
+        linear-gradient(
+            color-mix(in srgb, var(--accent-color) 18%, transparent),
+            color-mix(in srgb, var(--accent-color) 18%, transparent)
+        ),
+        linear-gradient(var(--control-fill), var(--control-fill)),
+        linear-gradient(var(--bg-tint), var(--bg-tint));
+    border-color: color-mix(in srgb, var(--accent-color) 34%, var(--border-color));
+}
+
+/* --- Icons ----------------------------------------------------------------- */
+.ctl-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--font-secondary);
+}
+
+.ctl-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.ctl-tile.is-active .ctl-icon {
+    color: var(--accent-color);
+}
+
+.ctl-tile.is-danger .ctl-icon {
+    color: var(--color-danger);
+}
+
+/* --- Text ------------------------------------------------------------------ */
+.ctl-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.ctl-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--font-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ctl-state {
+    font-size: 12px;
+    color: var(--font-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ctl-tile.is-active .ctl-state {
+    color: var(--accent-color);
+    font-weight: 500;
+}
+
+/* Small-caps info label (Battery / weather condition). */
+.ctl-caps {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--font-muted);
+}
+
+.ctl-value {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--font-color);
+    line-height: 1.1;
+}
+
+/* --- Priority (Todo) L slot ------------------------------------------------ */
+.ctl-tile--priority {
+    grid-area: todo;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 0;
+    padding: 16px;
+}
+
+.ctl-priority-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.ctl-priority-head .ctl-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--control-fill);
+    border-radius: 10px;
+    color: var(--font-secondary);
+}
+
+.ctl-priority-head .ctl-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.ctl-clock {
+    display: flex;
+    flex-direction: column;
+    margin-left: auto;
+    text-align: right;
+}
+
+.ctl-clock-time {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.05;
+}
+
+.ctl-clock-date {
+    font-size: 12px;
+    color: var(--font-muted);
+}
+
+.ctl-pill {
+    align-self: flex-start;
+    padding: 3px 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--font-muted);
+    background: var(--control-fill);
+    border-radius: 6px;
+}
+
+.ctl-priority-count {
+    font-size: 15px;
+    color: var(--font-muted);
+}
+
+.ctl-priority-count b {
+    font-family: var(--font-mono);
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--font-color);
+    margin-right: 6px;
+}
+
+.ctl-priority-next {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--font-secondary);
+}
+
+.ctl-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    flex-shrink: 0;
+}
+
+/* --- Info (Battery) -------------------------------------------------------- */
+.ctl-tile--info {
+    grid-area: batt;
+}
+
+.ctl-tile--info .ctl-text {
+    gap: 3px;
+}
+
+/* --- Weather L slot -------------------------------------------------------- */
+.ctl-tile--weather {
+    grid-area: weather;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 4px;
+    padding: 16px;
+}
+
+.ctl-tile--weather .ctl-icon svg {
+    width: 30px;
+    height: 30px;
+    color: var(--font-secondary);
+}
+
+.ctl-weather-temp {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.ctl-weather-hl {
+    font-size: 12px;
+    color: var(--font-muted);
+}
+
+.ctl-weather-hum {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--font-muted);
+}
+
+.ctl-weather-hum svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* Toggle / info tiles run narrow (one grid column), so tighten the gutters and
+ * let a long label (Keep Awake) wrap to a second line instead of clipping. */
+.ctl-tile--toggle,
+.ctl-tile--info {
+    padding: 12px;
+    gap: 10px;
+}
+
+.ctl-tile--toggle .ctl-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.ctl-tile--toggle .ctl-label {
+    font-size: 13px;
+    white-space: normal;
+    line-height: 1.15;
+}
+
+/* --- Toggle placements ----------------------------------------------------- */
+.pos-bt {
+    grid-area: bt;
+}
+.pos-wifi {
+    grid-area: wifi;
+}
+.pos-theme {
+    grid-area: theme;
+}
+.pos-keep {
+    grid-area: keep;
+}
+
+/* --- Action (S) tiles ------------------------------------------------------ */
+.ctl-tile--action {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+}
+
+.ctl-tile--action .ctl-icon svg {
+    width: 24px;
+    height: 24px;
+}
+
+.ctl-tile--action .ctl-label {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.pos-scr {
+    grid-area: scr;
+}
+.pos-mic {
+    grid-area: mic;
+}
+.pos-rst {
+    grid-area: rst;
+}
+.pos-shut {
+    grid-area: shut;
+}
+
+.ctl-tile--action.is-danger:hover {
+    border-color: color-mix(in srgb, var(--color-danger) 44%, var(--border-color));
+}
+
+/* --- Now Playing (media) --------------------------------------------------- */
+.ctl-tile--media {
+    grid-area: play;
+    gap: 14px;
+}
+
+.ctl-tile--media .ctl-text {
+    flex: 1;
+}
+
+.ctl-transport {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.ctl-transport-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    color: var(--font-secondary);
+}
+
+.ctl-transport-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.ctl-transport-play {
+    background: var(--control-fill);
+    border: var(--border-thickness) solid var(--border-color);
+    color: var(--font-color);
+}
+
+.ctl-transport-btn:hover {
+    color: var(--accent-color);
+}
