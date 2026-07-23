@@ -48,8 +48,8 @@ pub mod action_id {
     pub const BLUETOOTH: &str = "bluetooth";
     pub const WIFI: &str = "wifi";
     pub const THEME: &str = "theme";
-    pub const FOCUS: &str = "focus";
-    pub const SAVER: &str = "saver";
+    pub const KEEP_AWAKE: &str = "keepawake";
+    pub const SCREENSAVER: &str = "screensaver";
     pub const MIC: &str = "mic";
     pub const RESTART: &str = "restart";
     pub const SHUTDOWN: &str = "shutdown";
@@ -98,8 +98,8 @@ pub fn descriptor(action_id: &str) -> Option<ActionDescriptor> {
         id::BLUETOOTH => Some(toggle(id::BLUETOOTH, "Bluetooth", "On", "Off")),
         id::WIFI => Some(toggle(id::WIFI, "Wi-Fi", "On", "Off")),
         id::THEME => Some(toggle(id::THEME, "Theme", "Dark", "Light")),
-        id::FOCUS => Some(toggle(id::FOCUS, "Focus", "On", "Off")),
-        id::SAVER => Some(toggle(id::SAVER, "Saver", "On", "Off")),
+        id::KEEP_AWAKE => Some(toggle(id::KEEP_AWAKE, "Keep Awake", "On", "Off")),
+        id::SCREENSAVER => Some(button(id::SCREENSAVER, "Screensaver")),
         id::MIC => Some(toggle(id::MIC, "Mic", "On", "Muted")),
         id::RESTART => Some(button(id::RESTART, "Restart")),
         id::SHUTDOWN => Some(button(id::SHUTDOWN, "Shut Down")),
@@ -185,8 +185,8 @@ fn tile(action_id: &str, size: TileSize, role: TileRole, mnemonic: Option<char>)
 /// The fixed empty-state launchpad layout, in placement order. This exact order
 /// and these sizes tile the 6-column grid with no gaps in every state:
 ///
-/// L slot -> BT -> Wi-Fi -> Battery -> Theme -> Focus -> Saver -> Weather ->
-/// Mic -> Restart -> Shut Down -> Now Playing (M, span 3).
+/// L slot -> BT -> Wi-Fi -> Battery -> Theme -> Keep Awake -> Screensaver ->
+/// Weather -> Mic -> Restart -> Shut Down -> Now Playing (M, span 3).
 ///
 /// Battery and Theme are single-column (S); the freed column on the right of the
 /// middle block is filled by the Weather tile, which stands two rows tall.
@@ -248,8 +248,8 @@ pub fn launchpad_layout() -> Vec<LaunchpadTile> {
             off_label: None,
         },
         tile(id::THEME, size::S, role::Toggle, Some('T')),
-        tile(id::FOCUS, size::S, role::Toggle, Some('F')),
-        tile(id::SAVER, size::S, role::Toggle, Some('S')),
+        tile(id::KEEP_AWAKE, size::S, role::Toggle, Some('K')),
+        tile(id::SCREENSAVER, size::S, role::Action, Some('S')),
         weather,
         tile(id::MIC, size::S, role::Action, Some('M')),
         tile(id::RESTART, size::S, role::Action, Some('R')),
@@ -333,8 +333,8 @@ mod tests {
                 action_id::WIFI,
                 action_id::BATTERY,
                 action_id::THEME,
-                action_id::FOCUS,
-                action_id::SAVER,
+                action_id::KEEP_AWAKE,
+                action_id::SCREENSAVER,
                 action_id::WEATHER,
                 action_id::MIC,
                 action_id::RESTART,

@@ -340,13 +340,11 @@ enum AppConstants {
             static let cornerRadius: CGFloat = 12
             static let outerTopPadding: CGFloat = 8
 
-            /// The L slot rotates Todo <-> Pomo every this often when both apply.
-            static let lSlotRotateSeconds: TimeInterval = 5
             /// The Todo tile cycles its next-task name at this cadence.
             static let todoTaskRotateSeconds: TimeInterval = 2.6
             /// The Clock tile only needs minute resolution; refresh coarsely.
             static let clockTickSeconds: TimeInterval = 20
-            /// Crossfade duration for the L slot swap.
+            /// Crossfade duration when the L slot's active source changes.
             static let rotateFadeSeconds: TimeInterval = 0.45
 
             static let titleFontSize: CGFloat = 12.5
@@ -354,10 +352,14 @@ enum AppConstants {
             static let captionFontSize: CGFloat = 10.5
             static let smallLabelFontSize: CGFloat = 10.5
 
-            /// Placeholder values used while the layout-only pass has no live
-            /// system reads wired up (see docs; controls land per follow-up PR).
-            static let mockBatteryValue = "84%"
-            static let mockNowPlayingTitle = "Not playing"
+            /// Shown in a read-only info tile (e.g. Battery) before its adapter
+            /// resolves a value, or when the value is unavailable.
+            static let infoPlaceholderValue = "--"
+            /// Now Playing caption when nothing is playing on the system.
+            static let nowPlayingIdleTitle = "Nothing playing"
+            /// How often to re-read system now-playing while the launcher is open,
+            /// so external changes (pausing in a browser) are reflected.
+            static let nowPlayingPollSeconds: TimeInterval = 1.5
             /// Placeholder shown in the Weather tile until the live source lands.
             static let weatherPlaceholderValue = "--°"
         }

@@ -23,6 +23,14 @@ struct EmptyStateLaunchpadView: View {
         }
         .frame(height: totalHeight)
         .padding(.top, Const.outerTopPadding)
+        // Poll system now-playing while the launchpad is on screen, so external
+        // changes (pausing in a browser) are reflected. Cancelled on disappear.
+        .task {
+            while !Task.isCancelled {
+                await controller.refreshNowPlaying()
+                try? await Task.sleep(for: .seconds(Const.nowPlayingPollSeconds))
+            }
+        }
     }
 
     // MARK: Geometry
@@ -46,7 +54,7 @@ struct EmptyStateLaunchpadView: View {
     //
     // The spec's fixed order tiles a 6-column grid as three rows:
     //   row 0/1 cols 0-1: L slot (2x2) | cols 2-4: BT, Wi-Fi, Battery
-    //                                   |          Theme, Focus, Saver
+    //                                   |          Theme, Keep Awake, Screensaver
     //                                   | col 5:   Weather (1x2)
     //   row 2 cols 0-5: Mic, Restart, Shut Down, Now Playing(3)
     // SwiftUI has no cell spanning, so the arrangement is composed explicitly
@@ -67,8 +75,8 @@ struct EmptyStateLaunchpadView: View {
                     }
                     HStack(spacing: Const.gap) {
                         tileView(LaunchpadActionID.theme, cell: cell)
-                        tileView(LaunchpadActionID.focus, cell: cell)
-                        tileView(LaunchpadActionID.saver, cell: cell)
+                        tileView(LaunchpadActionID.keepAwake, cell: cell)
+                        tileView(LaunchpadActionID.screensaver, cell: cell)
                     }
                 }
 
@@ -111,7 +119,11 @@ struct EmptyStateLaunchpadView: View {
                 themeStore: themeStore
             ) { controller.activate(model) }
         case .info:
-            LaunchpadInfoTile(model: model, value: Const.mockBatteryValue, themeStore: themeStore)
+            LaunchpadInfoTile(
+                model: model,
+                value: controller.displayValue(for: model.actionId) ?? Const.infoPlaceholderValue,
+                themeStore: themeStore
+            )
         case .action:
             LaunchpadActionTile(
                 model: model,
@@ -122,9 +134,12 @@ struct EmptyStateLaunchpadView: View {
         case .media:
             LaunchpadMediaTile(
                 model: model,
-                isPlaying: controller.isPlaying,
-                themeStore: themeStore
-            ) { controller.activate(model) }
+                snapshot: controller.nowPlaying,
+                themeStore: themeStore,
+                onToggle: { controller.activate(model) },
+                onPrevious: { controller.nowPlayingPrevious() },
+                onNext: { controller.nowPlayingNext() }
+            )
         case .weather:
             LaunchpadWeatherTile(
                 model: model,
@@ -167,7 +182,7 @@ private func mnemonicText(
 
 // MARK: - Tiles
 
-/// A stateful on/off tile (Bluetooth, Wi-Fi, Theme, Focus, Saver). On uses the
+/// A stateful on/off tile (Bluetooth, Wi-Fi, Theme, Keep Awake). On uses the
 /// accent color plus a subtle accent border.
 private struct LaunchpadToggleTile: View {
     let model: LaunchpadTileModel
@@ -222,8 +237,7 @@ private struct LaunchpadToggleTile: View {
         case LaunchpadActionID.bluetooth: return "antenna.radiowaves.left.and.right"
         case LaunchpadActionID.wifi: return "wifi"
         case LaunchpadActionID.theme: return isOn ? "moon.fill" : "sun.max.fill"
-        case LaunchpadActionID.focus: return "moon.circle.fill"
-        case LaunchpadActionID.saver: return "bolt.fill"
+        case LaunchpadActionID.keepAwake: return isOn ? "cup.and.saucer.fill" : "cup.and.saucer"
         default: return "circle"
         }
     }
@@ -387,6 +401,7 @@ private struct LaunchpadActionTile: View {
         case LaunchpadActionID.mic: return micMuted ? "mic.slash.fill" : "mic.fill"
         case LaunchpadActionID.restart: return "arrow.clockwise"
         case LaunchpadActionID.shutdown: return "power"
+        case LaunchpadActionID.screensaver: return "display"
         default: return "circle"
         }
     }
@@ -395,11 +410,26 @@ private struct LaunchpadActionTile: View {
 /// The Now Playing tile: track name plus a Pause/Play control (⌘P).
 private struct LaunchpadMediaTile: View {
     let model: LaunchpadTileModel
-    let isPlaying: Bool
+    /// The system-wide now-playing track (any app), or nil when nothing plays.
+    let snapshot: NowPlayingSnapshot?
     var themeStore: ThemeStore
     var onToggle: () -> Void
+    var onPrevious: () -> Void
+    var onNext: () -> Void
 
     private typealias Const = AppConstants.Launcher.Launchpad
+
+    private var isPlaying: Bool { snapshot?.isPlaying ?? false }
+
+    /// The current track, or an idle hint when nothing is playing.
+    private var trackTitle: String {
+        snapshot?.title ?? Const.nowPlayingIdleTitle
+    }
+
+    /// The secondary line: artist and/or owning app when known.
+    private var subtitle: String? {
+        [snapshot?.artist, snapshot?.app].compactMap { $0 }.filter { !$0.isEmpty }.first
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -407,15 +437,29 @@ private struct LaunchpadMediaTile: View {
                 .font(.system(size: 18, weight: .medium))
                 .foregroundColor(themeStore.accentColor())
             VStack(alignment: .leading, spacing: 1) {
-                Text(model.title.uppercased())
-                    .font(themeStore.uiFont(size: Const.captionFontSize - 1, weight: .medium))
-                    .foregroundColor(themeStore.mutedTextColor())
                 Text(trackTitle)
                     .font(themeStore.uiFont(size: Const.titleFontSize, weight: .bold))
-                    .foregroundColor(isPlaying ? themeStore.fontColor() : themeStore.mutedTextColor())
+                    .foregroundColor(snapshot?.hasTrack == true ? themeStore.fontColor() : themeStore.mutedTextColor())
                     .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(themeStore.uiFont(size: Const.captionFontSize - 1))
+                        .foregroundColor(themeStore.mutedTextColor())
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
+            transport
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(frostedTile(themeStore: themeStore))
+        .overlay(tileBorder(isOn: false, themeStore: themeStore))
+    }
+
+    private var transport: some View {
+        HStack(spacing: 10) {
+            transportButton("backward.fill", action: onPrevious)
             Button(action: onToggle) {
                 VStack(spacing: 2) {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
@@ -435,15 +479,18 @@ private struct LaunchpadMediaTile: View {
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             }
             .buttonStyle(.plain)
+            transportButton("forward.fill", action: onNext)
         }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(frostedTile(themeStore: themeStore))
-        .overlay(tileBorder(isOn: false, themeStore: themeStore))
     }
 
-    private var trackTitle: String {
-        isPlaying ? "Kiasmos - Blurred" : AppConstants.Launcher.Launchpad.mockNowPlayingTitle
+    private func transportButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(themeStore.secondaryTextColor())
+                .padding(6)
+        }
+        .buttonStyle(.plain)
     }
 }
 

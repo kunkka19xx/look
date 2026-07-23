@@ -11,7 +11,15 @@ enum ActionAdapterRegistry {
     /// Maps a descriptor's `action_id` (declared in the shared `core/qactions`
     /// catalog) to the native adapter that runs it on macOS.
     static let adapters: [String: any SystemControl] = [
-        "bluetooth": BluetoothControl(),
+        LaunchpadActionID.bluetooth: BluetoothControl(),
+        LaunchpadActionID.wifi: WiFiControl(),
+        LaunchpadActionID.theme: ThemeControl(),
+        LaunchpadActionID.battery: BatteryControl(),
+        LaunchpadActionID.restart: RestartControl(),
+        LaunchpadActionID.shutdown: ShutdownControl(),
+        LaunchpadActionID.mic: MicControl(),
+        LaunchpadActionID.keepAwake: KeepAwakeControl(),
+        LaunchpadActionID.screensaver: ScreensaverControl(),
     ]
 
     static func adapter(for actionID: String) -> (any SystemControl)? {
