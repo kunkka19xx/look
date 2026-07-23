@@ -628,6 +628,7 @@ struct LauncherView: View {
         .onAppear {
             refreshSearchResults()
             configureLaunchpadIfNeeded()
+            Task { await launchpadController.refreshStates() }
             Task { await launchpadController.refreshWeather() }
             startKeyboardNavigationIfNeeded()
             focusActiveInput()

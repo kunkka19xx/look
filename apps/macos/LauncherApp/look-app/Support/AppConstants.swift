@@ -354,9 +354,11 @@ enum AppConstants {
             static let captionFontSize: CGFloat = 10.5
             static let smallLabelFontSize: CGFloat = 10.5
 
+            /// Shown in a read-only info tile (e.g. Battery) before its adapter
+            /// resolves a value, or when the value is unavailable.
+            static let infoPlaceholderValue = "--"
             /// Placeholder values used while the layout-only pass has no live
             /// system reads wired up (see docs; controls land per follow-up PR).
-            static let mockBatteryValue = "84%"
             static let mockNowPlayingTitle = "Not playing"
             /// Placeholder shown in the Weather tile until the live source lands.
             static let weatherPlaceholderValue = "--°"

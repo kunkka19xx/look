@@ -4,28 +4,30 @@ import Observation
 /// Holds the interactive state for the empty-state launchpad and routes tile
 /// activations (clicks and Command-mnemonics) to it.
 ///
-/// This is the layout-only pass: toggles and the mic/now-playing controls flip
-/// local mock state, and Restart / Shut Down open an inline confirm that fires a
-/// banner instead of a real power action. Wiring each tile to a live
-/// `SystemControl` adapter (Wi-Fi, Theme, Focus, Saver, Mic, ...) lands in
-/// follow-up PRs; only this controller and the native reads change then.
+/// Tiles backed by a native `SystemControl` (via `ActionAdapterRegistry`) read
+/// and drive real system state; tiles whose adapter has not been written yet
+/// fall back to local mock state, so each control goes live the moment its
+/// adapter is registered, without touching this controller. Restart / Shut Down
+/// open an inline confirm before running.
 @MainActor
 @Observable
 final class LaunchpadController {
-    /// On/off state for the stateful toggle tiles, keyed by `action_id`.
-    /// Seeded with representative mock values for the layout pass.
+    /// Mock on/off state for toggle tiles that have no native adapter yet. An
+    /// adapter-backed tile ignores this and reads `systemStates` instead.
     private(set) var toggles: [String: Bool] = [
-        LaunchpadActionID.bluetooth: false,
-        LaunchpadActionID.wifi: true,
-        LaunchpadActionID.theme: true,
         LaunchpadActionID.focus: false,
         LaunchpadActionID.saver: false,
     ]
 
-    /// Mic mute state (true = muted); rendered amber when muted.
+    /// Live state for adapter-backed tiles, keyed by `action_id`, refreshed from
+    /// each control's `state()` read.
+    private(set) var systemStates: [String: ActionState] = [:]
+
+    /// Mic mute state (true = muted); rendered amber when muted. Mock until a Mic
+    /// adapter lands.
     private(set) var micMuted = false
 
-    /// Now Playing transport state (mock).
+    /// Now Playing transport state. Mock until a Now Playing adapter lands.
     private(set) var isPlaying = false
 
     /// Latest resolved weather for the Weather tile, or nil until the first
@@ -40,11 +42,23 @@ final class LaunchpadController {
     /// The tile layout, needed to resolve a pressed mnemonic to a tile.
     private var tiles: [LaunchpadTileModel] = []
 
-    /// Called to surface a short banner for mock actions. Set by the view.
+    /// Called to surface a short banner for action feedback. Set by the view.
     var onBanner: ((String) -> Void)?
 
     func configure(tiles: [LaunchpadTileModel]) {
         self.tiles = tiles
+    }
+
+    /// Reads the current state of every adapter-backed tile. Called on launcher
+    /// open so the strip reflects reality; tiles without an adapter are skipped
+    /// and keep their mock fallback.
+    func refreshStates() async {
+        var resolved: [String: ActionState] = [:]
+        for tile in tiles {
+            guard let adapter = ActionAdapterRegistry.adapter(for: tile.actionId) else { continue }
+            resolved[tile.actionId] = await adapter.state()
+        }
+        systemStates = resolved
     }
 
     /// Resolves the Weather tile's value. Cheap to call on every launcher open:
@@ -58,11 +72,23 @@ final class LaunchpadController {
     }
 
     func isOn(_ actionID: String) -> Bool {
-        toggles[actionID] ?? false
+        if ActionAdapterRegistry.adapter(for: actionID) != nil {
+            return systemStates[actionID] == .on
+        }
+        return toggles[actionID] ?? false
     }
 
-    /// Activates a tile: toggles flip, Mic mutes, Now Playing plays/pauses, and
-    /// the destructive tiles open (or confirm) the inline confirm prompt.
+    /// The display value for a read-only info tile (e.g. Battery), taken from its
+    /// adapter's `.value` state. Nil while unavailable or not yet read, so the
+    /// tile can show a placeholder.
+    func displayValue(for actionID: String) -> String? {
+        if case .value(let text) = systemStates[actionID] { return text }
+        return nil
+    }
+
+    /// Activates a tile. Destructive tiles gate on an inline confirm first;
+    /// everything else routes to its native adapter when one exists, and falls
+    /// back to mock state otherwise.
     func activate(_ tile: LaunchpadTileModel) {
         // Any activation other than confirming the pending tile clears a stale
         // confirm, so the prompt never lingers on an unrelated press.
@@ -70,31 +96,33 @@ final class LaunchpadController {
             pendingConfirmActionID = nil
         }
 
-        switch tile.actionId {
-        case LaunchpadActionID.restart, LaunchpadActionID.shutdown:
+        if tile.actionId == LaunchpadActionID.restart || tile.actionId == LaunchpadActionID.shutdown {
             if pendingConfirmActionID == tile.actionId {
                 confirmPending()
             } else {
                 pendingConfirmActionID = tile.actionId
             }
-        case LaunchpadActionID.mic:
-            micMuted.toggle()
-            onBanner?(micMuted ? "Mic muted" : "Mic on")
-        case LaunchpadActionID.nowPlaying:
-            isPlaying.toggle()
-        default:
-            if tile.role == .toggle {
-                toggles[tile.actionId] = !isOn(tile.actionId)
-            }
+            return
+        }
+
+        if let adapter = ActionAdapterRegistry.adapter(for: tile.actionId) {
+            perform(intent(for: tile), on: adapter, actionID: tile.actionId)
+        } else {
+            activateMock(tile)
         }
     }
 
-    /// Fires the pending destructive action (mock) and clears the prompt.
+    /// Fires the pending destructive action, then clears the prompt. Routes to a
+    /// native adapter when one is registered; otherwise reports a demo banner.
     func confirmPending() {
         guard let actionID = pendingConfirmActionID else { return }
-        let label = actionID == LaunchpadActionID.restart ? "Restart" : "Shut Down"
-        onBanner?("\(label) (demo)")
         pendingConfirmActionID = nil
+        if let adapter = ActionAdapterRegistry.adapter(for: actionID) {
+            perform(.run, on: adapter, actionID: actionID)
+        } else {
+            let label = actionID == LaunchpadActionID.restart ? "Restart" : "Shut Down"
+            onBanner?("\(label) (demo)")
+        }
     }
 
     /// Cancels the inline confirm. Returns true if a prompt was actually
@@ -116,5 +144,49 @@ final class LaunchpadController {
         }) else { return false }
         activate(tile)
         return true
+    }
+
+    // MARK: - Adapter routing
+
+    /// The intent a tile's role maps to. Toggles and Mic flip; Now Playing runs
+    /// its transport. Restart / Shut Down are handled via the confirm path.
+    private func intent(for tile: LaunchpadTileModel) -> ActionIntent {
+        switch tile.role {
+        case .media: return .run
+        default: return .toggle
+        }
+    }
+
+    /// Applies an intent to an adapter off the main run loop, reports the
+    /// outcome, then re-reads the control's state so the tile reflects reality.
+    private func perform(_ intent: ActionIntent, on adapter: any SystemControl, actionID: String) {
+        Task {
+            report(await adapter.apply(intent))
+            systemStates[actionID] = await adapter.state()
+        }
+    }
+
+    private func report(_ outcome: ActionOutcome) {
+        switch outcome {
+        case .ok(let banner):
+            if let banner { onBanner?(banner) }
+        case .failed(let message), .needsPermission(let message):
+            onBanner?(message)
+        }
+    }
+
+    /// Fallback behavior for tiles without a native adapter: flip local state.
+    private func activateMock(_ tile: LaunchpadTileModel) {
+        switch tile.actionId {
+        case LaunchpadActionID.mic:
+            micMuted.toggle()
+            onBanner?(micMuted ? "Mic muted" : "Mic on")
+        case LaunchpadActionID.nowPlaying:
+            isPlaying.toggle()
+        default:
+            if tile.role == .toggle {
+                toggles[tile.actionId] = !(toggles[tile.actionId] ?? false)
+            }
+        }
     }
 }

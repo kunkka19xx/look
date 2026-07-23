@@ -111,7 +111,11 @@ struct EmptyStateLaunchpadView: View {
                 themeStore: themeStore
             ) { controller.activate(model) }
         case .info:
-            LaunchpadInfoTile(model: model, value: Const.mockBatteryValue, themeStore: themeStore)
+            LaunchpadInfoTile(
+                model: model,
+                value: controller.displayValue(for: model.actionId) ?? Const.infoPlaceholderValue,
+                themeStore: themeStore
+            )
         case .action:
             LaunchpadActionTile(
                 model: model,
