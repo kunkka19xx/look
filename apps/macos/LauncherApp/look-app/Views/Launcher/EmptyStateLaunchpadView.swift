@@ -295,17 +295,23 @@ private struct LaunchpadActionTile: View {
                     tintOpacity: (confirming || micMuted) ? launchpadAlertTintOpacity : 0
                 )
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: Const.cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        (confirming || micMuted)
-                            ? tint.opacity(launchpadAlertBorderOpacity)
-                            : themeStore.dividerColor().opacity(launchpadRestingBorderOpacity),
-                        lineWidth: launchpadBorderWidth
-                    )
-            )
+            .overlay(border)
         }
         .buttonStyle(.plain)
+    }
+
+    /// An armed confirm or a muted mic always draws its coloured state border, so
+    /// it stays visible even under a borderless (0-thickness) theme. A resting
+    /// tile defers to the theme border, matching the panel and search-result
+    /// tiles, and disappears with them when the border is turned off.
+    @ViewBuilder
+    private var border: some View {
+        let shape = RoundedRectangle(cornerRadius: Const.cornerRadius, style: .continuous)
+        if confirming || micMuted {
+            shape.strokeBorder(tint.opacity(launchpadAlertBorderOpacity), lineWidth: launchpadStateBorderWidth)
+        } else if themeStore.borderLineWidth() > 0 {
+            shape.strokeBorder(themeStore.borderColor(), lineWidth: themeStore.borderLineWidth())
+        }
     }
 
     private var iconName: String {
@@ -383,11 +389,11 @@ private let launchpadOnTintOpacity = 0.22
 /// takes its hue from `tint` rather than baking one in here.
 private let launchpadAlertTintOpacity = 0.16
 
-/// Tile borders. Every tile rests on the same neutral divider so the strip reads
-/// as one surface; colour is reserved for a state the user just entered, an
-/// on-state toggle or an armed confirm, never for a tile sitting idle.
-private let launchpadBorderWidth: CGFloat = 1
-private let launchpadRestingBorderOpacity = 0.4
+/// State-border chrome. A resting tile takes the user's theme border (see
+/// `tileBorder` / `LaunchpadActionTile.border`); these values govern only the
+/// coloured overlays a tile draws for a state the user just entered, an on-state
+/// toggle or an armed confirm, which stay visible even under a borderless theme.
+private let launchpadStateBorderWidth: CGFloat = 1
 private let launchpadOnBorderOpacity = 0.35
 private let launchpadAlertBorderOpacity = 0.3
 
@@ -409,13 +415,16 @@ func frostedTile(themeStore: ThemeStore, tint: Color? = nil, tintOpacity: Double
     .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
 }
 
+/// The border for a toggle or slot tile. An on-state toggle always draws its
+/// accent outline so the active state stays legible under any theme; a resting
+/// tile defers to the theme border (panel + search-result parity) and vanishes
+/// with it when the border is turned off.
+@ViewBuilder
 private func tileBorder(isOn: Bool, themeStore: ThemeStore) -> some View {
-    let radius = AppConstants.Launcher.Launchpad.cornerRadius
-    return RoundedRectangle(cornerRadius: radius, style: .continuous)
-        .strokeBorder(
-            isOn
-                ? themeStore.accentColor().opacity(launchpadOnBorderOpacity)
-                : themeStore.dividerColor().opacity(launchpadRestingBorderOpacity),
-            lineWidth: launchpadBorderWidth
-        )
+    let shape = RoundedRectangle(cornerRadius: AppConstants.Launcher.Launchpad.cornerRadius, style: .continuous)
+    if isOn {
+        shape.strokeBorder(themeStore.accentColor().opacity(launchpadOnBorderOpacity), lineWidth: launchpadStateBorderWidth)
+    } else if themeStore.borderLineWidth() > 0 {
+        shape.strokeBorder(themeStore.borderColor(), lineWidth: themeStore.borderLineWidth())
+    }
 }
