@@ -27,14 +27,25 @@ final class LaunchpadController {
     /// adapter lands.
     private(set) var micMuted = false
 
-    /// Now Playing transport state. Mock until a Now Playing adapter lands.
-    private(set) var isPlaying = false
-
     /// Latest resolved weather for the Weather tile, or nil until the first
     /// successful fetch (the tile shows a placeholder meanwhile).
     private(set) var weather: WeatherSnapshot?
 
     private let weatherService = WeatherService.shared
+
+    /// The system-wide now-playing track (any app), or nil when nothing plays.
+    private(set) var nowPlaying: NowPlayingSnapshot?
+
+    /// When the last transport command was issued. A background poll ignores a
+    /// read for this long afterward so it cannot clobber the optimistic update
+    /// before the command has settled; the forced reconcile applies the truth.
+    @ObservationIgnored private var lastNowPlayingCommandAt = Date.distantPast
+    @ObservationIgnored private var nowPlayingReconcile: Task<Void, Never>?
+
+    /// Delay before re-reading after a command (commands apply asynchronously).
+    private static let nowPlayingSettleNanos: UInt64 = 350_000_000
+    /// A poll read is skipped when a command was issued within this window.
+    private static let nowPlayingCommandGuard: TimeInterval = 0.4
 
     /// The destructive tile currently awaiting an inline confirm, or nil.
     private(set) var pendingConfirmActionID: String?
@@ -71,6 +82,50 @@ final class LaunchpadController {
         weather = await weatherService.currentWeather()
     }
 
+    /// Reads the current system-wide now-playing track. `force` bypasses the
+    /// post-command guard and is used by the reconcile after a transport command;
+    /// the periodic poll passes `force: false` so it never overrides a fresh
+    /// optimistic update mid-flight.
+    func refreshNowPlaying(force: Bool = false) async {
+        if !force, Date().timeIntervalSince(lastNowPlayingCommandAt) < Self.nowPlayingCommandGuard {
+            return
+        }
+        nowPlaying = await SystemNowPlaying.shared.current()
+    }
+
+    /// Toggles play/pause on whatever app owns system now-playing.
+    func nowPlayingToggle() {
+        // Optimistic: flip immediately so the button responds without waiting for
+        // the read; the reconcile confirms the real state shortly after.
+        if let current = nowPlaying {
+            nowPlaying = NowPlayingSnapshot(
+                title: current.title,
+                artist: current.artist,
+                app: current.app,
+                isPlaying: !current.isPlaying
+            )
+        }
+        issueNowPlayingCommand(.togglePlayPause)
+    }
+
+    /// Skips the current system media to the next track.
+    func nowPlayingNext() { issueNowPlayingCommand(.nextTrack) }
+
+    /// Returns the current system media to the previous track.
+    func nowPlayingPrevious() { issueNowPlayingCommand(.previousTrack) }
+
+    /// Sends a transport command, then re-reads once the change has settled.
+    private func issueNowPlayingCommand(_ command: SystemNowPlaying.Command) {
+        lastNowPlayingCommandAt = Date()
+        SystemNowPlaying.shared.send(command)
+        nowPlayingReconcile?.cancel()
+        nowPlayingReconcile = Task {
+            try? await Task.sleep(nanoseconds: Self.nowPlayingSettleNanos)
+            guard !Task.isCancelled else { return }
+            await refreshNowPlaying(force: true)
+        }
+    }
+
     func isOn(_ actionID: String) -> Bool {
         if ActionAdapterRegistry.adapter(for: actionID) != nil {
             return systemStates[actionID] == .on
@@ -102,6 +157,13 @@ final class LaunchpadController {
             } else {
                 pendingConfirmActionID = tile.actionId
             }
+            return
+        }
+
+        // Now Playing reflects and controls the system-wide media (any app), not a
+        // SystemControl adapter, so the play/pause key routes a transport command.
+        if tile.actionId == LaunchpadActionID.nowPlaying {
+            nowPlayingToggle()
             return
         }
 
@@ -181,8 +243,6 @@ final class LaunchpadController {
         case LaunchpadActionID.mic:
             micMuted.toggle()
             onBanner?(micMuted ? "Mic muted" : "Mic on")
-        case LaunchpadActionID.nowPlaying:
-            isPlaying.toggle()
         default:
             if tile.role == .toggle {
                 toggles[tile.actionId] = !(toggles[tile.actionId] ?? false)

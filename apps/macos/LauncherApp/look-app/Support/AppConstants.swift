@@ -357,9 +357,11 @@ enum AppConstants {
             /// Shown in a read-only info tile (e.g. Battery) before its adapter
             /// resolves a value, or when the value is unavailable.
             static let infoPlaceholderValue = "--"
-            /// Placeholder values used while the layout-only pass has no live
-            /// system reads wired up (see docs; controls land per follow-up PR).
-            static let mockNowPlayingTitle = "Not playing"
+            /// Now Playing caption when nothing is playing on the system.
+            static let nowPlayingIdleTitle = "Nothing playing"
+            /// How often to re-read system now-playing while the launcher is open,
+            /// so external changes (pausing in a browser) are reflected.
+            static let nowPlayingPollSeconds: TimeInterval = 1.5
             /// Placeholder shown in the Weather tile until the live source lands.
             static let weatherPlaceholderValue = "--°"
         }

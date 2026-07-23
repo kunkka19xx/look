@@ -1,15 +1,10 @@
-import AppKit
 import Foundation
-import OSLog
 
 /// Toggles and reports the system appearance. "On" means Dark. Action id:
 /// `"theme"`. The current setting is read from the global `AppleInterfaceStyle`
 /// default; switching it drives System Events via AppleScript, which needs
 /// Automation consent (prompted on first use, entitlement already declared).
 struct ThemeControl: SystemControl {
-    private static let log = Logger(subsystem: "noah-code.Look", category: "actions.theme")
-    /// `errAEEventNotPermitted`: the user hasn't granted Automation access yet.
-    private static let notPermittedCode = -1743
     private static let interfaceStyleKey = "AppleInterfaceStyle"
     private static let darkStyleValue = "dark"
 
@@ -34,7 +29,6 @@ struct ThemeControl: SystemControl {
         UserDefaults.standard.string(forKey: Self.interfaceStyleKey)?.lowercased() == Self.darkStyleValue
     }
 
-    /// Runs on the main actor: NSAppleScript is not thread-safe.
     @MainActor
     private static func setDarkMode(_ dark: Bool) -> ActionOutcome {
         let source = """
@@ -44,18 +38,10 @@ struct ThemeControl: SystemControl {
             end tell
         end tell
         """
-        var error: NSDictionary?
-        NSAppleScript(source: source)?.executeAndReturnError(&error)
-        if let error {
-            log.error("theme apply failed: \(error, privacy: .public)")
-            let code = (error[NSAppleScript.errorNumber] as? Int) ?? 0
-            if code == notPermittedCode {
-                return .needsPermission(
-                    "Allow Look under System Settings > Privacy & Security > Automation"
-                )
-            }
-            return .failed("Could not switch theme")
-        }
-        return .ok(banner: dark ? "Dark theme" : "Light theme")
+        return AppleScriptRunner.run(
+            source,
+            successBanner: dark ? "Dark theme" : "Light theme",
+            failureMessage: "Could not switch theme"
+        )
     }
 }

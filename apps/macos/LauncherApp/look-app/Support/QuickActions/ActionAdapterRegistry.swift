@@ -15,6 +15,8 @@ enum ActionAdapterRegistry {
         LaunchpadActionID.wifi: WiFiControl(),
         LaunchpadActionID.theme: ThemeControl(),
         LaunchpadActionID.battery: BatteryControl(),
+        LaunchpadActionID.restart: RestartControl(),
+        LaunchpadActionID.shutdown: ShutdownControl(),
     ]
 
     static func adapter(for actionID: String) -> (any SystemControl)? {
