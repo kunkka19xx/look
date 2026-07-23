@@ -54,7 +54,7 @@ struct EmptyStateLaunchpadView: View {
     //
     // The spec's fixed order tiles a 6-column grid as three rows:
     //   row 0/1 cols 0-1: L slot (2x2) | cols 2-4: BT, Wi-Fi, Battery
-    //                                   |          Theme, Focus, Saver
+    //                                   |          Theme, Keep Awake, Screensaver
     //                                   | col 5:   Weather (1x2)
     //   row 2 cols 0-5: Mic, Restart, Shut Down, Now Playing(3)
     // SwiftUI has no cell spanning, so the arrangement is composed explicitly
@@ -75,8 +75,8 @@ struct EmptyStateLaunchpadView: View {
                     }
                     HStack(spacing: Const.gap) {
                         tileView(LaunchpadActionID.theme, cell: cell)
-                        tileView(LaunchpadActionID.focus, cell: cell)
-                        tileView(LaunchpadActionID.saver, cell: cell)
+                        tileView(LaunchpadActionID.keepAwake, cell: cell)
+                        tileView(LaunchpadActionID.screensaver, cell: cell)
                     }
                 }
 
@@ -182,7 +182,7 @@ private func mnemonicText(
 
 // MARK: - Tiles
 
-/// A stateful on/off tile (Bluetooth, Wi-Fi, Theme, Focus, Saver). On uses the
+/// A stateful on/off tile (Bluetooth, Wi-Fi, Theme, Keep Awake). On uses the
 /// accent color plus a subtle accent border.
 private struct LaunchpadToggleTile: View {
     let model: LaunchpadTileModel
@@ -237,8 +237,7 @@ private struct LaunchpadToggleTile: View {
         case LaunchpadActionID.bluetooth: return "antenna.radiowaves.left.and.right"
         case LaunchpadActionID.wifi: return "wifi"
         case LaunchpadActionID.theme: return isOn ? "moon.fill" : "sun.max.fill"
-        case LaunchpadActionID.focus: return "moon.circle.fill"
-        case LaunchpadActionID.saver: return "bolt.fill"
+        case LaunchpadActionID.keepAwake: return isOn ? "cup.and.saucer.fill" : "cup.and.saucer"
         default: return "circle"
         }
     }
@@ -402,6 +401,7 @@ private struct LaunchpadActionTile: View {
         case LaunchpadActionID.mic: return micMuted ? "mic.slash.fill" : "mic.fill"
         case LaunchpadActionID.restart: return "arrow.clockwise"
         case LaunchpadActionID.shutdown: return "power"
+        case LaunchpadActionID.screensaver: return "display"
         default: return "circle"
         }
     }

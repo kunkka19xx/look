@@ -18,6 +18,8 @@ enum ActionAdapterRegistry {
         LaunchpadActionID.restart: RestartControl(),
         LaunchpadActionID.shutdown: ShutdownControl(),
         LaunchpadActionID.mic: MicControl(),
+        LaunchpadActionID.keepAwake: KeepAwakeControl(),
+        LaunchpadActionID.screensaver: ScreensaverControl(),
     ]
 
     static func adapter(for actionID: String) -> (any SystemControl)? {

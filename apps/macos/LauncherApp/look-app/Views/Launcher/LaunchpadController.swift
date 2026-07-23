@@ -12,12 +12,11 @@ import Observation
 @MainActor
 @Observable
 final class LaunchpadController {
-    /// Mock on/off state for toggle tiles that have no native adapter yet. An
-    /// adapter-backed tile ignores this and reads `systemStates` instead.
-    private(set) var toggles: [String: Bool] = [
-        LaunchpadActionID.focus: false,
-        LaunchpadActionID.saver: false,
-    ]
+    /// Mock on/off state for toggle tiles that have no native adapter yet, the
+    /// framework's graceful fallback. Currently empty: every launchpad toggle is
+    /// adapter-backed. An adapter-backed tile ignores this and reads
+    /// `systemStates` instead.
+    private(set) var toggles: [String: Bool] = [:]
 
     /// Live state for adapter-backed tiles, keyed by `action_id`, refreshed from
     /// each control's `state()` read.
@@ -210,13 +209,14 @@ final class LaunchpadController {
 
     // MARK: - Adapter routing
 
-    /// The intent a tile's role maps to. Toggles and Mic flip; Now Playing runs
-    /// its transport. Restart / Shut Down are handled via the confirm path.
+    /// The intent a tile maps to. A tile that carries on/off captions is a
+    /// toggle (flip it: Bluetooth, Wi-Fi, Theme, Keep Awake, Mic mute); a
+    /// label-less action is a fire-once button (Screensaver). Restart / Shut Down
+    /// take the confirm path and Now Playing its own transport, so neither
+    /// reaches here.
     private func intent(for tile: LaunchpadTileModel) -> ActionIntent {
-        switch tile.role {
-        case .media: return .run
-        default: return .toggle
-        }
+        if tile.role == .toggle { return .toggle }
+        return tile.offLabel == nil ? .run : .toggle
     }
 
     /// Applies an intent to an adapter off the main run loop, reports the
@@ -237,8 +237,9 @@ final class LaunchpadController {
         }
     }
 
-    /// Fallback behavior for toggle tiles without a native adapter: flip local
-    /// state. (Focus and Saver, until their adapters land.)
+    /// Fallback behavior for a toggle tile without a native adapter: flip local
+    /// state. Unused while every launchpad toggle is adapter-backed; kept as the
+    /// framework's graceful path for a future tile added ahead of its adapter.
     private func activateMock(_ tile: LaunchpadTileModel) {
         if tile.role == .toggle {
             toggles[tile.actionId] = !(toggles[tile.actionId] ?? false)
