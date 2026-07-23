@@ -63,7 +63,7 @@ final class WeatherService {
     /// otherwise fetching from the network. Returns the last cached reading (or
     /// nil) when the network is unavailable, so the tile degrades gracefully.
     func currentWeather() async -> WeatherSnapshot? {
-        if let cached = cachedWeather(), age(of: cached.fetchedAt) < Self.weatherMaxAge {
+        if let cached = usableCachedWeather(), age(of: cached.fetchedAt) < Self.weatherMaxAge {
             return snapshot(from: cached)
         }
 
@@ -74,7 +74,7 @@ final class WeatherService {
             return snapshot(from: reading)
         } catch {
             log.error("Weather refresh failed: \(error.localizedDescription, privacy: .public)")
-            return cachedWeather().map(snapshot(from:))
+            return usableCachedWeather().map(snapshot(from:))
         }
     }
 
@@ -193,6 +193,16 @@ final class WeatherService {
 
     private func cachedWeather() -> CachedWeather? {
         cached(CachedWeather.self, forKey: Self.cachedWeatherKey)
+    }
+
+    /// The cached reading, but only when it was captured in the unit the current
+    /// locale wants. After a region change the old value is in the wrong unit, so
+    /// it is discarded to force a refetch rather than shown as a bare degree.
+    private func usableCachedWeather() -> CachedWeather? {
+        guard let cached = cachedWeather(), cached.isFahrenheit == usesFahrenheit else {
+            return nil
+        }
+        return cached
     }
 
     private func cached<T: Decodable>(_ type: T.Type, forKey key: String) -> T? {

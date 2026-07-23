@@ -76,12 +76,14 @@ struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
     var id: String { actionId }
 
     /// Effective column span: the per-tile override when present, else the
-    /// natural width of the tile size.
-    var columnSpan: Int { span ?? size.columns }
+    /// natural width of the tile size. Clamped to at least 1 so a malformed
+    /// catalog value can never produce a zero/negative tile width.
+    var columnSpan: Int { max(1, span ?? size.columns) }
 
     /// Effective row span: the per-tile override when present, else the natural
-    /// height of the tile size.
-    var rowSpanCount: Int { rowSpan ?? size.rows }
+    /// height of the tile size. Clamped to at least 1 for the same reason as
+    /// `columnSpan`.
+    var rowSpanCount: Int { max(1, rowSpan ?? size.rows) }
 
     private enum CodingKeys: String, CodingKey {
         case actionId, title, size, role, mnemonic, span, rowSpan, onLabel, offLabel
