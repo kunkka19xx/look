@@ -1,0 +1,67 @@
+/* Smooth caret (js/components/smoothcaret.js). The native caret is hidden and a
+ * custom bar glides to the cursor. Used by the main search input and the
+ * command-mode input bars. */
+
+#query,
+.cmd-input-bar input {
+    caret-color: transparent;
+}
+
+/* The custom caret is absolutely positioned inside the bar; .search-bar is
+ * already relative (layout.css), the command bars need it too. */
+.cmd-input-bar {
+    position: relative;
+}
+
+.smooth-caret {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 2px;
+    height: 1.15em;
+    margin-top: -0.575em;
+    border-radius: 1px;
+    background: var(--accent-color);
+    opacity: 0;
+    pointer-events: none;
+    /* Glide horizontally; transform stays on the compositor. */
+    transition: transform 105ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Visible only while the input is focused; blinks when idle. */
+.smooth-caret.is-on {
+    opacity: 1;
+    animation: smooth-caret-blink 1.05s steps(1, end) infinite;
+}
+
+/* Solid (no blink) while actively typing/moving. */
+.smooth-caret.is-on.is-typing {
+    animation: none;
+    opacity: 1;
+}
+
+@keyframes smooth-caret-blink {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .smooth-caret {
+        transition: none;
+    }
+}
+
+/* Off-screen measuring span: same font metrics as the input, never painted. */
+.smooth-caret-mirror {
+    position: absolute;
+    top: -9999px;
+    left: 0;
+    white-space: pre;
+    visibility: hidden;
+    pointer-events: none;
+}

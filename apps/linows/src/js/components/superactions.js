@@ -31,6 +31,7 @@ import {
 
 let container = null;
 let built = false;
+let visible = false;
 
 export function init(containerEl) {
     container = containerEl;
@@ -40,6 +41,10 @@ export function init(containerEl) {
  * Show or hide the control strip. Built lazily on first show so an app that
  * opens straight onto a query never pays for the DOM. Toggling the class on
  * the launcher window lets CSS trade the results row + hint bar for the strip.
+ *
+ * The reveal is animated (staggered tile fade-in); hiding is instant so typing
+ * hands the space to the results list with no lag. A redundant show while
+ * already visible is a no-op, so per-keystroke syncs don't replay the reveal.
  */
 export function setVisible(show) {
     if (!container) return;
@@ -47,12 +52,31 @@ export function setVisible(show) {
         render();
         built = true;
     }
+    if (show === visible) return;
+    visible = show;
     container.hidden = !show;
     document.documentElement.classList.toggle('controls-open', show);
+    if (show) playEnter();
+}
+
+/**
+ * Replay the entrance. Called when the window is re-summoned so the launchpad
+ * animates in each time it appears, not only on first build.
+ */
+export function replayEnter() {
+    if (visible) playEnter();
+}
+
+// Restart the staggered CSS animation: drop the class, force a reflow so the
+// browser sees a clean start, then re-add it.
+function playEnter() {
+    container.classList.remove('is-entering');
+    void container.offsetWidth;
+    container.classList.add('is-entering');
 }
 
 export function isVisible() {
-    return !!container && !container.hidden;
+    return visible;
 }
 
 function render() {
@@ -73,6 +97,9 @@ function render() {
         actionTile('shut', power, 'Shut Down', 'danger'),
         nowPlayingTile(),
     );
+
+    // Per-tile index drives the entrance stagger (CSS animation-delay).
+    [...grid.children].forEach((el, i) => el.style.setProperty('--i', i));
 
     container.innerHTML = '';
     container.appendChild(grid);
