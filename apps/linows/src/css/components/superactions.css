@@ -36,6 +36,15 @@ html.controls-open #hint-bar {
  * the bare desktop (bar-free) exactly like .pane-tile does. */
 .ctl-tile {
     position: relative;
+    /* No per-tile backdrop-filter. On WebKitGTK a rounded, backdrop-filtered
+     * surface leaves a light seam at the corners (obvious at border thickness
+     * 0), and 12 live blur surfaces is a real per-frame cost. Without blur to
+     * smear it, a translucent tile face lets sharp desktop text read through in
+     * floating mode (the window behind is transparent). So the face is stacked
+     * to effectively opaque from the tint tokens: control-fill over a doubled
+     * bg-tint pushes transmittance under ~1%, a solid card that still carries
+     * the theme color and antialiases its corners cleanly. */
+    isolation: isolate;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -44,9 +53,8 @@ html.controls-open #hint-bar {
     color: var(--font-color);
     background-image:
         linear-gradient(var(--control-fill), var(--control-fill)),
+        linear-gradient(var(--bg-tint), var(--bg-tint)),
         linear-gradient(var(--bg-tint), var(--bg-tint));
-    backdrop-filter: blur(var(--blur-radius, 0px));
-    -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
     border: var(--border-thickness) solid var(--border-color);
     border-radius: 12px;
     box-shadow: 0 3px 7px rgba(0, 0, 0, 0.22);
@@ -54,7 +62,6 @@ html.controls-open #hint-bar {
     transition:
         border-color 0.12s ease,
         transform 0.06s ease;
-    overflow: hidden;
 }
 
 .ctl-tile:hover {
@@ -65,7 +72,8 @@ html.controls-open #hint-bar {
     transform: scale(0.985);
 }
 
-/* Active toggle: accent wash + border, icon and state pick up the accent. */
+/* Active toggle: accent wash + border, icon and state pick up the accent. The
+ * doubled bg-tint keeps the face opaque under the wash, same as the base tile. */
 .ctl-tile.is-active {
     background-image:
         linear-gradient(
@@ -73,6 +81,7 @@ html.controls-open #hint-bar {
             color-mix(in srgb, var(--accent-color) 18%, transparent)
         ),
         linear-gradient(var(--control-fill), var(--control-fill)),
+        linear-gradient(var(--bg-tint), var(--bg-tint)),
         linear-gradient(var(--bg-tint), var(--bg-tint));
     border-color: color-mix(in srgb, var(--accent-color) 34%, var(--border-color));
 }

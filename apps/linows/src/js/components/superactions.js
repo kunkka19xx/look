@@ -63,7 +63,7 @@ function render() {
         priorityTile(),
         toggleTile('bt', bluetooth, 'Bluetooth', 'On', true),
         toggleTile('wifi', wifi, 'Wi-Fi', 'On', true),
-        infoTile('batt', battery, 'Battery', '100%'),
+        powerInfoTile(),
         weatherTile(),
         toggleTile('theme', moon, 'Theme', 'Dark', true),
         toggleTile('keep', coffee, 'Keep Awake', 'Off', false),
@@ -129,7 +129,17 @@ function toggleTile(area, svg, label, state, active) {
     return el;
 }
 
-// M info (2x1): small-caps label above a large value (Battery).
+// Adaptive info slot: Battery on a laptop, Uptime on a desktop that has no
+// battery. The backend supplies `hasBattery` from its power-supply probe
+// (Linux /sys/class/power_supply, Windows GetSystemPowerStatus); the static
+// mock shows the battery case that matches the design reference.
+function powerInfoTile(hasBattery = true) {
+    return hasBattery
+        ? infoTile('batt', battery, 'Battery', '100%')
+        : infoTile('batt', clock, 'Uptime', '3d 4h');
+}
+
+// M info (2x1): small-caps label above a large value (Battery / Uptime).
 function infoTile(area, svg, label, value) {
     const el = tile(area, 'info');
     el.appendChild(iconSpan(svg));
