@@ -87,7 +87,7 @@ private struct LaunchpadTodoTile: View {
     }
 
     var body: some View {
-        LaunchpadSlotCard(themeStore: themeStore, iconName: "checklist", pill: "/todo") {
+        LaunchpadSlotCard(themeStore: themeStore, iconName: "checklist", pill: "/todo", showsClock: true) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("\(stat.done)/\(stat.total)")
@@ -135,7 +135,7 @@ private struct LaunchpadPomoTile: View {
     private var state: PomoState { PomoSharedState.shared }
 
     var body: some View {
-        LaunchpadSlotCard(themeStore: themeStore, iconName: "timer", pill: "/pomo") {
+        LaunchpadSlotCard(themeStore: themeStore, iconName: "timer", pill: "/pomo", showsClock: true) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(PomoCommand.formattedRemaining(state.secondsLeft))
                     .font(themeStore.uiFont(size: 30, weight: .bold))
@@ -190,21 +190,56 @@ private struct LaunchpadClockTile: View {
     }
 }
 
+// MARK: - Header clock
+
+/// A compact time + date shown in a slot card's header, so the current time
+/// stays visible while the Todo or Pomo slot occupies the tile (which otherwise
+/// hides the Clock slot).
+private struct LaunchpadHeaderClock: View {
+    var themeStore: ThemeStore
+
+    private typealias Const = AppConstants.Launcher.Launchpad
+
+    @State private var now = Date()
+
+    private let tickTimer = Timer.publish(
+        every: AppConstants.Launcher.Launchpad.clockTickSeconds,
+        on: .main,
+        in: .common
+    ).autoconnect()
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            Text(now, format: .dateTime.hour().minute())
+                .font(themeStore.uiFont(size: Const.captionFontSize + 2, weight: .semibold))
+                .foregroundColor(themeStore.secondaryTextColor())
+                .monospacedDigit()
+            Text(now, format: .dateTime.weekday().month().day())
+                .font(themeStore.uiFont(size: Const.captionFontSize - 1))
+                .foregroundColor(themeStore.mutedTextColor())
+        }
+        .onReceive(tickTimer) { now = $0 }
+    }
+}
+
 // MARK: - Shared L-slot card chrome
 
 /// The common 2x2 card frame: an icon badge in the top-left, an optional command
-/// pill in the top-right, and the slot's content pinned to the bottom.
+/// pill in the top-right, and the slot's content pinned to the bottom. When
+/// `showsClock` is set, a compact time + date sits in the header so it stays
+/// visible even while the Todo or Pomo slot occupies the tile.
 private struct LaunchpadSlotCard<Content: View>: View {
     var themeStore: ThemeStore
     let iconName: String
     let pill: String?
+    var showsClock: Bool = false
     @ViewBuilder var content: () -> Content
 
     private typealias Const = AppConstants.Launcher.Launchpad
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 11, style: .continuous)
                         .fill(themeStore.selectionFillColor())
@@ -214,6 +249,9 @@ private struct LaunchpadSlotCard<Content: View>: View {
                 }
                 .frame(width: 40, height: 40)
                 Spacer(minLength: 0)
+                if showsClock {
+                    LaunchpadHeaderClock(themeStore: themeStore)
+                }
                 if let pill {
                     Text(pill)
                         .font(themeStore.uiFont(size: Const.captionFontSize - 0.5))
