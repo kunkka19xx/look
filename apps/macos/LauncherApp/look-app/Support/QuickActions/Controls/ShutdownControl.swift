@@ -8,12 +8,10 @@ struct ShutdownControl: SystemControl {
 
     func apply(_ intent: ActionIntent) async -> ActionOutcome {
         guard intent == .run else { return .failed("Shut Down has no toggle") }
-        return await MainActor.run {
-            AppleScriptRunner.run(
-                "tell application \"System Events\" to shut down",
-                successBanner: "Shutting down…",
-                failureMessage: "Could not shut down"
-            )
-        }
+        return await AppleScriptRunner.run(
+            "tell application \"System Events\" to shut down",
+            successBanner: "Shutting down…",
+            failureMessage: "Could not shut down"
+        )
     }
 }

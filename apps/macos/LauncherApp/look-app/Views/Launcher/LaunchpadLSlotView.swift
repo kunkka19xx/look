@@ -1,14 +1,13 @@
 import Combine
 import SwiftUI
 
-/// The launchpad's L slot (2x2). Priority-driven and, per the spec, rotates
-/// every 5s with a crossfade when more than one source applies:
+/// The launchpad's L slot (2x2). Priority-driven, with a crossfade when the
+/// active source changes:
 ///
-/// - Todo when there are remaining tasks today.
-/// - Pomo when a Pomodoro session is running.
+/// - Pomo when a Pomodoro session is running (highest priority).
+/// - Todo when no session runs but tasks remain today.
 /// - Clock as the fallback when neither applies.
 ///
-/// Both active -> rotate Todo <-> Pomo; one active -> static; none -> Clock.
 /// This is the one launchpad tile wired to live state in the layout pass, since
 /// the Todo and Pomo stores already exist.
 struct LaunchpadLSlotView: View {
@@ -16,31 +15,18 @@ struct LaunchpadLSlotView: View {
 
     private typealias Const = AppConstants.Launcher.Launchpad
 
-    @State private var rotationIndex = 0
-
-    private let rotateTimer = Timer.publish(
-        every: AppConstants.Launcher.Launchpad.lSlotRotateSeconds,
-        on: .main,
-        in: .common
-    ).autoconnect()
-
     private enum Slot: Equatable { case todo, pomo, clock }
 
-    private var applicableSlots: [Slot] {
-        var slots: [Slot] = []
-        if todoRemaining > 0 { slots.append(.todo) }
-        if PomoSharedState.shared.activeIndex != nil { slots.append(.pomo) }
-        return slots
+    /// Pomo wins whenever a session is running; else Todo when tasks remain;
+    /// else the Clock fallback.
+    private var current: Slot {
+        if PomoSharedState.shared.activeIndex != nil { return .pomo }
+        if todoRemaining > 0 { return .todo }
+        return .clock
     }
 
     private var todoRemaining: Int {
         TodoSharedState.shared.today?.openCount ?? 0
-    }
-
-    private var current: Slot {
-        let slots = applicableSlots
-        guard !slots.isEmpty else { return .clock }
-        return slots[rotationIndex % slots.count]
     }
 
     var body: some View {
@@ -57,11 +43,6 @@ struct LaunchpadLSlotView: View {
         .id(current)
         .transition(.opacity)
         .animation(.easeInOut(duration: Const.rotateFadeSeconds), value: current)
-        .onReceive(rotateTimer) { _ in
-            let count = applicableSlots.count
-            guard count > 1 else { return }
-            rotationIndex = (rotationIndex + 1) % count
-        }
     }
 }
 

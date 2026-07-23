@@ -35,6 +35,8 @@ final class SystemNowPlaying: Sendable {
 
     private static let mediaRemotePath =
         "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote"
+    /// Kill the `osascript` read if it hangs past this, so the poll never stalls.
+    private static let readTimeout: TimeInterval = 4
 
     private typealias SendCommand = @convention(c) (Int32, CFDictionary?) -> Bool
     private let sendCommand: SendCommand?
@@ -80,8 +82,18 @@ final class SystemNowPlaying: Sendable {
             try process.run()
             input.fileHandleForWriting.write(Data(Self.readScript.utf8))
             input.fileHandleForWriting.closeFile()
+
+            // Guard against a hung osascript: terminate it after the timeout so
+            // the pipe closes, the blocking read returns, and current()'s
+            // continuation always resumes rather than stalling the poll.
+            let terminator = DispatchWorkItem {
+                if process.isRunning { process.terminate() }
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + Self.readTimeout, execute: terminator)
+
             let data = output.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
+            terminator.cancel()
             return Self.parse(data)
         } catch {
             log.error("now-playing read failed: \(error.localizedDescription, privacy: .public)")

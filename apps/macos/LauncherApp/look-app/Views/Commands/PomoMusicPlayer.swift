@@ -22,6 +22,9 @@ final class PomoMusicPlayer {
 
     @ObservationIgnored nonisolated(unsafe) private var player: AVPlayer?
     @ObservationIgnored nonisolated(unsafe) private var endObserver: NSObjectProtocol?
+    /// Remote-command handlers registered on the process-wide command center,
+    /// kept so `deinit` can remove them and never leave stale targets behind.
+    @ObservationIgnored nonisolated(unsafe) private var commandTargets: [(command: MPRemoteCommand, token: Any)] = []
 
     static let supportedExtensions: Set<String> = [
         "mp3", "m4a", "wav", "aac", "flac", "ogg", "aiff", "alac",
@@ -140,11 +143,14 @@ final class PomoMusicPlayer {
     }
 
     deinit {
-        // Inline cleanup so deinit stays nonisolated. Pause + observer
+        // Inline cleanup so deinit stays nonisolated. Pause + observer/target
         // removal are safe to call from any thread.
         player?.pause()
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
+        }
+        for entry in commandTargets {
+            entry.command.removeTarget(entry.token)
         }
     }
 
@@ -156,32 +162,40 @@ final class PomoMusicPlayer {
     // track-end observer above).
     private func configureRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
-        center.playCommand.addTarget { [weak self] _ in
+        register(center.playCommand) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, !self.isPlaying else { return }
                 self.togglePlay()
             }
             return .success
         }
-        center.pauseCommand.addTarget { [weak self] _ in
+        register(center.pauseCommand) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.isPlaying else { return }
                 self.togglePlay()
             }
             return .success
         }
-        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+        register(center.togglePlayPauseCommand) { [weak self] _ in
             MainActor.assumeIsolated { self?.togglePlay() }
             return .success
         }
-        center.nextTrackCommand.addTarget { [weak self] _ in
+        register(center.nextTrackCommand) { [weak self] _ in
             MainActor.assumeIsolated { self?.next() }
             return .success
         }
-        center.previousTrackCommand.addTarget { [weak self] _ in
+        register(center.previousTrackCommand) { [weak self] _ in
             MainActor.assumeIsolated { self?.prev() }
             return .success
         }
+    }
+
+    /// Adds a handler and keeps its token so `deinit` can remove it.
+    private func register(
+        _ command: MPRemoteCommand,
+        handler: @escaping (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus
+    ) {
+        commandTargets.append((command, command.addTarget(handler: handler)))
     }
 
     // Publish the current track and play state to the system. The system

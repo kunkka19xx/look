@@ -340,13 +340,11 @@ enum AppConstants {
             static let cornerRadius: CGFloat = 12
             static let outerTopPadding: CGFloat = 8
 
-            /// The L slot rotates Todo <-> Pomo every this often when both apply.
-            static let lSlotRotateSeconds: TimeInterval = 5
             /// The Todo tile cycles its next-task name at this cadence.
             static let todoTaskRotateSeconds: TimeInterval = 2.6
             /// The Clock tile only needs minute resolution; refresh coarsely.
             static let clockTickSeconds: TimeInterval = 20
-            /// Crossfade duration for the L slot swap.
+            /// Crossfade duration when the L slot's active source changes.
             static let rotateFadeSeconds: TimeInterval = 0.45
 
             static let titleFontSize: CGFloat = 12.5

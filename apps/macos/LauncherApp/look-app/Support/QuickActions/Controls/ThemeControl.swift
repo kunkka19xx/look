@@ -22,26 +22,21 @@ struct ThemeControl: SystemControl {
         case .run:
             return .failed("Theme has no run action")
         }
-        return await MainActor.run { Self.setDarkMode(target) }
+        let source = """
+        tell application "System Events"
+            tell appearance preferences
+                set dark mode to \(target ? "true" : "false")
+            end tell
+        end tell
+        """
+        return await AppleScriptRunner.run(
+            source,
+            successBanner: target ? "Dark theme" : "Light theme",
+            failureMessage: "Could not switch theme"
+        )
     }
 
     private func isDark() -> Bool {
         UserDefaults.standard.string(forKey: Self.interfaceStyleKey)?.lowercased() == Self.darkStyleValue
-    }
-
-    @MainActor
-    private static func setDarkMode(_ dark: Bool) -> ActionOutcome {
-        let source = """
-        tell application "System Events"
-            tell appearance preferences
-                set dark mode to \(dark ? "true" : "false")
-            end tell
-        end tell
-        """
-        return AppleScriptRunner.run(
-            source,
-            successBanner: dark ? "Dark theme" : "Light theme",
-            failureMessage: "Could not switch theme"
-        )
     }
 }

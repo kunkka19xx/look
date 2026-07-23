@@ -8,12 +8,10 @@ struct RestartControl: SystemControl {
 
     func apply(_ intent: ActionIntent) async -> ActionOutcome {
         guard intent == .run else { return .failed("Restart has no toggle") }
-        return await MainActor.run {
-            AppleScriptRunner.run(
-                "tell application \"System Events\" to restart",
-                successBanner: "Restarting…",
-                failureMessage: "Could not restart"
-            )
-        }
+        return await AppleScriptRunner.run(
+            "tell application \"System Events\" to restart",
+            successBanner: "Restarting…",
+            failureMessage: "Could not restart"
+        )
     }
 }
