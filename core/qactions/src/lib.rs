@@ -55,6 +55,9 @@ pub mod action_id {
     pub const SHUTDOWN: &str = "shutdown";
     pub const BATTERY: &str = "battery";
     pub const NOW_PLAYING: &str = "nowplaying";
+    /// A read-only weather tile. Presentational like Battery: no descriptor and
+    /// no native adapter, its value is resolved by each shell (see follow-up).
+    pub const WEATHER: &str = "weather";
     /// The launchpad's L slot: a presentational Todo/Pomo/Clock rotation, not a
     /// system control, so it has no descriptor and no native adapter.
     pub const L_SLOT: &str = "lslot";
@@ -131,6 +134,8 @@ pub enum TileRole {
     Action,
     /// Now Playing: track name plus a play/pause transport.
     Media,
+    /// Read-only weather (condition icon + temperature), resolved natively.
+    Weather,
     /// The rotating Todo / Pomo / Clock slot; rendered entirely by the shell.
     Slot,
 }
@@ -150,6 +155,9 @@ pub struct LaunchpadTile {
     /// Column span override, used by the Now Playing tile (spans 3). `None`
     /// falls back to the natural width of `size`.
     pub span: Option<u8>,
+    /// Row span override, used by the Weather tile (stands 2 rows tall in a
+    /// single column). `None` falls back to the natural height of `size`.
+    pub row_span: Option<u8>,
     /// On/off captions for toggle tiles (e.g. Theme's Dark/Light), from the
     /// shared descriptor. `None` for non-toggle tiles.
     pub on_label: Option<String>,
@@ -168,6 +176,7 @@ fn tile(action_id: &str, size: TileSize, role: TileRole, mnemonic: Option<char>)
         role,
         mnemonic,
         span: None,
+        row_span: None,
         on_label: descriptor.as_ref().and_then(|d| d.on_label.clone()),
         off_label: descriptor.and_then(|d| d.off_label),
     }
@@ -176,8 +185,11 @@ fn tile(action_id: &str, size: TileSize, role: TileRole, mnemonic: Option<char>)
 /// The fixed empty-state launchpad layout, in placement order. This exact order
 /// and these sizes tile the 6-column grid with no gaps in every state:
 ///
-/// L slot -> BT -> Wi-Fi -> Battery (M) -> Theme (M) -> Focus -> Saver -> Mic ->
-/// Restart -> Shut Down -> Now Playing (M, span 3).
+/// L slot -> BT -> Wi-Fi -> Battery -> Theme -> Focus -> Saver -> Weather ->
+/// Mic -> Restart -> Shut Down -> Now Playing (M, span 3).
+///
+/// Battery and Theme are single-column (S); the freed column on the right of the
+/// middle block is filled by the Weather tile, which stands two rows tall.
 ///
 /// The order and mnemonics are shared so every platform shell renders the same
 /// control strip; only the native state reads differ.
@@ -193,6 +205,19 @@ pub fn launchpad_layout() -> Vec<LaunchpadTile> {
         role: role::Media,
         mnemonic: Some('P'),
         span: Some(3),
+        row_span: None,
+        on_label: None,
+        off_label: None,
+    };
+
+    let weather = LaunchpadTile {
+        action_id: id::WEATHER.to_string(),
+        title: "Weather".to_string(),
+        size: size::S,
+        role: role::Weather,
+        mnemonic: None,
+        span: None,
+        row_span: Some(2),
         on_label: None,
         off_label: None,
     };
@@ -205,6 +230,7 @@ pub fn launchpad_layout() -> Vec<LaunchpadTile> {
             role: role::Slot,
             mnemonic: None,
             span: None,
+            row_span: None,
             on_label: None,
             off_label: None,
         },
@@ -213,16 +239,18 @@ pub fn launchpad_layout() -> Vec<LaunchpadTile> {
         LaunchpadTile {
             action_id: id::BATTERY.to_string(),
             title: "Battery".to_string(),
-            size: size::M,
+            size: size::S,
             role: role::Info,
             mnemonic: None,
             span: None,
+            row_span: None,
             on_label: None,
             off_label: None,
         },
-        tile(id::THEME, size::M, role::Toggle, Some('T')),
+        tile(id::THEME, size::S, role::Toggle, Some('T')),
         tile(id::FOCUS, size::S, role::Toggle, Some('F')),
         tile(id::SAVER, size::S, role::Toggle, Some('S')),
+        weather,
         tile(id::MIC, size::S, role::Action, Some('M')),
         tile(id::RESTART, size::S, role::Action, Some('R')),
         tile(id::SHUTDOWN, size::S, role::Action, Some('D')),
@@ -307,6 +335,7 @@ mod tests {
                 action_id::THEME,
                 action_id::FOCUS,
                 action_id::SAVER,
+                action_id::WEATHER,
                 action_id::MIC,
                 action_id::RESTART,
                 action_id::SHUTDOWN,
@@ -319,10 +348,11 @@ mod tests {
     fn launchpad_control_tiles_resolve_to_a_descriptor() {
         // Every tile backed by a system control must have a catalog descriptor so
         // its title/labels stay in sync; the presentational tiles (L slot,
-        // Battery, Now Playing) intentionally have none.
+        // Battery, Weather, Now Playing) intentionally have none.
         let presentational = [
             action_id::L_SLOT,
             action_id::BATTERY,
+            action_id::WEATHER,
             action_id::NOW_PLAYING,
         ];
         for tile in launchpad_layout() {
@@ -344,6 +374,18 @@ mod tests {
             .expect("now playing tile present");
         assert_eq!(now_playing.span, Some(3));
         assert_eq!(now_playing.role, TileRole::Media);
+    }
+
+    #[test]
+    fn weather_tile_stands_two_rows_tall() {
+        let layout = launchpad_layout();
+        let weather = layout
+            .iter()
+            .find(|t| t.action_id == action_id::WEATHER)
+            .expect("weather tile present");
+        assert_eq!(weather.size, TileSize::S);
+        assert_eq!(weather.row_span, Some(2));
+        assert_eq!(weather.role, TileRole::Weather);
     }
 
     #[test]

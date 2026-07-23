@@ -28,6 +28,12 @@ final class LaunchpadController {
     /// Now Playing transport state (mock).
     private(set) var isPlaying = false
 
+    /// Latest resolved weather for the Weather tile, or nil until the first
+    /// successful fetch (the tile shows a placeholder meanwhile).
+    private(set) var weather: WeatherSnapshot?
+
+    private let weatherService = WeatherService.shared
+
     /// The destructive tile currently awaiting an inline confirm, or nil.
     private(set) var pendingConfirmActionID: String?
 
@@ -39,6 +45,15 @@ final class LaunchpadController {
 
     func configure(tiles: [LaunchpadTileModel]) {
         self.tiles = tiles
+    }
+
+    /// Resolves the Weather tile's value. Cheap to call on every launcher open:
+    /// the service serves a fresh cache without touching the network and only
+    /// refetches once the reading goes stale.
+    func refreshWeather() async {
+        if let snapshot = await weatherService.currentWeather() {
+            weather = snapshot
+        }
     }
 
     func isOn(_ actionID: String) -> Bool {

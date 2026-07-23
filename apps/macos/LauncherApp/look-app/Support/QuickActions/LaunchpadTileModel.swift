@@ -18,6 +18,7 @@ enum LaunchpadActionID {
     static let restart = "restart"
     static let shutdown = "shutdown"
     static let battery = "battery"
+    static let weather = "weather"
     static let nowPlaying = "nowplaying"
 }
 
@@ -50,6 +51,7 @@ enum LaunchpadTileRole: String, Decodable {
     case info
     case action
     case media
+    case weather
     case slot
 }
 
@@ -64,6 +66,8 @@ struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
     let mnemonic: Character?
     /// Column-span override (Now Playing spans 3). Nil uses `size.columns`.
     let span: Int?
+    /// Row-span override (Weather stands 2 rows tall). Nil uses `size.rows`.
+    let rowSpan: Int?
     /// On/off captions for toggle tiles (e.g. Theme's Dark/Light). Nil for
     /// non-toggle tiles, which fall back to a generic On/Off.
     let onLabel: String?
@@ -75,8 +79,12 @@ struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
     /// natural width of the tile size.
     var columnSpan: Int { span ?? size.columns }
 
+    /// Effective row span: the per-tile override when present, else the natural
+    /// height of the tile size.
+    var rowSpanCount: Int { rowSpan ?? size.rows }
+
     private enum CodingKeys: String, CodingKey {
-        case actionId, title, size, role, mnemonic, span, onLabel, offLabel
+        case actionId, title, size, role, mnemonic, span, rowSpan, onLabel, offLabel
     }
 
     init(from decoder: Decoder) throws {
@@ -86,6 +94,7 @@ struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
         size = try container.decode(LaunchpadTileSize.self, forKey: .size)
         role = try container.decode(LaunchpadTileRole.self, forKey: .role)
         span = try container.decodeIfPresent(Int.self, forKey: .span)
+        rowSpan = try container.decodeIfPresent(Int.self, forKey: .rowSpan)
         onLabel = try container.decodeIfPresent(String.self, forKey: .onLabel)
         offLabel = try container.decodeIfPresent(String.self, forKey: .offLabel)
         // serde serializes a `char` as a single-character string; take its first

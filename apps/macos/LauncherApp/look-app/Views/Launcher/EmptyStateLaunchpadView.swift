@@ -45,8 +45,9 @@ struct EmptyStateLaunchpadView: View {
     // MARK: Layout
     //
     // The spec's fixed order tiles a 6-column grid as three rows:
-    //   row 0/1 cols 0-1: L slot (2x2)   | cols 2-5: BT, Wi-Fi, Battery(2)
-    //                                     |           Theme(2), Focus, Saver
+    //   row 0/1 cols 0-1: L slot (2x2) | cols 2-4: BT, Wi-Fi, Battery
+    //                                   |          Theme, Focus, Saver
+    //                                   | col 5:   Weather (1x2)
     //   row 2 cols 0-5: Mic, Restart, Shut Down, Now Playing(3)
     // SwiftUI has no cell spanning, so the arrangement is composed explicitly
     // from the known order rather than auto-packed.
@@ -70,6 +71,8 @@ struct EmptyStateLaunchpadView: View {
                         tileView(LaunchpadActionID.saver, cell: cell)
                     }
                 }
+
+                tileView(LaunchpadActionID.weather, cell: cell)
             }
 
             HStack(spacing: Const.gap) {
@@ -92,7 +95,7 @@ struct EmptyStateLaunchpadView: View {
     private func tileView(_ actionID: String, cell: CGFloat) -> some View {
         if let model = byID[actionID] {
             let w = width(columns: model.columnSpan, cell: cell)
-            let h = height(rows: model.size.rows)
+            let h = height(rows: model.rowSpanCount)
             tileContent(model)
                 .frame(width: w, height: h)
         }
@@ -122,6 +125,12 @@ struct EmptyStateLaunchpadView: View {
                 isPlaying: controller.isPlaying,
                 themeStore: themeStore
             ) { controller.activate(model) }
+        case .weather:
+            LaunchpadWeatherTile(
+                model: model,
+                weather: controller.weather,
+                themeStore: themeStore
+            )
         case .slot:
             EmptyView()
         }
@@ -247,6 +256,65 @@ private struct LaunchpadInfoTile: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(frostedTile(themeStore: themeStore))
         .overlay(tileBorder(isOn: false, themeStore: themeStore))
+    }
+}
+
+/// A read-only weather tile: a tall single-column tile stacking a condition
+/// icon, the temperature, the condition, and today's high/low and rain chance.
+/// Shows a placeholder icon and value until the first reading resolves.
+private struct LaunchpadWeatherTile: View {
+    let model: LaunchpadTileModel
+    let weather: WeatherSnapshot?
+    var themeStore: ThemeStore
+
+    private typealias Const = AppConstants.Launcher.Launchpad
+
+    /// The caption under the temperature: the live condition once known, else
+    /// the tile title while the placeholder shows.
+    private var caption: String {
+        (weather?.condition ?? model.title).uppercased()
+    }
+
+    var body: some View {
+        VStack(spacing: 5) {
+            Image(systemName: weather?.symbolName ?? "cloud.sun.fill")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(themeStore.accentColor())
+            Text(weather?.temperature ?? Const.weatherPlaceholderValue)
+                .font(themeStore.uiFont(size: Const.valueFontSize - 4, weight: .bold))
+                .foregroundColor(themeStore.fontColor())
+            Text(caption)
+                .font(themeStore.uiFont(size: Const.captionFontSize - 1, weight: .medium))
+                .foregroundColor(themeStore.mutedTextColor())
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            if let weather {
+                details(weather)
+            }
+        }
+        .padding(.horizontal, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(frostedTile(themeStore: themeStore))
+        .overlay(tileBorder(isOn: false, themeStore: themeStore))
+    }
+
+    /// Today's high/low and, when reported, the chance of rain.
+    @ViewBuilder
+    private func details(_ weather: WeatherSnapshot) -> some View {
+        VStack(spacing: 2) {
+            Text("H \(weather.high)   L \(weather.low)")
+                .foregroundColor(themeStore.secondaryTextColor())
+            if let rainChance = weather.rainChance {
+                HStack(spacing: 3) {
+                    Image(systemName: "drop.fill")
+                    Text(rainChance)
+                }
+                .foregroundColor(themeStore.mutedTextColor())
+            }
+        }
+        .font(themeStore.uiFont(size: Const.captionFontSize - 1.5))
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
     }
 }
 

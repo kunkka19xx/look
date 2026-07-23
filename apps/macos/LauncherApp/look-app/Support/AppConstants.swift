@@ -358,6 +358,8 @@ enum AppConstants {
             /// system reads wired up (see docs; controls land per follow-up PR).
             static let mockBatteryValue = "84%"
             static let mockNowPlayingTitle = "Not playing"
+            /// Placeholder shown in the Weather tile until the live source lands.
+            static let weatherPlaceholderValue = "--°"
         }
 
         static let commandCatalog: [AppCommand] = [
