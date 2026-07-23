@@ -49,11 +49,12 @@ final class LaunchpadController {
 
     /// Resolves the Weather tile's value. Cheap to call on every launcher open:
     /// the service serves a fresh cache without touching the network and only
-    /// refetches once the reading goes stale.
+    /// refetches once the reading goes stale. Assigned unconditionally: the
+    /// service already falls back to a compatible cache on failure, so a nil
+    /// result means there is no usable reading and the tile should clear rather
+    /// than keep a stale value (e.g. in the wrong unit after a region change).
     func refreshWeather() async {
-        if let snapshot = await weatherService.currentWeather() {
-            weather = snapshot
-        }
+        weather = await weatherService.currentWeather()
     }
 
     func isOn(_ actionID: String) -> Bool {
