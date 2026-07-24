@@ -353,10 +353,17 @@ function addTask(key, rawName) {
     return true;
 }
 
+// Past tasks stay non-editable in the UI, but tasks inside the 3-day
+// extension window can still be completed. Only lock toggling once a
+// task is truly overdue.
 function toggleTask(key, id) {
     if (key < todayKey()) return; // past days are read-only
     const t = (tasksByDay.get(key) || []).find((t) => t.id === id);
     if (!t) return;
+    const late = dayDiff(dateOf(key), today());
+    const overdue = !t.done && late > 3;
+    if(overdue) return;
+
     t.done = !t.done;
     markDirty();
 }
@@ -587,7 +594,9 @@ function dayCardHtml(key, date, diff, tasks) {
 }
 
 function taskRowHtml(key, task, isPast) {
-    const overdue = isPast && !task.done;
+    const late = dayDiff(dateOf(key), today());
+    const extended = !task.done && late >= 1 && late <= 3;
+    const overdue = !task.done && late > 3;
     const editing = editingTaskRef && editingTaskRef.key === key && editingTaskRef.id === task.id;
     const nameHtml = editing
         ? `<input class="cmd-todo-field" data-todo-field="edit" data-group="${key}" data-task="${task.id}"
@@ -597,8 +606,9 @@ function taskRowHtml(key, task, isPast) {
     return `<div class="cmd-todo-task" data-task-row="${task.id}" data-group="${key}">
     <button class="cmd-todo-checkbox${task.done ? ' checked' : ''}" data-act="toggle"
       data-group="${key}" data-task="${task.id}"
-      ${isPast ? 'disabled title="Past days are read-only"' : ''}>${task.done ? checkIcon : ''}</button>
+      ${overdue ? 'disabled title="Task is past the 3-day extension window"' : isPast ? 'title="Past 3 days are read-only"' : ''}>${task.done ? checkIcon : ''}</button>
     ${nameHtml}
+    ${extended ? '<span class="cmd-todo-overdue">EXTENDED</span>' : ''}
     ${overdue ? '<span class="cmd-todo-overdue">OVERDUE</span>' : ''}
     <button class="cmd-todo-task-del" data-act="del" data-group="${key}" data-task="${task.id}" title="Remove">×</button>
   </div>`;
