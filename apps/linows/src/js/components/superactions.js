@@ -11,14 +11,17 @@
 // the preview panel uses. Actionable tiles funnel a click and their Alt+<char>
 // accelerator through activate(), mirroring the macOS launchpad's Cmd+<char>.
 //
-// Phase 1 wires the tiles with dependency-free backends: live Clock/date, Todo,
-// Bluetooth, Theme, Battery. The remaining toggles/actions (Wi-Fi, Keep Awake,
-// Screensaver, Mic, Restart, Shut Down) and the presentational Weather / Now
-// Playing tiles render as placeholders until their adapters land, so an
-// unwired tile just pulses on press instead of erroring.
+// Every system tile is wired to a native adapter: the toggles (Bluetooth, Wi-Fi,
+// Theme, Keep Awake), Battery, the Mic mute, and the one-shot buttons
+// (Screensaver, Restart, Shut Down). The destructive buttons arm on first press
+// and fire on the second, mirroring the macOS launchpad's inline confirm. The
+// presentational Weather / Now Playing tiles still render as placeholders until
+// their feeds land, so an unwired tile just pulses on press instead of erroring.
 
 import {
     listChecks,
+    timer,
+    clock,
     bluetooth,
     wifi,
     moon,
@@ -42,6 +45,10 @@ import {
     todoList,
     systemUptime,
 } from '../ipc.js';
+import {
+    snapshot as pomoSnapshot,
+    formatTime as formatPomoTime,
+} from '../screens/commands/pomo.js';
 import * as banner from './banner.js';
 
 let container = null;
@@ -57,8 +64,10 @@ let tilesById = new Map();
 let mnemonicIndex = new Map();
 let controls = new Map();
 
-// The L-slot's live sub-elements (clock + todo), and the open-task rotation.
+// The L-slot's persistent chrome refs (icon, header clock, pill, body) and its
+// current sub-slot; plus the Todo tally and open-task rotation it reads.
 let slotEls = null;
+let todoStat = { done: 0, total: 0 };
 let openTasks = [];
 let taskCursor = 0;
 
@@ -67,14 +76,24 @@ let taskCursor = 0;
 let stateToken = 0;
 let applying = false;
 
-// Clock re-render cadence and the open-task rotation, matching macOS.
+// The armed destructive tile awaiting its confirming second press, or null.
+let pendingConfirmId = null;
+let confirmTimer = null;
+
+// Clock re-render cadence, open-task rotation, and the live pomo countdown,
+// matching macOS.
 let clockTimer = null;
 let taskTimer = null;
+let pomoTimer = null;
 const CLOCK_TICK_MS = 20000;
 const TASK_ROTATE_MS = 2600;
+const POMO_TICK_MS = 1000;
 
-// Destructive one-shot actions carry the danger tone.
+// Destructive one-shot actions carry the danger tone and gate on an inline
+// confirm: first press arms the tile, second fires. Auto-disarms after this
+// window so a forgotten prompt never fires on a later stray press.
 const DANGER = new Set(['restart', 'shutdown']);
+const CONFIRM_TIMEOUT_MS = 3000;
 
 // action_id -> CSS grid-area suffix (pos-<area>) and glyph. The grid placement
 // lives in superactions.css; this maps the shared ids onto it.
@@ -141,7 +160,11 @@ export function setVisible(show) {
     container.hidden = !show;
     document.documentElement.classList.toggle('controls-open', show);
     if (show) buildAndReveal();
-    else stopTimers();
+    else {
+        stopTimers();
+        // Don't leave a Restart / Shut Down armed to fire on the next summon.
+        clearConfirm();
+    }
 }
 
 /**
@@ -198,13 +221,16 @@ function startTimers() {
     stopTimers();
     clockTimer = setInterval(updateClock, CLOCK_TICK_MS);
     taskTimer = setInterval(rotateTask, TASK_ROTATE_MS);
+    pomoTimer = setInterval(tickPomo, POMO_TICK_MS);
 }
 
 function stopTimers() {
     clearInterval(clockTimer);
     clearInterval(taskTimer);
+    clearInterval(pomoTimer);
     clockTimer = null;
     taskTimer = null;
+    pomoTimer = null;
 }
 
 // --- Activation / mnemonics -------------------------------------------------
@@ -222,22 +248,69 @@ export function handleMnemonic(char) {
 
 /**
  * Central dispatch for a super action, keyed by tile id: both the Alt+<char>
- * accelerator and a mouse click land here. Pulses the tile, then runs the
- * backing control when one is wired; an unwired tile just pulses (its adapter
- * lands in a later phase).
+ * accelerator and a mouse click land here. Routes by role: toggles flip, action
+ * buttons fire (destructive ones via an inline confirm), the Mic action toggles
+ * mute. An unwired tile just pulses. Mirrors the macOS launchpad's activate().
  */
 function activate(id) {
     const el = tilesById.get(id);
     if (!el) return false;
-    flash(el);
     const ctl = controls.get(id);
-    if (ctl?.wired) applyControl(id, ctl);
+
+    // A press on any tile other than the armed one clears a stale confirm, so
+    // the danger prompt never lingers on an unrelated key.
+    if (pendingConfirmId && pendingConfirmId !== id) clearConfirm();
+
+    // Destructive buttons arm on the first press and fire on the second.
+    if (ctl?.wired && ctl.role === 'action' && ctl.danger) {
+        if (pendingConfirmId === id) {
+            clearConfirm();
+            flash(el);
+            runAction(id, ctl);
+        } else {
+            armConfirm(id, ctl);
+        }
+        return true;
+    }
+
+    flash(el);
+    if (!ctl?.wired) return true;
+    if (ctl.role === 'toggle') applyControl(id, ctl);
+    else if (ctl.role === 'action') {
+        if (ctl.toggleIntent) applyMic(id, ctl);
+        else runAction(id, ctl);
+    }
     return true;
 }
 
-// Flip a wired toggle (only toggles are wired in this phase), show the outcome
-// as a banner, and re-read the truth. Optimistic: flip immediately, reconcile
-// after. One apply at a time so a double press can't race.
+// Arm a destructive tile: recolor it and swap the label to "Confirm?" until the
+// second press or the auto-disarm timeout.
+function armConfirm(id, ctl) {
+    clearConfirm();
+    pendingConfirmId = id;
+    ctl.el.classList.add('is-confirming');
+    ctl.labelEl.textContent = 'Confirm?';
+    confirmTimer = setTimeout(clearConfirm, CONFIRM_TIMEOUT_MS);
+}
+
+// Drop any pending confirm and restore the tile's normal label.
+function clearConfirm() {
+    if (confirmTimer) {
+        clearTimeout(confirmTimer);
+        confirmTimer = null;
+    }
+    if (!pendingConfirmId) return;
+    const ctl = controls.get(pendingConfirmId);
+    if (ctl) {
+        ctl.el.classList.remove('is-confirming');
+        ctl.labelEl.innerHTML = labelHTML(ctl.title, ctl.mnemonic);
+    }
+    pendingConfirmId = null;
+}
+
+// Flip a wired toggle, show the outcome as a banner, and re-read the truth.
+// Optimistic: flip immediately, reconcile after. One apply at a time so a double
+// press can't race.
 async function applyControl(id, ctl) {
     if (applying || ctl.role !== 'toggle') return;
     applying = true;
@@ -259,6 +332,45 @@ async function applyControl(id, ctl) {
         applying = false;
         refreshControl(id, ctl, (stateToken += 1));
     }
+}
+
+// Fire a one-shot action button (Screensaver, or a confirmed Restart / Shut
+// Down) and surface its outcome. One at a time, like applyControl.
+async function runAction(id, ctl) {
+    if (applying) return;
+    applying = true;
+    try {
+        showOutcome(ctl, await quickActionApply(id, 'run'));
+    } catch (_) {
+        showOutcome(ctl, null);
+    } finally {
+        applying = false;
+    }
+}
+
+// Toggle the Mic action tile (an action-role tile with toggle semantics: it
+// carries an off caption, so a press flips mute). Optimistic like applyControl.
+async function applyMic(id, ctl) {
+    if (applying) return;
+    applying = true;
+    // A muted tile presses to live and vice versa; resolve to an explicit target
+    // so a stale panel still does what the user sees.
+    const target = ctl.el.classList.contains('is-muted');
+    setMicState(ctl, target);
+    stateToken += 1;
+    try {
+        showOutcome(ctl, await quickActionApply(id, { set_on: target }));
+    } catch (_) {
+        showOutcome(ctl, null);
+    } finally {
+        applying = false;
+        refreshControl(id, ctl, (stateToken += 1));
+    }
+}
+
+// Reflect mic mute on its captionless action tile via an amber muted class.
+function setMicState(ctl, live) {
+    ctl.el.classList.toggle('is-muted', !live);
 }
 
 function showOutcome(ctl, outcome) {
@@ -288,11 +400,12 @@ function flash(el) {
 
 // --- Live state -------------------------------------------------------------
 
-// Re-read everything the strip shows live: clock, today's todo, and each wired
-// control's state. Fire-and-forget; a stale-token guard drops late reads.
+// Re-read everything the strip shows live: the L slot (pomo / todo / clock) and
+// each wired control's state. Fire-and-forget; a stale-token guard drops late
+// reads.
 function refreshState() {
-    updateClock();
-    refreshTodo();
+    renderSlot(); // reflect a running pomo / clock immediately
+    refreshTodo(); // async; re-runs renderSlot once today's tasks land
     const myToken = (stateToken += 1);
     for (const [id, ctl] of controls) refreshControl(id, ctl, myToken);
 }
@@ -306,11 +419,16 @@ async function refreshControl(id, ctl, myToken) {
     }
     if (myToken !== stateToken) return;
     const s = status?.state;
+    const wired = !!s && s.state !== 'unavailable';
     if (ctl.role === 'toggle') {
-        ctl.wired = !!s && s.state !== 'unavailable';
-        setToggleState(ctl, ctl.wired && s.state === 'on');
+        ctl.wired = wired;
+        setToggleState(ctl, wired && s.state === 'on');
     } else if (ctl.role === 'info') {
         await refreshInfo(ctl, s, myToken);
+    } else if (ctl.role === 'action') {
+        ctl.wired = wired;
+        // The Mic action tile has toggle semantics; reflect its live/muted state.
+        if (ctl.toggleIntent) setMicState(ctl, wired && s.state === 'on');
     }
 }
 
@@ -337,25 +455,77 @@ function setToggleState(ctl, on) {
     ctl.stateEl.textContent = on ? ctl.onLabel : ctl.offLabel;
 }
 
-// --- L slot (clock + todo) --------------------------------------------------
+// --- L slot (pomo / todo / clock) -------------------------------------------
+//
+// The 2x2 slot is priority-driven, mirroring the macOS LaunchpadLSlotView:
+// Pomo wins while a session is active, else Todo while tasks remain today, else
+// a Clock fallback. Each sub-slot has its own icon, command pill and body; Todo
+// and Pomo keep a compact clock in the header so the time stays visible, while
+// the Clock slot owns the tile with a big time + date instead.
 
-function updateClock() {
+const SLOT_ICON = { pomo: timer, todo: listChecks, clock };
+
+// Choose the winning sub-slot from live pomo + todo state.
+function currentSlot() {
+    if (pomoSnapshot()) return 'pomo';
+    if (openTasks.length) return 'todo';
+    return 'clock';
+}
+
+// Reflect the current sub-slot: swap chrome + body when it changes, then fill
+// its live values. Safe to call before the slot is built.
+function renderSlot() {
     if (!slotEls) return;
-    const now = new Date();
-    slotEls.time.textContent = now.toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-    });
-    slotEls.date.textContent = now.toLocaleDateString([], {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-    });
+    const slot = currentSlot();
+    if (slot !== slotEls.slot) switchSlot(slot);
+    if (slot === 'pomo') fillPomo();
+    else if (slot === 'todo') fillTodo();
+    else fillClock();
+}
+
+// Swap icon, pill and header-clock visibility for the new sub-slot, rebuild its
+// body, and crossfade. The Clock slot hides the header clock and pill (its body
+// is the clock); Todo / Pomo keep the compact header clock.
+function switchSlot(slot) {
+    slotEls.slot = slot;
+    const clockSlot = slot === 'clock';
+    slotEls.icon.innerHTML = SLOT_ICON[slot];
+    slotEls.headClock.hidden = clockSlot;
+    slotEls.pill.hidden = clockSlot;
+    slotEls.pill.textContent = clockSlot ? '' : `/${slot}`;
+    slotEls.refs = SLOT_BODY[slot]();
+    slotEls.body.classList.remove('is-slot-in');
+    void slotEls.body.offsetWidth;
+    slotEls.body.classList.add('is-slot-in');
+}
+
+// Live countdown + phase + progress for the running session.
+function fillPomo() {
+    const pomo = pomoSnapshot();
+    if (!pomo) return renderSlot(); // session ended; re-pick the slot
+    const r = slotEls.refs;
+    r.time.textContent = formatPomoTime(pomo.secondsLeft);
+    const phase = pomo.type === 'focus' ? 'Focus' : 'Break';
+    r.sub.textContent = `${phase} - session ${pomo.index + 1}/${pomo.count}`;
+    r.fill.style.width = `${Math.round(pomo.progress * 100)}%`;
+    updateHeaderClock();
+}
+
+// Done/total today plus the rotating next open task.
+function fillTodo() {
+    const r = slotEls.refs;
+    r.count.innerHTML = `<b>${todoStat.done}/${todoStat.total}</b> done today`;
+    // Task names are user text: set as textContent, never HTML.
+    r.next.textContent = openTasks.length ? openTasks[taskCursor % openTasks.length] : 'All clear';
+    updateHeaderClock();
+}
+
+// Big time + date fallback (the slot's own clock, so no header clock).
+function fillClock() {
+    writeClock(slotEls.refs.time, slotEls.refs.date);
 }
 
 async function refreshTodo() {
-    if (!slotEls) return;
     let tasks;
     try {
         tasks = await todoList();
@@ -364,30 +534,50 @@ async function refreshTodo() {
     }
     const today = todayKey();
     const mine = (tasks || []).filter((t) => t.due_date === today);
-    const done = mine.filter((t) => t.done).length;
-    slotEls.count.innerHTML = `<b>${done}/${mine.length}</b> done today`;
+    todoStat = { done: mine.filter((t) => t.done).length, total: mine.length };
     openTasks = mine.filter((t) => !t.done).map((t) => t.name);
     taskCursor = 0;
-    renderTask();
+    renderSlot();
 }
 
 // Rotate through the open tasks so a long day's list all gets a turn, matching
-// the macOS launchpad. No-op with 0 or 1 open task.
+// the macOS launchpad. Only while the Todo slot shows, no-op with <= 1 task.
 function rotateTask() {
-    if (openTasks.length > 1) {
-        taskCursor += 1;
-        renderTask();
-    }
+    if (slotEls?.slot !== 'todo' || openTasks.length <= 1) return;
+    taskCursor += 1;
+    fillTodo();
 }
 
-function renderTask() {
+// Advance the live pomo countdown each second while the Pomo slot shows.
+function tickPomo() {
+    if (slotEls?.slot === 'pomo') fillPomo();
+}
+
+// Re-render whichever clock the current slot shows (header clock for Todo/Pomo,
+// the body clock for the Clock slot).
+function updateClock() {
     if (!slotEls) return;
-    slotEls.next.textContent = '';
-    slotEls.next.appendChild(document.createElement('span')).className = 'ctl-dot';
-    const name = document.createElement('span');
-    // Task names are user text: set as textContent, never HTML.
-    name.textContent = openTasks.length ? openTasks[taskCursor % openTasks.length] : 'All clear';
-    slotEls.next.appendChild(name);
+    if (slotEls.slot === 'clock') writeClock(slotEls.refs.time, slotEls.refs.date);
+    else updateHeaderClock();
+}
+
+function updateHeaderClock() {
+    writeClock(slotEls.time, slotEls.date);
+}
+
+// Write the current local time + date into a time node and a date node.
+function writeClock(timeEl, dateEl) {
+    const now = new Date();
+    timeEl.textContent = now.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    });
+    dateEl.textContent = now.toLocaleDateString([], {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+    });
 }
 
 // Local yyyy-MM-dd, matching the todo store's date keys.
@@ -472,31 +662,74 @@ function labelHTML(label, mnemonic) {
     return `${label.slice(0, i)}<span class="ctl-mnem">${label[i]}</span>${label.slice(i + 1)}`;
 }
 
-// L slot (2x2): clock + date, a /todo pill, today's done/total tally and the
-// rotating next open task. Purely presentational (no adapter); fed by
-// updateClock / refreshTodo.
+// L slot (2x2): the priority pomo / todo / clock tile. Builds the persistent
+// chrome (icon badge, header clock, command pill) and an empty body; renderSlot
+// fills and swaps the body for whichever sub-slot wins. No adapter; fed by
+// renderSlot / refreshTodo / the timers.
 function buildSlot(tile) {
     const el = tileEl(tile.action_id, 'priority');
     el.innerHTML = `
         <div class="ctl-priority-head">
-            <span class="ctl-icon">${listChecks}</span>
+            <span class="ctl-icon"></span>
             <div class="ctl-clock">
                 <span class="ctl-clock-time">--:--</span>
                 <span class="ctl-clock-date"></span>
             </div>
-            <span class="ctl-pill">/todo</span>
+            <span class="ctl-pill"></span>
         </div>
-        <div class="ctl-priority-body">
-            <div class="ctl-priority-count"><b>0/0</b> done today</div>
-            <div class="ctl-priority-next"><span class="ctl-dot"></span>All clear</div>
-        </div>`;
+        <div class="ctl-slot-body"></div>`;
     slotEls = {
+        icon: el.querySelector('.ctl-icon'),
+        headClock: el.querySelector('.ctl-clock'),
         time: el.querySelector('.ctl-clock-time'),
         date: el.querySelector('.ctl-clock-date'),
-        count: el.querySelector('.ctl-priority-count'),
-        next: el.querySelector('.ctl-priority-next'),
+        pill: el.querySelector('.ctl-pill'),
+        body: el.querySelector('.ctl-slot-body'),
+        slot: null,
+        refs: null,
     };
+    renderSlot();
     return el;
+}
+
+// Per-slot body builders. Each replaces the slot body and returns refs to the
+// live nodes the fill functions write into. Keyed for switchSlot.
+const SLOT_BODY = {
+    pomo: buildPomoBody,
+    todo: buildTodoBody,
+    clock: buildClockBody,
+};
+
+function buildPomoBody() {
+    slotEls.body.innerHTML = `
+        <div class="ctl-slot-time">00:00</div>
+        <div class="ctl-slot-sub"></div>
+        <div class="ctl-slot-bar"><div class="ctl-slot-bar-fill"></div></div>`;
+    return {
+        time: slotEls.body.querySelector('.ctl-slot-time'),
+        sub: slotEls.body.querySelector('.ctl-slot-sub'),
+        fill: slotEls.body.querySelector('.ctl-slot-bar-fill'),
+    };
+}
+
+function buildTodoBody() {
+    slotEls.body.innerHTML = `
+        <div class="ctl-priority-count"><b>0/0</b> done today</div>
+        <div class="ctl-priority-next"><span class="ctl-dot"></span><span></span></div>`;
+    return {
+        count: slotEls.body.querySelector('.ctl-priority-count'),
+        next: slotEls.body.querySelector('.ctl-priority-next span:last-child'),
+    };
+}
+
+function buildClockBody() {
+    slotEls.body.innerHTML = `
+        <div class="ctl-slot-time">--:--</div>
+        <div class="ctl-slot-date"></div>`;
+    return {
+        time: slotEls.body.querySelector('.ctl-slot-time'),
+        date: slotEls.body.querySelector('.ctl-slot-date'),
+    };
 }
 
 // M toggle (1 col): icon + label + on/off state. Active toggles carry the
@@ -553,16 +786,30 @@ function buildWeather(tile) {
     return el;
 }
 
-// S action (1x1): centered icon + label, fires immediately. Danger tone for the
-// destructive ones. Unwired until its adapter lands, so a press just pulses.
+// S action (1x1): centered icon + label. Fires its adapter on press: Screensaver
+// one-shot, Restart / Shut Down via inline confirm, Mic as a mute toggle (it
+// carries an off caption). Danger tone for the destructive ones.
 function buildAction(tile) {
-    const el = tileEl(tile.action_id, 'action', DANGER.has(tile.action_id) ? 'danger' : null);
+    const danger = DANGER.has(tile.action_id);
+    const el = tileEl(tile.action_id, 'action', danger ? 'danger' : null);
     el.appendChild(iconSpan(ICON[tile.action_id]));
     const name = document.createElement('span');
     name.className = 'ctl-label';
     name.innerHTML = labelHTML(tile.title, tile.mnemonic);
     el.appendChild(name);
     bindActionable(el, tile);
+    controls.set(tile.action_id, {
+        role: 'action',
+        el,
+        title: tile.title,
+        mnemonic: tile.mnemonic,
+        labelEl: name,
+        // An off caption means the button flips state (Mic mute) rather than
+        // firing once (Screensaver, Restart, Shut Down). Mirrors macOS.
+        toggleIntent: tile.off_label != null,
+        danger,
+        wired: false,
+    });
     return el;
 }
 

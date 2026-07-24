@@ -28,9 +28,9 @@ use tauri::async_runtime;
 pub enum ActionState {
     On,
     Off,
-    /// A non-boolean value shown as-is (e.g. a level or a mode name). Part of
-    /// the shared adapter contract; no linows control returns it yet.
-    #[allow(dead_code)]
+    /// A non-boolean value shown as-is. Button controls (Screensaver, Restart,
+    /// Shut Down) return it empty: they have no on/off value, but a resolved
+    /// state marks them present so the launchpad renders them wired.
     Value {
         value: String,
     },
@@ -138,7 +138,13 @@ fn adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
     use look_qactions::action_id as id;
     match action_id {
         id::BLUETOOTH => Some(&controls::bluetooth::BluetoothControl),
+        id::WIFI => Some(&controls::wifi::WifiControl),
         id::THEME => Some(&controls::theme::ThemeControl),
+        id::KEEP_AWAKE => Some(&controls::keepawake::KeepAwakeControl),
+        id::MIC => Some(&controls::mic::MicControl),
+        id::SCREENSAVER => Some(&controls::screensaver::ScreensaverControl),
+        id::RESTART => Some(&controls::power::RestartControl),
+        id::SHUTDOWN => Some(&controls::power::ShutdownControl),
         id::BATTERY => Some(&controls::battery::BatteryControl),
         _ => None,
     }
