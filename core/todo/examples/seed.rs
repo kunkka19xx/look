@@ -89,6 +89,8 @@ fn main() {
         }
     }
 
+    seed_extension_cases(&mut tasks, today, now);
+
     store.save(&tasks).expect("save");
     println!(
         "{}: {existing} existing + {} seeded = {} tasks ({days} days back)",
@@ -98,6 +100,28 @@ fn main() {
     );
     if target == "dev" {
         println!("debug builds (cargo tauri dev) read this file automatically");
+    }
+}
+
+fn seed_extension_cases(tasks: &mut Vec<TodoTask>, today: i64, now: i64) {
+    let cases = [
+        (0, false, "Today open"),
+        (1, false, "Extended day 1"),
+        (2, false, "Extended day 2"),
+        (3, false, "Extended day 3"),
+        (4, false, "Overdue day 4"),
+        (5, false, "Overdue day 5"),
+        (2, true, "Extended already done"),
+    ];
+
+    for (index, (back, done, name)) in cases.into_iter().enumerate() {
+        tasks.push(TodoTask {
+            id: format!("seed-ext-{index}"),
+            name: name.to_string(),
+            done,
+            due_date: civil_date(today - back),
+            created_at_unix_s: now - back * SECS_PER_DAY + index as i64,
+        });
     }
 }
 
