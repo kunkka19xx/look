@@ -21,6 +21,10 @@ let container = null;
 // crossfading its own background. Lives inside the scrolling list so it tracks
 // scroll for free; wiped with the rows on every render, rebuilt lazily.
 let selectionPill = null;
+// Honor prefers-reduced-motion for the scroll too: the pill glide is killed in
+// CSS, but scrollIntoView's smooth behavior bypasses CSS, so gate it here. Read
+// live off the query list so an OS toggle mid-session takes effect.
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let onSelectionChange = null;
 let onPickChange = null;
 let emptyState = { mode: 'default' };
@@ -160,7 +164,10 @@ export function select(index, glide = false) {
     if (row) {
         row.classList.add('selected');
         placeSelectionPill(row, glide);
-        row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        row.scrollIntoView({
+            block: 'nearest',
+            behavior: reduceMotion.matches ? 'auto' : 'smooth',
+        });
     }
 
     if (onSelectionChange) {

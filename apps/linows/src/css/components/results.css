@@ -53,7 +53,7 @@
 
 @media (prefers-reduced-motion: reduce) {
     .results-selection {
-        transition: opacity 120ms ease-out;
+        transition: none;
     }
 }
 
