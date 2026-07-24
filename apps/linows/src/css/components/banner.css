@@ -1,13 +1,16 @@
 /* Banner notifications */
 .banner {
-    grid-row: 2;
-    grid-column: 1 / -1;
     display: flex;
     align-items: center;
     gap: 12px;
     flex-shrink: 0;
     padding: 8px var(--content-padding);
     border-bottom: var(--border-thickness) solid var(--divider-color);
+    /* Solid base so the toast stays legible over the bare desktop in floating
+     * mode; the faint per-style tint alone let the text blend into whatever is
+     * behind the transparent window. Matches the confirm-bar's opaque surface.
+     * The status tint layers on top via background-image (see below). */
+    background-color: rgba(15, 15, 22, 0.96);
     animation: banner-in 200ms ease-out;
 }
 
@@ -38,29 +41,31 @@
     color: var(--font-color);
 }
 
+/* Status tints layer over the opaque base above (background-image paints on top
+ * of background-color), so the toast keeps its solid backing in every theme. */
 .banner-success {
-    background: rgba(166, 227, 161, 0.12);
+    background-image: linear-gradient(rgba(166, 227, 161, 0.16), rgba(166, 227, 161, 0.16));
 }
 .banner-success .banner-text {
     color: var(--color-success);
 }
 
 .banner-error {
-    background: rgba(243, 139, 168, 0.12);
+    background-image: linear-gradient(rgba(243, 139, 168, 0.16), rgba(243, 139, 168, 0.16));
 }
 .banner-error .banner-text {
     color: var(--color-danger);
 }
 
 .banner-info {
-    background: rgba(137, 180, 250, 0.12);
+    background-image: linear-gradient(rgba(137, 180, 250, 0.16), rgba(137, 180, 250, 0.16));
 }
 .banner-info .banner-text {
     color: var(--color-info);
 }
 
 .banner-warning {
-    background: rgba(250, 179, 135, 0.12);
+    background-image: linear-gradient(rgba(250, 179, 135, 0.16), rgba(250, 179, 135, 0.16));
 }
 .banner-warning .banner-text {
     color: var(--color-warning);

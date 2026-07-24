@@ -161,6 +161,17 @@ export async function quickActions(resultId, kind) {
     return invoke('quick_actions', { resultId, kind });
 }
 
+// The empty-state launchpad tile layout, from the shared qactions catalog.
+export async function launchpadLayout() {
+    return invoke('launchpad_layout');
+}
+
+// Compact system uptime ("3d 4h"), shown in the launchpad info tile in place of
+// Battery on a machine with no battery. Null when unavailable.
+export async function systemUptime() {
+    return invoke('system_uptime');
+}
+
 export async function quickActionState(actionId, infoKeys) {
     return invoke('quick_action_state', { actionId, infoKeys });
 }

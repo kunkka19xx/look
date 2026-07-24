@@ -658,6 +658,7 @@ fn main() {
             // Commands
             calc::eval_calc,
             sysinfo::get_system_info,
+            sysinfo::system_uptime,
             process::list_processes,
             process::list_processes_on_port,
             process::kill_process,
@@ -683,6 +684,7 @@ fn main() {
             // Quick Actions (shared look-qactions catalog; adapters live in
             // qactions/controls, see docs/writing-controls.md)
             qactions::quick_actions,
+            qactions::launchpad_layout,
             qactions::quick_action_state,
             qactions::quick_action_apply,
             qactions::quick_action_apply_item,

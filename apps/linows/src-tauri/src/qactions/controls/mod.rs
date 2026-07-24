@@ -3,7 +3,11 @@
 //! reference implementation to copy.
 
 #[cfg(target_os = "linux")]
+pub mod battery;
+#[cfg(target_os = "linux")]
 pub mod bluetooth;
+#[cfg(target_os = "linux")]
+pub mod theme;
 
 #[cfg(target_os = "windows")]
 pub mod bluetooth_windows;

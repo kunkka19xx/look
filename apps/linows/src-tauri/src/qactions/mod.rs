@@ -135,8 +135,11 @@ pub trait SystemControl: Send + Sync {
 /// unavailable (declaration is shared across OSes; execution is not).
 #[cfg(target_os = "linux")]
 fn adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
+    use look_qactions::action_id as id;
     match action_id {
-        "bluetooth" => Some(&controls::bluetooth::BluetoothControl),
+        id::BLUETOOTH => Some(&controls::bluetooth::BluetoothControl),
+        id::THEME => Some(&controls::theme::ThemeControl),
+        id::BATTERY => Some(&controls::battery::BatteryControl),
         _ => None,
     }
 }
@@ -178,6 +181,14 @@ fn unavailable_status() -> QuickActionStatus {
 #[tauri::command]
 pub fn quick_actions(result_id: String, kind: String) -> Vec<look_qactions::ActionDescriptor> {
     look_qactions::descriptors_for(&result_id, &kind)
+}
+
+/// The empty-state launchpad's tile layout, from the shared catalog. One source
+/// of truth across shells: the frontend renders these tiles (order, size, role,
+/// mnemonic, labels) instead of hardcoding its own copy.
+#[tauri::command]
+pub fn launchpad_layout() -> Vec<look_qactions::LaunchpadTile> {
+    look_qactions::launchpad_layout()
 }
 
 /// Live state + info values for an action. `info_keys` are the descriptor's
