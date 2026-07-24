@@ -13,6 +13,8 @@ import * as settings from './screens/settings.js';
 import { mountUpdateWidget } from './screens/update_widget.js';
 import * as translatePanel from './components/translate.js';
 import * as runningApps from './components/running-apps.js';
+import * as superactions from './components/superactions.js';
+import * as smoothcaret from './components/smoothcaret.js';
 import * as platform from './platform.js';
 import * as aiAnswer from './components/ai-answer.js';
 import { State as AiState } from './components/ai-answer.js';
@@ -195,11 +197,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         return (
             !commands.isActive() &&
             !settings.isActive() &&
+            helpScreen?.hidden !== false &&
             !search.isTranslateMode() &&
             !search.isClipboardMode() &&
             !search.isPrefixHintMode() &&
             !search.isCommandHintMode()
         );
+    }
+
+    // The empty-state control strip (super actions) stands in for the results
+    // row whenever the query is empty on the bare home screen. Single source of
+    // truth: any transition that changes the query or the active screen calls
+    // this, and the strip renders itself only when it should. When the strip
+    // yields to results (first keystroke from empty), ease the results list in.
+    function syncControlStrip() {
+        const was = superactions.isVisible();
+        superactions.setVisible(queryInput.value === '' && isHomeHintContext());
+        if (was && !superactions.isVisible()) playResultsEnter();
+    }
+
+    // Replay the results-list entrance animation once. Restarting needs the
+    // class dropped and a reflow forced before it is re-added.
+    function playResultsEnter() {
+        resultsList.classList.remove('is-entering');
+        void resultsList.offsetWidth;
+        resultsList.classList.add('is-entering');
     }
 
     todoCmd.setOnQuickChange((stat) => {
@@ -224,6 +246,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize modules
     results.init(resultsList);
     keyboard.init(queryInput);
+    // Smooth caret on the main search input and every command-mode input bar.
+    smoothcaret.attach(queryInput);
+    for (const input of cmdMain.querySelectorAll('.cmd-input-bar input')) {
+        smoothcaret.attach(input);
+    }
     preview.init(previewPanel);
     banner.init(document.getElementById('banner'));
     health.init();
@@ -260,11 +287,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         search.handleQueryInput('');
         layout.setQuery({ empty: true, translate: false });
         renderMainHint();
+        syncControlStrip();
         queryInput.focus();
+        smoothcaret.refresh(queryInput);
     }
 
     settings.init(resetHomeQuery);
     settings.restoreOnStartup();
+
+    // Empty-state super-actions control strip
+    superactions.init(document.getElementById('control-strip'));
 
     // Running apps strip
     runningApps.init(document.getElementById('running-apps-strip'));
@@ -465,6 +497,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         search.handleQueryInput(value);
         const translating = search.isTranslateMode();
         layout.setQuery({ empty: value === '', translate: translating });
+        syncControlStrip();
         resultsList.hidden = translating;
         runningApps.setSuspended(translating);
 
@@ -550,6 +583,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     onWindowShown(() => {
         queryInput.focus();
         queryInput.select();
+        smoothcaret.refresh(queryInput);
         requestIndexRefresh();
         runningApps.refresh();
         // Quick-action state is cached from the last render; the system may have
@@ -558,6 +592,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Re-read todos when nothing would be lost, so the quick view stays
         // fresh across day rollovers and edits from other Look clients.
         todoCmd.reloadIfClean();
+        // The window keeps its query across hide/show; re-assert the strip so an
+        // empty-query re-open lands back on the launchpad, replaying its
+        // entrance so it animates in each time Look is summoned.
+        syncControlStrip();
+        superactions.replayEnter();
+    });
+
+    // While the window is hidden, hold the launchpad at its entrance-start pose
+    // so the stale buffer the compositor presents on the next summon matches the
+    // cascade's first frame (window-shown fires after show(), too late to arm).
+    // Without this the strip flashes in fully, then rewinds as replayEnter runs.
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) superactions.armEntrance();
     });
 
     onIndexReady(() => {
@@ -583,11 +630,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     getQuickFolders().then((folders) => {
         search.setQuickFolders(folders || []);
         search.handleQueryInput('');
+        syncControlStrip();
     });
 
     // --- Command mode helpers ---
 
     function enterCommandMode() {
+        superactions.setVisible(false);
         resultsList.hidden = true;
         previewPanel.hidden = true;
         runningApps.setSuspended(true);
@@ -739,4 +788,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Expose enterCommandMode and settings for keyboard
     keyboard.setEnterCommandMode(enterCommandMode);
     keyboard.setSettingsMode(settings, contentArea, queryInput.parentElement);
+    // Settings and Help open/close from keyboard.js; let it re-assert the
+    // control strip so it steps aside for those screens and returns after.
+    keyboard.setSyncHome(syncControlStrip);
 });

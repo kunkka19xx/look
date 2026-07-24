@@ -18,6 +18,7 @@ import {
 import * as banner from './components/banner.js';
 import * as confirm from './components/confirm.js';
 import * as qactions from './components/qactions.js';
+import * as superactions from './components/superactions.js';
 import * as runningApps from './components/running-apps.js';
 import { trash as trashIcon } from './icons.js';
 import {
@@ -41,6 +42,9 @@ let settingsModule = null;
 let settingsContentArea = null;
 let settingsSearchBar = null;
 let helpScreen = null;
+// Re-asserts the empty-state control strip after a screen open/close (set by
+// app.js). The strip must step aside for settings/help and return afterwards.
+let syncHomeFn = null;
 
 export function init(inputEl) {
     queryInput = inputEl;
@@ -85,6 +89,10 @@ export function setSettingsMode(mod, contentArea, searchBar) {
     settingsSearchBar = searchBar;
 }
 
+export function setSyncHome(fn) {
+    syncHomeFn = fn;
+}
+
 function handleKeyDown(e) {
     if (confirm.isActive()) {
         const k = e.key;
@@ -119,6 +127,7 @@ function handleKeyDown(e) {
             if (commandMode?.isActive()) commandMode.exit();
             settingsModule.enter(settingsContentArea, settingsSearchBar);
         }
+        syncHomeFn?.();
         return;
     }
 
@@ -171,6 +180,7 @@ function handleKeyDown(e) {
             e.preventDefault();
             helpScreen.hidden = true;
             layout.setModal('help', false);
+            syncHomeFn?.();
             return;
         }
         return; // swallow all other keys while help is open
@@ -198,6 +208,25 @@ function handleKeyDown(e) {
     if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key >= '1' && e.key <= '9') {
         const num = parseInt(e.key);
         if (runningApps.activateByKey(num)) {
+            e.preventDefault();
+            return;
+        }
+    }
+
+    // Alt+<char> on the empty-state home screen → fire the super action whose
+    // highlighted mnemonic matches. Mirrors Cmd+<char> on the macOS launchpad.
+    // Gated on the strip being visible so it never shadows typing or other Alt
+    // chords when results are showing.
+    if (
+        e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        !shiftHeld &&
+        superactions.isVisible()
+    ) {
+        const ch = mnemonicChar(e);
+        if (ch && superactions.handleMnemonic(ch)) {
             e.preventDefault();
             return;
         }
@@ -324,6 +353,15 @@ function handleKeyDown(e) {
             }
             break;
     }
+}
+
+// The letter behind an Alt chord. Prefer e.key so it respects the layout (like
+// macOS charactersIgnoringModifiers); fall back to the physical KeyX code when
+// Alt composed the key into a dead or non-letter value on some layouts.
+function mnemonicChar(e) {
+    if (/^[a-z]$/i.test(e.key)) return e.key.toLowerCase();
+    const m = /^Key([A-Z])$/.exec(e.code);
+    return m ? m[1].toLowerCase() : null;
 }
 
 // Side actions (reveal, copy path, pick, trash) don't make sense on synthetic
@@ -518,6 +556,7 @@ function toggleHelp() {
     if (!helpScreen) return;
     helpScreen.hidden = !helpScreen.hidden;
     layout.setModal('help', !helpScreen.hidden);
+    syncHomeFn?.();
 }
 
 async function removeClipboardEntry() {
