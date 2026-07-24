@@ -68,8 +68,11 @@ export function refresh(input) {
 function place(input, state) {
     const { caret, mirror } = state;
 
-    const pos = input.selectionEnd ?? input.value.length;
-    mirror.textContent = input.value.slice(0, pos);
+    // The visual caret sits at the active end of the selection: selectionStart
+    // for a backward selection (Shift+Left, right-to-left drag), selectionEnd
+    // otherwise.
+    const pos = input.selectionDirection === 'backward' ? input.selectionStart : input.selectionEnd;
+    mirror.textContent = input.value.slice(0, pos ?? input.value.length);
 
     // Copy the live font metrics so the mirror renders text at the same width
     // (font-size tracks the zoom setting, so read it fresh).
