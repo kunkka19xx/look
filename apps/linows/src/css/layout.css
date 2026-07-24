@@ -251,6 +251,10 @@ html[data-os="windows"] .launcher-window {
 }
 
 .results-list {
+    /* Positioning context for the gliding selection pill (results.css): rows
+     * measure their offsetTop against this box, and the pill scrolls with the
+     * content because it lives inside this scroller. */
+    position: relative;
     min-width: 0;
     min-height: 0;
     overflow-y: auto;

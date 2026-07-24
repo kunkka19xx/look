@@ -17,6 +17,10 @@ const pickedMap = new Map(); // key → result
 let currentResults = [];
 let selectedIndex = -1;
 let container = null;
+// One pill behind the rows that glides to the selected row instead of each row
+// crossfading its own background. Lives inside the scrolling list so it tracks
+// scroll for free; wiped with the rows on every render, rebuilt lazily.
+let selectionPill = null;
 let onSelectionChange = null;
 let onPickChange = null;
 let emptyState = { mode: 'default' };
@@ -134,29 +138,54 @@ export function getSelectedIndex() {
 export function selectNext() {
     if (currentResults.length === 0) return;
     userNavigated = true;
-    select((selectedIndex + 1) % currentResults.length);
+    select((selectedIndex + 1) % currentResults.length, true);
 }
 
 export function selectPrev() {
     if (currentResults.length === 0) return;
     userNavigated = true;
-    select((selectedIndex - 1 + currentResults.length) % currentResults.length);
+    select((selectedIndex - 1 + currentResults.length) % currentResults.length, true);
 }
 
-export function select(index) {
+// `glide` slides the pill between rows; it's on for keyboard moves and off for a
+// fresh render, click, or data refresh, where the pill should just be there.
+export function select(index, glide = false) {
     const prev = container.querySelector('.result-row.selected');
     if (prev) prev.classList.remove('selected');
 
     selectedIndex = index;
 
     const rows = container.querySelectorAll('.result-row');
-    if (rows[index]) {
-        rows[index].classList.add('selected');
-        rows[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    const row = rows[index];
+    if (row) {
+        row.classList.add('selected');
+        placeSelectionPill(row, glide);
+        row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
     if (onSelectionChange) {
         onSelectionChange(getSelected());
+    }
+}
+
+// The pill is absolutely positioned in the list's content box, so its top:0 and
+// a row's offsetTop share an origin: translateY + height overlay it exactly. Its
+// left/right insets come from CSS (they match the row margin), so only the
+// vertical geometry is set here.
+function placeSelectionPill(row, glide) {
+    if (!selectionPill || selectionPill.parentNode !== container) {
+        selectionPill = document.createElement('div');
+        selectionPill.className = 'results-selection';
+        container.prepend(selectionPill);
+    }
+    if (!glide) selectionPill.classList.add('is-instant');
+    selectionPill.style.transform = `translateY(${row.offsetTop}px)`;
+    selectionPill.style.height = `${row.offsetHeight}px`;
+    selectionPill.classList.add('is-visible');
+    if (!glide) {
+        // Commit the jump this frame, then restore gliding for later moves.
+        void selectionPill.offsetWidth;
+        selectionPill.classList.remove('is-instant');
     }
 }
 

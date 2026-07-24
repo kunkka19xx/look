@@ -22,9 +22,45 @@
     }
 }
 
+/* The selection is a single pill that glides between rows (results.js
+ * placeSelectionPill), not a per-row background. It sits in the list's content
+ * box behind the rows; its left/right insets match the row margin so it lines
+ * up, and only its translateY + height are driven from JS. */
+.results-selection {
+    position: absolute;
+    top: 0;
+    left: var(--content-padding);
+    right: var(--content-padding);
+    z-index: 0;
+    border-radius: var(--control-radius);
+    background: var(--selection-fill);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+        transform 165ms cubic-bezier(0.22, 1, 0.36, 1),
+        height 165ms cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 120ms ease-out;
+}
+
+.results-selection.is-visible {
+    opacity: 1;
+}
+
+/* Fresh render / click / data refresh: land without a slide. */
+.results-selection.is-instant {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .results-selection {
+        transition: opacity 120ms ease-out;
+    }
+}
+
 /* Result row */
 .result-row {
     position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -33,11 +69,10 @@
     cursor: default;
     border-radius: var(--control-radius);
     margin: 0 var(--content-padding) 4px;
-    transition: background 120ms ease-out;
 }
 
-/* Clean horizontal divider drawn as a pseudo-element so it ignores the
- * row's border-radius (which only shapes the selection background). */
+/* Clean horizontal divider drawn as a pseudo-element so it sits full-width
+ * under the row, clear of the rounded selection pill above it. */
 .result-row::after {
     content: "";
     position: absolute;
@@ -51,10 +86,6 @@
 
 .result-row:last-child::after {
     display: none;
-}
-
-.result-row.selected {
-    background: var(--selection-fill);
 }
 
 /* Icon */
