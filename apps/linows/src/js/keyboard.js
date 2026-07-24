@@ -18,6 +18,7 @@ import {
 import * as banner from './components/banner.js';
 import * as confirm from './components/confirm.js';
 import * as qactions from './components/qactions.js';
+import * as superactions from './components/superactions.js';
 import * as runningApps from './components/running-apps.js';
 import { trash as trashIcon } from './icons.js';
 import {
@@ -212,6 +213,25 @@ function handleKeyDown(e) {
         }
     }
 
+    // Alt+<char> on the empty-state home screen → fire the super action whose
+    // highlighted mnemonic matches. Mirrors Cmd+<char> on the macOS launchpad.
+    // Gated on the strip being visible so it never shadows typing or other Alt
+    // chords when results are showing.
+    if (
+        e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        !shiftHeld &&
+        superactions.isVisible()
+    ) {
+        const ch = mnemonicChar(e);
+        if (ch && superactions.handleMnemonic(ch)) {
+            e.preventDefault();
+            return;
+        }
+    }
+
     // WebKitGTK reports Shift+Tab as key="Unidentified", code="Tab"
     if (e.key === 'Tab' || (e.code === 'Tab' && e.key === 'Unidentified')) {
         e.preventDefault();
@@ -333,6 +353,15 @@ function handleKeyDown(e) {
             }
             break;
     }
+}
+
+// The letter behind an Alt chord. Prefer e.key so it respects the layout (like
+// macOS charactersIgnoringModifiers); fall back to the physical KeyX code when
+// Alt composed the key into a dead or non-letter value on some layouts.
+function mnemonicChar(e) {
+    if (/^[a-z]$/i.test(e.key)) return e.key.toLowerCase();
+    const m = /^Key([A-Z])$/.exec(e.code);
+    return m ? m[1].toLowerCase() : null;
 }
 
 // Side actions (reveal, copy path, pick, trash) don't make sense on synthetic

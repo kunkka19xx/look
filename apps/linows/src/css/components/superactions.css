@@ -99,6 +99,19 @@ html.controls-open #hint-bar {
     transform: scale(0.985);
 }
 
+/* Keyboard activation (Alt+<char>) has no :active, so pulse the tile once to
+ * acknowledge the press. Class is added on activate() and self-clears on
+ * animationend. */
+.ctl-tile.is-pressing {
+    animation: ctl-press 0.18s ease;
+}
+
+@keyframes ctl-press {
+    45% {
+        transform: scale(0.97);
+    }
+}
+
 /* Active toggle: accent wash + border, icon and state pick up the accent. The
  * doubled bg-tint keeps the face opaque under the wash, same as the base tile. */
 .ctl-tile.is-active {
@@ -150,6 +163,14 @@ html.controls-open #hint-bar {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* Mnemonic accelerator: the highlighted Alt+<char> letter. Warning tint (as the
+ * macOS launchpad tints its Cmd+<char> char) plus a weight bump so it reads at
+ * a glance without an underline, which the frosted face renders unevenly. */
+.ctl-mnem {
+    color: var(--color-warning);
+    font-weight: 700;
 }
 
 .ctl-state {

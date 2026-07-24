@@ -5,9 +5,12 @@
 // system actions (Close All, Mic, Restart, Shut Down) and a Now Playing
 // transport. Mirrors the macOS empty-state launchpad (issue #288).
 //
-// This module owns the UI only. Live system state and action execution are
-// wired later; every tile currently renders from a static snapshot so the
-// layout and styling can be reviewed on their own.
+// This module owns the UI and input routing. Live system state and the
+// per-action execution adapters are wired later; every tile renders from a
+// static snapshot, but each actionable tile already carries its mnemonic
+// (Alt+<char>, the highlighted letter) and funnels both a click and the
+// accelerator through activate() so the execution wiring lands in one place.
+// Mirrors the macOS launchpad, where the same char fires on Cmd+<char>.
 
 import {
     listChecks,
@@ -32,6 +35,11 @@ import {
 let container = null;
 let built = false;
 let visible = false;
+
+// Rebuilt on each render(): the actionable tiles keyed by id, and the map from
+// an accelerator char (lowercased) to the id it fires. Both drive activate().
+let tilesById = new Map();
+let mnemonicIndex = new Map();
 
 export function init(containerEl) {
     container = containerEl;
@@ -79,22 +87,87 @@ export function isVisible() {
     return visible;
 }
 
+// --- Activation / mnemonics -------------------------------------------------
+
+/**
+ * Resolve an accelerator char to its tile and fire it. Returns false when no
+ * tile owns the char so the caller can let the key fall through. Case
+ * insensitive, mirroring the macOS Cmd+<char> launchpad (Alt+<char> here).
+ */
+export function handleMnemonic(char) {
+    if (!char) return false;
+    const id = mnemonicIndex.get(char.toLowerCase());
+    return id ? activate(id) : false;
+}
+
+/**
+ * Central dispatch for a super action, keyed by tile id: both the Alt+<char>
+ * accelerator and a mouse click land here. The per-action execution adapters
+ * are wired later (see the module header); for now activation pulses the tile
+ * so the accelerator is visibly resolving to the right action.
+ */
+function activate(id) {
+    const el = tilesById.get(id);
+    if (!el) return false;
+    flash(el);
+    return true;
+}
+
+// Keyboard activation has no :active, so pulse the tile to acknowledge the
+// press. Restart the one-shot animation by clearing the class + forcing a
+// reflow, then self-clear on animationend so a later press can replay it.
+function flash(el) {
+    el.classList.remove('is-pressing');
+    void el.offsetWidth;
+    el.classList.add('is-pressing');
+    el.addEventListener('animationend', () => el.classList.remove('is-pressing'), {
+        once: true,
+    });
+}
+
+// Register an actionable tile: index it by id (and, when present, by its
+// accelerator char) and make a click activate it, so mouse and keyboard share
+// one path. The mnemonic char must be unique across tiles.
+function bindAction(el, id, mnemonic) {
+    tilesById.set(id, el);
+    if (mnemonic) mnemonicIndex.set(mnemonic.toLowerCase(), id);
+    el.addEventListener('click', () => activate(id));
+}
+
+// Wrap the first case-insensitive occurrence of the mnemonic char in a
+// highlight span. Falls back to the plain label when the char is absent, so a
+// tile never renders a broken accelerator. Labels are known static strings, so
+// no HTML escaping is needed. Mirrors macOS mnemonicText.
+function labelHTML(label, mnemonic) {
+    if (!mnemonic) return label;
+    const i = label.toLowerCase().indexOf(mnemonic.toLowerCase());
+    if (i < 0) return label;
+    return `${label.slice(0, i)}<span class="ctl-mnem">${label[i]}</span>${label.slice(i + 1)}`;
+}
+
 function render() {
+    tilesById = new Map();
+    mnemonicIndex = new Map();
+
     const grid = document.createElement('div');
     grid.className = 'control-strip-grid';
 
+    // The mnemonic (final arg) is the highlighted, Alt-fired letter; it matches
+    // the macOS launchpad chars where the action is the same. Chars are unique
+    // (case-insensitively) so one press maps to one tile. Priority / Battery /
+    // Weather / Now Playing carry none, as on macOS.
     grid.append(
         priorityTile(),
-        toggleTile('bt', bluetooth, 'Bluetooth', 'On', true),
-        toggleTile('wifi', wifi, 'Wi-Fi', 'On', true),
+        toggleTile('bt', bluetooth, 'Bluetooth', 'On', true, 'B'),
+        toggleTile('wifi', wifi, 'Wi-Fi', 'On', true, 'W'),
         powerInfoTile(),
         weatherTile(),
-        toggleTile('theme', moon, 'Theme', 'Dark', true),
-        toggleTile('keep', coffee, 'Keep Awake', 'Off', false),
-        actionTile('scr', xCircle, 'Close All', 'danger'),
-        actionTile('mic', mic, 'Mic'),
-        actionTile('rst', refreshCw, 'Restart', 'danger'),
-        actionTile('shut', power, 'Shut Down', 'danger'),
+        toggleTile('theme', moon, 'Theme', 'Dark', true, 'T'),
+        toggleTile('keep', coffee, 'Keep Awake', 'Off', false, 'K'),
+        actionTile('scr', xCircle, 'Close All', 'danger', 'C'),
+        actionTile('mic', mic, 'Mic', null, 'M'),
+        actionTile('rst', refreshCw, 'Restart', 'danger', 'R'),
+        actionTile('shut', power, 'Shut Down', 'danger', 'D'),
         nowPlayingTile(),
     );
 
@@ -113,6 +186,7 @@ function tile(area, variant, tone) {
     const el = document.createElement('button');
     el.type = 'button';
     el.tabIndex = -1;
+    el.dataset.id = area;
     el.className = `ctl-tile ctl-tile--${variant} pos-${area}`;
     if (tone) el.classList.add(`is-${tone}`);
     return el;
@@ -146,13 +220,14 @@ function priorityTile() {
 }
 
 // M toggle (2x1): icon + label + on/off state. Active toggles carry the accent.
-function toggleTile(area, svg, label, state, active) {
+function toggleTile(area, svg, label, state, active, mnemonic) {
     const el = tile(area, 'toggle', active ? 'active' : null);
     el.appendChild(iconSpan(svg));
     const text = document.createElement('span');
     text.className = 'ctl-text';
-    text.innerHTML = `<span class="ctl-label">${label}</span><span class="ctl-state">${state}</span>`;
+    text.innerHTML = `<span class="ctl-label">${labelHTML(label, mnemonic)}</span><span class="ctl-state">${state}</span>`;
     el.appendChild(text);
+    bindAction(el, area, mnemonic);
     return el;
 }
 
@@ -192,13 +267,14 @@ function weatherTile() {
 
 // S action (1x1): centered icon + label, fires immediately (Restart/Shut Down
 // carry the danger tone).
-function actionTile(area, svg, label, tone) {
+function actionTile(area, svg, label, tone, mnemonic) {
     const el = tile(area, 'action', tone);
     el.appendChild(iconSpan(svg));
     const name = document.createElement('span');
     name.className = 'ctl-label';
-    name.textContent = label;
+    name.innerHTML = labelHTML(label, mnemonic);
     el.appendChild(name);
+    bindAction(el, area, mnemonic);
     return el;
 }
 
