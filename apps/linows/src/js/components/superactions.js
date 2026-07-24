@@ -75,10 +75,24 @@ export function replayEnter() {
     if (visible) playEnter();
 }
 
-// Restart the staggered CSS animation: drop the class, force a reflow so the
-// browser sees a clean start, then re-add it.
+/**
+ * Hold the strip at the cascade's first frame while the window is hidden.
+ *
+ * The window is shown (its stale buffer presented) a beat before the JS
+ * window-shown handler runs replayEnter, so a strip left fully visible would
+ * flash on screen and then visibly rewind to opacity 0. Arming it to the
+ * entrance-start pose while hidden makes that stale frame match frame 0 of the
+ * cascade, so the reveal reads as one continuous fade. No-op while visible.
+ */
+export function armEntrance() {
+    if (container && visible) container.classList.add('is-armed');
+}
+
+// Restart the staggered CSS animation: drop the classes, force a reflow so the
+// browser sees a clean start, then re-add is-entering. Clearing is-armed here
+// hands the tiles straight from their held first-frame pose into the animation.
 function playEnter() {
-    container.classList.remove('is-entering');
+    container.classList.remove('is-armed', 'is-entering');
     void container.offsetWidth;
     container.classList.add('is-entering');
 }

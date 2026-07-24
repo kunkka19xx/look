@@ -52,9 +52,23 @@ html.controls-open #hint-bar {
     animation-delay: calc(var(--i, 0) * 18ms);
 }
 
+/* Armed = the cascade's first frame, held while the window is hidden so the
+ * stale buffer shown on the next summon already matches frame 0 (see
+ * superactions.armEntrance). replayEnter drops this class into is-entering. */
+.control-strip.is-armed .ctl-tile {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .control-strip.is-entering .ctl-tile {
         animation: none;
+    }
+
+    /* No fade to align to, so don't pre-hide: the strip just reappears. */
+    .control-strip.is-armed .ctl-tile {
+        opacity: 1;
+        transform: none;
     }
 }
 

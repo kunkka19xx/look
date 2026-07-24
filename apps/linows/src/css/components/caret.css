@@ -28,10 +28,11 @@
     transition: transform 105ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Visible only while the input is focused; blinks when idle. */
+/* Visible only while the input is focused; blinks when idle. A soft fade (not a
+ * hard on/off) so the pulse reads as a glow rather than a flicker. */
 .smooth-caret.is-on {
     opacity: 1;
-    animation: smooth-caret-blink 1.05s steps(1, end) infinite;
+    animation: smooth-caret-blink 1.05s ease-in-out infinite;
 }
 
 /* Solid (no blink) while actively typing/moving. */
@@ -42,11 +43,14 @@
 
 @keyframes smooth-caret-blink {
     0%,
-    100% {
+    35% {
         opacity: 1;
     }
-    50% {
+    67% {
         opacity: 0;
+    }
+    100% {
+        opacity: 1;
     }
 }
 
