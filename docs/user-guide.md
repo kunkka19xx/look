@@ -149,7 +149,7 @@ Built-in commands:
 `todo` quick reference:
 
 - Tasks are grouped by day, newest on top. Up to 3 unfinished tasks per day (complete one to add more) and up to 3 upcoming date groups (`Add date + N`)
-- Past days are read-only; their unfinished tasks get an `OVERDUE` badge
+- Past days are non-editable. Unfinished tasks 1-3 days late show an `EXTENDED` badge and can still be marked done; unfinished tasks more than 3 days late show `OVERDUE` and their completion state is locked
 - Search matches task names and dates (`jul 3`, `yesterday`); case- and diacritic-insensitive
 - Nothing autosaves: hit `Save` or `Cmd+S`; `Cmd+N` flips between the Tasks and Stats pages
 - When today has tasks, the home-screen hint bar shows a clickable `Todo X/Y` stat; hovering it lists what's still unfinished
