@@ -115,13 +115,18 @@ fn seed_extension_cases(tasks: &mut Vec<TodoTask>, today: i64, now: i64) {
     ];
 
     for (index, (back, done, name)) in cases.into_iter().enumerate() {
-        tasks.push(TodoTask {
+        let task = TodoTask {
             id: format!("seed-ext-{index}"),
             name: name.to_string(),
             done,
             due_date: civil_date(today - back),
             created_at_unix_s: now - back * SECS_PER_DAY + index as i64,
-        });
+        };
+        if let Some(existing) = tasks.iter_mut().find(|existing| existing.id == task.id) {
+            *existing = task;
+        } else {
+            tasks.push(task);
+        }
     }
 }
 

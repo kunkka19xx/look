@@ -598,7 +598,8 @@ function dayCardHtml(key, date, diff, tasks) {
 function taskRowHtml(key, task, isPast) {
     const late = dayDiff(dateOf(key), today());
     const extended = !task.done && late >= 1 && late <= 3;
-    const overdue = late > 3;
+    const locked = late > 3;
+    const overdue = !task.done && locked;
     const editing = editingTaskRef && editingTaskRef.key === key && editingTaskRef.id === task.id;
     const nameHtml = editing
         ? `<input class="cmd-todo-field" data-todo-field="edit" data-group="${key}" data-task="${task.id}"
@@ -608,7 +609,7 @@ function taskRowHtml(key, task, isPast) {
     return `<div class="cmd-todo-task" data-task-row="${task.id}" data-group="${key}">
     <button class="cmd-todo-checkbox${task.done ? ' checked' : ''}" data-act="toggle"
       data-group="${key}" data-task="${task.id}"
-      ${overdue ? 'disabled title="Task is past the 3-day extension window"' : isPast ? 'title="Past 3 days are read-only"' : ''}>${task.done ? checkIcon : ''}</button>
+      ${locked ? 'disabled title="Task is past the 3-day extension window"' : ''}>${task.done ? checkIcon : ''}</button>
     ${nameHtml}
     ${extended ? '<span class="cmd-todo-extended">EXTENDED</span>' : ''}
     ${overdue ? '<span class="cmd-todo-overdue">OVERDUE</span>' : ''}
