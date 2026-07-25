@@ -748,9 +748,13 @@ async function transport(command) {
         // Optimistic flip, then let the poll reconcile. MPRIS PlaybackStatus lags
         // the command, so re-reading now would flip the icon back (flicker).
         setPlaying(!mediaEls.el.classList.contains('is-playing'));
+        const wasPlaying = mediaEls.el.classList.contains('is-playing');
+        setPlaying(!wasPlaying);
         try {
             await nowPlayingCommand(command);
-        } catch (_) {}
+        } catch (_) {
+            setPlaying(wasPlaying);
+        }
         return;
     }
     // next / previous: re-read so the new track shows without waiting for the poll.
