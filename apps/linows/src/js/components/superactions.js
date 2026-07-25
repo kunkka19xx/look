@@ -15,8 +15,9 @@
 // Theme, Keep Awake), Battery, the Mic mute, and the one-shot buttons
 // (Screensaver, Restart, Shut Down). The destructive buttons arm on first press
 // and fire on the second, mirroring the macOS launchpad's inline confirm. The
-// presentational Weather / Now Playing tiles still render as placeholders until
-// their feeds land, so an unwired tile just pulses on press instead of erroring.
+// read-only Weather tile fills from the keyless IP-geo + Open-Meteo feed, and the
+// Now Playing transport reads and drives the active MPRIS player; both refresh on
+// summon (Now Playing also polls live while the strip is shown).
 
 import {
     listChecks,
@@ -27,7 +28,14 @@ import {
     moon,
     battery,
     coffee,
+    sun,
     cloudSun,
+    cloud,
+    cloudFog,
+    cloudDrizzle,
+    cloudRain,
+    cloudSnow,
+    cloudLightning,
     droplet,
     monitor,
     mic,
@@ -37,11 +45,16 @@ import {
     skipBack,
     skipForward,
     play,
+    pause,
 } from '../icons.js';
 import {
     launchpadLayout,
     quickActionState,
     quickActionApply,
+    weatherCurrent,
+    nowPlayingCurrent,
+    nowPlayingCommand,
+    lunarDate,
     todoList,
     systemUptime,
 } from '../ipc.js';
@@ -71,6 +84,19 @@ let todoStat = { done: 0, total: 0 };
 let openTasks = [];
 let taskCursor = 0;
 
+// Today's lunar date ({ day, month, leap }) shown in the Clock slot header, from
+// the shared look-lunar core crate. Null until the first fetch resolves.
+let lunarToday = null;
+
+// Weather and Now Playing tiles feed from external sources, not the qactions
+// adapter registry, so they hold their own DOM refs and refresh tokens (a stale
+// async read for a superseded summon / poll is dropped, independent of the
+// control state token below).
+let weatherEls = null;
+let mediaEls = null;
+let weatherToken = 0;
+let mediaToken = 0;
+
 // Bumped on every refresh so a late async state read for a stale summon is
 // dropped; guards against clobbering the optimistic value a press just set.
 let stateToken = 0;
@@ -85,9 +111,27 @@ let confirmTimer = null;
 let clockTimer = null;
 let taskTimer = null;
 let pomoTimer = null;
+let mediaTimer = null;
 const CLOCK_TICK_MS = 20000;
 const TASK_ROTATE_MS = 2600;
 const POMO_TICK_MS = 1000;
+// Now Playing changes out of band (track advances, user pauses elsewhere), so
+// poll it live while the strip is shown. Weather is cached ~30 min, so it only
+// refreshes on summon.
+const MEDIA_TICK_MS = 2000;
+
+// Backend WMO condition key -> tile glyph. clear/partly reuse the sun icons.
+const WEATHER_ICON = {
+    clear: sun,
+    partly: cloudSun,
+    cloudy: cloud,
+    fog: cloudFog,
+    drizzle: cloudDrizzle,
+    rain: cloudRain,
+    showers: cloudRain,
+    snow: cloudSnow,
+    thunder: cloudLightning,
+};
 
 // Destructive one-shot actions carry the danger tone and gate on an inline
 // confirm: first press arms the tile, second fires. Auto-disarms after this
@@ -222,15 +266,18 @@ function startTimers() {
     clockTimer = setInterval(updateClock, CLOCK_TICK_MS);
     taskTimer = setInterval(rotateTask, TASK_ROTATE_MS);
     pomoTimer = setInterval(tickPomo, POMO_TICK_MS);
+    mediaTimer = setInterval(tickMedia, MEDIA_TICK_MS);
 }
 
 function stopTimers() {
     clearInterval(clockTimer);
     clearInterval(taskTimer);
     clearInterval(pomoTimer);
+    clearInterval(mediaTimer);
     clockTimer = null;
     taskTimer = null;
     pomoTimer = null;
+    mediaTimer = null;
 }
 
 // --- Activation / mnemonics -------------------------------------------------
@@ -260,6 +307,14 @@ function activate(id) {
     // A press on any tile other than the armed one clears a stale confirm, so
     // the danger prompt never lingers on an unrelated key.
     if (pendingConfirmId && pendingConfirmId !== id) clearConfirm();
+
+    // Now Playing has no adapter control; its mnemonic toggles play/pause on the
+    // active player, matching the macOS launchpad's Cmd+P.
+    if (mediaEls && el === mediaEls.el) {
+        flash(el);
+        transport('playpause');
+        return true;
+    }
 
     // Destructive buttons arm on the first press and fire on the second.
     if (ctl?.wired && ctl.role === 'action' && ctl.danger) {
@@ -406,8 +461,28 @@ function flash(el) {
 function refreshState() {
     renderSlot(); // reflect a running pomo / clock immediately
     refreshTodo(); // async; re-runs renderSlot once today's tasks land
+    refreshLunar(); // async; fills the Clock slot header once it lands
     const myToken = (stateToken += 1);
     for (const [id, ctl] of controls) refreshControl(id, ctl, myToken);
+    refreshWeather((weatherToken += 1));
+    refreshNowPlaying((mediaToken += 1));
+}
+
+// Fetch today's lunar date from core (once per summon; it only changes at
+// midnight) and repaint the Clock slot header if it is the one showing.
+async function refreshLunar() {
+    const now = new Date();
+    try {
+        lunarToday = await lunarDate(
+            now.getFullYear(),
+            now.getMonth() + 1,
+            now.getDate(),
+            -now.getTimezoneOffset() / 60,
+        );
+    } catch (_) {
+        return;
+    }
+    if (slotEls?.slot === 'clock') writeLunar();
 }
 
 async function refreshControl(id, ctl, myToken) {
@@ -461,7 +536,8 @@ function setToggleState(ctl, on) {
 // Pomo wins while a session is active, else Todo while tasks remain today, else
 // a Clock fallback. Each sub-slot has its own icon, command pill and body; Todo
 // and Pomo keep a compact clock in the header so the time stays visible, while
-// the Clock slot owns the tile with a big time + date instead.
+// the Clock slot owns the tile with a big time + date and puts today's lunar
+// date in the header corner (where a second clock would just be redundant).
 
 const SLOT_ICON = { pomo: timer, todo: listChecks, clock };
 
@@ -483,14 +559,15 @@ function renderSlot() {
     else fillClock();
 }
 
-// Swap icon, pill and header-clock visibility for the new sub-slot, rebuild its
-// body, and crossfade. The Clock slot hides the header clock and pill (its body
-// is the clock); Todo / Pomo keep the compact header clock.
+// Swap icon, pill and header content for the new sub-slot, rebuild its body, and
+// crossfade. The header corner always shows something: the compact clock in the
+// Todo / Pomo slots, the lunar date in the Clock slot (whose body owns the big
+// clock); only the command pill is Clock-specific and hidden there.
 function switchSlot(slot) {
     slotEls.slot = slot;
     const clockSlot = slot === 'clock';
     slotEls.icon.innerHTML = SLOT_ICON[slot];
-    slotEls.headClock.hidden = clockSlot;
+    slotEls.headClock.classList.toggle('is-lunar', clockSlot);
     slotEls.pill.hidden = clockSlot;
     slotEls.pill.textContent = clockSlot ? '' : `/${slot}`;
     slotEls.refs = SLOT_BODY[slot]();
@@ -520,9 +597,23 @@ function fillTodo() {
     updateHeaderClock();
 }
 
-// Big time + date fallback (the slot's own clock, so no header clock).
+// Big time + date fallback in the body; the header corner carries the lunar
+// date instead of a redundant second clock.
 function fillClock() {
     writeClock(slotEls.refs.time, slotEls.refs.date);
+    writeLunar();
+}
+
+// Paint today's lunar date into the Clock slot header (day/month, with the leap
+// marker when the month repeats). Placeholder until the first fetch resolves.
+function writeLunar() {
+    if (!lunarToday) {
+        slotEls.time.textContent = '--';
+        slotEls.date.textContent = 'Lunar';
+        return;
+    }
+    slotEls.time.textContent = `${lunarToday.day}/${lunarToday.month}`;
+    slotEls.date.textContent = lunarToday.leap ? 'Lunar leap' : 'Lunar';
 }
 
 async function refreshTodo() {
@@ -551,6 +642,78 @@ function rotateTask() {
 // Advance the live pomo countdown each second while the Pomo slot shows.
 function tickPomo() {
     if (slotEls?.slot === 'pomo') fillPomo();
+}
+
+// Poll the active MPRIS player so the Now Playing tile tracks changes made
+// elsewhere (next track, paused in the browser) while the strip is shown.
+function tickMedia() {
+    if (mediaEls) refreshNowPlaying((mediaToken += 1));
+}
+
+// --- Weather (IP-geo + Open-Meteo feed) -------------------------------------
+
+async function refreshWeather(myToken) {
+    if (!weatherEls) return;
+    let w;
+    try {
+        w = await weatherCurrent();
+    } catch (_) {
+        return;
+    }
+    // Superseded summon, tile torn down, or the feed had nothing: keep the last
+    // reading rather than blanking it.
+    if (myToken !== weatherToken || !weatherEls || !w) return;
+    weatherEls.icon.innerHTML = WEATHER_ICON[w.symbol] || cloudSun;
+    weatherEls.temp.textContent = w.temperature;
+    weatherEls.caps.textContent = w.condition;
+    // Feed values are backend-formatted numerics (e.g. "24°"), safe as HTML;
+    // droplet is our own SVG. The nbsp keeps the H/L gap from collapsing.
+    weatherEls.hl.innerHTML = `H ${w.high} &nbsp; L ${w.low}`;
+    weatherEls.hum.innerHTML = `${droplet} ${w.rain_chance ?? '--%'}`;
+}
+
+// --- Now Playing (active MPRIS player) --------------------------------------
+
+async function refreshNowPlaying(myToken) {
+    if (!mediaEls) return;
+    let np;
+    try {
+        np = await nowPlayingCurrent();
+    } catch (_) {
+        return;
+    }
+    if (myToken !== mediaToken || !mediaEls) return;
+    renderMedia(np);
+}
+
+// Reflect a track (or its absence) and the play/pause state on the transport.
+function renderMedia(np) {
+    const playing = !!np?.is_playing;
+    mediaEls.playBtn.innerHTML = playing ? pause : play;
+    mediaEls.el.classList.toggle('is-playing', playing);
+    if (!np?.title) {
+        mediaEls.label.textContent = 'Nothing playing';
+        mediaEls.state.textContent = '';
+        return;
+    }
+    // Track / artist are media-supplied text: set as textContent, never HTML.
+    mediaEls.label.textContent = np.title;
+    mediaEls.state.textContent = np.artist || np.app || '';
+}
+
+// Send a transport command to the active player, then re-read so play/pause and
+// the track reflect the result (the poll would catch it too, just later).
+// Play/Pause flips the icon optimistically since the D-Bus round trip lags the
+// visible press; the re-read reconciles.
+async function transport(command) {
+    if (command === 'playpause' && mediaEls) {
+        const nowPlaying = mediaEls.el.classList.toggle('is-playing');
+        mediaEls.playBtn.innerHTML = nowPlaying ? pause : play;
+    }
+    try {
+        await nowPlayingCommand(command);
+    } catch (_) {}
+    refreshNowPlaying((mediaToken += 1));
 }
 
 // Re-render whichever clock the current slot shows (header clock for Todo/Pomo,
@@ -594,6 +757,8 @@ function render(tiles) {
     mnemonicIndex = new Map();
     controls = new Map();
     slotEls = null;
+    weatherEls = null;
+    mediaEls = null;
 
     const grid = document.createElement('div');
     grid.className = 'control-strip-grid';
@@ -774,7 +939,8 @@ function buildInfo(tile) {
     return el;
 }
 
-// L info (1x2): the weather stack. Placeholder until the weather feed lands.
+// L info (1x2): the weather stack. Filled from the external feed by
+// refreshWeather; shows placeholder dashes until the first reading lands.
 function buildWeather(tile) {
     const el = tileEl(tile.action_id, 'weather');
     el.innerHTML = `
@@ -783,6 +949,13 @@ function buildWeather(tile) {
         <div class="ctl-caps">Weather</div>
         <div class="ctl-weather-hl">H --&deg; &nbsp; L --&deg;</div>
         <div class="ctl-weather-hum">${droplet} --%</div>`;
+    weatherEls = {
+        icon: el.querySelector('.ctl-icon'),
+        temp: el.querySelector('.ctl-weather-temp'),
+        caps: el.querySelector('.ctl-caps'),
+        hl: el.querySelector('.ctl-weather-hl'),
+        hum: el.querySelector('.ctl-weather-hum'),
+    };
     return el;
 }
 
@@ -814,7 +987,9 @@ function buildAction(tile) {
 }
 
 // M media (span 3): track name + subtitle and the prev / play / next transport.
-// Placeholder until the Now Playing feed lands.
+// Reads and drives the active MPRIS player; refreshNowPlaying fills it and the
+// transport buttons send commands. The whole-tile has no action (the buttons do
+// the work), so it is not registered as actionable.
 function buildMedia(tile) {
     const el = tileEl(tile.action_id, 'media');
     el.innerHTML = `
@@ -824,10 +999,26 @@ function buildMedia(tile) {
             <span class="ctl-state"></span>
         </div>
         <div class="ctl-transport">
-            <span class="ctl-transport-btn">${skipBack}</span>
-            <span class="ctl-transport-btn ctl-transport-play">${play}</span>
-            <span class="ctl-transport-btn">${skipForward}</span>
+            <span class="ctl-transport-btn" data-cmd="previous">${skipBack}</span>
+            <span class="ctl-transport-btn ctl-transport-play" data-cmd="playpause">${play}</span>
+            <span class="ctl-transport-btn" data-cmd="next">${skipForward}</span>
         </div>`;
-    bindActionable(el, tile);
+    mediaEls = {
+        el,
+        label: el.querySelector('.ctl-label'),
+        state: el.querySelector('.ctl-state'),
+        playBtn: el.querySelector('.ctl-transport-play'),
+    };
+    for (const btn of el.querySelectorAll('.ctl-transport-btn')) {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            transport(btn.dataset.cmd);
+        });
+    }
+    // Register the mnemonic (Alt+P) so it toggles play/pause via activate(); the
+    // whole tile stays inert (the transport buttons own the clicks), so this does
+    // not go through bindActionable.
+    tilesById.set(tile.action_id, el);
+    if (tile.mnemonic) mnemonicIndex.set(tile.mnemonic.toLowerCase(), tile.action_id);
     return el;
 }

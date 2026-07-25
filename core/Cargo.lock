@@ -248,6 +248,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "look-lunar"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "look-matching"
 version = "0.1.0"
 

@@ -260,6 +260,12 @@ html.controls-open #hint-bar {
     line-height: 1.05;
 }
 
+/* Lunar readout (Clock slot header): secondary to the big body clock, so the
+ * day/month sits a touch smaller than the compact clock it replaces. */
+.ctl-clock.is-lunar .ctl-clock-time {
+    font-size: 18px;
+}
+
 .ctl-clock-date {
     font-size: 12px;
     color: var(--font-muted);
@@ -514,8 +520,18 @@ html.controls-open #hint-bar {
     gap: 14px;
 }
 
+/* Let a long track title / artist truncate rather than shove the transport off
+ * the tile (flex children need min-width:0 to allow the ellipsis). */
 .ctl-tile--media .ctl-text {
     flex: 1;
+    min-width: 0;
+}
+
+.ctl-tile--media .ctl-label,
+.ctl-tile--media .ctl-state {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ctl-transport {
@@ -533,6 +549,7 @@ html.controls-open #hint-bar {
     height: 34px;
     border-radius: 8px;
     color: var(--font-secondary);
+    cursor: pointer;
 }
 
 .ctl-transport-btn svg {
@@ -548,4 +565,5 @@ html.controls-open #hint-bar {
 
 .ctl-transport-btn:hover {
     color: var(--accent-color);
+    background: var(--control-fill);
 }

@@ -12,7 +12,9 @@ mod crash;
 mod files;
 mod health;
 mod highlight;
+mod lunar;
 mod music;
+mod nowplaying;
 mod platform;
 mod process;
 mod qactions;
@@ -22,6 +24,7 @@ mod sysinfo;
 mod todo;
 mod translate;
 mod trash;
+mod weather;
 mod weburl;
 
 #[cfg(target_os = "linux")]
@@ -688,6 +691,11 @@ fn main() {
             qactions::quick_action_state,
             qactions::quick_action_apply,
             qactions::quick_action_apply_item,
+            // Launchpad external feeds (Phase 3)
+            weather::weather_current,
+            nowplaying::now_playing_current,
+            nowplaying::now_playing_command,
+            lunar::lunar_date,
             // Clipboard
             clipboard::get_clipboard_history,
             clipboard::delete_clipboard_entry,

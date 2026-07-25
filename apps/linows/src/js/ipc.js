@@ -184,6 +184,29 @@ export async function quickActionApplyItem(actionId, itemId, intent) {
     return invoke('quick_action_apply_item', { actionId, itemId, intent });
 }
 
+// Launchpad weather tile: current conditions from the keyless IP-geo + Open-Meteo
+// feed, cached in the backend. Null when it can't be resolved (offline first run).
+export async function weatherCurrent() {
+    return invoke('weather_current');
+}
+
+// Launchpad Now Playing tile: the active MPRIS track, or null when nothing plays.
+export async function nowPlayingCurrent() {
+    return invoke('now_playing_current');
+}
+
+// Send a transport command ('playpause' | 'next' | 'previous') to the active
+// MPRIS player. Resolves to whether it was delivered.
+export async function nowPlayingCommand(command) {
+    return invoke('now_playing_command', { command });
+}
+
+// Convert a local calendar date to its lunar date via the shared look-lunar core
+// crate. tz is the UTC offset in hours. Returns { day, month, year, leap }.
+export async function lunarDate(year, month, day, tz) {
+    return invoke('lunar_date', { year, month, day, tz });
+}
+
 // Todo: full-set load/save against the shared look-todo store. Tasks are
 // `{ id, name, done, due_date, created_at_unix_s }` (same JSON contract as
 // the macOS FFI bridge).
