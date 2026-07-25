@@ -334,18 +334,20 @@ struct TodoDateGroupCard: View {
     private var isPast: Bool { group.kind == .past }
     private var isToday: Bool { group.kind == .today }
     private var atLimit: Bool { group.openCount >= TodoCommand.taskLimit }
-    private var overdue: Bool { isPast }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             header
             VStack(spacing: 1) {
+                let late = lateDays(for: group.date)
+                let locked = late > TodoCommand.extensionWindowDays
                 ForEach(group.tasks) { task in
                     TodoTaskRow(
                         themeStore: themeStore,
                         task: task,
-                        overdue: overdue,
-                        canToggle: !isPast,
+                        extended: !task.done && late >= 1 && !locked,
+                        overdue: !task.done && locked,
+                        canToggle: !locked,
+                        canEdit: !isPast,
                         onToggle: { state.toggleTask(group: group.key, task: task.id) },
                         onRemove: { state.removeTask(group: group.key, task: task.id) },
                         onEdit: { name in
@@ -398,13 +400,22 @@ struct TodoDateGroupCard: View {
         if rel.isEmpty || rel == "Today" { return group.monthDay }
         return "\(group.monthDay) · \(rel)"
     }
+
+    private func lateDays(for date: Date) -> Int {
+        let cal = Calendar.current
+        let due = cal.startOfDay(for: date)
+        let today = cal.startOfDay(for: Date())
+        return cal.dateComponents([.day], from: due, to: today).day ?? 0
+    }
 }
 
 struct TodoTaskRow: View {
     let themeStore: ThemeStore
     let task: TodoTask
+    let extended: Bool
     let overdue: Bool
     let canToggle: Bool
+    let canEdit: Bool
     let onToggle: () -> Void
     let onRemove: () -> Void
     let onEdit: (String) -> Void
@@ -436,10 +447,23 @@ struct TodoTaskRow: View {
                     .strikethrough(task.done, color: themeStore.mutedTextColor())
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
-                    .onTapGesture { beginEdit() }
+                    .onTapGesture {
+                        if canEdit { beginEdit() }
+                    }
             }
 
-            if overdue && !task.done && !editing {
+            if extended && !editing {
+                Text("EXTENDED")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(themeStore.warningColor())
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(
+                        themeStore.warningColor().opacity(0.14),
+                        in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            }
+
+            if overdue && !editing {
                 Text("OVERDUE")
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(themeStore.dangerColor())
@@ -472,7 +496,9 @@ struct TodoTaskRow: View {
 
     private var nameColor: Color {
         if task.done { return themeStore.mutedTextColor() }
-        return overdue ? themeStore.dangerColor() : themeStore.fontColor()
+        if overdue { return themeStore.dangerColor() }
+        if extended { return themeStore.warningColor() }
+        return themeStore.fontColor()
     }
 
     private func beginEdit() {
@@ -588,9 +614,7 @@ struct TodoCheckbox: View {
         .buttonStyle(.plain)
         .padding(-4)
         .disabled(!enabled)
-        // Past days are read-only for completion state; the name stays
-        // editable but the box cannot be toggled.
-        .help(enabled ? "" : "Past days are read-only")
+        .help(enabled ? "" : "Past the \(TodoCommand.extensionWindowDays)-day extension window")
     }
 
     private var box: some View {

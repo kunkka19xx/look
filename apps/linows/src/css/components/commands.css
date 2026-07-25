@@ -975,6 +975,7 @@
     color: var(--font-muted);
 }
 
+.cmd-todo-extended,
 .cmd-todo-overdue {
     font-family: var(--font-mono);
     font-size: 9px;
@@ -982,9 +983,17 @@
     letter-spacing: 0.5px;
     padding: 1px 6px;
     border-radius: 999px;
-    color: var(--color-danger);
-    background: rgba(243, 139, 168, 0.14);
     flex-shrink: 0;
+}
+
+.cmd-todo-extended {
+    color: var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+}
+
+.cmd-todo-overdue {
+    color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 14%, transparent);
 }
 
 .cmd-todo-task-del {

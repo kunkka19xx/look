@@ -24,6 +24,9 @@ import {
 // (completing one frees a slot) and at most 3 upcoming date groups.
 const UNFINISHED_LIMIT = 3;
 const FUTURE_GROUP_LIMIT = 3;
+// Days late an unfinished task stays completable (EXTENDED) before it
+// locks (OVERDUE). Mirrors macOS TodoCommand.extensionWindowDays.
+const EXTENSION_WINDOW_DAYS = 3;
 // Browse mode shows future + today + this many past days; searching spans
 // the full retained year.
 const BROWSE_PAST_DAYS = 31;
@@ -315,6 +318,8 @@ function addDays(d, n) {
 
 // Both args are local midnights; rounding absorbs DST offsets.
 const dayDiff = (from, to) => Math.round((to - from) / 86_400_000);
+// 0 for today, negative for upcoming days.
+const daysLate = (key) => dayDiff(dateOf(key), today());
 const monthDay = (d) => `${MONTHS[d.getMonth()]} ${d.getDate()}`;
 
 // Relative phrase for a day, ±6 days like macOS TodoGroup.relativePhrase.
@@ -354,9 +359,9 @@ function addTask(key, rawName) {
 }
 
 function toggleTask(key, id) {
-    if (key < todayKey()) return; // past days are read-only
     const t = (tasksByDay.get(key) || []).find((t) => t.id === id);
     if (!t) return;
+    if (daysLate(key) > EXTENSION_WINDOW_DAYS) return;
     t.done = !t.done;
     markDirty();
 }
@@ -587,7 +592,10 @@ function dayCardHtml(key, date, diff, tasks) {
 }
 
 function taskRowHtml(key, task, isPast) {
-    const overdue = isPast && !task.done;
+    const late = daysLate(key);
+    const locked = late > EXTENSION_WINDOW_DAYS;
+    const extended = !task.done && late >= 1 && !locked;
+    const overdue = !task.done && locked;
     const editing = editingTaskRef && editingTaskRef.key === key && editingTaskRef.id === task.id;
     const nameHtml = editing
         ? `<input class="cmd-todo-field" data-todo-field="edit" data-group="${key}" data-task="${task.id}"
@@ -597,8 +605,9 @@ function taskRowHtml(key, task, isPast) {
     return `<div class="cmd-todo-task" data-task-row="${task.id}" data-group="${key}">
     <button class="cmd-todo-checkbox${task.done ? ' checked' : ''}" data-act="toggle"
       data-group="${key}" data-task="${task.id}"
-      ${isPast ? 'disabled title="Past days are read-only"' : ''}>${task.done ? checkIcon : ''}</button>
+      ${locked ? `disabled title="Past the ${EXTENSION_WINDOW_DAYS}-day extension window"` : ''}>${task.done ? checkIcon : ''}</button>
     ${nameHtml}
+    ${extended ? '<span class="cmd-todo-extended">EXTENDED</span>' : ''}
     ${overdue ? '<span class="cmd-todo-overdue">OVERDUE</span>' : ''}
     <button class="cmd-todo-task-del" data-act="del" data-group="${key}" data-task="${task.id}" title="Remove">×</button>
   </div>`;

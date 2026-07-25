@@ -63,7 +63,7 @@ flowchart LR
 - `core/matching`: exact/prefix/fuzzy matching primitives.
 - `core/ranking`: ranking helpers (usage/recency-aware adjustments and score composition).
 - `core/storage`: SQLite integration, schema/migrations, candidate/usage persistence.
-- `core/todo`: shared store for the `/todo` command. Owns the `todo_tasks` table inside the app's existing `look.db` (full-set load/save, one-year retention). macOS reaches it via `bridge/ffi`, linows via its Tauri command layer. `examples/seed.rs` fills a dev database with demo history.
+- `core/todo`: shared store for the `/todo` command. Owns the `todo_tasks` table inside the app's existing `look.db` (full-set load/save, one-year retention). macOS reaches it via `bridge/ffi`, linows via its Tauri command layer. `examples/seed.rs` fills a dev database with demo history, including near-today extension-window cases for `/todo` UI testing.
 - `core/engine`: query parsing, indexing orchestration, scoring, top-k retrieval, in-memory cache management.
 
 ```mermaid
