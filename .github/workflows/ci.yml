@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
-    branches: [main, dev]
+    branches: [main]
 
 # Cancel any prior in-progress run for the same branch / PR when a new
 # push comes in. Stops the slow linows build from keeping a stale
@@ -204,8 +204,8 @@ jobs:
     needs: changes
     if: |
       needs.changes.outputs.rust == 'true' && (
-        (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')) ||
-        (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev'))
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'pull_request' && github.base_ref == 'main')
       )
     steps:
       - uses: actions/checkout@v4
@@ -235,7 +235,7 @@ jobs:
     name: Build macOS App
     runs-on: macos-latest
     needs: changes
-    if: github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev') && needs.changes.outputs.swift == 'true'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && needs.changes.outputs.swift == 'true'
     env:
       # Pin to Xcode 26.3 - the runner default is 16.4, whose Swift 6
       # diagnostics are stricter than current dev machines and produce
