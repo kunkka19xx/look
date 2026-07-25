@@ -8,7 +8,7 @@
     align-items: center;
     gap: 14px;
     padding: 10px 14px;
-    background: rgba(15, 15, 22, 0.96);
+    background: var(--overlay-surface);
     border: 1px solid rgba(243, 139, 168, 0.85);
     border-radius: var(--control-radius);
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);

@@ -14,7 +14,7 @@
 //!   a query is even a candidate, so callers don't fan out wasted requests.
 
 mod fmt;
-mod http;
+pub mod http;
 mod json;
 mod parse;
 mod sources;

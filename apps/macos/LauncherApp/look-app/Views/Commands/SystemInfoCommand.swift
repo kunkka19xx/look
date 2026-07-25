@@ -304,20 +304,9 @@ nonisolated enum SystemInfoCommand {
     }
 
     private static func getUptimeItems() -> [SystemInfoItem] {
-        let uptime = ProcessInfo.processInfo.systemUptime
-        let days = Int(uptime) / 86400
-        let hours = (Int(uptime) % 86400) / 3600
-        let minutes = (Int(uptime) % 3600) / 60
-
-        var uptimeStr = ""
-        if days > 0 {
-            uptimeStr += "\(days)d "
-        }
-        uptimeStr += "\(hours)h \(minutes)m"
-
         return [
             SystemInfoItem(label: "", value: "Uptime", isHeader: true),
-            SystemInfoItem(label: "Time", value: uptimeStr, isHeader: false)
+            SystemInfoItem(label: "Time", value: SystemUptime.formattedShort(), isHeader: false)
         ]
     }
 

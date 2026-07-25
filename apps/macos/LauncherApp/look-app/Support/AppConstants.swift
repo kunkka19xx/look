@@ -362,6 +362,27 @@ enum AppConstants {
             static let nowPlayingPollSeconds: TimeInterval = 1.5
             /// Placeholder shown in the Weather tile until the live source lands.
             static let weatherPlaceholderValue = "--°"
+
+            /// Vertical gap between the time / date / lunar lines in the Todo or
+            /// Pomo header clock, so the three lines don't read as one block.
+            static let headerClockLineSpacing: CGFloat = 3
+            /// Time line (top, brightest) of the Todo / Pomo header clock.
+            static let headerClockTimeFontSize: CGFloat = 15.5
+            /// Gregorian-date and lunar-date lines below it.
+            static let headerClockDateFontSize: CGFloat = 12.5
+
+            /// Caption under today's lunar day/month in the clock tile.
+            static let lunarLabel = "Lunar"
+            /// Caption when today falls in the intercalary (leap) lunar month.
+            static let lunarLeapLabel = "Lunar leap"
+
+            /// SF Symbol for the Battery info tile, and its label when a battery
+            /// is present.
+            static let batteryIconName = "battery.100"
+            /// On a machine with no battery (e.g. a Mac mini), the Battery tile
+            /// shows system uptime instead, with this label and icon.
+            static let uptimeLabel = "Uptime"
+            static let uptimeIconName = "clock.arrow.circlepath"
         }
 
         static let commandCatalog: [AppCommand] = [

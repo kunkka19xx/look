@@ -260,6 +260,12 @@ html.controls-open #hint-bar {
     line-height: 1.05;
 }
 
+/* Lunar readout (Clock slot header): secondary to the big body clock, so the
+ * day/month sits a touch smaller than the compact clock it replaces. */
+.ctl-clock.is-lunar .ctl-clock-time {
+    font-size: 18px;
+}
+
 .ctl-clock-date {
     font-size: 12px;
     color: var(--font-muted);
@@ -303,6 +309,64 @@ html.controls-open #hint-bar {
     border-radius: 50%;
     background: var(--accent-color);
     flex-shrink: 0;
+}
+
+/* Slot body: the swappable bottom half (pomo / todo / clock). Crossfades in
+ * when the winning sub-slot changes. */
+.ctl-slot-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.ctl-slot-body.is-slot-in {
+    animation: ctl-slot-fade 0.24s ease;
+}
+
+@keyframes ctl-slot-fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Big time: the Clock fallback and the Pomo countdown. */
+.ctl-slot-time {
+    font-family: var(--font-mono);
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.05;
+    color: var(--font-color);
+}
+
+.ctl-slot-date {
+    margin-top: 4px;
+    font-size: 15px;
+    color: var(--font-muted);
+}
+
+/* Pomo phase + session line, and its session progress bar. */
+.ctl-slot-sub {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--font-secondary);
+}
+
+.ctl-slot-bar {
+    margin-top: 10px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--control-fill);
+    overflow: hidden;
+}
+
+.ctl-slot-bar-fill {
+    width: 0;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent-color);
+    transition: width 0.9s linear;
 }
 
 /* --- Info (Battery) -------------------------------------------------------- */
@@ -424,14 +488,50 @@ html.controls-open #hint-bar {
     border-color: color-mix(in srgb, var(--color-danger) 44%, var(--border-color));
 }
 
+/* Armed destructive confirm: danger wash + border and a red "Confirm?" label,
+ * held until the second press disarms it. Layered like .is-active so the face
+ * stays opaque under the wash. */
+.ctl-tile--action.is-confirming {
+    background-image:
+        linear-gradient(
+            color-mix(in srgb, var(--color-danger) 20%, transparent),
+            color-mix(in srgb, var(--color-danger) 20%, transparent)
+        ),
+        linear-gradient(var(--control-fill), var(--control-fill)),
+        linear-gradient(var(--bg-tint), var(--bg-tint)),
+        linear-gradient(var(--bg-tint), var(--bg-tint));
+    border-color: color-mix(in srgb, var(--color-danger) 50%, var(--border-color));
+}
+
+.ctl-tile--action.is-confirming .ctl-icon,
+.ctl-tile--action.is-confirming .ctl-label {
+    color: var(--color-danger);
+}
+
+/* Muted mic: amber icon so the off state reads on a captionless action tile,
+ * matching the macOS launchpad's muted-mic treatment. */
+.ctl-tile--action.is-muted .ctl-icon {
+    color: var(--color-warning);
+}
+
 /* --- Now Playing (media) --------------------------------------------------- */
 .ctl-tile--media {
     grid-area: play;
     gap: 14px;
 }
 
+/* Let a long track title / artist truncate rather than shove the transport off
+ * the tile (flex children need min-width:0 to allow the ellipsis). */
 .ctl-tile--media .ctl-text {
     flex: 1;
+    min-width: 0;
+}
+
+.ctl-tile--media .ctl-label,
+.ctl-tile--media .ctl-state {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ctl-transport {
@@ -449,6 +549,7 @@ html.controls-open #hint-bar {
     height: 34px;
     border-radius: 8px;
     color: var(--font-secondary);
+    cursor: pointer;
 }
 
 .ctl-transport-btn svg {
@@ -464,4 +565,5 @@ html.controls-open #hint-bar {
 
 .ctl-transport-btn:hover {
     color: var(--accent-color);
+    background: var(--control-fill);
 }

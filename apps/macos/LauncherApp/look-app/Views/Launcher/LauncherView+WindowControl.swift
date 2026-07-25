@@ -129,6 +129,9 @@ extension LauncherView {
         }
 
         hotkeyLog.notice("toggle: -> SHOW branch")
+        // Re-arm the spawn cascade so the launchpad tiles and quick actions
+        // settle in fresh on every open, not just the first per process.
+        appearanceRevealToken &+= 1
         captureFrontmostAppForRestoreIfNeeded()
         _ = bridge.requestIndexRefresh()
         // Warm the on-device model the instant the launcher opens so the first

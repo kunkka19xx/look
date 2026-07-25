@@ -479,13 +479,39 @@ function getTimerColor() {
               '#3a3';
 }
 
-function formatTime(secs) {
+export function formatTime(secs) {
     if (secs <= 0 && activeIndex === null) {
         secs = sessions[0].duration * 60;
     }
     const m = Math.floor(Math.max(0, secs) / 60);
     const s = Math.max(0, secs) % 60;
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// A read-only view of the live session for other surfaces (the launchpad L
+// slot), or null when idle. Wall-clock corrected so it stays true while this
+// screen is closed and its own tick is stopped: a running session projects the
+// elapsed time forward through phases (returning null once the whole plan has
+// elapsed) rather than freezing at 00:00. Mirrors the macOS PomoSharedState.
+export function snapshot() {
+    if (activeIndex === null) return null;
+    let index = activeIndex;
+    let left = running ? secondsLeft - Math.floor((Date.now() - lastTickAt) / 1000) : secondsLeft;
+    // Carry any overflow into the following phases (running only; paused holds).
+    while (running && left <= 0) {
+        index += 1;
+        if (index >= sessions.length) return null; // whole plan elapsed
+        left += sessions[index].duration * 60;
+    }
+    const total = sessions[index].duration * 60;
+    return {
+        running,
+        type: sessions[index].type,
+        index,
+        count: sessions.length,
+        secondsLeft: Math.max(0, left),
+        progress: total ? Math.min(1, (total - left) / total) : 0,
+    };
 }
 
 function drawModernRing(size, progress, color, totalSecs) {

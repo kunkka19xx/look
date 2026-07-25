@@ -17,6 +17,10 @@
     --control-fill: rgba(69, 71, 90, 0.5);
     --divider-color: rgba(88, 91, 112, 0.32);
     --selection-fill: rgba(88, 91, 112, 0.4);
+    /* Near-opaque base for transient overlays (toasts, confirm bar) so they stay
+     * legible over the bare desktop. Dark for every built-in theme; a Custom
+     * light theme can override it. */
+    --overlay-surface: rgba(15, 15, 22, 0.96);
 
     /* Accent & semantic - blue #89b4fa */
     --accent-color: #89b4fa;

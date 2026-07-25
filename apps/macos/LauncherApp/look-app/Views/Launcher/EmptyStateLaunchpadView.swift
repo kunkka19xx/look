@@ -9,8 +9,27 @@ struct EmptyStateLaunchpadView: View {
     let tiles: [LaunchpadTileModel]
     var controller: LaunchpadController
     var themeStore: ThemeStore
+    /// Changes each time the launcher opens, replaying the spawn cascade.
+    var revealToken: UInt64 = 0
 
     private typealias Const = AppConstants.Launcher.Launchpad
+
+    /// Reading-order position of each tile in the spawn cascade, so the grid
+    /// settles in top-left to bottom-right rather than all at once.
+    private enum RevealIndex {
+        static let slot = 0
+        static let bluetooth = 1
+        static let wifi = 2
+        static let battery = 3
+        static let theme = 4
+        static let keepAwake = 5
+        static let screensaver = 6
+        static let weather = 7
+        static let mic = 8
+        static let restart = 9
+        static let shutdown = 10
+        static let nowPlaying = 11
+    }
 
     private var byID: [String: LaunchpadTileModel] {
         Dictionary(tiles.map { ($0.actionId, $0) }, uniquingKeysWith: { first, _ in first })
@@ -66,28 +85,29 @@ struct EmptyStateLaunchpadView: View {
             HStack(alignment: .top, spacing: Const.gap) {
                 slot(cell: cell)
                     .frame(width: width(columns: 2, cell: cell), height: height(rows: 2))
+                    .spawnReveal(index: RevealIndex.slot, token: revealToken)
 
                 VStack(spacing: Const.gap) {
                     HStack(spacing: Const.gap) {
-                        tileView(LaunchpadActionID.bluetooth, cell: cell)
-                        tileView(LaunchpadActionID.wifi, cell: cell)
-                        tileView(LaunchpadActionID.battery, cell: cell)
+                        tileView(LaunchpadActionID.bluetooth, cell: cell, reveal: RevealIndex.bluetooth)
+                        tileView(LaunchpadActionID.wifi, cell: cell, reveal: RevealIndex.wifi)
+                        tileView(LaunchpadActionID.battery, cell: cell, reveal: RevealIndex.battery)
                     }
                     HStack(spacing: Const.gap) {
-                        tileView(LaunchpadActionID.theme, cell: cell)
-                        tileView(LaunchpadActionID.keepAwake, cell: cell)
-                        tileView(LaunchpadActionID.screensaver, cell: cell)
+                        tileView(LaunchpadActionID.theme, cell: cell, reveal: RevealIndex.theme)
+                        tileView(LaunchpadActionID.keepAwake, cell: cell, reveal: RevealIndex.keepAwake)
+                        tileView(LaunchpadActionID.screensaver, cell: cell, reveal: RevealIndex.screensaver)
                     }
                 }
 
-                tileView(LaunchpadActionID.weather, cell: cell)
+                tileView(LaunchpadActionID.weather, cell: cell, reveal: RevealIndex.weather)
             }
 
             HStack(spacing: Const.gap) {
-                tileView(LaunchpadActionID.mic, cell: cell)
-                tileView(LaunchpadActionID.restart, cell: cell)
-                tileView(LaunchpadActionID.shutdown, cell: cell)
-                tileView(LaunchpadActionID.nowPlaying, cell: cell)
+                tileView(LaunchpadActionID.mic, cell: cell, reveal: RevealIndex.mic)
+                tileView(LaunchpadActionID.restart, cell: cell, reveal: RevealIndex.restart)
+                tileView(LaunchpadActionID.shutdown, cell: cell, reveal: RevealIndex.shutdown)
+                tileView(LaunchpadActionID.nowPlaying, cell: cell, reveal: RevealIndex.nowPlaying)
             }
         }
     }
@@ -98,14 +118,16 @@ struct EmptyStateLaunchpadView: View {
     }
 
     /// Renders the tile for `actionID` at its natural size, sourcing labels and
-    /// the mnemonic from the decoded catalog model.
+    /// the mnemonic from the decoded catalog model. `reveal` places it in the
+    /// spawn cascade.
     @ViewBuilder
-    private func tileView(_ actionID: String, cell: CGFloat) -> some View {
+    private func tileView(_ actionID: String, cell: CGFloat, reveal: Int) -> some View {
         if let model = byID[actionID] {
             let w = width(columns: model.columnSpan, cell: cell)
             let h = height(rows: model.rowSpanCount)
             tileContent(model)
                 .frame(width: w, height: h)
+                .spawnReveal(index: reveal, token: revealToken)
         }
     }
 
@@ -121,7 +143,9 @@ struct EmptyStateLaunchpadView: View {
         case .info:
             LaunchpadInfoTile(
                 model: model,
-                value: controller.displayValue(for: model.actionId) ?? Const.infoPlaceholderValue,
+                batteryValue: controller.displayValue(for: model.actionId),
+                showsUptime: model.actionId == LaunchpadActionID.battery
+                    && controller.isUnavailable(model.actionId),
                 themeStore: themeStore
             )
         case .action:
@@ -243,26 +267,45 @@ private struct LaunchpadToggleTile: View {
     }
 }
 
-/// A read-only info tile (Battery): label plus a live value.
+/// A read-only info tile (Battery): label plus a live value. On a machine with
+/// no battery (e.g. a Mac mini), it falls back to showing system uptime instead
+/// of a dead placeholder.
 private struct LaunchpadInfoTile: View {
     let model: LaunchpadTileModel
-    let value: String
+    /// The battery percent string (e.g. "85%"), or nil while unread / unavailable.
+    let batteryValue: String?
+    /// True when there is no battery, so the tile shows uptime instead.
+    let showsUptime: Bool
     var themeStore: ThemeStore
 
     private typealias Const = AppConstants.Launcher.Launchpad
 
+    private var iconName: String {
+        showsUptime ? Const.uptimeIconName : Const.batteryIconName
+    }
+
+    private var label: String {
+        (showsUptime ? Const.uptimeLabel : model.title).uppercased()
+    }
+
+    private var value: String {
+        showsUptime ? SystemUptime.formattedShort() : (batteryValue ?? Const.infoPlaceholderValue)
+    }
+
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "battery.100")
+            Image(systemName: iconName)
                 .font(.system(size: 18, weight: .medium))
                 .foregroundColor(themeStore.accentColor())
             VStack(alignment: .leading, spacing: 1) {
-                Text(model.title.uppercased())
+                Text(label)
                     .font(themeStore.uiFont(size: Const.captionFontSize - 1, weight: .medium))
                     .foregroundColor(themeStore.mutedTextColor())
                 Text(value)
                     .font(themeStore.uiFont(size: Const.valueFontSize - 6, weight: .bold))
                     .foregroundColor(themeStore.fontColor())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             Spacer(minLength: 0)
         }

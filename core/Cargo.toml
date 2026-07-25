@@ -4,6 +4,7 @@ members = [
   "answers",
   "engine",
   "indexing",
+  "lunar",
   "matching",
   "ranking",
   "storage",

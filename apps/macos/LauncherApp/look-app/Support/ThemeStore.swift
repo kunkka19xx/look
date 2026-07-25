@@ -298,6 +298,22 @@ final class ThemeStore: ObservableObject {
         return .system(size: resolvedSize, weight: weight)
     }
 
+    /// The AppKit twin of `uiFont`, for NSView-backed inputs (the smooth-caret
+    /// fields). Same family / size / scale resolution so the search and command
+    /// bars render in the user's theme font instead of the system default.
+    func uiNSFont(size: CGFloat? = nil, weight: NSFont.Weight = .regular) -> NSFont {
+        let baseSize = size ?? CGFloat(settings.fontSize)
+        let resolvedSize = max(8, baseSize * uiScale)
+        let resolvedName = settings.fontName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !resolvedName.isEmpty,
+           let fontName = resolveUsableFontName(resolvedName),
+           let custom = NSFont(name: fontName, size: resolvedSize) {
+            return custom
+        }
+
+        return .systemFont(ofSize: resolvedSize, weight: weight)
+    }
+
     func fontNameSuggestions(for input: String, limit: Int = 8) -> [String] {
         let allFonts = cachedFontFamilies
         let query = input.trimmingCharacters(in: .whitespacesAndNewlines)

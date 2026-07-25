@@ -80,6 +80,19 @@ private func look_todo_list_json() -> UnsafeMutablePointer<CChar>?
 nonisolated
 private func look_todo_save_json(_ json: UnsafePointer<CChar>?) -> Bool
 
+@_silgen_name("look_lunar_date_json")
+nonisolated
+private func look_lunar_date_json(_ year: Int64, _ month: Int64, _ day: Int64, _ tz: Double) -> UnsafeMutablePointer<CChar>?
+
+/// A resolved lunar date from the shared `core/lunar` crate (East Asian
+/// lunisolar calendar). `leap` marks the intercalary month of a 13-month year.
+nonisolated struct LunarDate: Decodable {
+    let day: Int
+    let month: Int
+    let year: Int
+    let leap: Bool
+}
+
 final class EngineBridge: @unchecked Sendable {
     static let shared = EngineBridge()
 
@@ -188,6 +201,17 @@ final class EngineBridge: @unchecked Sendable {
     @discardableResult
     nonisolated func requestIndexRefresh() -> Bool {
         look_request_index_refresh()
+    }
+
+    /// Lunar date from the shared core. `tzHours` is the viewer's UTC offset,
+    /// which selects the calendar variant (7 = Vietnamese, 8 = Chinese).
+    nonisolated func lunarDate(year: Int, month: Int, day: Int, tzHours: Double) -> LunarDate? {
+        guard let ptr = look_lunar_date_json(Int64(year), Int64(month), Int64(day), tzHours) else {
+            return nil
+        }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(LunarDate.self, from: data)
     }
 
     nonisolated func translate(text: String, targetLang: String = "en") -> TranslationResult? {
