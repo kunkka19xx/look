@@ -9,12 +9,13 @@ import Foundation
 enum DeleteTargetLogic {
     /// Keyboard deletion is disabled while another launcher surface owns the
     /// window, so a selection hidden behind an overlay cannot be mutated.
+    /// Command mode is already excluded upstream by `KeyboardSelectionMonitor`,
+    /// which never forwards Cmd+D while the command input has focus.
     static func allowsKeyboardDelete(
-        isCommandMode: Bool,
         showsThemeSettings: Bool,
         showsHelpScreen: Bool
     ) -> Bool {
-        !isCommandMode && !showsThemeSettings && !showsHelpScreen
+        !showsThemeSettings && !showsHelpScreen
     }
 
     /// Clipboard rows reuse Cmd+D for history removal instead of entering the

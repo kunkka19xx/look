@@ -272,14 +272,6 @@ function handleKeyDown(e) {
             }
             break;
 
-        case 'Delete':
-        case 'Backspace':
-            if (search.isClipboardMode() && e.key === 'Delete') {
-                e.preventDefault();
-                removeClipboardEntry();
-            }
-            break;
-
         case 'Escape':
             e.preventDefault();
             if (
@@ -336,7 +328,7 @@ function handleKeyDown(e) {
 
         case 'd':
         case 'D':
-            if (e.ctrlKey && !e.shiftKey && !e.altKey) {
+            if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
                 e.preventDefault();
                 if (isDiscoveryMode()) break;
                 if (search.isClipboardMode()) {

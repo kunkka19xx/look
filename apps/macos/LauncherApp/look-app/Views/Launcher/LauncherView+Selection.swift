@@ -221,7 +221,6 @@ extension LauncherView {
             },
             onRequestDelete: { [self] in
                 guard DeleteTargetLogic.allowsKeyboardDelete(
-                    isCommandMode: isCommandMode,
                     showsThemeSettings: appUIState.showsThemeSettings,
                     showsHelpScreen: showsHelpScreen
                 ) else { return }
