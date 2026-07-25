@@ -338,14 +338,15 @@ struct TodoDateGroupCard: View {
         VStack(alignment: .leading, spacing: 6) {
             header
             VStack(spacing: 1) {
+                let late = lateDays(for: group.date)
+                let locked = late > TodoCommand.extensionWindowDays
                 ForEach(group.tasks) { task in
-                    let late = lateDays(for: group.date)
                     TodoTaskRow(
                         themeStore: themeStore,
                         task: task,
-                        extended: !task.done && late >= 1 && late <= 3,
-                        overdue: late > 3,
-                        canToggle: late <= 3,
+                        extended: !task.done && late >= 1 && !locked,
+                        overdue: !task.done && locked,
+                        canToggle: !locked,
                         canEdit: !isPast,
                         onToggle: { state.toggleTask(group: group.key, task: task.id) },
                         onRemove: { state.removeTask(group: group.key, task: task.id) },
@@ -458,11 +459,11 @@ struct TodoTaskRow: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
                     .background(
-                        themeStore.accentColor().opacity(0.14),
+                        themeStore.warningColor().opacity(0.14),
                         in: RoundedRectangle(cornerRadius: 4, style: .continuous))
             }
 
-            if overdue && !task.done && !editing {
+            if overdue && !editing {
                 Text("OVERDUE")
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(themeStore.dangerColor())
@@ -613,7 +614,7 @@ struct TodoCheckbox: View {
         .buttonStyle(.plain)
         .padding(-4)
         .disabled(!enabled)
-        .help(enabled ? "" : "Task is past the 3-day extension window")
+        .help(enabled ? "" : "Past the \(TodoCommand.extensionWindowDays)-day extension window")
     }
 
     private var box: some View {

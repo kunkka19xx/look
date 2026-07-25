@@ -130,6 +130,9 @@ enum TodoCommand {
     static let taskLimit = 3
     /// Max upcoming (future) date groups the user can add ahead.
     static let dateGroupLimit = 3
+    /// Days late an unfinished task stays completable (EXTENDED) before it
+    /// locks (OVERDUE). Mirrors linows EXTENSION_WINDOW_DAYS.
+    static let extensionWindowDays = 3
     /// Max characters in a task name. Clamped at the input field and
     /// truncated in the model as a backstop.
     static let taskNameMaxLength = 256

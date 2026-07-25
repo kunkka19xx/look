@@ -988,12 +988,12 @@
 
 .cmd-todo-extended {
     color: var(--color-warning);
-    background: rgba(243, 139, 168, 0.14);
+    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
 }
 
 .cmd-todo-overdue {
     color: var(--color-danger);
-    background: rgba(243, 139, 168, 0.14);
+    background: color-mix(in srgb, var(--color-danger) 14%, transparent);
 }
 
 .cmd-todo-task-del {
