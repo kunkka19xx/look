@@ -109,9 +109,8 @@ struct TodoView: View {
                     text: $search,
                     placeholder: "Search tasks & dates",
                     isFocused: $searchFocused,
-                    font: themeStore.uiNSFont(size: 13.5),
-                    textColor: NSColor(themeStore.fontColor()),
-                    caretColor: NSColor(themeStore.accentColor()),
+                    themeStore: themeStore,
+                    fontSize: 13.5,
                     onSubmit: {}
                 )
                     .frame(maxWidth: .infinity)

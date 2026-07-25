@@ -134,11 +134,10 @@ struct LauncherRowView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background {
-                // One pill shared across rows via matchedGeometryEffect: on
-                // keyboard navigation it glides from the old row to this one
-                // (the move is wrapped in `Motion.Selection.glide`); on click or
-                // a results refresh the selection changes outside an animation,
-                // so it snaps instantly.
+                // One pill shared across rows via matchedGeometryEffect. It
+                // glides when the selection change is wrapped in
+                // `Motion.Selection.glide` (keyboard nav) and snaps otherwise
+                // (click, results refresh).
                 if isSelected {
                     RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
                         .fill(themeStore.selectionFillColor())

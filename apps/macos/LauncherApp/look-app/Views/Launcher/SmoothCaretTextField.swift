@@ -1,23 +1,23 @@
 import AppKit
 import SwiftUI
 
-/// The search field's editable input, with a "monkeytype" caret: the native
-/// insertion point is suppressed and a bar is drawn that glides to the real caret
-/// position (solid while typing, blinking when idle).
-///
-/// Built as an `NSTextField` subclass rather than a custom `NSTextView` so the
-/// launcher's existing focus recovery (`findEditableTextField`, which looks for an
-/// editable `NSTextField`) keeps finding and focusing it unchanged. The caret is
-/// read from the field editor's layout, so it stays correct for any cursor
-/// position, not just the end of the text.
+/// The search field's editable input, with a gliding caret (solid while typing,
+/// blinking when idle). An `NSTextField` subclass, not a custom `NSTextView`, so
+/// the launcher's existing focus recovery (`findEditableTextField`, which looks
+/// for an editable `NSTextField`) keeps working unchanged.
 struct SmoothCaretTextField: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String
     var isFocused: FocusState<Bool>.Binding
-    var font: NSFont
-    var textColor: NSColor
-    var caretColor: NSColor
+    var themeStore: ThemeStore
+    /// Overrides the base theme font size when set (the Todo search bar runs a
+    /// touch larger). Colors and family always follow the theme.
+    var fontSize: CGFloat? = nil
     var onSubmit: () -> Void
+
+    private var font: NSFont { themeStore.uiNSFont(size: fontSize) }
+    private var textColor: NSColor { NSColor(themeStore.fontColor()) }
+    private var caretColor: NSColor { NSColor(themeStore.accentColor()) }
 
     func makeNSView(context: Context) -> CaretTextField {
         let field = CaretTextField()
@@ -50,13 +50,10 @@ struct SmoothCaretTextField: NSViewRepresentable {
         field.caretColor = caretColor
         applyPlaceholder(to: field)
 
-        // Bridge SwiftUI focus INTO first responder, one direction only.
-        // `currentEditor()` is non-nil exactly while the field is being edited, a
-        // stable "focused" signal (the first-responder identity flickers during
-        // layout and caused a makeFirstResponder feedback loop). Focus-in stops
-        // firing as soon as editing begins, so it can't loop. Blur is left to
-        // natural resignation (window hide / view swap) rather than a second
-        // branch here, which would ping-pong against the async begin-editing sync.
+        // Bridge focus INTO first responder only. `currentEditor() != nil` is a
+        // stable "editing" signal (unlike first-responder identity, which flickers
+        // during layout and loops makeFirstResponder). Blur is left to natural
+        // resignation (window hide / view swap), avoiding a two-way ping-pong.
         let isEditing = field.currentEditor() != nil
         if isFocused.wrappedValue, !isEditing, field.window != nil {
             DispatchQueue.main.async {
@@ -116,6 +113,8 @@ final class CaretTextField: NSTextField {
         didSet { caretLayer.backgroundColor = caretColor.cgColor }
     }
 
+    private static let blinkKey = "blink"
+
     private let caretLayer = CALayer()
     private var selectionObserver: NSObjectProtocol?
     private var blinkResumeTimer: Timer?
@@ -165,16 +164,14 @@ final class CaretTextField: NSTextField {
         super.textDidEndEditing(notification)
         stopObservingSelection()
         blinkResumeTimer?.invalidate()
-        caretLayer.removeAnimation(forKey: "blink")
+        caretLayer.removeAnimation(forKey: Self.blinkKey)
         caretLayer.opacity = 0
     }
 
     // MARK: - Native caret suppression
 
-    /// The field editor is shared per window, so clear the insertion point only
-    /// while we own it; `textDidEndEditing` fires before another field edits, and
-    /// each field editor session redraws its own caret, so no manual restore of
-    /// the colour is needed.
+    /// Clears the native insertion point while we own the shared field editor. No
+    /// restore needed: the next field's editing session redraws its own caret.
     private func suppressNativeCaret() {
         (currentEditor() as? NSTextView)?.insertionPointColor = .clear
     }
@@ -230,7 +227,7 @@ final class CaretTextField: NSTextField {
     // MARK: - Blink / solid-while-typing
 
     private func registerTyping() {
-        caretLayer.removeAnimation(forKey: "blink")
+        caretLayer.removeAnimation(forKey: Self.blinkKey)
         caretLayer.opacity = 1
         blinkResumeTimer?.invalidate()
         blinkResumeTimer = Timer.scheduledTimer(
@@ -249,7 +246,7 @@ final class CaretTextField: NSTextField {
         blink.duration = Motion.Caret.blinkPeriodSeconds
         blink.repeatCount = .infinity
         blink.calculationMode = .cubic
-        caretLayer.add(blink, forKey: "blink")
+        caretLayer.add(blink, forKey: Self.blinkKey)
     }
 
     // MARK: - Selection tracking

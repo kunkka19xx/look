@@ -24,9 +24,7 @@ struct SearchInputBar: View {
                     ? (activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder)
                     : AppConstants.Launcher.searchPlaceholder,
                 isFocused: isQueryFocused,
-                font: themeStore.uiNSFont(),
-                textColor: NSColor(themeStore.fontColor()),
-                caretColor: NSColor(themeStore.accentColor()),
+                themeStore: themeStore,
                 onSubmit: onSubmit
             )
                 .frame(maxWidth: .infinity)
@@ -133,9 +131,7 @@ struct CommandInputBar: View {
                 text: $text,
                 placeholder: command.placeholder,
                 isFocused: isQueryFocused,
-                font: themeStore.uiNSFont(),
-                textColor: NSColor(themeStore.fontColor()),
-                caretColor: NSColor(themeStore.accentColor()),
+                themeStore: themeStore,
                 onSubmit: onSubmit
             )
                 .frame(maxWidth: .infinity)

@@ -1,21 +1,12 @@
 import SwiftUI
 
-/// Shared motion vocabulary for the launcher. Kept in one place so every animated
-/// surface (tile spawn cascade, selection glide) reads with the same physics, and
-/// the feel can be tuned here instead of hunting numbers through the views.
-///
-/// The launcher leans on native SwiftUI springs rather than porting the linows CSS
-/// curves one for one: springs give the "settle" the empty query reveal is after
-/// (modelled on the iOS unlock, where icons start slightly enlarged and settle to
-/// their resting size) without hand tuned keyframes.
+/// Shared motion constants for the launcher, so every animated surface reads with
+/// the same physics and the feel is tuned in one place.
 enum Motion {
-    /// The "materialize on open" reveal for launchpad / quick action tiles. Tiles
-    /// start slightly enlarged and transparent, then spring down to rest, cascaded
-    /// by a per tile delay so the grid settles in instead of popping all at once.
+    /// The "materialize on open" reveal: tiles start slightly enlarged and
+    /// transparent, then spring to rest, staggered so the grid settles in.
     enum Spawn {
-        /// Scale a tile starts at before settling to 1.0 (the unlock zoom out).
         static let startScale: CGFloat = 1.05
-        /// Delay added per tile so the grid cascades rather than popping at once.
         static let staggerSeconds: Double = 0.02
         /// Ceiling on the cascade so a large grid never trails on too long.
         static let maxStaggerSeconds: Double = 0.22
@@ -28,10 +19,8 @@ enum Motion {
         }
     }
 
-    /// The selection highlight gliding between rows on keyboard navigation. Fast
-    /// enough to feel responsive to held arrow keys, damped enough not to wobble.
+    /// The single highlight pill gliding between rows on keyboard navigation.
     enum Selection {
-        /// Shared `matchedGeometryEffect` id for the single sliding pill.
         static let geometryID = "look.selection.pill"
         static let response: Double = 0.3
         static let dampingFraction: Double = 0.85
@@ -41,34 +30,26 @@ enum Motion {
         }
     }
 
-    /// The gliding "monkeytype" caret in the search field. `SmoothCaretTextField`
-    /// suppresses the native insertion point and animates a bar to the real caret
-    /// position, so the cursor slides as you type instead of jumping.
+    /// The gliding search-field caret (see `SmoothCaretTextField`).
     enum Caret {
         static let width: CGFloat = 2
         static let cornerRadius: CGFloat = 1
-        /// Added to the font's line height so the bar reads as a caret, not a full
-        /// line-height block.
+        /// Multiplier on the font's line height so the bar reads as a caret.
         static let heightScale: CGFloat = 1.05
-        /// How long the bar takes to glide to a new caret position.
         static let glideSeconds: CFTimeInterval = 0.105
-        /// One full blink cycle while the field is idle.
         static let blinkPeriodSeconds: CFTimeInterval = 1.05
-        /// Idle time after the last keystroke before the blink resumes; the bar
-        /// stays solid while actively typing.
+        /// Idle time after a keystroke before the blink resumes (solid while typing).
         static let blinkResumeSeconds: TimeInterval = 0.4
     }
 
-    /// House easing (linows' signature glide) as cubic-bezier control points, used
-    /// where an explicit curve is needed (the CoreAnimation caret). The spring
-    /// driven spawn / selection motion approximates the same feel natively.
+    /// House easing as cubic-bezier control points, for the CoreAnimation caret
+    /// (the spring-driven motion above approximates the same feel natively).
     static let houseCurveControlPoints: (Float, Float, Float, Float) = (0.22, 1, 0.36, 1)
 }
 
-/// Plays the spawn reveal when the view first appears and again whenever `token`
-/// changes. The launcher re-arms this on every window show, so the cascade replays
-/// each time Look opens (the AppKit window is only ordered out, never torn down, so
-/// `onAppear` alone would fire just once per process).
+/// Plays the spawn reveal on appear and whenever `token` changes. The launcher
+/// bumps `token` on every window show, so the cascade replays each open (the
+/// window is only ordered out, so `onAppear` alone fires once per process).
 private struct SpawnReveal: ViewModifier {
     let index: Int
     let token: UInt64
@@ -88,9 +69,9 @@ private struct SpawnReveal: ViewModifier {
             shown = true
             return
         }
-        // Snap to the hidden frame with no animation, then let the next runloop
-        // tick animate to shown: SwiftUI needs the two states in separate
-        // transactions to capture a "from" value (the reflow linows forces in JS).
+        // Snap to hidden with no animation, then animate to shown on the next
+        // runloop tick: the two states need separate transactions to capture a
+        // "from" value and actually animate.
         shown = false
         DispatchQueue.main.async {
             withAnimation(Motion.Spawn.animation(index: index)) {

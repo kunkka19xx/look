@@ -211,7 +211,7 @@ private enum LunarToday {
 }
 
 /// Today's lunar day/month plus a "Lunar" (or "Lunar leap") caption, shown in the
-/// clock tile's header corner. Mirrors the linows clock readout.
+/// clock tile's header corner.
 private struct LunarBadge: View {
     let lunar: LunarDate
     var themeStore: ThemeStore
@@ -233,10 +233,8 @@ private struct LunarBadge: View {
 
 // MARK: - Header clock
 
-/// A compact time + date + lunar date shown in a slot card's header, so the
-/// current date stays visible while the Todo or Pomo slot occupies the tile
-/// (which otherwise hides the Clock slot). Time and Gregorian date read at full
-/// strength; the lunar date sits dimmed below.
+/// Time + Gregorian date (full strength) with the lunar date dimmed below, kept
+/// visible while the Todo or Pomo slot occupies the tile.
 private struct LaunchpadHeaderClock: View {
     var themeStore: ThemeStore
 

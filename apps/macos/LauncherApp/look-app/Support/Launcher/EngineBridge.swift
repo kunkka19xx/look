@@ -203,9 +203,8 @@ final class EngineBridge: @unchecked Sendable {
         look_request_index_refresh()
     }
 
-    /// Today's (or any date's) lunar date from the shared core. `tzHours` is the
-    /// viewer's UTC offset in hours, which selects the calendar variant (7 =
-    /// Vietnamese, 8 = Chinese), matching how linows calls the same crate.
+    /// Lunar date from the shared core. `tzHours` is the viewer's UTC offset,
+    /// which selects the calendar variant (7 = Vietnamese, 8 = Chinese).
     nonisolated func lunarDate(year: Int, month: Int, day: Int, tzHours: Double) -> LunarDate? {
         guard let ptr = look_lunar_date_json(Int64(year), Int64(month), Int64(day), tzHours) else {
             return nil
