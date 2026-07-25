@@ -155,11 +155,11 @@ mod imp {
             .get("xesam:artist")
             .and_then(joined_strings)
             .filter(|s| !s.is_empty());
-        let app = player_proxy(conn, name, ROOT_IFACE)
-            .await?
-            .get_property::<String>("Identity")
-            .await
-            .ok();
+        // A missing app name just leaves `app` None; it must not blank the tile.
+        let app = match player_proxy(conn, name, ROOT_IFACE).await {
+            Some(proxy) => proxy.get_property::<String>("Identity").await.ok(),
+            None => None,
+        };
 
         Some(NowPlayingSnapshot {
             title,

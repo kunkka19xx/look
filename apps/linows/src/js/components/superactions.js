@@ -68,8 +68,10 @@ let container = null;
 let built = false;
 let visible = false;
 
-// The shared catalog layout, fetched once. Rendered from, never mutated.
+// The shared catalog layout. Rendered from, never mutated. Fetched lazily and
+// retried until it lands (see ensureLayout); layoutFetch is the in-flight request.
 let layoutTiles = null;
+let layoutFetch = null;
 
 // Rebuilt on each render(): actionable tiles keyed by id, the accelerator-char
 // -> id index, and the state-bearing controls (toggles + info) we re-read live.
@@ -172,14 +174,11 @@ const ICON = {
 
 export function init(containerEl) {
     container = containerEl;
-    // Prefetch the layout so the first show builds with no round trip. If the
+    // Prefetch the layout so the first show builds with no round trip; if the
     // strip was already asked to show before it arrived, build now.
-    launchpadLayout()
-        .then((tiles) => {
-            layoutTiles = tiles;
-            if (visible && !built) buildAndReveal();
-        })
-        .catch(() => {});
+    ensureLayout().then(() => {
+        if (visible && !built) buildAndReveal();
+    });
 
     // Pause the clock / rotation timers while the window is hidden; the reveal
     // and replayEnter restart them (see setVisible / replayEnter).
@@ -187,6 +186,24 @@ export function init(containerEl) {
         if (document.hidden) stopTimers();
         else if (visible) startTimers();
     });
+}
+
+// Resolve the shared layout, fetching it on demand and retrying after a failure
+// (the backend can be briefly unready at startup). Concurrent callers share one
+// request. Resolves to whether the layout is now available.
+function ensureLayout() {
+    if (layoutTiles) return Promise.resolve(true);
+    if (!layoutFetch) {
+        layoutFetch = launchpadLayout()
+            .then((tiles) => {
+                layoutTiles = tiles;
+            })
+            .catch(() => {})
+            .finally(() => {
+                layoutFetch = null;
+            });
+    }
+    return layoutFetch.then(() => !!layoutTiles);
 }
 
 /**
@@ -243,8 +260,11 @@ export function isVisible() {
 }
 
 // Build (once) then reveal: read live state, start the timers, play the cascade.
-function buildAndReveal() {
-    if (!layoutTiles) return; // init() finishes the build when the layout lands
+// Fetches the layout first if needed, so a summon before/after a failed prefetch
+// still builds instead of no-opping forever.
+async function buildAndReveal() {
+    if (!layoutTiles && !(await ensureLayout())) return; // retry on a later summon
+    if (!visible) return; // hidden again while the layout was in flight
     if (!built) {
         render(layoutTiles);
         built = true;
@@ -807,7 +827,9 @@ function tileEl(actionId, variant, tone) {
     el.type = 'button';
     el.tabIndex = -1;
     el.dataset.id = actionId;
-    el.className = `ctl-tile ctl-tile--${variant} pos-${AREA[actionId]}`;
+    el.className = `ctl-tile ctl-tile--${variant}`;
+    // An unknown catalog id keeps a plain tile rather than escaping its grid area.
+    if (AREA[actionId]) el.classList.add(`pos-${AREA[actionId]}`);
     if (tone) el.classList.add(`is-${tone}`);
     return el;
 }
@@ -815,7 +837,7 @@ function tileEl(actionId, variant, tone) {
 function iconSpan(svg) {
     const el = document.createElement('span');
     el.className = 'ctl-icon';
-    el.innerHTML = svg;
+    el.innerHTML = svg || '';
     return el;
 }
 

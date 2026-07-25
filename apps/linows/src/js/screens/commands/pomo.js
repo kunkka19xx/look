@@ -489,22 +489,27 @@ export function formatTime(secs) {
 }
 
 // A read-only view of the live session for other surfaces (the launchpad L
-// slot), or null when idle. `secondsLeft` is wall-clock corrected so it stays
-// true even while this screen is closed and its own tick is stopped. Mirrors the
-// macOS PomoSharedState the launchpad reads.
+// slot), or null when idle. Wall-clock corrected so it stays true while this
+// screen is closed and its own tick is stopped: a running session projects the
+// elapsed time forward through phases (returning null once the whole plan has
+// elapsed) rather than freezing at 00:00. Mirrors the macOS PomoSharedState.
 export function snapshot() {
     if (activeIndex === null) return null;
-    const session = sessions[activeIndex];
-    const total = session.duration * 60;
-    const left = running
-        ? Math.max(0, secondsLeft - Math.floor((Date.now() - lastTickAt) / 1000))
-        : secondsLeft;
+    let index = activeIndex;
+    let left = running ? secondsLeft - Math.floor((Date.now() - lastTickAt) / 1000) : secondsLeft;
+    // Carry any overflow into the following phases (running only; paused holds).
+    while (running && left <= 0) {
+        index += 1;
+        if (index >= sessions.length) return null; // whole plan elapsed
+        left += sessions[index].duration * 60;
+    }
+    const total = sessions[index].duration * 60;
     return {
         running,
-        type: session.type,
-        index: activeIndex,
+        type: sessions[index].type,
+        index,
         count: sessions.length,
-        secondsLeft: left,
+        secondsLeft: Math.max(0, left),
         progress: total ? Math.min(1, (total - left) / total) : 0,
     };
 }

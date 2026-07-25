@@ -31,6 +31,8 @@ pub enum ActionState {
     /// A non-boolean value shown as-is. Button controls (Screensaver, Restart,
     /// Shut Down) return it empty: they have no on/off value, but a resolved
     /// state marks them present so the launchpad renders them wired.
+    // Only the Linux button adapters construct it; unused on Windows (Bluetooth only).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     Value {
         value: String,
     },

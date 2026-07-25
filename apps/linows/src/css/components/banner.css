@@ -7,10 +7,8 @@
     padding: 8px var(--content-padding);
     border-bottom: var(--border-thickness) solid var(--divider-color);
     /* Solid base so the toast stays legible over the bare desktop in floating
-     * mode; the faint per-style tint alone let the text blend into whatever is
-     * behind the transparent window. Matches the confirm-bar's opaque surface.
-     * The status tint layers on top via background-image (see below). */
-    background-color: rgba(15, 15, 22, 0.96);
+     * mode; the status tint layers on top via background-image (see below). */
+    background-color: var(--overlay-surface);
     animation: banner-in 200ms ease-out;
 }
 

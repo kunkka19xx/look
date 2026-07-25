@@ -38,7 +38,17 @@ impl SystemControl for KeepAwakeControl {
     }
 
     fn apply(&self, intent: ActionIntent) -> ActionOutcome {
-        let held = held();
+        // Hold one guard across check-and-act so a rapid double-press can't both
+        // read "off" and both acquire, silently dropping the first inhibitor fd.
+        let mut slot = match LOCK.lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return ActionOutcome::Failed {
+                    message: "Keep Awake lock poisoned".to_string(),
+                };
+            }
+        };
+        let held = slot.is_some();
         let target = match intent {
             ActionIntent::Toggle => !held,
             ActionIntent::SetOn(on) => on,
@@ -56,9 +66,7 @@ impl SystemControl for KeepAwakeControl {
         if target {
             match acquire() {
                 Ok(fd) => {
-                    if let Ok(mut slot) = LOCK.lock() {
-                        *slot = Some(fd);
-                    }
+                    *slot = Some(fd);
                     ActionOutcome::Ok {
                         banner: Some(banner(true)),
                     }
@@ -67,9 +75,7 @@ impl SystemControl for KeepAwakeControl {
             }
         } else {
             // Dropping the fd closes it, which releases the logind lock.
-            if let Ok(mut slot) = LOCK.lock() {
-                slot.take();
-            }
+            slot.take();
             ActionOutcome::Ok {
                 banner: Some(banner(false)),
             }
