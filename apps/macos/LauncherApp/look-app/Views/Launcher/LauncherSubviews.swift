@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SearchInputBar: View {
@@ -17,20 +18,18 @@ struct SearchInputBar: View {
         HStack(spacing: 8) {
             Image(systemName: isCommandMode ? "terminal" : "magnifyingglass")
                 .foregroundStyle(isCommandMode ? themeStore.accentColor() : themeStore.secondaryTextColor())
-            TextField(
-                isCommandMode
+            SmoothCaretTextField(
+                text: $text,
+                placeholder: isCommandMode
                     ? (activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder)
                     : AppConstants.Launcher.searchPlaceholder,
-                text: $text
+                isFocused: isQueryFocused,
+                font: themeStore.uiNSFont(),
+                textColor: NSColor(themeStore.fontColor()),
+                caretColor: NSColor(themeStore.accentColor()),
+                onSubmit: onSubmit
             )
-                .textFieldStyle(.plain)
-                .focused(isQueryFocused)
-                .onTapGesture {
-                    DispatchQueue.main.async {
-                        isQueryFocused.wrappedValue = true
-                    }
-                }
-                .onSubmit(onSubmit)
+                .frame(maxWidth: .infinity)
 
             if isCommandMode {
                 if let command = activeCommand {
@@ -130,10 +129,16 @@ struct CommandInputBar: View {
             Image(systemName: command.symbolName)
                 .foregroundStyle(themeStore.accentColor())
 
-            TextField(command.placeholder, text: $text)
-                .textFieldStyle(.plain)
-                .focused(isQueryFocused)
-                .onSubmit(onSubmit)
+            SmoothCaretTextField(
+                text: $text,
+                placeholder: command.placeholder,
+                isFocused: isQueryFocused,
+                font: themeStore.uiNSFont(),
+                textColor: NSColor(themeStore.fontColor()),
+                caretColor: NSColor(themeStore.accentColor()),
+                onSubmit: onSubmit
+            )
+                .frame(maxWidth: .infinity)
 
             Text("/\(command.id)")
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
@@ -185,6 +190,9 @@ struct ResultsListView: View {
     let onSelect: (String) -> Void
     let onOpen: (String) -> Void
 
+    /// Backs the single selection pill that glides between rows.
+    @Namespace private var selectionNamespace
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
@@ -194,6 +202,7 @@ struct ResultsListView: View {
                             result: result,
                             isSelected: selectedID == result.id,
                             isPicked: pickedKeys.contains("\(result.kind.rawValue)|\(result.path)"),
+                            selectionNamespace: selectionNamespace,
                             onOpen: {
                                 onSelect(result.id)
                                 onOpen(result.id)

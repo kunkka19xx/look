@@ -93,6 +93,9 @@ struct LauncherView: View {
     @State var recentlyKilledPIDs: Set<Int32> = []
     @State var showsHelpScreen = false
     @State var focusRequestToken: UInt64 = 0
+    /// Bumped every time the launcher window is shown, so the empty state tiles and
+    /// quick actions replay their spawn cascade on each open (see `Motion.Spawn`).
+    @State var appearanceRevealToken: UInt64 = 0
     @State var lookupDefinition: LookupDefinition?
     @State var pidToRestoreOnHide: pid_t?
     @StateObject var runningAppsService = RunningAppsService()
@@ -907,7 +910,8 @@ struct LauncherView: View {
                     EmptyStateLaunchpadView(
                         tiles: launchpadTiles,
                         controller: launchpadController,
-                        themeStore: themeStore
+                        themeStore: themeStore,
+                        revealToken: appearanceRevealToken
                     )
                 }
                 Spacer(minLength: 0)
@@ -1070,6 +1074,7 @@ struct LauncherView: View {
                     quickActionInfo: quickActionInfo,
                     pendingQuickActionItems: pendingQuickActions,
                     busyQuickActionIds: busyQuickActionIds,
+                    quickActionsRevealToken: appearanceRevealToken,
                     onRunQuickAction: { descriptor, intent in
                         runQuickAction(descriptor, intent: intent)
                     },

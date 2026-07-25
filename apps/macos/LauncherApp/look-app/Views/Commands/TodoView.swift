@@ -105,11 +105,16 @@ struct TodoView: View {
                 .foregroundStyle(themeStore.accentColor())
 
             if page == .tasks {
-                TextField("Search tasks & dates", text: $search)
-                    .textFieldStyle(.plain)
-                    .focused($searchFocused)
-                    .font(themeStore.uiFont(size: 13.5))
-                    .foregroundStyle(themeStore.fontColor())
+                SmoothCaretTextField(
+                    text: $search,
+                    placeholder: "Search tasks & dates",
+                    isFocused: $searchFocused,
+                    font: themeStore.uiNSFont(size: 13.5),
+                    textColor: NSColor(themeStore.fontColor()),
+                    caretColor: NSColor(themeStore.accentColor()),
+                    onSubmit: {}
+                )
+                    .frame(maxWidth: .infinity)
 
                 if !search.isEmpty {
                     Button {

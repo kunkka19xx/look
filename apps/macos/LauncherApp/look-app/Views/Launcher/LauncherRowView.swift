@@ -8,7 +8,15 @@ struct LauncherRowView: View {
     let result: LauncherResult
     let isSelected: Bool
     let isPicked: Bool
+    /// Shared namespace for the single selection pill that glides between rows
+    /// (see `Motion.Selection`). Only the selected row is the geometry source.
+    let selectionNamespace: Namespace.ID
     let onOpen: () -> Void
+
+    private enum Layout {
+        static let cornerRadius: CGFloat = 8
+        static let borderWidth: CGFloat = 1
+    }
 
     private var isPrefixSuggestion: Bool {
         result.id.hasPrefix(AppConstants.Launcher.PrefixSuggestion.resultIDPrefix)
@@ -125,14 +133,20 @@ struct LauncherRowView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(
-                isSelected ? themeStore.selectionFillColor() : .clear,
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-            )
-            .overlay {
+            .background {
+                // One pill shared across rows via matchedGeometryEffect: on
+                // keyboard navigation it glides from the old row to this one
+                // (the move is wrapped in `Motion.Selection.glide`); on click or
+                // a results refresh the selection changes outside an animation,
+                // so it snaps instantly.
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(themeStore.dividerColor(), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
+                        .fill(themeStore.selectionFillColor())
+                        .overlay {
+                            RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
+                                .stroke(themeStore.dividerColor(), lineWidth: Layout.borderWidth)
+                        }
+                        .matchedGeometryEffect(id: Motion.Selection.geometryID, in: selectionNamespace)
                 }
             }
             .contentShape(Rectangle())

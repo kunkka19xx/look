@@ -14,6 +14,8 @@ struct ResultPreviewView: View {
     /// Actions with something applying: their controls render inert (see
     /// `LauncherView.busyQuickActionIds`).
     var busyQuickActionIds: Set<String> = []
+    /// Changes each time the launcher opens, replaying the quick-action cascade.
+    var quickActionsRevealToken: UInt64 = 0
     var onRunQuickAction: (QuickActionDescriptor, ActionIntent) -> Void = { _, _ in }
     var onActivateQuickActionItem: (QuickActionDescriptor, QuickActionListItem) -> Void = { _, _ in }
     var onDeleteClipboard: (() -> Void)? = nil
@@ -171,6 +173,7 @@ struct ResultPreviewView: View {
                         pendingItems: pendingQuickActionItems,
                         busyActionIds: busyQuickActionIds,
                         themeStore: themeStore,
+                        revealToken: quickActionsRevealToken,
                         onRun: onRunQuickAction,
                         onActivateItem: onActivateQuickActionItem
                     )
