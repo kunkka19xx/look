@@ -61,35 +61,35 @@ cargo test --manifest-path bridge/ffi/Cargo.toml
 
 ## Branch and PR flow
 
-- default contributor target branch is `dev`
-- open PRs to `main` only for hotfixes or release-critical patches coordinated with maintainers
-- keep `main` stable/releasable; regular feature and refactor work should merge through `dev`
+- `main` is the only long-lived branch; every PR targets it
+- `main` must stay releasable at all times, since there is no staging branch behind it
+- releases are cut by dispatching the release workflows with an explicit version, so nothing needs to be frozen on a branch
 
 Suggested local flow:
 
 ```bash
 git fetch origin
-git checkout dev
-git pull --ff-only origin dev
+git checkout main
+git pull --ff-only origin main
 git checkout -b feat/short-description
 ```
 
 Before opening PR:
 
-- rebase/merge latest `dev`
+- rebase onto latest `main`
 - run local checks from the Development setup section
 - ensure docs are updated when behavior changes
 
 ## Git guidelines for contributors
 
-- always branch from `dev`; do not develop directly on `dev`
+- always branch from `main`; do not develop directly on `main`
 - keep branches short-lived and focused to reduce merge conflicts
-- update your branch from `dev` before requesting review:
+- update your branch from `main` before requesting review:
 
 ```bash
 git fetch origin
 git checkout <your-branch>
-git rebase origin/dev
+git rebase origin/main
 ```
 
 - if your branch is shared and you want to avoid rewriting history, merge instead of rebase:
@@ -97,27 +97,28 @@ git rebase origin/dev
 ```bash
 git fetch origin
 git checkout <your-branch>
-git merge origin/dev
+git merge origin/main
 ```
 
+- do not merge or cherry-pick individual `main` commits into your branch to catch up. Your PR then carries duplicate copies of commits that already exist upstream, and each one becomes a conflict. Rebase (or merge `origin/main` whole) instead
 - if GitHub shows "This branch has conflicts": resolve locally, run checks, then push the resolution commit
 - avoid force-pushing shared branches unless maintainers explicitly agree
 - when adding limits/thresholds for safety or validation, prefer named constants over magic numbers
 
 ## CI behavior
 
-CI runs for pushes and pull requests targeting `dev` and `main`.
+CI runs for pushes to `main` and for pull requests targeting `main`.
 
 - Rust jobs (`lint`, `test`, `cargo-audit`, release `build`) run only when Rust-related paths change
 - secrets scanning (`gitleaks`) always runs
-- macOS app build runs only for PRs to `dev`/`main` when Swift files change
+- macOS app build runs only for PRs to `main` when Swift files change
 - linows (Tauri) build runs when `apps/linows/**` or `core/**` changes; the legacy WinUI3 app build is disabled, since that app is archived
 - release-style Rust build artifacts run only on push to `main`
 
 ## Pull request checklist
 
 - scope is focused and minimal
-- base branch is `dev` (unless maintainer requested `main`)
+- base branch is `main`
 - docs updated when behavior changes
 - no unrelated formatting-only changes
 - tests/checks pass locally

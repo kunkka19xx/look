@@ -142,8 +142,8 @@ Signing/notarization walkthrough: [docs/apple-developer-release-guide.md](docs/a
 
 ## Contribution flow
 
-- maintainer PRs target `main` directly
-- external contributions: branch from `dev` and open PRs into `dev`
+- every PR targets `main`, maintainer and external alike; there is no long-lived staging branch
+- external contributions: branch from `main` in your fork and open the PR into `main`
 - run local checks before opening a PR:
   ```bash
   cargo test --workspace --manifest-path core/Cargo.toml
