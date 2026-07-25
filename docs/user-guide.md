@@ -103,7 +103,8 @@ URL-like queries are detected automatically (no prefix). Type a URL and Look off
 Clipboard mode (`c"`):
 
 - stores recent text clips for the running app session (history size is configurable via `clipboard_history_limit`, see File-only settings below),
-- `Enter` on a clipboard row copies that content back to clipboard.
+- `Enter` on a clipboard row copies that content back to clipboard,
+- `Cmd+D` (`Ctrl+D` on Linux/Windows) removes the selected row from Look's clipboard history.
 
 Translation mode (`t"`/`tw"`):
 
@@ -322,7 +323,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+F`: reveal in Finder
 - `Cmd+C`: copy selected file/folder
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
-- `Cmd+D`: move selected file/folder (or picked items) to Trash; on the pinned Trash folder, empty the Trash (macOS only for now)
+- `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
 - `Cmd+Shift+,`: toggle settings panel
 - `Cmd+Shift+;`: reload config
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset

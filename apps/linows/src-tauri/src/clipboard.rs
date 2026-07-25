@@ -162,16 +162,26 @@ pub fn get_clipboard_history(query: String) -> Vec<ClipboardEntry> {
         .collect()
 }
 
+fn remove_clipboard_entry(entries: &mut Vec<ClipboardEntry>, timestamp: u64, text: &str) -> bool {
+    let Some(index) = entries
+        .iter()
+        .position(|entry| entry.timestamp == timestamp && entry.text == text)
+    else {
+        return false;
+    };
+    entries.remove(index);
+    true
+}
+
 #[tauri::command]
-pub fn delete_clipboard_entry(index: usize) -> bool {
+pub fn delete_clipboard_entry(timestamp: u64, text: String) -> bool {
     let mut lock = STATE.lock().unwrap();
     let Some(state) = lock.as_mut() else {
         return false;
     };
-    if index >= state.entries.len() {
+    if !remove_clipboard_entry(&mut state.entries, timestamp, &text) {
         return false;
     }
-    state.entries.remove(index);
     save_entries(&state.entries);
     true
 }
@@ -182,4 +192,35 @@ pub fn copy_to_clipboard(text: String) -> Result<(), String> {
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
     clipboard.set_text(&text).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ClipboardEntry, remove_clipboard_entry};
+
+    fn entry(text: &str, timestamp: u64) -> ClipboardEntry {
+        ClipboardEntry {
+            text: text.to_owned(),
+            timestamp,
+            char_count: text.chars().count(),
+            line_count: text.lines().count(),
+        }
+    }
+
+    #[test]
+    fn removes_the_matching_entry_instead_of_a_filtered_position() {
+        let mut entries = vec![entry("unrelated", 10), entry("needle", 20)];
+
+        assert!(remove_clipboard_entry(&mut entries, 20, "needle"));
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].text, "unrelated");
+    }
+
+    #[test]
+    fn keeps_history_unchanged_when_identity_does_not_match() {
+        let mut entries = vec![entry("same timestamp", 10)];
+
+        assert!(!remove_clipboard_entry(&mut entries, 10, "different text"));
+        assert_eq!(entries.len(), 1);
+    }
 }
