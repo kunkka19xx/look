@@ -54,8 +54,8 @@ mod imp {
     pub fn current() -> Option<NowPlayingSnapshot> {
         let conn = dbus::session()?;
         dbus::runtime().block_on(async {
-            let name = active_player(conn).await?;
-            read_snapshot(conn, &name).await
+            let (name, status) = active_player(conn).await?;
+            read_snapshot(conn, &name, &status).await
         })
     }
 
@@ -70,20 +70,41 @@ mod imp {
             return false;
         };
         dbus::runtime().block_on(async {
-            let Some(name) = active_player(conn).await else {
+            let Some((name, _)) = active_player(conn).await else {
                 return false;
             };
-            let Ok(proxy) = zbus::Proxy::new(conn, name.as_str(), MPRIS_PATH, PLAYER_IFACE).await
-            else {
+            let Some(proxy) = player_proxy(conn, &name, PLAYER_IFACE).await else {
                 return false;
             };
             proxy.call_method(method, &()).await.is_ok()
         })
     }
 
-    /// The player to display and drive: the one currently playing, else the
-    /// first that exports a status at all (paused / stopped).
-    async fn active_player(conn: &zbus::Connection) -> Option<String> {
+    /// An uncached proxy for a one-shot read/call. The default proxy sets up a
+    /// `PropertiesChanged` subscription on first property access, pure churn for
+    /// the short-lived proxies this module builds every 2s poll.
+    async fn player_proxy<'a>(
+        conn: &'a zbus::Connection,
+        name: &str,
+        interface: &'static str,
+    ) -> Option<zbus::Proxy<'a>> {
+        zbus::proxy::Builder::new(conn)
+            .destination(name.to_string())
+            .ok()?
+            .path(MPRIS_PATH)
+            .ok()?
+            .interface(interface)
+            .ok()?
+            .cache_properties(zbus::proxy::CacheProperties::No)
+            .build()
+            .await
+            .ok()
+    }
+
+    /// The player to display and drive, with its playback status: the one
+    /// currently playing, else the first that exports a status at all (paused /
+    /// stopped). Returning the status lets the caller skip re-reading it.
+    async fn active_player(conn: &zbus::Connection) -> Option<(String, String)> {
         let reply = conn
             .call_method(
                 Some("org.freedesktop.DBus"),
@@ -98,9 +119,9 @@ mod imp {
 
         let mut fallback = None;
         for name in names.into_iter().filter(|n| n.starts_with(MPRIS_PREFIX)) {
-            match playback_status(conn, &name).await.as_deref() {
-                Some(PLAYING) => return Some(name),
-                Some(_) if fallback.is_none() => fallback = Some(name),
+            match playback_status(conn, &name).await {
+                Some(status) if status == PLAYING => return Some((name, status)),
+                Some(status) if fallback.is_none() => fallback = Some((name, status)),
                 _ => {}
             }
         }
@@ -108,17 +129,23 @@ mod imp {
     }
 
     async fn playback_status(conn: &zbus::Connection, name: &str) -> Option<String> {
-        let proxy = zbus::Proxy::new(conn, name, MPRIS_PATH, PLAYER_IFACE)
+        player_proxy(conn, name, PLAYER_IFACE)
+            .await?
+            .get_property::<String>("PlaybackStatus")
             .await
-            .ok()?;
-        proxy.get_property::<String>("PlaybackStatus").await.ok()
+            .ok()
     }
 
-    async fn read_snapshot(conn: &zbus::Connection, name: &str) -> Option<NowPlayingSnapshot> {
-        let player = zbus::Proxy::new(conn, name, MPRIS_PATH, PLAYER_IFACE)
+    async fn read_snapshot(
+        conn: &zbus::Connection,
+        name: &str,
+        status: &str,
+    ) -> Option<NowPlayingSnapshot> {
+        let metadata: HashMap<String, OwnedValue> = player_proxy(conn, name, PLAYER_IFACE)
+            .await?
+            .get_property("Metadata")
             .await
             .ok()?;
-        let metadata: HashMap<String, OwnedValue> = player.get_property("Metadata").await.ok()?;
 
         let title = metadata.get("xesam:title").and_then(one_string)?;
         if title.is_empty() {
@@ -128,15 +155,8 @@ mod imp {
             .get("xesam:artist")
             .and_then(joined_strings)
             .filter(|s| !s.is_empty());
-        let is_playing = player
-            .get_property::<String>("PlaybackStatus")
-            .await
-            .ok()
-            .as_deref()
-            == Some(PLAYING);
-        let app = zbus::Proxy::new(conn, name, MPRIS_PATH, ROOT_IFACE)
-            .await
-            .ok()?
+        let app = player_proxy(conn, name, ROOT_IFACE)
+            .await?
             .get_property::<String>("Identity")
             .await
             .ok();
@@ -145,7 +165,7 @@ mod imp {
             title,
             artist,
             app,
-            is_playing,
+            is_playing: status == PLAYING,
         })
     }
 

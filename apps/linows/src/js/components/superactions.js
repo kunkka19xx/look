@@ -85,8 +85,10 @@ let openTasks = [];
 let taskCursor = 0;
 
 // Today's lunar date ({ day, month, leap }) shown in the Clock slot header, from
-// the shared look-lunar core crate. Null until the first fetch resolves.
+// the shared look-lunar core crate, memoized by day key so the summon path only
+// hits IPC when the date actually rolls over. Null until the first fetch.
 let lunarToday = null;
+let lunarKey = null;
 
 // Weather and Now Playing tiles feed from external sources, not the qactions
 // adapter registry, so they hold their own DOM refs and refresh tokens (a stale
@@ -468,19 +470,24 @@ function refreshState() {
     refreshNowPlaying((mediaToken += 1));
 }
 
-// Fetch today's lunar date from core (once per summon; it only changes at
-// midnight) and repaint the Clock slot header if it is the one showing.
+// Fetch today's lunar date from core, but only when the day has rolled over
+// since the last fetch (it changes only at midnight), then repaint the Clock
+// slot header if it is the one showing.
 async function refreshLunar() {
-    const now = new Date();
-    try {
-        lunarToday = await lunarDate(
-            now.getFullYear(),
-            now.getMonth() + 1,
-            now.getDate(),
-            -now.getTimezoneOffset() / 60,
-        );
-    } catch (_) {
-        return;
+    const key = todayKey();
+    if (lunarKey !== key) {
+        const now = new Date();
+        try {
+            lunarToday = await lunarDate(
+                now.getFullYear(),
+                now.getMonth() + 1,
+                now.getDate(),
+                -now.getTimezoneOffset() / 60,
+            );
+            lunarKey = key;
+        } catch (_) {
+            return;
+        }
     }
     if (slotEls?.slot === 'clock') writeLunar();
 }
@@ -686,11 +693,15 @@ async function refreshNowPlaying(myToken) {
     renderMedia(np);
 }
 
+// Reflect play/pause on the transport (the accent class + the button glyph).
+function setPlaying(playing) {
+    mediaEls.el.classList.toggle('is-playing', playing);
+    mediaEls.playBtn.innerHTML = playing ? pause : play;
+}
+
 // Reflect a track (or its absence) and the play/pause state on the transport.
 function renderMedia(np) {
-    const playing = !!np?.is_playing;
-    mediaEls.playBtn.innerHTML = playing ? pause : play;
-    mediaEls.el.classList.toggle('is-playing', playing);
+    setPlaying(!!np?.is_playing);
     if (!np?.title) {
         mediaEls.label.textContent = 'Nothing playing';
         mediaEls.state.textContent = '';
@@ -707,8 +718,7 @@ function renderMedia(np) {
 // visible press; the re-read reconciles.
 async function transport(command) {
     if (command === 'playpause' && mediaEls) {
-        const nowPlaying = mediaEls.el.classList.toggle('is-playing');
-        mediaEls.playBtn.innerHTML = nowPlaying ? pause : play;
+        setPlaying(!mediaEls.el.classList.contains('is-playing'));
     }
     try {
         await nowPlayingCommand(command);
@@ -809,11 +819,18 @@ function iconSpan(svg) {
     return el;
 }
 
-// Index an actionable tile by id (and its accelerator char) and make a click
-// activate it, so mouse and keyboard share one path.
-function bindActionable(el, tile) {
+// Index a tile by id (and its accelerator char) so activate() / handleMnemonic()
+// can find it. Registration is separate from click-wiring: the media tile is
+// indexed (for Alt+P) but stays click-inert.
+function indexTile(el, tile) {
     tilesById.set(tile.action_id, el);
     if (tile.mnemonic) mnemonicIndex.set(tile.mnemonic.toLowerCase(), tile.action_id);
+}
+
+// Index an actionable tile and make a click activate it, so mouse and keyboard
+// share one path.
+function bindActionable(el, tile) {
+    indexTile(el, tile);
     el.addEventListener('click', () => activate(tile.action_id));
 }
 
@@ -1015,10 +1032,8 @@ function buildMedia(tile) {
             transport(btn.dataset.cmd);
         });
     }
-    // Register the mnemonic (Alt+P) so it toggles play/pause via activate(); the
-    // whole tile stays inert (the transport buttons own the clicks), so this does
-    // not go through bindActionable.
-    tilesById.set(tile.action_id, el);
-    if (tile.mnemonic) mnemonicIndex.set(tile.mnemonic.toLowerCase(), tile.action_id);
+    // Index for the mnemonic (Alt+P toggles play/pause via activate()) without
+    // wiring a whole-tile click: the transport buttons own the clicks.
+    indexTile(el, tile);
     return el;
 }
