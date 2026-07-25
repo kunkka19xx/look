@@ -28,9 +28,11 @@ use tauri::async_runtime;
 pub enum ActionState {
     On,
     Off,
-    /// A non-boolean value shown as-is (e.g. a level or a mode name). Part of
-    /// the shared adapter contract; no linows control returns it yet.
-    #[allow(dead_code)]
+    /// A non-boolean value shown as-is. Button controls (Screensaver, Restart,
+    /// Shut Down) return it empty: they have no on/off value, but a resolved
+    /// state marks them present so the launchpad renders them wired.
+    // Only the Linux button adapters construct it; unused on Windows (Bluetooth only).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     Value {
         value: String,
     },
@@ -135,8 +137,17 @@ pub trait SystemControl: Send + Sync {
 /// unavailable (declaration is shared across OSes; execution is not).
 #[cfg(target_os = "linux")]
 fn adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
+    use look_qactions::action_id as id;
     match action_id {
-        "bluetooth" => Some(&controls::bluetooth::BluetoothControl),
+        id::BLUETOOTH => Some(&controls::bluetooth::BluetoothControl),
+        id::WIFI => Some(&controls::wifi::WifiControl),
+        id::THEME => Some(&controls::theme::ThemeControl),
+        id::KEEP_AWAKE => Some(&controls::keepawake::KeepAwakeControl),
+        id::MIC => Some(&controls::mic::MicControl),
+        id::SCREENSAVER => Some(&controls::screensaver::ScreensaverControl),
+        id::RESTART => Some(&controls::power::RestartControl),
+        id::SHUTDOWN => Some(&controls::power::ShutdownControl),
+        id::BATTERY => Some(&controls::battery::BatteryControl),
         _ => None,
     }
 }
@@ -178,6 +189,14 @@ fn unavailable_status() -> QuickActionStatus {
 #[tauri::command]
 pub fn quick_actions(result_id: String, kind: String) -> Vec<look_qactions::ActionDescriptor> {
     look_qactions::descriptors_for(&result_id, &kind)
+}
+
+/// The empty-state launchpad's tile layout, from the shared catalog. One source
+/// of truth across shells: the frontend renders these tiles (order, size, role,
+/// mnemonic, labels) instead of hardcoding its own copy.
+#[tauri::command]
+pub fn launchpad_layout() -> Vec<look_qactions::LaunchpadTile> {
+    look_qactions::launchpad_layout()
 }
 
 /// Live state + info values for an action. `info_keys` are the descriptor's

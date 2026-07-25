@@ -1,28 +1,43 @@
 // Super actions - the empty-state "launchpad" control strip. When the query is
 // empty on the home screen, `look` shows a compact bento of L/M/S tiles instead
 // of a result list: the priority slot (todo / pomo / clock), quick toggles
-// (Bluetooth, Wi-Fi, Theme, Keep Awake), info (Battery, Weather), one-shot
-// system actions (Close All, Mic, Restart, Shut Down) and a Now Playing
-// transport. Mirrors the macOS empty-state launchpad (issue #288).
+// (Bluetooth, Wi-Fi, Theme, Keep Awake), info (Battery), one-shot system actions
+// (Screensaver, Mic, Restart, Shut Down) and a Now Playing transport.
 //
-// This module owns the UI and input routing. Live system state and the
-// per-action execution adapters are wired later; every tile renders from a
-// static snapshot, but each actionable tile already carries its mnemonic
-// (Alt+<char>, the highlighted letter) and funnels both a click and the
-// accelerator through activate() so the execution wiring lands in one place.
-// Mirrors the macOS launchpad, where the same char fires on Cmd+<char>.
+// The tile set, order, sizes, roles, mnemonics and labels come from the shared
+// `look-qactions` catalog (launchpad_layout) so every platform shell renders the
+// same strip; only the live state reads differ. This module owns the DOM and
+// input routing, and reads each control's state through the same qactions IPC
+// the preview panel uses. Actionable tiles funnel a click and their Alt+<char>
+// accelerator through activate(), mirroring the macOS launchpad's Cmd+<char>.
+//
+// Every system tile is wired to a native adapter: the toggles (Bluetooth, Wi-Fi,
+// Theme, Keep Awake), Battery, the Mic mute, and the one-shot buttons
+// (Screensaver, Restart, Shut Down). The destructive buttons arm on first press
+// and fire on the second, mirroring the macOS launchpad's inline confirm. The
+// read-only Weather tile fills from the keyless IP-geo + Open-Meteo feed, and the
+// Now Playing transport reads and drives the active MPRIS player; both refresh on
+// summon (Now Playing also polls live while the strip is shown).
 
 import {
     listChecks,
+    timer,
     clock,
     bluetooth,
     wifi,
     moon,
     battery,
     coffee,
+    sun,
     cloudSun,
+    cloud,
+    cloudFog,
+    cloudDrizzle,
+    cloudRain,
+    cloudSnow,
+    cloudLightning,
     droplet,
-    xCircle,
+    monitor,
     mic,
     refreshCw,
     power,
@@ -30,25 +45,175 @@ import {
     skipBack,
     skipForward,
     play,
+    pause,
 } from '../icons.js';
+import {
+    launchpadLayout,
+    quickActionState,
+    quickActionApply,
+    weatherCurrent,
+    nowPlayingCurrent,
+    nowPlayingCommand,
+    lunarDate,
+    todoList,
+    systemUptime,
+} from '../ipc.js';
+import {
+    snapshot as pomoSnapshot,
+    formatTime as formatPomoTime,
+} from '../screens/commands/pomo.js';
+import * as banner from './banner.js';
 
 let container = null;
 let built = false;
 let visible = false;
 
-// Rebuilt on each render(): the actionable tiles keyed by id, and the map from
-// an accelerator char (lowercased) to the id it fires. Both drive activate().
+// The shared catalog layout. Rendered from, never mutated. Fetched lazily and
+// retried until it lands (see ensureLayout); layoutFetch is the in-flight request.
+let layoutTiles = null;
+let layoutFetch = null;
+// True while a reveal is awaiting the layout, so a second caller (init vs a
+// summon) doesn't run the reveal a second time and replay the animation.
+let revealPending = false;
+
+// Rebuilt on each render(): actionable tiles keyed by id, the accelerator-char
+// -> id index, and the state-bearing controls (toggles + info) we re-read live.
 let tilesById = new Map();
 let mnemonicIndex = new Map();
+let controls = new Map();
+
+// The L-slot's persistent chrome refs (icon, header clock, pill, body) and its
+// current sub-slot; plus the Todo tally and open-task rotation it reads.
+let slotEls = null;
+let todoStat = { done: 0, total: 0 };
+let openTasks = [];
+let taskCursor = 0;
+
+// Today's lunar date ({ day, month, leap }) shown in the Clock slot header, from
+// the shared look-lunar core crate, memoized by day key so the summon path only
+// hits IPC when the date actually rolls over. Null until the first fetch.
+let lunarToday = null;
+let lunarKey = null;
+
+// Weather and Now Playing tiles feed from external sources, not the qactions
+// adapter registry, so they hold their own DOM refs and refresh tokens (a stale
+// async read for a superseded summon / poll is dropped, independent of the
+// control state token below).
+let weatherEls = null;
+let mediaEls = null;
+let weatherToken = 0;
+let mediaToken = 0;
+
+// Bumped on every refresh so a late async state read for a stale summon is
+// dropped; guards against clobbering the optimistic value a press just set.
+let stateToken = 0;
+let applying = false;
+
+// The armed destructive tile awaiting its confirming second press, or null.
+let pendingConfirmId = null;
+let confirmTimer = null;
+
+// Clock re-render cadence, open-task rotation, and the live pomo countdown,
+// matching macOS.
+let clockTimer = null;
+let taskTimer = null;
+let pomoTimer = null;
+let mediaTimer = null;
+const CLOCK_TICK_MS = 20000;
+const TASK_ROTATE_MS = 2600;
+const POMO_TICK_MS = 1000;
+// Now Playing changes out of band (track advances, user pauses elsewhere), so
+// poll it live while the strip is shown. Weather is cached ~30 min, so it only
+// refreshes on summon.
+const MEDIA_TICK_MS = 2000;
+
+// Backend WMO condition key -> tile glyph. clear/partly reuse the sun icons.
+const WEATHER_ICON = {
+    clear: sun,
+    partly: cloudSun,
+    cloudy: cloud,
+    fog: cloudFog,
+    drizzle: cloudDrizzle,
+    rain: cloudRain,
+    showers: cloudRain,
+    snow: cloudSnow,
+    thunder: cloudLightning,
+};
+
+// Destructive one-shot actions carry the danger tone and gate on an inline
+// confirm: first press arms the tile, second fires. Auto-disarms after this
+// window so a forgotten prompt never fires on a later stray press.
+const DANGER = new Set(['restart', 'shutdown']);
+const CONFIRM_TIMEOUT_MS = 3000;
+
+// action_id -> CSS grid-area suffix (pos-<area>) and glyph. The grid placement
+// lives in superactions.css; this maps the shared ids onto it.
+const AREA = {
+    lslot: 'todo',
+    bluetooth: 'bt',
+    wifi: 'wifi',
+    battery: 'batt',
+    theme: 'theme',
+    keepawake: 'keep',
+    screensaver: 'scr',
+    weather: 'weather',
+    mic: 'mic',
+    restart: 'rst',
+    shutdown: 'shut',
+    nowplaying: 'play',
+};
+
+const ICON = {
+    bluetooth,
+    wifi,
+    theme: moon,
+    keepawake: coffee,
+    battery,
+    screensaver: monitor,
+    mic,
+    restart: refreshCw,
+    shutdown: power,
+};
 
 export function init(containerEl) {
     container = containerEl;
+    // Prefetch the layout so the first show builds with no round trip; if the
+    // strip was already asked to show before it arrived, build now.
+    ensureLayout().then(() => {
+        if (visible && !built) buildAndReveal();
+    });
+
+    // Pause the clock / rotation timers while the window is hidden; the reveal
+    // and replayEnter restart them (see setVisible / replayEnter).
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopTimers();
+        else if (visible) startTimers();
+    });
+}
+
+// Resolve the shared layout, fetching it on demand and retrying after a failure
+// (the backend can be briefly unready at startup). Concurrent callers share one
+// request. Resolves to whether the layout is now available.
+function ensureLayout() {
+    if (layoutTiles) return Promise.resolve(true);
+    if (!layoutFetch) {
+        layoutFetch = launchpadLayout()
+            .then((tiles) => {
+                layoutTiles = tiles;
+            })
+            .catch(() => {})
+            .finally(() => {
+                layoutFetch = null;
+            });
+    }
+    return layoutFetch.then(() => !!layoutTiles);
 }
 
 /**
- * Show or hide the control strip. Built lazily on first show so an app that
- * opens straight onto a query never pays for the DOM. Toggling the class on
- * the launcher window lets CSS trade the results row + hint bar for the strip.
+ * Show or hide the control strip. Built lazily on first show from the shared
+ * layout, so an app that opens straight onto a query never pays for the DOM.
+ * Toggling the class on the launcher window lets CSS trade the results row +
+ * hint bar for the strip.
  *
  * The reveal is animated (staggered tile fade-in); hiding is instant so typing
  * hands the space to the results list with no lag. A redundant show while
@@ -56,23 +221,28 @@ export function init(containerEl) {
  */
 export function setVisible(show) {
     if (!container) return;
-    if (show && !built) {
-        render();
-        built = true;
-    }
     if (show === visible) return;
     visible = show;
     container.hidden = !show;
     document.documentElement.classList.toggle('controls-open', show);
-    if (show) playEnter();
+    if (show) buildAndReveal();
+    else {
+        stopTimers();
+        // Don't leave a Restart / Shut Down armed to fire on the next summon.
+        clearConfirm();
+    }
 }
 
 /**
  * Replay the entrance. Called when the window is re-summoned so the launchpad
- * animates in each time it appears, not only on first build.
+ * animates in each time it appears, re-reading live state (Bluetooth flipped
+ * elsewhere, battery drained) so the strip is never stale.
  */
 export function replayEnter() {
-    if (visible) playEnter();
+    if (!visible || !built) return;
+    refreshState();
+    startTimers();
+    playEnter();
 }
 
 /**
@@ -88,6 +258,31 @@ export function armEntrance() {
     if (container && visible) container.classList.add('is-armed');
 }
 
+export function isVisible() {
+    return visible;
+}
+
+// Build (once) then reveal: read live state, start the timers, play the cascade.
+// Fetches the layout first if needed, so a summon before/after a failed prefetch
+// still builds instead of no-opping forever.
+async function buildAndReveal() {
+    if (!layoutTiles) {
+        if (revealPending) return; // another caller is already awaiting the layout
+        revealPending = true;
+        const ready = await ensureLayout();
+        revealPending = false;
+        if (!ready) return; // retry on a later summon
+    }
+    if (!visible) return; // hidden again while the layout was in flight
+    if (!built) {
+        render(layoutTiles);
+        built = true;
+    }
+    refreshState();
+    startTimers();
+    playEnter();
+}
+
 // Restart the staggered CSS animation: drop the classes, force a reflow so the
 // browser sees a clean start, then re-add is-entering. Clearing is-armed here
 // hands the tiles straight from their held first-frame pose into the animation.
@@ -97,8 +292,23 @@ function playEnter() {
     container.classList.add('is-entering');
 }
 
-export function isVisible() {
-    return visible;
+function startTimers() {
+    stopTimers();
+    clockTimer = setInterval(updateClock, CLOCK_TICK_MS);
+    taskTimer = setInterval(rotateTask, TASK_ROTATE_MS);
+    pomoTimer = setInterval(tickPomo, POMO_TICK_MS);
+    mediaTimer = setInterval(tickMedia, MEDIA_TICK_MS);
+}
+
+function stopTimers() {
+    clearInterval(clockTimer);
+    clearInterval(taskTimer);
+    clearInterval(pomoTimer);
+    clearInterval(mediaTimer);
+    clockTimer = null;
+    taskTimer = null;
+    pomoTimer = null;
+    mediaTimer = null;
 }
 
 // --- Activation / mnemonics -------------------------------------------------
@@ -116,15 +326,150 @@ export function handleMnemonic(char) {
 
 /**
  * Central dispatch for a super action, keyed by tile id: both the Alt+<char>
- * accelerator and a mouse click land here. The per-action execution adapters
- * are wired later (see the module header); for now activation pulses the tile
- * so the accelerator is visibly resolving to the right action.
+ * accelerator and a mouse click land here. Routes by role: toggles flip, action
+ * buttons fire (destructive ones via an inline confirm), the Mic action toggles
+ * mute. An unwired tile just pulses. Mirrors the macOS launchpad's activate().
  */
 function activate(id) {
     const el = tilesById.get(id);
     if (!el) return false;
+    const ctl = controls.get(id);
+
+    // A press on any tile other than the armed one clears a stale confirm, so
+    // the danger prompt never lingers on an unrelated key.
+    if (pendingConfirmId && pendingConfirmId !== id) clearConfirm();
+
+    // Now Playing has no adapter control; its mnemonic toggles play/pause on the
+    // active player, matching the macOS launchpad's Cmd+P.
+    if (mediaEls && el === mediaEls.el) {
+        flash(el);
+        transport('playpause');
+        return true;
+    }
+
+    // Destructive buttons arm on the first press and fire on the second.
+    if (ctl?.wired && ctl.role === 'action' && ctl.danger) {
+        if (pendingConfirmId === id) {
+            clearConfirm();
+            flash(el);
+            runAction(id, ctl);
+        } else {
+            armConfirm(id, ctl);
+        }
+        return true;
+    }
+
     flash(el);
+    if (!ctl?.wired) return true;
+    if (ctl.role === 'toggle') applyControl(id, ctl);
+    else if (ctl.role === 'action') {
+        if (ctl.toggleIntent) applyMic(id, ctl);
+        else runAction(id, ctl);
+    }
     return true;
+}
+
+// Arm a destructive tile: recolor it and swap the label to "Confirm?" until the
+// second press or the auto-disarm timeout.
+function armConfirm(id, ctl) {
+    clearConfirm();
+    pendingConfirmId = id;
+    ctl.el.classList.add('is-confirming');
+    ctl.labelEl.textContent = 'Confirm?';
+    confirmTimer = setTimeout(clearConfirm, CONFIRM_TIMEOUT_MS);
+}
+
+// Drop any pending confirm and restore the tile's normal label.
+function clearConfirm() {
+    if (confirmTimer) {
+        clearTimeout(confirmTimer);
+        confirmTimer = null;
+    }
+    if (!pendingConfirmId) return;
+    const ctl = controls.get(pendingConfirmId);
+    if (ctl) {
+        ctl.el.classList.remove('is-confirming');
+        ctl.labelEl.innerHTML = labelHTML(ctl.title, ctl.mnemonic);
+    }
+    pendingConfirmId = null;
+}
+
+// Flip a wired toggle, show the outcome as a banner, and re-read the truth.
+// Optimistic: flip immediately, reconcile after. One apply at a time so a double
+// press can't race.
+async function applyControl(id, ctl) {
+    if (applying || ctl.role !== 'toggle') return;
+    applying = true;
+
+    // A press means "the opposite of what I'm looking at": resolve to an
+    // explicit target so a stale panel (system changed while hidden) still does
+    // what the user sees. Invalidate any in-flight reads so they can't clobber
+    // this optimistic flip.
+    const target = !ctl.el.classList.contains('is-active');
+    setToggleState(ctl, target);
+    stateToken += 1;
+
+    try {
+        const outcome = await quickActionApply(id, { set_on: target });
+        showOutcome(ctl, outcome);
+    } catch (_) {
+        showOutcome(ctl, null);
+    } finally {
+        applying = false;
+        refreshControl(id, ctl, (stateToken += 1));
+    }
+}
+
+// Fire a one-shot action button (Screensaver, or a confirmed Restart / Shut
+// Down) and surface its outcome. One at a time, like applyControl.
+async function runAction(id, ctl) {
+    if (applying) return;
+    applying = true;
+    try {
+        showOutcome(ctl, await quickActionApply(id, 'run'));
+    } catch (_) {
+        showOutcome(ctl, null);
+    } finally {
+        applying = false;
+    }
+}
+
+// Toggle the Mic action tile (an action-role tile with toggle semantics: it
+// carries an off caption, so a press flips mute). Optimistic like applyControl.
+async function applyMic(id, ctl) {
+    if (applying) return;
+    applying = true;
+    // A muted tile presses to live and vice versa; resolve to an explicit target
+    // so a stale panel still does what the user sees.
+    const target = ctl.el.classList.contains('is-muted');
+    setMicState(ctl, target);
+    stateToken += 1;
+    try {
+        showOutcome(ctl, await quickActionApply(id, { set_on: target }));
+    } catch (_) {
+        showOutcome(ctl, null);
+    } finally {
+        applying = false;
+        refreshControl(id, ctl, (stateToken += 1));
+    }
+}
+
+// Reflect mic mute on its captionless action tile via an amber muted class.
+function setMicState(ctl, live) {
+    ctl.el.classList.toggle('is-muted', !live);
+}
+
+function showOutcome(ctl, outcome) {
+    switch (outcome?.outcome) {
+        case 'ok':
+            banner.show(outcome.banner || `${ctl.title} done`, 'success', 1.2);
+            break;
+        case 'needs_permission':
+            banner.show(outcome.message, 'info', 2.2);
+            break;
+        default:
+            banner.show(outcome?.message || `${ctl.title} failed`, 'error', 1.6);
+    }
 }
 
 // Keyboard activation has no :active, so pulse the tile to acknowledge the
@@ -139,51 +484,332 @@ function flash(el) {
     });
 }
 
-// Register an actionable tile: index it by id (and, when present, by its
-// accelerator char) and make a click activate it, so mouse and keyboard share
-// one path. The mnemonic char must be unique across tiles.
-function bindAction(el, id, mnemonic) {
-    tilesById.set(id, el);
-    if (mnemonic) mnemonicIndex.set(mnemonic.toLowerCase(), id);
-    el.addEventListener('click', () => activate(id));
+// --- Live state -------------------------------------------------------------
+
+// Re-read everything the strip shows live: the L slot (pomo / todo / clock) and
+// each wired control's state. Fire-and-forget; a stale-token guard drops late
+// reads.
+function refreshState() {
+    renderSlot(); // reflect a running pomo / clock immediately
+    refreshTodo(); // async; re-runs renderSlot once today's tasks land
+    refreshLunar(); // async; fills the Clock slot header once it lands
+    const myToken = (stateToken += 1);
+    for (const [id, ctl] of controls) refreshControl(id, ctl, myToken);
+    refreshWeather((weatherToken += 1));
+    refreshNowPlaying((mediaToken += 1));
 }
 
-// Wrap the first case-insensitive occurrence of the mnemonic char in a
-// highlight span. Falls back to the plain label when the char is absent, so a
-// tile never renders a broken accelerator. Labels are known static strings, so
-// no HTML escaping is needed. Mirrors macOS mnemonicText.
-function labelHTML(label, mnemonic) {
-    if (!mnemonic) return label;
-    const i = label.toLowerCase().indexOf(mnemonic.toLowerCase());
-    if (i < 0) return label;
-    return `${label.slice(0, i)}<span class="ctl-mnem">${label[i]}</span>${label.slice(i + 1)}`;
+// Fetch today's lunar date from core, but only when the day has rolled over
+// since the last fetch (it changes only at midnight), then repaint the Clock
+// slot header if it is the one showing.
+async function refreshLunar() {
+    const key = todayKey();
+    if (lunarKey !== key) {
+        const now = new Date();
+        try {
+            lunarToday = await lunarDate(
+                now.getFullYear(),
+                now.getMonth() + 1,
+                now.getDate(),
+                -now.getTimezoneOffset() / 60,
+            );
+            lunarKey = key;
+        } catch (_) {
+            return;
+        }
+    }
+    if (slotEls?.slot === 'clock') writeLunar();
 }
 
-function render() {
+async function refreshControl(id, ctl, myToken) {
+    let status;
+    try {
+        status = await quickActionState(id, []);
+    } catch (_) {
+        return;
+    }
+    if (myToken !== stateToken) return;
+    const s = status?.state;
+    const wired = !!s && s.state !== 'unavailable';
+    if (ctl.role === 'toggle') {
+        ctl.wired = wired;
+        setToggleState(ctl, wired && s.state === 'on');
+    } else if (ctl.role === 'info') {
+        await refreshInfo(ctl, s, myToken);
+    } else if (ctl.role === 'action') {
+        ctl.wired = wired;
+        // The Mic action tile has toggle semantics; reflect its live/muted state.
+        if (ctl.toggleIntent) setMicState(ctl, wired && s.state === 'on');
+    }
+}
+
+// The info tile shows Battery on a laptop; on a battery-less desktop the read is
+// unavailable, so fall back to Uptime (relabelling the tile). Mirrors the older
+// linows Battery/Uptime tile.
+async function refreshInfo(ctl, s, myToken) {
+    if (s?.state === 'value') {
+        ctl.capsEl.textContent = ctl.title;
+        ctl.valueEl.textContent = s.value;
+        return;
+    }
+    let uptime = null;
+    try {
+        uptime = await systemUptime();
+    } catch (_) {}
+    if (myToken !== stateToken) return;
+    ctl.capsEl.textContent = uptime ? 'Uptime' : ctl.title;
+    ctl.valueEl.textContent = uptime || '--';
+}
+
+function setToggleState(ctl, on) {
+    ctl.el.classList.toggle('is-active', on);
+    ctl.stateEl.textContent = on ? ctl.onLabel : ctl.offLabel;
+}
+
+// --- L slot (pomo / todo / clock) -------------------------------------------
+//
+// The 2x2 slot is priority-driven, mirroring the macOS LaunchpadLSlotView:
+// Pomo wins while a session is active, else Todo while tasks remain today, else
+// a Clock fallback. Each sub-slot has its own icon, command pill and body; Todo
+// and Pomo keep a compact clock in the header so the time stays visible, while
+// the Clock slot owns the tile with a big time + date and puts today's lunar
+// date in the header corner (where a second clock would just be redundant).
+
+const SLOT_ICON = { pomo: timer, todo: listChecks, clock };
+
+// Choose the winning sub-slot from live pomo + todo state.
+function currentSlot() {
+    if (pomoSnapshot()) return 'pomo';
+    if (openTasks.length) return 'todo';
+    return 'clock';
+}
+
+// Reflect the current sub-slot: swap chrome + body when it changes, then fill
+// its live values. Safe to call before the slot is built.
+function renderSlot() {
+    if (!slotEls) return;
+    const slot = currentSlot();
+    if (slot !== slotEls.slot) switchSlot(slot);
+    if (slot === 'pomo') fillPomo();
+    else if (slot === 'todo') fillTodo();
+    else fillClock();
+}
+
+// Swap icon, pill and header content for the new sub-slot, rebuild its body, and
+// crossfade. The header corner always shows something: the compact clock in the
+// Todo / Pomo slots, the lunar date in the Clock slot (whose body owns the big
+// clock); only the command pill is Clock-specific and hidden there.
+function switchSlot(slot) {
+    slotEls.slot = slot;
+    const clockSlot = slot === 'clock';
+    slotEls.icon.innerHTML = SLOT_ICON[slot];
+    slotEls.headClock.classList.toggle('is-lunar', clockSlot);
+    slotEls.pill.hidden = clockSlot;
+    slotEls.pill.textContent = clockSlot ? '' : `/${slot}`;
+    slotEls.refs = SLOT_BODY[slot]();
+    slotEls.body.classList.remove('is-slot-in');
+    void slotEls.body.offsetWidth;
+    slotEls.body.classList.add('is-slot-in');
+}
+
+// Live countdown + phase + progress for the running session.
+function fillPomo() {
+    const pomo = pomoSnapshot();
+    if (!pomo) return renderSlot(); // session ended; re-pick the slot
+    const r = slotEls.refs;
+    r.time.textContent = formatPomoTime(pomo.secondsLeft);
+    const phase = pomo.type === 'focus' ? 'Focus' : 'Break';
+    r.sub.textContent = `${phase} - session ${pomo.index + 1}/${pomo.count}`;
+    r.fill.style.width = `${Math.round(pomo.progress * 100)}%`;
+    updateHeaderClock();
+}
+
+// Done/total today plus the rotating next open task.
+function fillTodo() {
+    const r = slotEls.refs;
+    r.count.innerHTML = `<b>${todoStat.done}/${todoStat.total}</b> done today`;
+    // Task names are user text: set as textContent, never HTML.
+    r.next.textContent = openTasks.length ? openTasks[taskCursor % openTasks.length] : 'All clear';
+    updateHeaderClock();
+}
+
+// Big time + date fallback in the body; the header corner carries the lunar
+// date instead of a redundant second clock.
+function fillClock() {
+    writeClock(slotEls.refs.time, slotEls.refs.date);
+    writeLunar();
+}
+
+// Paint today's lunar date into the Clock slot header (day/month, with the leap
+// marker when the month repeats). Placeholder until the first fetch resolves.
+function writeLunar() {
+    if (!lunarToday) {
+        slotEls.time.textContent = '--';
+        slotEls.date.textContent = 'Lunar';
+        return;
+    }
+    slotEls.time.textContent = `${lunarToday.day}/${lunarToday.month}`;
+    slotEls.date.textContent = lunarToday.leap ? 'Lunar leap' : 'Lunar';
+}
+
+async function refreshTodo() {
+    let tasks;
+    try {
+        tasks = await todoList();
+    } catch (_) {
+        return;
+    }
+    const today = todayKey();
+    const mine = (tasks || []).filter((t) => t.due_date === today);
+    todoStat = { done: mine.filter((t) => t.done).length, total: mine.length };
+    openTasks = mine.filter((t) => !t.done).map((t) => t.name);
+    taskCursor = 0;
+    renderSlot();
+}
+
+// Rotate through the open tasks so a long day's list all gets a turn, matching
+// the macOS launchpad. Only while the Todo slot shows, no-op with <= 1 task.
+function rotateTask() {
+    if (slotEls?.slot !== 'todo' || openTasks.length <= 1) return;
+    taskCursor += 1;
+    fillTodo();
+}
+
+// Advance the live pomo countdown each second while the Pomo slot shows.
+function tickPomo() {
+    if (slotEls?.slot === 'pomo') fillPomo();
+}
+
+// Poll the active MPRIS player so the Now Playing tile tracks changes made
+// elsewhere (next track, paused in the browser) while the strip is shown.
+function tickMedia() {
+    if (mediaEls) refreshNowPlaying((mediaToken += 1));
+}
+
+// --- Weather (IP-geo + Open-Meteo feed) -------------------------------------
+
+async function refreshWeather(myToken) {
+    if (!weatherEls) return;
+    let w;
+    try {
+        w = await weatherCurrent();
+    } catch (_) {
+        return;
+    }
+    // Superseded summon, tile torn down, or the feed had nothing: keep the last
+    // reading rather than blanking it.
+    if (myToken !== weatherToken || !weatherEls || !w) return;
+    weatherEls.icon.innerHTML = WEATHER_ICON[w.symbol] || cloudSun;
+    weatherEls.temp.textContent = w.temperature;
+    weatherEls.caps.textContent = w.condition;
+    // Feed values are backend-formatted numerics (e.g. "24°"), safe as HTML;
+    // droplet is our own SVG. The nbsp keeps the H/L gap from collapsing.
+    weatherEls.hl.innerHTML = `H ${w.high} &nbsp; L ${w.low}`;
+    weatherEls.hum.innerHTML = `${droplet} ${w.rain_chance ?? '--%'}`;
+}
+
+// --- Now Playing (active MPRIS player) --------------------------------------
+
+async function refreshNowPlaying(myToken) {
+    if (!mediaEls) return;
+    let np;
+    try {
+        np = await nowPlayingCurrent();
+    } catch (_) {
+        return;
+    }
+    if (myToken !== mediaToken || !mediaEls) return;
+    renderMedia(np);
+}
+
+// Reflect play/pause on the transport (the accent class + the button glyph).
+function setPlaying(playing) {
+    mediaEls.el.classList.toggle('is-playing', playing);
+    mediaEls.playBtn.innerHTML = playing ? pause : play;
+}
+
+// Reflect a track (or its absence) and the play/pause state on the transport.
+function renderMedia(np) {
+    setPlaying(!!np?.is_playing);
+    if (!np?.title) {
+        mediaEls.label.textContent = 'Nothing playing';
+        mediaEls.state.textContent = '';
+        return;
+    }
+    // Track / artist are media-supplied text: set as textContent, never HTML.
+    mediaEls.label.textContent = np.title;
+    mediaEls.state.textContent = np.artist || np.app || '';
+}
+
+// Send a transport command to the active player. Play/Pause flips optimistically
+// and defers to the poll; next/previous re-read to show the new track promptly.
+async function transport(command) {
+    if (command === 'playpause' && mediaEls) {
+        // Optimistic flip; roll back only if the command errors. Don't re-read
+        // now: MPRIS PlaybackStatus lags the command and would flip back (flicker).
+        const wasPlaying = mediaEls.el.classList.contains('is-playing');
+        setPlaying(!wasPlaying);
+        try {
+            await nowPlayingCommand(command);
+        } catch (_) {
+            setPlaying(wasPlaying);
+        }
+        return;
+    }
+    // next / previous: re-read so the new track shows without waiting for the poll.
+    try {
+        await nowPlayingCommand(command);
+    } catch (_) {}
+    refreshNowPlaying((mediaToken += 1));
+}
+
+// Re-render whichever clock the current slot shows (header clock for Todo/Pomo,
+// the body clock for the Clock slot).
+function updateClock() {
+    if (!slotEls) return;
+    if (slotEls.slot === 'clock') writeClock(slotEls.refs.time, slotEls.refs.date);
+    else updateHeaderClock();
+}
+
+function updateHeaderClock() {
+    writeClock(slotEls.time, slotEls.date);
+}
+
+// Write the current local time + date into a time node and a date node.
+function writeClock(timeEl, dateEl) {
+    const now = new Date();
+    timeEl.textContent = now.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    });
+    dateEl.textContent = now.toLocaleDateString([], {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+    });
+}
+
+// Local yyyy-MM-dd, matching the todo store's date keys.
+function todayKey() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// --- Rendering --------------------------------------------------------------
+
+function render(tiles) {
     tilesById = new Map();
     mnemonicIndex = new Map();
+    controls = new Map();
+    slotEls = null;
+    weatherEls = null;
+    mediaEls = null;
 
     const grid = document.createElement('div');
     grid.className = 'control-strip-grid';
-
-    // The mnemonic (final arg) is the highlighted, Alt-fired letter; it matches
-    // the macOS launchpad chars where the action is the same. Chars are unique
-    // (case-insensitively) so one press maps to one tile. Priority / Battery /
-    // Weather / Now Playing carry none, as on macOS.
-    grid.append(
-        priorityTile(),
-        toggleTile('bt', bluetooth, 'Bluetooth', 'On', true, 'B'),
-        toggleTile('wifi', wifi, 'Wi-Fi', 'On', true, 'W'),
-        powerInfoTile(),
-        weatherTile(),
-        toggleTile('theme', moon, 'Theme', 'Dark', true, 'T'),
-        toggleTile('keep', coffee, 'Keep Awake', 'Off', false, 'K'),
-        actionTile('scr', xCircle, 'Close All', 'danger', 'C'),
-        actionTile('mic', mic, 'Mic', null, 'M'),
-        actionTile('rst', refreshCw, 'Restart', 'danger', 'R'),
-        actionTile('shut', power, 'Shut Down', 'danger', 'D'),
-        nowPlayingTile(),
-    );
+    for (const tile of tiles) grid.appendChild(buildTile(tile));
 
     // Per-tile index drives the entrance stagger (CSS animation-delay).
     [...grid.children].forEach((el, i) => el.style.setProperty('--i', i));
@@ -192,16 +818,35 @@ function render() {
     container.appendChild(grid);
 }
 
-// --- Tile builders ----------------------------------------------------------
+function buildTile(tile) {
+    switch (tile.role) {
+        case 'slot':
+            return buildSlot(tile);
+        case 'toggle':
+            return buildToggle(tile);
+        case 'info':
+            return buildInfo(tile);
+        case 'weather':
+            return buildWeather(tile);
+        case 'action':
+            return buildAction(tile);
+        case 'media':
+            return buildMedia(tile);
+        default:
+            return tileEl(tile.action_id, 'action');
+    }
+}
 
-// Base tile: a frosted card assigned to a named grid area. `variant` and
-// `tone` add modifier classes (active toggle, danger action, ...).
-function tile(area, variant, tone) {
+// Base tile: a frosted card placed into its named grid area, tagged with the
+// role variant (and a tone for danger/active modifiers).
+function tileEl(actionId, variant, tone) {
     const el = document.createElement('button');
     el.type = 'button';
     el.tabIndex = -1;
-    el.dataset.id = area;
-    el.className = `ctl-tile ctl-tile--${variant} pos-${area}`;
+    el.dataset.id = actionId;
+    el.className = `ctl-tile ctl-tile--${variant}`;
+    // An unknown catalog id keeps a plain tile rather than escaping its grid area.
+    if (AREA[actionId]) el.classList.add(`pos-${AREA[actionId]}`);
     if (tone) el.classList.add(`is-${tone}`);
     return el;
 }
@@ -209,102 +854,225 @@ function tile(area, variant, tone) {
 function iconSpan(svg) {
     const el = document.createElement('span');
     el.className = 'ctl-icon';
-    el.innerHTML = svg;
+    el.innerHTML = svg || '';
     return el;
 }
 
-// L slot (2x2): priority-driven, currently the Todo variant. Time + date, a
-// `/todo` pill, the done/total tally and the next open task.
-function priorityTile() {
-    const el = tile('todo', 'priority');
+// Index a tile by id (and its accelerator char) so activate() / handleMnemonic()
+// can find it. Registration is separate from click-wiring: the media tile is
+// indexed (for Alt+P) but stays click-inert.
+function indexTile(el, tile) {
+    tilesById.set(tile.action_id, el);
+    if (tile.mnemonic) mnemonicIndex.set(tile.mnemonic.toLowerCase(), tile.action_id);
+}
+
+// Index an actionable tile and make a click activate it, so mouse and keyboard
+// share one path.
+function bindActionable(el, tile) {
+    indexTile(el, tile);
+    el.addEventListener('click', () => activate(tile.action_id));
+}
+
+// Wrap the first case-insensitive occurrence of the mnemonic char in a
+// highlight span. Falls back to the plain label when the char is absent. Labels
+// are shared catalog strings, so no HTML escaping is needed. Mirrors macOS.
+function labelHTML(label, mnemonic) {
+    if (!mnemonic) return label;
+    const i = label.toLowerCase().indexOf(mnemonic.toLowerCase());
+    if (i < 0) return label;
+    return `${label.slice(0, i)}<span class="ctl-mnem">${label[i]}</span>${label.slice(i + 1)}`;
+}
+
+// L slot (2x2): the priority pomo / todo / clock tile. Builds the persistent
+// chrome (icon badge, header clock, command pill) and an empty body; renderSlot
+// fills and swaps the body for whichever sub-slot wins. No adapter; fed by
+// renderSlot / refreshTodo / the timers.
+function buildSlot(tile) {
+    const el = tileEl(tile.action_id, 'priority');
     el.innerHTML = `
         <div class="ctl-priority-head">
-            <span class="ctl-icon">${listChecks}</span>
+            <span class="ctl-icon"></span>
             <div class="ctl-clock">
-                <span class="ctl-clock-time">22:30</span>
-                <span class="ctl-clock-date">Thu, Jul 23</span>
+                <span class="ctl-clock-time">--:--</span>
+                <span class="ctl-clock-date"></span>
             </div>
-            <span class="ctl-pill">/todo</span>
+            <span class="ctl-pill"></span>
         </div>
-        <div class="ctl-priority-body">
-            <div class="ctl-priority-count"><b>0/3</b> done today</div>
-            <div class="ctl-priority-next"><span class="ctl-dot"></span>Learning</div>
-        </div>`;
+        <div class="ctl-slot-body"></div>`;
+    slotEls = {
+        icon: el.querySelector('.ctl-icon'),
+        headClock: el.querySelector('.ctl-clock'),
+        time: el.querySelector('.ctl-clock-time'),
+        date: el.querySelector('.ctl-clock-date'),
+        pill: el.querySelector('.ctl-pill'),
+        body: el.querySelector('.ctl-slot-body'),
+        slot: null,
+        refs: null,
+    };
+    renderSlot();
     return el;
 }
 
-// M toggle (2x1): icon + label + on/off state. Active toggles carry the accent.
-function toggleTile(area, svg, label, state, active, mnemonic) {
-    const el = tile(area, 'toggle', active ? 'active' : null);
-    el.appendChild(iconSpan(svg));
+// Per-slot body builders. Each replaces the slot body and returns refs to the
+// live nodes the fill functions write into. Keyed for switchSlot.
+const SLOT_BODY = {
+    pomo: buildPomoBody,
+    todo: buildTodoBody,
+    clock: buildClockBody,
+};
+
+function buildPomoBody() {
+    slotEls.body.innerHTML = `
+        <div class="ctl-slot-time">00:00</div>
+        <div class="ctl-slot-sub"></div>
+        <div class="ctl-slot-bar"><div class="ctl-slot-bar-fill"></div></div>`;
+    return {
+        time: slotEls.body.querySelector('.ctl-slot-time'),
+        sub: slotEls.body.querySelector('.ctl-slot-sub'),
+        fill: slotEls.body.querySelector('.ctl-slot-bar-fill'),
+    };
+}
+
+function buildTodoBody() {
+    slotEls.body.innerHTML = `
+        <div class="ctl-priority-count"><b>0/0</b> done today</div>
+        <div class="ctl-priority-next"><span class="ctl-dot"></span><span></span></div>`;
+    return {
+        count: slotEls.body.querySelector('.ctl-priority-count'),
+        next: slotEls.body.querySelector('.ctl-priority-next span:last-child'),
+    };
+}
+
+function buildClockBody() {
+    slotEls.body.innerHTML = `
+        <div class="ctl-slot-time">--:--</div>
+        <div class="ctl-slot-date"></div>`;
+    return {
+        time: slotEls.body.querySelector('.ctl-slot-time'),
+        date: slotEls.body.querySelector('.ctl-slot-date'),
+    };
+}
+
+// M toggle (1 col): icon + label + on/off state. Active toggles carry the
+// accent. State is filled by refreshControl.
+function buildToggle(tile) {
+    const el = tileEl(tile.action_id, 'toggle');
+    el.appendChild(iconSpan(ICON[tile.action_id]));
     const text = document.createElement('span');
     text.className = 'ctl-text';
-    text.innerHTML = `<span class="ctl-label">${labelHTML(label, mnemonic)}</span><span class="ctl-state">${state}</span>`;
+    const offLabel = tile.off_label ?? 'Off';
+    text.innerHTML = `<span class="ctl-label">${labelHTML(tile.title, tile.mnemonic)}</span><span class="ctl-state">${offLabel}</span>`;
     el.appendChild(text);
-    bindAction(el, area, mnemonic);
+    bindActionable(el, tile);
+    controls.set(tile.action_id, {
+        role: 'toggle',
+        el,
+        title: tile.title,
+        onLabel: tile.on_label ?? 'On',
+        offLabel,
+        stateEl: text.querySelector('.ctl-state'),
+        wired: false,
+    });
     return el;
 }
 
-// Adaptive info slot: Battery on a laptop, Uptime on a desktop that has no
-// battery. The backend supplies `hasBattery` from its power-supply probe
-// (Linux /sys/class/power_supply, Windows GetSystemPowerStatus); the static
-// mock shows the battery case that matches the design reference.
-function powerInfoTile(hasBattery = true) {
-    return hasBattery
-        ? infoTile('batt', battery, 'Battery', '100%')
-        : infoTile('batt', clock, 'Uptime', '3d 4h');
-}
-
-// M info (2x1): small-caps label above a large value (Battery / Uptime).
-function infoTile(area, svg, label, value) {
-    const el = tile(area, 'info');
-    el.appendChild(iconSpan(svg));
+// M info (1 col): small-caps label above a large value (Battery). Read-only;
+// value filled by refreshControl.
+function buildInfo(tile) {
+    const el = tileEl(tile.action_id, 'info');
+    el.appendChild(iconSpan(ICON[tile.action_id]));
     const text = document.createElement('span');
     text.className = 'ctl-text';
-    text.innerHTML = `<span class="ctl-caps">${label}</span><span class="ctl-value">${value}</span>`;
+    text.innerHTML = `<span class="ctl-caps">${tile.title}</span><span class="ctl-value">--</span>`;
     el.appendChild(text);
+    controls.set(tile.action_id, {
+        role: 'info',
+        el,
+        title: tile.title,
+        capsEl: text.querySelector('.ctl-caps'),
+        valueEl: text.querySelector('.ctl-value'),
+    });
     return el;
 }
 
-// L info (1x2): the weather stack - condition icon, temperature, condition and
-// the high/low + humidity row.
-function weatherTile() {
-    const el = tile('weather', 'weather');
+// L info (1x2): the weather stack. Filled from the external feed by
+// refreshWeather; shows placeholder dashes until the first reading lands.
+function buildWeather(tile) {
+    const el = tileEl(tile.action_id, 'weather');
     el.innerHTML = `
         <span class="ctl-icon">${cloudSun}</span>
-        <div class="ctl-weather-temp">27&deg;</div>
-        <div class="ctl-caps">Partly Cloudy</div>
-        <div class="ctl-weather-hl">H 36&deg; &nbsp; L 25&deg;</div>
-        <div class="ctl-weather-hum">${droplet} 92%</div>`;
+        <div class="ctl-weather-temp">--&deg;</div>
+        <div class="ctl-caps">Weather</div>
+        <div class="ctl-weather-hl">H --&deg; &nbsp; L --&deg;</div>
+        <div class="ctl-weather-hum">${droplet} --%</div>`;
+    weatherEls = {
+        icon: el.querySelector('.ctl-icon'),
+        temp: el.querySelector('.ctl-weather-temp'),
+        caps: el.querySelector('.ctl-caps'),
+        hl: el.querySelector('.ctl-weather-hl'),
+        hum: el.querySelector('.ctl-weather-hum'),
+    };
     return el;
 }
 
-// S action (1x1): centered icon + label, fires immediately (Restart/Shut Down
-// carry the danger tone).
-function actionTile(area, svg, label, tone, mnemonic) {
-    const el = tile(area, 'action', tone);
-    el.appendChild(iconSpan(svg));
+// S action (1x1): centered icon + label. Fires its adapter on press: Screensaver
+// one-shot, Restart / Shut Down via inline confirm, Mic as a mute toggle (it
+// carries an off caption). Danger tone for the destructive ones.
+function buildAction(tile) {
+    const danger = DANGER.has(tile.action_id);
+    const el = tileEl(tile.action_id, 'action', danger ? 'danger' : null);
+    el.appendChild(iconSpan(ICON[tile.action_id]));
     const name = document.createElement('span');
     name.className = 'ctl-label';
-    name.innerHTML = labelHTML(label, mnemonic);
+    name.innerHTML = labelHTML(tile.title, tile.mnemonic);
     el.appendChild(name);
-    bindAction(el, area, mnemonic);
+    bindActionable(el, tile);
+    controls.set(tile.action_id, {
+        role: 'action',
+        el,
+        title: tile.title,
+        mnemonic: tile.mnemonic,
+        labelEl: name,
+        // An off caption means the button flips state (Mic mute) rather than
+        // firing once (Screensaver, Restart, Shut Down). Mirrors macOS.
+        toggleIntent: tile.off_label != null,
+        danger,
+        wired: false,
+    });
     return el;
 }
 
 // M media (span 3): track name + subtitle and the prev / play / next transport.
-function nowPlayingTile() {
-    const el = tile('play', 'media');
+// Reads and drives the active MPRIS player; refreshNowPlaying fills it and the
+// transport buttons send commands. The whole-tile has no action (the buttons do
+// the work), so it is not registered as actionable.
+function buildMedia(tile) {
+    const el = tileEl(tile.action_id, 'media');
     el.innerHTML = `
         <span class="ctl-icon">${music}</span>
         <div class="ctl-text">
-            <span class="ctl-label">Clouds - YTB</span>
-            <span class="ctl-state">Look Dev</span>
+            <span class="ctl-label">Nothing playing</span>
+            <span class="ctl-state"></span>
         </div>
         <div class="ctl-transport">
-            <span class="ctl-transport-btn">${skipBack}</span>
-            <span class="ctl-transport-btn ctl-transport-play">${play}</span>
-            <span class="ctl-transport-btn">${skipForward}</span>
+            <span class="ctl-transport-btn" data-cmd="previous">${skipBack}</span>
+            <span class="ctl-transport-btn ctl-transport-play" data-cmd="playpause">${play}</span>
+            <span class="ctl-transport-btn" data-cmd="next">${skipForward}</span>
         </div>`;
+    mediaEls = {
+        el,
+        label: el.querySelector('.ctl-label'),
+        state: el.querySelector('.ctl-state'),
+        playBtn: el.querySelector('.ctl-transport-play'),
+    };
+    for (const btn of el.querySelectorAll('.ctl-transport-btn')) {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            transport(btn.dataset.cmd);
+        });
+    }
+    // Index for the mnemonic (Alt+P toggles play/pause via activate()) without
+    // wiring a whole-tile click: the transport buttons own the clicks.
+    indexTile(el, tile);
     return el;
 }

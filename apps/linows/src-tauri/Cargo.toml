@@ -10,6 +10,7 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 look-answers = { path = "../../../core/answers" }
 look-engine = { path = "../../../core/engine" }
+look-lunar = { path = "../../../core/lunar" }
 look-qactions = { path = "../../../core/qactions" }
 look-storage = { path = "../../../core/storage" }
 look-todo = { path = "../../../core/todo" }

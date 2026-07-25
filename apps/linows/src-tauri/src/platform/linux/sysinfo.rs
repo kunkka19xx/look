@@ -203,3 +203,18 @@ fn parse_kb(s: &str) -> u64 {
         .and_then(|v| v.parse().ok())
         .unwrap_or(0)
 }
+
+/// Compact uptime (`3d 4h` / `5h 12m` / `12m`) from `/proc/uptime`, for the
+/// launchpad info tile on battery-less desktops. `None` if unreadable.
+pub fn uptime() -> Option<String> {
+    let raw = std::fs::read_to_string("/proc/uptime").ok()?;
+    let secs = raw.split_whitespace().next()?.parse::<f64>().ok()? as u64;
+    let (days, hours, mins) = (secs / 86400, (secs % 86400) / 3600, (secs % 3600) / 60);
+    Some(if days > 0 {
+        format!("{days}d {hours}h")
+    } else if hours > 0 {
+        format!("{hours}h {mins}m")
+    } else {
+        format!("{mins}m")
+    })
+}

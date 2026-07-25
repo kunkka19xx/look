@@ -2476,6 +2476,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "look-lunar"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "look-matching"
 version = "0.1.0"
 
@@ -2519,6 +2526,7 @@ dependencies = [
  "futures-util",
  "look-answers",
  "look-engine",
+ "look-lunar",
  "look-qactions",
  "look-storage",
  "look-todo",
