@@ -375,13 +375,12 @@ async function performClipboardSearch(filter) {
             const shortDate = formatShortDate(e.timestamp);
             const subtitle = `Clipboard  \u2022  ${e.char_count} chars  \u2022  ${e.line_count} lines  \u2022  ${shortDate}`;
             return {
-                id: `clip:${i}`,
+                id: `clip:${e.timestamp}:${i}`,
                 kind: 'clipboard',
                 title,
                 subtitle,
                 path: 'clipboard://history',
                 score: 0,
-                clipIndex: i,
                 clipText: e.text,
                 clipTimestamp: e.timestamp,
                 clipCharCount: e.char_count,

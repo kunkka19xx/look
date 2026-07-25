@@ -57,7 +57,7 @@ import {
 const HINT_MAIN = 'Enter: Open \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
 const HINT_TRANSLATE =
     'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
-const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Delete: Remove clip';
+const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Ctrl+D: Remove clip';
 // Discovery-menu hints \u2014 mirror macOS prefixSuggestion / commandSuggestion
 // hint bars (LauncherView.swift hintItems).
 const HINT_PREFIX_DISCOVERY =

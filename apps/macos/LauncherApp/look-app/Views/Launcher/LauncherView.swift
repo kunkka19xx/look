@@ -498,7 +498,7 @@ struct LauncherView: View {
         }
 
         if isClipboardQuery {
-            return ["Enter copy clip", "Delete remove clip"]
+            return ["Enter copy clip", "Cmd+D remove clip"]
         }
 
         // The home screen replaces the "Cmd+/ command mode" hint with a

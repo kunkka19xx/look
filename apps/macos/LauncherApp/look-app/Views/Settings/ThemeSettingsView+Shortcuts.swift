@@ -67,7 +67,7 @@ enum ShortcutDocs {
             title: "Clipboard history",
             items: [
                 ShortcutItem(keys: "Enter", action: "Copy selected history item back to clipboard"),
-                ShortcutItem(keys: "Delete button", action: "Remove selected clipboard item from look history"),
+                ShortcutItem(keys: "Cmd+D", action: "Remove selected clipboard item from look history"),
             ]
         ),
         ShortcutSectionData(
