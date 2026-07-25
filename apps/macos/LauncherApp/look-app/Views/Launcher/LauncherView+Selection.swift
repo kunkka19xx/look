@@ -108,7 +108,12 @@ extension LauncherView {
             return
         }
 
-        selectedResultID = displayedResults[nextIndex].id
+        // Wrapped so the selection pill glides between rows on arrow-key moves.
+        // Click selection and results refreshes assign outside this animation, so
+        // the pill snaps rather than sliding across unrelated rows.
+        withAnimation(Motion.Selection.glide) {
+            selectedResultID = displayedResults[nextIndex].id
+        }
     }
 
     func autocompleteSelectedCommand() {

@@ -1,6 +1,7 @@
 #![allow(unsafe_code)]
 
 mod answers_api;
+mod lunar_api;
 mod qactions_api;
 mod runtime_config;
 mod search_api;
@@ -111,6 +112,16 @@ pub extern "C" fn look_todo_save_json(json: *const c_char) -> bool {
         todo_api::look_todo_save_json_impl(json)
     }))
     .unwrap_or(false)
+}
+
+/// Lunar date JSON (`{day, month, year, leap}`) for a Gregorian `(year, month,
+/// day)` at UTC offset `tz` hours. Free the result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_lunar_date_json(year: i64, month: i64, day: i64, tz: f64) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        lunar_api::look_lunar_date_json_impl(year, month, day, tz)
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 #[unsafe(no_mangle)]

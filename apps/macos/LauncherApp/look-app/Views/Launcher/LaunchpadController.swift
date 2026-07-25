@@ -140,6 +140,14 @@ final class LaunchpadController {
         return nil
     }
 
+    /// True only once the adapter has reported the tile as genuinely unavailable
+    /// (e.g. Battery on a desktop Mac), as opposed to not-yet-read. Lets the
+    /// Battery tile fall back to showing uptime instead of a dead "--".
+    func isUnavailable(_ actionID: String) -> Bool {
+        if case .unavailable = systemStates[actionID] { return true }
+        return false
+    }
+
     /// Activates a tile. Destructive tiles gate on an inline confirm first;
     /// everything else routes to its native adapter when one exists, and falls
     /// back to mock state otherwise.

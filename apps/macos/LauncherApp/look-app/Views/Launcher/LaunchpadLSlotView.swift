@@ -68,7 +68,7 @@ private struct LaunchpadTodoTile: View {
     }
 
     var body: some View {
-        LaunchpadSlotCard(themeStore: themeStore, iconName: "checklist", pill: "/todo", showsClock: true) {
+        LaunchpadSlotCard(themeStore: themeStore, iconName: "checklist", showsClock: true) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("\(stat.done)/\(stat.total)")
@@ -116,7 +116,7 @@ private struct LaunchpadPomoTile: View {
     private var state: PomoState { PomoSharedState.shared }
 
     var body: some View {
-        LaunchpadSlotCard(themeStore: themeStore, iconName: "timer", pill: "/pomo", showsClock: true) {
+        LaunchpadSlotCard(themeStore: themeStore, iconName: "timer", showsClock: true) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(PomoCommand.formattedRemaining(state.secondsLeft))
                     .font(themeStore.uiFont(size: 30, weight: .bold))
@@ -141,13 +141,16 @@ private struct LaunchpadPomoTile: View {
 
 // MARK: - Clock tile
 
-/// Live time + date fallback. Non-sensitive; safe during screen-share.
+/// Live time + date fallback, with today's lunar date in the top-right corner
+/// (read from the shared `core/lunar` crate). Non-sensitive; safe during
+/// screen-share.
 private struct LaunchpadClockTile: View {
     var themeStore: ThemeStore
 
     private typealias Const = AppConstants.Launcher.Launchpad
 
     @State private var now = Date()
+    @State private var lunar: LunarDate?
 
     private let tickTimer = Timer.publish(
         every: AppConstants.Launcher.Launchpad.clockTickSeconds,
@@ -156,7 +159,11 @@ private struct LaunchpadClockTile: View {
     ).autoconnect()
 
     var body: some View {
-        LaunchpadSlotCard(themeStore: themeStore, iconName: "clock", pill: nil) {
+        LaunchpadSlotCard(
+            themeStore: themeStore,
+            iconName: "clock",
+            headerTrailing: lunar.map { AnyView(LunarBadge(lunar: $0, themeStore: themeStore)) }
+        ) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(now, format: .dateTime.hour().minute())
                     .font(themeStore.uiFont(size: 30, weight: .bold))
@@ -167,21 +174,74 @@ private struct LaunchpadClockTile: View {
                     .foregroundColor(themeStore.secondaryTextColor())
             }
         }
-        .onReceive(tickTimer) { now = $0 }
+        .onAppear { refreshLunar(for: now) }
+        .onReceive(tickTimer) { tick in
+            // Recompute only when the calendar day rolls over (the lunar date is
+            // stable within a day), or if the first read hasn't landed yet.
+            if lunar == nil || !Calendar.current.isDate(tick, inSameDayAs: now) {
+                refreshLunar(for: tick)
+            }
+            now = tick
+        }
+    }
+
+    private func refreshLunar(for date: Date) {
+        lunar = LunarToday.resolve(for: date)
+    }
+}
+
+/// Resolves a Gregorian date to its lunar date via the shared core, at the
+/// viewer's local UTC offset. Shared by the clock tile and the header clock so
+/// the conversion lives in one place.
+private enum LunarToday {
+    static func resolve(for date: Date) -> LunarDate? {
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        guard let year = parts.year, let month = parts.month, let day = parts.day else { return nil }
+        let tzHours = Double(TimeZone.current.secondsFromGMT(for: date)) / 3600.0
+        return EngineBridge.shared.lunarDate(year: year, month: month, day: day, tzHours: tzHours)
+    }
+
+    /// The compact one-line label used in the header clock, e.g. "12/6 Lunar".
+    static func inlineLabel(_ lunar: LunarDate) -> String {
+        let name = lunar.leap
+            ? AppConstants.Launcher.Launchpad.lunarLeapLabel
+            : AppConstants.Launcher.Launchpad.lunarLabel
+        return "\(lunar.day)/\(lunar.month) \(name)"
+    }
+}
+
+/// Today's lunar day/month plus a "Lunar" (or "Lunar leap") caption, shown in the
+/// clock tile's header corner.
+private struct LunarBadge: View {
+    let lunar: LunarDate
+    var themeStore: ThemeStore
+
+    private typealias Const = AppConstants.Launcher.Launchpad
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            Text("\(lunar.day)/\(lunar.month)")
+                .font(themeStore.uiFont(size: Const.captionFontSize + 5, weight: .semibold))
+                .foregroundColor(themeStore.secondaryTextColor())
+                .monospacedDigit()
+            Text(lunar.leap ? Const.lunarLeapLabel : Const.lunarLabel)
+                .font(themeStore.uiFont(size: Const.captionFontSize - 1))
+                .foregroundColor(themeStore.mutedTextColor())
+        }
     }
 }
 
 // MARK: - Header clock
 
-/// A compact time + date shown in a slot card's header, so the current time
-/// stays visible while the Todo or Pomo slot occupies the tile (which otherwise
-/// hides the Clock slot).
+/// Time + Gregorian date (full strength) with the lunar date dimmed below, kept
+/// visible while the Todo or Pomo slot occupies the tile.
 private struct LaunchpadHeaderClock: View {
     var themeStore: ThemeStore
 
     private typealias Const = AppConstants.Launcher.Launchpad
 
     @State private var now = Date()
+    @State private var lunar: LunarDate?
 
     private let tickTimer = Timer.publish(
         every: AppConstants.Launcher.Launchpad.clockTickSeconds,
@@ -190,30 +250,44 @@ private struct LaunchpadHeaderClock: View {
     ).autoconnect()
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 0) {
+        VStack(alignment: .trailing, spacing: Const.headerClockLineSpacing) {
             Text(now, format: .dateTime.hour().minute())
-                .font(themeStore.uiFont(size: Const.captionFontSize + 2, weight: .semibold))
+                .font(themeStore.uiFont(size: Const.headerClockTimeFontSize, weight: .semibold))
                 .foregroundColor(themeStore.secondaryTextColor())
                 .monospacedDigit()
             Text(now, format: .dateTime.weekday().month().day())
-                .font(themeStore.uiFont(size: Const.captionFontSize - 1))
-                .foregroundColor(themeStore.mutedTextColor())
+                .font(themeStore.uiFont(size: Const.headerClockDateFontSize))
+                .foregroundColor(themeStore.secondaryTextColor())
+            if let lunar {
+                Text(LunarToday.inlineLabel(lunar))
+                    .font(themeStore.uiFont(size: Const.headerClockDateFontSize))
+                    .foregroundColor(themeStore.mutedTextColor())
+                    .monospacedDigit()
+            }
         }
-        .onReceive(tickTimer) { now = $0 }
+        .onAppear { lunar = LunarToday.resolve(for: now) }
+        .onReceive(tickTimer) { tick in
+            if lunar == nil || !Calendar.current.isDate(tick, inSameDayAs: now) {
+                lunar = LunarToday.resolve(for: tick)
+            }
+            now = tick
+        }
     }
 }
 
 // MARK: - Shared L-slot card chrome
 
-/// The common 2x2 card frame: an icon badge in the top-left, an optional command
-/// pill in the top-right, and the slot's content pinned to the bottom. When
+/// The common 2x2 card frame: an icon badge in the top-left, an optional header
+/// readout in the top-right, and the slot's content pinned to the bottom. When
 /// `showsClock` is set, a compact time + date sits in the header so it stays
 /// visible even while the Todo or Pomo slot occupies the tile.
 private struct LaunchpadSlotCard<Content: View>: View {
     var themeStore: ThemeStore
     let iconName: String
-    let pill: String?
     var showsClock: Bool = false
+    /// Optional readout pinned to the header's top-right (e.g. the clock tile's
+    /// lunar date). Stays inside this card, beside the icon.
+    var headerTrailing: AnyView? = nil
     @ViewBuilder var content: () -> Content
 
     private typealias Const = AppConstants.Launcher.Launchpad
@@ -233,15 +307,8 @@ private struct LaunchpadSlotCard<Content: View>: View {
                 if showsClock {
                     LaunchpadHeaderClock(themeStore: themeStore)
                 }
-                if let pill {
-                    Text(pill)
-                        .font(themeStore.uiFont(size: Const.captionFontSize - 0.5))
-                        .foregroundColor(themeStore.fontColor())
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule().fill(themeStore.selectionFillColor())
-                        )
+                if let headerTrailing {
+                    headerTrailing
                 }
             }
             Spacer(minLength: 0)
