@@ -118,6 +118,11 @@ final class CaretTextField: NSTextField {
     private let caretLayer = CALayer()
     private var selectionObserver: NSObjectProtocol?
     private var blinkResumeTimer: Timer?
+    /// The shared field editor we suppressed, and the caret color it had before,
+    /// so we can restore it on end-editing (the editor is reused by other native
+    /// text fields in the same window).
+    private weak var suppressedEditor: NSTextView?
+    private var savedInsertionPointColor: NSColor?
 
     private static let glideTiming: CAMediaTimingFunction = {
         let c = Motion.houseCurveControlPoints
@@ -162,6 +167,7 @@ final class CaretTextField: NSTextField {
 
     override func textDidEndEditing(_ notification: Notification) {
         super.textDidEndEditing(notification)
+        restoreNativeCaret()
         stopObservingSelection()
         blinkResumeTimer?.invalidate()
         caretLayer.removeAnimation(forKey: Self.blinkKey)
@@ -170,10 +176,21 @@ final class CaretTextField: NSTextField {
 
     // MARK: - Native caret suppression
 
-    /// Clears the native insertion point while we own the shared field editor. No
-    /// restore needed: the next field's editing session redraws its own caret.
+    /// Hides the native insertion point on the shared window field editor while we
+    /// draw our own, remembering the editor and its prior color.
     private func suppressNativeCaret() {
-        (currentEditor() as? NSTextView)?.insertionPointColor = .clear
+        guard let editor = currentEditor() as? NSTextView else { return }
+        suppressedEditor = editor
+        savedInsertionPointColor = editor.insertionPointColor
+        editor.insertionPointColor = .clear
+    }
+
+    /// Restores the field editor's caret color on end-editing, so other native
+    /// text fields in the window (Pomo name, Todo drafts) keep a visible caret.
+    private func restoreNativeCaret() {
+        suppressedEditor?.insertionPointColor = savedInsertionPointColor ?? .textColor
+        suppressedEditor = nil
+        savedInsertionPointColor = nil
     }
 
     // MARK: - Caret geometry
