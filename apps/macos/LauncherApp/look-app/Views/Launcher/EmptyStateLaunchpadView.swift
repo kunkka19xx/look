@@ -143,7 +143,9 @@ struct EmptyStateLaunchpadView: View {
         case .info:
             LaunchpadInfoTile(
                 model: model,
-                value: controller.displayValue(for: model.actionId) ?? Const.infoPlaceholderValue,
+                batteryValue: controller.displayValue(for: model.actionId),
+                showsUptime: model.actionId == LaunchpadActionID.battery
+                    && controller.isUnavailable(model.actionId),
                 themeStore: themeStore
             )
         case .action:
@@ -265,26 +267,45 @@ private struct LaunchpadToggleTile: View {
     }
 }
 
-/// A read-only info tile (Battery): label plus a live value.
+/// A read-only info tile (Battery): label plus a live value. On a machine with
+/// no battery (e.g. a Mac mini), it falls back to showing system uptime instead
+/// of a dead placeholder.
 private struct LaunchpadInfoTile: View {
     let model: LaunchpadTileModel
-    let value: String
+    /// The battery percent string (e.g. "85%"), or nil while unread / unavailable.
+    let batteryValue: String?
+    /// True when there is no battery, so the tile shows uptime instead.
+    let showsUptime: Bool
     var themeStore: ThemeStore
 
     private typealias Const = AppConstants.Launcher.Launchpad
 
+    private var iconName: String {
+        showsUptime ? Const.uptimeIconName : Const.batteryIconName
+    }
+
+    private var label: String {
+        (showsUptime ? Const.uptimeLabel : model.title).uppercased()
+    }
+
+    private var value: String {
+        showsUptime ? SystemUptime.formattedShort() : (batteryValue ?? Const.infoPlaceholderValue)
+    }
+
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "battery.100")
+            Image(systemName: iconName)
                 .font(.system(size: 18, weight: .medium))
                 .foregroundColor(themeStore.accentColor())
             VStack(alignment: .leading, spacing: 1) {
-                Text(model.title.uppercased())
+                Text(label)
                     .font(themeStore.uiFont(size: Const.captionFontSize - 1, weight: .medium))
                     .foregroundColor(themeStore.mutedTextColor())
                 Text(value)
                     .font(themeStore.uiFont(size: Const.valueFontSize - 6, weight: .bold))
                     .foregroundColor(themeStore.fontColor())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             Spacer(minLength: 0)
         }

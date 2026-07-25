@@ -375,6 +375,14 @@ enum AppConstants {
             static let lunarLabel = "Lunar"
             /// Caption when today falls in the intercalary (leap) lunar month.
             static let lunarLeapLabel = "Lunar leap"
+
+            /// SF Symbol for the Battery info tile, and its label when a battery
+            /// is present.
+            static let batteryIconName = "battery.100"
+            /// On a machine with no battery (e.g. a Mac mini), the Battery tile
+            /// shows system uptime instead, with this label and icon.
+            static let uptimeLabel = "Uptime"
+            static let uptimeIconName = "clock.arrow.circlepath"
         }
 
         static let commandCatalog: [AppCommand] = [
