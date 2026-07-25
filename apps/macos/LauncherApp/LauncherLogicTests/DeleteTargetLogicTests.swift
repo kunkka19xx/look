@@ -6,6 +6,43 @@ final class DeleteTargetLogicTests: XCTestCase {
         LauncherResult(id: id, kind: kind, title: id, subtitle: nil, path: path, score: 0)
     }
 
+    // MARK: - shortcut routing
+
+    func testCmdDIsDisabledWhileAnotherLauncherSurfaceIsVisible() {
+        XCTAssertFalse(
+            DeleteTargetLogic.allowsKeyboardDelete(
+                showsThemeSettings: true,
+                showsHelpScreen: false
+            )
+        )
+        XCTAssertFalse(
+            DeleteTargetLogic.allowsKeyboardDelete(
+                showsThemeSettings: false,
+                showsHelpScreen: true
+            )
+        )
+    }
+
+    func testCmdDIsEnabledForTheNormalResultsSurface() {
+        XCTAssertTrue(
+            DeleteTargetLogic.allowsKeyboardDelete(
+                showsThemeSettings: false,
+                showsHelpScreen: false
+            )
+        )
+    }
+
+    func testCmdDRemovesClipboardHistoryRows() {
+        let clip = result("clipboard:42", .clipboard, path: "clipboard://history")
+        XCTAssertTrue(DeleteTargetLogic.removesClipboardHistory(clip))
+    }
+
+    func testCmdDKeepsFilesAndMissingSelectionsInTrashFlow() {
+        let file = result("file", .file, path: "/tmp/file.txt")
+        XCTAssertFalse(DeleteTargetLogic.removesClipboardHistory(file))
+        XCTAssertFalse(DeleteTargetLogic.removesClipboardHistory(nil))
+    }
+
     // MARK: - eligible(from:fileExists:)
 
     func testKeepsFilesAndFoldersThatExist() {

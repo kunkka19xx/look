@@ -192,8 +192,12 @@ function renderClipboardPreview(result) {
     delBtn.className = 'preview-clip-delete';
     delBtn.innerHTML = trashIcon + ' Delete';
     delBtn.addEventListener('click', async () => {
-        await deleteClipboardEntry(result.clipIndex);
-        if (onClipDelete) onClipDelete();
+        try {
+            await deleteClipboardEntry(result.clipTimestamp, result.clipText);
+            if (onClipDelete) onClipDelete();
+        } catch (err) {
+            console.error('Delete clipboard entry failed:', err);
+        }
     });
     header.appendChild(delBtn);
 

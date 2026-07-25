@@ -498,7 +498,7 @@ private enum LauncherHelpContent {
         ("Cmd+P", "Toggle pick on selected file/folder (multi-select copy)"),
         ("Shift+Enter", "Open all picked files/folders at once"),
         ("Cmd+Shift+P", "Clear all picked items"),
-        ("Cmd+D", "Move selected file/folder to Trash (on the Trash folder: empty Trash)"),
+        ("Cmd+D", "Trash selected file/folder (Trash pin: empty it) or remove the clipboard item"),
         ("Tab / Shift+Tab", "Move selection"),
         ("Up / Down", "Move selection"),
         ("Cmd+F", "Reveal selected app/file/folder in Finder"),
