@@ -72,6 +72,9 @@ let visible = false;
 // retried until it lands (see ensureLayout); layoutFetch is the in-flight request.
 let layoutTiles = null;
 let layoutFetch = null;
+// True while a reveal is awaiting the layout, so a second caller (init vs a
+// summon) doesn't run the reveal a second time and replay the animation.
+let revealPending = false;
 
 // Rebuilt on each render(): actionable tiles keyed by id, the accelerator-char
 // -> id index, and the state-bearing controls (toggles + info) we re-read live.
@@ -263,7 +266,13 @@ export function isVisible() {
 // Fetches the layout first if needed, so a summon before/after a failed prefetch
 // still builds instead of no-opping forever.
 async function buildAndReveal() {
-    if (!layoutTiles && !(await ensureLayout())) return; // retry on a later summon
+    if (!layoutTiles) {
+        if (revealPending) return; // another caller is already awaiting the layout
+        revealPending = true;
+        const ready = await ensureLayout();
+        revealPending = false;
+        if (!ready) return; // retry on a later summon
+    }
     if (!visible) return; // hidden again while the layout was in flight
     if (!built) {
         render(layoutTiles);
@@ -732,14 +741,19 @@ function renderMedia(np) {
     mediaEls.state.textContent = np.artist || np.app || '';
 }
 
-// Send a transport command to the active player, then re-read so play/pause and
-// the track reflect the result (the poll would catch it too, just later).
-// Play/Pause flips the icon optimistically since the D-Bus round trip lags the
-// visible press; the re-read reconciles.
+// Send a transport command to the active player. Play/Pause flips optimistically
+// and defers to the poll; next/previous re-read to show the new track promptly.
 async function transport(command) {
     if (command === 'playpause' && mediaEls) {
+        // Optimistic flip, then let the poll reconcile. MPRIS PlaybackStatus lags
+        // the command, so re-reading now would flip the icon back (flicker).
         setPlaying(!mediaEls.el.classList.contains('is-playing'));
+        try {
+            await nowPlayingCommand(command);
+        } catch (_) {}
+        return;
     }
+    // next / previous: re-read so the new track shows without waiting for the poll.
     try {
         await nowPlayingCommand(command);
     } catch (_) {}
