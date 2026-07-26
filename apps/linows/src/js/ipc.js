@@ -223,6 +223,10 @@ export async function onWindowShown(callback) {
     return listen('window-shown', callback);
 }
 
+export async function onWindowHidden(callback) {
+    return listen('window-hidden', callback);
+}
+
 export async function getHealthIssues() {
     return invoke('get_health_issues');
 }

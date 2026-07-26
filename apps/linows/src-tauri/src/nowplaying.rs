@@ -189,15 +189,101 @@ mod imp {
     }
 }
 
-#[cfg(target_os = "linux")]
+/// Now Playing via the System Media Transport Controls (SMTC), the Windows peer
+/// of MPRIS. `GlobalSystemMediaTransportControlsSessionManager` surfaces whatever
+/// app currently owns the media keys (browsers, Spotify, Groove, ...), so a
+/// glance and the transport work without per-app integration.
+#[cfg(target_os = "windows")]
+mod imp {
+    use super::NowPlayingSnapshot;
+    use crate::platform::windows::ensure_mta;
+    use windows::Media::Control::{
+        GlobalSystemMediaTransportControlsSession as Session,
+        GlobalSystemMediaTransportControlsSessionManager as SessionManager,
+        GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus,
+    };
+
+    /// The session currently owning the media keys, or `None` when nothing is.
+    fn active_session() -> Option<Session> {
+        ensure_mta();
+        let manager = SessionManager::RequestAsync()
+            .and_then(|op| op.get())
+            .ok()?;
+        manager.GetCurrentSession().ok()
+    }
+
+    pub fn current() -> Option<NowPlayingSnapshot> {
+        let session = active_session()?;
+
+        let is_playing = session
+            .GetPlaybackInfo()
+            .and_then(|info| info.PlaybackStatus())
+            .map(|status| status == PlaybackStatus::Playing)
+            .unwrap_or(false);
+
+        let props = session
+            .TryGetMediaPropertiesAsync()
+            .and_then(|op| op.get())
+            .ok()?;
+
+        let title = props.Title().ok()?.to_string();
+        if title.is_empty() {
+            return None;
+        }
+        let artist = props
+            .Artist()
+            .ok()
+            .map(|a| a.to_string())
+            .filter(|a| !a.is_empty());
+        // A missing app name just leaves `app` None; it must not blank the tile.
+        let app = session
+            .SourceAppUserModelId()
+            .ok()
+            .map(|id| app_name(&id.to_string()))
+            .filter(|a| !a.is_empty());
+
+        Some(NowPlayingSnapshot {
+            title,
+            artist,
+            app,
+            is_playing,
+        })
+    }
+
+    pub fn run_command(command: &str) -> bool {
+        let Some(session) = active_session() else {
+            return false;
+        };
+        let op = match command {
+            "playpause" => session.TryTogglePlayPauseAsync(),
+            "next" => session.TrySkipNextAsync(),
+            "previous" => session.TrySkipPreviousAsync(),
+            _ => return false,
+        };
+        op.and_then(|op| op.get()).unwrap_or(false)
+    }
+
+    /// Turn a SourceAppUserModelId into something readable. Win32 owners report
+    /// an executable (`Spotify.exe`); packaged apps report an AUMID whose last
+    /// `!`-segment is the friendliest part. Best-effort, never empty-checks here.
+    fn app_name(id: &str) -> String {
+        let base = id.rsplit('!').next().unwrap_or(id);
+        base.strip_suffix(".exe")
+            .or_else(|| base.strip_suffix(".EXE"))
+            .unwrap_or(base)
+            .to_string()
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use imp::{current, run_command};
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 fn current() -> Option<NowPlayingSnapshot> {
     None
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 fn run_command(_command: &str) -> bool {
     false
 }

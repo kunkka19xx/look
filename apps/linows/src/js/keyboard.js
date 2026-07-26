@@ -285,6 +285,8 @@ function handleKeyDown(e) {
                 queryInput.dispatchEvent(new Event('input'));
                 queryInput.focus();
             } else {
+                // Arm here: Rust's window-hidden can lose the race with hide().
+                superactions.armEntrance();
                 hideWindow();
             }
             break;

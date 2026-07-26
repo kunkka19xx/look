@@ -10,6 +10,7 @@ import {
 } from '../icons.js';
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
 import { webSuggestionFromResultId } from '../catalog.js';
+import { isWindows } from '../platform.js';
 
 const iconCache = new Map();
 const pickedMap = new Map(); // key → result
@@ -23,8 +24,10 @@ let container = null;
 let selectionPill = null;
 // Honor prefers-reduced-motion for the scroll too: the pill glide is killed in
 // CSS, but scrollIntoView's smooth behavior bypasses CSS, so gate it here. Read
-// live off the query list so an OS toggle mid-session takes effect.
+// live off the query list so an OS toggle mid-session takes effect. Windows is
+// excluded to match the CSS (its reduce-motion flag tracks the perf preset).
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const prefersReducedMotion = () => reduceMotion.matches && !isWindows();
 let onSelectionChange = null;
 let onPickChange = null;
 let emptyState = { mode: 'default' };
@@ -166,7 +169,7 @@ export function select(index, glide = false) {
         placeSelectionPill(row, glide);
         row.scrollIntoView({
             block: 'nearest',
-            behavior: reduceMotion.matches ? 'auto' : 'smooth',
+            behavior: prefersReducedMotion() ? 'auto' : 'smooth',
         });
     }
 

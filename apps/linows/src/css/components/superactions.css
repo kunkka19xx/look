@@ -60,13 +60,18 @@ html.controls-open #hint-bar {
     transform: translateY(10px) scale(0.985);
 }
 
+/* Windows is excluded on purpose: its prefers-reduced-motion comes from the
+ * "Animation effects" system toggle, which the "best performance" visual-effects
+ * preset silently turns off, so it is not a reliable motion-sensitivity signal
+ * the way macOS "Reduce Motion" is. Keep the launcher's core motion on Windows;
+ * Linux/macOS still honor the OS preference. */
 @media (prefers-reduced-motion: reduce) {
-    .control-strip.is-entering .ctl-tile {
+    html:not([data-os="windows"]) .control-strip.is-entering .ctl-tile {
         animation: none;
     }
 
     /* No fade to align to, so don't pre-hide: the strip just reappears. */
-    .control-strip.is-armed .ctl-tile {
+    html:not([data-os="windows"]) .control-strip.is-armed .ctl-tile {
         opacity: 1;
         transform: none;
     }
@@ -271,14 +276,19 @@ html.controls-open #hint-bar {
     color: var(--font-muted);
 }
 
-.ctl-pill {
-    align-self: flex-start;
-    padding: 3px 8px;
+/* Dimmed lunar line under the Todo / Pomo header clock, kept visible so the
+ * lunar date is always on screen (matching macOS). Hidden in the Clock slot,
+ * where `is-lunar` shows the lunar date prominently in place of the clock. */
+.ctl-clock-lunar {
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--font-muted);
-    background: var(--control-fill);
-    border-radius: 6px;
+    opacity: 0.75;
+}
+
+.ctl-clock-lunar:empty,
+.ctl-clock.is-lunar .ctl-clock-lunar {
+    display: none;
 }
 
 .ctl-priority-count {

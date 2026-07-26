@@ -16,8 +16,10 @@
     animation: results-list-in 140ms ease-out;
 }
 
+/* Windows excluded: see the rationale in superactions.css (its reduce-motion
+ * flag tracks the perf preset, not genuine motion sensitivity). */
 @media (prefers-reduced-motion: reduce) {
-    .results-list.is-entering {
+    html:not([data-os="windows"]) .results-list.is-entering {
         animation: none;
     }
 }
@@ -52,7 +54,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .results-selection {
+    html:not([data-os="windows"]) .results-selection {
         transition: none;
     }
 }

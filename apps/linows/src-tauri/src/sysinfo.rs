@@ -33,7 +33,11 @@ pub fn system_uptime() -> Option<String> {
     {
         crate::platform::linux::sysinfo::uptime()
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+        crate::platform::windows::sysinfo::uptime()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
         None
     }

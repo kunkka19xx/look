@@ -55,7 +55,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .smooth-caret {
+    html:not([data-os="windows"]) .smooth-caret {
         transition: none;
     }
 }

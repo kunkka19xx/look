@@ -20,4 +20,20 @@ pub mod theme;
 pub mod wifi;
 
 #[cfg(target_os = "windows")]
+pub mod battery_windows;
+#[cfg(target_os = "windows")]
 pub mod bluetooth_windows;
+#[cfg(target_os = "windows")]
+pub mod keepawake_windows;
+#[cfg(target_os = "windows")]
+pub mod mic_windows;
+#[cfg(target_os = "windows")]
+pub mod power_windows;
+#[cfg(target_os = "windows")]
+pub mod radio_windows;
+#[cfg(target_os = "windows")]
+pub mod screensaver_windows;
+#[cfg(target_os = "windows")]
+pub mod theme_windows;
+#[cfg(target_os = "windows")]
+pub mod wifi_windows;

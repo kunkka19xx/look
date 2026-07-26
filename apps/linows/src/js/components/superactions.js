@@ -39,6 +39,7 @@ import {
     droplet,
     monitor,
     mic,
+    micOff,
     refreshCw,
     power,
     music,
@@ -255,7 +256,13 @@ export function replayEnter() {
  * cascade, so the reveal reads as one continuous fade. No-op while visible.
  */
 export function armEntrance() {
-    if (container && visible) container.classList.add('is-armed');
+    if (!container || !visible) return;
+    // Drop any in-flight entrance and pin the first-frame pose, then force a
+    // synchronous reflow so the opacity-0 frame is painted before the window
+    // actually hides (otherwise the compositor caches the fully-visible frame).
+    container.classList.remove('is-entering');
+    container.classList.add('is-armed');
+    void container.offsetWidth;
 }
 
 export function isVisible() {
@@ -454,9 +461,12 @@ async function applyMic(id, ctl) {
     }
 }
 
-// Reflect mic mute on its captionless action tile via an amber muted class.
+// Reflect mic mute on its action tile: swap to the slashed-mic icon and tint it
+// amber, matching the macOS launchpad (icon + colour, since the small action
+// tile has no room for an On/Muted caption like the Bluetooth/Wi-Fi toggles).
 function setMicState(ctl, live) {
     ctl.el.classList.toggle('is-muted', !live);
+    if (ctl.iconEl) ctl.iconEl.innerHTML = live ? mic : micOff;
 }
 
 function showOutcome(ctl, outcome) {
@@ -500,8 +510,9 @@ function refreshState() {
 }
 
 // Fetch today's lunar date from core, but only when the day has rolled over
-// since the last fetch (it changes only at midnight), then repaint the Clock
-// slot header if it is the one showing.
+// since the last fetch (it changes only at midnight), then repaint whichever
+// slot shows it: the prominent Clock-slot badge, or the dimmed header line the
+// Todo / Pomo slots carry.
 async function refreshLunar() {
     const key = todayKey();
     if (lunarKey !== key) {
@@ -518,7 +529,9 @@ async function refreshLunar() {
             return;
         }
     }
-    if (slotEls?.slot === 'clock') writeLunar();
+    if (!slotEls) return;
+    if (slotEls.slot === 'clock') writeLunar();
+    else writeLunarLine();
 }
 
 async function refreshControl(id, ctl, myToken) {
@@ -595,17 +608,15 @@ function renderSlot() {
     else fillClock();
 }
 
-// Swap icon, pill and header content for the new sub-slot, rebuild its body, and
+// Swap icon and header content for the new sub-slot, rebuild its body, and
 // crossfade. The header corner always shows something: the compact clock in the
 // Todo / Pomo slots, the lunar date in the Clock slot (whose body owns the big
-// clock); only the command pill is Clock-specific and hidden there.
+// clock). No command pill: the macOS L tile header is icon + clock only.
 function switchSlot(slot) {
     slotEls.slot = slot;
     const clockSlot = slot === 'clock';
     slotEls.icon.innerHTML = SLOT_ICON[slot];
     slotEls.headClock.classList.toggle('is-lunar', clockSlot);
-    slotEls.pill.hidden = clockSlot;
-    slotEls.pill.textContent = clockSlot ? '' : `/${slot}`;
     slotEls.refs = SLOT_BODY[slot]();
     slotEls.body.classList.remove('is-slot-in');
     void slotEls.body.offsetWidth;
@@ -773,6 +784,17 @@ function updateClock() {
 
 function updateHeaderClock() {
     writeClock(slotEls.time, slotEls.date);
+    writeLunarLine();
+}
+
+// The dimmed lunar line under the Todo / Pomo header clock, kept visible while
+// those slots occupy the tile (matching the macOS header clock). The Clock slot
+// shows lunar prominently via `is-lunar` instead, so this line is hidden there.
+function writeLunarLine() {
+    if (!slotEls?.lunarLine) return;
+    slotEls.lunarLine.textContent = lunarToday
+        ? `${lunarToday.day}/${lunarToday.month} ${lunarToday.leap ? 'Lunar leap' : 'Lunar'}`
+        : '';
 }
 
 // Write the current local time + date into a time node and a date node.
@@ -895,8 +917,8 @@ function buildSlot(tile) {
             <div class="ctl-clock">
                 <span class="ctl-clock-time">--:--</span>
                 <span class="ctl-clock-date"></span>
+                <span class="ctl-clock-lunar"></span>
             </div>
-            <span class="ctl-pill"></span>
         </div>
         <div class="ctl-slot-body"></div>`;
     slotEls = {
@@ -904,7 +926,7 @@ function buildSlot(tile) {
         headClock: el.querySelector('.ctl-clock'),
         time: el.querySelector('.ctl-clock-time'),
         date: el.querySelector('.ctl-clock-date'),
-        pill: el.querySelector('.ctl-pill'),
+        lunarLine: el.querySelector('.ctl-clock-lunar'),
         body: el.querySelector('.ctl-slot-body'),
         slot: null,
         refs: null,
@@ -1021,7 +1043,8 @@ function buildWeather(tile) {
 function buildAction(tile) {
     const danger = DANGER.has(tile.action_id);
     const el = tileEl(tile.action_id, 'action', danger ? 'danger' : null);
-    el.appendChild(iconSpan(ICON[tile.action_id]));
+    const icon = iconSpan(ICON[tile.action_id]);
+    el.appendChild(icon);
     const name = document.createElement('span');
     name.className = 'ctl-label';
     name.innerHTML = labelHTML(tile.title, tile.mnemonic);
@@ -1030,6 +1053,7 @@ function buildAction(tile) {
     controls.set(tile.action_id, {
         role: 'action',
         el,
+        iconEl: icon,
         title: tile.title,
         mnemonic: tile.mnemonic,
         labelEl: name,

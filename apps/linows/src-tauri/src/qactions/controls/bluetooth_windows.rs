@@ -1,24 +1,18 @@
 //! Windows Bluetooth control. See docs/writing-controls.md for the design notes.
 
+use super::radio_windows::{self as radio, RadioError};
 use crate::qactions::{
     ActionIntent, ActionOutcome, ActionState, InfoValue, ListItem, SystemControl,
 };
 use std::collections::HashMap;
-use std::sync::Once;
-use std::thread;
-use std::time::{Duration, Instant};
 use windows::Devices::Bluetooth::{BluetoothConnectionStatus, BluetoothDevice, BluetoothLEDevice};
 use windows::Devices::Enumeration::DeviceInformation;
-use windows::Devices::Radios::{Radio, RadioAccessStatus, RadioKind, RadioState};
-use windows::Win32::System::Com::CoIncrementMTAUsage;
+use windows::Devices::Radios::RadioKind;
 use windows::core::HSTRING;
 
 const NO_ADAPTER: &str = "Bluetooth hardware not found";
 const ACCESS_DENIED: &str = "Bluetooth access is blocked by Windows";
 const GONE: &str = "Device is no longer available";
-
-const SETTLE_TIMEOUT: Duration = Duration::from_millis(1500);
-const POLL_INTERVAL: Duration = Duration::from_millis(80);
 
 /// A paired device row. `id` is the classic address (decimal) when the device
 /// can be connected/disconnected; LE devices have no `id` and stay display-only.
@@ -32,10 +26,12 @@ pub struct BluetoothControl;
 
 impl SystemControl for BluetoothControl {
     fn state(&self) -> ActionState {
-        match bluetooth_radio() {
-            Ok(radio) if radio_is_on(&radio) => ActionState::On,
-            Ok(_) => ActionState::Off,
-            Err(reason) => ActionState::Unavailable { reason },
+        match radio::of_kind(RadioKind::Bluetooth) {
+            Some(r) if radio::is_on(&r) => ActionState::On,
+            Some(_) => ActionState::Off,
+            None => ActionState::Unavailable {
+                reason: NO_ADAPTER.to_string(),
+            },
         }
     }
 
@@ -44,24 +40,27 @@ impl SystemControl for BluetoothControl {
         if !keys.iter().any(|k| k == "status") {
             return values;
         }
-        let value = match bluetooth_radio() {
-            Ok(radio) if !radio_is_on(&radio) => InfoValue::Text {
+        let value = match radio::of_kind(RadioKind::Bluetooth) {
+            None => InfoValue::Unavailable {
+                reason: NO_ADAPTER.to_string(),
+            },
+            Some(r) if !radio::is_on(&r) => InfoValue::Text {
                 text: "Off".to_string(),
             },
-            Ok(_) => devices_to_info(paired_devices()),
-            Err(reason) => InfoValue::Unavailable { reason },
+            Some(_) => devices_to_info(paired_devices()),
         };
         values.insert("status".to_string(), value);
         values
     }
 
     fn apply(&self, intent: ActionIntent) -> ActionOutcome {
-        let radio = match bluetooth_radio() {
-            Ok(radio) => radio,
-            Err(reason) => return ActionOutcome::Failed { message: reason },
+        let Some(r) = radio::of_kind(RadioKind::Bluetooth) else {
+            return ActionOutcome::Failed {
+                message: NO_ADAPTER.to_string(),
+            };
         };
         let target = match intent {
-            ActionIntent::Toggle => !radio_is_on(&radio),
+            ActionIntent::Toggle => !radio::is_on(&r),
             ActionIntent::SetOn(on) => on,
             ActionIntent::Run => {
                 return ActionOutcome::Failed {
@@ -69,17 +68,21 @@ impl SystemControl for BluetoothControl {
                 };
             }
         };
-
-        if let Err(message) = set_powered(&radio, target) {
-            return ActionOutcome::Failed { message };
+        let failed = || format!("Could not turn Bluetooth {}", radio::on_off(target));
+        match radio::set_powered(&r, target) {
+            Ok(()) => {}
+            Err(RadioError::Denied) => {
+                return ActionOutcome::Failed {
+                    message: ACCESS_DENIED.to_string(),
+                };
+            }
+            Err(RadioError::Failed) => return ActionOutcome::Failed { message: failed() },
         }
-        if !wait_for_power_state(&radio, target) {
-            return ActionOutcome::Failed {
-                message: format!("Could not turn Bluetooth {}", on_off(target)),
-            };
+        if !radio::wait_for(&r, target) {
+            return ActionOutcome::Failed { message: failed() };
         }
         ActionOutcome::Ok {
-            banner: Some(format!("Bluetooth {}", on_off(target))),
+            banner: Some(format!("Bluetooth {}", radio::on_off(target))),
         }
     }
 
@@ -110,10 +113,6 @@ impl SystemControl for BluetoothControl {
     }
 }
 
-fn on_off(on: bool) -> &'static str {
-    if on { "on" } else { "off" }
-}
-
 /// Build the "status" info value from a device list.
 fn devices_to_info(devices: Vec<Device>) -> InfoValue {
     if devices.is_empty() {
@@ -130,60 +129,6 @@ fn devices_to_info(devices: Vec<Device>) -> InfoValue {
                 on: Some(d.connected),
             })
             .collect(),
-    }
-}
-
-/// Keep the process in an MTA so WinRT calls on pooled blocking threads work.
-fn ensure_mta() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        let _ = unsafe { CoIncrementMTAUsage() };
-    });
-}
-
-fn bluetooth_radio() -> Result<Radio, String> {
-    ensure_mta();
-    let radios = Radio::GetRadiosAsync()
-        .and_then(|op| op.get())
-        .map_err(|_| NO_ADAPTER.to_string())?;
-    for radio in radios {
-        if radio.Kind() == Ok(RadioKind::Bluetooth) {
-            return Ok(radio);
-        }
-    }
-    Err(NO_ADAPTER.to_string())
-}
-
-fn radio_is_on(radio: &Radio) -> bool {
-    radio.State() == Ok(RadioState::On)
-}
-
-fn set_powered(radio: &Radio, on: bool) -> Result<(), String> {
-    let access = Radio::RequestAccessAsync()
-        .and_then(|op| op.get())
-        .map_err(|_| ACCESS_DENIED.to_string())?;
-    if access != RadioAccessStatus::Allowed {
-        return Err(ACCESS_DENIED.to_string());
-    }
-    let target = if on { RadioState::On } else { RadioState::Off };
-    match radio.SetStateAsync(target).and_then(|op| op.get()) {
-        Ok(RadioAccessStatus::Allowed) => Ok(()),
-        Ok(_) => Err(ACCESS_DENIED.to_string()),
-        Err(_) => Err(format!("Could not turn Bluetooth {}", on_off(on))),
-    }
-}
-
-/// Poll the radio until it reports `target` or the settle timeout elapses.
-fn wait_for_power_state(radio: &Radio, target: bool) -> bool {
-    let deadline = Instant::now() + SETTLE_TIMEOUT;
-    loop {
-        if radio_is_on(radio) == target {
-            return true;
-        }
-        if Instant::now() >= deadline {
-            return radio_is_on(radio) == target;
-        }
-        thread::sleep(POLL_INTERVAL);
     }
 }
 

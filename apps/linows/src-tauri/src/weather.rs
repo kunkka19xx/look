@@ -164,11 +164,30 @@ fn first_f64(daily: &serde_json::Value, key: &str) -> Option<f64> {
 
 /// Fahrenheit for US-style locales, Celsius everywhere else. Mirrors the macOS
 /// `Locale.measurementSystem == .us` check, read from the standard locale env.
+#[cfg(not(target_os = "windows"))]
 fn uses_fahrenheit() -> bool {
     ["LC_MEASUREMENT", "LC_ALL", "LANG"]
         .iter()
         .find_map(|key| std::env::var(key).ok().filter(|v| !v.is_empty()))
         .is_some_and(|locale| locale.contains("US"))
+}
+
+/// Fahrenheit only in the US, matching the macOS `.us` check. Reads the home
+/// region (not the display-format locale, which is en-US even for someone in a
+/// metric country and would wrongly force Fahrenheit).
+#[cfg(target_os = "windows")]
+fn uses_fahrenheit() -> bool {
+    use windows::Win32::Globalization::GetUserDefaultGeoName;
+    // ISO 3166 two-letter region, e.g. "US", "JP". len counts the trailing NUL.
+    let mut buf = [0u16; 16];
+    let len = unsafe { GetUserDefaultGeoName(&mut buf) };
+    if len <= 0 {
+        return false;
+    }
+    let chars = (len as usize).saturating_sub(1);
+    String::from_utf16_lossy(&buf[..chars])
+        .trim()
+        .eq_ignore_ascii_case("US")
 }
 
 // --- Presentation -----------------------------------------------------------
