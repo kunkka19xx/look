@@ -6,33 +6,34 @@ struct ClipboardHistoryEntry: Identifiable, Equatable {
     let id: UUID
     let content: String
     let capturedAt: Date
+    /// Derived once at capture time, not per render: rescanning full content on
+    /// every body evaluation stutters keyboard navigation.
+    let title: String
+    let lineCount: Int
+    let characterCount: Int
 
     init(id: UUID = UUID(), content: String, capturedAt: Date = Date()) {
         self.id = id
         self.content = content
         self.capturedAt = capturedAt
+        self.title = Self.makeTitle(from: content)
+        self.lineCount = max(1, content.split(whereSeparator: \.isNewline).count)
+        self.characterCount = content.count
     }
 
-    var title: String {
+    private static func makeTitle(from content: String) -> String {
         let collapsed = content
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if collapsed.isEmpty {
-            return "(Empty text)"
+            return AppConstants.Launcher.Clipboard.emptyEntryTitle
         }
-        if collapsed.count <= 80 {
+        let limit = AppConstants.Launcher.Clipboard.maxTitleCharacters
+        if collapsed.count <= limit {
             return collapsed
         }
-        return String(collapsed.prefix(80)) + "…"
-    }
-
-    var lineCount: Int {
-        max(1, content.split(whereSeparator: \.isNewline).count)
-    }
-
-    var characterCount: Int {
-        content.count
+        return String(collapsed.prefix(limit)) + "…"
     }
 }
 
