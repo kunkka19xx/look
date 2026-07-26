@@ -6,33 +6,50 @@ struct ClipboardHistoryEntry: Identifiable, Equatable {
     let id: UUID
     let content: String
     let capturedAt: Date
+    /// Derived once at capture time, not per render: rescanning full content on
+    /// every body evaluation stutters keyboard navigation.
+    let title: String
+    let lineCount: Int
+    let characterCount: Int
 
     init(id: UUID = UUID(), content: String, capturedAt: Date = Date()) {
         self.id = id
         self.content = content
         self.capturedAt = capturedAt
+        self.title = Self.makeTitle(from: content)
+        self.lineCount = Self.makeLineCount(from: content)
+        self.characterCount = content.count
     }
 
-    var title: String {
-        let collapsed = content
+    /// CRLF and bare CR both read as one line break (terminal output carries CR).
+    private static func normalizedNewlines(_ content: String) -> String {
+        content
             .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+    }
+
+    /// Blank lines count, and a single trailing newline does not add one.
+    private static func makeLineCount(from content: String) -> Int {
+        var normalized = normalizedNewlines(content)
+        if normalized.hasSuffix("\n") {
+            normalized.removeLast()
+        }
+        guard !normalized.isEmpty else { return 1 }
+        return normalized.split(separator: "\n", omittingEmptySubsequences: false).count
+    }
+
+    private static func makeTitle(from content: String) -> String {
+        let collapsed = normalizedNewlines(content)
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if collapsed.isEmpty {
-            return "(Empty text)"
+            return AppConstants.Launcher.Clipboard.emptyEntryTitle
         }
-        if collapsed.count <= 80 {
+        let limit = AppConstants.Launcher.Clipboard.maxTitleCharacters
+        if collapsed.count <= limit {
             return collapsed
         }
-        return String(collapsed.prefix(80)) + "…"
-    }
-
-    var lineCount: Int {
-        max(1, content.split(whereSeparator: \.isNewline).count)
-    }
-
-    var characterCount: Int {
-        content.count
+        return String(collapsed.prefix(limit)) + "…"
     }
 }
 

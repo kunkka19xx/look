@@ -249,6 +249,9 @@ enum AppConstants {
             static let maxEntriesLimit = 100
             static let historyLimitConfigKey = "clipboard_history_limit"
             static let maxStoredCharacters = 30_000
+            /// Row label length; longer clips are elided.
+            static let maxTitleCharacters = 80
+            static let emptyEntryTitle = "(Empty text)"
             static let foregroundPollInterval: TimeInterval = 0.35
             static let backgroundPollInterval: TimeInterval = 0.9
             static let burstPollInterval: TimeInterval = 0.08

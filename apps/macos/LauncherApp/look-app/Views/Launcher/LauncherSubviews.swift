@@ -211,7 +211,9 @@ struct ResultsListView: View {
             }
             .onChange(of: selectedID) { _, newID in
                 guard let newID else { return }
-                withAnimation(.easeOut(duration: 0.12)) {
+                // Same curve as the selection pill, so the pill can't trail the
+                // list when rows differ in height.
+                withAnimation(Motion.Selection.glide) {
                     proxy.scrollTo(newID, anchor: .center)
                 }
             }

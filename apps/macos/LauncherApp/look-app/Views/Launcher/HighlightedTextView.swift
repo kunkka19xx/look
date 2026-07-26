@@ -10,6 +10,18 @@ struct HighlightedTextView: NSViewRepresentable {
     let font: NSFont
     let defaultColor: NSColor
 
+    /// What was last pushed into the text storage. Re-setting it discards
+    /// TextKit's layout, so redundant updates have to be skipped.
+    final class Coordinator {
+        var applied: NSAttributedString?
+        var appliedFont: NSFont?
+        var appliedColor: NSColor?
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = false
@@ -37,6 +49,16 @@ struct HighlightedTextView: NSViewRepresentable {
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let text = nsView.documentView as? NSTextView,
               let storage = text.textStorage else { return }
+        let coordinator = context.coordinator
+        if let applied = coordinator.applied,
+           applied.isEqual(to: attributed),
+           coordinator.appliedFont == font,
+           coordinator.appliedColor == defaultColor {
+            return
+        }
+        coordinator.applied = attributed
+        coordinator.appliedFont = font
+        coordinator.appliedColor = defaultColor
         // Setting via textStorage avoids the perf cost of NSTextView's
         // `string` setter (which throws away typing attributes / undo).
         storage.setAttributedString(attributed)

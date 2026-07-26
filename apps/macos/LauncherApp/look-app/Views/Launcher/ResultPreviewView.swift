@@ -255,6 +255,10 @@ struct ResultPreviewView: View {
         let capturedAt = result.clipboardCapturedAt.map { Self.clipboardDateFormatter.string(from: $0) } ?? "Unknown"
         let characterCount = result.clipboardCharacterCount ?? content.count
         let lineCount = result.clipboardLineCount ?? max(1, content.split(whereSeparator: \.isNewline).count)
+        let previewFont = NSFont.monospacedSystemFont(
+            ofSize: CGFloat(themeStore.settings.fontSize - 1),
+            weight: .regular
+        )
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
@@ -302,14 +306,13 @@ struct ResultPreviewView: View {
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
                 .foregroundStyle(themeStore.mutedTextColor())
 
-            ScrollView {
-                Text(content)
-                    .font(.system(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular, design: .monospaced))
-                    .foregroundStyle(themeStore.secondaryTextColor())
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .textSelection(.enabled)
-                    .padding(10)
-            }
+            // TextKit, not SwiftUI Text: Text lays out the whole clip
+            // synchronously and drops frames on long content.
+            HighlightedTextView(
+                attributed: NSAttributedString(string: content),
+                font: previewFont,
+                defaultColor: NSColor(themeStore.secondaryTextColor())
+            )
             .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             InfoRow(label: "Kind", value: "Clipboard")
