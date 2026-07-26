@@ -30,9 +30,10 @@ pub enum ActionState {
     Off,
     /// A non-boolean value shown as-is. Button controls (Screensaver, Restart,
     /// Shut Down) return it empty: they have no on/off value, but a resolved
-    /// state marks them present so the launchpad renders them wired.
-    // Only the Linux button adapters construct it; unused on Windows (Bluetooth only).
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    /// state marks them present so the launchpad renders them wired. Battery
+    /// returns the charge percent here.
+    // Constructed on Linux and Windows; dead only on a target with no adapters.
+    #[cfg_attr(not(any(target_os = "linux", target_os = "windows")), allow(dead_code))]
     Value {
         value: String,
     },
@@ -154,8 +155,17 @@ fn adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
 
 #[cfg(target_os = "windows")]
 fn adapter(action_id: &str) -> Option<&'static dyn SystemControl> {
+    use look_qactions::action_id as id;
     match action_id {
-        "bluetooth" => Some(&controls::bluetooth_windows::BluetoothControl),
+        id::BLUETOOTH => Some(&controls::bluetooth_windows::BluetoothControl),
+        id::WIFI => Some(&controls::wifi_windows::WifiControl),
+        id::THEME => Some(&controls::theme_windows::ThemeControl),
+        id::KEEP_AWAKE => Some(&controls::keepawake_windows::KeepAwakeControl),
+        id::MIC => Some(&controls::mic_windows::MicControl),
+        id::SCREENSAVER => Some(&controls::screensaver_windows::ScreensaverControl),
+        id::RESTART => Some(&controls::power_windows::RestartControl),
+        id::SHUTDOWN => Some(&controls::power_windows::ShutdownControl),
+        id::BATTERY => Some(&controls::battery_windows::BatteryControl),
         _ => None,
     }
 }

@@ -164,11 +164,30 @@ fn first_f64(daily: &serde_json::Value, key: &str) -> Option<f64> {
 
 /// Fahrenheit for US-style locales, Celsius everywhere else. Mirrors the macOS
 /// `Locale.measurementSystem == .us` check, read from the standard locale env.
+#[cfg(not(target_os = "windows"))]
 fn uses_fahrenheit() -> bool {
     ["LC_MEASUREMENT", "LC_ALL", "LANG"]
         .iter()
         .find_map(|key| std::env::var(key).ok().filter(|v| !v.is_empty()))
         .is_some_and(|locale| locale.contains("US"))
+}
+
+/// Windows has no `LC_*` env; read the user locale's measurement system instead.
+/// `LOCALE_IMEASURE` is `"1"` for the US customary system (Fahrenheit) and `"0"`
+/// for metric (Celsius), the same distinction the macOS `.us` check makes.
+#[cfg(target_os = "windows")]
+fn uses_fahrenheit() -> bool {
+    use windows::Win32::Globalization::{GetLocaleInfoEx, LOCALE_IMEASURE};
+    use windows::core::PCWSTR;
+    // LOCALE_NAME_USER_DEFAULT is NULL: read the current user's locale.
+    let mut buf = [0u16; 8];
+    let len = unsafe { GetLocaleInfoEx(PCWSTR::null(), LOCALE_IMEASURE, Some(&mut buf)) };
+    if len <= 0 {
+        return false;
+    }
+    // len counts the trailing NUL; the value is a single digit ("0" or "1").
+    let chars = (len as usize).saturating_sub(1);
+    String::from_utf16_lossy(&buf[..chars]).trim() == "1"
 }
 
 // --- Presentation -----------------------------------------------------------
