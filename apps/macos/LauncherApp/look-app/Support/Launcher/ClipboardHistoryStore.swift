@@ -21,9 +21,16 @@ struct ClipboardHistoryEntry: Identifiable, Equatable {
         self.characterCount = content.count
     }
 
+    /// CRLF and bare CR both read as one line break (terminal output carries CR).
+    private static func normalizedNewlines(_ content: String) -> String {
+        content
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+    }
+
     /// Blank lines count, and a single trailing newline does not add one.
     private static func makeLineCount(from content: String) -> Int {
-        var normalized = content.replacingOccurrences(of: "\r\n", with: "\n")
+        var normalized = normalizedNewlines(content)
         if normalized.hasSuffix("\n") {
             normalized.removeLast()
         }
@@ -32,8 +39,7 @@ struct ClipboardHistoryEntry: Identifiable, Equatable {
     }
 
     private static func makeTitle(from content: String) -> String {
-        let collapsed = content
-            .replacingOccurrences(of: "\r\n", with: "\n")
+        let collapsed = normalizedNewlines(content)
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if collapsed.isEmpty {
