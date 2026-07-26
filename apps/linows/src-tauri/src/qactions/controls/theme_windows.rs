@@ -1,19 +1,13 @@
 //! System appearance toggle (dark <-> light) for Windows. Action id: `"theme"`.
-//!
-//! Windows peer of `theme.rs`. Windows has no single OS command for this; the
-//! Settings app writes the `Personalize` registry values and broadcasts a
-//! settings-change so running apps repaint, so this does the same. Both
-//! `AppsUseLightTheme` (app chrome) and `SystemUsesLightTheme` (taskbar, Start)
-//! are set together, matching the Settings toggle.
-//!
-//! `On` == dark, matching the shared descriptor's Dark/Light labels. The
-//! registry values are inverted: `1` == light, `0` == dark.
+//! Windows peer of `theme.rs`. Writes both `Personalize` registry values and
+//! broadcasts a settings-change so apps repaint, as the Settings app does.
+//! `On` == dark; the registry values are inverted (`1` light, `0` dark).
 
 use crate::qactions::{ActionIntent, ActionOutcome, ActionState, SystemControl};
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::System::Registry::{
-    HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE, REG_DWORD, REG_VALUE_TYPE, RegCloseKey,
-    RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
+    HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE, REG_DWORD, REG_SAM_FLAGS, REG_VALUE_TYPE,
+    RegCloseKey, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     HWND_BROADCAST, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_SETTINGCHANGE,
@@ -66,24 +60,30 @@ fn is_dark() -> Option<bool> {
     read_dword(APPS_KEY).map(|light| light == 0)
 }
 
-fn read_dword(name: &str) -> Option<u32> {
-    let subkey_w: Vec<u16> = SUBKEY.encode_utf16().chain(std::iter::once(0)).collect();
-    let name_w: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+/// A NUL-terminated wide string for the Win32 `W` APIs.
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
 
+/// Open the Personalize key with `access`, or `None` if it can't be opened.
+fn open_key(access: REG_SAM_FLAGS) -> Option<HKEY> {
+    let subkey = wide(SUBKEY);
     let mut hkey = HKEY::default();
     let open = unsafe {
         RegOpenKeyExW(
             HKEY_CURRENT_USER,
-            PCWSTR(subkey_w.as_ptr()),
+            PCWSTR(subkey.as_ptr()),
             None,
-            KEY_READ,
+            access,
             &mut hkey,
         )
     };
-    if open.0 != 0 {
-        return None;
-    }
+    (open.0 == 0).then_some(hkey)
+}
 
+fn read_dword(name: &str) -> Option<u32> {
+    let hkey = open_key(KEY_READ)?;
+    let name_w = wide(name);
     let mut data_type = REG_VALUE_TYPE(0);
     let mut value: u32 = 0;
     let mut size = std::mem::size_of::<u32>() as u32;
@@ -101,23 +101,12 @@ fn read_dword(name: &str) -> Option<u32> {
     (query.0 == 0 && data_type == REG_DWORD).then_some(value)
 }
 
-/// Set both theme values to `dark` (registry `0`) or light (`1`). Returns
-/// whether both writes succeeded.
+/// Set both theme values to `dark` (registry `0`) or light (`1`); whether both
+/// writes succeeded.
 fn write_theme(dark: bool) -> bool {
-    let subkey_w: Vec<u16> = SUBKEY.encode_utf16().chain(std::iter::once(0)).collect();
-    let mut hkey = HKEY::default();
-    let open = unsafe {
-        RegOpenKeyExW(
-            HKEY_CURRENT_USER,
-            PCWSTR(subkey_w.as_ptr()),
-            None,
-            KEY_SET_VALUE,
-            &mut hkey,
-        )
-    };
-    if open.0 != 0 {
+    let Some(hkey) = open_key(KEY_SET_VALUE) else {
         return false;
-    }
+    };
     let light: u32 = if dark { 0 } else { 1 };
     let ok = write_dword(hkey, APPS_KEY, light) && write_dword(hkey, SYSTEM_KEY, light);
     let _ = unsafe { RegCloseKey(hkey) };
@@ -125,7 +114,7 @@ fn write_theme(dark: bool) -> bool {
 }
 
 fn write_dword(hkey: HKEY, name: &str, value: u32) -> bool {
-    let name_w: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+    let name_w = wide(name);
     let bytes = value.to_ne_bytes();
     let set =
         unsafe { RegSetValueExW(hkey, PCWSTR(name_w.as_ptr()), None, REG_DWORD, Some(&bytes)) };
@@ -135,10 +124,7 @@ fn write_dword(hkey: HKEY, name: &str, value: u32) -> bool {
 /// Tell running apps the theme changed so they repaint without a sign-out.
 /// Best-effort and time-bounded: a hung top-level window must not block.
 fn broadcast_change() {
-    let param: Vec<u16> = "ImmersiveColorSet"
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
+    let param = wide("ImmersiveColorSet");
     unsafe {
         SendMessageTimeoutW(
             HWND_BROADCAST,

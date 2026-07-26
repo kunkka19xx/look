@@ -30,6 +30,8 @@ pub mod mic_windows;
 #[cfg(target_os = "windows")]
 pub mod power_windows;
 #[cfg(target_os = "windows")]
+pub mod radio_windows;
+#[cfg(target_os = "windows")]
 pub mod screensaver_windows;
 #[cfg(target_os = "windows")]
 pub mod theme_windows;

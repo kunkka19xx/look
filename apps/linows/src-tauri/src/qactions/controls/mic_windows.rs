@@ -1,16 +1,12 @@
-//! Microphone mute toggle for Windows. Action id: `"mic"`.
-//!
-//! Windows peer of `mic.rs`. Windows has a real capture mute, so this flips the
-//! default capture endpoint's mute flag through Core Audio's
-//! `IAudioEndpointVolume`, the same switch the volume flyout's mic button drives.
-//! Reports `Unavailable` when there is no default capture device. "On" == mic
-//! live (not muted), matching the On/Muted labels.
+//! Microphone mute toggle for Windows. Action id: `"mic"`. Windows peer of
+//! `mic.rs`; flips the default capture endpoint's mute flag via Core Audio
+//! `IAudioEndpointVolume`. "On" == mic live (not muted).
 
+use crate::platform::windows::ensure_mta;
 use crate::qactions::{ActionIntent, ActionOutcome, ActionState, SystemControl};
-use std::sync::Once;
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{IMMDeviceEnumerator, MMDeviceEnumerator, eCapture, eConsole};
-use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoIncrementMTAUsage};
+use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
 
 const NO_MIC: &str = "No microphone";
 
@@ -54,15 +50,6 @@ impl SystemControl for MicControl {
             }
         }
     }
-}
-
-/// Keep the process in an MTA so Core Audio COM calls on pooled blocking threads
-/// work (a thread that never called `CoInitializeEx` joins the implicit MTA).
-fn ensure_mta() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        let _ = unsafe { CoIncrementMTAUsage() };
-    });
 }
 
 /// The default capture endpoint's volume interface, or `None` when there is no

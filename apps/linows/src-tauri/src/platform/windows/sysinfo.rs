@@ -171,6 +171,20 @@ pub fn collect() -> Vec<Vec<SysInfoEntry>> {
     sections
 }
 
+/// Compact uptime for the launchpad info tile (the Battery fallback on a
+/// battery-less desktop), matching the Linux `uptime()` format.
+pub fn uptime() -> Option<String> {
+    let secs = unsafe { GetTickCount64() } / 1000;
+    let (days, hours, mins) = (secs / 86400, (secs % 86400) / 3600, (secs % 3600) / 60);
+    Some(if days > 0 {
+        format!("{days}d {hours}h")
+    } else if hours > 0 {
+        format!("{hours}h {mins}m")
+    } else {
+        format!("{mins}m")
+    })
+}
+
 fn read_memory_status() -> Option<MEMORYSTATUSEX> {
     let mut m = MEMORYSTATUSEX {
         dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,

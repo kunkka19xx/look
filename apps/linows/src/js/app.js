@@ -23,6 +23,7 @@ import * as layout from './layout.js';
 import { load } from './html-loader.js';
 import {
     onWindowShown,
+    onWindowHidden,
     onIndexReady,
     requestIndexRefresh,
     getQuickFolders,
@@ -599,10 +600,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         superactions.replayEnter();
     });
 
-    // While the window is hidden, hold the launchpad at its entrance-start pose
-    // so the stale buffer the compositor presents on the next summon matches the
-    // cascade's first frame (window-shown fires after show(), too late to arm).
-    // Without this the strip flashes in fully, then rewinds as replayEnter runs.
+    // Hold the launchpad at its entrance-start pose before hiding, so the stale
+    // buffer the compositor presents on the next summon matches frame 0 instead
+    // of flashing the full strip then rewinding. Rust's `window-hidden` is the
+    // primary trigger (WebView2 doesn't reliably fire visibilitychange on a
+    // native hide); visibilitychange stays as a WebKitGTK fallback.
+    onWindowHidden(() => superactions.armEntrance());
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) superactions.armEntrance();
     });

@@ -1,42 +1,34 @@
-//! Windows Wi-Fi radio toggle. Action id: `"wifi"`.
-//!
-//! Windows peer of `wifi.rs`. Uses `Windows.Devices.Radios.Radio` (kind WiFi),
-//! the same WinRT surface `bluetooth_windows.rs` drives for Bluetooth, so the
-//! settle-poll shape is identical. Machines with no Wi-Fi radio report
-//! `Unavailable`; a radio blocked by Windows privacy settings surfaces on apply.
+//! Windows Wi-Fi radio toggle. Action id: `"wifi"`. Windows peer of `wifi.rs`;
+//! the WinRT radio plumbing is shared with Bluetooth in `radio_windows`.
 
+use super::radio_windows::{self as radio, RadioError};
 use crate::qactions::{ActionIntent, ActionOutcome, ActionState, SystemControl};
-use std::sync::Once;
-use std::thread;
-use std::time::{Duration, Instant};
-use windows::Devices::Radios::{Radio, RadioAccessStatus, RadioKind, RadioState};
-use windows::Win32::System::Com::CoIncrementMTAUsage;
+use windows::Devices::Radios::RadioKind;
 
 const NO_ADAPTER: &str = "No Wi-Fi hardware";
 const ACCESS_DENIED: &str = "Wi-Fi access is blocked by Windows";
 
-const SETTLE_TIMEOUT: Duration = Duration::from_millis(1500);
-const POLL_INTERVAL: Duration = Duration::from_millis(80);
-
-/// Toggles and reports Windows Wi-Fi radio power. Action id: `"wifi"`.
 pub struct WifiControl;
 
 impl SystemControl for WifiControl {
     fn state(&self) -> ActionState {
-        match wifi_radio() {
-            Ok(radio) if radio_is_on(&radio) => ActionState::On,
-            Ok(_) => ActionState::Off,
-            Err(reason) => ActionState::Unavailable { reason },
+        match radio::of_kind(RadioKind::WiFi) {
+            Some(r) if radio::is_on(&r) => ActionState::On,
+            Some(_) => ActionState::Off,
+            None => ActionState::Unavailable {
+                reason: NO_ADAPTER.to_string(),
+            },
         }
     }
 
     fn apply(&self, intent: ActionIntent) -> ActionOutcome {
-        let radio = match wifi_radio() {
-            Ok(radio) => radio,
-            Err(reason) => return ActionOutcome::Failed { message: reason },
+        let Some(r) = radio::of_kind(RadioKind::WiFi) else {
+            return ActionOutcome::Failed {
+                message: NO_ADAPTER.to_string(),
+            };
         };
         let target = match intent {
-            ActionIntent::Toggle => !radio_is_on(&radio),
+            ActionIntent::Toggle => !radio::is_on(&r),
             ActionIntent::SetOn(on) => on,
             ActionIntent::Run => {
                 return ActionOutcome::Failed {
@@ -44,75 +36,21 @@ impl SystemControl for WifiControl {
                 };
             }
         };
-
-        if let Err(message) = set_powered(&radio, target) {
-            return ActionOutcome::Failed { message };
+        let failed = || format!("Could not turn Wi-Fi {}", radio::on_off(target));
+        match radio::set_powered(&r, target) {
+            Ok(()) => {}
+            Err(RadioError::Denied) => {
+                return ActionOutcome::Failed {
+                    message: ACCESS_DENIED.to_string(),
+                };
+            }
+            Err(RadioError::Failed) => return ActionOutcome::Failed { message: failed() },
         }
-        if !wait_for_power_state(&radio, target) {
-            return ActionOutcome::Failed {
-                message: format!("Could not turn Wi-Fi {}", on_off(target)),
-            };
+        if !radio::wait_for(&r, target) {
+            return ActionOutcome::Failed { message: failed() };
         }
         ActionOutcome::Ok {
-            banner: Some(format!("Wi-Fi {}", on_off(target))),
+            banner: Some(format!("Wi-Fi {}", radio::on_off(target))),
         }
-    }
-}
-
-fn on_off(on: bool) -> &'static str {
-    if on { "on" } else { "off" }
-}
-
-/// Keep the process in an MTA so WinRT calls on pooled blocking threads work.
-fn ensure_mta() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        let _ = unsafe { CoIncrementMTAUsage() };
-    });
-}
-
-fn wifi_radio() -> Result<Radio, String> {
-    ensure_mta();
-    let radios = Radio::GetRadiosAsync()
-        .and_then(|op| op.get())
-        .map_err(|_| NO_ADAPTER.to_string())?;
-    for radio in radios {
-        if radio.Kind() == Ok(RadioKind::WiFi) {
-            return Ok(radio);
-        }
-    }
-    Err(NO_ADAPTER.to_string())
-}
-
-fn radio_is_on(radio: &Radio) -> bool {
-    radio.State() == Ok(RadioState::On)
-}
-
-fn set_powered(radio: &Radio, on: bool) -> Result<(), String> {
-    let access = Radio::RequestAccessAsync()
-        .and_then(|op| op.get())
-        .map_err(|_| ACCESS_DENIED.to_string())?;
-    if access != RadioAccessStatus::Allowed {
-        return Err(ACCESS_DENIED.to_string());
-    }
-    let target = if on { RadioState::On } else { RadioState::Off };
-    match radio.SetStateAsync(target).and_then(|op| op.get()) {
-        Ok(RadioAccessStatus::Allowed) => Ok(()),
-        Ok(_) => Err(ACCESS_DENIED.to_string()),
-        Err(_) => Err(format!("Could not turn Wi-Fi {}", on_off(on))),
-    }
-}
-
-/// Poll the radio until it reports `target` or the settle timeout elapses.
-fn wait_for_power_state(radio: &Radio, target: bool) -> bool {
-    let deadline = Instant::now() + SETTLE_TIMEOUT;
-    loop {
-        if radio_is_on(radio) == target {
-            return true;
-        }
-        if Instant::now() >= deadline {
-            return radio_is_on(radio) == target;
-        }
-        thread::sleep(POLL_INTERVAL);
     }
 }

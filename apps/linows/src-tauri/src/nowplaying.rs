@@ -196,21 +196,12 @@ mod imp {
 #[cfg(target_os = "windows")]
 mod imp {
     use super::NowPlayingSnapshot;
-    use std::sync::Once;
+    use crate::platform::windows::ensure_mta;
     use windows::Media::Control::{
         GlobalSystemMediaTransportControlsSession as Session,
         GlobalSystemMediaTransportControlsSessionManager as SessionManager,
         GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus,
     };
-    use windows::Win32::System::Com::CoIncrementMTAUsage;
-
-    /// Keep the process in an MTA so WinRT calls on pooled blocking threads work.
-    fn ensure_mta() {
-        static INIT: Once = Once::new();
-        INIT.call_once(|| {
-            let _ = unsafe { CoIncrementMTAUsage() };
-        });
-    }
 
     /// The session currently owning the media keys, or `None` when nothing is.
     fn active_session() -> Option<Session> {

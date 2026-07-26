@@ -77,6 +77,14 @@ const AUTO_HIDE_GRACE_MS: u64 = 300;
 const AUTO_HIDE_RESHOW_GUARD_MS: u64 = 200;
 const EVENT_WINDOW_SHOWN: &str = "window-shown";
 
+/// Arm the launchpad, then hide the window. Emitting while the webview can still
+/// paint means the frame the compositor caches is the (invisible) first frame of
+/// the entrance cascade, not the fully-revealed strip.
+fn hide_launcher(window: &tauri::WebviewWindow) {
+    let _ = window.emit(consts::EVENT_WINDOW_HIDDEN, ());
+    let _ = window.hide();
+}
+
 /// Scale window size (logical pixels) to fit the current monitor.
 /// Base size targets 1080p (1.0×). Scales up for larger logical screens
 /// (1440p → 1.2×, 4K → 1.3× cap).
@@ -103,7 +111,7 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
     if window.is_visible().unwrap_or(false) {
         #[cfg(target_os = "linux")]
         platform::linux::window_focus::notify_hidden();
-        let _ = window.hide();
+        hide_launcher(&window);
     } else if now_ms() - LAST_AUTO_HIDDEN_AT.load(Ordering::Relaxed) > AUTO_HIDE_RESHOW_GUARD_MS {
         // Only show if auto-hide didn't JUST fire.
         // On GNOME X11, Focused(false) races with this handler -
@@ -462,7 +470,7 @@ fn setup_x11_focus_monitor(app: &tauri::App) {
         }
         if now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > AUTO_HIDE_GRACE_MS {
             LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
-            let _ = window.hide();
+            hide_launcher(&window);
         }
     });
 }
@@ -496,7 +504,7 @@ fn setup_window_events(window: &tauri::WebviewWindow) {
                 && focus_loss_means_dismiss() =>
         {
             LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
-            let _ = w.hide();
+            hide_launcher(&w);
         }
         _ => {}
     });

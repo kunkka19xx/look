@@ -1,10 +1,7 @@
 //! System power actions (restart, shut down) for Windows. Action ids:
-//! `"restart"`, `"shutdown"`.
-//!
-//! Windows peer of `power.rs`. `ExitWindowsEx` performs the reboot / power-off,
-//! but needs the `SeShutdownPrivilege` enabled on the process token first, so
-//! this adjusts the token then calls it. The launchpad gates both behind an
-//! inline confirm before the intent reaches here. Button-only.
+//! `"restart"`, `"shutdown"`. Windows peer of `power.rs`. `ExitWindowsEx` needs
+//! `SeShutdownPrivilege` enabled on the process token first. Button-only; the
+//! launchpad gates both behind an inline confirm.
 
 use crate::qactions::{ActionIntent, ActionOutcome, ActionState, SystemControl};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, LUID};

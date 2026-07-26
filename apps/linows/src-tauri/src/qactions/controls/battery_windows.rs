@@ -1,10 +1,6 @@
 //! Battery info control (read-only) for Windows. Action id: `"battery"`.
-//!
-//! Windows peer of `battery.rs`. The launchpad Battery tile is an info tile: it
-//! shows a live charge percent and never toggles. Reads `GetSystemPowerStatus`
-//! (the same call `platform/windows/sysinfo.rs` uses for the /sys battery
-//! section). Machines without a battery report `Unavailable`, which the shell
-//! renders as a dimmed placeholder.
+//! Windows peer of `battery.rs`; reads `GetSystemPowerStatus` (as
+//! `platform/windows/sysinfo.rs` does) and reports `Unavailable` with no battery.
 
 use crate::qactions::{ActionIntent, ActionOutcome, ActionState, SystemControl};
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};

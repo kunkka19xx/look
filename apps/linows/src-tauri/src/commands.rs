@@ -4,7 +4,7 @@ use crate::state::AppState;
 use look_engine::config::RuntimeConfig;
 use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::State;
+use tauri::{Emitter, State};
 
 #[derive(Serialize)]
 pub struct SearchResult {
@@ -338,6 +338,8 @@ pub fn quit_app(app: tauri::AppHandle) {
 #[tauri::command]
 pub fn toggle_window(window: tauri::WebviewWindow) {
     if window.is_visible().unwrap_or(false) {
+        // Arm the launchpad entrance before hiding (see EVENT_WINDOW_HIDDEN).
+        let _ = window.emit(crate::consts::EVENT_WINDOW_HIDDEN, ());
         let _ = window.hide();
     } else {
         let _ = window.show();
@@ -347,6 +349,8 @@ pub fn toggle_window(window: tauri::WebviewWindow) {
 
 #[tauri::command]
 pub fn hide_window(window: tauri::WebviewWindow) {
+    // Arm the launchpad entrance before hiding (see EVENT_WINDOW_HIDDEN).
+    let _ = window.emit(crate::consts::EVENT_WINDOW_HIDDEN, ());
     let _ = window.hide();
 }
 

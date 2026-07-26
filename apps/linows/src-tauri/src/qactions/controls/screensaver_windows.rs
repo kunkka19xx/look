@@ -1,9 +1,7 @@
 //! Lock screen activation for Windows. Action id: `"screensaver"`.
-//!
-//! Windows peer of `screensaver.rs`. The macOS tile starts the resting-image
-//! screensaver; the honest Windows equivalent is `LockWorkStation`, which blanks
-//! to the lock screen (and, per the user's screensaver setting, shows it). Always
-//! available on Windows, so the tile renders wired. Button-only.
+//! Windows peer of `screensaver.rs`; `LockWorkStation` is the honest equivalent
+//! of the macOS screensaver tile. Always available, so the tile renders wired.
+//! Button-only.
 
 use crate::qactions::{ActionIntent, ActionOutcome, ActionState, SystemControl};
 use windows::Win32::System::Shutdown::LockWorkStation;

@@ -172,22 +172,22 @@ fn uses_fahrenheit() -> bool {
         .is_some_and(|locale| locale.contains("US"))
 }
 
-/// Windows has no `LC_*` env; read the user locale's measurement system instead.
-/// `LOCALE_IMEASURE` is `"1"` for the US customary system (Fahrenheit) and `"0"`
-/// for metric (Celsius), the same distinction the macOS `.us` check makes.
+/// Fahrenheit only in the US, matching the macOS `.us` check. Reads the home
+/// region (not the display-format locale, which is en-US even for someone in a
+/// metric country and would wrongly force Fahrenheit).
 #[cfg(target_os = "windows")]
 fn uses_fahrenheit() -> bool {
-    use windows::Win32::Globalization::{GetLocaleInfoEx, LOCALE_IMEASURE};
-    use windows::core::PCWSTR;
-    // LOCALE_NAME_USER_DEFAULT is NULL: read the current user's locale.
-    let mut buf = [0u16; 8];
-    let len = unsafe { GetLocaleInfoEx(PCWSTR::null(), LOCALE_IMEASURE, Some(&mut buf)) };
+    use windows::Win32::Globalization::GetUserDefaultGeoName;
+    // ISO 3166 two-letter region, e.g. "US", "JP". len counts the trailing NUL.
+    let mut buf = [0u16; 16];
+    let len = unsafe { GetUserDefaultGeoName(&mut buf) };
     if len <= 0 {
         return false;
     }
-    // len counts the trailing NUL; the value is a single digit ("0" or "1").
     let chars = (len as usize).saturating_sub(1);
-    String::from_utf16_lossy(&buf[..chars]).trim() == "1"
+    String::from_utf16_lossy(&buf[..chars])
+        .trim()
+        .eq_ignore_ascii_case("US")
 }
 
 // --- Presentation -----------------------------------------------------------
