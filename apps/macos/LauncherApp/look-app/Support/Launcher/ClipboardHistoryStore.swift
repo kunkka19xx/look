@@ -17,8 +17,18 @@ struct ClipboardHistoryEntry: Identifiable, Equatable {
         self.content = content
         self.capturedAt = capturedAt
         self.title = Self.makeTitle(from: content)
-        self.lineCount = max(1, content.split(whereSeparator: \.isNewline).count)
+        self.lineCount = Self.makeLineCount(from: content)
         self.characterCount = content.count
+    }
+
+    /// Blank lines count, and a single trailing newline does not add one.
+    private static func makeLineCount(from content: String) -> Int {
+        var normalized = content.replacingOccurrences(of: "\r\n", with: "\n")
+        if normalized.hasSuffix("\n") {
+            normalized.removeLast()
+        }
+        guard !normalized.isEmpty else { return 1 }
+        return normalized.split(separator: "\n", omittingEmptySubsequences: false).count
     }
 
     private static func makeTitle(from content: String) -> String {
