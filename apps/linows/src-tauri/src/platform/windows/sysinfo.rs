@@ -125,11 +125,7 @@ pub fn collect() -> Vec<Vec<SysInfoEntry>> {
 
     // Section 5: Uptime
     {
-        let ms = unsafe { GetTickCount64() };
-        let total_secs = ms / 1000;
-        let days = total_secs / 86400;
-        let hours = (total_secs % 86400) / 3600;
-        let mins = (total_secs % 3600) / 60;
+        let (days, hours, mins) = split_uptime();
         let val = if days > 0 {
             format!("{}d {}h {}m", days, hours, mins)
         } else {
@@ -171,11 +167,16 @@ pub fn collect() -> Vec<Vec<SysInfoEntry>> {
     sections
 }
 
+/// Uptime since boot as (days, hours, mins); callers format it themselves.
+fn split_uptime() -> (u64, u64, u64) {
+    let secs = unsafe { GetTickCount64() } / 1000;
+    (secs / 86400, (secs % 86400) / 3600, (secs % 3600) / 60)
+}
+
 /// Compact uptime for the launchpad info tile (the Battery fallback on a
 /// battery-less desktop), matching the Linux `uptime()` format.
 pub fn uptime() -> Option<String> {
-    let secs = unsafe { GetTickCount64() } / 1000;
-    let (days, hours, mins) = (secs / 86400, (secs % 86400) / 3600, (secs % 3600) / 60);
+    let (days, hours, mins) = split_uptime();
     Some(if days > 0 {
         format!("{days}d {hours}h")
     } else if hours > 0 {
