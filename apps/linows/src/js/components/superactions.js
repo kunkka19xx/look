@@ -741,6 +741,8 @@ function setPlaying(playing) {
 
 // Reflect a track (or its absence) and the play/pause state on the transport.
 function renderMedia(np) {
+    // Handle the transport drives, so it hits the shown player, not a re-pick.
+    mediaEls.player = np?.player ?? null;
     setPlaying(!!np?.is_playing);
     if (!np?.title) {
         mediaEls.label.textContent = 'Nothing playing';
@@ -755,21 +757,22 @@ function renderMedia(np) {
 // Send a transport command to the active player. Play/Pause flips optimistically
 // and defers to the poll; next/previous re-read to show the new track promptly.
 async function transport(command) {
+    const player = mediaEls?.player ?? null;
     if (command === 'playpause' && mediaEls) {
-        // Optimistic flip; roll back only if the command errors. Don't re-read
-        // now: MPRIS PlaybackStatus lags the command and would flip back (flicker).
+        // Optimistic flip; roll back unless delivered. No re-read: MPRIS
+        // PlaybackStatus lags the command and would flip back (flicker).
         const wasPlaying = mediaEls.el.classList.contains('is-playing');
         setPlaying(!wasPlaying);
+        let delivered = false;
         try {
-            await nowPlayingCommand(command);
-        } catch (_) {
-            setPlaying(wasPlaying);
-        }
+            delivered = await nowPlayingCommand(command, player);
+        } catch (_) {}
+        if (!delivered) setPlaying(wasPlaying);
         return;
     }
     // next / previous: re-read so the new track shows without waiting for the poll.
     try {
-        await nowPlayingCommand(command);
+        await nowPlayingCommand(command, player);
     } catch (_) {}
     refreshNowPlaying((mediaToken += 1));
 }
