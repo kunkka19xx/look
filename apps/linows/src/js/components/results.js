@@ -13,8 +13,29 @@ import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/win
 import { webSuggestionFromResultId } from '../catalog.js';
 import { isWindows } from '../platform.js';
 
+// LRU-bounded icon cache (cacheKey -> data URL | null). A plain Map keeps
+// insertion order, so re-inserting on a hit marks it most-recently-used and the
+// oldest key is always keys().next(). Bounds heap growth while browsing many
+// icons; evicted entries re-resolve instantly from the backend's own cache.
+const ICON_CACHE_MAX = 256;
 const iconCache = new Map();
 const pickedMap = new Map(); // key → result
+
+function iconCacheGet(key) {
+    if (!iconCache.has(key)) return undefined;
+    const val = iconCache.get(key);
+    iconCache.delete(key);
+    iconCache.set(key, val);
+    return val;
+}
+
+function iconCacheSet(key, val) {
+    iconCache.delete(key);
+    iconCache.set(key, val);
+    if (iconCache.size > ICON_CACHE_MAX) {
+        iconCache.delete(iconCache.keys().next().value);
+    }
+}
 
 let currentResults = [];
 let selectedIndex = -1;
@@ -376,24 +397,23 @@ function createRow(result, index) {
 function loadIcon(iconEl, kind, path, id) {
     const cacheKey = `${kind}:${path}`;
 
-    if (iconCache.has(cacheKey)) {
-        const dataUrl = iconCache.get(cacheKey);
-        if (dataUrl) {
-            applyIcon(iconEl, dataUrl);
-        }
+    const cached = iconCacheGet(cacheKey);
+    if (cached !== undefined) {
+        // null = known to have no icon; skip the re-fetch either way.
+        if (cached) applyIcon(iconEl, cached);
         return;
     }
 
     getIcon(kind, path, id)
         .then((result) => {
             const dataUrl = result?.data_url || null;
-            iconCache.set(cacheKey, dataUrl);
+            iconCacheSet(cacheKey, dataUrl);
             if (dataUrl) {
                 applyIcon(iconEl, dataUrl);
             }
         })
         .catch(() => {
-            iconCache.set(cacheKey, null);
+            iconCacheSet(cacheKey, null);
         });
 }
 
