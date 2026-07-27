@@ -195,10 +195,10 @@ export async function nowPlayingCurrent() {
     return invoke('now_playing_current');
 }
 
-// Send a transport command ('playpause' | 'next' | 'previous') to the active
-// MPRIS player. Resolves to whether it was delivered.
-export async function nowPlayingCommand(command) {
-    return invoke('now_playing_command', { command });
+// Send a transport command ('playpause' | 'next' | 'previous') to `player` (the
+// handle from its snapshot). Resolves to whether it was delivered.
+export async function nowPlayingCommand(command, player) {
+    return invoke('now_playing_command', { command, player });
 }
 
 // Convert a local calendar date to its lunar date via the shared look-lunar core

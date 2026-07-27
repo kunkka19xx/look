@@ -17,6 +17,9 @@ pub struct NowPlayingSnapshot {
     /// The owning app's display name (MPRIS `Identity`), e.g. "Firefox".
     pub app: Option<String>,
     pub is_playing: bool,
+    /// Handle passed back with a transport command so control drives this exact
+    /// player (MPRIS bus name). `None` on Windows (one implicit SMTC session).
+    pub player: Option<String>,
 }
 
 /// The current track, or `None` when nothing is playing. Runs the blocking
@@ -29,11 +32,12 @@ pub async fn now_playing_current() -> Option<NowPlayingSnapshot> {
         .flatten()
 }
 
-/// Send a transport command (`"playpause"`, `"next"`, `"previous"`) to the
-/// active player. Returns whether it was delivered.
+/// Send a transport command (`"playpause"`, `"next"`, `"previous"`) to a player.
+/// `player` is the handle from the snapshot being controlled; when omitted the
+/// active player is re-picked. Returns whether it was delivered.
 #[tauri::command]
-pub async fn now_playing_command(command: String) -> bool {
-    tauri::async_runtime::spawn_blocking(move || run_command(&command))
+pub async fn now_playing_command(command: String, player: Option<String>) -> bool {
+    tauri::async_runtime::spawn_blocking(move || run_command(&command, player.as_deref()))
         .await
         .unwrap_or(false)
 }
@@ -43,6 +47,7 @@ mod imp {
     use super::NowPlayingSnapshot;
     use crate::platform::linux::dbus;
     use std::collections::HashMap;
+    use std::sync::Mutex;
     use zbus::zvariant::{OwnedValue, Str};
 
     const MPRIS_PREFIX: &str = "org.mpris.MediaPlayer2.";
@@ -50,6 +55,10 @@ mod imp {
     const PLAYER_IFACE: &str = "org.mpris.MediaPlayer2.Player";
     const ROOT_IFACE: &str = "org.mpris.MediaPlayer2";
     const PLAYING: &str = "Playing";
+
+    /// The player the tile last locked onto, so a background player that starts
+    /// later can't steal it while the current one is still playing.
+    static LAST_ACTIVE: Mutex<Option<String>> = Mutex::new(None);
 
     pub fn current() -> Option<NowPlayingSnapshot> {
         let conn = dbus::session()?;
@@ -59,7 +68,7 @@ mod imp {
         })
     }
 
-    pub fn run_command(command: &str) -> bool {
+    pub fn run_command(command: &str, target: Option<&str>) -> bool {
         let method = match command {
             "playpause" => "PlayPause",
             "next" => "Next",
@@ -70,8 +79,12 @@ mod imp {
             return false;
         };
         dbus::runtime().block_on(async {
-            let Some((name, _)) = active_player(conn).await else {
-                return false;
+            let name = match target {
+                Some(name) => name.to_string(),
+                None => match active_player(conn).await {
+                    Some((name, _)) => name,
+                    None => return false,
+                },
             };
             let Some(proxy) = player_proxy(conn, &name, PLAYER_IFACE).await else {
                 return false;
@@ -101,9 +114,8 @@ mod imp {
             .ok()
     }
 
-    /// The player to display and drive, with its playback status: the one
-    /// currently playing, else the first that exports a status at all (paused /
-    /// stopped). Returning the status lets the caller skip re-reading it.
+    /// The player to display and drive, with its status. Skips uncontrollable
+    /// instances; remembers the pick so the next poll can favour it.
     async fn active_player(conn: &zbus::Connection) -> Option<(String, String)> {
         let reply = conn
             .call_method(
@@ -117,23 +129,53 @@ mod imp {
             .ok()?;
         let names: Vec<String> = reply.body().deserialize().ok()?;
 
-        let mut fallback = None;
+        let mut candidates: Vec<(String, String)> = Vec::new();
         for name in names.into_iter().filter(|n| n.starts_with(MPRIS_PREFIX)) {
-            match playback_status(conn, &name).await {
-                Some(status) if status == PLAYING => return Some((name, status)),
-                Some(status) if fallback.is_none() => fallback = Some((name, status)),
-                _ => {}
+            if let Some((status, true)) = player_state(conn, &name).await {
+                candidates.push((name, status));
             }
         }
-        fallback
+        if candidates.is_empty() {
+            return None;
+        }
+
+        let mut last = LAST_ACTIVE.lock().ok()?;
+        let name = pick_player(&candidates, last.as_deref());
+        let status = candidates
+            .iter()
+            .find(|(c, _)| *c == name)
+            .map(|(_, s)| s.clone())
+            .unwrap_or_default();
+        *last = Some(name.clone());
+        Some((name, status))
     }
 
-    async fn playback_status(conn: &zbus::Connection, name: &str) -> Option<String> {
-        player_proxy(conn, name, PLAYER_IFACE)
-            .await?
-            .get_property::<String>("PlaybackStatus")
+    /// Locked player if still playing, else any playing, else locked if still
+    /// present (keeps pause/resume put), else the first. `candidates` non-empty.
+    fn pick_player(candidates: &[(String, String)], locked: Option<&str>) -> String {
+        let playing = |name: &str| candidates.iter().any(|(c, s)| c == name && s == PLAYING);
+        if let Some(name) = locked.filter(|n| playing(n)) {
+            return name.to_string();
+        }
+        if let Some((name, _)) = candidates.iter().find(|(_, s)| s == PLAYING) {
+            return name.clone();
+        }
+        if let Some(name) = locked.filter(|n| candidates.iter().any(|(c, _)| c == n)) {
+            return name.to_string();
+        }
+        candidates[0].0.clone()
+    }
+
+    /// A player's `(PlaybackStatus, CanControl)` in one proxy. `CanControl`
+    /// defaults to `true` so a player that omits it isn't hidden.
+    async fn player_state(conn: &zbus::Connection, name: &str) -> Option<(String, bool)> {
+        let proxy = player_proxy(conn, name, PLAYER_IFACE).await?;
+        let status = proxy.get_property::<String>("PlaybackStatus").await.ok()?;
+        let can_control = proxy
+            .get_property::<bool>("CanControl")
             .await
-            .ok()
+            .unwrap_or(true);
+        Some((status, can_control))
     }
 
     async fn read_snapshot(
@@ -166,6 +208,7 @@ mod imp {
             artist,
             app,
             is_playing: status == PLAYING,
+            player: Some(name.to_string()),
         })
     }
 
@@ -247,10 +290,11 @@ mod imp {
             artist,
             app,
             is_playing,
+            player: None, // SMTC drives one implicit session.
         })
     }
 
-    pub fn run_command(command: &str) -> bool {
+    pub fn run_command(command: &str, _target: Option<&str>) -> bool {
         let Some(session) = active_session() else {
             return false;
         };
@@ -284,6 +328,6 @@ fn current() -> Option<NowPlayingSnapshot> {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-fn run_command(_command: &str) -> bool {
+fn run_command(_command: &str, _target: Option<&str>) -> bool {
     false
 }
