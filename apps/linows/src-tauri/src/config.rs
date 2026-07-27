@@ -142,6 +142,10 @@ fn default_config_contents() -> String {
          # disable all network answer features and run fully offline.\n\
          ai_enabled=true\n\
          \n\
+         # Super actions - empty-state launchpad of quick toggles / actions. Set\n\
+         # false to hide the strip and disable its keyboard accelerators.\n\
+         super_actions_enabled=true\n\
+         \n\
          # UI theme (empty = built-in default; pick one in Settings)\n\
          ui_theme=\n",
     );

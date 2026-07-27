@@ -296,6 +296,18 @@ export function init(exitFn) {
         );
     });
 
+    // Super actions toggle (Appearance tab, next to Running Apps). Dispatches a
+    // custom event so app.js can show/hide the launchpad live.
+    document.getElementById('settings-super-actions').addEventListener('change', (e) => {
+        const enabled = e.target.checked;
+        saveConfig({ super_actions_enabled: enabled ? 'true' : 'false' });
+        document.dispatchEvent(
+            new CustomEvent('look:super-actions-changed', {
+                detail: { enabled },
+            }),
+        );
+    });
+
     // Extra scan dirs
     const extraDirsList = document.getElementById('settings-extra-dirs');
     extraDirsList.dataset.empty = 'No extra scan directories';
@@ -572,6 +584,10 @@ export function init(exitFn) {
                 .checked
                 ? 'right'
                 : 'none';
+            updates.super_actions_enabled = document.getElementById('settings-super-actions')
+                .checked
+                ? 'true'
+                : 'false';
             updates.ai_enabled = document.getElementById('settings-ai-enabled').checked
                 ? 'true'
                 : 'false';
@@ -906,6 +922,8 @@ async function loadConfig() {
             map.lazy_indexing_enabled !== 'false';
         document.getElementById('settings-running-apps').checked =
             (map.running_apps_placement || 'right') !== 'none';
+        document.getElementById('settings-super-actions').checked =
+            map.super_actions_enabled !== 'false';
         document.getElementById('settings-ai-enabled').checked = map.ai_enabled !== 'false';
         document.getElementById('settings-arch-disable-gpu').checked =
             map.arch_disable_gpu === 'true';

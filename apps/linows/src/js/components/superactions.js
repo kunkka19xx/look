@@ -68,6 +68,9 @@ import * as banner from './banner.js';
 let container = null;
 let built = false;
 let visible = false;
+// User setting (Settings -> Appearance -> Super Actions). When off the strip
+// never shows and its accelerators never fire; setVisible collapses to hidden.
+let enabled = true;
 
 // The shared catalog layout. Rendered from, never mutated. Fetched lazily and
 // retried until it lands (see ensureLayout); layoutFetch is the in-flight request.
@@ -222,6 +225,8 @@ function ensureLayout() {
  */
 export function setVisible(show) {
     if (!container) return;
+    // A disabled strip is always hidden, so no summon can reveal it.
+    if (!enabled) show = false;
     if (show === visible) return;
     visible = show;
     container.hidden = !show;
@@ -267,6 +272,19 @@ export function armEntrance() {
 
 export function isVisible() {
     return visible;
+}
+
+// Apply the Super Actions setting. Turning it off hides the strip immediately so
+// its accelerators stop firing; turning it on lets the next syncControlStrip
+// reveal it on the empty home screen.
+export function setEnabled(on) {
+    if (enabled === on) return;
+    enabled = on;
+    if (!on) setVisible(false);
+}
+
+export function isEnabled() {
+    return enabled;
 }
 
 // Build (once) then reveal: read live state, start the timers, play the cascade.

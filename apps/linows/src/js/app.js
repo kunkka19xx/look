@@ -307,6 +307,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         runningApps.setEnabled(on);
         if (on) runningApps.refresh();
 
+        // Super actions launchpad: default ON. A disabled strip stays hidden on
+        // the empty home screen and its accelerators go inert (see superactions).
+        const superCfg = cfg.entries.find((e) => e.key === 'super_actions_enabled');
+        superactions.setEnabled(!superCfg || superCfg.value !== 'false');
+        syncControlStrip();
+
         // AI / web answers: default ON to match the default_config.txt setting
         // (and macOS, which ships aiEnabled=true). Honour the persisted value if
         // the user has flipped it. Propagated to both the controller (gates the
@@ -764,6 +770,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         runningApps.setEnabled(on);
         if (on) runningApps.refresh();
 
+        superactions.setEnabled(map.super_actions_enabled !== 'false');
+        syncControlStrip();
+
         const aiOn = map.ai_enabled !== 'false';
         aiAnswer.setEnabled(aiOn);
         search.setAiEnabled(aiOn);
@@ -774,6 +783,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const enabled = e.detail.enabled;
         runningApps.setEnabled(enabled);
         if (enabled) runningApps.refresh();
+    });
+
+    // Live-update when the Settings → Appearance → Super Actions toggle changes.
+    document.addEventListener('look:super-actions-changed', (e) => {
+        superactions.setEnabled(e.detail.enabled);
+        syncControlStrip();
     });
 
     // Live-update when the Settings → Privacy & Logs → Web Answers toggle
