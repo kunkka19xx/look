@@ -6,8 +6,10 @@ import Foundation
 /// interactive state lives in `LaunchpadController`.
 extension LauncherView {
     /// Decodes the shared launchpad layout once and wires the controller's
-    /// banner sink. Idempotent, so it is safe to call from `onAppear`.
+    /// banner sink. Idempotent, so it is safe to call from `onAppear`. Skipped
+    /// entirely while Settings → Appearance → Super Actions is off.
     func configureLaunchpadIfNeeded() {
+        guard themeStore.settings.superActionsEnabled else { return }
         if launchpadTiles.isEmpty {
             launchpadTiles = EngineBridge.shared.launchpadLayout()
             launchpadController.configure(tiles: launchpadTiles)
@@ -22,7 +24,17 @@ extension LauncherView {
     /// not in command mode / settings / help). Gates the Command-mnemonic keys so
     /// they only fire when the strip is actually shown.
     var isLaunchpadActive: Bool {
-        hidesResultsForEmptyQuery && !launchpadTiles.isEmpty
+        themeStore.settings.superActionsEnabled && hidesResultsForEmptyQuery && !launchpadTiles.isEmpty
+    }
+
+    /// Builds and refreshes the launchpad when the Super Actions setting is
+    /// switched on after the view already appeared, so the strip shows without a
+    /// relaunch.
+    func launchpadSettingChanged(enabled: Bool) {
+        guard enabled else { return }
+        configureLaunchpadIfNeeded()
+        Task { await launchpadController.refreshStates() }
+        Task { await launchpadController.refreshWeather() }
     }
 
     /// Routes a Command-mnemonic character to the launchpad. Returns true when a

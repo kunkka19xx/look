@@ -182,5 +182,10 @@ struct ThemeSettings: Codable, Equatable {
     /// Which AI backend powers query understanding when `aiEnabled` is on.
     var aiProvider: AIProviderKind = .appleIntelligence
 
+    /// Whether the empty-state super actions launchpad is shown. Off hides the
+    /// strip and makes its ⌘-mnemonics inert. Persisted in `~/.look.config`
+    /// under `super_actions_enabled`.
+    var superActionsEnabled: Bool = true
+
     static let `default` = ThemeSettings()
 }

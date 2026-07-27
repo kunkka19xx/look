@@ -245,6 +245,9 @@ final class ThemeStore: ObservableObject {
         ConfigFileLines.upsert(&lines, key: "ai_enabled", value: settings.aiEnabled ? "true" : "false")
         ConfigFileLines.upsert(&lines, key: "ai_provider", value: settings.aiProvider.rawValue)
 
+        // Empty-state super actions launchpad
+        ConfigFileLines.upsert(&lines, key: "super_actions_enabled", value: settings.superActionsEnabled ? "true" : "false")
+
         do {
             try ConfigFileLines.render(lines).write(to: path, atomically: true, encoding: .utf8)
             _ = applyLaunchAtLoginSetting()
@@ -542,6 +545,10 @@ final class ThemeStore: ObservableObject {
             case "ai_provider":
                 if let parsed = AIProviderKind(rawValue: value) {
                     settings.aiProvider = parsed
+                }
+            case "super_actions_enabled":
+                if let parsed = parseBool(value) {
+                    settings.superActionsEnabled = parsed
                 }
             case "ui_background_image":
                 if !value.isEmpty {
@@ -874,6 +881,10 @@ inner_gap=0
 ai_enabled=true
 ai_provider=appleIntelligence
 
+# Super actions: empty-state launchpad of quick toggles / actions.
+# false hides the strip and disables its keyboard accelerators.
+super_actions_enabled=true
+
 # Search aliases (apps + System Settings). Format: alias_<keyword>=Term1|Term2|Term3
 alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq
 alias_code=Visual Studio Code|VSCode|Cursor|Windsurf|IntelliJ IDEA|PyCharm|WebStorm|Neovim|Xcode|Zed
@@ -913,6 +924,9 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
         }
         if object["aiProvider"] == nil {
             object["aiProvider"] = ThemeSettings.default.aiProvider.rawValue
+        }
+        if object["superActionsEnabled"] == nil {
+            object["superActionsEnabled"] = ThemeSettings.default.superActionsEnabled
         }
 
         guard
