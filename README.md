@@ -4,6 +4,7 @@
 
 A keyboard-first, local-first launcher for macOS, Windows, and Linux. Open apps, files, folders, clipboard history, and quick commands without leaving the keyboard.
 
+[![Install](https://img.shields.io/badge/install-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen)](#install)
 [![Latest release](https://img.shields.io/github/v/release/kunkka19xx/look)](https://github.com/kunkka19xx/look/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/kunkka19xx/look/total)](https://github.com/kunkka19xx/look/releases)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
@@ -23,6 +24,7 @@ https://github.com/user-attachments/assets/167b028b-04b2-4c62-ba93-c2321482ac94
 - **Regex, path, and kind-scoped search** - `r"^Visual.*`, `git/project/readme`, `a"safari`, `f"note`, `d"documents`.
 - **Browse recent files/folders** - `rc"` lists what you most recently opened *and* what recently landed on disk (downloads, screenshots), newest first; `rc"word` filters. macOS for now.
 - **Switch running apps from the launcher** - an icon strip on the right half of the search bar. `Cmd+1`..`Cmd+9` on macOS / `Alt+1`..`Alt+9` on Linux+Windows jumps to a running app. Toggle on/off in `Settings > Appearance > Running Apps`.
+- **Toggle system controls** - an empty query shows super actions: Bluetooth, Wi-Fi, theme, mic, media, restart, plus battery and weather tiles. Press the modifier + the tile's letter (`Cmd+B` / `Alt+B` for Bluetooth). Toggle the strip in `Settings > Appearance > Super Actions`.
 - **Ask a question or look something up** *(macOS, Linux, Windows, optional)* - with AI features on, a question or an entity that isn't indexed locally (e.g. `sir alex ferguson`) shows an answer card from DuckDuckGo/Wikipedia, alongside Google search suggestions. On macOS it can also fall back to the on-device Apple Intelligence model (macOS-only; Linux/Windows use web sources). On by default; turn it off in Settings.
 
 No account. No telemetry. No plugin marketplace to manage. Local-first by default - the optional AI/web features (macOS, Linux, Windows) are the only things that reach the network, and you can switch them off.
@@ -248,6 +250,7 @@ open "/Applications/Look.app"
 | Settings                                      | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
 | Back / hide                                   | `Escape`         | `Escape`            | `Escape`         |
 | Switch to running app N (home screen)         | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
+| Fire a super action (empty home screen)       | `Cmd+<letter>`   | `Alt+<letter>`      | `Alt+<letter>`   |
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
 
@@ -279,34 +282,6 @@ Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, plus C
 - [Contributing](CONTRIBUTING.md) - how to contribute
 - [Writing a control](docs/writing-controls.md) - add a Quick Action toggle/button to the panel
 - [Development](DEVELOPMENT.md) - building locally, repo layout, release process
-
-## Scope
-
-In scope:
-
-- apps, files, folders, clipboard, command mode, translation, regex/path search
-- optional web answers + suggestions (macOS, Linux, Windows) plus on-device AI answers (macOS), off-switchable
-- local-first behavior, zero telemetry
-- near-term plugin/extension exploration
-
-Out of scope for v1:
-
-- online-first behavior
-- semantic/vector search
-- full content indexing (names and metadata only)
-
-### Platform direction
-
-- **macOS** - shipped and stable (SwiftUI, native). This is the design source of truth.
-- **Windows + Linux** - a new shared Tauri v2 app (`apps/linows/`) is under active development. It targets both platforms with a single codebase (Rust backend, vanilla HTML/CSS/JS frontend). Current status:
-  - Core search, preview, multi-pick, clipboard history, translation - done
-  - Command mode (calc, pomo, todo, kill, shell, sys) - done
-  - Web answer card + Google suggestions (DuckDuckGo/Wikipedia/currency/weather/crypto, gated by `ai_enabled`) - done on Linux + Windows; on-device LLM stays macOS-only
-  - Settings screen (appearance, themes, blur, font autocomplete) - done
-  - Platform-aware blur (Mica/Acrylic on Windows, CSS backdrop-filter on Linux)
-  - Dynamic window scaling based on monitor resolution
-  - 6 built-in themes + Custom
-- **Windows (WinUI3)** - the legacy `apps/windows/` WinUI3 app is archived and superseded by `apps/linows/`.
 
 ## License
 
