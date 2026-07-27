@@ -85,6 +85,10 @@ export async function searchProcesses(query, refresh) {
     return invoke('search_processes', { query, refresh });
 }
 
+export async function searchKillTargets(query) {
+    return invoke('search_kill_targets', { query });
+}
+
 export async function processDetail(pid) {
     return invoke('process_detail', { pid });
 }

@@ -1,5 +1,6 @@
 const MAX_PORT = 65535;
 const PORT_DEBOUNCE_MS = 200;
+const SEARCH_DEBOUNCE_MS = 140;
 
 let panel = null;
 let input = null;
@@ -19,6 +20,7 @@ let filteredProcesses = [];
 let selectedIndex = 0;
 let confirmPid = null;
 let portDebounce = null;
+let searchDebounce = null;
 
 export function init(executeFn, iconFn) {
     onExecute = executeFn;
@@ -129,9 +131,11 @@ export function showFeedback(text, isError = false) {
 
 function filterProcesses(query) {
     if (!query) {
+        clearTimeout(searchDebounce);
         processList = [...baseProcessList];
         filteredProcesses = [...processList];
     } else if (query.startsWith(':')) {
+        clearTimeout(searchDebounce);
         filteredProcesses = [];
         selectedIndex = 0;
         const port = parseInt(query.slice(1));
@@ -143,8 +147,15 @@ function filterProcesses(query) {
         }
         return;
     } else {
+        // Instant provisional list from the loaded apps; the debounced backend
+        // search then replaces it with the full fuzzy result (apps first) plus
+        // matching non-app processes.
         const q = query.toLowerCase();
         filteredProcesses = baseProcessList.filter((p) => p.name.toLowerCase().includes(q));
+        clearTimeout(searchDebounce);
+        searchDebounce = setTimeout(() => {
+            if (onExecute) onExecute('kill-search', query);
+        }, SEARCH_DEBOUNCE_MS);
     }
     selectedIndex = Math.min(selectedIndex, Math.max(0, filteredProcesses.length - 1));
 }
@@ -162,7 +173,9 @@ function renderList() {
                     ? `No process on port ${port}`
                     : 'Searching port...';
         } else {
-            feedback.textContent = processList.length > 0 ? 'No matching processes' : 'Loading...';
+            // A non-empty query with no matches is a real miss; empty query with
+            // nothing yet means the app list is still loading.
+            feedback.textContent = query ? 'No matching processes' : 'Loading...';
         }
         return;
     }

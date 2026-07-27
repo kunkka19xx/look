@@ -33,6 +33,7 @@ import {
     getSystemInfo,
     listProcesses,
     listProcessesOnPort,
+    searchKillTargets,
     killProcess,
     getIcon,
     copyToClipboard,
@@ -713,6 +714,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 commands.setProcessList(procs, true);
             } catch (err) {
                 commands.showFeedback(err || 'Failed to query port', true);
+            }
+            return;
+        }
+
+        if (cmdId === 'kill-search') {
+            try {
+                const targets = await searchKillTargets(input);
+                commands.setProcessList(targets, true);
+            } catch (err) {
+                commands.showFeedback(err || 'Search failed', true);
             }
             return;
         }

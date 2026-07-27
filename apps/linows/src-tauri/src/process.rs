@@ -98,7 +98,10 @@ fn search_processes_blocking(query: &str, refresh: bool) -> Vec<ProcRow> {
         return rows;
     }
 
-    let prepared = look_matching::prepare_query(trimmed);
+    // fuzzy_score is case-sensitive; lowercase both sides (title is lowercased
+    // in score_row), matching the engine's normalized-query convention.
+    let lowered = trimmed.to_lowercase();
+    let prepared = look_matching::prepare_query(&lowered);
     let is_numeric = trimmed.chars().all(|c| c.is_ascii_digit());
     let exact_port = trimmed.parse::<u16>().ok();
 
@@ -135,7 +138,98 @@ fn score_row(
         }
     }
     // Name fuzzy still runs for numeric queries: a name can contain digits.
-    look_matching::fuzzy_score_prepared(prepared, &row.name)
+    look_matching::fuzzy_score_prepared(prepared, &row.name.to_lowercase())
+}
+
+/// A row in the `kill` command: either a desktop app (nice name + icon) or a
+/// raw process. Apps rank above processes so `kill firefox` surfaces the app.
+#[derive(Serialize, Clone)]
+pub struct KillTarget {
+    pub name: String,
+    pub pid: u32,
+    pub is_app: bool,
+    pub desktop_id: Option<String>,
+    pub exec: Option<String>,
+}
+
+const KILL_RESULT_LIMIT: usize = 60;
+
+/// Fuzzy-find kill targets: apps first (matched on display name), then any other
+/// process (matched on `/proc` name), deduped by PID. Empty query lists apps
+/// only, matching the panel's default view. Async + `spawn_blocking`: it walks
+/// `/proc` fresh each query, so it stays off the main thread.
+#[tauri::command]
+pub async fn search_kill_targets(query: String) -> Vec<KillTarget> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return list_processes().into_iter().map(app_target).collect();
+        }
+        rank_kill_targets(list_processes(), list_all_raw(), trimmed)
+    })
+    .await
+    .unwrap_or_default()
+}
+
+fn kill_hit_order(a: &(i64, KillTarget), b: &(i64, KillTarget)) -> std::cmp::Ordering {
+    b.0.cmp(&a.0)
+        .then_with(|| a.1.name.to_lowercase().cmp(&b.1.name.to_lowercase()))
+}
+
+fn rank_kill_targets(apps: Vec<RunningApp>, procs: Vec<ProcRow>, query: &str) -> Vec<KillTarget> {
+    // Lowercase both sides: fuzzy_score is case-sensitive and app names are
+    // Capitalized ("Firefox") while queries are typed lowercase.
+    let lowered = query.to_lowercase();
+    let prepared = look_matching::prepare_query(&lowered);
+
+    let mut app_pids = std::collections::HashSet::new();
+    let mut app_hits: Vec<(i64, KillTarget)> = apps
+        .into_iter()
+        .filter_map(|a| {
+            look_matching::fuzzy_score_prepared(&prepared, &a.name.to_lowercase()).map(|s| {
+                app_pids.insert(a.pid);
+                (s, app_target(a))
+            })
+        })
+        .collect();
+    app_hits.sort_by(kill_hit_order);
+
+    // Processes already shown as an app (its representative PID) are skipped.
+    let mut proc_hits: Vec<(i64, KillTarget)> = procs
+        .into_iter()
+        .filter(|r| !app_pids.contains(&r.pid))
+        .filter_map(|r| {
+            look_matching::fuzzy_score_prepared(&prepared, &r.name.to_lowercase())
+                .map(|s| (s, proc_target(r)))
+        })
+        .collect();
+    proc_hits.sort_by(kill_hit_order);
+
+    let mut out: Vec<KillTarget> = app_hits.into_iter().map(|(_, t)| t).collect();
+    out.extend(proc_hits.into_iter().map(|(_, t)| t));
+    out.truncate(KILL_RESULT_LIMIT);
+    out
+}
+
+fn app_target(a: RunningApp) -> KillTarget {
+    KillTarget {
+        name: a.name,
+        pid: a.pid,
+        is_app: true,
+        desktop_id: a.desktop_id,
+        exec: a.exec,
+    }
+}
+
+fn proc_target(r: ProcRow) -> KillTarget {
+    KillTarget {
+        name: r.name,
+        pid: r.pid,
+        is_app: false,
+        // App-backed processes still carry the app icon via their desktop path.
+        desktop_id: r.icon_source.map(|p| format!("app:{p}")),
+        exec: None,
+    }
 }
 
 #[tauri::command]
@@ -344,7 +438,8 @@ mod tests {
 
     fn score(row: &ProcRow, query: &str) -> Option<i64> {
         let trimmed = query.trim();
-        let prepared = look_matching::prepare_query(trimmed);
+        let lowered = trimmed.to_lowercase();
+        let prepared = look_matching::prepare_query(&lowered);
         let is_numeric = trimmed.chars().all(|c| c.is_ascii_digit());
         let exact_port = trimmed.parse::<u16>().ok();
         score_row(row, trimmed, &prepared, is_numeric, exact_port)
@@ -382,5 +477,33 @@ mod tests {
         // 99999 > u16::MAX: no exact port, no substring, no PID -> None.
         let r = row("svc", 42, &[8080]);
         assert_eq!(score(&r, "99999"), None);
+    }
+
+    fn app(name: &str, pid: u32) -> RunningApp {
+        RunningApp {
+            name: name.to_string(),
+            pid,
+            desktop_id: Some(format!("app:/x/{name}.desktop")),
+            exec: Some(name.to_string()),
+        }
+    }
+
+    #[test]
+    fn kill_targets_rank_apps_before_processes() {
+        let apps = vec![app("Firefox", 100)];
+        // pid 100 is the app's own PID (deduped); 200 is a stray "firefox" proc.
+        let procs = vec![row("firefox", 100, &[]), row("firefox", 200, &[])];
+        let out = rank_kill_targets(apps, procs, "fire");
+        assert_eq!(out.len(), 2, "app + the non-dup process");
+        assert!(out[0].is_app, "app ranks first");
+        assert_eq!(out[0].pid, 100);
+        assert!(!out[1].is_app);
+        assert_eq!(out[1].pid, 200);
+    }
+
+    #[test]
+    fn kill_targets_non_match_excluded() {
+        let out = rank_kill_targets(vec![app("Firefox", 1)], vec![row("bash", 2, &[])], "zzq");
+        assert!(out.is_empty());
     }
 }

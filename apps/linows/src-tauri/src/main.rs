@@ -568,6 +568,8 @@ fn main() {
             if disable_gpu {
                 gpu::disable_gpu_acceleration(app);
             }
+            #[cfg(target_os = "linux")]
+            gpu::trim_memory_features(app);
 
             AppState::init_app_handle(app);
             app.state::<AppState>().start_bootstrap();
@@ -674,6 +676,7 @@ fn main() {
             process::list_processes_on_port,
             process::kill_process,
             process::search_processes,
+            process::search_kill_targets,
             process::process_detail,
             process::process_cpu,
             process::list_running_apps,
