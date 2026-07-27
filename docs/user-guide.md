@@ -69,6 +69,28 @@ When at least one item is picked, the right panel switches to the **Picked** lis
 
 **Trash.** Type `trash` to pin the Trash quick folder; `Enter` opens it in Finder. With the Trash folder selected, its preview shows the item count and `Cmd+D` **empties** the Trash. Emptying is permanent, so it asks you to confirm (`Y`/`Enter` to empty, `N`/`Esc` to cancel). Look empties the Trash through Finder, so the first time you do this macOS asks for permission to control Finder (see [Permissions](#permissions)).
 
+## Super actions
+
+With an empty query, the home screen shows a strip of system controls instead of results. Fire a tile by clicking it, or with `Cmd`+letter (macOS) / `Alt`+letter (Linux, Windows), where the letter is the one highlighted on the tile:
+
+| Key | Tile         | Effect                        |
+| --- | ------------ | ----------------------------- |
+| `B` | Bluetooth    | Toggle on/off                 |
+| `W` | Wi-Fi        | Toggle on/off                 |
+| `T` | Theme        | Switch dark/light             |
+| `K` | Keep Awake   | Toggle sleep prevention       |
+| `S` | Screensaver  | Start it                      |
+| `M` | Mic          | Mute/unmute                   |
+| `P` | Now Playing  | Play/pause the current track  |
+| `R` | Restart      | Restart (press twice)         |
+| `D` | Shut Down    | Shut down (press twice)       |
+
+Restart and Shut Down arm on the first press and only run on the second, so a stray key can't power the machine off. `Esc` or waiting a moment cancels the armed tile.
+
+The rest of the strip is read-only: **Battery**, **Weather**, and the large slot on the left, which shows a running Pomodoro session, otherwise today's remaining todos, otherwise the clock.
+
+Turn the strip off in `Settings > Appearance > Super Actions`. Off hides it and disables the letter shortcuts. Saved as `super_actions_enabled=true|false` in `~/.look.config`.
+
 ## AI answers and web suggestions (macOS, Linux, Windows)
 
 Look can answer questions and look things up without leaving the launcher. These features are **on by default** on macOS, Linux, and Windows. Toggle them in Settings or with `ai_enabled` in `~/.look.config`.
@@ -205,6 +227,8 @@ Behavior:
 
 Saved as `running_apps_placement=<value>` in `~/.look.config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
 
+**Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`.
+
 ### Indexing Settings
 
 Default values:
@@ -315,6 +339,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:todo`): jump to a command directly from the home screen
 - `Cmd+1`..`Cmd+6`: in command mode, direct command switch (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`)
 - `Cmd+1`..`Cmd+9` (macOS) / `Alt+1`..`Alt+9` (Linux, Windows): on the home screen, activate the running-app whose badge shows that digit, when `Running Apps` is on. Badge labels are ergonomic, not strictly positional - see Settings → Appearance → Running Apps
+- `Cmd+<letter>` (macOS) / `Alt+<letter>` (Linux, Windows): on the empty home screen, fire the super action with that highlighted letter (`B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `P` play/pause, `R` Restart, `D` Shut Down), when `Super Actions` is on
 - `Space` / `R` / `P` (inside `/pomo`): start/pause session, reset, toggle music play/pause
 - `Cmd+N` / `Cmd+S` (inside `/todo`): switch Tasks/Stats page, save changes
 - `Escape`: back/close (context dependent)

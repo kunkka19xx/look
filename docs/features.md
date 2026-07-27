@@ -65,6 +65,17 @@ This document tracks what `look` supports today and what is planned next.
 - toggled on/off via `Settings > Appearance > Running Apps`. Persisted as `running_apps_placement` in `~/.look.config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` still load as "on"). The window is a single fixed size and never resizes for the row
 - off hides the row and disables the activation shortcut
 
+### Super actions
+
+- a control strip on the empty home screen (no query typed) with system toggles, one-shot actions and read-only info tiles
+- the tile set, order, sizes and mnemonics come from the shared `core/qactions` catalog, so macOS, Linux and Windows render the same strip; only the native state reads and control paths differ
+- tiles: L slot (Pomodoro session > remaining todos > clock), Bluetooth, Wi-Fi, Battery, Theme, Keep Awake, Screensaver, Weather, Mic, Restart, Shut Down, Now Playing
+- activation: click a tile, or press the platform modifier + its highlighted letter - `Cmd` (macOS) / `Alt` (Linux, Windows): `B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `R` Restart, `D` Shut Down, `P` Now Playing play/pause
+- Restart and Shut Down arm on the first press and fire on the second; `Esc` (macOS) or the auto-disarm timeout cancels
+- Battery, Weather and the L slot are read-only
+- toggled on/off via `Settings > Appearance > Super Actions`. Persisted as `super_actions_enabled` in `~/.look.config`
+- off hides the strip and disables its mnemonics
+
 ### Settings and runtime config
 
 - in-app settings panel (`Cmd+Shift+,`)

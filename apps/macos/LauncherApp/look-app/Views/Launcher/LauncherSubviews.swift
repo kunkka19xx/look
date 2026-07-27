@@ -481,6 +481,7 @@ struct LauncherHelpScreenView: View {
                     .foregroundStyle(themeStore.secondaryTextColor())
 
                 ShortcutHelpSection(title: "Main", items: LauncherHelpContent.mainShortcuts)
+                ShortcutHelpSection(title: "Super actions", items: LauncherHelpContent.superActions)
                 ShortcutHelpSection(title: "Query prefixes", items: LauncherHelpContent.queryModes)
                 ShortcutHelpSection(title: "Command mode", items: LauncherHelpContent.commandMode)
             }
@@ -510,6 +511,17 @@ private enum LauncherHelpContent {
         ("Cmd+Shift+;", "Reload .look.config"),
         ("Cmd+H", "Toggle this help screen"),
         ("Esc", "Close help / back / hide launcher"),
+    ]
+
+    // The strip on the empty home screen. Keys are the tile mnemonics from the
+    // shared catalog (core/qactions), fired with Cmd.
+    static let superActions: [(String, String)] = [
+        ("Cmd+B / Cmd+W", "Toggle Bluetooth / Wi-Fi"),
+        ("Cmd+T / Cmd+K", "Switch theme / toggle Keep Awake"),
+        ("Cmd+S / Cmd+M", "Start screensaver / mute mic"),
+        ("Cmd+P", "Play/pause the current track"),
+        ("Cmd+R / Cmd+D", "Restart / Shut Down (press twice, Esc cancels)"),
+        ("Settings > Appearance", "Show or hide the super actions strip"),
     ]
 
     // Derived from the canonical prefix list so the help screen and the `"`
