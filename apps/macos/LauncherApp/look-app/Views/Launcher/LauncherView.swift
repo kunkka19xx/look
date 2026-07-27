@@ -631,8 +631,10 @@ struct LauncherView: View {
         .onAppear {
             refreshSearchResults()
             configureLaunchpadIfNeeded()
-            Task { await launchpadController.refreshStates() }
-            Task { await launchpadController.refreshWeather() }
+            if themeStore.settings.superActionsEnabled {
+                Task { await launchpadController.refreshStates() }
+                Task { await launchpadController.refreshWeather() }
+            }
             startKeyboardNavigationIfNeeded()
             focusActiveInput()
             refreshClipboardMonitoringMode()
@@ -646,6 +648,9 @@ struct LauncherView: View {
             recentURLTask?.cancel()
             keyboardMonitor.stop()
             clipboardStore.setMonitoringMode(.background)
+        }
+        .onChange(of: themeStore.settings.superActionsEnabled) { _, enabled in
+            launchpadSettingChanged(enabled: enabled)
         }
         .onChange(of: query) { _, _ in
             // Editing the query dismisses a pending Empty Trash confirmation,
@@ -906,7 +911,7 @@ struct LauncherView: View {
                 // Empty query while floating: the launchpad control strip sits
                 // below the top bar; a spacer keeps them pinned to the top. When
                 // the catalog fails to decode we fall back to the bare rest state.
-                if !launchpadTiles.isEmpty {
+                if isLaunchpadActive {
                     EmptyStateLaunchpadView(
                         tiles: launchpadTiles,
                         controller: launchpadController,

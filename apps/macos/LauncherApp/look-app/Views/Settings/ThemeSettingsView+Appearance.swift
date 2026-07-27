@@ -30,6 +30,14 @@ extension ThemeSettingsView {
                     .labelsHidden()
                     .help("Show running apps in the right half of the search bar (⌘1-9 to switch)")
 
+                    Spacer().frame(width: 40)
+
+                    inlinePickerLabel("Super Actions")
+                    Toggle("Show super actions", isOn: $settings.superActionsEnabled)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .help("Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
+
                     Spacer(minLength: 0)
                 }
 
