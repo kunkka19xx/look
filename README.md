@@ -4,7 +4,11 @@
 
 A keyboard-first, local-first launcher for macOS, Windows, and Linux. Open apps, files, folders, clipboard history, and quick commands without leaving the keyboard.
 
-[![Install](https://img.shields.io/badge/install-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen)](#install)
+[![Install](https://img.shields.io/badge/install-555)](#install)
+[![macOS](https://img.shields.io/badge/macOS-brightgreen?logo=apple&logoColor=white)](#macos)
+[![Linux](https://img.shields.io/badge/Linux-brightgreen?logo=linux&logoColor=white)](#linux)
+[![Windows](https://img.shields.io/badge/Windows-brightgreen?logo=windows&logoColor=white)](#windows)
+
 [![Latest release](https://img.shields.io/github/v/release/kunkka19xx/look)](https://github.com/kunkka19xx/look/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/kunkka19xx/look/total)](https://github.com/kunkka19xx/look/releases)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
