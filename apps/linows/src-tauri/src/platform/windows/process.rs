@@ -6,7 +6,7 @@
 //! is bypassed for any process that owns a visible window, so UWP apps like
 //! Windows Terminal still show up.
 
-use crate::process::RunningApp;
+use crate::process::{ProcRow, RunningApp};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Mutex;
@@ -179,6 +179,23 @@ pub(crate) fn kill(pid: u32) -> Result<String, String> {
         terminate.map_err(|e| format!("TerminateProcess({pid}) failed: {e}"))?;
     }
     Ok(format!("Killed PID {pid}"))
+}
+
+/// Raw process list for the `ps"` finder. Every process (minus the idle/system
+/// PIDs and ourselves), by Toolhelp basename. `detail`/`cpu` are Linux-only for
+/// now, so the preview degrades to name + PID here.
+pub(crate) fn list_all() -> Vec<ProcRow> {
+    let current_pid = unsafe { GetCurrentProcessId() };
+    enumerate_processes()
+        .into_iter()
+        .filter(|(pid, _)| *pid != 0 && *pid != 4 && *pid != current_pid)
+        .map(|(pid, name)| ProcRow {
+            name,
+            pid,
+            icon_source: None,
+            ports: Vec::new(),
+        })
+        .collect()
 }
 
 // --- process enumeration ---

@@ -10,11 +10,13 @@ import {
     copyFilesToClipboard,
     copyToClipboard,
     deleteClipboardEntry,
+    killProcess,
     trashPaths,
     countTrashItems,
     emptyTrash,
     requestIndexRefresh,
 } from './ipc.js';
+import * as preview from './components/preview.js';
 import * as banner from './components/banner.js';
 import * as confirm from './components/confirm.js';
 import * as qactions from './components/qactions.js';
@@ -263,6 +265,10 @@ function handleKeyDown(e) {
                 if (text) translatePanel.perform(text);
             } else if (search.isClipboardMode()) {
                 copyClipboardEntry();
+            } else if (search.isProcessMode()) {
+                // ps": Enter measures CPU on demand (kill is Ctrl+D). Keeps
+                // selection instant by never sampling until asked.
+                preview.measureCpu();
             } else if (e.ctrlKey) {
                 searchWeb();
             } else if ((e.shiftKey || shiftHeld) && results.hasPickedItems()) {
@@ -277,6 +283,7 @@ function handleKeyDown(e) {
             if (
                 search.isClipboardMode() ||
                 search.isTranslateMode() ||
+                search.isProcessMode() ||
                 search.isPrefixHintMode() ||
                 search.isCommandHintMode()
             ) {
@@ -303,7 +310,11 @@ function handleKeyDown(e) {
             if (e.ctrlKey && !window.getSelection()?.toString()) {
                 e.preventDefault();
                 if (isDiscoveryMode()) break;
-                copySelectedPath();
+                if (search.isProcessMode()) {
+                    copySelectedPid();
+                } else {
+                    copySelectedPath();
+                }
             }
             break;
 
@@ -333,7 +344,9 @@ function handleKeyDown(e) {
             if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
                 e.preventDefault();
                 if (isDiscoveryMode()) break;
-                if (search.isClipboardMode()) {
+                if (search.isProcessMode()) {
+                    killSelectedProcess();
+                } else if (search.isClipboardMode()) {
                     removeClipboardEntry();
                 } else {
                     handleTrashShortcut();
@@ -566,5 +579,30 @@ async function removeClipboardEntry() {
         search.handleQueryInput(queryInput.value);
     } catch (err) {
         console.error('Delete clipboard entry failed:', err);
+    }
+}
+
+async function copySelectedPid() {
+    const item = results.getSelected();
+    if (!item || item.kind !== 'process') return;
+    try {
+        await copyToClipboard(String(item.procPid));
+        banner.show(`Copied PID ${item.procPid}`, 'success', 1.0);
+    } catch (err) {
+        banner.show('Copy failed', 'error', 1.2);
+    }
+}
+
+async function killSelectedProcess() {
+    const item = results.getSelected();
+    if (!item || item.kind !== 'process') return;
+    try {
+        await killProcess(item.procPid);
+        banner.show(`Killed ${item.procName} (${item.procPid})`, 'success', 1.2);
+        // Force a fresh /proc walk so the killed row drops off next render.
+        search.forceProcessRefresh();
+        search.handleQueryInput(queryInput.value);
+    } catch (err) {
+        banner.show(`Kill failed: ${err}`, 'error', 1.6);
     }
 }

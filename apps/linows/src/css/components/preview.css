@@ -76,6 +76,9 @@
 .preview-badge.kind-clipboard {
     color: var(--accent-color);
 }
+.preview-badge.kind-process {
+    color: var(--color-info);
+}
 
 .preview-size {
     font-size: calc(var(--font-size) - 2px);

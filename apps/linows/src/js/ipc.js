@@ -81,6 +81,18 @@ export async function killProcess(pid) {
     return invoke('kill_process', { pid });
 }
 
+export async function searchProcesses(query, refresh) {
+    return invoke('search_processes', { query, refresh });
+}
+
+export async function processDetail(pid) {
+    return invoke('process_detail', { pid });
+}
+
+export async function processCpu(pid) {
+    return invoke('process_cpu', { pid });
+}
+
 export async function listRunningApps() {
     return invoke('list_running_apps');
 }

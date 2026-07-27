@@ -673,6 +673,9 @@ fn main() {
             process::list_processes,
             process::list_processes_on_port,
             process::kill_process,
+            process::search_processes,
+            process::process_detail,
+            process::process_cpu,
             process::list_running_apps,
             process::activate_running_app,
             // Todo (shared look-todo store, same table macOS uses)

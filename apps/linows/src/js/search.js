@@ -1,6 +1,7 @@
 import {
     search as ipcSearch,
     getClipboardHistory,
+    searchProcesses as ipcSearchProcesses,
     webSuggestions as ipcWebSuggestions,
     classifyUrl as ipcClassifyUrl,
     recentUrls as ipcRecentUrls,
@@ -30,6 +31,10 @@ let onResultsCallback = null;
 let clipboardMode = false;
 let translateMode = false;
 let recentMode = false;
+let processMode = false;
+// Set after a kill (or on mode entry) so the next process search re-enumerates
+// /proc instead of scoring the stale snapshot.
+let processRefreshPending = false;
 let prefixHintMode = false;
 let commandHintMode = false;
 let aiEnabled = true;
@@ -78,6 +83,16 @@ export function isRecentMode() {
     return recentMode;
 }
 
+export function isProcessMode() {
+    return processMode;
+}
+
+// Called after a kill so the next process search re-enumerates /proc. Callers
+// dispatch an input event to re-run the current query.
+export function forceProcessRefresh() {
+    processRefreshPending = true;
+}
+
 export function isPrefixHintMode() {
     return prefixHintMode;
 }
@@ -122,19 +137,23 @@ export function handleQueryInput(query) {
     // run before the t"/c"/rc" branches because the leading chars overlap.
     if (isPrefixSuggestionQuery(query)) {
         prefixHintMode = true;
-        commandHintMode = translateMode = clipboardMode = recentMode = false;
+        commandHintMode = translateMode = clipboardMode = recentMode = processMode = false;
         if (onResultsCallback) onResultsCallback(prefixSuggestionResults(query), query);
         return;
     }
     if (isCommandSuggestionQuery(query)) {
         commandHintMode = true;
-        prefixHintMode = translateMode = clipboardMode = recentMode = false;
+        prefixHintMode = translateMode = clipboardMode = recentMode = processMode = false;
         if (onResultsCallback) onResultsCallback(commandSuggestionResults(query), query);
         return;
     }
 
     prefixHintMode = false;
     commandHintMode = false;
+    // Default off; the ps" branch below re-arms it. Every early-return mode
+    // branch (t"/c"/rc") is reached with processMode already cleared here.
+    const wasProcessMode = processMode;
+    processMode = false;
 
     if (query.startsWith('t"')) {
         translateMode = true;
@@ -166,6 +185,17 @@ export function handleQueryInput(query) {
     }
 
     recentMode = false;
+
+    if (query.startsWith('ps"')) {
+        processMode = true;
+        // Re-enumerate on mode entry or after a kill; otherwise score the cached
+        // snapshot so typing never walks /proc.
+        const refresh = processRefreshPending || !wasProcessMode;
+        processRefreshPending = false;
+        const filter = query.slice(3);
+        debounceTimer = setTimeout(() => performProcessSearch(filter, refresh), DEBOUNCE_MS);
+        return;
+    }
 
     const myVersion = queryVersion;
     if (query.trim() === '') {
@@ -393,6 +423,33 @@ async function performClipboardSearch(filter) {
     } catch (err) {
         console.error('Clipboard search failed:', err);
         if (onResultsCallback) onResultsCallback([], `c"${filter}`);
+    }
+}
+
+async function performProcessSearch(filter, refresh) {
+    try {
+        const procs = await ipcSearchProcesses(filter.trim(), !!refresh);
+        const results = procs.map((p) => {
+            const ports = p.ports || [];
+            const portHint = ports.length ? ` \u2022 ${ports.map((x) => `:${x}`).join(' ')}` : '';
+            return {
+                id: `proc:${p.pid}`,
+                kind: 'process',
+                title: p.name,
+                subtitle: `PID ${p.pid}${portHint}`,
+                path: `process://${p.pid}`,
+                score: 0,
+                procPid: p.pid,
+                procName: p.name,
+                // .desktop path when the process belongs to an app; drives the icon.
+                iconPath: p.icon_source || null,
+                procPorts: ports,
+            };
+        });
+        if (onResultsCallback) onResultsCallback(results, `ps"${filter}`);
+    } catch (err) {
+        console.error('Process search failed:', err);
+        if (onResultsCallback) onResultsCallback([], `ps"${filter}`);
     }
 }
 

@@ -3,6 +3,7 @@
 //! `platform::windows::process`.
 
 use serde::Serialize;
+use std::sync::{Mutex, OnceLock};
 
 #[derive(Serialize, Clone)]
 pub struct RunningApp {
@@ -10,6 +11,171 @@ pub struct RunningApp {
     pub pid: u32,
     pub desktop_id: Option<String>,
     pub exec: Option<String>,
+}
+
+/// One row in the `ps"` finder: a raw process, not desktop-matched like
+/// `RunningApp`. Kept minimal so enumeration stays cheap; richer fields are
+/// fetched per-selection via `process_detail`.
+#[derive(Serialize, Clone)]
+pub struct ProcRow {
+    pub name: String,
+    pub pid: u32,
+    /// `.desktop` path when this process belongs to a known app, so the finder
+    /// can show the app icon; `None` falls back to the generic process glyph.
+    pub icon_source: Option<String>,
+    /// Listening TCP ports owned by this process, sorted. Shown in the row and
+    /// matched against a numeric query so `ps"` doubles as a find-by-port.
+    pub ports: Vec<u16>,
+}
+
+/// Per-process detail for the `ps"` preview pane. All fields are cheap single
+/// `/proc` reads; `start_epoch` is Unix seconds (formatted on the frontend).
+#[derive(Serialize, Clone)]
+pub struct ProcDetail {
+    pub cmdline: String,
+    pub rss_kb: u64,
+    pub user: String,
+    pub ppid: u32,
+    pub start_epoch: Option<u64>,
+}
+
+/// Cap on rows returned to the finder: enough to scroll, few enough to render
+/// instantly. The raw snapshot behind it can hold every user process.
+const PROC_RESULT_LIMIT: usize = 50;
+
+/// Snapshot of every user process, enumerated once per `ps"` session (or after
+/// a kill) and re-scored per keystroke. Avoids walking `/proc` on every stroke.
+fn snapshot() -> &'static Mutex<Vec<ProcRow>> {
+    static SNAPSHOT: OnceLock<Mutex<Vec<ProcRow>>> = OnceLock::new();
+    SNAPSHOT.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn list_all_raw() -> Vec<ProcRow> {
+    #[cfg(target_os = "linux")]
+    {
+        crate::platform::linux::process::list_all()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        crate::platform::windows::process::list_all()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        Vec::new()
+    }
+}
+
+/// Scores for numeric-query matches, ranked above fuzzy name matches so an
+/// intentional port/PID lookup wins. Exact port beats a partial digit match.
+const PORT_EXACT_SCORE: i64 = i64::MAX / 2;
+const NUMERIC_PARTIAL_SCORE: i64 = i64::MAX / 4;
+/// PID-only matches rank below every name match (fuzzy scores are small).
+const PID_PARTIAL_SCORE: i64 = i64::MIN / 2;
+
+/// Fuzzy-find running processes for the `ps"` prefix. `refresh` re-enumerates
+/// `/proc` (mode entry or post-kill); otherwise the cached snapshot is scored.
+/// Matches on process name via `look-matching`; a numeric query also matches a
+/// listening port (find-by-port) or the PID. Async + `spawn_blocking` because a
+/// refresh scans socket fds and shouldn't touch the main thread.
+#[tauri::command]
+pub async fn search_processes(query: String, refresh: bool) -> Vec<ProcRow> {
+    tauri::async_runtime::spawn_blocking(move || search_processes_blocking(&query, refresh))
+        .await
+        .unwrap_or_default()
+}
+
+fn search_processes_blocking(query: &str, refresh: bool) -> Vec<ProcRow> {
+    let mut snap = snapshot().lock().unwrap();
+    if refresh || snap.is_empty() {
+        *snap = list_all_raw();
+    }
+
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        let mut rows = snap.clone();
+        rows.sort_by_key(|r| r.name.to_lowercase());
+        rows.truncate(PROC_RESULT_LIMIT);
+        return rows;
+    }
+
+    let prepared = look_matching::prepare_query(trimmed);
+    let is_numeric = trimmed.chars().all(|c| c.is_ascii_digit());
+    let exact_port = trimmed.parse::<u16>().ok();
+
+    let mut scored: Vec<(i64, &ProcRow)> = snap
+        .iter()
+        .filter_map(|row| {
+            score_row(row, trimmed, &prepared, is_numeric, exact_port).map(|s| (s, row))
+        })
+        .collect();
+    scored.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| a.1.name.to_lowercase().cmp(&b.1.name.to_lowercase()))
+    });
+    scored.truncate(PROC_RESULT_LIMIT);
+    scored.into_iter().map(|(_, row)| row.clone()).collect()
+}
+
+fn score_row(
+    row: &ProcRow,
+    trimmed: &str,
+    prepared: &look_matching::PreparedQuery<'_>,
+    is_numeric: bool,
+    exact_port: Option<u16>,
+) -> Option<i64> {
+    if is_numeric {
+        if exact_port.is_some_and(|p| row.ports.contains(&p)) {
+            return Some(PORT_EXACT_SCORE);
+        }
+        if row.ports.iter().any(|p| p.to_string().contains(trimmed)) {
+            return Some(NUMERIC_PARTIAL_SCORE);
+        }
+        if row.pid.to_string().contains(trimmed) {
+            return Some(PID_PARTIAL_SCORE);
+        }
+    }
+    // Name fuzzy still runs for numeric queries: a name can contain digits.
+    look_matching::fuzzy_score_prepared(prepared, &row.name)
+}
+
+#[tauri::command]
+pub fn process_detail(pid: u32) -> Option<ProcDetail> {
+    #[cfg(target_os = "linux")]
+    {
+        crate::platform::linux::process::detail(pid)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = pid;
+        None
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
+/// Sample CPU usage for one process over a short interval. On-demand (bound to
+/// Enter in `ps"`), never per-selection, so the sampling cost is only paid when
+/// asked. Percentage is relative to a single core (may exceed 100, like `top`).
+/// Async + `spawn_blocking` so the sampling sleep never stalls the main thread.
+#[tauri::command]
+pub async fn process_cpu(pid: u32) -> Option<f64> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(target_os = "linux")]
+        {
+            crate::platform::linux::process::cpu(pid)
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = pid;
+            None
+        }
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 #[tauri::command]
@@ -160,5 +326,61 @@ pub fn kill_process(pid: u32) -> Result<String, String> {
     {
         let _ = pid;
         Err("kill not supported on this platform".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(name: &str, pid: u32, ports: &[u16]) -> ProcRow {
+        ProcRow {
+            name: name.to_string(),
+            pid,
+            icon_source: None,
+            ports: ports.to_vec(),
+        }
+    }
+
+    fn score(row: &ProcRow, query: &str) -> Option<i64> {
+        let trimmed = query.trim();
+        let prepared = look_matching::prepare_query(trimmed);
+        let is_numeric = trimmed.chars().all(|c| c.is_ascii_digit());
+        let exact_port = trimmed.parse::<u16>().ok();
+        score_row(row, trimmed, &prepared, is_numeric, exact_port)
+    }
+
+    #[test]
+    fn exact_port_beats_partial_and_name() {
+        let server = row("node", 4321, &[3000]);
+        let other = row("node", 30001, &[]); // "3000" is a PID substring only
+        let named = row("proc3000", 99, &[]); // name contains the digits
+        let s_exact = score(&server, "3000").unwrap();
+        assert_eq!(s_exact, PORT_EXACT_SCORE);
+        assert!(s_exact > score(&other, "3000").unwrap());
+        assert!(s_exact > score(&named, "3000").unwrap());
+    }
+
+    #[test]
+    fn partial_port_ranks_above_pid_only() {
+        let by_port = row("a", 1, &[3000]); // "300" is a substring of the port
+        let by_pid = row("b", 3009, &[]); // "300" is a substring of the PID
+        assert_eq!(score(&by_port, "300"), Some(NUMERIC_PARTIAL_SCORE));
+        assert_eq!(score(&by_pid, "300"), Some(PID_PARTIAL_SCORE));
+        assert!(score(&by_port, "300").unwrap() > score(&by_pid, "300").unwrap());
+    }
+
+    #[test]
+    fn name_query_still_fuzzy_matches() {
+        let ff = row("firefox", 100, &[]);
+        assert!(score(&ff, "fire").is_some());
+        assert!(score(&ff, "zzq").is_none());
+    }
+
+    #[test]
+    fn oversized_port_number_wont_panic_and_matches_nothing() {
+        // 99999 > u16::MAX: no exact port, no substring, no PID -> None.
+        let r = row("svc", 42, &[8080]);
+        assert_eq!(score(&r, "99999"), None);
     }
 }

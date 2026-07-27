@@ -2,6 +2,7 @@ import { getIcon } from '../ipc.js';
 import {
     clipboard as clipboardIcon,
     check as checkIcon,
+    cpu as cpuIcon,
     appIcon,
     fileIcon,
     folderIcon,
@@ -308,6 +309,7 @@ function createRow(result, index) {
         folder: folderIcon,
         setting: settingIcon,
         clipboard: clipboardIcon,
+        process: cpuIcon,
     };
     // Synthetic discovery rows (prefix/command menus) ship their own glyph in
     // result.iconSvg so the list scans visually; everything else falls back to
@@ -323,7 +325,18 @@ function createRow(result, index) {
     // Skip backend icon fetch for ms-settings entries - the Shell PNG would just
     // be the generic gear and would clobber our category-specific glyph. Same
     // applies to synthetic discovery rows whose `path` is empty.
-    if (result.kind !== 'clipboard' && !windowsSettingsSvg && !result.iconSvg && result.path) {
+    if (result.kind === 'process') {
+        // App-backed processes wear their app icon (loaded as an app path);
+        // the rest keep the generic process glyph from the fallback above.
+        if (result.iconPath) {
+            loadIcon(icon, 'app', result.iconPath, result.id);
+        }
+    } else if (
+        result.kind !== 'clipboard' &&
+        !windowsSettingsSvg &&
+        !result.iconSvg &&
+        result.path
+    ) {
         loadIcon(icon, result.kind, result.path, result.id);
     }
 

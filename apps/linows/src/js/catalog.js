@@ -28,6 +28,7 @@ const PREFIX_ENTRIES = [
         description: 'Recent files/folders, newest first (optional filter)',
     },
     { prefix: 'r"', argHint: 'pattern', description: 'Regex search' },
+    { prefix: 'ps"', argHint: 'word', description: 'Find & kill running processes' },
     {
         prefix: 'c"',
         argHint: 'word',

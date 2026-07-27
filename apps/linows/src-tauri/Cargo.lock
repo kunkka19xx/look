@@ -2527,6 +2527,7 @@ dependencies = [
  "look-answers",
  "look-engine",
  "look-lunar",
+ "look-matching",
  "look-qactions",
  "look-storage",
  "look-todo",
