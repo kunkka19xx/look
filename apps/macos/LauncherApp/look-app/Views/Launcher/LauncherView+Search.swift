@@ -183,7 +183,8 @@ extension LauncherView {
         }
     }
 
-    func reloadConfig() {
+    @discardableResult
+    func reloadConfig() -> Bool {
         let result = themeStore.reloadFromConfig()
         let backendReloaded = bridge.reloadConfig()
         clipboardStore.reloadFromConfig()
@@ -215,6 +216,7 @@ extension LauncherView {
         }
         refreshSearchResults()
         focusActiveInput()
+        return backendReloaded
     }
 
     func showBanner(

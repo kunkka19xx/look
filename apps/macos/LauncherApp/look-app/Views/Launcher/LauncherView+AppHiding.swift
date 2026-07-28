@@ -28,8 +28,9 @@ extension LauncherView {
             return
         }
 
-        reloadConfig()
-        showBanner("Hidden \(selected.title)", style: .success, duration: 1.2)
+        if reloadConfig() {
+            showBanner("Hidden \(selected.title)", style: .success, duration: 1.2)
+        }
     }
 
     func cancelHideSelectedApp() {
