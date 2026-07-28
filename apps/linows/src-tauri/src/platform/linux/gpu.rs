@@ -106,6 +106,41 @@ pub fn disable_gpu_acceleration(app: &tauri::App) {
     }
 }
 
+/// Turn off WebKit subsystems this launcher never uses, so their per-web-process
+/// caches and init cost never land in `WebKitWebProcess` memory. All confirmed
+/// unused: no HTML5 media (audio is rodio in the backend), no WebGL (only a 2D
+/// canvas), no getUserMedia/WebRTC, no plugins, and no back/forward navigation
+/// to justify the page (bf) cache. localStorage and JavaScript stay on.
+///
+/// This trims baseline, not the irreducible engine footprint; WebKitGTK's shared
+/// libraries dominate and can't be unloaded.
+pub fn trim_memory_features(app: &tauri::App) {
+    if let Some(webview) = app.get_webview_window(consts::MAIN_WINDOW) {
+        let _ = webview.with_webview(|wv| {
+            use webkit2gtk::SettingsExt;
+            let inner = wv.inner();
+            if let Some(s) = webkit2gtk::WebViewExt::settings(&inner) {
+                // No page navigation in a single-view launcher.
+                s.set_enable_page_cache(false);
+                // GPU/graphics features unused by the UI (2D canvas is unaffected).
+                s.set_enable_webgl(false);
+                // Full HTML5 media stack: unused, audio goes through rodio.
+                s.set_enable_webaudio(false);
+                s.set_enable_media(false);
+                s.set_enable_mediasource(false);
+                s.set_enable_media_capabilities(false);
+                s.set_enable_encrypted_media(false);
+                s.set_enable_media_stream(false);
+                s.set_enable_webrtc(false);
+                // Legacy / privacy-noise features.
+                s.set_enable_offline_web_application_cache(false);
+                s.set_enable_hyperlink_auditing(false);
+                s.set_enable_dns_prefetching(false);
+            }
+        });
+    }
+}
+
 /// Disable WebKitGTK smooth scrolling on X11.
 ///
 /// Why: GTK3 issue #3287 - on X11 with GDK_SMOOTH_SCROLL_MASK enabled, the

@@ -32,7 +32,7 @@ import {
     runShellCommand,
     getSystemInfo,
     listProcesses,
-    listProcessesOnPort,
+    searchKillTargets,
     killProcess,
     getIcon,
     copyToClipboard,
@@ -59,6 +59,7 @@ const HINT_MAIN = 'Enter: Open \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
 const HINT_TRANSLATE =
     'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
 const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Ctrl+D: Remove clip';
+const HINT_PROCESS = 'Enter: CPU \u2022 Ctrl+D: Kill \u2022 Ctrl+C: Copy PID';
 // Discovery-menu hints \u2014 mirror macOS prefixSuggestion / commandSuggestion
 // hint bars (LauncherView.swift hintItems).
 const HINT_PREFIX_DISCOVERY =
@@ -520,6 +521,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (search.isClipboardMode()) {
             setHint(hintMessage, HINT_CLIPBOARD);
             results.setEmptyState({ mode: 'clipboard' });
+        } else if (search.isProcessMode()) {
+            setHint(hintMessage, HINT_PROCESS);
+            results.setEmptyState({ mode: 'default' });
         } else if (search.isPrefixHintMode() || search.isCommandHintMode()) {
             setHint(
                 hintMessage,
@@ -576,6 +580,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 openPath(urlTarget, 'browser', '');
                 recordUrlHit(urlTarget);
             });
+            return;
+        }
+        // Process row has no path to open; a click measures CPU like Enter.
+        if (item.kind === 'process') {
+            preview.measureCpu();
             return;
         }
 
@@ -675,7 +684,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (runningApps.isEnabled()) runningApps.refresh();
     }
 
-    async function executeCommand(cmdId, input) {
+    async function executeCommand(cmdId, input, gen) {
         if (cmdId === 'calc-preview') {
             try {
                 const result = await evalCalc(input);
@@ -696,14 +705,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        if (cmdId === 'kill-port') {
-            const port = parseInt(input);
-            if (!port) return;
+        if (cmdId === 'kill-search') {
             try {
-                const procs = await listProcessesOnPort(port);
-                commands.setProcessList(procs, true);
+                const targets = await searchKillTargets(input);
+                commands.setProcessList(targets, gen);
             } catch (err) {
-                commands.showFeedback(err || 'Failed to query port', true);
+                commands.showFeedback(err || 'Search failed', true);
             }
             return;
         }

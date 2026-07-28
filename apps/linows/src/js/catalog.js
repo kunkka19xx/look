@@ -28,6 +28,7 @@ const PREFIX_ENTRIES = [
         description: 'Recent files/folders, newest first (optional filter)',
     },
     { prefix: 'r"', argHint: 'pattern', description: 'Regex search' },
+    { prefix: 'ps"', argHint: 'word', description: 'Find & kill running processes' },
     {
         prefix: 'c"',
         argHint: 'word',
@@ -45,7 +46,7 @@ const COMMAND_ENTRIES = [
     {
         id: 'kill',
         title: 'kill (Ctrl+4)',
-        detail: 'Force kill app or process by port',
+        detail: 'Force kill app or process by name, port, or PID',
         icon: xCircle,
     },
     { id: 'shell', title: 'shell (Ctrl+5)', detail: 'Run a shell command', icon: terminal },

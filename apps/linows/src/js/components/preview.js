@@ -6,10 +6,13 @@ import {
     highlightFile,
     listFolder,
     openPath,
+    processDetail,
+    processCpu,
 } from '../ipc.js';
 import {
     clipboard as clipboardIcon,
     trash as trashIcon,
+    cpu as cpuIcon,
     appIcon,
     fileIcon,
     folderIcon,
@@ -27,6 +30,10 @@ let panel = null;
 let currentPath = null;
 let onClipDelete = null;
 let highlightTimer = null;
+// PID of the process currently previewed, so the on-demand CPU measure (ps"
+// Enter) targets the right process and ignores a stale request after the
+// selection moved on.
+let currentProcPid = null;
 
 export function init(panelEl) {
     panel = panelEl;
@@ -55,12 +62,18 @@ export function update(result) {
     }
     panel.hidden = false;
     panel.innerHTML = '';
+    currentProcPid = null;
     // The panel was wiped: invalidate any in-flight Quick Actions render so a
     // late response can't append a stale section for the previous result.
     qactions.clear();
 
     if (result.kind === 'clipboard') {
         renderClipboardPreview(result);
+        return;
+    }
+
+    if (result.kind === 'process') {
+        renderProcessPreview(result);
         return;
     }
 
@@ -237,6 +250,146 @@ function renderClipboardPreview(result) {
     metaWrap.appendChild(infoRow('Kind', 'Clipboard'));
     metaWrap.appendChild(infoRow('Captured', result.clipDateMedium));
     panel.appendChild(metaWrap);
+}
+
+function renderProcessPreview(result) {
+    currentProcPid = result.procPid;
+    const cacheKey = result.path;
+
+    // Header: cpu glyph + process name + Process badge and PID
+    const header = document.createElement('div');
+    header.className = 'preview-header';
+
+    const iconWrap = document.createElement('div');
+    iconWrap.className = 'preview-icon';
+    iconWrap.innerHTML = cpuIcon;
+    iconWrap.style.background = 'var(--control-fill)';
+    iconWrap.style.color = 'var(--font-secondary)';
+    header.appendChild(iconWrap);
+
+    // App-backed process: swap the generic glyph for the real app icon.
+    if (result.iconPath) {
+        getIcon('app', result.iconPath, result.id).then((res) => {
+            if (res?.data_url && currentPath === cacheKey) {
+                const img = document.createElement('img');
+                img.src = res.data_url;
+                img.alt = '';
+                iconWrap.innerHTML = '';
+                iconWrap.style.background = 'none';
+                iconWrap.style.color = '';
+                iconWrap.appendChild(img);
+            }
+        });
+    }
+
+    const headerText = document.createElement('div');
+    headerText.className = 'preview-header-text';
+
+    const title = document.createElement('div');
+    title.className = 'preview-title';
+    title.textContent = result.procName;
+    headerText.appendChild(title);
+
+    const sub = document.createElement('div');
+    sub.className = 'preview-header-sub';
+    const badge = document.createElement('span');
+    badge.className = 'preview-badge kind-process';
+    badge.textContent = 'Process';
+    sub.appendChild(badge);
+    const pidSpan = document.createElement('span');
+    pidSpan.className = 'preview-size';
+    pidSpan.textContent = `PID ${result.procPid}`;
+    sub.appendChild(pidSpan);
+    headerText.appendChild(sub);
+
+    header.appendChild(headerText);
+    panel.appendChild(header);
+
+    // Command line: the disambiguator before a kill (many node/python share a name)
+    const cmdLabel = document.createElement('div');
+    cmdLabel.className = 'preview-clip-label';
+    cmdLabel.textContent = 'Command';
+    panel.appendChild(cmdLabel);
+    const cmdCard = document.createElement('div');
+    cmdCard.className = 'preview-clip-card';
+    const cmdText = document.createElement('pre');
+    cmdText.className = 'preview-clip-text';
+    cmdText.textContent = '…';
+    cmdCard.appendChild(cmdText);
+    panel.appendChild(cmdCard);
+
+    // Meta rows. CPU stays "Enter to measure" until the on-demand sample runs.
+    const metaWrap = document.createElement('div');
+    metaWrap.className = 'preview-meta';
+    const memRow = infoRow('Memory', '…');
+    const userRow = infoRow('User', '…');
+    const ppidRow = infoRow('Parent PID', '…');
+    const startRow = infoRow('Started', '…');
+    const cpuRow = infoRow('CPU', 'Enter to measure');
+    cpuRow.querySelector('.preview-info-value').classList.add('preview-proc-cpu-val');
+    metaWrap.append(memRow, userRow, ppidRow, startRow, cpuRow);
+    // Listening ports, only when the process holds any.
+    const ports = result.procPorts || [];
+    if (ports.length) {
+        metaWrap.appendChild(infoRow('Ports', ports.map((p) => `:${p}`).join('  ')));
+    }
+    panel.appendChild(metaWrap);
+
+    const setVal = (row, text) => {
+        row.querySelector('.preview-info-value').textContent = text;
+    };
+    // Platforms without detail support (Windows for now) and IPC failures
+    // (process exited between listing and preview) both degrade to name only.
+    const degrade = () => {
+        if (currentPath !== cacheKey) return;
+        cmdText.textContent = result.procName;
+        setVal(memRow, 'unavailable');
+        setVal(userRow, 'unavailable');
+        setVal(ppidRow, 'unavailable');
+        setVal(startRow, 'unavailable');
+    };
+    processDetail(result.procPid)
+        .then((d) => {
+            if (currentPath !== cacheKey) return;
+            if (!d) {
+                degrade();
+                return;
+            }
+            cmdText.textContent = d.cmdline || result.procName;
+            setVal(memRow, d.rss_kb > 0 ? formatSize(d.rss_kb * 1024) : 'n/a');
+            setVal(userRow, d.user || 'n/a');
+            setVal(ppidRow, String(d.ppid));
+            setVal(startRow, formatStart(d.start_epoch));
+        })
+        .catch(degrade);
+}
+
+// Sample CPU for the previewed process (bound to ps" Enter). No-op unless a
+// process is previewed; drops the result if the selection moved on.
+export async function measureCpu() {
+    if (currentProcPid == null) return;
+    const pid = currentProcPid;
+    const valEl = panel.querySelector('.preview-proc-cpu-val');
+    if (!valEl) return;
+    valEl.textContent = 'measuring…';
+    try {
+        const pct = await processCpu(pid);
+        if (currentProcPid !== pid) return;
+        valEl.textContent = pct == null ? 'n/a' : `${pct.toFixed(1)}%`;
+    } catch (err) {
+        console.error('CPU measure failed:', err);
+        if (currentProcPid === pid) valEl.textContent = 'n/a';
+    }
+}
+
+function formatStart(epoch) {
+    if (!epoch) return 'n/a';
+    return new Date(epoch * 1000).toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
 }
 
 function renderAppMeta(metaWrap, result, headerSub) {
