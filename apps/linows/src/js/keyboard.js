@@ -15,6 +15,10 @@ import {
     countTrashItems,
     emptyTrash,
     requestIndexRefresh,
+    getConfig,
+    setConfig,
+    reloadConfig,
+    forceIndexRefresh,
 } from './ipc.js';
 import * as preview from './components/preview.js';
 import * as banner from './components/banner.js';
@@ -147,6 +151,13 @@ function handleKeyDown(e) {
             toggleHelp();
             return;
         }
+    }
+
+    // Ctrl+Shift+H Select App to Hiding app with name
+    if (e.ctrlKey && (e.shiftKey || shiftHeld) && (e.key === 'H' || e.key === 'h')) {
+        e.preventDefault();
+        void handleHideSelectApp();
+        return;
     }
 
     // Ctrl+= / Ctrl+- / Ctrl+0 - UI zoom in/out/reset. Mirrors macOS
@@ -451,6 +462,35 @@ async function handleEmptyTrash() {
     } catch (err) {
         banner.show(`Empty ${label} failed: ${err}`, 'error', 2.0);
     }
+}
+
+async function handleHideSelectApp() {
+    const item = results.getSelected();
+    if (!item || item.kind !== 'app') {
+        banner.show('Select an app first', 'warning', 1.2);
+        return;
+    }
+
+    const ok = await confirm.ask({
+        title: 'Hide this app from Look?',
+        detail: `${item.title} will be added to app_exclude_names`,
+    });
+    if (!ok) return;
+
+    const cfg = await getConfig();
+    const entry = cfg.entries.find(e => e.key === 'app_exclude_names');
+    const current = entry?.value ?? '';
+    const names = current
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+    names.push(item.title.trim());
+
+    await setConfig([{ key: 'app_exclude_names', value: names.join(',') }]);
+    await reloadConfig();
+    await forceIndexRefresh();
+
+    banner.show(`Hidden ${item.title}`, 'success', 1.2);
 }
 
 export async function openAllPicked() {
