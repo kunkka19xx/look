@@ -338,23 +338,30 @@ function renderProcessPreview(result) {
     const setVal = (row, text) => {
         row.querySelector('.preview-info-value').textContent = text;
     };
-    processDetail(result.procPid).then((d) => {
+    // Platforms without detail support (Windows for now) and IPC failures
+    // (process exited between listing and preview) both degrade to name only.
+    const degrade = () => {
         if (currentPath !== cacheKey) return;
-        if (!d) {
-            // Platforms without detail support (Windows for now): name only.
-            cmdText.textContent = result.procName;
-            setVal(memRow, 'unavailable');
-            setVal(userRow, 'unavailable');
-            setVal(ppidRow, 'unavailable');
-            setVal(startRow, 'unavailable');
-            return;
-        }
-        cmdText.textContent = d.cmdline || result.procName;
-        setVal(memRow, d.rss_kb > 0 ? formatSize(d.rss_kb * 1024) : 'n/a');
-        setVal(userRow, d.user || 'n/a');
-        setVal(ppidRow, String(d.ppid));
-        setVal(startRow, formatStart(d.start_epoch));
-    });
+        cmdText.textContent = result.procName;
+        setVal(memRow, 'unavailable');
+        setVal(userRow, 'unavailable');
+        setVal(ppidRow, 'unavailable');
+        setVal(startRow, 'unavailable');
+    };
+    processDetail(result.procPid)
+        .then((d) => {
+            if (currentPath !== cacheKey) return;
+            if (!d) {
+                degrade();
+                return;
+            }
+            cmdText.textContent = d.cmdline || result.procName;
+            setVal(memRow, d.rss_kb > 0 ? formatSize(d.rss_kb * 1024) : 'n/a');
+            setVal(userRow, d.user || 'n/a');
+            setVal(ppidRow, String(d.ppid));
+            setVal(startRow, formatStart(d.start_epoch));
+        })
+        .catch(degrade);
 }
 
 // Sample CPU for the previewed process (bound to ps" Enter). No-op unless a

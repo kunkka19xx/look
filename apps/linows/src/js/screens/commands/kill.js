@@ -18,6 +18,9 @@ let filteredProcesses = [];
 let selectedIndex = 0;
 let confirmPid = null;
 let searchDebounce = null;
+// True while a backend fuzzy search is scheduled or in flight: the local
+// provisional filter may miss port/PID matches the backend still owns.
+let searchPending = false;
 
 export function init(executeFn, iconFn) {
     onExecute = executeFn;
@@ -103,15 +106,21 @@ export function handleKey(e) {
     return false;
 }
 
-export function setProcessList(procs, isSearchResult = false) {
-    const savedValue = input ? input.value : '';
-    if (isSearchResult) {
+// `forQuery` is the query a backend search was fetched for; `null` marks the
+// base app list (mode entry / post-kill).
+export function setProcessList(procs, forQuery = null) {
+    const current = input ? input.value.trim() : '';
+    if (forQuery !== null) {
+        // Drop stale search hits: a response that lands after the box was
+        // cleared or retyped must not resurrect the old query's process list.
+        if (forQuery.trim() !== current) return;
+        searchPending = false;
         processList = procs || [];
         filteredProcesses = [...processList];
     } else {
         baseProcessList = procs || [];
         processList = [...baseProcessList];
-        filterProcesses(savedValue);
+        filterProcesses(current);
     }
     selectedIndex = 0;
     confirmPid = null;
@@ -129,6 +138,7 @@ export function showFeedback(text, isError = false) {
 function filterProcesses(query) {
     if (!query) {
         clearTimeout(searchDebounce);
+        searchPending = false;
         processList = [...baseProcessList];
         filteredProcesses = [...processList];
     } else {
@@ -138,6 +148,7 @@ function filterProcesses(query) {
         const q = query.toLowerCase();
         filteredProcesses = baseProcessList.filter((p) => p.name.toLowerCase().includes(q));
         clearTimeout(searchDebounce);
+        searchPending = true;
         searchDebounce = setTimeout(() => {
             if (onExecute) onExecute('kill-search', query);
         }, SEARCH_DEBOUNCE_MS);
@@ -151,9 +162,14 @@ function renderList() {
 
     if (filteredProcesses.length === 0) {
         const query = input ? input.value.trim() : '';
-        // A non-empty query with no matches is a real miss; empty query with
-        // nothing yet means the app list is still loading.
-        feedback.textContent = query ? 'No matching processes' : 'Loading...';
+        if (!query) {
+            // Empty query with nothing yet means the app list is still loading.
+            feedback.textContent = 'Loading...';
+        } else {
+            // A pending backend search can still return port/PID matches the
+            // local name filter missed, so hold off on a definitive miss.
+            feedback.textContent = searchPending ? 'Searching...' : 'No matching processes';
+        }
         return;
     }
 

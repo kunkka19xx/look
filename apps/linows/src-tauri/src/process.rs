@@ -181,7 +181,11 @@ pub async fn search_kill_targets(query: String) -> Vec<KillTarget> {
     tauri::async_runtime::spawn_blocking(move || {
         let trimmed = query.trim();
         if trimmed.is_empty() {
-            return list_processes().into_iter().map(app_target).collect();
+            return list_processes()
+                .into_iter()
+                .take(KILL_RESULT_LIMIT)
+                .map(app_target)
+                .collect();
         }
         rank_kill_targets(list_processes(), list_all_raw(), trimmed)
     })

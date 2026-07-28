@@ -193,7 +193,11 @@ export function handleQueryInput(query) {
         const refresh = processRefreshPending || !wasProcessMode;
         processRefreshPending = false;
         const filter = query.slice(3);
-        debounceTimer = setTimeout(() => performProcessSearch(filter, refresh), DEBOUNCE_MS);
+        const version = queryVersion;
+        debounceTimer = setTimeout(
+            () => performProcessSearch(filter, refresh, version),
+            DEBOUNCE_MS,
+        );
         return;
     }
 
@@ -426,9 +430,12 @@ async function performClipboardSearch(filter) {
     }
 }
 
-async function performProcessSearch(filter, refresh) {
+async function performProcessSearch(filter, refresh, version) {
     try {
         const procs = await ipcSearchProcesses(filter.trim(), !!refresh);
+        // A newer query or a mode switch may have landed while /proc was being
+        // walked; discard this response so it can't overwrite fresher results.
+        if (isStale(version)) return;
         const results = procs.map((p) => {
             const ports = p.ports || [];
             const portHint = ports.length ? ` \u2022 ${ports.map((x) => `:${x}`).join(' ')}` : '';
@@ -448,6 +455,7 @@ async function performProcessSearch(filter, refresh) {
         });
         if (onResultsCallback) onResultsCallback(results, `ps"${filter}`);
     } catch (err) {
+        if (isStale(version)) return;
         console.error('Process search failed:', err);
         if (onResultsCallback) onResultsCallback([], `ps"${filter}`);
     }

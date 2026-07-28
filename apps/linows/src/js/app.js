@@ -59,7 +59,7 @@ const HINT_MAIN = 'Enter: Open \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
 const HINT_TRANSLATE =
     'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
 const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Ctrl+D: Remove clip';
-const HINT_PROCESS = 'Ctrl+D: Kill \u2022 Ctrl+C: Copy PID';
+const HINT_PROCESS = 'Enter: CPU \u2022 Ctrl+D: Kill \u2022 Ctrl+C: Copy PID';
 // Discovery-menu hints \u2014 mirror macOS prefixSuggestion / commandSuggestion
 // hint bars (LauncherView.swift hintItems).
 const HINT_PREFIX_DISCOVERY =
@@ -708,7 +708,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (cmdId === 'kill-search') {
             try {
                 const targets = await searchKillTargets(input);
-                commands.setProcessList(targets, true);
+                commands.setProcessList(targets, input);
             } catch (err) {
                 commands.showFeedback(err || 'Search failed', true);
             }
