@@ -257,9 +257,13 @@ fn proc_target(r: ProcRow) -> KillTarget {
         name: r.name,
         pid: r.pid,
         is_app: false,
-        // App-backed processes still carry the app icon via their desktop path.
-        desktop_id: r.icon_source.map(|p| format!("app:{p}")),
-        exec: None,
+        // App-backed processes still carry the app icon via their icon source
+        // (a `.desktop` path on Linux, the exe path on Windows). It goes in
+        // both fields: `desktop_id` is what Linux resolves from, `exec` is the
+        // path Windows' shell resolver takes - and it's also the icon cache key,
+        // so leaving it empty would make every process row share one entry.
+        desktop_id: r.icon_source.as_ref().map(|p| format!("app:{p}")),
+        exec: r.icon_source,
     }
 }
 
@@ -271,8 +275,7 @@ pub fn process_detail(pid: u32) -> Option<ProcDetail> {
     }
     #[cfg(target_os = "windows")]
     {
-        let _ = pid;
-        None
+        crate::platform::windows::process::detail(pid)
     }
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
@@ -292,7 +295,11 @@ pub async fn process_cpu(pid: u32) -> Option<f64> {
         {
             crate::platform::linux::process::cpu(pid)
         }
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(target_os = "windows")]
+        {
+            crate::platform::windows::process::cpu(pid)
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
         {
             let _ = pid;
             None
