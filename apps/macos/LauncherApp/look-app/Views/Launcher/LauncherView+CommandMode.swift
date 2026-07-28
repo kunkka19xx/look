@@ -3,6 +3,8 @@ import SwiftUI
 
 extension LauncherView {
     func scheduleKillListRefresh() {
+        // Drop the killed process from the shared snapshot; the ticks re-read it.
+        processModel.refreshSnapshot()
         killListRefreshTick &+= 1
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             killListRefreshTick &+= 1
@@ -158,15 +160,11 @@ extension LauncherView {
             }
         case AppConstants.Launcher.Command.kill:
             let searchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines)
-            let matched = KillCommand.suggestions(searchTerm: searchTerm)
+            let matched = KillCommand.suggestions(searchTerm: searchTerm, processes: processModel.candidates)
             logUIEvent("kill action search='\(searchTerm)' matches=\(matched.count)")
 
             if matched.isEmpty {
-                if searchTerm.hasPrefix(":") || searchTerm.lowercased().hasPrefix("port ") {
-                    commandFeedback = "No process listening on this port"
-                } else {
-                    commandFeedback = "No matching apps. /kill to list all. Use :3000 to search by port."
-                }
+                commandFeedback = "No matching processes"
             } else if searchTerm.isEmpty {
                 let appList = matched.map { candidate in
                     "\(candidate.number). \(candidate.displayName) (PID: \(candidate.pid))"
@@ -292,11 +290,7 @@ extension LauncherView {
                         // owns its own card-style backdrops where wanted.
 
                     if activeCommandID == AppConstants.Launcher.Command.kill {
-                        let killSearchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let portQuery = killSearchTerm.hasPrefix(":") || killSearchTerm.lowercased().hasPrefix("port ")
-                        let defaultKillEmptyMessage = portQuery
-                            ? "No process listening on this port"
-                            : "No matches. Type an app name or use :3000"
+                        let defaultKillEmptyMessage = "No matching processes"
 
                         KillCommandView(
                             suggestions: Array(killSuggestions),

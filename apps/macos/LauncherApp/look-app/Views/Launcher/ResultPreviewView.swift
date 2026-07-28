@@ -19,6 +19,10 @@ struct ResultPreviewView: View {
     var onRunQuickAction: (QuickActionDescriptor, ActionIntent) -> Void = { _, _ in }
     var onActivateQuickActionItem: (QuickActionDescriptor, QuickActionListItem) -> Void = { _, _ in }
     var onDeleteClipboard: (() -> Void)? = nil
+    /// Process-finder preview inputs (only set for `.process` results).
+    var processDetail: ProcessDetail? = nil
+    var processCPU: Double? = nil
+    var isMeasuringProcessCPU: Bool = false
 
     @State private var folderListing: FolderListing?
     @State private var trashItemCount: Int?
@@ -122,7 +126,9 @@ struct ResultPreviewView: View {
     }
 
     var body: some View {
-        if result.kind == .clipboard {
+        if result.kind == .process {
+            processPreview
+        } else if result.kind == .clipboard {
             clipboardPreview
         } else {
         let info = bundleInfo
@@ -317,6 +323,86 @@ struct ResultPreviewView: View {
 
             InfoRow(label: "Kind", value: "Clipboard")
             InfoRow(label: "Captured", value: capturedAt)
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    // MARK: - Process preview
+
+    private var processIcon: NSImage {
+        result.processPID.map(LauncherProcessFeature.icon) ?? NSWorkspace.shared.icon(for: .unixExecutable)
+    }
+
+    private func formattedStart(_ epoch: UInt64) -> String {
+        Self.modifiedDateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(epoch)))
+    }
+
+    private var cpuValueText: String {
+        if let processCPU {
+            return String(format: "%.1f%%", processCPU)
+        }
+        return isMeasuringProcessCPU ? "Measuring…" : "Press Enter to measure"
+    }
+
+    private var portsText: String {
+        let ports = result.processPorts ?? []
+        return ports.isEmpty ? "None" : ports.map { ":\($0)" }.joined(separator: "  ")
+    }
+
+    private var processPreview: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(nsImage: processIcon)
+                    .resizable()
+                    .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(result.title)
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 2), weight: .semibold))
+                        .foregroundStyle(themeStore.fontColor())
+                        .lineLimit(2)
+                    HStack(spacing: 6) {
+                        KindBadge(kind: "process")
+                        if let pid = result.processPID {
+                            Text("PID \(pid)")
+                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                .foregroundStyle(themeStore.secondaryTextColor())
+                        }
+                    }
+                }
+                Spacer()
+            }
+
+            // Command line (argv).
+            if let detail = processDetail, !detail.cmdline.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Command")
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                        .foregroundStyle(themeStore.mutedTextColor())
+                    Text(detail.cmdline)
+                        .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
+                        .foregroundStyle(themeStore.secondaryTextColor())
+                        .lineLimit(4)
+                        .textSelection(.enabled)
+                }
+            }
+
+            if let detail = processDetail {
+                InfoRow(label: "Memory", value: formatFileSize(Int64(detail.memoryKB) * 1024))
+                if !detail.user.isEmpty {
+                    InfoRow(label: "User", value: detail.user)
+                }
+                InfoRow(label: "Parent PID", value: String(detail.ppid))
+                if let start = detail.startEpoch {
+                    InfoRow(label: "Started", value: formattedStart(start))
+                }
+            }
+
+            InfoRow(label: "CPU", value: cpuValueText)
+            InfoRow(label: "Ports", value: portsText)
 
             Spacer(minLength: 0)
         }

@@ -54,11 +54,7 @@ fn bench(label: &'static str, iterations: usize, mut f: impl FnMut() -> usize) -
     } else {
         total_us / samples.len() as u128
     };
-    let avg_payload_bytes = if iterations == 0 {
-        0
-    } else {
-        total_bytes / iterations
-    };
+    let avg_payload_bytes = total_bytes.checked_div(iterations).unwrap_or(0);
 
     BenchStats {
         label,

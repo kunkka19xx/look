@@ -89,11 +89,12 @@ struct KillTarget { name: String, pid: u32, is_app: bool, desktop_id: Option<Str
 5. **Modifier**: `Ctrl` on Linux/Windows, `Cmd` on macOS.
 
 ### Linux data sources (for translating field-by-field)
+
 | Field | Source |
 |---|---|
 | enumerate / name / uid | `/proc/[pid]/status` (`Name:`, `Uid:`), filter own uid |
 | cmdline | `/proc/[pid]/cmdline` (NUL-separated argv) |
-| rss_kb | `/proc/[pid]/status` `VmRSS:` |
+| rss_kb | **USS** = `Private_Clean` + `Private_Dirty` from `/proc/[pid]/smaps_rollup` (private memory, matches macOS `phys_footprint`). `VmRSS:` from `/proc/[pid]/status` is the compatibility fallback whenever smaps_rollup can't be read or parsed (kernels < 4.14, permission denied, process exited mid-read); it counts shared pages and reads ~2× higher, so never prefer it. |
 | ppid | `/proc/[pid]/status` `PPid:` |
 | user | uid → `/etc/passwd` |
 | start_epoch | `/proc/[pid]/stat` field 22 (starttime ticks) + `/proc/stat` `btime`, `CLK_TCK=100` |
@@ -117,18 +118,15 @@ File: `apps/linows/src-tauri/src/platform/windows/process.rs`.
 Win32 imports, `enumerate_processes() -> Vec<(u32, String)>`, `resolve_full_path`,
 `GetExtendedTcpTable`, `kill`, and `list()`/`list_on_port()` already exist.
 
-**Status:** `list_all()` works (Toolhelp) but returns `icon_source: None`,
-`ports: vec![]`. `process_detail` / `process_cpu` dispatch to `None` in
-`process.rs` (search across `#[cfg(target_os = "windows")]`).
+**Status:** `list_all()` works (Toolhelp) and now **attaches listening ports**
+(`listening_ports_by_pid()` parses the `GetExtendedTcpTable`
+`TCP_TABLE_OWNER_PID_LISTENER` table, big-endian port via `parse_port`), but
+still returns `icon_source: None`. `process_detail` / `process_cpu` dispatch to
+`None` in `process.rs` (search across `#[cfg(target_os = "windows")]`).
 
 **TODO:**
 
-1. **`list_all()` — ports + icon.**
-   - Ports: generalize `collect_listening_pids_for` (already parses the
-     `GetExtendedTcpTable` `TCP_TABLE_OWNER_PID_LISTENER` table of
-     `MIB_TCP{,6}ROW_OWNER_PID`) to return `(pid, port)` pairs → build
-     `HashMap<pid, Vec<u16>>` once, attach per row. Port is big-endian in the
-     row (`u16::from_be`/swap bytes).
+1. **`list_all()` — icon.** (Ports are already done — see Status.)
    - `icon_source`: Windows apps have no `.desktop`; `list()` already emits
      `desktop_id = "app:<exe_path>"`. Set `icon_source = Some(exe_path)` (from
      `resolve_full_path(pid)`) so app-backed rows show the exe icon. The shared
@@ -138,7 +136,11 @@ Win32 imports, `enumerate_processes() -> Vec<(u32, String)>`, `resolve_full_path
    - `cmdline`: `NtQueryInformationProcess(ProcessBasicInformation)` → PEB →
      `ProcessParameters.CommandLine` via `ReadProcessMemory`. Fallback to the
      exe path (`resolve_full_path`) if the remote read is denied.
-   - `rss_kb`: `GetProcessMemoryInfo` → `WorkingSetSize / 1024`.
+   - `rss_kb`: `GetProcessMemoryInfo` with `PROCESS_MEMORY_COUNTERS_EX` →
+     **`PrivateUsage / 1024`** (private commit charge: Task Manager's "Commit
+     size", Process Explorer's "Private Bytes"), *not* `WorkingSetSize`. It is
+     the closest Windows analog to macOS `phys_footprint` / Linux USS, excluding
+     the shared pages that make `WorkingSetSize` read much higher.
    - `ppid`: Toolhelp `PROCESSENTRY32W.th32ParentProcessID` (build a pid→ppid
      map in the existing `enumerate_processes` pass).
    - `user`: `OpenProcessToken(TOKEN_QUERY)` → `GetTokenInformation(TokenUser)`
@@ -158,10 +160,33 @@ the backend returns them.
 
 ---
 
-## 4. macOS (native SwiftUI `apps/macos/`) — full port
+## 4. macOS (native SwiftUI `apps/macos/`) — ✅ implemented
 
-Design source of truth. Match the linows layout (which was modeled on the macOS
-patterns — `LauncherView.swift`, `ResultPreviewView`, the command panels).
+Design source of truth. Matches the linows layout (which was modeled on the
+macOS patterns — `LauncherView.swift`, `ResultPreviewView`, the command panels).
+
+**Status: done.** Implemented natively; see the files below. Chosen approach:
+**native Swift enumeration + `core/matching` fuzzy over a new FFI export** (the
+hybrid recommended in 4a), so ranking is identical to linows without porting the
+DP scorer.
+
+New/changed files:
+- `bridge/ffi/src/matching_api.rs` + `look_fuzzy_score` export in `lib.rs` —
+  exposes `look_matching::fuzzy_score` over the C ABI (Swift decl + `fuzzyScore`
+  wrapper in `EngineBridge.swift`). `look-matching` added to `bridge/ffi/Cargo.toml`.
+- `Support/Launcher/ProcessScoring.swift` — pure port of `score_process` /
+  `rank_kill_targets` (numeric port/PID tiers + apps-first kill ordering), fuzzy
+  injected as a closure so it's unit-testable. Parity tests in
+  `LauncherLogicTests/ProcessScoringTests.swift` mirror the Rust tests.
+- `Support/Launcher/ProcessService.swift` — native `libproc`/`sysctl`
+  enumeration, detail, on-demand CPU, ports, SIGKILL (off-main).
+- `Support/Launcher/ProcessFinderModel.swift` — snapshot cache + detail/CPU
+  caches, refreshed on mode entry / after a kill.
+- `Views/Launcher/LauncherView+Process.swift` — `ps"` mode: results, preview,
+  measure-CPU (Enter), kill (Cmd+D), copy-PID (Cmd+C). Rows/preview/kind wired
+  through `LauncherResult.process` in the existing results/preview views.
+- `KillCommand.swift` — `/kill` upgraded to fuzzy over apps + processes
+  (apps-first, deduped); empty → apps, `:port` unchanged.
 
 ### 4a. Architecture choice
 Process ops are OS-specific and are **not** in `core/`, so macOS reimplements
@@ -171,14 +196,16 @@ them. Two options:
 - **Rust module + FFI** (`bridge/ffi/`): only if you want to share the fuzzy
   scoring path end-to-end. Note `core/matching` is already reachable — you can
   call it over FFI for identical ranking while keeping enumeration native.
+  **(This is what shipped: native enumeration, FFI for the fuzzy score only.)**
 
 ### 4b. Backend (macOS APIs)
+
 | Field | API |
 |---|---|
-| enumerate | `proc_listallpids` (or `sysctl KERN_PROC_ALL`); filter to `getuid()` |
+| enumerate | **`sysctl KERN_PROC_ALL`** (gives pid + uid + comm in one call); filter to `getuid()`. **Do NOT use `proc_listallpids`** — it is silently throttled in hardened/restricted contexts and returns only a partial list (observed ~146 of ~584 procs, dropping the user's own apps). |
 | name | `proc_name` / comm |
 | cmdline (argv) | `sysctl KERN_PROCARGS2` |
-| memory (rss_kb) | `proc_pid_rusage(pid, RUSAGE_INFO_V2)` → `ri_resident_size` (or `ri_phys_footprint`) / 1024 |
+| memory | `proc_pid_rusage(pid, RUSAGE_INFO_V2)` → **`ri_phys_footprint`** / 1024. Use footprint, not `ri_resident_size` (RSS): footprint matches Activity Monitor's "Memory" column, while RSS counts shared pages and reads ~2× higher (confusing when users cross-check). |
 | cpu | `proc_pid_rusage` `ri_user_time + ri_system_time` (ns) sampled twice; `100·(Δns/1e9)/Δsecs` |
 | ppid / uid / start | `proc_pidinfo(PROC_PIDTBSDINFO)` → `pbi_ppid`, `pbi_uid`, `pbi_start_tvsec` (already Unix seconds → `start_epoch`) |
 | user | `getpwuid` |
@@ -207,7 +234,8 @@ them. Two options:
 - Kill command: fuzzy over apps + processes, **apps first**, matching the
   linows behavior; keep the existing confirm-before-kill flow.
 
-### 4d. Keyboard / shortkeys (macOS conventions — `Cmd`, not `Ctrl`)
+### 4d. Keyboard / shortkeys (macOS conventions, `Cmd` not `Ctrl`)
+
 | Action | macOS | (linows equivalent) |
 |---|---|---|
 | Enter process mode | type `ps"` | same |
@@ -222,6 +250,10 @@ Hint bar: `Cmd+D: Kill • Cmd+C: Copy PID`.
 ---
 
 ## 5. Parity checklist
+
+The boxes are the reference list every port must satisfy, not a per-platform
+tracker, so they stay unchecked. **macOS meets every item** (see §4); **Windows
+still owes** `icon_source`, `process_detail`, `process_cpu` (ports already done).
 
 - [ ] `ps"` prefix enters process mode; empty query lists own-user processes.
 - [ ] Numeric query matches exact port > partial port > PID; name fuzzy also runs.
