@@ -156,6 +156,9 @@ function handleKeyDown(e) {
     // Ctrl+Shift+H Select App to Hiding app with name
     if (e.ctrlKey && (e.shiftKey || shiftHeld) && (e.key === 'H' || e.key === 'h')) {
         e.preventDefault();
+        if (settingsModule?.isActive()) return;
+        if (helpScreen && !helpScreen.hidden) return;
+        if (commandMode?.isActive()) return;
         void handleHideSelectApp();
         return;
     }
@@ -477,20 +480,24 @@ async function handleHideSelectApp() {
     });
     if (!ok) return;
 
-    const cfg = await getConfig();
-    const entry = cfg.entries.find(e => e.key === 'app_exclude_names');
-    const current = entry?.value ?? '';
-    const names = current
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
-    names.push(item.title.trim());
+    try {
+        const cfg = await getConfig();
+        const entry = cfg.entries.find(e => e.key === 'app_exclude_names');
+        const current = entry?.value ?? '';
+        const names = current
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean);
+        names.push(item.title.trim());
 
-    await setConfig([{ key: 'app_exclude_names', value: names.join(',') }]);
-    await reloadConfig();
-    await forceIndexRefresh();
+        await setConfig([{ key: 'app_exclude_names', value: names.join(',') }]);
+        await reloadConfig();
+        await forceIndexRefresh();
 
-    banner.show(`Hidden ${item.title}`, 'success', 1.2);
+        banner.show(`Hidden ${item.title}`, 'success', 1.2);
+    } catch (err) {
+        banner.show(`Hide app failed: ${err}`, 'error', 1.6);
+    }
 }
 
 export async function openAllPicked() {

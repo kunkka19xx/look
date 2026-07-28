@@ -65,6 +65,27 @@ final class KeyboardSelectionMonitor {
                 "down keyCode=\(event.keyCode) chars=\(event.charactersIgnoringModifiers ?? "") flagsRaw=\(flags.rawValue) inCommand=\(inCommandMode())"
             )
 
+            if hideAppConfirmationActive() {
+                if event.keyCode == 53 {
+                    onCancelHideApp?()
+                    return nil
+                }
+                if event.keyCode == 36 || event.keyCode == 76 {
+                    onConfirmHideApp?()
+                    return nil
+                }
+                let char = event.charactersIgnoringModifiers?.lowercased()
+                if char == "y" {
+                    onConfirmHideApp?()
+                    return nil
+                }
+                if char == "n" {
+                    onCancelHideApp?()
+                    return nil
+                }
+                return nil
+            }
+
             if flags.contains(.command)
                 && !flags.contains(.control)
                 && !flags.contains(.option)
@@ -261,11 +282,6 @@ final class KeyboardSelectionMonitor {
                     return nil
                 }
 
-                if hideAppConfirmationActive() {
-                    onCancelHideApp?()
-                    return nil
-                }
-
                 if inCommandMode() {
                     if flags.contains(.shift) {
                         onHideLauncher()
@@ -304,22 +320,6 @@ final class KeyboardSelectionMonitor {
                 }
                 if char == "n" {
                     onCancelDelete?()
-                    return nil
-                }
-            }
-
-            if hideAppConfirmationActive() {
-                if event.keyCode == 36 || event.keyCode == 76 {
-                    onConfirmHideApp?()
-                    return nil
-                }
-                let char = event.charactersIgnoringModifiers?.lowercased()
-                if char == "y" {
-                    onConfirmHideApp?()
-                    return nil
-                }
-                if char == "n" {
-                    onCancelHideApp?()
                     return nil
                 }
             }
