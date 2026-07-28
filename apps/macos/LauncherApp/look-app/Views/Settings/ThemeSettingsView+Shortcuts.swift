@@ -49,6 +49,7 @@ enum ShortcutDocs {
                 ShortcutItem(keys: "Cmd+1..6", action: "Switch directly to /calc, /pomo, /todo, /kill, /shell, /sys"),
                 ShortcutItem(keys: "Cmd+Shift+,", action: "Open/close settings panel"),
                 ShortcutItem(keys: "Cmd+Shift+;", action: "Reload .look.config"),
+                ShortcutItem(keys: "Cmd+Shift+H", action: "Hide the selected app from Look"),
                 ShortcutItem(keys: "Cmd+H", action: "Toggle in-window keyboard help screen"),
                 ShortcutItem(keys: "Esc", action: "Back to app list (in command mode)"),
                 ShortcutItem(keys: "Shift+Esc", action: "Hide launcher"),

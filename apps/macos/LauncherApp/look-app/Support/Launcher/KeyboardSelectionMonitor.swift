@@ -46,11 +46,15 @@ final class KeyboardSelectionMonitor {
         onConfirmDelete: (@MainActor () -> Void)? = nil,
         onCancelDelete: (@MainActor () -> Void)? = nil,
         deleteConfirmationActive: @escaping @MainActor () -> Bool = { false },
+        onConfirmHideApp: (@MainActor () -> Void)? = nil,
+        onCancelHideApp: (@MainActor () -> Void)? = nil,
+        hideAppConfirmationActive: @escaping @MainActor () -> Bool = { false },
         onToggleQuickAction: (@MainActor () -> Void)? = nil,
         hasToggleQuickAction: @escaping @MainActor () -> Bool = { false },
         isLaunchpadActive: @escaping @MainActor () -> Bool = { false },
         onLaunchpadMnemonic: (@MainActor (Character) -> Bool)? = nil,
-        onLaunchpadEscape: (@MainActor () -> Bool)? = nil
+        onLaunchpadEscape: (@MainActor () -> Bool)? = nil,
+        onHideSelectedApp: (@MainActor () -> Void)? = nil
     ) {
         guard monitor == nil else { return }
         self.isKillConfirmationActive = killConfirmationActive
@@ -107,6 +111,14 @@ final class KeyboardSelectionMonitor {
                     return nil
                 }
                 return event
+            }
+
+            if (event.keyCode == 4 || event.charactersIgnoringModifiers?.lowercased() == "h")
+                && flags == [.command, .shift]
+                && !inCommandMode()
+            {
+                onHideSelectedApp?()
+                return nil
             }
 
             if (event.keyCode == 4 || event.charactersIgnoringModifiers?.lowercased() == "h")
@@ -249,6 +261,11 @@ final class KeyboardSelectionMonitor {
                     return nil
                 }
 
+                if hideAppConfirmationActive() {
+                    onCancelHideApp?()
+                    return nil
+                }
+
                 if inCommandMode() {
                     if flags.contains(.shift) {
                         onHideLauncher()
@@ -287,6 +304,22 @@ final class KeyboardSelectionMonitor {
                 }
                 if char == "n" {
                     onCancelDelete?()
+                    return nil
+                }
+            }
+
+            if hideAppConfirmationActive() {
+                if event.keyCode == 36 || event.keyCode == 76 {
+                    onConfirmHideApp?()
+                    return nil
+                }
+                let char = event.charactersIgnoringModifiers?.lowercased()
+                if char == "y" {
+                    onConfirmHideApp?()
+                    return nil
+                }
+                if char == "n" {
+                    onCancelHideApp?()
                     return nil
                 }
             }
