@@ -87,6 +87,9 @@ enum AppConstants {
             // Translation prefixes (handled in LauncherView+Translation).
             static let translate = "t\""
             static let translateWord = "tw\""
+            // Live process finder (handled in LauncherView+Process): fuzzy over
+            // running processes, kill / copy-PID / measure-CPU from the results.
+            static let process = "ps\""
 
             // Typing a lone `"` opens the prefix-discovery menu (see
             // PrefixSuggestion.all / LauncherView.isPrefixSuggestionQuery).
@@ -151,6 +154,9 @@ enum AppConstants {
                 Entry(
                     prefix: QueryPrefix.translateWord, argHint: "word",
                     description: "Lookup panel with definitions"),
+                Entry(
+                    prefix: QueryPrefix.process, argHint: "word",
+                    description: "Find & kill running processes"),
             ]
 
             /// Recovers the query prefix encoded in a discovery-suggestion result
@@ -194,6 +200,16 @@ enum AppConstants {
                 guard resultID.hasPrefix(resultIDPrefix) else { return nil }
                 return String(resultID.dropFirst(resultIDPrefix.count))
             }
+        }
+
+        /// `ps"` process-finder constants. Logic lives in `LauncherProcessFeature`.
+        enum Process {
+            static let resultIDPrefix = "process:"
+            /// Row cap: enough to scroll, few enough to render instantly
+            /// (mirrors linows `PROC_RESULT_LIMIT`).
+            static let resultLimit = 50
+            /// Synthetic path so the row isn't treated as a filesystem target.
+            static let resultPath = "look://process"
         }
 
         enum Finder {
@@ -392,7 +408,7 @@ enum AppConstants {
             AppCommand(id: Command.calc, title: "calc (⌘1)", detail: "Evaluate math expression", placeholder: "Type math expression"),
             AppCommand(id: Command.pomo, title: "pomo (⌘2)", detail: "Pomodoro focus timer", placeholder: "Manage focus sessions"),
             AppCommand(id: Command.todo, title: "todo (⌘3)", detail: "Daily tasks & progress", placeholder: "Search tasks & dates"),
-            AppCommand(id: Command.kill, title: "kill (⌘4)", detail: "Force kill app or process by port", placeholder: "Type app name, or :3000"),
+            AppCommand(id: Command.kill, title: "kill (⌘4)", detail: "Force kill app or process by name, PID, or port", placeholder: "Type a name, PID, or port"),
             AppCommand(id: Command.shell, title: "shell (⌘5)", detail: "Run a shell command", placeholder: "Type shell command"),
             AppCommand(id: Command.sys, title: "sys (⌘6)", detail: "Show system information", placeholder: "View system info"),
         ]

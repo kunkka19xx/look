@@ -140,7 +140,10 @@ fn score_process(
             return Some(NUMERIC_PARTIAL_SCORE);
         }
         if pid.to_string().contains(trimmed) {
-            return Some(PID_PARTIAL_SCORE);
+            // The PID tier ranks below every name hit, so it only applies when
+            // the name doesn't match.
+            return look_matching::fuzzy_score_prepared(prepared, &name.to_lowercase())
+                .or(Some(PID_PARTIAL_SCORE));
         }
     }
     // Name fuzzy still runs for numeric queries: a name can contain digits.
@@ -472,6 +475,14 @@ mod tests {
         assert_eq!(score(&by_port, "300"), Some(NUMERIC_PARTIAL_SCORE));
         assert_eq!(score(&by_pid, "300"), Some(PID_PARTIAL_SCORE));
         assert!(score(&by_port, "300").unwrap() > score(&by_pid, "300").unwrap());
+    }
+
+    #[test]
+    fn pid_substring_keeps_a_real_name_match() {
+        let named = row("proc300", 1300, &[]); // name and PID both hold "300"
+        let pid_only = row("b", 1300, &[]);
+        assert!(score(&named, "300").unwrap() > PID_PARTIAL_SCORE);
+        assert_eq!(score(&pid_only, "300"), Some(PID_PARTIAL_SCORE));
     }
 
     #[test]

@@ -880,14 +880,14 @@ mod tests {
     fn app_scan_roots_include_finder_embedded_apps() {
         let roots = default_app_scan_roots();
         assert!(
-            roots.iter().any(
-                |root| root == &"/System/Library/CoreServices/Finder.app/Contents/Applications"
-            )
+            roots
+                .iter()
+                .any(|root| root == "/System/Library/CoreServices/Finder.app/Contents/Applications")
         );
         assert!(
             roots
                 .iter()
-                .any(|root| root == &"/System/Library/CoreServices/Applications")
+                .any(|root| root == "/System/Library/CoreServices/Applications")
         );
     }
 

@@ -297,6 +297,7 @@ dependencies = [
  "look-engine",
  "look-indexing",
  "look-lunar",
+ "look-matching",
  "look-qactions",
  "look-ranking",
  "look-storage",

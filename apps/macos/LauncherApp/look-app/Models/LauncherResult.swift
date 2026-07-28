@@ -5,6 +5,9 @@ enum LauncherResultKind: String, Codable {
     case file
     case folder
     case clipboard
+    /// A running process row from the `ps"` finder. Carries `processPID` /
+    /// `processPorts`; detail (cmdline, memory, …) loads per-selection.
+    case process
 }
 
 struct LauncherResult: Identifiable {
@@ -18,4 +21,7 @@ struct LauncherResult: Identifiable {
     var clipboardCapturedAt: Date? = nil
     var clipboardCharacterCount: Int? = nil
     var clipboardLineCount: Int? = nil
+    /// Set only for `.process` rows: the process id and its listening TCP ports.
+    var processPID: Int32? = nil
+    var processPorts: [Int]? = nil
 }
