@@ -58,6 +58,13 @@ final class ProcessScoringTests: XCTestCase {
         XCTAssertGreaterThan(score(byPort, "300")!, score(byPID, "300")!)
     }
 
+    func testPIDSubstringKeepsARealNameMatch() {
+        let named = row("proc300", 1300, []) // name and PID both hold "300"
+        let pidOnly = row("b", 1300, [])
+        XCTAssertGreaterThan(score(named, "300")!, ProcessScoring.pidPartialScore)
+        XCTAssertEqual(score(pidOnly, "300"), ProcessScoring.pidPartialScore)
+    }
+
     func testNameQueryStillFuzzyMatches() {
         let ff = row("firefox", 100, [])
         XCTAssertNotNil(score(ff, "fire"))

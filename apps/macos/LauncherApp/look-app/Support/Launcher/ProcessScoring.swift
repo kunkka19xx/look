@@ -81,7 +81,9 @@ public enum ProcessScoring {
                 return numericPartialScore
             }
             if String(pid).contains(trimmedQuery) {
-                return pidPartialScore
+                // The PID tier ranks below every name hit, so it only applies
+                // when the name doesn't match.
+                return fuzzy(name.lowercased()) ?? pidPartialScore
             }
         }
         // Name fuzzy still runs for numeric queries: a name can contain digits.

@@ -89,11 +89,12 @@ struct KillTarget { name: String, pid: u32, is_app: bool, desktop_id: Option<Str
 5. **Modifier**: `Ctrl` on Linux/Windows, `Cmd` on macOS.
 
 ### Linux data sources (for translating field-by-field)
+
 | Field | Source |
 |---|---|
 | enumerate / name / uid | `/proc/[pid]/status` (`Name:`, `Uid:`), filter own uid |
 | cmdline | `/proc/[pid]/cmdline` (NUL-separated argv) |
-| rss_kb | **USS** = `Private_Clean` + `Private_Dirty` from `/proc/[pid]/smaps_rollup` (private memory, matches macOS `phys_footprint`); falls back to `/proc/[pid]/status` `VmRSS:` on kernels < 4.14. Do not report bare `VmRSS` — it counts shared pages and reads ~2× higher. |
+| rss_kb | **USS** = `Private_Clean` + `Private_Dirty` from `/proc/[pid]/smaps_rollup` (private memory, matches macOS `phys_footprint`). `VmRSS:` from `/proc/[pid]/status` is the compatibility fallback whenever smaps_rollup can't be read or parsed (kernels < 4.14, permission denied, process exited mid-read); it counts shared pages and reads ~2× higher, so never prefer it. |
 | ppid | `/proc/[pid]/status` `PPid:` |
 | user | uid → `/etc/passwd` |
 | start_epoch | `/proc/[pid]/stat` field 22 (starttime ticks) + `/proc/stat` `btime`, `CLK_TCK=100` |
@@ -136,10 +137,10 @@ still returns `icon_source: None`. `process_detail` / `process_cpu` dispatch to
      `ProcessParameters.CommandLine` via `ReadProcessMemory`. Fallback to the
      exe path (`resolve_full_path`) if the remote read is denied.
    - `rss_kb`: `GetProcessMemoryInfo` with `PROCESS_MEMORY_COUNTERS_EX` →
-     **`PrivateUsage / 1024`** (private commit), *not* `WorkingSetSize`. This
-     matches Task Manager's default "Memory" (private working set) and the
-     macOS `phys_footprint` / Linux USS choice; `WorkingSetSize` counts shared
-     pages and reads much higher.
+     **`PrivateUsage / 1024`** (private commit charge: Task Manager's "Commit
+     size", Process Explorer's "Private Bytes"), *not* `WorkingSetSize`. It is
+     the closest Windows analog to macOS `phys_footprint` / Linux USS, excluding
+     the shared pages that make `WorkingSetSize` read much higher.
    - `ppid`: Toolhelp `PROCESSENTRY32W.th32ParentProcessID` (build a pid→ppid
      map in the existing `enumerate_processes` pass).
    - `user`: `OpenProcessToken(TOKEN_QUERY)` → `GetTokenInformation(TokenUser)`
@@ -198,6 +199,7 @@ them. Two options:
   **(This is what shipped: native enumeration, FFI for the fuzzy score only.)**
 
 ### 4b. Backend (macOS APIs)
+
 | Field | API |
 |---|---|
 | enumerate | **`sysctl KERN_PROC_ALL`** (gives pid + uid + comm in one call); filter to `getuid()`. **Do NOT use `proc_listallpids`** — it is silently throttled in hardened/restricted contexts and returns only a partial list (observed ~146 of ~584 procs, dropping the user's own apps). |
@@ -232,7 +234,8 @@ them. Two options:
 - Kill command: fuzzy over apps + processes, **apps first**, matching the
   linows behavior; keep the existing confirm-before-kill flow.
 
-### 4d. Keyboard / shortkeys (macOS conventions — `Cmd`, not `Ctrl`)
+### 4d. Keyboard / shortkeys (macOS conventions, `Cmd` not `Ctrl`)
+
 | Action | macOS | (linows equivalent) |
 |---|---|---|
 | Enter process mode | type `ps"` | same |
@@ -248,8 +251,9 @@ Hint bar: `Cmd+D: Kill • Cmd+C: Copy PID`.
 
 ## 5. Parity checklist
 
-**macOS: all items below met** (see §4). **Windows: remaining** — `icon_source`,
-`process_detail`, `process_cpu` (ports already done).
+The boxes are the reference list every port must satisfy, not a per-platform
+tracker, so they stay unchecked. **macOS meets every item** (see §4); **Windows
+still owes** `icon_source`, `process_detail`, `process_cpu` (ports already done).
 
 - [ ] `ps"` prefix enters process mode; empty query lists own-user processes.
 - [ ] Numeric query matches exact port > partial port > PID; name fuzzy also runs.

@@ -619,7 +619,7 @@ struct LauncherView: View {
     var killSuggestions: [KillCommand.Candidate] {
         _ = killListRefreshTick
         let searchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines)
-        return KillCommand.suggestions(searchTerm: searchTerm)
+        return KillCommand.suggestions(searchTerm: searchTerm, processes: processModel.candidates)
             .filter { !recentlyKilledPIDs.contains($0.pid) }
     }
 
@@ -711,9 +711,14 @@ struct LauncherView: View {
             // invalidates so the next entry re-enumerates fresh.
             if entering {
                 processModel.loadSnapshotIfNeeded()
-            } else {
+            } else if activeCommandID != AppConstants.Launcher.Command.kill {
+                // /kill scores the same snapshot; don't drop it when the query
+                // switches straight into that panel.
                 processModel.invalidate()
             }
+        }
+        .onChange(of: processModel.candidates) { _, _ in
+            repairProcessSelection()
         }
         .onReceive(clipboardStore.$entries) { _ in
             refreshClipboardSelectionIfNeeded()
@@ -735,6 +740,10 @@ struct LauncherView: View {
         }
         .onChange(of: activeCommandID) { _, newID in
             if let newID { appUIState.lastCommandID = newID }
+            // /kill ranks the same cached snapshot; take a fresh one on entry.
+            if newID == AppConstants.Launcher.Command.kill {
+                processModel.refreshSnapshot()
+            }
         }
         .onChange(of: appUIState.showsThemeSettings) { _, showsSettings in
             if showsSettings {
@@ -777,6 +786,11 @@ struct LauncherView: View {
                 window === launcherWindow()
             else { return }
             refreshQuickActions()
+            // The query survives hide/show: re-entering `ps"` must not keep
+            // scoring pids that exited while hidden.
+            if isProcessQuery {
+                processModel.refreshSnapshot()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in
             reloadConfig()

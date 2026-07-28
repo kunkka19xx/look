@@ -32,7 +32,10 @@ mod tests {
     fn exact_and_prefix_and_subsequence_match() {
         assert_eq!(score("ghostty", "ghostty"), 2_000, "exact match");
         assert!(score("firefox", "firefox gpu helper") > 0, "prefix match");
-        assert!(score("firefox", ".firefox-old") > 0, "substring/subsequence");
+        assert!(
+            score("firefox", ".firefox-old") > 0,
+            "substring/subsequence"
+        );
         assert_eq!(score("zzq", "ghostty"), NO_MATCH, "no match -> sentinel");
     }
 

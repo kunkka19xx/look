@@ -3,6 +3,8 @@ import SwiftUI
 
 extension LauncherView {
     func scheduleKillListRefresh() {
+        // Drop the killed process from the shared snapshot; the ticks re-read it.
+        processModel.refreshSnapshot()
         killListRefreshTick &+= 1
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             killListRefreshTick &+= 1
@@ -158,7 +160,7 @@ extension LauncherView {
             }
         case AppConstants.Launcher.Command.kill:
             let searchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines)
-            let matched = KillCommand.suggestions(searchTerm: searchTerm)
+            let matched = KillCommand.suggestions(searchTerm: searchTerm, processes: processModel.candidates)
             logUIEvent("kill action search='\(searchTerm)' matches=\(matched.count)")
 
             if matched.isEmpty {

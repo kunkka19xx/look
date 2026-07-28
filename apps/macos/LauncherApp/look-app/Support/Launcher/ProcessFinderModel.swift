@@ -19,6 +19,13 @@ final class ProcessFinderModel: ObservableObject {
 
     private var snapshotLoaded = false
     private var refreshTask: Task<Void, Never>?
+    /// Detail loads in flight, so arrow-key nav doesn't stack duplicate fetches.
+    private var loadingDetail: Set<Int32> = []
+    /// Bumped on every snapshot swap; the ranking memo keys off it.
+    private var snapshotRevision = 0
+    private var rankedTerm: String?
+    private var rankedRevision = -1
+    private var rankedRows: [ProcessScoring.Candidate] = []
 
     /// Re-enumerate the process table. Called on mode entry and after a kill.
     /// Clears the detail/cpu caches since pids may have been reused.
@@ -30,10 +37,29 @@ final class ProcessFinderModel: ObservableObject {
             }.value
             guard !Task.isCancelled else { return }
             candidates = snapshot.map { .init(name: $0.name, pid: $0.pid, ports: $0.ports) }
+            snapshotRevision += 1
             details.removeAll()
             cpu.removeAll()
             snapshotLoaded = true
         }
+    }
+
+    /// Rows for `term`, memoized against the snapshot: the view reads this
+    /// several times per body pass and a miss costs one FFI call per candidate.
+    /// Empty term lists alphabetically.
+    func ranked(term: String, fuzzy: (String) -> Int?) -> [ProcessScoring.Candidate] {
+        if rankedTerm == term, rankedRevision == snapshotRevision { return rankedRows }
+
+        if term.isEmpty {
+            rankedRows = candidates.sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+        } else {
+            rankedRows = ProcessScoring.rankProcesses(candidates, query: term, fuzzy: fuzzy)
+        }
+        rankedTerm = term
+        rankedRevision = snapshotRevision
+        return rankedRows
     }
 
     /// Enumerate once on first entry; later entries reuse the snapshot until an
@@ -46,11 +72,13 @@ final class ProcessFinderModel: ObservableObject {
     /// Load detail for a selected pid (cheap reads), caching the result. No-op
     /// if already cached.
     func loadDetail(pid: Int32) {
-        guard details[pid] == nil else { return }
+        guard details[pid] == nil, !loadingDetail.contains(pid) else { return }
+        loadingDetail.insert(pid)
         Task {
             let detail = await Task.detached(priority: .userInitiated) {
                 ProcessService.detail(pid: pid)
             }.value
+            loadingDetail.remove(pid)
             guard let detail else { return }
             details[pid] = detail
         }
@@ -84,6 +112,7 @@ final class ProcessFinderModel: ObservableObject {
     func invalidate() {
         refreshTask?.cancel()
         refreshTask = nil
+        loadingDetail.removeAll()
         snapshotLoaded = false
     }
 }

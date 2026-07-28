@@ -48,7 +48,9 @@ struct KillCommand {
         return trimmed
     }
 
-    static func suggestions(searchTerm: String) -> [Candidate] {
+    /// `processes` is the cached `ProcessFinderModel` snapshot: this runs in a
+    /// SwiftUI body, so it must never walk the process table itself.
+    static func suggestions(searchTerm: String, processes: [ProcessScoring.Candidate]) -> [Candidate] {
         let term = normalize(searchTerm)
         let apps = getRunningApps()
         // Empty query lists apps only (the panel's default view).
@@ -60,12 +62,9 @@ struct KillCommand {
         // PID (ProcessScoring mirrors the Rust `rank_kill_targets`; the fuzzy
         // score is the same `core/matching` scorer over FFI).
         let appPairs = apps.map { (name: $0.localizedName ?? "Unknown", pid: $0.processIdentifier) }
-        let procs = ProcessService.enumerate().map {
-            ProcessScoring.Candidate(name: $0.name, pid: $0.pid, ports: $0.ports)
-        }
         let lowered = term.lowercased()
         let ranked = ProcessScoring.rankKillTargets(
-            apps: appPairs, procs: procs, query: term
+            apps: appPairs, procs: processes, query: term
         ) { title in
             EngineBridge.shared.fuzzyScore(query: lowered, title: title)
         }

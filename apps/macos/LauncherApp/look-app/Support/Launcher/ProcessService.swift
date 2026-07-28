@@ -93,12 +93,15 @@ nonisolated enum ProcessService {
     static func cpu(pid: Int32) -> Double? {
         guard let first = cpuTimeNs(pid: pid) else { return nil }
         let intervalNs: UInt64 = 200_000_000
+        let startNs = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
         var ts = timespec(tv_sec: 0, tv_nsec: Int(intervalNs))
         nanosleep(&ts, nil)
         guard let second = cpuTimeNs(pid: pid) else { return nil }
 
+        // Measured elapsed, not the requested interval: nanosleep can overshoot
+        // or return early on EINTR.
         let deltaCPU = Double(second >= first ? second - first : 0)
-        let deltaWall = Double(intervalNs)
+        let deltaWall = Double(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW) - startNs)
         guard deltaWall > 0 else { return nil }
         return 100.0 * (deltaCPU / deltaWall)
     }
@@ -138,7 +141,9 @@ nonisolated enum ProcessService {
         var buf = [CChar](repeating: 0, count: 2 * Int(MAXPATHLEN))
         let n = proc_name(pid, &buf, UInt32(buf.count))
         if n > 0 {
-            let name = String(cString: buf)
+            let name = buf.withUnsafeBytes {
+                String(decoding: $0.prefix(while: { $0 != 0 }), as: UTF8.self)
+            }
             if !name.isEmpty { return name }
         }
         return commFallback.isEmpty ? "Process \(pid)" : commFallback
@@ -151,10 +156,12 @@ nonisolated enum ProcessService {
         return name.isEmpty ? cString(from: &info.pbi_comm) : name
     }
 
-    /// Read a fixed-size C `char[]` tuple (imported as a Swift tuple) as a String.
+    /// Read a fixed-size C `char[]` tuple (imported as a Swift tuple) as a
+    /// String. The scan stays inside the tuple: an unterminated field would
+    /// make `String(cString:)` read past it.
     private static func cString<T>(from tuple: inout T) -> String {
-        withUnsafeBytes(of: &tuple) {
-            String(cString: $0.bindMemory(to: CChar.self).baseAddress!)
+        withUnsafeBytes(of: &tuple) { buffer in
+            String(decoding: buffer.prefix(while: { $0 != 0 }), as: UTF8.self)
         }
     }
 

@@ -12,19 +12,11 @@ extension LauncherView {
     /// capped at the result limit. Scored against the cached snapshot.
     var processResults: [LauncherResult] {
         guard let term = LauncherProcessFeature.searchTerm(from: query) else { return [] }
-        let candidates = processModel.candidates
-        let limit = AppConstants.Launcher.Process.resultLimit
-
-        let ranked: [ProcessScoring.Candidate]
-        if term.isEmpty {
-            ranked = candidates.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        } else {
-            let lowered = term.lowercased()
-            ranked = ProcessScoring.rankProcesses(candidates, query: term) { title in
-                bridge.fuzzyScore(query: lowered, title: title)
-            }
+        let lowered = term.lowercased()
+        let ranked = processModel.ranked(term: term) { title in
+            bridge.fuzzyScore(query: lowered, title: title)
         }
-        return ranked.prefix(limit).map(LauncherProcessFeature.makeResult)
+        return ranked.prefix(AppConstants.Launcher.Process.resultLimit).map(LauncherProcessFeature.makeResult)
     }
 
     /// The pid of the currently selected process row, or nil when the selection
@@ -70,13 +62,17 @@ extension LauncherView {
         switch processModel.kill(pid: pid) {
         case .success:
             showBanner("Killed \(name) (PID \(pid))", style: .success, duration: 1.6)
-            DispatchQueue.main.async {
-                if !displayedResults.contains(where: { $0.id == selectedResultID }) {
-                    selectedResultID = displayedResults.first?.id
-                }
-            }
         case .failure(let error):
             showBanner("Could not kill \(name): \(error.message)", style: .error, duration: 2.6)
+        }
+    }
+
+    /// Move the selection off a row the latest snapshot dropped (killed or
+    /// exited). Driven by `candidates`, so it runs when the refresh lands.
+    func repairProcessSelection() {
+        guard isProcessQuery, selectedResultID != nil else { return }
+        if !displayedResults.contains(where: { $0.id == selectedResultID }) {
+            selectedResultID = displayedResults.first?.id
         }
     }
 
