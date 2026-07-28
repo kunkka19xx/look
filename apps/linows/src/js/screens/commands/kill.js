@@ -21,6 +21,13 @@ let searchDebounce = null;
 // True while a backend fuzzy search is scheduled or in flight: the local
 // provisional filter may miss port/PID matches the backend still owns.
 let searchPending = false;
+// Monotonic per-keystroke generation. A search response is only applied when
+// its generation is still current, so a superseded request (even for the same
+// query text after foo -> bar -> foo) can never overwrite fresher results.
+let searchGen = 0;
+// True once initial enumeration has returned, so an empty base list reads as a
+// terminal "no processes" state rather than a perpetual "Loading...".
+let baseLoaded = false;
 
 export function init(executeFn, iconFn) {
     onExecute = executeFn;
@@ -44,6 +51,8 @@ export function enter() {
     panel.hidden = false;
     input.value = '';
     confirmPid = null;
+    baseLoaded = false;
+    searchPending = false;
     updateConfirmBar();
     requestAnimationFrame(() => input.focus());
     if (onExecute) onExecute('kill-load');
@@ -106,21 +115,21 @@ export function handleKey(e) {
     return false;
 }
 
-// `forQuery` is the query a backend search was fetched for; `null` marks the
+// `gen` is the generation a backend search was dispatched at; `null` marks the
 // base app list (mode entry / post-kill).
-export function setProcessList(procs, forQuery = null) {
-    const current = input ? input.value.trim() : '';
-    if (forQuery !== null) {
-        // Drop stale search hits: a response that lands after the box was
-        // cleared or retyped must not resurrect the old query's process list.
-        if (forQuery.trim() !== current) return;
+export function setProcessList(procs, gen = null) {
+    if (gen !== null) {
+        // Superseded response (a newer keystroke, retype, or clear advanced the
+        // generation): ignore it so only the latest request paints results.
+        if (gen !== searchGen) return;
         searchPending = false;
         processList = procs || [];
         filteredProcesses = [...processList];
     } else {
         baseProcessList = procs || [];
+        baseLoaded = true;
         processList = [...baseProcessList];
-        filterProcesses(current);
+        filterProcesses(input ? input.value.trim() : '');
     }
     selectedIndex = 0;
     confirmPid = null;
@@ -136,6 +145,9 @@ export function showFeedback(text, isError = false) {
 // --- Internal ---
 
 function filterProcesses(query) {
+    // Every intent change advances the generation, invalidating any in-flight
+    // search whose result has not landed yet.
+    searchGen += 1;
     if (!query) {
         clearTimeout(searchDebounce);
         searchPending = false;
@@ -149,8 +161,9 @@ function filterProcesses(query) {
         filteredProcesses = baseProcessList.filter((p) => p.name.toLowerCase().includes(q));
         clearTimeout(searchDebounce);
         searchPending = true;
+        const gen = searchGen;
         searchDebounce = setTimeout(() => {
-            if (onExecute) onExecute('kill-search', query);
+            if (onExecute) onExecute('kill-search', query, gen);
         }, SEARCH_DEBOUNCE_MS);
     }
     selectedIndex = Math.min(selectedIndex, Math.max(0, filteredProcesses.length - 1));
@@ -163,8 +176,9 @@ function renderList() {
     if (filteredProcesses.length === 0) {
         const query = input ? input.value.trim() : '';
         if (!query) {
-            // Empty query with nothing yet means the app list is still loading.
-            feedback.textContent = 'Loading...';
+            // Before enumeration returns, "Loading..."; once it has, an empty
+            // base list is a terminal state, not a perpetual spinner.
+            feedback.textContent = baseLoaded ? 'No running processes' : 'Loading...';
         } else {
             // A pending backend search can still return port/PID matches the
             // local name filter missed, so hold off on a definitive miss.

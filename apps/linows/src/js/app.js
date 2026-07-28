@@ -684,7 +684,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (runningApps.isEnabled()) runningApps.refresh();
     }
 
-    async function executeCommand(cmdId, input) {
+    async function executeCommand(cmdId, input, gen) {
         if (cmdId === 'calc-preview') {
             try {
                 const result = await evalCalc(input);
@@ -708,7 +708,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (cmdId === 'kill-search') {
             try {
                 const targets = await searchKillTargets(input);
-                commands.setProcessList(targets, input);
+                commands.setProcessList(targets, gen);
             } catch (err) {
                 commands.showFeedback(err || 'Search failed', true);
             }
