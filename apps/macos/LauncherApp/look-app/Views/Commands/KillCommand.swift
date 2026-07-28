@@ -3,6 +3,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct KillCommand {
+    /// Row cap for the fuzzy query path (mirrors linows `KILL_RESULT_LIMIT`).
+    private static let resultLimit = 60
+
     struct Candidate: Identifiable {
         let id: String
         let displayName: String
@@ -31,116 +34,61 @@ struct KillCommand {
         }
     }
 
-    private static func parsePort(from searchTerm: String) -> Int? {
+    /// Strips the optional `:` / `port ` port-search affordance so `:3000` and
+    /// `3000` resolve identically through the one numeric path (exact port >
+    /// partial > PID) rather than a separate lsof lookup.
+    private static func normalize(_ searchTerm: String) -> String {
         let trimmed = searchTerm.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix(":") {
-            return Int(trimmed.dropFirst())
+            return String(trimmed.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        let lower = trimmed.lowercased()
-        if lower.hasPrefix("port ") {
-            return Int(lower.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines))
+        if trimmed.lowercased().hasPrefix("port ") {
+            return String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return nil
+        return trimmed
     }
 
-    private static func isPortQuery(_ searchTerm: String) -> Bool {
-        let trimmed = searchTerm.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return trimmed.hasPrefix(":") || trimmed.hasPrefix("port ")
-    }
-
-    private static func commandName(for pid: Int32) -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-p", "\(pid)", "-o", "comm="]
-        let outputPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-            let value = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return (value?.isEmpty == false) ? value! : "Process \(pid)"
-        } catch {
-            return "Process \(pid)"
-        }
-    }
-
-    private static func processCandidates(onPort port: Int) -> [Candidate] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        process.arguments = ["-nP", "-iTCP:\(port)", "-sTCP:LISTEN", "-t"]
-        let outputPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return []
+    static func suggestions(searchTerm: String) -> [Candidate] {
+        let term = normalize(searchTerm)
+        let apps = getRunningApps()
+        // Empty query lists apps only (the panel's default view).
+        if term.isEmpty {
+            return appCandidates(from: apps)
         }
 
-        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return [] }
-        let pids = output
-            .split(separator: "\n")
-            .compactMap { Int32($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        // Non-empty query: fuzzy over apps + processes, apps first, deduped by
+        // PID (ProcessScoring mirrors the Rust `rank_kill_targets`; the fuzzy
+        // score is the same `core/matching` scorer over FFI).
+        let appPairs = apps.map { (name: $0.localizedName ?? "Unknown", pid: $0.processIdentifier) }
+        let procs = ProcessService.enumerate().map {
+            ProcessScoring.Candidate(name: $0.name, pid: $0.pid, ports: $0.ports)
+        }
+        let lowered = term.lowercased()
+        let ranked = ProcessScoring.rankKillTargets(
+            apps: appPairs, procs: procs, query: term
+        ) { title in
+            EngineBridge.shared.fuzzyScore(query: lowered, title: title)
+        }
 
-        var seen = Set<Int32>()
-        let uniquePIDs = pids.filter { seen.insert($0).inserted }
-
-        return uniquePIDs.enumerated().map { index, pid in
-            let name = commandName(for: pid)
-            return Candidate(
-                id: "port-\(port)-\(pid)-\(index)",
-                displayName: name,
-                pid: pid,
-                icon: NSWorkspace.shared.icon(forFile: name),
+        return ranked.prefix(resultLimit).enumerated().map { index, target in
+            Candidate(
+                id: "\(target.isApp ? "app" : "proc")-\(target.pid)-\(index)",
+                displayName: target.name,
+                pid: target.pid,
+                icon: LauncherProcessFeature.icon(forPID: target.pid),
                 number: index + 1,
-                detail: "PID: \(pid)  •  Port: \(port)"
+                detail: "PID: \(target.pid)"
             )
         }
     }
 
-    static func suggestions(searchTerm: String) -> [Candidate] {
-        if isPortQuery(searchTerm) {
-            guard let port = parsePort(from: searchTerm), (1...65_535).contains(port) else {
-                return []
-            }
-            return processCandidates(onPort: port)
-        }
-
-        let apps = getRunningApps()
-        let candidates = appCandidates(from: apps)
-        if searchTerm.isEmpty {
-            return candidates
-        }
-
-        if let num = Int(searchTerm), num > 0 && num <= candidates.count {
-            return [candidates[num - 1]]
-        }
-
-        return candidates.filter { $0.displayName.lowercased().contains(searchTerm.lowercased()) }
-    }
-
+    /// SIGKILL a process, routed through the native `ProcessService.kill`.
     static func kill(pid: Int32, name: String, completion: @escaping (String) -> Void) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/kill")
-        process.arguments = ["-9", "\(pid)"]
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            if process.terminationStatus == 0 {
-                completion("Killed: \(name) (PID: \(pid))")
-            } else {
-                completion("Failed to kill \(name): permission denied")
-            }
-        } catch {
-            completion("Error: \(error.localizedDescription)")
+        switch ProcessService.kill(pid: pid) {
+        case .success:
+            completion("Killed: \(name) (PID: \(pid))")
+        case .failure(let error):
+            completion("Failed to kill \(name): \(error.message)")
         }
     }
 }

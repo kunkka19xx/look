@@ -853,11 +853,25 @@ fn ports_for_pid(pid: u32, inode_ports: &HashMap<u64, u16>) -> Vec<u16> {
     ports
 }
 
+/// Private memory (USS = `Private_Clean` + `Private_Dirty`) from
+/// `/proc/<pid>/smaps_rollup` - the Linux analog of macOS `phys_footprint`;
+/// excludes shared pages, unlike the ~2x-larger `VmRSS`. Falls back to `VmRSS`
+/// when smaps_rollup is unavailable (kernels < 4.14).
+fn private_mem_kb(pid: u32, status: &str) -> u64 {
+    if let Ok(rollup) = fs::read_to_string(format!("/proc/{pid}/smaps_rollup")) {
+        let field = |key: &str| parse_status_field(&rollup, key).and_then(|v| v.parse::<u64>().ok());
+        if let (Some(clean), Some(dirty)) = (field("Private_Clean:"), field("Private_Dirty:")) {
+            return clean + dirty;
+        }
+    }
+    parse_status_field(status, "VmRSS:")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+}
+
 pub(crate) fn detail(pid: u32) -> Option<ProcDetail> {
     let status = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
-    let rss_kb = parse_status_field(&status, "VmRSS:")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
+    let rss_kb = private_mem_kb(pid, &status);
     let ppid = parse_status_field(&status, "PPid:")
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);

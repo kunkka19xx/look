@@ -56,6 +56,10 @@ struct LauncherRowView: View {
                 ?? NSWorkspace.shared.icon(for: .plainText)
         }
 
+        if result.kind == .process, let pid = result.processPID {
+            return LauncherProcessFeature.icon(forPID: pid)
+        }
+
         if result.id.hasPrefix("setting:") {
             let settingsPath = "/System/Applications/System Settings.app"
             if FileManager.default.fileExists(atPath: settingsPath) {
@@ -93,6 +97,8 @@ struct LauncherRowView: View {
             return "Folder"
         case .clipboard:
             return "Clipboard"
+        case .process:
+            return "Process"
         }
     }
 
@@ -101,6 +107,10 @@ struct LauncherRowView: View {
             return result.subtitle ?? ""
         }
         if result.kind == .clipboard {
+            return result.subtitle ?? kindLabel
+        }
+        if result.kind == .process {
+            // "PID 1234 · :3000" - carries the pid and any listening ports.
             return result.subtitle ?? kindLabel
         }
         if result.kind == .app {

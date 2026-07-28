@@ -99,6 +99,7 @@ struct LauncherView: View {
     @State var lookupDefinition: LookupDefinition?
     @State var pidToRestoreOnHide: pid_t?
     @StateObject var runningAppsService = RunningAppsService()
+    @StateObject var processModel = ProcessFinderModel()
 
     /// Live size of the whole panel, captured so a background image can be
     /// cropped into each floating tile at its correct window position (the tiles
@@ -397,6 +398,7 @@ struct LauncherView: View {
         if isPrefixSuggestionQuery { return prefixSuggestionResults }
         if isCommandSuggestionQuery { return commandSuggestionResults }
         if isClipboardQuery { return clipboardResults }
+        if isProcessQuery { return processResults }
         // Recent URLs interleave with local results by frecency; web-search rows
         // stay last.
         let ranked = mergeByScore(backendFilteredResults, recentURLResults)
@@ -501,6 +503,12 @@ struct LauncherView: View {
             return ["Enter copy clip", "Cmd+D remove clip"]
         }
 
+        // Mirrors the linows ps" hint (Cmd instead of Ctrl); Enter/CPU dropped
+        // to keep it on one line.
+        if isProcessQuery {
+            return ["Cmd+D kill", "Cmd+C copy PID"]
+        }
+
         // The home screen replaces the "Cmd+/ command mode" hint with a
         // clickable today done/total quick view (see todoQuickView), so it
         // is intentionally omitted here.
@@ -514,7 +522,7 @@ struct LauncherView: View {
         guard !appUIState.showsThemeSettings, !isCommandMode, !showsHelpScreen else { return false }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if extractTranslationQuery(from: trimmed) != nil { return false }
-        if isPrefixSuggestionQuery || isCommandSuggestionQuery || isClipboardQuery { return false }
+        if isPrefixSuggestionQuery || isCommandSuggestionQuery || isClipboardQuery || isProcessQuery { return false }
         return true
     }
 
@@ -668,12 +676,13 @@ struct LauncherView: View {
                 if showsHelpScreen {
                     showsHelpScreen = false
                 }
-                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery || isTranslationQuery {
+                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery || isTranslationQuery || isProcessQuery {
                     // These render their own panels (clip history / prefix menu /
-                    // command menu / translation), not backend results. Skip the
-                    // search + AI answer entirely - otherwise a background AI
-                    // activation flips the floating layout and flashes the old
-                    // backdrop while typing. Translation only fires on Enter.
+                    // command menu / translation / process finder), not backend
+                    // results. Skip the search + AI answer entirely - otherwise a
+                    // background AI activation flips the floating layout and
+                    // flashes the old backdrop while typing. Translation only
+                    // fires on Enter.
                     aiAnswer.cancel()
                     setInitialSelection()
                 } else {
@@ -693,6 +702,18 @@ struct LauncherView: View {
         .onChange(of: selectedResultID) { _, _ in
             // Load Quick Actions + read their live state for the new selection.
             refreshQuickActions()
+            // Prefetch process detail for the newly selected process row so the
+            // preview pane fills in (cheap per-selection reads, cached by pid).
+            loadProcessDetailForSelection()
+        }
+        .onChange(of: isProcessQuery) { _, entering in
+            // Enumerate the process table once on entering `ps"` mode; leaving
+            // invalidates so the next entry re-enumerates fresh.
+            if entering {
+                processModel.loadSnapshotIfNeeded()
+            } else {
+                processModel.invalidate()
+            }
         }
         .onReceive(clipboardStore.$entries) { _ in
             refreshClipboardSelectionIfNeeded()
@@ -1088,7 +1109,10 @@ struct LauncherView: View {
                     },
                     onDeleteClipboard: selectedResult.kind == .clipboard
                         ? { deleteClipboardResult(resultID: selectedResult.id) }
-                        : nil
+                        : nil,
+                    processDetail: processDetail(for: selectedResult),
+                    processCPU: processCPU(for: selectedResult),
+                    isMeasuringProcessCPU: isMeasuringCPU(for: selectedResult)
                 )
             }
         }

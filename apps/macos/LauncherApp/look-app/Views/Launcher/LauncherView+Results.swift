@@ -71,6 +71,9 @@ extension LauncherView {
                 style: .success,
                 duration: AppConstants.Launcher.Clipboard.copiedBannerDuration
             )
+        case .process:
+            // Enter measures CPU on demand and keeps the launcher open.
+            measureCPUForSelectedProcess()
         }
     }
 
@@ -202,6 +205,8 @@ extension LauncherView {
                 style: .info,
                 duration: AppConstants.Launcher.Clipboard.infoBannerDuration
             )
+        case .process:
+            showBanner("Processes can't be revealed in Finder", style: .info, duration: 1.2)
         }
     }
 
@@ -293,6 +298,12 @@ extension LauncherView {
               let selected = displayedResults.first(where: { $0.id == selectedID })
         else { return false }
 
+        // In `ps"` mode, Cmd+C copies the selected process's PID.
+        if selected.kind == .process {
+            copySelectedProcessPID()
+            return true
+        }
+
         guard selected.kind == .file || selected.kind == .folder else { return false }
 
         let targetURL = URL(fileURLWithPath: selected.path)
@@ -380,6 +391,12 @@ extension LauncherView {
     /// it's permanent.
     func requestDeleteSelection() {
         guard !isCommandMode, !appUIState.showsThemeSettings, !showsHelpScreen else { return }
+        // In `ps"` mode, Cmd+D kills the selected process (SIGKILL) instead of
+        // trashing a file.
+        if isProcessQuery, selectedProcessPID != nil {
+            killSelectedProcess()
+            return
+        }
         // Don't stack an Empty Trash confirmation, nor start work while a
         // previous trash/empty is still running (recycle / Finder are async).
         guard pendingEmptyTrashCount == nil, !isDeleteInFlight else { return }

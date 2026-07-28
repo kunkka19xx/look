@@ -162,11 +162,7 @@ extension LauncherView {
             logUIEvent("kill action search='\(searchTerm)' matches=\(matched.count)")
 
             if matched.isEmpty {
-                if searchTerm.hasPrefix(":") || searchTerm.lowercased().hasPrefix("port ") {
-                    commandFeedback = "No process listening on this port"
-                } else {
-                    commandFeedback = "No matching apps. /kill to list all. Use :3000 to search by port."
-                }
+                commandFeedback = "No matching processes"
             } else if searchTerm.isEmpty {
                 let appList = matched.map { candidate in
                     "\(candidate.number). \(candidate.displayName) (PID: \(candidate.pid))"
@@ -292,11 +288,7 @@ extension LauncherView {
                         // owns its own card-style backdrops where wanted.
 
                     if activeCommandID == AppConstants.Launcher.Command.kill {
-                        let killSearchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let portQuery = killSearchTerm.hasPrefix(":") || killSearchTerm.lowercased().hasPrefix("port ")
-                        let defaultKillEmptyMessage = portQuery
-                            ? "No process listening on this port"
-                            : "No matches. Type an app name or use :3000"
+                        let defaultKillEmptyMessage = "No matching processes"
 
                         KillCommandView(
                             suggestions: Array(killSuggestions),

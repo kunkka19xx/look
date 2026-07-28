@@ -28,6 +28,10 @@ private func look_request_index_refresh() -> Bool
 nonisolated
 private func look_translate_json(_ text: UnsafePointer<CChar>?, _ targetLang: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_fuzzy_score")
+nonisolated
+private func look_fuzzy_score(_ query: UnsafePointer<CChar>?, _ title: UnsafePointer<CChar>?) -> Int64
+
 @_silgen_name("look_instant_answer_json")
 nonisolated
 private func look_instant_answer_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -235,6 +239,18 @@ final class EngineBridge: @unchecked Sendable {
         }
 
         return try? JSONDecoder().decode(TranslationResult.self, from: data)
+    }
+
+    /// Shared `core/matching` fuzzy score for `query` vs `title` (identical
+    /// ranking to linows), or nil on no match. Both sides must be pre-lowercased
+    /// by the caller (the scorer is case-sensitive). Cheap - safe while typing.
+    nonisolated func fuzzyScore(query: String, title: String) -> Int? {
+        let score = query.withCString { queryCstr in
+            title.withCString { titleCstr in
+                look_fuzzy_score(queryCstr, titleCstr)
+            }
+        }
+        return score == Int64.min ? nil : Int(score) // Int64.min = NO_MATCH sentinel
     }
 
     /// Network-free gate: whether `query` matches a shared instant-answer
