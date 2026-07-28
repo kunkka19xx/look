@@ -478,107 +478,6 @@ fn is_terminal_or_background(path: &str) -> bool {
     false
 }
 
-pub(crate) fn list_on_port(port: u16) -> Vec<RunningApp> {
-    // Parse /proc/net/tcp and /proc/net/tcp6 to find listening sockets on the given port
-    let mut pids: Vec<u32> = Vec::new();
-    let mut inodes: std::collections::HashSet<u64> = std::collections::HashSet::new();
-
-    for tcp_path in &["/proc/net/tcp", "/proc/net/tcp6"] {
-        if let Ok(content) = fs::read_to_string(tcp_path) {
-            for line in content.lines().skip(1) {
-                let fields: Vec<&str> = line.split_whitespace().collect();
-                if fields.len() < 10 {
-                    continue;
-                }
-                // State 0A = LISTEN
-                if fields[3] != "0A" {
-                    continue;
-                }
-                // local_address is hex IP:PORT
-                if let Some(port_hex) = fields[1].split(':').nth(1)
-                    && let Ok(p) = u16::from_str_radix(port_hex, 16)
-                    && p == port
-                    && let Ok(inode) = fields[9].parse::<u64>()
-                {
-                    inodes.insert(inode);
-                }
-            }
-        }
-    }
-
-    if inodes.is_empty() {
-        return Vec::new();
-    }
-
-    // Find PIDs owning these inodes by scanning /proc/[pid]/fd/
-    let my_uid = read_my_uid();
-    if let Ok(entries) = fs::read_dir("/proc") {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if !name_str.chars().all(|c| c.is_ascii_digit()) {
-                continue;
-            }
-            let pid: u32 = match name_str.parse() {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
-            // Check ownership
-            let status_path = format!("/proc/{pid}/status");
-            if let Ok(status) = fs::read_to_string(&status_path) {
-                let proc_uid = parse_status_field(&status, "Uid:")
-                    .and_then(|v| v.parse::<u32>().ok())
-                    .unwrap_or(0);
-                if proc_uid != my_uid {
-                    continue;
-                }
-            } else {
-                continue;
-            }
-
-            let fd_dir = format!("/proc/{pid}/fd");
-            if let Ok(fds) = fs::read_dir(&fd_dir) {
-                for fd in fds.flatten() {
-                    if let Ok(link) = fs::read_link(fd.path())
-                        && let Some(inode_str) = link
-                            .to_string_lossy()
-                            .strip_prefix("socket:[")
-                            .and_then(|s| s.strip_suffix(']'))
-                        && let Ok(inode) = inode_str.parse::<u64>()
-                        && inodes.contains(&inode)
-                    {
-                        pids.push(pid);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    pids.sort();
-    pids.dedup();
-
-    // Build RunningApp entries
-    pids.iter()
-        .map(|&pid| {
-            let name = fs::read_to_string(format!("/proc/{pid}/comm"))
-                .unwrap_or_default()
-                .trim()
-                .to_string();
-            RunningApp {
-                name: if name.is_empty() {
-                    format!("PID {pid}")
-                } else {
-                    name
-                },
-                pid,
-                desktop_id: None,
-                exec: None,
-            }
-        })
-        .collect()
-}
-
 /// True when a process owned by the current user has /proc Name: == `name`.
 /// Used by launch to detect cold-start cases (Steam) whose URL handling
 /// requires the main process to be running before the URL is issued.
@@ -907,7 +806,7 @@ pub(crate) fn list_all() -> Vec<ProcRow> {
 }
 
 /// Map every listening (state 0A) TCP socket inode to its port, from
-/// `/proc/net/tcp` + `tcp6`. The reverse of `list_on_port`'s port→inode lookup.
+/// `/proc/net/tcp` + `tcp6`. Feeds `ports_for_pid`, tagging each process row.
 fn listening_inode_ports() -> HashMap<u64, u16> {
     let mut map = HashMap::new();
     for tcp_path in ["/proc/net/tcp", "/proc/net/tcp6"] {

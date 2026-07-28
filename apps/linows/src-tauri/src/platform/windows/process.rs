@@ -1,7 +1,7 @@
 //! Windows process listing / kill. Mirrors the WinUI3 reference at
 //! apps/windows/LauncherApp/Commands/KillCommand.cs - EnumWindows tags every
 //! visible top-level window with its owning PID, Toolhelp32 walks the full
-//! process list, GetExtendedTcpTable does per-port lookups. Filtering
+//! process list, GetExtendedTcpTable maps PIDs to listening ports. Filtering
 //! (system-noise names, \WindowsApps\, \SystemApps\, \ImmersiveControlPanel\)
 //! is bypassed for any process that owns a visible window, so UWP apps like
 //! Windows Terminal still show up.
@@ -86,34 +86,6 @@ pub(crate) fn list() -> Vec<RunningApp> {
     apps
 }
 
-pub(crate) fn list_on_port(port: u16) -> Vec<RunningApp> {
-    let mut pids = collect_listening_pids(port);
-    let current_pid = unsafe { GetCurrentProcessId() };
-    pids.retain(|&pid| pid > 4 && pid != current_pid);
-    pids.sort();
-    pids.dedup();
-
-    let visible = enumerate_visible_windows();
-    let mut out = Vec::with_capacity(pids.len());
-    for pid in pids {
-        let exe_path = resolve_full_path(pid).unwrap_or_default();
-        let basename = Path::new(&exe_path)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
-        let title = visible.get(&pid).cloned().unwrap_or_default();
-        let display = resolve_display_name(&basename, &exe_path, &title);
-        out.push(RunningApp {
-            name: display,
-            pid,
-            desktop_id: (!exe_path.is_empty()).then(|| format!("app:{exe_path}")),
-            exec: (!exe_path.is_empty()).then(|| exe_path.clone()),
-        });
-    }
-    out
-}
-
 /// Switcher view: one entry per switchable top-level window. Unlike `list()`
 /// (the kill view), this surfaces UWP apps - Settings, Calculator, Photos, … -
 /// whose visible windows are owned by `ApplicationFrameHost.exe` while their
@@ -181,11 +153,13 @@ pub(crate) fn kill(pid: u32) -> Result<String, String> {
     Ok(format!("Killed PID {pid}"))
 }
 
-/// Raw process list for the `ps"` finder. Every process (minus the idle/system
-/// PIDs and ourselves), by Toolhelp basename. `detail`/`cpu` are Linux-only for
-/// now, so the preview degrades to name + PID here.
+/// Raw process list for the `ps"` and `kill` finders. Every process (minus the
+/// idle/system PIDs and ourselves), by Toolhelp basename, tagged with its
+/// listening TCP ports so a numeric query matches by port or PID. `detail`/`cpu`
+/// are Linux-only for now, so the preview degrades to name + PID here.
 pub(crate) fn list_all() -> Vec<ProcRow> {
     let current_pid = unsafe { GetCurrentProcessId() };
+    let mut ports_by_pid = listening_ports_by_pid();
     enumerate_processes()
         .into_iter()
         .filter(|(pid, _)| *pid != 0 && *pid != 4 && *pid != current_pid)
@@ -193,7 +167,7 @@ pub(crate) fn list_all() -> Vec<ProcRow> {
             name,
             pid,
             icon_source: None,
-            ports: Vec::new(),
+            ports: ports_by_pid.remove(&pid).unwrap_or_default(),
         })
         .collect()
 }
@@ -501,14 +475,21 @@ fn is_good_display_segment(value: &str) -> bool {
 
 // --- per-port listing ---
 
-fn collect_listening_pids(port: u16) -> Vec<u32> {
-    let mut pids = Vec::new();
-    collect_listening_pids_for(port, AF_INET, &mut pids);
-    collect_listening_pids_for(port, AF_INET6, &mut pids);
-    pids
+/// Map every PID to its listening TCP ports, built in one pass over the IPv4 and
+/// IPv6 tables. Ports are sorted and deduped so a process is tagged consistently
+/// regardless of the socket-table order.
+fn listening_ports_by_pid() -> HashMap<u32, Vec<u16>> {
+    let mut map: HashMap<u32, Vec<u16>> = HashMap::new();
+    collect_listening_into(AF_INET, &mut map);
+    collect_listening_into(AF_INET6, &mut map);
+    for ports in map.values_mut() {
+        ports.sort_unstable();
+        ports.dedup();
+    }
+    map
 }
 
-fn collect_listening_pids_for(port: u16, af: u32, pids: &mut Vec<u32>) {
+fn collect_listening_into(af: u32, map: &mut HashMap<u32, Vec<u16>>) {
     let mut size: u32 = 0;
     unsafe {
         GetExtendedTcpTable(None, &mut size, false, af, TCP_TABLE_OWNER_PID_LISTENER, 0);
@@ -534,8 +515,13 @@ fn collect_listening_pids_for(port: u16, af: u32, pids: &mut Vec<u32>) {
     // Layout: u32 dwNumEntries followed by MIB_TCP{,6}ROW_OWNER_PID[N].
     // The trailing row struct has u32 alignment, so the table starts at offset 4.
     let num_entries = u32::from_ne_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
-    let target = port as u32;
     let listen = MIB_TCP_STATE_LISTEN.0 as u32;
+
+    let mut push = |pid: u32, port: u32| {
+        if let Ok(p) = u16::try_from(port) {
+            map.entry(pid).or_default().push(p);
+        }
+    };
 
     if af == AF_INET {
         let row_size = std::mem::size_of::<MIB_TCPROW_OWNER_PID>();
@@ -546,8 +532,8 @@ fn collect_listening_pids_for(port: u16, af: u32, pids: &mut Vec<u32>) {
             }
             let row: &MIB_TCPROW_OWNER_PID =
                 unsafe { &*(buf.as_ptr().add(off) as *const MIB_TCPROW_OWNER_PID) };
-            if row.dwState == listen && parse_port(row.dwLocalPort) == target {
-                pids.push(row.dwOwningPid);
+            if row.dwState == listen {
+                push(row.dwOwningPid, parse_port(row.dwLocalPort));
             }
         }
     } else {
@@ -559,8 +545,8 @@ fn collect_listening_pids_for(port: u16, af: u32, pids: &mut Vec<u32>) {
             }
             let row: &MIB_TCP6ROW_OWNER_PID =
                 unsafe { &*(buf.as_ptr().add(off) as *const MIB_TCP6ROW_OWNER_PID) };
-            if row.dwState == listen && parse_port(row.dwLocalPort) == target {
-                pids.push(row.dwOwningPid);
+            if row.dwState == listen {
+                push(row.dwOwningPid, parse_port(row.dwLocalPort));
             }
         }
     }

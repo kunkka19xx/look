@@ -673,7 +673,6 @@ fn main() {
             sysinfo::get_system_info,
             sysinfo::system_uptime,
             process::list_processes,
-            process::list_processes_on_port,
             process::kill_process,
             process::search_processes,
             process::search_kill_targets,

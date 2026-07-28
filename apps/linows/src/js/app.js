@@ -32,7 +32,6 @@ import {
     runShellCommand,
     getSystemInfo,
     listProcesses,
-    listProcessesOnPort,
     searchKillTargets,
     killProcess,
     getIcon,
@@ -702,18 +701,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 commands.setProcessList(procs);
             } catch (err) {
                 commands.showFeedback(err || 'Failed to list processes', true);
-            }
-            return;
-        }
-
-        if (cmdId === 'kill-port') {
-            const port = parseInt(input);
-            if (!port) return;
-            try {
-                const procs = await listProcessesOnPort(port);
-                commands.setProcessList(procs, true);
-            } catch (err) {
-                commands.showFeedback(err || 'Failed to query port', true);
             }
             return;
         }

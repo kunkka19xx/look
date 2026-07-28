@@ -1,5 +1,3 @@
-const MAX_PORT = 65535;
-const PORT_DEBOUNCE_MS = 200;
 const SEARCH_DEBOUNCE_MS = 140;
 
 let panel = null;
@@ -19,7 +17,6 @@ let processList = [];
 let filteredProcesses = [];
 let selectedIndex = 0;
 let confirmPid = null;
-let portDebounce = null;
 let searchDebounce = null;
 
 export function init(executeFn, iconFn) {
@@ -106,9 +103,9 @@ export function handleKey(e) {
     return false;
 }
 
-export function setProcessList(procs, isPortResult = false) {
+export function setProcessList(procs, isSearchResult = false) {
     const savedValue = input ? input.value : '';
-    if (isPortResult) {
+    if (isSearchResult) {
         processList = procs || [];
         filteredProcesses = [...processList];
     } else {
@@ -134,22 +131,10 @@ function filterProcesses(query) {
         clearTimeout(searchDebounce);
         processList = [...baseProcessList];
         filteredProcesses = [...processList];
-    } else if (query.startsWith(':')) {
-        clearTimeout(searchDebounce);
-        filteredProcesses = [];
-        selectedIndex = 0;
-        const port = parseInt(query.slice(1));
-        if (port > 0 && port <= MAX_PORT) {
-            clearTimeout(portDebounce);
-            portDebounce = setTimeout(() => {
-                if (onExecute) onExecute('kill-port', String(port));
-            }, PORT_DEBOUNCE_MS);
-        }
-        return;
     } else {
         // Instant provisional list from the loaded apps; the debounced backend
         // search then replaces it with the full fuzzy result (apps first) plus
-        // matching non-app processes.
+        // matching non-app processes, including port and PID matches.
         const q = query.toLowerCase();
         filteredProcesses = baseProcessList.filter((p) => p.name.toLowerCase().includes(q));
         clearTimeout(searchDebounce);
@@ -166,17 +151,9 @@ function renderList() {
 
     if (filteredProcesses.length === 0) {
         const query = input ? input.value.trim() : '';
-        if (query.startsWith(':')) {
-            const port = query.slice(1);
-            feedback.textContent =
-                processList.length === 0 && port
-                    ? `No process on port ${port}`
-                    : 'Searching port...';
-        } else {
-            // A non-empty query with no matches is a real miss; empty query with
-            // nothing yet means the app list is still loading.
-            feedback.textContent = query ? 'No matching processes' : 'Loading...';
-        }
+        // A non-empty query with no matches is a real miss; empty query with
+        // nothing yet means the app list is still loading.
+        feedback.textContent = query ? 'No matching processes' : 'Loading...';
         return;
     }
 

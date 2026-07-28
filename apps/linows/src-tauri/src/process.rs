@@ -119,6 +119,34 @@ fn search_processes_blocking(query: &str, refresh: bool) -> Vec<ProcRow> {
     scored.into_iter().map(|(_, row)| row.clone()).collect()
 }
 
+/// Shared scoring for both process finders (`ps"` and `kill`). A numeric query
+/// matches a listening port (exact beats partial) or the PID; every query also
+/// fuzzy-matches the name. `None` when nothing matches. Pass an empty `ports`
+/// slice for sources that don't carry ports (e.g. desktop-app rows).
+fn score_process(
+    name: &str,
+    ports: &[u16],
+    pid: u32,
+    trimmed: &str,
+    prepared: &look_matching::PreparedQuery<'_>,
+    is_numeric: bool,
+    exact_port: Option<u16>,
+) -> Option<i64> {
+    if is_numeric {
+        if exact_port.is_some_and(|p| ports.contains(&p)) {
+            return Some(PORT_EXACT_SCORE);
+        }
+        if ports.iter().any(|p| p.to_string().contains(trimmed)) {
+            return Some(NUMERIC_PARTIAL_SCORE);
+        }
+        if pid.to_string().contains(trimmed) {
+            return Some(PID_PARTIAL_SCORE);
+        }
+    }
+    // Name fuzzy still runs for numeric queries: a name can contain digits.
+    look_matching::fuzzy_score_prepared(prepared, &name.to_lowercase())
+}
+
 fn score_row(
     row: &ProcRow,
     trimmed: &str,
@@ -126,19 +154,9 @@ fn score_row(
     is_numeric: bool,
     exact_port: Option<u16>,
 ) -> Option<i64> {
-    if is_numeric {
-        if exact_port.is_some_and(|p| row.ports.contains(&p)) {
-            return Some(PORT_EXACT_SCORE);
-        }
-        if row.ports.iter().any(|p| p.to_string().contains(trimmed)) {
-            return Some(NUMERIC_PARTIAL_SCORE);
-        }
-        if row.pid.to_string().contains(trimmed) {
-            return Some(PID_PARTIAL_SCORE);
-        }
-    }
-    // Name fuzzy still runs for numeric queries: a name can contain digits.
-    look_matching::fuzzy_score_prepared(prepared, &row.name.to_lowercase())
+    score_process(
+        &row.name, &row.ports, row.pid, trimmed, prepared, is_numeric, exact_port,
+    )
 }
 
 /// A row in the `kill` command: either a desktop app (nice name + icon) or a
@@ -181,7 +199,11 @@ fn rank_kill_targets(apps: Vec<RunningApp>, procs: Vec<ProcRow>, query: &str) ->
     // Capitalized ("Firefox") while queries are typed lowercase.
     let lowered = query.to_lowercase();
     let prepared = look_matching::prepare_query(&lowered);
+    let is_numeric = query.chars().all(|c| c.is_ascii_digit());
+    let exact_port = query.parse::<u16>().ok();
 
+    // Apps carry no ports, so they match by name only; a numeric port/PID query
+    // resolves through the process rows below (which own the port data).
     let mut app_pids = std::collections::HashSet::new();
     let mut app_hits: Vec<(i64, KillTarget)> = apps
         .into_iter()
@@ -199,8 +221,10 @@ fn rank_kill_targets(apps: Vec<RunningApp>, procs: Vec<ProcRow>, query: &str) ->
         .into_iter()
         .filter(|r| !app_pids.contains(&r.pid))
         .filter_map(|r| {
-            look_matching::fuzzy_score_prepared(&prepared, &r.name.to_lowercase())
-                .map(|s| (s, proc_target(r)))
+            score_process(
+                &r.name, &r.ports, r.pid, query, &prepared, is_numeric, exact_port,
+            )
+            .map(|s| (s, proc_target(r)))
         })
         .collect();
     proc_hits.sort_by(kill_hit_order);
@@ -286,25 +310,6 @@ pub fn list_processes() -> Vec<RunningApp> {
 
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
-        Vec::new()
-    }
-}
-
-#[tauri::command]
-pub fn list_processes_on_port(port: u16) -> Vec<RunningApp> {
-    #[cfg(target_os = "linux")]
-    {
-        crate::platform::linux::process::list_on_port(port)
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        crate::platform::windows::process::list_on_port(port)
-    }
-
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-    {
-        let _ = port;
         Vec::new()
     }
 }
@@ -505,5 +510,19 @@ mod tests {
     fn kill_targets_non_match_excluded() {
         let out = rank_kill_targets(vec![app("Firefox", 1)], vec![row("bash", 2, &[])], "zzq");
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn kill_targets_match_by_port_and_pid() {
+        let apps = vec![app("Firefox", 1)];
+        let procs = vec![row("node", 4321, &[3000]), row("bash", 900, &[])];
+        // A bare port number finds its owner via the process rows (no `:` prefix).
+        let by_port = rank_kill_targets(apps.clone(), procs.clone(), "3000");
+        assert_eq!(by_port.len(), 1);
+        assert_eq!(by_port[0].pid, 4321);
+        // A bare PID finds the process directly.
+        let by_pid = rank_kill_targets(apps, procs, "900");
+        assert_eq!(by_pid.len(), 1);
+        assert_eq!(by_pid[0].pid, 900);
     }
 }
