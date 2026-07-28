@@ -8,7 +8,9 @@ extension LauncherView {
 
         guard let selectedResultID,
               let selected = displayedResults.first(where: { $0.id == selectedResultID }),
-              selected.kind == .app
+              selected.kind == .app,
+              !selected.path.isEmpty,
+              selected.path.hasSuffix(".app")
         else {
             showBanner("Select an app first", style: .info, duration: 1.2)
             return
