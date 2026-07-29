@@ -13,6 +13,11 @@ export async function openPath(path, kind, id) {
     return invoke('open_path', { path, kind, id });
 }
 
+// Windows only. Rejects when UAC is declined, so await before recording usage.
+export async function openElevated(path) {
+    return invoke('open_elevated', { path });
+}
+
 export async function revealPath(path) {
     return invoke('reveal_path', { path });
 }
