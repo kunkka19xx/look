@@ -31,6 +31,38 @@ html.controls-open #hint-bar {
     max-height: 260px;
 }
 
+/* No transparency / square corners (bare X11/i3): the space below the bento is
+ * an opaque dead box the floating layout would leave see-through. Stack a
+ * todo-stats panel under the bento to fill it - the grid sizes to its natural
+ * height at the top, the stats panel takes the rest. */
+/* :not([hidden]) is load-bearing: the strip hides on the first keystroke via
+ * the `hidden` attribute (UA `[hidden]{display:none}`), and a bare
+ * `display:flex` here outranks it, pinning the bento open under the results.
+ * Only take over the layout while the strip is actually shown. */
+html[data-transparent="false"] .control-strip:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+}
+
+html[data-transparent="false"] .control-strip-grid {
+    height: auto;
+    flex: 0 0 auto;
+}
+
+/* Heatmap + insights, spread to fill the leftover height (the charts can't
+ * grow - square heatmap cells, fixed insight row - so the section gaps widen
+ * evenly instead, mirroring the /todo Stats page). */
+.control-strip-stats {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: var(--content-padding);
+    overflow: hidden;
+}
+
 /* Entrance: each tile eases up + fades in, staggered by its grid index (--i)
  * so the launchpad cascades in when summoned. `backwards` fill holds the tile
  * hidden through its delay, then hands transform back to the base rule so

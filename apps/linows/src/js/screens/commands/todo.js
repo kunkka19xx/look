@@ -823,6 +823,28 @@ function insightsHtml(trend) {
         .join('<div class="cmd-todo-insight-sep"></div>');
 }
 
+// Compact stats widget (year heatmap + 30-day insights) for embedding in the
+// super-actions strip on the no-transparency classic panel, where it fills the
+// space the floating layout leaves see-through. Pure: derives its own day
+// counts from the raw todo rows (todoList output), so it never touches the
+// /todo page's in-memory store or its dirty/loaded lifecycle. `width` is the
+// pixel width available to the heatmap card's content.
+export function statsWidgetHtml(rows, width) {
+    const counts = new Map();
+    for (const r of rows || []) {
+        const c = counts.get(r.due_date) || { done: 0, total: 0 };
+        c.total += 1;
+        if (r.done) c.done += 1;
+        counts.set(r.due_date, c);
+    }
+    const trend = trendData(counts);
+    return `
+    <div class="cmd-todo-section-title">${calendar} ACTIVITY · LAST YEAR${heatLegendHtml()}</div>
+    <div class="cmd-todo-card">${heatmapHtml(counts, width)}</div>
+    <div class="cmd-todo-section-title">${zap} INSIGHTS · LAST ${TREND_DAYS} DAYS (TASKS)</div>
+    <div class="cmd-todo-card cmd-todo-insights">${insightsHtml(trend)}</div>`;
+}
+
 // Leftover panel height is split between the trend chart (which grows a
 // little) and the section gaps (which widen evenly), so the page fills the
 // panel without any one chart ballooning. The heatmap can't grow: its
