@@ -338,8 +338,8 @@ function renderProcessPreview(result) {
     const setVal = (row, text) => {
         row.querySelector('.preview-info-value').textContent = text;
     };
-    // Platforms without detail support (Windows for now) and IPC failures
-    // (process exited between listing and preview) both degrade to name only.
+    // Platforms without detail support and IPC failures (process exited between
+    // listing and preview) both degrade to name only.
     const degrade = () => {
         if (currentPath !== cacheKey) return;
         cmdText.textContent = result.procName;
