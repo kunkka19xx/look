@@ -63,11 +63,16 @@ import {
     snapshot as pomoSnapshot,
     formatTime as formatPomoTime,
 } from '../screens/commands/pomo.js';
+import { statsWidgetHtml } from '../screens/commands/todo.js';
+import * as platform from '../platform.js';
 import * as banner from './banner.js';
 
 let container = null;
 let built = false;
 let visible = false;
+// Todo-stats panel filling the dead space below the bento on the opaque
+// (no-transparency) panel. Null elsewhere. Populated by refreshTodo.
+let statsEl = null;
 // User setting (Settings -> Appearance -> Super Actions). When off the strip
 // never shows and its accelerators never fire; setVisible collapses to hidden.
 let enabled = true;
@@ -694,6 +699,15 @@ async function refreshTodo() {
     openTasks = mine.filter((t) => !t.done).map((t) => t.name);
     taskCursor = 0;
     renderSlot();
+    renderStatsWidget(tasks);
+}
+
+// Reuses the priority slot's todoList() rows. width = card content (minus 30px
+// chrome: 2x14 padding + 2x1 border) so the heatmap cells scale to fit.
+function renderStatsWidget(tasks) {
+    if (!statsEl) return;
+    const width = Math.max(280, statsEl.clientWidth - 30);
+    statsEl.innerHTML = statsWidgetHtml(tasks || [], width);
 }
 
 // Rotate through the open tasks so a long day's list all gets a turn, matching
@@ -859,6 +873,15 @@ function render(tiles) {
 
     container.innerHTML = '';
     container.appendChild(grid);
+
+    // Opaque panel only: fill the dead space below the bento with todo stats.
+    // Transparent/floating panels leave it see-through, so nothing to fill.
+    statsEl = null;
+    if (!platform.hasCompositor()) {
+        statsEl = document.createElement('div');
+        statsEl.className = 'control-strip-stats';
+        container.appendChild(statsEl);
+    }
 }
 
 function buildTile(tile) {

@@ -823,6 +823,25 @@ function insightsHtml(trend) {
         .join('<div class="cmd-todo-insight-sep"></div>');
 }
 
+// Year heatmap + 30-day insights for the super-actions strip. Pure: builds its
+// own counts from raw todoList() rows, so it ignores the /todo page's store.
+// width is the heatmap card's content width in px.
+export function statsWidgetHtml(rows, width) {
+    const counts = new Map();
+    for (const r of rows || []) {
+        const c = counts.get(r.due_date) || { done: 0, total: 0 };
+        c.total += 1;
+        if (r.done) c.done += 1;
+        counts.set(r.due_date, c);
+    }
+    const trend = trendData(counts);
+    return `
+    <div class="cmd-todo-section-title">${calendar} ACTIVITY · LAST YEAR${heatLegendHtml()}</div>
+    <div class="cmd-todo-card">${heatmapHtml(counts, width)}</div>
+    <div class="cmd-todo-section-title">${zap} INSIGHTS · LAST ${TREND_DAYS} DAYS (TASKS)</div>
+    <div class="cmd-todo-card cmd-todo-insights">${insightsHtml(trend)}</div>`;
+}
+
 // Leftover panel height is split between the trend chart (which grows a
 // little) and the section gaps (which widen evenly), so the page fills the
 // panel without any one chart ballooning. The heatmap can't grow: its
