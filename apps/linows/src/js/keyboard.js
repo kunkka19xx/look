@@ -33,6 +33,7 @@ import {
     commandIdFromResultId,
     webSuggestionFromResultId,
     webUrlFromResultId,
+    isSyntheticResultId,
 } from './catalog.js';
 import * as platform from './platform.js';
 import * as layout from './layout.js';
@@ -476,7 +477,7 @@ async function handleTrashShortcut() {
         }
         try {
             await requestIndexRefresh();
-        } catch (_) { }
+        } catch (_) {}
     } catch (err) {
         banner.show(`Trash failed: ${err}`, 'error', 2.0);
     }
@@ -507,7 +508,7 @@ async function handleEmptyTrash() {
         banner.show(`Emptied ${label} (${purged})`, 'success', 1.4);
         try {
             await requestIndexRefresh();
-        } catch (_) { }
+        } catch (_) {}
     } catch (err) {
         banner.show(`Empty ${label} failed: ${err}`, 'error', 2.0);
     }
@@ -515,7 +516,8 @@ async function handleEmptyTrash() {
 
 async function handleHideSelectApp() {
     const item = results.getSelected();
-    if (!item || item.kind !== 'app') {
+    // Only real launcher apps carry a path; synthetic rows must not be excluded.
+    if (!item || item.kind !== 'app' || !item.path || isSyntheticResultId(item.id)) {
         banner.show('Select an app first', 'warning', 1.2);
         return;
     }
