@@ -19,7 +19,6 @@ import {
     getConfig,
     setConfig,
     reloadConfig,
-    forceIndexRefresh,
 } from './ipc.js';
 import * as preview from './components/preview.js';
 import * as banner from './components/banner.js';
@@ -155,7 +154,7 @@ function handleKeyDown(e) {
         }
     }
 
-    // Ctrl+Shift+H Select App to Hiding app with name
+    // Ctrl+Shift+H: hide the selected app from Look
     if (e.ctrlKey && (e.shiftKey || shiftHeld) && (e.key === 'H' || e.key === 'h')) {
         e.preventDefault();
         if (settingsModule?.isActive()) return;
@@ -501,7 +500,6 @@ async function handleHideSelectApp() {
 
         await setConfig([{ key: 'app_exclude_names', value: names.join(',') }]);
         await reloadConfig();
-        await forceIndexRefresh();
 
         banner.show(`Hidden ${item.title}`, 'success', 1.2);
     } catch (err) {
