@@ -3,6 +3,7 @@ import * as search from './search.js';
 import * as translatePanel from './components/translate.js';
 import {
     openPath,
+    openElevated,
     recordUsage,
     recordUrlHit,
     revealPath,
@@ -22,7 +23,7 @@ import * as confirm from './components/confirm.js';
 import * as qactions from './components/qactions.js';
 import * as superactions from './components/superactions.js';
 import * as runningApps from './components/running-apps.js';
-import { isWindows } from './platform.js';
+import { canRunElevated } from './platform.js';
 import { trash as trashIcon } from './icons.js';
 import {
     prefixFromResultId,
@@ -273,8 +274,7 @@ function handleKeyDown(e) {
             } else if (
                 e.ctrlKey &&
                 (e.shiftKey || shiftHeld) &&
-                isWindows() &&
-                results.getSelected()?.kind === 'app'
+                canRunElevated(results.getSelected())
             ) {
                 // Ctrl+Shift+Enter: launch the selected app elevated (UAC).
                 openSelected(true);
@@ -517,7 +517,11 @@ async function openSelected(elevated = false) {
     }
 
     try {
-        await openPath(item.path, item.kind, item.id, elevated && item.kind === 'app');
+        if (elevated) {
+            await openElevated(item.path);
+        } else {
+            await openPath(item.path, item.kind, item.id);
+        }
         const actionMap = { app: 'open_app', file: 'open_file', folder: 'open_folder' };
         const action = actionMap[item.kind] || 'open_file';
         await recordUsage(item.id, action);

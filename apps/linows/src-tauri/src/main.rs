@@ -638,6 +638,7 @@ fn main() {
             commands::search,
             commands::record_usage,
             commands::open_path,
+            commands::open_elevated,
             commands::reveal_path,
             commands::reload_config,
             commands::request_index_refresh,

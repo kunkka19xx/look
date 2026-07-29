@@ -9,8 +9,13 @@ export async function recordUsage(candidateId, action) {
     return invoke('record_usage', { candidateId, action });
 }
 
-export async function openPath(path, kind, id, elevated = false) {
-    return invoke('open_path', { path, kind, id, elevated });
+export async function openPath(path, kind, id) {
+    return invoke('open_path', { path, kind, id });
+}
+
+// Windows only. Rejects when UAC is declined, so await before recording usage.
+export async function openElevated(path) {
+    return invoke('open_elevated', { path });
 }
 
 export async function revealPath(path) {

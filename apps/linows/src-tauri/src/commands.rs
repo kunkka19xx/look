@@ -103,7 +103,6 @@ pub fn open_path(
     path: String,
     kind: Option<String>,
     #[cfg_attr(not(target_os = "linux"), allow(unused_variables))] id: Option<String>,
-    #[cfg_attr(not(target_os = "windows"), allow(unused_variables))] elevated: Option<bool>,
 ) -> Result<(), String> {
     // Windows classic applets: look-cmd://program[?args].
     // - `program` alone (e.g. "devmgmt.msc", "appwiz.cpl", "regedit.exe") →
@@ -228,21 +227,6 @@ pub fn open_path(
         });
         Ok(())
     } else {
-        // Windows: elevated launch via the shell `runas` verb. Only meaningful
-        // for a real executable (.exe / .lnk); the frontend gates the gesture to
-        // app rows. UAC prompt is modal, so run off-thread after hide().
-        #[cfg(target_os = "windows")]
-        if elevated == Some(true) {
-            let _ = window.hide();
-            let path = path.clone();
-            std::thread::spawn(move || {
-                if let Err(e) = crate::platform::windows::launch::run_as_admin(&path) {
-                    eprintln!("[open_path] runas {path:?} failed: {e}");
-                }
-            });
-            return Ok(());
-        }
-
         // Windows: before launching a fresh instance, try to raise an existing
         // window for the same .exe / .lnk / UWP AUMID. Must run while Look
         // still holds foreground - SetForegroundWindow fails after hide().
@@ -289,6 +273,38 @@ pub fn open_path(
             }
         });
         Ok(())
+    }
+}
+
+/// Windows: `runas` launch. Async because the UAC prompt is modal and a sync
+/// command would block the main thread; resolves only once the launch is
+/// confirmed, so usage is never recorded for a declined prompt.
+#[tauri::command]
+pub async fn open_elevated(
+    window: tauri::WebviewWindow,
+    #[cfg_attr(not(target_os = "windows"), allow(unused_variables))] path: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = window.hide();
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            let (program, args) = crate::platform::windows::launch::split_target(&path);
+            crate::platform::windows::launch::run_as_admin(program, args)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        if let Err(e) = &result {
+            // Declined or refused: don't leave Look hidden.
+            eprintln!("[open_elevated] {e}");
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        result
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = window;
+        Err("elevated launch is Windows only".into())
     }
 }
 
