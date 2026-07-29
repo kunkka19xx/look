@@ -292,9 +292,9 @@ pub async fn open_elevated(
             crate::platform::windows::launch::run_as_admin(program, args)
         })
         .await
-        .map_err(|e| e.to_string())?;
+        .unwrap_or_else(|e| Err(e.to_string()));
         if let Err(e) = &result {
-            // Declined or refused: don't leave Look hidden.
+            // Declined, refused, or the task died: don't leave Look hidden.
             eprintln!("[open_elevated] {e}");
             let _ = window.show();
             let _ = window.set_focus();
