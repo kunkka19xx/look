@@ -31,14 +31,10 @@ html.controls-open #hint-bar {
     max-height: 260px;
 }
 
-/* No transparency / square corners (bare X11/i3): the space below the bento is
- * an opaque dead box the floating layout would leave see-through. Stack a
- * todo-stats panel under the bento to fill it - the grid sizes to its natural
- * height at the top, the stats panel takes the rest. */
-/* :not([hidden]) is load-bearing: the strip hides on the first keystroke via
- * the `hidden` attribute (UA `[hidden]{display:none}`), and a bare
- * `display:flex` here outranks it, pinning the bento open under the results.
- * Only take over the layout while the strip is actually shown. */
+/* Opaque panel: stack a todo-stats panel under the bento to fill the dead space.
+ * :not([hidden]) is load-bearing: the strip hides on the first keystroke via the
+ * `hidden` attribute, and a bare display:flex here outranks it and pins the bento
+ * open under the results. */
 html[data-transparent="false"] .control-strip:not([hidden]) {
     display: flex;
     flex-direction: column;
@@ -49,9 +45,8 @@ html[data-transparent="false"] .control-strip-grid {
     flex: 0 0 auto;
 }
 
-/* Heatmap + insights, spread to fill the leftover height (the charts can't
- * grow - square heatmap cells, fixed insight row - so the section gaps widen
- * evenly instead, mirroring the /todo Stats page). */
+/* Charts can't grow (square heatmap cells, fixed insight row), so spread them
+ * to fill the leftover height. */
 .control-strip-stats {
     flex: 1 1 auto;
     min-height: 0;

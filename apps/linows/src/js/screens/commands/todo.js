@@ -823,12 +823,9 @@ function insightsHtml(trend) {
         .join('<div class="cmd-todo-insight-sep"></div>');
 }
 
-// Compact stats widget (year heatmap + 30-day insights) for embedding in the
-// super-actions strip on the no-transparency classic panel, where it fills the
-// space the floating layout leaves see-through. Pure: derives its own day
-// counts from the raw todo rows (todoList output), so it never touches the
-// /todo page's in-memory store or its dirty/loaded lifecycle. `width` is the
-// pixel width available to the heatmap card's content.
+// Year heatmap + 30-day insights for the super-actions strip. Pure: builds its
+// own counts from raw todoList() rows, so it ignores the /todo page's store.
+// width is the heatmap card's content width in px.
 export function statsWidgetHtml(rows, width) {
     const counts = new Map();
     for (const r of rows || []) {

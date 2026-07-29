@@ -70,10 +70,8 @@ import * as banner from './banner.js';
 let container = null;
 let built = false;
 let visible = false;
-// Todo-stats panel (year heatmap + insights) appended below the bento on the
-// no-transparency classic panel, to fill the space the floating layout leaves
-// see-through. Null on transparent/floating platforms - the surplus there is
-// the desktop showing through, so nothing to fill. Populated by refreshTodo.
+// Todo-stats panel filling the dead space below the bento on the opaque
+// (no-transparency) panel. Null elsewhere. Populated by refreshTodo.
 let statsEl = null;
 // User setting (Settings -> Appearance -> Super Actions). When off the strip
 // never shows and its accelerators never fire; setVisible collapses to hidden.
@@ -704,9 +702,8 @@ async function refreshTodo() {
     renderStatsWidget(tasks);
 }
 
-// Fill the no-transparency stats panel from the same todoList() rows the
-// priority slot just read. Heatmap cells scale to the card's content width, so
-// measure it live (minus the card chrome: 2x14 padding + 2x1 border = 30px).
+// Reuses the priority slot's todoList() rows. width = card content (minus 30px
+// chrome: 2x14 padding + 2x1 border) so the heatmap cells scale to fit.
 function renderStatsWidget(tasks) {
     if (!statsEl) return;
     const width = Math.max(280, statsEl.clientWidth - 30);
@@ -877,11 +874,8 @@ function render(tiles) {
     container.innerHTML = '';
     container.appendChild(grid);
 
-    // On the opaque classic panel (no transparency / square corners) the space
-    // below the bento is a dead box. Fill it with a todo-stats panel; refreshTodo
-    // populates it from the same todoList() read the priority slot uses. Gated on
-    // real transparency so floating/rounded platforms (whose surplus is see-through)
-    // are untouched.
+    // Opaque panel only: fill the dead space below the bento with todo stats.
+    // Transparent/floating panels leave it see-through, so nothing to fill.
     statsEl = null;
     if (!platform.hasCompositor()) {
         statsEl = document.createElement('div');
