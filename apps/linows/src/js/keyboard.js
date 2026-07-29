@@ -410,6 +410,44 @@ function trashTargetsFromSelection() {
     return candidates.filter((item) => item.kind === 'file' || item.kind === 'folder');
 }
 
+// Mirror the backend CSV contract for config lists: `\,` is a literal comma and
+// `\\` is a literal backslash. A naive split(',') would corrupt existing
+// escaped entries in `app_exclude_names`.
+function parseConfigList(value) {
+    const entries = [];
+    let current = '';
+
+    for (let i = 0; i < value.length; i += 1) {
+        const ch = value[i];
+        const next = value[i + 1];
+
+        if (ch === '\\' && (next === ',' || next === '\\')) {
+            current += next;
+            i += 1;
+            continue;
+        }
+
+        if (ch === ',') {
+            const entry = current.trim();
+            if (entry) entries.push(entry);
+            current = '';
+            continue;
+        }
+
+        current += ch;
+    }
+
+    const entry = current.trim();
+    if (entry) entries.push(entry);
+    return entries;
+}
+
+// Inverse of `parseConfigList`: escape commas/backslashes before joining so an
+// app name containing `,` or `\` round-trips through the config file intact.
+function renderConfigList(entries) {
+    return entries.map((entry) => entry.replaceAll('\\', '\\\\').replaceAll(',', '\\,')).join(',');
+}
+
 async function handleTrashShortcut() {
     const selected = results.getSelected();
     if (selected && typeof selected.id === 'string' && TRASH_PIN_IDS.includes(selected.id)) {
@@ -438,7 +476,7 @@ async function handleTrashShortcut() {
         }
         try {
             await requestIndexRefresh();
-        } catch (_) {}
+        } catch (_) { }
     } catch (err) {
         banner.show(`Trash failed: ${err}`, 'error', 2.0);
     }
@@ -469,7 +507,7 @@ async function handleEmptyTrash() {
         banner.show(`Emptied ${label} (${purged})`, 'success', 1.4);
         try {
             await requestIndexRefresh();
-        } catch (_) {}
+        } catch (_) { }
     } catch (err) {
         banner.show(`Empty ${label} failed: ${err}`, 'error', 2.0);
     }
@@ -490,15 +528,20 @@ async function handleHideSelectApp() {
 
     try {
         const cfg = await getConfig();
-        const entry = cfg.entries.find(e => e.key === 'app_exclude_names');
+        const entry = cfg.entries.find((e) => e.key === 'app_exclude_names');
         const current = entry?.value ?? '';
-        const names = current
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean);
-        names.push(item.title.trim());
+        const names = parseConfigList(current);
+        const trimmedTitle = item.title.trim();
+        const normalizedTitle = trimmedTitle.toLowerCase();
 
-        await setConfig([{ key: 'app_exclude_names', value: names.join(',') }]);
+        if (names.some((name) => name.trim().toLowerCase() === normalizedTitle)) {
+            banner.show(`${item.title} is already hidden`, 'info', 1.2);
+            return;
+        }
+
+        names.push(trimmedTitle);
+
+        await setConfig([{ key: 'app_exclude_names', value: renderConfigList(names) }]);
         await reloadConfig();
 
         banner.show(`Hidden ${item.title}`, 'success', 1.2);
