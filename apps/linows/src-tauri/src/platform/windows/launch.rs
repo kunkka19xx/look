@@ -51,7 +51,10 @@ mod tests {
 
     #[test]
     fn splits_look_cmd_targets() {
-        assert_eq!(split_target("look-cmd://regedit.exe"), ("regedit.exe", None));
+        assert_eq!(
+            split_target("look-cmd://regedit.exe"),
+            ("regedit.exe", None)
+        );
         assert_eq!(
             split_target("look-cmd://rundll32.exe?sysdm.cpl,EditEnvironmentVariables"),
             ("rundll32.exe", Some("sysdm.cpl,EditEnvironmentVariables"))
