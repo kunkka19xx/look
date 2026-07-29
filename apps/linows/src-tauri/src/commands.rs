@@ -103,6 +103,7 @@ pub fn open_path(
     path: String,
     kind: Option<String>,
     #[cfg_attr(not(target_os = "linux"), allow(unused_variables))] id: Option<String>,
+    #[cfg_attr(not(target_os = "windows"), allow(unused_variables))] elevated: Option<bool>,
 ) -> Result<(), String> {
     // Windows classic applets: look-cmd://program[?args].
     // - `program` alone (e.g. "devmgmt.msc", "appwiz.cpl", "regedit.exe") →
@@ -227,6 +228,21 @@ pub fn open_path(
         });
         Ok(())
     } else {
+        // Windows: elevated launch via the shell `runas` verb. Only meaningful
+        // for a real executable (.exe / .lnk); the frontend gates the gesture to
+        // app rows. UAC prompt is modal, so run off-thread after hide().
+        #[cfg(target_os = "windows")]
+        if elevated == Some(true) {
+            let _ = window.hide();
+            let path = path.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = crate::platform::windows::launch::run_as_admin(&path) {
+                    eprintln!("[open_path] runas {path:?} failed: {e}");
+                }
+            });
+            return Ok(());
+        }
+
         // Windows: before launching a fresh instance, try to raise an existing
         // window for the same .exe / .lnk / UWP AUMID. Must run while Look
         // still holds foreground - SetForegroundWindow fails after hide().

@@ -9,8 +9,8 @@ export async function recordUsage(candidateId, action) {
     return invoke('record_usage', { candidateId, action });
 }
 
-export async function openPath(path, kind, id) {
-    return invoke('open_path', { path, kind, id });
+export async function openPath(path, kind, id, elevated = false) {
+    return invoke('open_path', { path, kind, id, elevated });
 }
 
 export async function revealPath(path) {

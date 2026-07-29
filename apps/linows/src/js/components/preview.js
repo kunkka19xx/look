@@ -25,6 +25,7 @@ import {
     WEB_URL_OPEN_SUBTITLE,
 } from '../catalog.js';
 import * as qactions from './qactions.js';
+import { isWindows } from '../platform.js';
 
 let panel = null;
 let currentPath = null;
@@ -404,6 +405,9 @@ function renderAppMeta(metaWrap, result, headerSub) {
 
     metaWrap.appendChild(infoRow('Kind', 'App'));
     metaWrap.appendChild(infoRow('Path', result.path));
+    if (isWindows()) {
+        metaWrap.appendChild(infoRow('Run as admin', 'Ctrl+Shift+Enter'));
+    }
 }
 
 function renderFileMeta(metaWrap, previewSlot, result, headerSub) {
