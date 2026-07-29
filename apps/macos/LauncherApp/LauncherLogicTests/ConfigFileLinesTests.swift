@@ -197,4 +197,42 @@ final class ConfigFileLinesTests: XCTestCase {
         XCTAssertEqual(values["app_scan_depth"], "3")
         XCTAssertNil(values["# a comment"])
     }
+
+    func testParseListSkipsEmptyEntriesAndTrims() {
+        XCTAssertEqual(
+            ConfigFileLines.parseList("Safari, Mail, ,Notes"),
+            ["Safari", "Mail", "Notes"]
+        )
+    }
+
+    func testParseListKeepsAnEscapedSeparatorInsideOneEntry() {
+        XCTAssertEqual(
+            ConfigFileLines.parseList("Foo\\, Inc,Bar"),
+            ["Foo, Inc", "Bar"]
+        )
+    }
+
+    func testParseListTreatsALoneBackslashAsData() {
+        XCTAssertEqual(ConfigFileLines.parseList("Foo\\Bar"), ["Foo\\Bar"])
+        XCTAssertEqual(ConfigFileLines.parseList("Foo\\"), ["Foo\\"])
+    }
+
+    func testParseListUnescapesADoubledBackslash() {
+        XCTAssertEqual(ConfigFileLines.parseList("D:\\\\,E:\\\\"), ["D:\\", "E:\\"])
+    }
+
+    func testRenderListRoundTripsEntriesNeedingEscapes() {
+        let entries = ["Foo, Inc", "D:\\", "Plain", "Back\\Slash"]
+
+        XCTAssertEqual(ConfigFileLines.parseList(ConfigFileLines.renderList(entries)), entries)
+    }
+
+    func testRenderListEscapesSeparatorsSoAnEntryStaysWhole() {
+        XCTAssertEqual(ConfigFileLines.renderList(["Foo, Inc", "Bar"]), "Foo\\, Inc,Bar")
+    }
+
+    func testRenderListOfNoEntriesIsEmpty() {
+        XCTAssertEqual(ConfigFileLines.renderList([]), "")
+        XCTAssertEqual(ConfigFileLines.parseList(""), [])
+    }
 }

@@ -87,6 +87,7 @@ struct LauncherView: View {
     // (Moving files/folders to Trash is recoverable, so it skips confirmation;
     // only the permanent Empty Trash prompts.)
     @State var pendingEmptyTrashCount: Int?
+    @State var pendingHideAppResult: LauncherResult?
     // True while a trash/empty operation is running, to block re-triggering it.
     @State var isDeleteInFlight = false
     @State var killListRefreshTick: Int = 0
@@ -462,6 +463,10 @@ struct LauncherView: View {
             ]
         }
 
+        if isHideAppConfirmationVisible {
+            return ["Y confirm", "N cancel", "Esc back"]
+        }
+
         if isCommandMode {
             if activeCommandID == AppConstants.Launcher.Command.kill {
                 return ["Y confirm", "N cancel", "Tab/Cmd+1-4 switch", "Esc back"]
@@ -580,6 +585,10 @@ struct LauncherView: View {
         !isCommandMode && pendingEmptyTrashCount != nil
     }
 
+    var isHideAppConfirmationVisible: Bool {
+        !isCommandMode && pendingHideAppResult != nil
+    }
+
     var liveCommandPreview: String? {
         guard isCommandMode else { return nil }
 
@@ -665,6 +674,9 @@ struct LauncherView: View {
             // mirroring how the kill command clears its pending candidate.
             if pendingEmptyTrashCount != nil {
                 pendingEmptyTrashCount = nil
+            }
+            if pendingHideAppResult != nil {
+                pendingHideAppResult = nil
             }
             if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
                 aiAnswer.cancel()
@@ -863,7 +875,8 @@ struct LauncherView: View {
             testHint: { testHintOverlay },
             copyright: { copyrightOverlay },
             killBar: { killConfirmationOverlay },
-            deleteBar: { deleteConfirmationOverlay }
+            deleteBar: { deleteConfirmationOverlay },
+            hideAppBar: { hideAppConfirmationOverlay }
         ))
         .layoutPriority(1)
     }
@@ -966,7 +979,12 @@ struct LauncherView: View {
             // The hint bar lives inside the left card only on the floating results
             // grid; every other state (classic, translation, empty panels) keeps
             // the full-width bar below.
-            if !showsFloatingGrid && !hidesResultsForEmptyQuery && !isKillConfirmationVisible && !isDeleteConfirmationVisible {
+            if !showsFloatingGrid
+                && !hidesResultsForEmptyQuery
+                && !isKillConfirmationVisible
+                && !isDeleteConfirmationVisible
+                && !isHideAppConfirmationVisible
+            {
                 HintBar(hint: currentHint, todo: todoQuickView, themeStore: themeStore)
             }
         }
@@ -1427,7 +1445,7 @@ struct LauncherView: View {
         // On the floating results grid the copyright moves into the right-hand
         // card footer; on the empty-rest screen it's hidden entirely; otherwise it
         // stays in the panel's bottom-right corner.
-        if !showsFloatingGrid && !hidesResultsForEmptyQuery {
+        if !showsFloatingGrid && !hidesResultsForEmptyQuery && !isHideAppConfirmationVisible {
             copyrightLink
                 .padding(.trailing, 10)
                 .padding(.bottom, 8)
@@ -1470,14 +1488,31 @@ struct LauncherView: View {
         }
     }
 
+    @ViewBuilder
+    private var hideAppConfirmationOverlay: some View {
+        if !isCommandMode, let pendingHideAppResult {
+            ConfirmActionBar(
+                icon: NSWorkspace.shared.icon(forFile: pendingHideAppResult.path),
+                title: "Hide \(pendingHideAppResult.title)?",
+                detail: "Add it to app_exclude_names in .look.config.",
+                themeStore: themeStore,
+                onConfirm: { confirmHideSelectedApp() },
+                onCancel: { cancelHideSelectedApp() }
+            )
+            .padding(.horizontal, 14)
+            .padding(.bottom, 24)
+        }
+    }
+
 
 }
 
-private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar: View, DeleteBar: View>: ViewModifier {
+private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar: View, DeleteBar: View, HideAppBar: View>: ViewModifier {
     @ViewBuilder let testHint: () -> TestHint
     @ViewBuilder let copyright: () -> Copyright
     @ViewBuilder let killBar: () -> KillBar
     @ViewBuilder let deleteBar: () -> DeleteBar
+    @ViewBuilder let hideAppBar: () -> HideAppBar
 
     func body(content: Content) -> some View {
         content
@@ -1485,5 +1520,6 @@ private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar
             .overlay(alignment: .bottomTrailing, content: copyright)
             .overlay(alignment: .bottom, content: killBar)
             .overlay(alignment: .bottom, content: deleteBar)
+            .overlay(alignment: .bottom, content: hideAppBar)
     }
 }

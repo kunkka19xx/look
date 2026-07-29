@@ -183,7 +183,15 @@ extension LauncherView {
         }
     }
 
-    func reloadConfig() {
+    /// Callers reloading as a side effect of some other action pass their own
+    /// `success*` values rather than posting a second banner, which would replace
+    /// any config warnings reported here before the user could read them.
+    @discardableResult
+    func reloadConfig(
+        successMessage: String = "Config reloaded",
+        successStyle: BannerStyle = .info,
+        successDuration: Double = 2.0
+    ) -> Bool {
         let result = themeStore.reloadFromConfig()
         let backendReloaded = bridge.reloadConfig()
         clipboardStore.reloadFromConfig()
@@ -193,9 +201,9 @@ extension LauncherView {
             appUIState.settingsBlurMultiplier = blurMultiplier
         }
 
-        var message = "Config reloaded"
-        var style: BannerStyle = .info
-        var duration: Double = 2.0
+        var message = successMessage
+        var style: BannerStyle = successStyle
+        var duration: Double = successDuration
         var copyText: String? = nil
 
         if !backendReloaded {
@@ -215,6 +223,7 @@ extension LauncherView {
         }
         refreshSearchResults()
         focusActiveInput()
+        return backendReloaded
     }
 
     func showBanner(

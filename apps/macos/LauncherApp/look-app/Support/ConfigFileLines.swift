@@ -17,6 +17,8 @@ import Foundation
 enum ConfigFileLines {
     private static let commentPrefix = "#"
     private static let keyValueSeparator: Character = "="
+    private static let listSeparator: Character = ","
+    private static let listEscape: Character = "\\"
 
     /// Splits into logical lines. The file's terminating newline is a terminator, not
     /// a line, so the empty element it produces is dropped: leaving it in means
@@ -102,6 +104,66 @@ enum ConfigFileLines {
     static func remove(_ lines: inout [String], key: String) {
         let assignment = "\(key)\(keyValueSeparator)"
         lines.removeAll { trim(stripComment($0)).hasPrefix(assignment) }
+    }
+
+    /// Splits a list value (`app_exclude_names`, `file_exclude_paths`, ...) into
+    /// its entries. A backslash escapes only a separator or another backslash;
+    /// anywhere else it is data. Must stay in step with `parse_csv` in
+    /// `core/engine/src/config.rs`, which reads back whatever we write.
+    static func parseList(_ value: String) -> [String] {
+        var entries: [String] = []
+        var current = ""
+        var index = value.startIndex
+
+        func flush() {
+            let entry = trim(current)
+            if !entry.isEmpty {
+                entries.append(entry)
+            }
+            current = ""
+        }
+
+        while index < value.endIndex {
+            let character = value[index]
+            let next = value.index(after: index)
+
+            if character == listEscape,
+               next < value.endIndex,
+               value[next] == listSeparator || value[next] == listEscape
+            {
+                current.append(value[next])
+                index = value.index(after: next)
+                continue
+            }
+
+            if character == listSeparator {
+                flush()
+            } else {
+                current.append(character)
+            }
+            index = next
+        }
+
+        flush()
+        return entries
+    }
+
+    /// The inverse of `parseList`. Joining on a bare separator would split any
+    /// entry that contains one into two.
+    static func renderList(_ entries: [String]) -> String {
+        entries
+            .map { entry in
+                entry
+                    .replacingOccurrences(
+                        of: String(listEscape),
+                        with: String(repeating: listEscape, count: 2)
+                    )
+                    .replacingOccurrences(
+                        of: String(listSeparator),
+                        with: "\(listEscape)\(listSeparator)"
+                    )
+            }
+            .joined(separator: String(listSeparator))
     }
 
     static func keyValues(_ raw: String) -> [String: String] {

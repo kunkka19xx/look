@@ -509,6 +509,7 @@ private enum LauncherHelpContent {
         ("Cmd+/", "Enter command mode"),
         ("Cmd+Shift+,", "Open/close settings panel"),
         ("Cmd+Shift+;", "Reload .look.config"),
+        ("Cmd+Shift+H", "Hide the selected app from Look"),
         ("Cmd+H", "Toggle this help screen"),
         ("Esc", "Close help / back / hide launcher"),
     ]
