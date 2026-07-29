@@ -211,12 +211,12 @@ final class ThemeStore: ObservableObject {
         ConfigFileLines.upsert(
             &lines,
             key: "file_exclude_paths",
-            value: excludedFolderPaths.map(escapeCSVToken).joined(separator: ",")
+            value: ConfigFileLines.renderList(excludedFolderPaths)
         )
         ConfigFileLines.upsert(
             &lines,
             key: "file_scan_extra_roots",
-            value: extraFileScanRoots.map(escapeCSVToken).joined(separator: ",")
+            value: ConfigFileLines.renderList(extraFileScanRoots)
         )
         ConfigFileLines.upsert(&lines, key: "backend_log_level", value: settings.backendLogLevel.rawValue)
         ConfigFileLines.upsert(&lines, key: "launch_at_login", value: settings.launchAtLogin ? "true" : "false")
@@ -668,7 +668,7 @@ final class ThemeStore: ObservableObject {
     private func parseExcludedFolderPaths(_ value: String) -> [String] {
         var seen = Set<String>()
         var paths: [String] = []
-        for token in parseCSVTokens(value) {
+        for token in ConfigFileLines.parseList(value) {
             let normalized = normalizeExcludedFolderPath(token)
             if normalized.isEmpty || seen.contains(normalized) {
                 continue
@@ -691,7 +691,7 @@ final class ThemeStore: ObservableObject {
     private func parseFileScanRootPaths(_ value: String) -> [String] {
         var seen = Set<String>()
         var paths: [String] = []
-        for token in parseCSVTokens(value) {
+        for token in ConfigFileLines.parseList(value) {
             let normalized = normalizeFileScanRootPath(token)
             if normalized.isEmpty || seen.contains(normalized) {
                 continue
@@ -730,50 +730,6 @@ final class ThemeStore: ObservableObject {
         }
         let normalizedRoot = root.hasSuffix("/") ? root : root + "/"
         return target.hasPrefix(normalizedRoot)
-    }
-
-    private func escapeCSVToken(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: ",", with: "\\,")
-    }
-
-    private func parseCSVTokens(_ value: String) -> [String] {
-        var tokens: [String] = []
-        var current = ""
-        var escaping = false
-
-        for character in value {
-            if escaping {
-                current.append(character)
-                escaping = false
-                continue
-            }
-            if character == "\\" {
-                escaping = true
-                continue
-            }
-            if character == "," {
-                let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    tokens.append(trimmed)
-                }
-                current = ""
-                continue
-            }
-            current.append(character)
-        }
-
-        if escaping {
-            current.append("\\")
-        }
-
-        let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            tokens.append(trimmed)
-        }
-
-        return tokens
     }
 
     private func expandConfigLikePath(_ value: String) -> String {

@@ -2,6 +2,8 @@ import AppKit
 import Foundation
 import OSLog
 
+private typealias KeyCode = AppConstants.Launcher.KeyCode
+
 @MainActor
 final class KeyboardSelectionMonitor {
     private var monitor: Any?
@@ -54,7 +56,7 @@ final class KeyboardSelectionMonitor {
         isLaunchpadActive: @escaping @MainActor () -> Bool = { false },
         onLaunchpadMnemonic: (@MainActor (Character) -> Bool)? = nil,
         onLaunchpadEscape: (@MainActor () -> Bool)? = nil,
-        onHideSelectedApp: (@MainActor () -> Void)? = nil
+        onHideSelectedApp: (@MainActor () -> Bool)? = nil
     ) {
         guard monitor == nil else { return }
         self.isKillConfirmationActive = killConfirmationActive
@@ -65,16 +67,21 @@ final class KeyboardSelectionMonitor {
                 "down keyCode=\(event.keyCode) chars=\(event.charactersIgnoringModifiers ?? "") flagsRaw=\(flags.rawValue) inCommand=\(inCommandMode())"
             )
 
+            // Modal: eats what it does not recognise so no shortcut can act on a
+            // selection mid-hide. Cmd+Q is exempt, a prompt must not trap the user.
             if hideAppConfirmationActive() {
-                if event.keyCode == 53 {
+                let char = event.charactersIgnoringModifiers?.lowercased()
+                if flags == [.command] && char == "q" {
+                    return event
+                }
+                if event.keyCode == KeyCode.escape {
                     onCancelHideApp?()
                     return nil
                 }
-                if event.keyCode == 36 || event.keyCode == 76 {
+                if event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter {
                     onConfirmHideApp?()
                     return nil
                 }
-                let char = event.charactersIgnoringModifiers?.lowercased()
                 if char == "y" {
                     onConfirmHideApp?()
                     return nil
@@ -89,7 +96,7 @@ final class KeyboardSelectionMonitor {
             if flags.contains(.command)
                 && !flags.contains(.control)
                 && !flags.contains(.option)
-                && (event.keyCode == 44
+                && (event.keyCode == KeyCode.slash
                     || event.charactersIgnoringModifiers == "/"
                     || event.charactersIgnoringModifiers == "?")
             {
@@ -113,19 +120,19 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
-            if (event.keyCode == 36 || event.keyCode == 76) && flags == [.command] {
+            if (event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter) && flags == [.command] {
                 onWebSearch()
                 return nil
             }
 
-            if (event.keyCode == 3 || event.charactersIgnoringModifiers?.lowercased() == "f")
+            if (event.keyCode == KeyCode.f || event.charactersIgnoringModifiers?.lowercased() == "f")
                 && flags == [.command]
             {
                 onRevealInFinder()
                 return nil
             }
 
-            if (event.keyCode == 8 || event.charactersIgnoringModifiers?.lowercased() == "c")
+            if (event.keyCode == KeyCode.c || event.charactersIgnoringModifiers?.lowercased() == "c")
                 && flags == [.command]
             {
                 if onCopySelection() {
@@ -134,15 +141,17 @@ final class KeyboardSelectionMonitor {
                 return event
             }
 
-            if (event.keyCode == 4 || event.charactersIgnoringModifiers?.lowercased() == "h")
+            // The handler owns the gating, so the key is only consumed when it acts.
+            if (event.keyCode == KeyCode.h || event.charactersIgnoringModifiers?.lowercased() == "h")
                 && flags == [.command, .shift]
-                && !inCommandMode()
             {
-                onHideSelectedApp?()
-                return nil
+                if onHideSelectedApp?() == true {
+                    return nil
+                }
+                return event
             }
 
-            if (event.keyCode == 4 || event.charactersIgnoringModifiers?.lowercased() == "h")
+            if (event.keyCode == KeyCode.h || event.charactersIgnoringModifiers?.lowercased() == "h")
                 && flags == [.command]
             {
                 if !inCommandMode() {
@@ -151,7 +160,7 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
-            if (event.keyCode == 35 || event.charactersIgnoringModifiers?.lowercased() == "p")
+            if (event.keyCode == KeyCode.p || event.charactersIgnoringModifiers?.lowercased() == "p")
                 && flags == [.command]
             {
                 if !inCommandMode() {
@@ -160,7 +169,7 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
-            if (event.keyCode == 35 || event.charactersIgnoringModifiers?.lowercased() == "p")
+            if (event.keyCode == KeyCode.p || event.charactersIgnoringModifiers?.lowercased() == "p")
                 && flags == [.command, .shift]
             {
                 if !inCommandMode() {
@@ -169,7 +178,7 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
-            if (event.keyCode == 36 || event.keyCode == 76) && flags == [.command, .shift] {
+            if (event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter) && flags == [.command, .shift] {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                     onSelectCommandByIndex(1)
                 }
@@ -179,7 +188,7 @@ final class KeyboardSelectionMonitor {
             // Shift+Enter opens every picked file/folder at once. Only when
             // there are picks; otherwise fall through so plain submit still
             // opens the selected result.
-            if (event.keyCode == 36 || event.keyCode == 76) && flags == [.shift] {
+            if (event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter) && flags == [.shift] {
                 if !inCommandMode() && hasPickedItems() {
                     onOpenAllPicked()
                     return nil
@@ -190,7 +199,7 @@ final class KeyboardSelectionMonitor {
             // Cmd+D (keyCode 2) → trash the selection. Only in result mode; in
             // command mode it falls through so it keeps any text-editing meaning
             // in the command input.
-            if (event.keyCode == 2 || event.charactersIgnoringModifiers?.lowercased() == "d")
+            if (event.keyCode == KeyCode.d || event.charactersIgnoringModifiers?.lowercased() == "d")
                 && flags == [.command]
                 && !inCommandMode()
             {
@@ -261,7 +270,7 @@ final class KeyboardSelectionMonitor {
                 return event
             }
 
-            if event.keyCode == 53 {
+            if event.keyCode == KeyCode.escape {
                 // A pending launchpad Restart / Shut Down confirm swallows Escape
                 // to dismiss the prompt rather than hiding the launcher.
                 if let onLaunchpadEscape, onLaunchpadEscape() {
@@ -309,7 +318,7 @@ final class KeyboardSelectionMonitor {
             if deleteConfirmationActive() {
                 // Enter confirms too - and must be swallowed so it doesn't fall
                 // through to handleSubmit and *open* the file being deleted.
-                if event.keyCode == 36 || event.keyCode == 76 {
+                if event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter {
                     onConfirmDelete?()
                     return nil
                 }
@@ -324,7 +333,7 @@ final class KeyboardSelectionMonitor {
                 }
             }
 
-            if event.keyCode == 48 {
+            if event.keyCode == KeyCode.tab {
                 if event.modifierFlags.contains(.shift) {
                     onPrevious()
                 } else {
@@ -333,7 +342,7 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
-            if event.keyCode == 126 {
+            if event.keyCode == KeyCode.arrowUp {
                 if let onArrowUp {
                     onArrowUp()
                 } else {
@@ -342,7 +351,7 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
-            if event.keyCode == 125 {
+            if event.keyCode == KeyCode.arrowDown {
                 if let onArrowDown {
                     onArrowDown()
                 } else {
