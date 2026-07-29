@@ -3,6 +3,7 @@ import * as search from './search.js';
 import * as translatePanel from './components/translate.js';
 import {
     openPath,
+    openElevated,
     recordUsage,
     recordUrlHit,
     revealPath,
@@ -22,6 +23,7 @@ import * as confirm from './components/confirm.js';
 import * as qactions from './components/qactions.js';
 import * as superactions from './components/superactions.js';
 import * as runningApps from './components/running-apps.js';
+import { canRunElevated } from './platform.js';
 import { trash as trashIcon } from './icons.js';
 import {
     prefixFromResultId,
@@ -269,6 +271,13 @@ function handleKeyDown(e) {
                 // ps": Enter measures CPU on demand (kill is Ctrl+D). Keeps
                 // selection instant by never sampling until asked.
                 preview.measureCpu();
+            } else if (
+                e.ctrlKey &&
+                (e.shiftKey || shiftHeld) &&
+                canRunElevated(results.getSelected())
+            ) {
+                // Ctrl+Shift+Enter: launch the selected app elevated (UAC).
+                openSelected(true);
             } else if (e.ctrlKey) {
                 searchWeb();
             } else if ((e.shiftKey || shiftHeld) && results.hasPickedItems()) {
@@ -468,7 +477,7 @@ export async function openAllPicked() {
     results.clearPicks();
 }
 
-async function openSelected() {
+async function openSelected(elevated = false) {
     const item = results.getSelected();
     if (!item) return;
 
@@ -508,7 +517,11 @@ async function openSelected() {
     }
 
     try {
-        await openPath(item.path, item.kind, item.id);
+        if (elevated) {
+            await openElevated(item.path);
+        } else {
+            await openPath(item.path, item.kind, item.id);
+        }
         const actionMap = { app: 'open_app', file: 'open_file', folder: 'open_folder' };
         const action = actionMap[item.kind] || 'open_file';
         await recordUsage(item.id, action);

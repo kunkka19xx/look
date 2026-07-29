@@ -68,6 +68,12 @@ export function isLinux() {
     return info?.os === 'linux';
 }
 
+// Ctrl+Shift+Enter target: exes and look-cmd:// applets. ms-settings: pages
+// have no elevated form, so neither gesture nor hint is offered for them.
+export function canRunElevated(item) {
+    return isWindows() && item?.kind === 'app' && !item.path?.startsWith('ms-settings:');
+}
+
 // Windows calls it the Recycle Bin; Linux/macOS call it the Trash. Used for
 // user-facing strings so the banner/confirm copy matches the OS.
 export function trashLabel() {
