@@ -2,7 +2,8 @@
 name = "lookapp"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license = "GPL-3.0-or-later"
+authors = ["kunkka19xx <nobita079x@gmail.com>"]
 
 [dependencies]
 tauri = { version = "2.11.1", features = ["protocol-asset"] }
