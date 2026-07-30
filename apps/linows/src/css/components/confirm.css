@@ -1,7 +1,9 @@
 .confirm-bar {
     position: fixed;
-    left: 10px;
-    right: 10px;
+    /* Inset to match the content rhythm (top bar margin, floating tiles) so the
+     * bar never overhangs the window's rounded corners or the floating tiles. */
+    left: var(--content-padding);
+    right: var(--content-padding);
     bottom: 38px;
     z-index: 1000;
     display: flex;
@@ -17,6 +19,13 @@
 
 .confirm-bar[hidden] {
     display: none;
+}
+
+/* Floating grid moves the hints into the card footers and hides the bottom
+ * hint bar, so drop the confirm bar to the content edge instead of clearing a
+ * bar that is no longer there. */
+.floating-grid .confirm-bar {
+    bottom: var(--content-padding);
 }
 
 body.confirm-active .hint-bar > span:first-child {

@@ -283,6 +283,24 @@ enum AppConstants {
             static let commandModeInfoBanner = "Help is available in app list mode"
         }
 
+        /// Virtual key codes (`NSEvent.keyCode`). These are physical positions on a
+        /// US layout, not characters, so a handler that must follow the printed
+        /// letter on other layouts matches `charactersIgnoringModifiers` as well.
+        enum KeyCode {
+            static let d: UInt16 = 2
+            static let f: UInt16 = 3
+            static let h: UInt16 = 4
+            static let c: UInt16 = 8
+            static let p: UInt16 = 35
+            static let returnKey: UInt16 = 36
+            static let tab: UInt16 = 48
+            static let escape: UInt16 = 53
+            static let slash: UInt16 = 44
+            static let keypadEnter: UInt16 = 76
+            static let arrowUp: UInt16 = 126
+            static let arrowDown: UInt16 = 125
+        }
+
         static let defaultSearchLimit = 40
         static let searchDebounceNanoseconds: UInt64 = 70_000_000
         // Shortest query that triggers debounced suggestion lookups (web search

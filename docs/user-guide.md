@@ -351,6 +351,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
 - `Cmd+Shift+,`: toggle settings panel
 - `Cmd+Shift+;`: reload config
+- `Cmd+Shift+H`: hide the selected app from Look
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
 
 ## Troubleshooting

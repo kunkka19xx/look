@@ -178,3 +178,11 @@ export function webUrlResult(url, subtitle, score) {
 export function webUrlFromResultId(resultId) {
     return resultId?.startsWith(WEB_URL_ID) ? resultId.slice(WEB_URL_ID.length) : null;
 }
+
+// True for the synthetic kind:'app' rows (prefix/command hints, Google
+// suggestions, URL rows), so callers can tell them from real launcher apps.
+const SYNTHETIC_RESULT_ID_PREFIXES = [PREFIX_HINT_ID, COMMAND_HINT_ID, WEB_SUGGEST_ID, WEB_URL_ID];
+
+export function isSyntheticResultId(resultId) {
+    return SYNTHETIC_RESULT_ID_PREFIXES.some((prefix) => resultId?.startsWith(prefix));
+}

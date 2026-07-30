@@ -16,6 +16,9 @@ import {
     countTrashItems,
     emptyTrash,
     requestIndexRefresh,
+    getConfig,
+    setConfig,
+    reloadConfig,
 } from './ipc.js';
 import * as preview from './components/preview.js';
 import * as banner from './components/banner.js';
@@ -30,6 +33,7 @@ import {
     commandIdFromResultId,
     webSuggestionFromResultId,
     webUrlFromResultId,
+    isSyntheticResultId,
 } from './catalog.js';
 import * as platform from './platform.js';
 import * as layout from './layout.js';
@@ -149,6 +153,16 @@ function handleKeyDown(e) {
             toggleHelp();
             return;
         }
+    }
+
+    // Ctrl+Shift+H: hide the selected app from Look
+    if (e.ctrlKey && (e.shiftKey || shiftHeld) && (e.key === 'H' || e.key === 'h')) {
+        e.preventDefault();
+        if (settingsModule?.isActive()) return;
+        if (helpScreen && !helpScreen.hidden) return;
+        if (commandMode?.isActive()) return;
+        void handleHideSelectApp();
+        return;
     }
 
     // Ctrl+= / Ctrl+- / Ctrl+0 - UI zoom in/out/reset. Mirrors macOS
@@ -397,6 +411,44 @@ function trashTargetsFromSelection() {
     return candidates.filter((item) => item.kind === 'file' || item.kind === 'folder');
 }
 
+// Mirror the backend CSV contract for config lists: `\,` is a literal comma and
+// `\\` is a literal backslash. A naive split(',') would corrupt existing
+// escaped entries in `app_exclude_names`.
+function parseConfigList(value) {
+    const entries = [];
+    let current = '';
+
+    for (let i = 0; i < value.length; i += 1) {
+        const ch = value[i];
+        const next = value[i + 1];
+
+        if (ch === '\\' && (next === ',' || next === '\\')) {
+            current += next;
+            i += 1;
+            continue;
+        }
+
+        if (ch === ',') {
+            const entry = current.trim();
+            if (entry) entries.push(entry);
+            current = '';
+            continue;
+        }
+
+        current += ch;
+    }
+
+    const entry = current.trim();
+    if (entry) entries.push(entry);
+    return entries;
+}
+
+// Inverse of `parseConfigList`: escape commas/backslashes before joining so an
+// app name containing `,` or `\` round-trips through the config file intact.
+function renderConfigList(entries) {
+    return entries.map((entry) => entry.replaceAll('\\', '\\\\').replaceAll(',', '\\,')).join(',');
+}
+
 async function handleTrashShortcut() {
     const selected = results.getSelected();
     if (selected && typeof selected.id === 'string' && TRASH_PIN_IDS.includes(selected.id)) {
@@ -459,6 +511,44 @@ async function handleEmptyTrash() {
         } catch (_) {}
     } catch (err) {
         banner.show(`Empty ${label} failed: ${err}`, 'error', 2.0);
+    }
+}
+
+async function handleHideSelectApp() {
+    const item = results.getSelected();
+    // Only real launcher apps carry a path; synthetic rows must not be excluded.
+    if (!item || item.kind !== 'app' || !item.path || isSyntheticResultId(item.id)) {
+        banner.show('Select an app first', 'warning', 1.2);
+        return;
+    }
+
+    const ok = await confirm.ask({
+        title: 'Hide this app from Look?',
+        detail: `${item.title} will be added to app_exclude_names`,
+    });
+    if (!ok) return;
+
+    try {
+        const cfg = await getConfig();
+        const entry = cfg.entries.find((e) => e.key === 'app_exclude_names');
+        const current = entry?.value ?? '';
+        const names = parseConfigList(current);
+        const trimmedTitle = item.title.trim();
+        const normalizedTitle = trimmedTitle.toLowerCase();
+
+        if (names.some((name) => name.trim().toLowerCase() === normalizedTitle)) {
+            banner.show(`${item.title} is already hidden`, 'info', 1.2);
+            return;
+        }
+
+        names.push(trimmedTitle);
+
+        await setConfig([{ key: 'app_exclude_names', value: renderConfigList(names) }]);
+        await reloadConfig();
+
+        banner.show(`Hidden ${item.title}`, 'success', 1.2);
+    } catch (err) {
+        banner.show(`Hide app failed: ${err}`, 'error', 1.6);
     }
 }
 
