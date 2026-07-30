@@ -845,6 +845,21 @@ function stopEndPoll() {
     }
 }
 
+// Home Now Playing tile reads this: the background player is app-internal
+// (rodio) so it never appears on MPRIS. Null when no track is loaded.
+export function musicSnapshot() {
+    if (musicIndex < 0 || musicTracks.length === 0) return null;
+    return { playing: musicPlaying, track: trackName(musicTracks[musicIndex]) };
+}
+
+// Drive that same player from the home tile transport.
+export function musicCommand(cmd) {
+    if (musicTracks.length === 0) return;
+    if (cmd === 'playpause') musicToggle();
+    else if (cmd === 'next') musicNext();
+    else if (cmd === 'previous') musicPrev();
+}
+
 function updateMusicUI() {
     if (!musicTrackEl) return;
 

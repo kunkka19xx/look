@@ -1,5 +1,4 @@
-const MAX_PORT = 65535;
-const PORT_DEBOUNCE_MS = 200;
+const SEARCH_DEBOUNCE_MS = 140;
 
 let panel = null;
 let input = null;
@@ -18,7 +17,17 @@ let processList = [];
 let filteredProcesses = [];
 let selectedIndex = 0;
 let confirmPid = null;
-let portDebounce = null;
+let searchDebounce = null;
+// True while a backend fuzzy search is scheduled or in flight: the local
+// provisional filter may miss port/PID matches the backend still owns.
+let searchPending = false;
+// Monotonic per-keystroke generation. A search response is only applied when
+// its generation is still current, so a superseded request (even for the same
+// query text after foo -> bar -> foo) can never overwrite fresher results.
+let searchGen = 0;
+// True once initial enumeration has returned, so an empty base list reads as a
+// terminal "no processes" state rather than a perpetual "Loading...".
+let baseLoaded = false;
 
 export function init(executeFn, iconFn) {
     onExecute = executeFn;
@@ -42,6 +51,8 @@ export function enter() {
     panel.hidden = false;
     input.value = '';
     confirmPid = null;
+    baseLoaded = false;
+    searchPending = false;
     updateConfirmBar();
     requestAnimationFrame(() => input.focus());
     if (onExecute) onExecute('kill-load');
@@ -104,15 +115,21 @@ export function handleKey(e) {
     return false;
 }
 
-export function setProcessList(procs, isPortResult = false) {
-    const savedValue = input ? input.value : '';
-    if (isPortResult) {
+// `gen` is the generation a backend search was dispatched at; `null` marks the
+// base app list (mode entry / post-kill).
+export function setProcessList(procs, gen = null) {
+    if (gen !== null) {
+        // Superseded response (a newer keystroke, retype, or clear advanced the
+        // generation): ignore it so only the latest request paints results.
+        if (gen !== searchGen) return;
+        searchPending = false;
         processList = procs || [];
         filteredProcesses = [...processList];
     } else {
         baseProcessList = procs || [];
+        baseLoaded = true;
         processList = [...baseProcessList];
-        filterProcesses(savedValue);
+        filterProcesses(input ? input.value.trim() : '');
     }
     selectedIndex = 0;
     confirmPid = null;
@@ -128,23 +145,26 @@ export function showFeedback(text, isError = false) {
 // --- Internal ---
 
 function filterProcesses(query) {
+    // Every intent change advances the generation, invalidating any in-flight
+    // search whose result has not landed yet.
+    searchGen += 1;
     if (!query) {
+        clearTimeout(searchDebounce);
+        searchPending = false;
         processList = [...baseProcessList];
         filteredProcesses = [...processList];
-    } else if (query.startsWith(':')) {
-        filteredProcesses = [];
-        selectedIndex = 0;
-        const port = parseInt(query.slice(1));
-        if (port > 0 && port <= MAX_PORT) {
-            clearTimeout(portDebounce);
-            portDebounce = setTimeout(() => {
-                if (onExecute) onExecute('kill-port', String(port));
-            }, PORT_DEBOUNCE_MS);
-        }
-        return;
     } else {
+        // Instant provisional list from the loaded apps; the debounced backend
+        // search then replaces it with the full fuzzy result (apps first) plus
+        // matching non-app processes, including port and PID matches.
         const q = query.toLowerCase();
         filteredProcesses = baseProcessList.filter((p) => p.name.toLowerCase().includes(q));
+        clearTimeout(searchDebounce);
+        searchPending = true;
+        const gen = searchGen;
+        searchDebounce = setTimeout(() => {
+            if (onExecute) onExecute('kill-search', query, gen);
+        }, SEARCH_DEBOUNCE_MS);
     }
     selectedIndex = Math.min(selectedIndex, Math.max(0, filteredProcesses.length - 1));
 }
@@ -155,14 +175,14 @@ function renderList() {
 
     if (filteredProcesses.length === 0) {
         const query = input ? input.value.trim() : '';
-        if (query.startsWith(':')) {
-            const port = query.slice(1);
-            feedback.textContent =
-                processList.length === 0 && port
-                    ? `No process on port ${port}`
-                    : 'Searching port...';
+        if (!query) {
+            // Before enumeration returns, "Loading..."; once it has, an empty
+            // base list is a terminal state, not a perpetual spinner.
+            feedback.textContent = baseLoaded ? 'No running processes' : 'Loading...';
         } else {
-            feedback.textContent = processList.length > 0 ? 'No matching processes' : 'Loading...';
+            // A pending backend search can still return port/PID matches the
+            // local name filter missed, so hold off on a definitive miss.
+            feedback.textContent = searchPending ? 'Searching...' : 'No matching processes';
         }
         return;
     }

@@ -2,6 +2,7 @@
 
 mod answers_api;
 mod lunar_api;
+mod matching_api;
 mod qactions_api;
 mod runtime_config;
 mod search_api;
@@ -151,6 +152,17 @@ pub extern "C" fn look_instant_answer_json(query: *const c_char) -> *mut c_char 
         answers_api::look_instant_answer_json_impl(query)
     }))
     .unwrap_or(std::ptr::null_mut())
+}
+
+/// Shared `core/matching` fuzzy score for `query` vs `title` (both pre-lowercased
+/// by the caller). Returns `matching_api::NO_MATCH` (`i64::MIN`) on no match, so
+/// callers reproduce the linows ranking without porting the algorithm.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_fuzzy_score(query: *const c_char, title: *const c_char) -> i64 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        matching_api::look_fuzzy_score_impl(query, title)
+    }))
+    .unwrap_or(matching_api::NO_MATCH)
 }
 
 /// Network-free check of whether `query` matches an instant-answer provider.

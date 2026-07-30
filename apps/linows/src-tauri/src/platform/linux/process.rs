@@ -1,11 +1,33 @@
 //! Linux process listing (via `/proc`) and kill (via `kill -9`).
 
-use crate::process::RunningApp;
+use crate::process::{ProcDetail, ProcRow, RunningApp};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-pub(crate) fn list() -> Vec<RunningApp> {
+/// Kernel tick rate assumed when converting `/proc` jiffies to seconds. Glibc
+/// exposes it via `sysconf(_SC_CLK_TCK)`, but it is 100 on every mainstream
+/// Linux, and reading it needs libc; hardcoding avoids the dependency.
+const CLK_TCK: u64 = 100;
+
+/// CPU sampling window: long enough for a stable delta, short enough to feel
+/// instant when triggered from `ps"` Enter.
+const CPU_SAMPLE_MS: u64 = 200;
+
+/// A running app: a `.desktop` entry matched to one or more live PIDs (all the
+/// processes whose normalized `/proc` name matched the entry's Exec).
+struct AppMatch {
+    display_name: String,
+    desktop_path: String,
+    exec: String,
+    /// Every matched process as (pid, rss_kb); the list picks the biggest.
+    pids: Vec<(u32, u64)>,
+}
+
+/// Match running user processes to `.desktop` entries. Shared by `list()` (which
+/// collapses each app to its heaviest PID) and `app_icon_sources()` (which wants
+/// every PID so all of an app's processes can wear its icon).
+fn match_running_apps() -> Vec<AppMatch> {
     let my_uid = read_my_uid();
 
     // 1. Collect running user processes: name → Vec<(pid, rss_kb)>
@@ -69,7 +91,7 @@ pub(crate) fn list() -> Vec<RunningApp> {
         let primary = bins.iter().any(|b| b.to_lowercase() == stem);
         (if primary { 0 } else { 1 }, stem)
     });
-    let mut apps: Vec<RunningApp> = Vec::new();
+    let mut matches: Vec<AppMatch> = Vec::new();
     let mut matched_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for de in &desktop_entries {
@@ -122,21 +144,50 @@ pub(crate) fn list() -> Vec<RunningApp> {
             });
             if let Some(pids) = pids {
                 matched_keys.insert(key);
-                let &(pid, _) = pids.iter().max_by_key(|(_, rss)| *rss).unwrap();
-                apps.push(RunningApp {
-                    name: de.name.clone(),
-                    pid,
-                    desktop_id: Some(format!("app:{}", de.path)),
-                    exec: Some(de.exec.clone()),
+                matches.push(AppMatch {
+                    display_name: de.name.clone(),
+                    desktop_path: de.path.clone(),
+                    exec: de.exec.clone(),
+                    pids: pids.clone(),
                 });
                 break;
             }
         }
     }
 
+    matches
+}
+
+pub(crate) fn list() -> Vec<RunningApp> {
+    let mut apps: Vec<RunningApp> = match_running_apps()
+        .into_iter()
+        .map(|m| {
+            let &(pid, _) = m.pids.iter().max_by_key(|(_, rss)| *rss).unwrap();
+            RunningApp {
+                name: m.display_name,
+                pid,
+                desktop_id: Some(format!("app:{}", m.desktop_path)),
+                exec: Some(m.exec),
+            }
+        })
+        .collect();
+
     // Sort alphabetically by name
     apps.sort_by_key(|a| a.name.to_lowercase());
     apps
+}
+
+/// PID → `.desktop` file path for every process that belongs to a matched app,
+/// so `ps"` can dress app processes in their real icon. All PIDs of an app map
+/// to its icon, not just the heaviest one `list()` keeps.
+fn app_icon_sources() -> HashMap<u32, String> {
+    let mut map = HashMap::new();
+    for m in match_running_apps() {
+        for (pid, _) in m.pids {
+            map.entry(pid).or_insert_with(|| m.desktop_path.clone());
+        }
+    }
+    map
 }
 
 /// Like `list()`, but filtered to only GUI apps with visible windows.
@@ -427,107 +478,6 @@ fn is_terminal_or_background(path: &str) -> bool {
     false
 }
 
-pub(crate) fn list_on_port(port: u16) -> Vec<RunningApp> {
-    // Parse /proc/net/tcp and /proc/net/tcp6 to find listening sockets on the given port
-    let mut pids: Vec<u32> = Vec::new();
-    let mut inodes: std::collections::HashSet<u64> = std::collections::HashSet::new();
-
-    for tcp_path in &["/proc/net/tcp", "/proc/net/tcp6"] {
-        if let Ok(content) = fs::read_to_string(tcp_path) {
-            for line in content.lines().skip(1) {
-                let fields: Vec<&str> = line.split_whitespace().collect();
-                if fields.len() < 10 {
-                    continue;
-                }
-                // State 0A = LISTEN
-                if fields[3] != "0A" {
-                    continue;
-                }
-                // local_address is hex IP:PORT
-                if let Some(port_hex) = fields[1].split(':').nth(1)
-                    && let Ok(p) = u16::from_str_radix(port_hex, 16)
-                    && p == port
-                    && let Ok(inode) = fields[9].parse::<u64>()
-                {
-                    inodes.insert(inode);
-                }
-            }
-        }
-    }
-
-    if inodes.is_empty() {
-        return Vec::new();
-    }
-
-    // Find PIDs owning these inodes by scanning /proc/[pid]/fd/
-    let my_uid = read_my_uid();
-    if let Ok(entries) = fs::read_dir("/proc") {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if !name_str.chars().all(|c| c.is_ascii_digit()) {
-                continue;
-            }
-            let pid: u32 = match name_str.parse() {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
-            // Check ownership
-            let status_path = format!("/proc/{pid}/status");
-            if let Ok(status) = fs::read_to_string(&status_path) {
-                let proc_uid = parse_status_field(&status, "Uid:")
-                    .and_then(|v| v.parse::<u32>().ok())
-                    .unwrap_or(0);
-                if proc_uid != my_uid {
-                    continue;
-                }
-            } else {
-                continue;
-            }
-
-            let fd_dir = format!("/proc/{pid}/fd");
-            if let Ok(fds) = fs::read_dir(&fd_dir) {
-                for fd in fds.flatten() {
-                    if let Ok(link) = fs::read_link(fd.path())
-                        && let Some(inode_str) = link
-                            .to_string_lossy()
-                            .strip_prefix("socket:[")
-                            .and_then(|s| s.strip_suffix(']'))
-                        && let Ok(inode) = inode_str.parse::<u64>()
-                        && inodes.contains(&inode)
-                    {
-                        pids.push(pid);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    pids.sort();
-    pids.dedup();
-
-    // Build RunningApp entries
-    pids.iter()
-        .map(|&pid| {
-            let name = fs::read_to_string(format!("/proc/{pid}/comm"))
-                .unwrap_or_default()
-                .trim()
-                .to_string();
-            RunningApp {
-                name: if name.is_empty() {
-                    format!("PID {pid}")
-                } else {
-                    name
-                },
-                pid,
-                desktop_id: None,
-                exec: None,
-            }
-        })
-        .collect()
-}
-
 /// True when a process owned by the current user has /proc Name: == `name`.
 /// Used by launch to detect cold-start cases (Steam) whose URL handling
 /// requires the main process to be running before the URL is issued.
@@ -803,6 +753,225 @@ fn parse_status_field(status: &str, prefix: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+// --- ps" process finder ---
+
+/// Every process owned by the current user, by `/proc` `comm` name and PID.
+/// Unlike `list()`, this does no `.desktop` matching: background daemons,
+/// `node`, `python`, etc. all surface. One `status` read per PID.
+pub(crate) fn list_all() -> Vec<ProcRow> {
+    let my_uid = read_my_uid();
+    let icons = app_icon_sources();
+    // inode → listening port, built once; empty when nothing is listening, in
+    // which case the per-pid fd scan below is skipped entirely.
+    let inode_ports = listening_inode_ports();
+    let mut rows = Vec::new();
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return rows;
+    };
+    for entry in entries.flatten() {
+        let fname = entry.file_name();
+        let fname_str = fname.to_string_lossy();
+        if !fname_str.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(pid) = fname_str.parse::<u32>() else {
+            continue;
+        };
+        let Ok(status) = fs::read_to_string(format!("/proc/{pid}/status")) else {
+            continue;
+        };
+        let uid = parse_status_field(&status, "Uid:")
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(0);
+        if uid != my_uid {
+            continue;
+        }
+        let name = parse_status_field(&status, "Name:").unwrap_or_default();
+        if name.is_empty() {
+            continue;
+        }
+        let ports = if inode_ports.is_empty() {
+            Vec::new()
+        } else {
+            ports_for_pid(pid, &inode_ports)
+        };
+        rows.push(ProcRow {
+            name,
+            pid,
+            icon_source: icons.get(&pid).cloned(),
+            ports,
+        });
+    }
+    rows
+}
+
+/// Map every listening (state 0A) TCP socket inode to its port, from
+/// `/proc/net/tcp` + `tcp6`. Feeds `ports_for_pid`, tagging each process row.
+fn listening_inode_ports() -> HashMap<u64, u16> {
+    let mut map = HashMap::new();
+    for tcp_path in ["/proc/net/tcp", "/proc/net/tcp6"] {
+        let Ok(content) = fs::read_to_string(tcp_path) else {
+            continue;
+        };
+        for line in content.lines().skip(1) {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            if fields.len() < 10 || fields[3] != "0A" {
+                continue;
+            }
+            if let Some(port_hex) = fields[1].split(':').nth(1)
+                && let Ok(port) = u16::from_str_radix(port_hex, 16)
+                && let Ok(inode) = fields[9].parse::<u64>()
+            {
+                map.insert(inode, port);
+            }
+        }
+    }
+    map
+}
+
+/// Listening ports for one PID: read its socket fds and look each inode up in
+/// the precomputed inode→port map. Sorted, deduped.
+fn ports_for_pid(pid: u32, inode_ports: &HashMap<u64, u16>) -> Vec<u16> {
+    let mut ports: Vec<u16> = Vec::new();
+    let Ok(fds) = fs::read_dir(format!("/proc/{pid}/fd")) else {
+        return ports;
+    };
+    for fd in fds.flatten() {
+        if let Ok(link) = fs::read_link(fd.path())
+            && let Some(inode_str) = link
+                .to_string_lossy()
+                .strip_prefix("socket:[")
+                .and_then(|s| s.strip_suffix(']'))
+            && let Ok(inode) = inode_str.parse::<u64>()
+            && let Some(&port) = inode_ports.get(&inode)
+            && !ports.contains(&port)
+        {
+            ports.push(port);
+        }
+    }
+    ports.sort_unstable();
+    ports
+}
+
+/// Private memory (USS = `Private_Clean` + `Private_Dirty`) from
+/// `/proc/<pid>/smaps_rollup` - the Linux analog of macOS `phys_footprint`;
+/// excludes shared pages, unlike the ~2x-larger `VmRSS`, which is the
+/// compatibility fallback whenever smaps_rollup can't be read or parsed
+/// (kernels < 4.14, permission denied, process exited mid-read).
+fn private_mem_kb(pid: u32, status: &str) -> u64 {
+    if let Ok(rollup) = fs::read_to_string(format!("/proc/{pid}/smaps_rollup")) {
+        let field =
+            |key: &str| parse_status_field(&rollup, key).and_then(|v| v.parse::<u64>().ok());
+        if let (Some(clean), Some(dirty)) = (field("Private_Clean:"), field("Private_Dirty:")) {
+            return clean + dirty;
+        }
+    }
+    parse_status_field(status, "VmRSS:")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+}
+
+pub(crate) fn detail(pid: u32) -> Option<ProcDetail> {
+    let status = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    let rss_kb = private_mem_kb(pid, &status);
+    let ppid = parse_status_field(&status, "PPid:")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let uid = parse_status_field(&status, "Uid:")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let user = username_for_uid(uid).unwrap_or_else(|| uid.to_string());
+
+    // cmdline is NUL-separated argv; fall back to the bracketed comm name for
+    // kernel threads and zombies, which expose an empty cmdline.
+    let cmdline = fs::read(format!("/proc/{pid}/cmdline"))
+        .ok()
+        .map(|bytes| bytes_to_cmdline(&bytes))
+        .filter(|s| !s.is_empty())
+        .or_else(|| parse_status_field(&status, "Name:").map(|n| format!("[{n}]")))
+        .unwrap_or_default();
+
+    Some(ProcDetail {
+        cmdline,
+        rss_kb,
+        user,
+        ppid,
+        start_epoch: start_epoch(pid),
+    })
+}
+
+pub(crate) fn cpu(pid: u32) -> Option<f64> {
+    let before = proc_jiffies(pid)?;
+    let start = std::time::Instant::now();
+    std::thread::sleep(std::time::Duration::from_millis(CPU_SAMPLE_MS));
+    let after = proc_jiffies(pid)?;
+    let elapsed = start.elapsed().as_secs_f64();
+    if elapsed <= 0.0 {
+        return Some(0.0);
+    }
+    let delta = after.saturating_sub(before) as f64;
+    Some(100.0 * (delta / CLK_TCK as f64) / elapsed)
+}
+
+/// utime + stime (fields 14, 15) from `/proc/<pid>/stat`, in clock ticks. The
+/// comm field (2) is parenthesized and may contain spaces or `)`, so parsing
+/// resumes after the last `)`.
+fn proc_jiffies(pid: u32) -> Option<u64> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let rest = &stat[stat.rfind(')')? + 1..];
+    let fields: Vec<&str> = rest.split_whitespace().collect();
+    // After ')' the next field is state (index 0), so utime is index 11, stime 12.
+    let utime: u64 = fields.get(11)?.parse().ok()?;
+    let stime: u64 = fields.get(12)?.parse().ok()?;
+    Some(utime + stime)
+}
+
+/// Wall-clock start time: system boot epoch (`btime` in `/proc/stat`) plus the
+/// process starttime (stat field 22) converted from ticks.
+fn start_epoch(pid: u32) -> Option<u64> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let rest = &stat[stat.rfind(')')? + 1..];
+    let fields: Vec<&str> = rest.split_whitespace().collect();
+    let starttime: u64 = fields.get(19)?.parse().ok()?;
+    let btime = boot_epoch()?;
+    Some(btime + starttime / CLK_TCK)
+}
+
+fn boot_epoch() -> Option<u64> {
+    let stat = fs::read_to_string("/proc/stat").ok()?;
+    stat.lines()
+        .find_map(|l| l.strip_prefix("btime "))
+        .and_then(|v| v.trim().parse().ok())
+}
+
+fn bytes_to_cmdline(bytes: &[u8]) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    text.split('\0')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
+}
+
+/// Resolve a UID to a username via `/etc/passwd`. Enough for a launcher; misses
+/// LDAP/NSS-only users, in which case the caller shows the numeric UID.
+fn username_for_uid(uid: u32) -> Option<String> {
+    let passwd = fs::read_to_string("/etc/passwd").ok()?;
+    for line in passwd.lines() {
+        // name:passwd:uid:...
+        let mut cols = line.split(':');
+        let (Some(name), Some(_pw), Some(entry_uid)) = (cols.next(), cols.next(), cols.next())
+        else {
+            continue;
+        };
+        if entry_uid.parse::<u32>() == Ok(uid) {
+            return Some(name.to_string());
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -962,5 +1131,34 @@ mod tests {
         );
         // Single-segment stems (e.g., `firefox.desktop`) yield None.
         assert_eq!(kebab_from_desktop_stem("/x/firefox.desktop"), None);
+    }
+
+    #[test]
+    fn cmdline_nul_separated_argv_joins_with_spaces() {
+        assert_eq!(
+            bytes_to_cmdline(b"node\0server.js\0--port\x003000\0"),
+            "node server.js --port 3000"
+        );
+        // Trailing/duplicate NULs don't leave empty args or edge whitespace.
+        assert_eq!(bytes_to_cmdline(b"vim\0\0"), "vim");
+        assert_eq!(bytes_to_cmdline(b""), "");
+    }
+
+    #[test]
+    fn self_process_surfaces_in_list_and_detail() {
+        let me = std::process::id();
+        assert!(
+            list_all().iter().any(|r| r.pid == me),
+            "own process must appear in the raw list"
+        );
+        let d = detail(me).expect("detail for self");
+        assert!(!d.cmdline.is_empty(), "self cmdline should not be empty");
+        assert!(d.start_epoch.is_some(), "self start time should resolve");
+    }
+
+    #[test]
+    fn self_cpu_samples_non_negative() {
+        let pct = cpu(std::process::id()).expect("cpu for self");
+        assert!(pct >= 0.0, "cpu percent must be non-negative, got {pct}");
     }
 }

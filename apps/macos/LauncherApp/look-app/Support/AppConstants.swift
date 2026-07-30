@@ -87,6 +87,9 @@ enum AppConstants {
             // Translation prefixes (handled in LauncherView+Translation).
             static let translate = "t\""
             static let translateWord = "tw\""
+            // Live process finder (handled in LauncherView+Process): fuzzy over
+            // running processes, kill / copy-PID / measure-CPU from the results.
+            static let process = "ps\""
 
             // Typing a lone `"` opens the prefix-discovery menu (see
             // PrefixSuggestion.all / LauncherView.isPrefixSuggestionQuery).
@@ -151,6 +154,9 @@ enum AppConstants {
                 Entry(
                     prefix: QueryPrefix.translateWord, argHint: "word",
                     description: "Lookup panel with definitions"),
+                Entry(
+                    prefix: QueryPrefix.process, argHint: "word",
+                    description: "Find & kill running processes"),
             ]
 
             /// Recovers the query prefix encoded in a discovery-suggestion result
@@ -194,6 +200,16 @@ enum AppConstants {
                 guard resultID.hasPrefix(resultIDPrefix) else { return nil }
                 return String(resultID.dropFirst(resultIDPrefix.count))
             }
+        }
+
+        /// `ps"` process-finder constants. Logic lives in `LauncherProcessFeature`.
+        enum Process {
+            static let resultIDPrefix = "process:"
+            /// Row cap: enough to scroll, few enough to render instantly
+            /// (mirrors linows `PROC_RESULT_LIMIT`).
+            static let resultLimit = 50
+            /// Synthetic path so the row isn't treated as a filesystem target.
+            static let resultPath = "look://process"
         }
 
         enum Finder {
@@ -265,6 +281,24 @@ enum AppConstants {
 
         enum Help {
             static let commandModeInfoBanner = "Help is available in app list mode"
+        }
+
+        /// Virtual key codes (`NSEvent.keyCode`). These are physical positions on a
+        /// US layout, not characters, so a handler that must follow the printed
+        /// letter on other layouts matches `charactersIgnoringModifiers` as well.
+        enum KeyCode {
+            static let d: UInt16 = 2
+            static let f: UInt16 = 3
+            static let h: UInt16 = 4
+            static let c: UInt16 = 8
+            static let p: UInt16 = 35
+            static let returnKey: UInt16 = 36
+            static let tab: UInt16 = 48
+            static let escape: UInt16 = 53
+            static let slash: UInt16 = 44
+            static let keypadEnter: UInt16 = 76
+            static let arrowUp: UInt16 = 126
+            static let arrowDown: UInt16 = 125
         }
 
         static let defaultSearchLimit = 40
@@ -392,7 +426,7 @@ enum AppConstants {
             AppCommand(id: Command.calc, title: "calc (⌘1)", detail: "Evaluate math expression", placeholder: "Type math expression"),
             AppCommand(id: Command.pomo, title: "pomo (⌘2)", detail: "Pomodoro focus timer", placeholder: "Manage focus sessions"),
             AppCommand(id: Command.todo, title: "todo (⌘3)", detail: "Daily tasks & progress", placeholder: "Search tasks & dates"),
-            AppCommand(id: Command.kill, title: "kill (⌘4)", detail: "Force kill app or process by port", placeholder: "Type app name, or :3000"),
+            AppCommand(id: Command.kill, title: "kill (⌘4)", detail: "Force kill app or process by name, PID, or port", placeholder: "Type a name, PID, or port"),
             AppCommand(id: Command.shell, title: "shell (⌘5)", detail: "Run a shell command", placeholder: "Type shell command"),
             AppCommand(id: Command.sys, title: "sys (⌘6)", detail: "Show system information", placeholder: "View system info"),
         ]

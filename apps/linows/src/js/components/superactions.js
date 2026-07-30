@@ -62,12 +62,19 @@ import {
 import {
     snapshot as pomoSnapshot,
     formatTime as formatPomoTime,
+    musicSnapshot,
+    musicCommand,
 } from '../screens/commands/pomo.js';
+import { statsWidgetHtml } from '../screens/commands/todo.js';
+import * as platform from '../platform.js';
 import * as banner from './banner.js';
 
 let container = null;
 let built = false;
 let visible = false;
+// Todo-stats panel filling the dead space below the bento on the opaque
+// (no-transparency) panel. Null elsewhere. Populated by refreshTodo.
+let statsEl = null;
 // User setting (Settings -> Appearance -> Super Actions). When off the strip
 // never shows and its accelerators never fire; setVisible collapses to hidden.
 let enabled = true;
@@ -107,6 +114,9 @@ let weatherEls = null;
 let mediaEls = null;
 let weatherToken = 0;
 let mediaToken = 0;
+// 'internal' (pomo) or 'mpris': the source that last actually played. Breaks the
+// tie when both are paused so the tile resumes whichever the user last used.
+let mediaLastSource = null;
 
 // Bumped on every refresh so a late async state read for a stale summon is
 // dropped; guards against clobbering the optimistic value a press just set.
@@ -694,6 +704,15 @@ async function refreshTodo() {
     openTasks = mine.filter((t) => !t.done).map((t) => t.name);
     taskCursor = 0;
     renderSlot();
+    renderStatsWidget(tasks);
+}
+
+// Reuses the priority slot's todoList() rows. width = card content (minus 30px
+// chrome: 2x14 padding + 2x1 border) so the heatmap cells scale to fit.
+function renderStatsWidget(tasks) {
+    if (!statsEl) return;
+    const width = Math.max(280, statsEl.clientWidth - 30);
+    statsEl.innerHTML = statsWidgetHtml(tasks || [], width);
 }
 
 // Rotate through the open tasks so a long day's list all gets a turn, matching
@@ -739,8 +758,21 @@ async function refreshWeather(myToken) {
 
 // --- Now Playing (active MPRIS player) --------------------------------------
 
+// The pomo background player is app-internal (rodio), so it never appears on
+// MPRIS. Shape its snapshot like an MPRIS one for renderMedia.
+function internalMedia(m) {
+    return { title: m.track, artist: 'Pomodoro', is_playing: m.playing, internal: true };
+}
+
 async function refreshNowPlaying(myToken) {
     if (!mediaEls) return;
+    const internal = musicSnapshot();
+    // Pomo actively playing outranks any MPRIS player.
+    if (internal?.playing) {
+        mediaLastSource = 'internal';
+        renderMedia(internalMedia(internal));
+        return;
+    }
     let np;
     try {
         np = await nowPlayingCurrent();
@@ -748,6 +780,19 @@ async function refreshNowPlaying(myToken) {
         return;
     }
     if (myToken !== mediaToken || !mediaEls) return;
+    // A real player that is actually playing beats a paused pomo track.
+    if (np?.title && np.is_playing) {
+        mediaLastSource = 'mpris';
+        renderMedia(np);
+        return;
+    }
+    // Nothing is playing: keep whichever source last played, so a paused pomo
+    // does not hijack a just-paused MPRIS player (and vice versa). Fall back to
+    // pomo when the MPRIS player is gone entirely.
+    if (internal && (mediaLastSource !== 'mpris' || !np?.title)) {
+        renderMedia(internalMedia(internal));
+        return;
+    }
     renderMedia(np);
 }
 
@@ -761,6 +806,7 @@ function setPlaying(playing) {
 function renderMedia(np) {
     // Handle the transport drives, so it hits the shown player, not a re-pick.
     mediaEls.player = np?.player ?? null;
+    mediaEls.internal = !!np?.internal;
     setPlaying(!!np?.is_playing);
     if (!np?.title) {
         mediaEls.label.textContent = 'Nothing playing';
@@ -775,6 +821,18 @@ function renderMedia(np) {
 // Send a transport command to the active player. Play/Pause flips optimistically
 // and defers to the poll; next/previous re-read to show the new track promptly.
 async function transport(command) {
+    // Internal pomo player: state flips synchronously, so re-read at once.
+    if (mediaEls?.internal) {
+        // Flip the glyph now so pausing feels instant; pausing then re-reads
+        // MPRIS (an await), which would otherwise lag the glyph. The re-read
+        // reconciles either way.
+        if (command === 'playpause') {
+            setPlaying(!mediaEls.el.classList.contains('is-playing'));
+        }
+        musicCommand(command);
+        refreshNowPlaying((mediaToken += 1));
+        return;
+    }
     const player = mediaEls?.player ?? null;
     if (command === 'playpause' && mediaEls) {
         // Optimistic flip; roll back unless delivered. No re-read: MPRIS
@@ -859,6 +917,15 @@ function render(tiles) {
 
     container.innerHTML = '';
     container.appendChild(grid);
+
+    // Opaque panel only: fill the dead space below the bento with todo stats.
+    // Transparent/floating panels leave it see-through, so nothing to fill.
+    statsEl = null;
+    if (!platform.hasCompositor()) {
+        statsEl = document.createElement('div');
+        statsEl.className = 'control-strip-stats';
+        container.appendChild(statsEl);
+    }
 }
 
 function buildTile(tile) {

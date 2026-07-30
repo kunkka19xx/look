@@ -87,6 +87,7 @@ struct LauncherView: View {
     // (Moving files/folders to Trash is recoverable, so it skips confirmation;
     // only the permanent Empty Trash prompts.)
     @State var pendingEmptyTrashCount: Int?
+    @State var pendingHideAppResult: LauncherResult?
     // True while a trash/empty operation is running, to block re-triggering it.
     @State var isDeleteInFlight = false
     @State var killListRefreshTick: Int = 0
@@ -99,6 +100,7 @@ struct LauncherView: View {
     @State var lookupDefinition: LookupDefinition?
     @State var pidToRestoreOnHide: pid_t?
     @StateObject var runningAppsService = RunningAppsService()
+    @StateObject var processModel = ProcessFinderModel()
 
     /// Live size of the whole panel, captured so a background image can be
     /// cropped into each floating tile at its correct window position (the tiles
@@ -397,6 +399,7 @@ struct LauncherView: View {
         if isPrefixSuggestionQuery { return prefixSuggestionResults }
         if isCommandSuggestionQuery { return commandSuggestionResults }
         if isClipboardQuery { return clipboardResults }
+        if isProcessQuery { return processResults }
         // Recent URLs interleave with local results by frecency; web-search rows
         // stay last.
         let ranked = mergeByScore(backendFilteredResults, recentURLResults)
@@ -460,6 +463,10 @@ struct LauncherView: View {
             ]
         }
 
+        if isHideAppConfirmationVisible {
+            return ["Y confirm", "N cancel", "Esc back"]
+        }
+
         if isCommandMode {
             if activeCommandID == AppConstants.Launcher.Command.kill {
                 return ["Y confirm", "N cancel", "Tab/Cmd+1-4 switch", "Esc back"]
@@ -501,6 +508,12 @@ struct LauncherView: View {
             return ["Enter copy clip", "Cmd+D remove clip"]
         }
 
+        // Mirrors the linows ps" hint (Cmd instead of Ctrl); Enter/CPU dropped
+        // to keep it on one line.
+        if isProcessQuery {
+            return ["Cmd+D kill", "Cmd+C copy PID"]
+        }
+
         // The home screen replaces the "Cmd+/ command mode" hint with a
         // clickable today done/total quick view (see todoQuickView), so it
         // is intentionally omitted here.
@@ -514,7 +527,7 @@ struct LauncherView: View {
         guard !appUIState.showsThemeSettings, !isCommandMode, !showsHelpScreen else { return false }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if extractTranslationQuery(from: trimmed) != nil { return false }
-        if isPrefixSuggestionQuery || isCommandSuggestionQuery || isClipboardQuery { return false }
+        if isPrefixSuggestionQuery || isCommandSuggestionQuery || isClipboardQuery || isProcessQuery { return false }
         return true
     }
 
@@ -572,6 +585,10 @@ struct LauncherView: View {
         !isCommandMode && pendingEmptyTrashCount != nil
     }
 
+    var isHideAppConfirmationVisible: Bool {
+        !isCommandMode && pendingHideAppResult != nil
+    }
+
     var liveCommandPreview: String? {
         guard isCommandMode else { return nil }
 
@@ -611,7 +628,7 @@ struct LauncherView: View {
     var killSuggestions: [KillCommand.Candidate] {
         _ = killListRefreshTick
         let searchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines)
-        return KillCommand.suggestions(searchTerm: searchTerm)
+        return KillCommand.suggestions(searchTerm: searchTerm, processes: processModel.candidates)
             .filter { !recentlyKilledPIDs.contains($0.pid) }
     }
 
@@ -658,6 +675,9 @@ struct LauncherView: View {
             if pendingEmptyTrashCount != nil {
                 pendingEmptyTrashCount = nil
             }
+            if pendingHideAppResult != nil {
+                pendingHideAppResult = nil
+            }
             if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
                 aiAnswer.cancel()
                 enterCommandMode(commandID: cmd.id, prefilledInput: cmd.args)
@@ -668,12 +688,13 @@ struct LauncherView: View {
                 if showsHelpScreen {
                     showsHelpScreen = false
                 }
-                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery || isTranslationQuery {
+                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery || isTranslationQuery || isProcessQuery {
                     // These render their own panels (clip history / prefix menu /
-                    // command menu / translation), not backend results. Skip the
-                    // search + AI answer entirely - otherwise a background AI
-                    // activation flips the floating layout and flashes the old
-                    // backdrop while typing. Translation only fires on Enter.
+                    // command menu / translation / process finder), not backend
+                    // results. Skip the search + AI answer entirely - otherwise a
+                    // background AI activation flips the floating layout and
+                    // flashes the old backdrop while typing. Translation only
+                    // fires on Enter.
                     aiAnswer.cancel()
                     setInitialSelection()
                 } else {
@@ -693,6 +714,23 @@ struct LauncherView: View {
         .onChange(of: selectedResultID) { _, _ in
             // Load Quick Actions + read their live state for the new selection.
             refreshQuickActions()
+            // Prefetch process detail for the newly selected process row so the
+            // preview pane fills in (cheap per-selection reads, cached by pid).
+            loadProcessDetailForSelection()
+        }
+        .onChange(of: isProcessQuery) { _, entering in
+            // Enumerate the process table once on entering `ps"` mode; leaving
+            // invalidates so the next entry re-enumerates fresh.
+            if entering {
+                processModel.loadSnapshotIfNeeded()
+            } else if activeCommandID != AppConstants.Launcher.Command.kill {
+                // /kill scores the same snapshot; don't drop it when the query
+                // switches straight into that panel.
+                processModel.invalidate()
+            }
+        }
+        .onChange(of: processModel.candidates) { _, _ in
+            repairProcessSelection()
         }
         .onReceive(clipboardStore.$entries) { _ in
             refreshClipboardSelectionIfNeeded()
@@ -714,6 +752,10 @@ struct LauncherView: View {
         }
         .onChange(of: activeCommandID) { _, newID in
             if let newID { appUIState.lastCommandID = newID }
+            // /kill ranks the same cached snapshot; take a fresh one on entry.
+            if newID == AppConstants.Launcher.Command.kill {
+                processModel.refreshSnapshot()
+            }
         }
         .onChange(of: appUIState.showsThemeSettings) { _, showsSettings in
             if showsSettings {
@@ -756,6 +798,11 @@ struct LauncherView: View {
                 window === launcherWindow()
             else { return }
             refreshQuickActions()
+            // The query survives hide/show: re-entering `ps"` must not keep
+            // scoring pids that exited while hidden.
+            if isProcessQuery {
+                processModel.refreshSnapshot()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in
             reloadConfig()
@@ -828,7 +875,8 @@ struct LauncherView: View {
             testHint: { testHintOverlay },
             copyright: { copyrightOverlay },
             killBar: { killConfirmationOverlay },
-            deleteBar: { deleteConfirmationOverlay }
+            deleteBar: { deleteConfirmationOverlay },
+            hideAppBar: { hideAppConfirmationOverlay }
         ))
         .layoutPriority(1)
     }
@@ -931,7 +979,12 @@ struct LauncherView: View {
             // The hint bar lives inside the left card only on the floating results
             // grid; every other state (classic, translation, empty panels) keeps
             // the full-width bar below.
-            if !showsFloatingGrid && !hidesResultsForEmptyQuery && !isKillConfirmationVisible && !isDeleteConfirmationVisible {
+            if !showsFloatingGrid
+                && !hidesResultsForEmptyQuery
+                && !isKillConfirmationVisible
+                && !isDeleteConfirmationVisible
+                && !isHideAppConfirmationVisible
+            {
                 HintBar(hint: currentHint, todo: todoQuickView, themeStore: themeStore)
             }
         }
@@ -1088,7 +1141,10 @@ struct LauncherView: View {
                     },
                     onDeleteClipboard: selectedResult.kind == .clipboard
                         ? { deleteClipboardResult(resultID: selectedResult.id) }
-                        : nil
+                        : nil,
+                    processDetail: processDetail(for: selectedResult),
+                    processCPU: processCPU(for: selectedResult),
+                    isMeasuringProcessCPU: isMeasuringCPU(for: selectedResult)
                 )
             }
         }
@@ -1389,7 +1445,7 @@ struct LauncherView: View {
         // On the floating results grid the copyright moves into the right-hand
         // card footer; on the empty-rest screen it's hidden entirely; otherwise it
         // stays in the panel's bottom-right corner.
-        if !showsFloatingGrid && !hidesResultsForEmptyQuery {
+        if !showsFloatingGrid && !hidesResultsForEmptyQuery && !isHideAppConfirmationVisible {
             copyrightLink
                 .padding(.trailing, 10)
                 .padding(.bottom, 8)
@@ -1432,14 +1488,31 @@ struct LauncherView: View {
         }
     }
 
+    @ViewBuilder
+    private var hideAppConfirmationOverlay: some View {
+        if !isCommandMode, let pendingHideAppResult {
+            ConfirmActionBar(
+                icon: NSWorkspace.shared.icon(forFile: pendingHideAppResult.path),
+                title: "Hide \(pendingHideAppResult.title)?",
+                detail: "Add it to app_exclude_names in .look.config.",
+                themeStore: themeStore,
+                onConfirm: { confirmHideSelectedApp() },
+                onCancel: { cancelHideSelectedApp() }
+            )
+            .padding(.horizontal, 14)
+            .padding(.bottom, 24)
+        }
+    }
+
 
 }
 
-private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar: View, DeleteBar: View>: ViewModifier {
+private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar: View, DeleteBar: View, HideAppBar: View>: ViewModifier {
     @ViewBuilder let testHint: () -> TestHint
     @ViewBuilder let copyright: () -> Copyright
     @ViewBuilder let killBar: () -> KillBar
     @ViewBuilder let deleteBar: () -> DeleteBar
+    @ViewBuilder let hideAppBar: () -> HideAppBar
 
     func body(content: Content) -> some View {
         content
@@ -1447,5 +1520,6 @@ private struct PanelDecorationsModifier<TestHint: View, Copyright: View, KillBar
             .overlay(alignment: .bottomTrailing, content: copyright)
             .overlay(alignment: .bottom, content: killBar)
             .overlay(alignment: .bottom, content: deleteBar)
+            .overlay(alignment: .bottom, content: hideAppBar)
     }
 }

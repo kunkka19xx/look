@@ -240,6 +240,15 @@ extension LauncherView {
             deleteConfirmationActive: { [self] in
                 pendingEmptyTrashCount != nil
             },
+            onConfirmHideApp: { [self] in
+                confirmHideSelectedApp()
+            },
+            onCancelHideApp: { [self] in
+                cancelHideSelectedApp()
+            },
+            hideAppConfirmationActive: { [self] in
+                pendingHideAppResult != nil
+            },
             onToggleQuickAction: { [self] in
                 togglePrimaryQuickAction()
             },
@@ -254,6 +263,9 @@ extension LauncherView {
             },
             onLaunchpadEscape: { [self] in
                 cancelLaunchpadConfirmIfNeeded()
+            },
+            onHideSelectedApp: { [self] in
+                hideSelectedApp()
             }
         )
     }

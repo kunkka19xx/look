@@ -568,6 +568,8 @@ fn main() {
             if disable_gpu {
                 gpu::disable_gpu_acceleration(app);
             }
+            #[cfg(target_os = "linux")]
+            gpu::trim_memory_features(app);
 
             AppState::init_app_handle(app);
             app.state::<AppState>().start_bootstrap();
@@ -636,6 +638,7 @@ fn main() {
             commands::search,
             commands::record_usage,
             commands::open_path,
+            commands::open_elevated,
             commands::reveal_path,
             commands::reload_config,
             commands::request_index_refresh,
@@ -671,8 +674,11 @@ fn main() {
             sysinfo::get_system_info,
             sysinfo::system_uptime,
             process::list_processes,
-            process::list_processes_on_port,
             process::kill_process,
+            process::search_processes,
+            process::search_kill_targets,
+            process::process_detail,
+            process::process_cpu,
             process::list_running_apps,
             process::activate_running_app,
             // Todo (shared look-todo store, same table macOS uses)

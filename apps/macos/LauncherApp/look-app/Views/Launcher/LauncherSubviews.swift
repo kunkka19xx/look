@@ -509,6 +509,7 @@ private enum LauncherHelpContent {
         ("Cmd+/", "Enter command mode"),
         ("Cmd+Shift+,", "Open/close settings panel"),
         ("Cmd+Shift+;", "Reload .look.config"),
+        ("Cmd+Shift+H", "Hide the selected app from Look"),
         ("Cmd+H", "Toggle this help screen"),
         ("Esc", "Close help / back / hide launcher"),
     ]
@@ -532,7 +533,7 @@ private enum LauncherHelpContent {
     static let commandMode: [(String, String)] = [
         ("Tab / Shift+Tab", "Switch command"),
         ("Cmd+1 / Cmd+2 / Cmd+3 / Cmd+4", "Switch command"),
-        (":3000", "Find process listening on port"),
+        ("3000", "Find process by port or PID"),
         ("Up / Down", "Select app in kill results"),
         ("Y / N", "Confirm/cancel kill action"),
     ]

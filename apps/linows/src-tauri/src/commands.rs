@@ -276,6 +276,38 @@ pub fn open_path(
     }
 }
 
+/// Windows: `runas` launch. Async because the UAC prompt is modal and a sync
+/// command would block the main thread; resolves only once the launch is
+/// confirmed, so usage is never recorded for a declined prompt.
+#[tauri::command]
+pub async fn open_elevated(
+    window: tauri::WebviewWindow,
+    #[cfg_attr(not(target_os = "windows"), allow(unused_variables))] path: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = window.hide();
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            let (program, args) = crate::platform::windows::launch::split_target(&path);
+            crate::platform::windows::launch::run_as_admin(program, args)
+        })
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()));
+        if let Err(e) = &result {
+            // Declined, refused, or the task died: don't leave Look hidden.
+            eprintln!("[open_elevated] {e}");
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        result
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = window;
+        Err("elevated launch is Windows only".into())
+    }
+}
+
 #[tauri::command]
 pub fn reveal_path(path: String) -> Result<(), String> {
     let path_ref = std::path::Path::new(&path);

@@ -3,6 +3,7 @@ import * as search from './search.js';
 import * as translatePanel from './components/translate.js';
 import {
     openPath,
+    openElevated,
     recordUsage,
     recordUrlHit,
     revealPath,
@@ -10,22 +11,29 @@ import {
     copyFilesToClipboard,
     copyToClipboard,
     deleteClipboardEntry,
+    killProcess,
     trashPaths,
     countTrashItems,
     emptyTrash,
     requestIndexRefresh,
+    getConfig,
+    setConfig,
+    reloadConfig,
 } from './ipc.js';
+import * as preview from './components/preview.js';
 import * as banner from './components/banner.js';
 import * as confirm from './components/confirm.js';
 import * as qactions from './components/qactions.js';
 import * as superactions from './components/superactions.js';
 import * as runningApps from './components/running-apps.js';
+import { canRunElevated } from './platform.js';
 import { trash as trashIcon } from './icons.js';
 import {
     prefixFromResultId,
     commandIdFromResultId,
     webSuggestionFromResultId,
     webUrlFromResultId,
+    isSyntheticResultId,
 } from './catalog.js';
 import * as platform from './platform.js';
 import * as layout from './layout.js';
@@ -147,6 +155,16 @@ function handleKeyDown(e) {
         }
     }
 
+    // Ctrl+Shift+H: hide the selected app from Look
+    if (e.ctrlKey && (e.shiftKey || shiftHeld) && (e.key === 'H' || e.key === 'h')) {
+        e.preventDefault();
+        if (settingsModule?.isActive()) return;
+        if (helpScreen && !helpScreen.hidden) return;
+        if (commandMode?.isActive()) return;
+        void handleHideSelectApp();
+        return;
+    }
+
     // Ctrl+= / Ctrl+- / Ctrl+0 - UI zoom in/out/reset. Mirrors macOS
     // Cmd+= / Cmd+- / Cmd+0 (apps/macos/.../look_appApp.swift:177). Global:
     // works in search, command, settings, and help screens.
@@ -263,6 +281,17 @@ function handleKeyDown(e) {
                 if (text) translatePanel.perform(text);
             } else if (search.isClipboardMode()) {
                 copyClipboardEntry();
+            } else if (search.isProcessMode()) {
+                // ps": Enter measures CPU on demand (kill is Ctrl+D). Keeps
+                // selection instant by never sampling until asked.
+                preview.measureCpu();
+            } else if (
+                e.ctrlKey &&
+                (e.shiftKey || shiftHeld) &&
+                canRunElevated(results.getSelected())
+            ) {
+                // Ctrl+Shift+Enter: launch the selected app elevated (UAC).
+                openSelected(true);
             } else if (e.ctrlKey) {
                 searchWeb();
             } else if ((e.shiftKey || shiftHeld) && results.hasPickedItems()) {
@@ -277,6 +306,7 @@ function handleKeyDown(e) {
             if (
                 search.isClipboardMode() ||
                 search.isTranslateMode() ||
+                search.isProcessMode() ||
                 search.isPrefixHintMode() ||
                 search.isCommandHintMode()
             ) {
@@ -303,7 +333,11 @@ function handleKeyDown(e) {
             if (e.ctrlKey && !window.getSelection()?.toString()) {
                 e.preventDefault();
                 if (isDiscoveryMode()) break;
-                copySelectedPath();
+                if (search.isProcessMode()) {
+                    copySelectedPid();
+                } else {
+                    copySelectedPath();
+                }
             }
             break;
 
@@ -333,7 +367,9 @@ function handleKeyDown(e) {
             if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
                 e.preventDefault();
                 if (isDiscoveryMode()) break;
-                if (search.isClipboardMode()) {
+                if (search.isProcessMode()) {
+                    killSelectedProcess();
+                } else if (search.isClipboardMode()) {
                     removeClipboardEntry();
                 } else {
                     handleTrashShortcut();
@@ -373,6 +409,44 @@ function trashTargetsFromSelection() {
     const picked = results.getPickedItems();
     const candidates = picked.length > 0 ? picked : [results.getSelected()].filter(Boolean);
     return candidates.filter((item) => item.kind === 'file' || item.kind === 'folder');
+}
+
+// Mirror the backend CSV contract for config lists: `\,` is a literal comma and
+// `\\` is a literal backslash. A naive split(',') would corrupt existing
+// escaped entries in `app_exclude_names`.
+function parseConfigList(value) {
+    const entries = [];
+    let current = '';
+
+    for (let i = 0; i < value.length; i += 1) {
+        const ch = value[i];
+        const next = value[i + 1];
+
+        if (ch === '\\' && (next === ',' || next === '\\')) {
+            current += next;
+            i += 1;
+            continue;
+        }
+
+        if (ch === ',') {
+            const entry = current.trim();
+            if (entry) entries.push(entry);
+            current = '';
+            continue;
+        }
+
+        current += ch;
+    }
+
+    const entry = current.trim();
+    if (entry) entries.push(entry);
+    return entries;
+}
+
+// Inverse of `parseConfigList`: escape commas/backslashes before joining so an
+// app name containing `,` or `\` round-trips through the config file intact.
+function renderConfigList(entries) {
+    return entries.map((entry) => entry.replaceAll('\\', '\\\\').replaceAll(',', '\\,')).join(',');
 }
 
 async function handleTrashShortcut() {
@@ -440,6 +514,44 @@ async function handleEmptyTrash() {
     }
 }
 
+async function handleHideSelectApp() {
+    const item = results.getSelected();
+    // Only real launcher apps carry a path; synthetic rows must not be excluded.
+    if (!item || item.kind !== 'app' || !item.path || isSyntheticResultId(item.id)) {
+        banner.show('Select an app first', 'warning', 1.2);
+        return;
+    }
+
+    const ok = await confirm.ask({
+        title: 'Hide this app from Look?',
+        detail: `${item.title} will be added to app_exclude_names`,
+    });
+    if (!ok) return;
+
+    try {
+        const cfg = await getConfig();
+        const entry = cfg.entries.find((e) => e.key === 'app_exclude_names');
+        const current = entry?.value ?? '';
+        const names = parseConfigList(current);
+        const trimmedTitle = item.title.trim();
+        const normalizedTitle = trimmedTitle.toLowerCase();
+
+        if (names.some((name) => name.trim().toLowerCase() === normalizedTitle)) {
+            banner.show(`${item.title} is already hidden`, 'info', 1.2);
+            return;
+        }
+
+        names.push(trimmedTitle);
+
+        await setConfig([{ key: 'app_exclude_names', value: renderConfigList(names) }]);
+        await reloadConfig();
+
+        banner.show(`Hidden ${item.title}`, 'success', 1.2);
+    } catch (err) {
+        banner.show(`Hide app failed: ${err}`, 'error', 1.6);
+    }
+}
+
 export async function openAllPicked() {
     const items = results.getPickedItems();
     if (items.length === 0) return;
@@ -455,7 +567,7 @@ export async function openAllPicked() {
     results.clearPicks();
 }
 
-async function openSelected() {
+async function openSelected(elevated = false) {
     const item = results.getSelected();
     if (!item) return;
 
@@ -495,7 +607,11 @@ async function openSelected() {
     }
 
     try {
-        await openPath(item.path, item.kind, item.id);
+        if (elevated) {
+            await openElevated(item.path);
+        } else {
+            await openPath(item.path, item.kind, item.id);
+        }
         const actionMap = { app: 'open_app', file: 'open_file', folder: 'open_folder' };
         const action = actionMap[item.kind] || 'open_file';
         await recordUsage(item.id, action);
@@ -566,5 +682,30 @@ async function removeClipboardEntry() {
         search.handleQueryInput(queryInput.value);
     } catch (err) {
         console.error('Delete clipboard entry failed:', err);
+    }
+}
+
+async function copySelectedPid() {
+    const item = results.getSelected();
+    if (!item || item.kind !== 'process') return;
+    try {
+        await copyToClipboard(String(item.procPid));
+        banner.show(`Copied PID ${item.procPid}`, 'success', 1.0);
+    } catch (err) {
+        banner.show('Copy failed', 'error', 1.2);
+    }
+}
+
+async function killSelectedProcess() {
+    const item = results.getSelected();
+    if (!item || item.kind !== 'process') return;
+    try {
+        await killProcess(item.procPid);
+        banner.show(`Killed ${item.procName} (${item.procPid})`, 'success', 1.2);
+        // Force a fresh /proc walk so the killed row drops off next render.
+        search.forceProcessRefresh();
+        search.handleQueryInput(queryInput.value);
+    } catch (err) {
+        banner.show(`Kill failed: ${err}`, 'error', 1.6);
     }
 }

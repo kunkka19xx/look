@@ -13,6 +13,11 @@ export async function openPath(path, kind, id) {
     return invoke('open_path', { path, kind, id });
 }
 
+// Windows only. Rejects when UAC is declined, so await before recording usage.
+export async function openElevated(path) {
+    return invoke('open_elevated', { path });
+}
+
 export async function revealPath(path) {
     return invoke('reveal_path', { path });
 }
@@ -73,12 +78,24 @@ export async function listProcesses() {
     return invoke('list_processes');
 }
 
-export async function listProcessesOnPort(port) {
-    return invoke('list_processes_on_port', { port });
-}
-
 export async function killProcess(pid) {
     return invoke('kill_process', { pid });
+}
+
+export async function searchProcesses(query, refresh) {
+    return invoke('search_processes', { query, refresh });
+}
+
+export async function searchKillTargets(query) {
+    return invoke('search_kill_targets', { query });
+}
+
+export async function processDetail(pid) {
+    return invoke('process_detail', { pid });
+}
+
+export async function processCpu(pid) {
+    return invoke('process_cpu', { pid });
 }
 
 export async function listRunningApps() {
