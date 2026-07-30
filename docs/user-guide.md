@@ -427,5 +427,3 @@ rm -rf "$HOME/Library/Application Support/look"
 - Architecture guide: `docs/architecture.md`
 - Feature status: `docs/features.md`
 - Backend contributor guide: `docs/backend-guide.md`
-- Tech blog (EN): `docs/tech-blog-core-algorithms.md`
-- Tech blog (VI): `docs/tech-blog-core-algorithms.vi.md`

@@ -6,7 +6,7 @@ It intentionally merges architecture explanation and diagrams into one place, so
 
 ## 1) System overview and design intent
 
-`look` is a keyboard-first launcher (macOS shipped, Windows + Linux in active development) designed for low-latency local search. The architecture separates UI concerns from search/index/ranking concerns (Rust), joined through a small FFI/command boundary. The UI layer is platform-specific:
+`look` is a keyboard-first launcher (shipping on macOS, Windows, and Linux) designed for low-latency local search. The architecture separates UI concerns from search/index/ranking concerns (Rust), joined through a small FFI/command boundary. The UI layer is platform-specific:
 
 - **macOS:** Swift / AppKit / SwiftUI under `apps/macos/LauncherApp/` (Xcode project), talking to the Rust core via the C ABI (`bridge/ffi`).
 - **Windows + Linux:** Tauri 2 shell with a vanilla HTML/CSS/JS frontend under `apps/linows/` (`lookapp`), talking to the Rust core via Tauri commands. The macOS SwiftUI app is the design source of truth.
@@ -301,9 +301,11 @@ stateDiagram-v2
 
     state CommandMode {
       [*] --> Calc
-      Calc --> Shell: select /shell
-      Shell --> Kill: select /kill
-      Kill --> Sys: select /sys
+      Calc --> Pomo: select /pomo
+      Pomo --> Todo: select /todo
+      Todo --> Kill: select /kill
+      Kill --> Shell: select /shell
+      Shell --> Sys: select /sys
     }
 ```
 
@@ -312,7 +314,7 @@ Behavioral notes:
 - global hotkey `Cmd+Space` toggles launcher visibility,
 - web search is explicit handoff (`Cmd+Enter`),
 - clipboard history mode is shell-side and in-memory for current session,
-- command mode supports `calc`, `shell`, `kill`, `sys`,
+- command mode supports `calc`, `pomo`, `todo`, `kill`, `shell`, `sys`,
 - settings panel controls theme/index/runtime knobs and persists locally.
 
 ---
