@@ -192,6 +192,9 @@ disables hardware acceleration via the WebKitGTK API (`set_hardware_acceleration
 | Ctrl+Shift+,  | Open settings           |
 | Ctrl+Shift+;  | Reload config from file |
 | Ctrl+H        | Help screen             |
+| Ctrl+Shift+H  | Hide selected app from Look |
+| Ctrl+Shift+Enter | Run selected app as admin (Windows) |
+| Ctrl+D        | Remove selected clipboard entry (in `c"` mode) |
 
 **Known issues on Ubuntu:**
 
