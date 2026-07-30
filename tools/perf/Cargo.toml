@@ -1,7 +1,8 @@
 [package]
 name = "look-perf-tools"
 edition = "2024"
-license = "MIT"
+license = "GPL-3.0-or-later"
+authors = ["kunkka19xx <nobita079x@gmail.com>"]
 version = "0.1.0"
 publish = false
 description = "Perf and stress benches for look's index refresh / watcher path. Not shipped in any app bundle."
