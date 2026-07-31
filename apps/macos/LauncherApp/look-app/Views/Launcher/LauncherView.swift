@@ -648,10 +648,7 @@ struct LauncherView: View {
         .onAppear {
             refreshSearchResults()
             configureLaunchpadIfNeeded()
-            if themeStore.settings.superActionsEnabled {
-                Task { await launchpadController.refreshStates() }
-                Task { await launchpadController.refreshWeather() }
-            }
+            refreshLaunchpadState()
             startKeyboardNavigationIfNeeded()
             focusActiveInput()
             refreshClipboardMonitoringMode()
@@ -668,6 +665,10 @@ struct LauncherView: View {
         }
         .onChange(of: themeStore.settings.superActionsEnabled) { _, enabled in
             launchpadSettingChanged(enabled: enabled)
+        }
+        // Bumped on every show, so it stands in for the missing re-onAppear.
+        .onChange(of: appearanceRevealToken) { _, _ in
+            refreshLaunchpadState()
         }
         .onChange(of: query) { _, _ in
             // Editing the query dismisses a pending Empty Trash confirmation,
