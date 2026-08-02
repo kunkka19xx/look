@@ -158,10 +158,7 @@ function handleKeyDown(e) {
     // Ctrl+Shift+H: hide the selected app from Look
     if (e.ctrlKey && (e.shiftKey || shiftHeld) && (e.key === 'H' || e.key === 'h')) {
         e.preventDefault();
-        if (settingsModule?.isActive()) return;
-        if (helpScreen && !helpScreen.hidden) return;
-        if (commandMode?.isActive()) return;
-        void handleHideSelectApp();
+        if(allowShortcut()) handleHideSelectApp();
         return;
     }
 
@@ -387,6 +384,22 @@ function handleKeyDown(e) {
             }
             break;
     }
+}
+
+// Shared gate for result-based shortcuts: disable them while another launcher
+// surface owns the UI, while the query is empty, or while the search input is
+// in a non-result mode such as discovery, translate, or clipboard.
+function allowShortcut() {
+    return (
+        !settingsModule?.isActive() &&
+        !(helpScreen && !helpScreen.hidden) &&
+        !commandMode?.isActive() &&
+        !isDiscoveryMode() &&
+        !search.isTranslateMode() &&
+        !search.isClipboardMode() &&
+        !search.isProcessMode() &&
+        queryInput.value.trim() !== ''
+    );
 }
 
 // The letter behind an Alt chord. Prefer e.key so it respects the layout (like
