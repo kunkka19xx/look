@@ -42,7 +42,7 @@ extension ThemeSettingsView {
                 }
 
                 Divider()
-                    .overlay(.white.opacity(0.1))
+                    .overlay(themeStore.dividerColor())
                     .padding(.vertical, 4)
 
                 sectionHeader("Layout")
@@ -196,10 +196,10 @@ extension ThemeSettingsView {
         }
         .frame(width: 240, height: 320, alignment: .topLeading)
         .scrollIndicators(.hidden)
-        .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(themeStore.scrimColor(opacity: 0.72), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(.white.opacity(0.12), lineWidth: 1)
+                .stroke(themeStore.liftColor(opacity: 0.12), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
     }

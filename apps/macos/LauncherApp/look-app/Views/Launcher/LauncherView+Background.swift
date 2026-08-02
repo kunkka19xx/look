@@ -30,7 +30,10 @@ extension LauncherView {
                     .opacity(themeStore.settings.backgroundImageOpacity)
             }
 
-            VisualEffectBlur(material: themeStore.settings.blurMaterial.material)
+            VisualEffectBlur(
+                material: themeStore.settings.blurMaterial.material,
+                appearance: themeStore.themeAppearance()
+            )
                 .opacity(
                     min(
                         1,

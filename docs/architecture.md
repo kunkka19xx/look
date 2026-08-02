@@ -352,6 +352,7 @@ Available themes (selected via Settings > Appearance):
 | Gruvbox | Retro warm tones |
 | Dracula | Classic purple-accented dark |
 | Kanagawa | Japanese-inspired dark theme |
+| Kindle | Paper and ink, e-reader light theme (Charter serif) |
 | Custom | Auto-derived semantic colors from tint |
 
 Themes are defined in `Themes/` folder:
@@ -359,12 +360,19 @@ Themes are defined in `Themes/` folder:
 - `BuiltinThemePreset`: Dropdown selection enum
 - Individual theme files: `CatppuccinTheme.swift`, `TokyoNightTheme.swift`, etc.
 
+A preset declares its `ThemeAppearance` (`.dark` or `.light`). It pins the
+NSVisualEffectView appearance, so a preset frosts the same way whether macOS is
+in Light or Dark mode, and it picks how the opaque command-mode surfaces and the
+pane scrims are mixed: dark themes darken, light themes lighten. A preset may
+also declare a `fontName`; presets that do not reset the font to the app default
+when applied.
+
 ### Config File Integration
 
 All settings are persisted to `.look.config`:
 
 **UI Theme:**
-- `ui_theme` - theme name (catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa)
+- `ui_theme` - theme name (catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle). Matched case-insensitively, and applied after the individual `ui_*` keys below, so a preset overrides them. Empty means Custom. Save Config writes a preset name only while the values still match that preset, so a theme you have tweaked is stored as its literal values.
 
 **Appearance:**
 - `ui_tint_red`, `ui_tint_green`, `ui_tint_blue`, `ui_tint_opacity` - background tint (0-1)
