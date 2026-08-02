@@ -5,7 +5,7 @@ extension LauncherView {
     /// False when another screen owns the launcher, so the caller can leave the
     /// key alone instead of swallowing it into a no-op.
     func hideSelectedApp() -> Bool {
-        guard !isCommandMode, !appUIState.showsThemeSettings, !showsHelpScreen else { return false }
+        guard allowsHideAppShortcut() else { return false }
         guard pendingEmptyTrashCount == nil else { return false }
 
         guard let selectedResultID,
@@ -51,6 +51,19 @@ extension LauncherView {
 
     func cancelHideSelectedApp() {
         pendingHideAppResult = nil
+    }
+
+    private func allowsHideAppShortcut() -> Bool {
+        HideAppShortcutLogic.allowsKeyboardHideApp(
+            showsThemeSettings: appUIState.showsThemeSettings,
+            isCommandMode: isCommandMode,
+            showsHelpScreen: showsHelpScreen,
+            hidesResultsForEmptyQuery: hidesResultsForEmptyQuery,
+            isPrefixSuggestionQuery: isPrefixSuggestionQuery,
+            isCommandSuggestionQuery: isCommandSuggestionQuery,
+            isTranslationQuery: isTranslationQuery,
+            isClipboardQuery: isClipboardQuery
+        )
     }
 
     private enum AppExcludeResult {

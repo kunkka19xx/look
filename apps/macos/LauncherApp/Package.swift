@@ -17,6 +17,7 @@ let package = Package(
                 "Support/Launcher/HintText.swift",
                 "Support/AppConstants.swift",
                 "Support/ConfigFileLines.swift",
+                "Support/Launcher/HideAppShortcutLogic.swift",
                 "Support/Launcher/LauncherSearchLogic.swift",
                 "Support/Launcher/ProcessScoring.swift",
                 "Support/Launcher/DeleteTargetLogic.swift",
