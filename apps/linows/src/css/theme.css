@@ -22,6 +22,15 @@
      * light theme can override it. */
     --overlay-surface: rgba(15, 15, 22, 0.96);
 
+    /* Polarity pair, mirroring ThemeStore.liftColor/scrimColor on macOS: --lift
+     * stands a chip or hover wash off the backdrop (white on dark, ink on
+     * paper), --scrim seats one onto it. --shadow is not part of the pair - a
+     * cast shadow stays dark on paper, it only warms. RGB triplets so call
+     * sites keep their own alpha. */
+    --lift: 255, 255, 255;
+    --scrim: 0, 0, 0;
+    --shadow: 0, 0, 0;
+
     /* Accent & semantic - blue #89b4fa */
     --accent-color: #89b4fa;
     --on-accent-color: #1e1e2e;
@@ -29,6 +38,18 @@
     --color-warning: #fab387;
     --color-danger: #f38ba8;
     --color-info: #89b4fa;
+
+    /* Folder-preview file-type hints (md/txt and images reuse info/success) */
+    --ext-script: #e8d44d;
+    --ext-lang: #e57a6b;
+    --ext-style: #d17dc9;
+    --ext-data: #8cc7d6;
+
+    /* Code preview, matching the macOS SyntaxHighlighter palette */
+    --syntax-keyword: #d17dc9;
+    --syntax-string: #e8a86b;
+    --syntax-comment: #737873;
+    --syntax-number: #8cc7d6;
 
     /* Typography */
     --font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
@@ -50,7 +71,7 @@
 }
 
 /* Tokyo Night */
-[data-theme="tokyo-night"] {
+:root[data-theme="tokyo-night"] {
     --bg-tint: rgba(26, 27, 38, 0.6);
     --font-color: rgba(214, 222, 245, 0.98);
     --font-secondary: rgba(189, 204, 230, 1);
@@ -64,7 +85,7 @@
 }
 
 /* Rose Pine */
-[data-theme="rose-pine"] {
+:root[data-theme="rose-pine"] {
     --bg-tint: rgba(25, 23, 36, 0.58);
     --font-color: rgba(242, 237, 232, 0.98);
     --font-secondary: rgba(224, 214, 207, 1);
@@ -78,7 +99,7 @@
 }
 
 /* Gruvbox */
-[data-theme="gruvbox"] {
+:root[data-theme="gruvbox"] {
     --bg-tint: rgba(40, 40, 40, 0.6);
     --font-color: rgba(237, 227, 201, 0.98);
     --font-secondary: rgba(222, 204, 163, 1);
@@ -92,7 +113,7 @@
 }
 
 /* Dracula */
-[data-theme="dracula"] {
+:root[data-theme="dracula"] {
     --bg-tint: rgba(40, 42, 54, 0.58);
     --font-color: rgba(248, 248, 250, 0.98);
     --font-secondary: rgba(235, 222, 250, 1);
@@ -106,7 +127,7 @@
 }
 
 /* Kanagawa */
-[data-theme="kanagawa"] {
+:root[data-theme="kanagawa"] {
     --bg-tint: rgba(22, 22, 29, 0.6);
     --font-color: rgba(222, 219, 201, 0.98);
     --font-secondary: rgba(204, 199, 168, 1);
@@ -117,6 +138,49 @@
     --selection-fill: rgba(128, 122, 97, 0.28);
     --accent-color: rgba(117, 166, 209, 1);
     --border-color: rgba(220, 215, 186, 0.1);
+}
+
+/* Kindle Paperwhite: warm paper, near-black ink, greyscale semantics. The one
+ * light preset - it flips --lift/--shadow polarity and repaints every token the
+ * dark presets inherit from :root. Bookerly ships only on Amazon readers, so
+ * the stack falls back through the transitional serifs a Linux box is likely
+ * to have. */
+:root[data-theme="kindle"] {
+    --bg-tint: rgba(247, 242, 230, 0.93);
+    --font-color: rgb(33, 31, 26);
+    --font-secondary: rgb(61, 56, 48);
+    --font-muted: rgb(77, 71, 61);
+    --panel-fill: rgba(255, 252, 245, 0.55);
+    --control-fill: rgba(217, 209, 194, 0.55);
+    --divider-color: rgba(102, 94, 82, 0.3);
+    --selection-fill: rgba(61, 56, 48, 0.16);
+    --overlay-surface: rgba(250, 246, 236, 0.97);
+    --border-color: rgba(107, 97, 82, 0.26);
+
+    --lift: 46, 42, 34;
+    --scrim: 252, 249, 241;
+    --shadow: 74, 62, 46;
+
+    --accent-color: rgb(46, 43, 38);
+    --on-accent-color: rgb(247, 242, 230);
+    --color-success: rgb(41, 107, 56);
+    --color-warning: rgb(133, 89, 8);
+    --color-danger: rgb(158, 38, 33);
+    --color-info: rgb(46, 43, 38);
+
+    --ext-script: rgb(122, 96, 12);
+    --ext-lang: rgb(150, 58, 42);
+    --ext-style: rgb(112, 51, 108);
+    --ext-data: rgb(30, 88, 104);
+
+    --syntax-keyword: rgb(112, 51, 108);
+    --syntax-string: rgb(133, 89, 8);
+    --syntax-comment: rgb(122, 116, 105);
+    --syntax-number: rgb(30, 88, 104);
+
+    --font-family:
+        "Charter", "Bitstream Charter", "Charis SIL", "Literata", Georgia, "Noto Serif",
+        "DejaVu Serif", serif;
 }
 
 /* Transparency-capable environments (macOS, Windows, Wayland, X11 with compositor) */

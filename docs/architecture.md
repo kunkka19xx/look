@@ -54,7 +54,7 @@ flowchart LR
   - `LauncherWindowCoordinator`: window/focus management
   - `EngineBridge`: search engine communication
   - `ClipboardHistoryStore`, `KeyboardSelectionMonitor`, `GlobalHotKeyManager`
-- `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa) and semantic color tokens
+- `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle) and semantic color tokens
 - `bridge/ffi`: narrow C ABI surface for search, usage recording, config reload, translation, todo load/save, and error payloads.
 - `core/answers`: platform-agnostic, network-backed "web answer" lookups shared by every shell (macOS via `bridge/ffi`, Windows/Linux via Tauri commands). Instant answers (currency/weather/crypto), search suggestions, knowledge sources, and translation. Best-effort and panic-free: every entry point returns "no answer" on failure, with cheap network-free pattern-gating (`has_match`) so callers can fire speculatively while typing. No async runtime - HTTP is a blocking `curl` subprocess.
 - `core/indexing`: candidate model and indexing helpers used by engine/storage flows.
@@ -366,6 +366,18 @@ in Light or Dark mode, and it picks how the opaque command-mode surfaces and the
 pane scrims are mixed: dark themes darken, light themes lighten. A preset may
 also declare a `fontName`; presets that do not reset the font to the app default
 when applied.
+
+On linows the same presets live in `apps/linows/src/css/theme.css`, one
+`:root[data-theme="…"]` block per preset, with `js/screens/settings.js`
+mirroring the raw slider values in `THEME_PRESETS` (tint, text and border are
+also written as inline custom properties, so both sides must agree). Appearance
+is not a flag there: a light preset flips the `--lift` / `--shadow` RGB
+triplets that stand chips off the backdrop and seat panes on it, and repaints
+the semantic tokens the dark presets inherit from `:root`. A preset also owns
+the tint/text/border opacities that dark presets leave to the user
+(`LIGHT_THEMES`), because a paper tint at a dark theme's opacity reads as a
+wash. Its font stack stays in CSS and applies while the Font field is left at
+`system-ui`; an explicit font still wins.
 
 ### Config File Integration
 
