@@ -7,6 +7,13 @@ struct ThemeSettingsView: View {
         case fontName
     }
 
+    /// Outcome carried with the text so a failed save cannot be styled as a
+    /// success by a stale flag.
+    struct SaveMessage {
+        let text: String
+        let succeeded: Bool
+    }
+
     static let activeTabFillOpacity = 0.16
     static let inactiveTabFillOpacity = 0.06
 
@@ -15,7 +22,7 @@ struct ThemeSettingsView: View {
     @ObservedObject var updateChecker = UpdateChecker.shared
     @Binding var settings: ThemeSettings
     @State var selectedTab = 0
-    @State var saveMessage: String?
+    @State var saveMessage: SaveMessage?
     @State var fontSuggestions: [String] = []
     @State var showsFontSuggestions = false
     @State var isPickingFontSuggestion = false
@@ -37,19 +44,22 @@ struct ThemeSettingsView: View {
                 Spacer()
 
                 if let saveMessage {
-                    Text(saveMessage)
+                    Text(saveMessage.text)
                         .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
-                        .foregroundStyle(themeStore.onSuccessColor())
+                        .foregroundStyle(saveMessage.succeeded ? themeStore.onSuccessColor() : themeStore.onDangerColor())
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(themeStore.successColor(), in: Capsule())
+                        .background(
+                            saveMessage.succeeded ? themeStore.successColor() : themeStore.dangerColor(),
+                            in: Capsule()
+                        )
                 }
 
                 Button("Save Config") {
                     applyFileScanDepthInput()
                     applyFileScanLimitInput()
                     let ok = themeStore.saveCurrentConfigToFile()
-                    saveMessage = ok ? "Saved" : "Save failed"
+                    saveMessage = SaveMessage(text: ok ? "Saved" : "Save failed", succeeded: ok)
                     if ok {
                         NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
                     }

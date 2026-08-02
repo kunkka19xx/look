@@ -439,10 +439,9 @@ final class ThemeStore: ObservableObject {
 
             switch key {
             case "ui_theme":
-                // Empty means "no preset", not "forget the picker's choice".
-                if !value.isEmpty {
-                    settings.themeName = value
-                }
+                // Empty is Custom, and must clear a preset the file no longer
+                // names - the ui_* keys below are then the whole theme.
+                settings.themeName = value
             case "ui_tint_red":
                 if let parsed = parseUnitDouble(value) {
                     settings.tintRed = parsed
