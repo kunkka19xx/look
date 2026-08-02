@@ -1,10 +1,9 @@
 //! Focus an existing app window before launching a fresh instance.
 //!
-//! Mirrors the WinUI3 reference (`apps/windows/LauncherApp/Services/ActionDispatcher.cs`
-//! `TryActivateExistingAppWindow`). Without this hook, every Enter on a
-//! search result hands off to `ShellExecuteW` / `open::that`, which spins
-//! up a new process even when the app already owns a visible window -
-//! noisy and unexpected for users who think of Look as a window switcher.
+//! Without this hook, every Enter on a search result hands off to
+//! `ShellExecuteW` / `open::that`, which spins up a new process even when the
+//! app already owns a visible window - noisy and unexpected for users who
+//! think of Look as a window switcher.
 //!
 //! Two matching strategies:
 //! - **UWP** (`shell:AppsFolder\<PackageFamilyName>!<AppId>`): walk all

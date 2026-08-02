@@ -9,12 +9,10 @@ Guide for building Look locally and contributing to the project.
 ├── apps/
 │   ├── macos/
 │   │   └── LauncherApp/          # Swift macOS app (Xcode project)
-│   ├── linows/                   # Tauri v2 app, Linux + Windows
-│   │   ├── src-tauri/            #   Rust backend (commands, config, platform, etc.)
-│   │   ├── src/                  #   Frontend (vanilla HTML/CSS/JS, ES modules)
-│   │   └── flake.nix             #   NixOS dev shell
-│   └── windows/
-│       └── LauncherApp/          # Legacy WinUI 3 app (archived, superseded by linows)
+│   └── linows/                   # Tauri v2 app, Linux + Windows
+│       ├── src-tauri/            #   Rust backend (commands, config, platform, etc.)
+│       ├── src/                  #   Frontend (vanilla HTML/CSS/JS, ES modules)
+│       └── flake.nix             #   NixOS dev shell
 ├── core/
 │   ├── engine/                   # Query engine, search pipeline
 │   ├── indexing/                 # Candidate model, source traits
