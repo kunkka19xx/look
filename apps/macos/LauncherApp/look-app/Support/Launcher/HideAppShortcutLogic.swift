@@ -9,7 +9,8 @@ enum HideAppShortcutLogic {
         isPrefixSuggestionQuery: Bool,
         isCommandSuggestionQuery: Bool,
         isTranslationQuery: Bool,
-        isClipboardQuery: Bool
+        isClipboardQuery: Bool,
+        isProcessQuery: Bool
     ) -> Bool {
         !showsThemeSettings
             && !isCommandMode
@@ -19,5 +20,6 @@ enum HideAppShortcutLogic {
             && !isCommandSuggestionQuery
             && !isTranslationQuery
             && !isClipboardQuery
+            && !isProcessQuery
     }
 }

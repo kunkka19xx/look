@@ -12,7 +12,8 @@ final class HideAppShortcutLogicTests: XCTestCase {
                 isPrefixSuggestionQuery: false,
                 isCommandSuggestionQuery: false,
                 isTranslationQuery: false,
-                isClipboardQuery: false
+                isClipboardQuery: false,
+                isProcessQuery: false
             )
         )
         XCTAssertFalse(
@@ -24,7 +25,8 @@ final class HideAppShortcutLogicTests: XCTestCase {
                 isPrefixSuggestionQuery: false,
                 isCommandSuggestionQuery: false,
                 isTranslationQuery: false,
-                isClipboardQuery: false
+                isClipboardQuery: false,
+                isProcessQuery: false
             )
         )
         XCTAssertFalse(
@@ -36,7 +38,8 @@ final class HideAppShortcutLogicTests: XCTestCase {
                 isPrefixSuggestionQuery: false,
                 isCommandSuggestionQuery: false,
                 isTranslationQuery: false,
-                isClipboardQuery: false
+                isClipboardQuery: false,
+                isProcessQuery: false
             )
         )
     }
@@ -51,7 +54,8 @@ final class HideAppShortcutLogicTests: XCTestCase {
                 isPrefixSuggestionQuery: false,
                 isCommandSuggestionQuery: false,
                 isTranslationQuery: false,
-                isClipboardQuery: false
+                isClipboardQuery: false,
+                isProcessQuery: false
             )
         )
     }
@@ -66,7 +70,8 @@ final class HideAppShortcutLogicTests: XCTestCase {
                 isPrefixSuggestionQuery: true,
                 isCommandSuggestionQuery: false,
                 isTranslationQuery: false,
-                isClipboardQuery: false
+                isClipboardQuery: false,
+                isProcessQuery: false
             )
         )
         XCTAssertFalse(
@@ -78,7 +83,8 @@ final class HideAppShortcutLogicTests: XCTestCase {
                 isPrefixSuggestionQuery: false,
                 isCommandSuggestionQuery: true,
                 isTranslationQuery: false,
-                isClipboardQuery: false
+                isClipboardQuery: false,
+                isProcessQuery: false
             )
         )
         XCTAssertFalse(
@@ -90,7 +96,8 @@ final class HideAppShortcutLogicTests: XCTestCase {
                 isPrefixSuggestionQuery: false,
                 isCommandSuggestionQuery: false,
                 isTranslationQuery: true,
-                isClipboardQuery: false
+                isClipboardQuery: false,
+                isProcessQuery: false
             )
         )
         XCTAssertFalse(
@@ -102,7 +109,21 @@ final class HideAppShortcutLogicTests: XCTestCase {
                 isPrefixSuggestionQuery: false,
                 isCommandSuggestionQuery: false,
                 isTranslationQuery: false,
-                isClipboardQuery: true
+                isClipboardQuery: true,
+                isProcessQuery: false
+            )
+        )
+        XCTAssertFalse(
+            HideAppShortcutLogic.allowsKeyboardHideApp(
+                showsThemeSettings: false,
+                isCommandMode: false,
+                showsHelpScreen: false,
+                hidesResultsForEmptyQuery: false,
+                isPrefixSuggestionQuery: false,
+                isCommandSuggestionQuery: false,
+                isTranslationQuery: false,
+                isClipboardQuery: false,
+                isProcessQuery: true
             )
         )
     }
@@ -117,7 +138,8 @@ final class HideAppShortcutLogicTests: XCTestCase {
                 isPrefixSuggestionQuery: false,
                 isCommandSuggestionQuery: false,
                 isTranslationQuery: false,
-                isClipboardQuery: false
+                isClipboardQuery: false,
+                isProcessQuery: false
             )
         )
     }

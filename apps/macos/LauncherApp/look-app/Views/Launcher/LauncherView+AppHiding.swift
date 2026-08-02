@@ -62,7 +62,8 @@ extension LauncherView {
             isPrefixSuggestionQuery: isPrefixSuggestionQuery,
             isCommandSuggestionQuery: isCommandSuggestionQuery,
             isTranslationQuery: isTranslationQuery,
-            isClipboardQuery: isClipboardQuery
+            isClipboardQuery: isClipboardQuery,
+            isProcessQuery: isProcessQuery
         )
     }
 
