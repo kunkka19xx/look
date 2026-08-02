@@ -352,7 +352,7 @@ fn setup_dev_env() {
 ///
 /// On first launch (no `launch_at_login` key yet) - enable autostart and persist.
 /// On subsequent launches - re-sync the registry/desktop-entry with the current
-/// exe path so it stays valid after updates or reinstalls (matches WinUI3 behavior).
+/// exe path so it stays valid after updates or reinstalls.
 fn sync_autostart() {
     // Debug builds live under target/debug and (when produced by `tauri dev`)
     // load the frontend from devUrl. If we wrote them into autostart, login

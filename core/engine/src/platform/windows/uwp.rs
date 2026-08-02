@@ -3,7 +3,6 @@
 //! Win11 ships Notepad, Calculator, Weather, Mail, Photos, etc. as packaged
 //! apps that don't appear as `.lnk` shortcuts in Start Menu Programs. They are
 //! reachable only via the Shell namespace at `shell:AppsFolder\{AUMID}`.
-//! Ported from `apps/windows/LauncherApp/Services/UwpAppService.cs`.
 
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoTaskMemFree};
 use windows::Win32::UI::Shell::{
