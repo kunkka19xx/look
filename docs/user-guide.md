@@ -212,9 +212,14 @@ Built-in theme presets are available:
 | Gruvbox     | Retro warm tones                  |
 | Dracula     | Classic purple-accented dark      |
 | Kanagawa    | Japanese-inspired dark theme      |
+| Kindle      | Paper and ink e-reader look       |
 | Custom      | Your own colors derived from tint |
 
-Theme is saved as `ui_theme=<name>` in config.
+Theme is saved as `ui_theme=<name>` in config, and a name written there overrides
+the individual `ui_*` values. Kindle is the one light preset: it also switches the
+frosted panels to a light material and the font to Charter, macOS' stand-in for
+Bookerly. Picking a preset overwrites your tint, text color, border and font;
+`Custom` keeps the current values and derives the rest from them.
 
 **Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. The launcher window stays the same size either way.
 

@@ -7,6 +7,9 @@ struct ThemeSettingsView: View {
         case fontName
     }
 
+    static let activeTabFillOpacity = 0.16
+    static let inactiveTabFillOpacity = 0.06
+
     @EnvironmentObject var appUIState: AppUIState
     @EnvironmentObject var themeStore: ThemeStore
     @ObservedObject var updateChecker = UpdateChecker.shared
@@ -36,10 +39,10 @@ struct ThemeSettingsView: View {
                 if let saveMessage {
                     Text(saveMessage)
                         .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(themeStore.onSuccessColor())
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(.green.opacity(0.42), in: Capsule())
+                        .background(themeStore.successColor(), in: Capsule())
                 }
 
                 Button("Save Config") {
@@ -148,7 +151,7 @@ struct ThemeSettingsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 7)
                 .background(
-                    (isActive ? .white.opacity(0.16) : .white.opacity(0.06)),
+                    themeStore.liftColor(opacity: isActive ? Self.activeTabFillOpacity : Self.inactiveTabFillOpacity),
                     in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                 )
         }

@@ -65,7 +65,7 @@ extension ThemeSettingsView {
                     }
 
                     Divider()
-                        .overlay(.white.opacity(0.1))
+                        .overlay(themeStore.dividerColor())
                         .padding(.vertical, 4)
 
                     Text("Background")
@@ -114,7 +114,7 @@ extension ThemeSettingsView {
                     LabeledSlider(title: "Image Blur", value: $settings.backgroundImageBlur, range: 0...30)
 
                     Divider()
-                        .overlay(.white.opacity(0.1))
+                        .overlay(themeStore.dividerColor())
                         .padding(.vertical, 4)
 
                     Text("Indexing")
@@ -238,7 +238,7 @@ extension ThemeSettingsView {
                                             .foregroundStyle(themeStore.secondaryTextColor())
                                             .padding(.horizontal, 9)
                                             .padding(.vertical, 5)
-                                            .background(.white.opacity(0.12), in: Capsule())
+                                            .background(themeStore.liftColor(opacity: 0.12), in: Capsule())
                                         }
                                     }
                                 }
@@ -289,7 +289,7 @@ extension ThemeSettingsView {
                                             .foregroundStyle(themeStore.secondaryTextColor())
                                             .padding(.horizontal, 9)
                                             .padding(.vertical, 5)
-                                            .background(.white.opacity(0.12), in: Capsule())
+                                            .background(themeStore.liftColor(opacity: 0.12), in: Capsule())
                                         }
                                     }
                                 }
@@ -301,7 +301,7 @@ extension ThemeSettingsView {
                     }
 
                     Divider()
-                        .overlay(.white.opacity(0.1))
+                        .overlay(themeStore.dividerColor())
                         .padding(.vertical, 4)
 
                     Text("Privacy & Logs")
@@ -331,7 +331,7 @@ extension ThemeSettingsView {
                     }
 
                     Divider()
-                        .overlay(.white.opacity(0.1))
+                        .overlay(themeStore.dividerColor())
                         .padding(.vertical, 4)
 
                     Text("Startup")
@@ -352,7 +352,7 @@ extension ThemeSettingsView {
                     }
 
                     Divider()
-                        .overlay(.white.opacity(0.1))
+                        .overlay(themeStore.dividerColor())
                         .padding(.vertical, 4)
 
                     Text("Config file")
@@ -379,7 +379,7 @@ extension ThemeSettingsView {
                     }
 
                     Divider()
-                        .overlay(.white.opacity(0.1))
+                        .overlay(themeStore.dividerColor())
                         .padding(.vertical, 4)
 
                     aboutSection

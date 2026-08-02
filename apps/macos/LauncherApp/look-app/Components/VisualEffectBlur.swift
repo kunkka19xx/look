@@ -3,12 +3,15 @@ import SwiftUI
 
 struct VisualEffectBlur: NSViewRepresentable {
     var material: NSVisualEffectView.Material
+    /// Pinned per theme: materials otherwise follow the system light/dark setting.
+    var appearance: ThemeAppearance = .dark
 
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = material
         view.blendingMode = .withinWindow
         view.state = .active
+        view.appearance = NSAppearance(named: appearance.nsAppearanceName)
         return view
     }
 
@@ -18,6 +21,9 @@ struct VisualEffectBlur: NSViewRepresentable {
         // hasn't actually changed.
         if nsView.material != material {
             nsView.material = material
+        }
+        if nsView.appearance?.name != appearance.nsAppearanceName {
+            nsView.appearance = NSAppearance(named: appearance.nsAppearanceName)
         }
     }
 }

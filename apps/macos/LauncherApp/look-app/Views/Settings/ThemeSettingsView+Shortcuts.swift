@@ -126,7 +126,7 @@ struct ShortcutSection: View {
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(.white.opacity(0.14), in: Capsule())
+                        .background(themeStore.liftColor(opacity: 0.14), in: Capsule())
                     Text(item.action)
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                         .foregroundStyle(themeStore.secondaryTextColor())

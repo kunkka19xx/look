@@ -8,6 +8,7 @@ enum BuiltinThemePreset: String, CaseIterable, Identifiable, Codable {
     case gruvbox
     case dracula
     case kanagawa
+    case kindle
 
     var id: String { rawValue }
 
@@ -20,6 +21,7 @@ enum BuiltinThemePreset: String, CaseIterable, Identifiable, Codable {
         case .gruvbox: return "Gruvbox"
         case .dracula: return "Dracula"
         case .kanagawa: return "Kanagawa"
+        case .kindle: return "Kindle"
         }
     }
 }

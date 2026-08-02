@@ -103,7 +103,7 @@ private struct RunningAppIconItem: View {
             .frame(width: 14, height: 14)
             .background(
                 RoundedRectangle(cornerRadius: 7)
-                    .fill(Color.black.opacity(0.72))
+                    .fill(themeStore.scrimColor(opacity: 0.72))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 7)

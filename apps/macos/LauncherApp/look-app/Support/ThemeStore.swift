@@ -119,16 +119,9 @@ final class ThemeStore: ObservableObject {
                         }
                     }
                 case "ui_theme":
-                    if !value.isEmpty {
-                        let themeValue = value.lowercased()
-                        let validThemes = ["catppuccin", "tokyonight", "rosepine", "gruvbox", "dracula", "kanagawa"]
-                        if validThemes.contains(themeValue) {
-                            let preset = BuiltinThemePreset(rawValue: themeValue) ?? .custom
-                            settings.uiTheme = preset
-                            applyBuiltinTheme(preset)
-                        } else {
-                            warnings.append("theme '\(value)' not found")
-                        }
+                    // Only validated here; applyThemeOverridesFromConfigFile applies it.
+                    if !value.isEmpty, BuiltinThemePreset.preset(forThemeName: value) == nil {
+                        warnings.append("theme '\(value)' not found")
                     }
                 default:
                     break
@@ -184,6 +177,7 @@ final class ThemeStore: ObservableObject {
         }
         var lines = ConfigFileLines.parse(raw)
 
+        ConfigFileLines.upsert(&lines, key: "ui_theme", value: savedThemeName())
         ConfigFileLines.upsert(&lines, key: "ui_tint_red", value: String(format: "%.2f", settings.tintRed))
         ConfigFileLines.upsert(&lines, key: "ui_tint_green", value: String(format: "%.2f", settings.tintGreen))
         ConfigFileLines.upsert(&lines, key: "ui_tint_blue", value: String(format: "%.2f", settings.tintBlue))
@@ -408,6 +402,15 @@ final class ThemeStore: ObservableObject {
         UserDefaults.standard.set(data, forKey: defaultsKey)
     }
 
+    /// Value for `ui_theme`. Recorded only while the values still match the
+    /// preset, since reading applies it over the individual keys. Empty = Custom.
+    private func savedThemeName() -> String {
+        guard let style = detectBuiltinTheme(for: settings).style, style.matches(settings) else {
+            return ""
+        }
+        return style.themeName
+    }
+
     private func applyThemeOverridesFromConfigFile() {
         guard let raw = try? String(contentsOf: Self.configPath(), encoding: .utf8) else {
             return
@@ -436,7 +439,10 @@ final class ThemeStore: ObservableObject {
 
             switch key {
             case "ui_theme":
-                settings.themeName = value
+                // Empty means "no preset", not "forget the picker's choice".
+                if !value.isEmpty {
+                    settings.themeName = value
+                }
             case "ui_tint_red":
                 if let parsed = parseUnitDouble(value) {
                     settings.tintRed = parsed
@@ -585,6 +591,17 @@ final class ThemeStore: ObservableObject {
                 continue
             }
         }
+
+        // Applied last, overriding the individual ui_* keys: every config file
+        // carries a full set of them, so the other order would ignore a
+        // hand-written `ui_theme=kindle`. See savedThemeName.
+        if let themeValue = ConfigFileLines.keyValues(raw)["ui_theme"],
+           let preset = BuiltinThemePreset.preset(forThemeName: themeValue) {
+            applyBuiltinTheme(preset)
+        }
+
+        // Keeps the Settings picker in step when the config file is what changed.
+        settings.uiTheme = detectBuiltinTheme(for: settings)
     }
 
     private static func configPath() -> URL {
@@ -809,6 +826,9 @@ launch_at_login=true
 skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data,deriveddata,pods,vendor,out,coverage,tmp,cache,venv
 
 # UI theme
+# Preset: catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle.
+# A preset overrides every ui_* value below. Leave it empty to use them as written.
+ui_theme=
 ui_tint_red=0.08
 ui_tint_green=0.10
 ui_tint_blue=0.12

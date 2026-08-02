@@ -1,6 +1,18 @@
 import SwiftUI
 
 extension ThemeStore {
+    /// Bases for the opaque command-mode surfaces. Dark adds the tint to a
+    /// near-black base; on paper that would clip past white, so light mixes.
+    private enum CommandSurface {
+        static let darkBackgroundBase = 0.18
+        static let darkBackgroundBlueBase = 0.20
+        static let darkPanelBase = 0.13
+        static let darkPanelBlueBase = 0.15
+        static let lightBackgroundBase = 0.94
+        static let lightPanelBase = 0.87
+        static let tintWeight = 0.25
+    }
+
     // MARK: - Appearance Tokens
 
     func fontColor(opacityMultiplier: Double = 1.0) -> Color {
@@ -117,23 +129,50 @@ extension ThemeStore {
     // - the card is just a few points darker, like a subtle recess.
 
     func commandModeBackgroundColor() -> Color {
-        Color(
-            .sRGB,
-            red: 0.18 + settings.tintRed * 0.25,
-            green: 0.18 + settings.tintGreen * 0.25,
-            blue: 0.20 + settings.tintBlue * 0.25,
-            opacity: 1.0
+        commandSurfaceColor(
+            darkBase: ThemeRGB(
+                red: CommandSurface.darkBackgroundBase,
+                green: CommandSurface.darkBackgroundBase,
+                blue: CommandSurface.darkBackgroundBlueBase
+            ),
+            lightBase: CommandSurface.lightBackgroundBase
         )
     }
 
     func commandModePanelColor() -> Color {
-        Color(
-            .sRGB,
-            red: 0.13 + settings.tintRed * 0.25,
-            green: 0.13 + settings.tintGreen * 0.25,
-            blue: 0.15 + settings.tintBlue * 0.25,
-            opacity: 1.0
+        commandSurfaceColor(
+            darkBase: ThemeRGB(
+                red: CommandSurface.darkPanelBase,
+                green: CommandSurface.darkPanelBase,
+                blue: CommandSurface.darkPanelBlueBase
+            ),
+            lightBase: CommandSurface.lightPanelBase
         )
+    }
+
+    /// Wash that seats a pane on the backdrop: darkens on dark, lightens on paper.
+    func scrimColor(opacity: Double) -> Color {
+        switch themeAppearance() {
+        case .dark:
+            return .black.opacity(opacity)
+        case .light:
+            return .white.opacity(opacity)
+        }
+    }
+
+    /// The inverse of `scrimColor`, for chips and badges that must stand off
+    /// the backdrop: white on dark, ink on paper.
+    func liftColor(opacity: Double) -> Color {
+        switch themeAppearance() {
+        case .dark:
+            return .white.opacity(opacity)
+        case .light:
+            return .black.opacity(opacity)
+        }
+    }
+
+    func themeAppearance() -> ThemeAppearance {
+        activeAppearanceStyle()?.appearance ?? .dark
     }
 
     func borderColor() -> Color {
@@ -153,18 +192,17 @@ extension ThemeStore {
 
     func applyBuiltinTheme(_ preset: BuiltinThemePreset) {
         guard let style = preset.style else {
+            // Custom owns no palette: clearing the name is what makes the
+            // semantic tokens fall back to being derived from the user's colors.
+            settings.themeName = ""
             return
         }
         style.apply(to: &settings)
     }
 
     func detectBuiltinTheme(for settings: ThemeSettings) -> BuiltinThemePreset {
-        if !settings.themeName.isEmpty {
-            for preset in BuiltinThemePreset.allCases where preset != .custom {
-                if preset.style?.themeName.lowercased() == settings.themeName.lowercased() {
-                    return preset
-                }
-            }
+        if let named = BuiltinThemePreset.preset(forThemeName: settings.themeName) {
+            return named
         }
         for preset in BuiltinThemePreset.allCases where preset != .custom {
             if let style = preset.style, style.matches(settings) {
@@ -172,6 +210,31 @@ extension ThemeStore {
             }
         }
         return .custom
+    }
+
+    private func commandSurfaceColor(darkBase: ThemeRGB, lightBase: Double) -> Color {
+        switch themeAppearance() {
+        case .dark:
+            return Color(
+                .sRGB,
+                red: darkBase.red + settings.tintRed * CommandSurface.tintWeight,
+                green: darkBase.green + settings.tintGreen * CommandSurface.tintWeight,
+                blue: darkBase.blue + settings.tintBlue * CommandSurface.tintWeight,
+                opacity: 1.0
+            )
+        case .light:
+            return Color(
+                .sRGB,
+                red: mixedWithTint(lightBase, settings.tintRed),
+                green: mixedWithTint(lightBase, settings.tintGreen),
+                blue: mixedWithTint(lightBase, settings.tintBlue),
+                opacity: 1.0
+            )
+        }
+    }
+
+    private func mixedWithTint(_ base: Double, _ tint: Double) -> Double {
+        base * (1 - CommandSurface.tintWeight) + tint * CommandSurface.tintWeight
     }
 
     private func activeAppearanceStyle() -> BuiltinThemeStyle? {

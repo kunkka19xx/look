@@ -147,7 +147,10 @@ struct ThemeSettings: Codable, Equatable {
     var borderOpacity: Double = 0.12
 
     var themeName: String = ""
-    var uiTheme: BuiltinThemePreset = .catppuccin
+
+    /// Preset shown in the Settings picker. Custom by default because the values
+    /// above are no preset's; `ThemeStore` re-detects it whenever config is read.
+    var uiTheme: BuiltinThemePreset = .custom
 
     // Background image
     var backgroundImagePath: String?
