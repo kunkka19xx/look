@@ -11,8 +11,6 @@ It intentionally merges architecture explanation and diagrams into one place, so
 - **macOS:** Swift / AppKit / SwiftUI under `apps/macos/LauncherApp/` (Xcode project), talking to the Rust core via the C ABI (`bridge/ffi`).
 - **Windows + Linux:** Tauri 2 shell with a vanilla HTML/CSS/JS frontend under `apps/linows/` (`lookapp`), talking to the Rust core via Tauri commands. The macOS SwiftUI app is the design source of truth.
 
-> **Note:** the legacy .NET 10 / WinUI 3 app under `apps/windows/LauncherApp/` is **archived** and being replaced by `linows` (bug fixes only - do not add features). See `apps/windows/README.md`.
-
 Every shell talks to the same Rust core, so search, indexing, ranking, and storage behave identically across platforms.
 
 Key design goals:

@@ -5,7 +5,6 @@
 # inside the Makefiles resolve):
 #   make -f scripts/Makefile.mac     <target>   - macOS / Xcode
 #   make -f scripts/Makefile.win     <target>   - Windows / Tauri (apps/linows/)
-#   make -f scripts/Makefile.winui3  <target>   - legacy WinUI3 (apps/windows/, reference-only)
 
 ifeq ($(OS),Windows_NT)
 include scripts/Makefile.win

@@ -25,7 +25,6 @@ jobs:
     outputs:
       swift: ${{ steps.filter.outputs.swift }}
       rust: ${{ steps.filter.outputs.rust }}
-      windows: ${{ steps.filter.outputs.windows }}
       linows: ${{ steps.filter.outputs.linows }}
       linows_linux: ${{ steps.filter.outputs.linows_linux }}
       linows_windows: ${{ steps.filter.outputs.linows_windows }}
@@ -43,12 +42,6 @@ jobs:
             rust:
               - 'core/**'
               - 'bridge/ffi/**'
-              - '.github/workflows/ci.yml'
-            windows:
-              - 'apps/windows/**'
-              - 'bridge/ffi/**'
-              - 'core/**'
-              - 'scripts/windows/**'
               - '.github/workflows/ci.yml'
             linows:
               - 'apps/linows/**'
@@ -246,17 +239,6 @@ jobs:
 
       - name: Build Look app (Debug)
         run: xcodebuild -project "apps/macos/LauncherApp/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build
-
-  # Legacy WinUI3 app - maintenance mode, CI disabled.
-  # To re-enable for a critical bugfix, replace this with the original
-  # windows-build job from git history.
-  windows-build-skip:
-    name: Windows WinUI3 build (skipped - maintenance mode)
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.windows == 'true'
-    steps:
-      - run: echo "Legacy WinUI3 app is in maintenance mode. Skipping CI build."
 
   linows-build:
     name: Build linows (Tauri, Linux)

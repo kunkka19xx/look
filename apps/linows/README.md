@@ -53,12 +53,13 @@ apps/linows/
 
 ## Why This Exists
 
-The previous Windows app (`apps/windows/`) was built with WinUI3/C#. It didn't match the
-macOS app's look and feel; the UI felt inconsistent across platforms. This Tauri app
-replaces it with a web-based frontend that can look identical on Windows and Linux, using
-the macOS SwiftUI app as the single design reference.
+The previous Windows app was built with WinUI3/C#. It didn't match the macOS app's look
+and feel; the UI felt inconsistent across platforms. This Tauri app replaces it with a
+web-based frontend that can look identical on Windows and Linux, using the macOS SwiftUI
+app as the single design reference.
 
-The WinUI3 app remains in `apps/windows/` (bug fixes only) until this migration is complete.
+The migration is complete and the WinUI3 app has been removed; it lives on in git history
+under `apps/windows/`.
 
 ## Key Decisions
 
