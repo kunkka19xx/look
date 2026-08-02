@@ -244,6 +244,10 @@ final class LaunchpadController {
         Task {
             report(await adapter.apply(intent))
             stateGeneration &+= 1
+            let generation = stateGeneration
+            let state = await adapter.state()
+            guard generation == stateGeneration else { return }
+            systemStates[actionID] = state
             systemStates[actionID] = await adapter.state()
         }
     }
