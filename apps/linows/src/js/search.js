@@ -213,6 +213,7 @@ export function handleQueryInput(query) {
         // The rest screen shows no rows, and the engine answers an empty query
         // by scoring the whole index. Clear instead of searching for nothing.
         if (hidesResultsForEmptyQuery()) {
+            if (onResultsCallback) onResultsCallback([], query);
             return;
         }
         performSearch('', myVersion);
