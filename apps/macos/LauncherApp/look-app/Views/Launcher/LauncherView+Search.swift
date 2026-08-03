@@ -20,6 +20,14 @@ extension LauncherView {
             setInitialSelection()
             return
         }
+        // The rest screen shows no rows, and the engine answers an empty query
+        // by scoring the whole index. Clear instead of searching for nothing.
+        guard !hidesResultsForEmptyQuery else {
+            invalidateSearchRequests()
+            backendResults = []
+            setInitialSelection()
+            return
+        }
 
         let currentQuery = query
         let searchLimit = AppConstants.Launcher.defaultSearchLimit
