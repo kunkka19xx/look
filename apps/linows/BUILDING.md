@@ -189,10 +189,10 @@ yay -S look-bin
 
 ```bash
 # Run directly
-nix run github:kunkka19xx/look?dir=apps/linows
+nix run 'github:kunkka19xx/look?dir=apps/linows'
 
 # Install to profile
-nix profile install github:kunkka19xx/look?dir=apps/linows
+nix profile install 'github:kunkka19xx/look?dir=apps/linows'
 
 # Build locally
 cd apps/linows
