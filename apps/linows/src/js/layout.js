@@ -8,6 +8,7 @@
 // command/settings/help), never query text or result counts.
 
 import * as platform from './platform.js';
+import * as superactions from './components/superactions.js';
 
 const GAP_MIN = 0;
 const GAP_MAX = 24;
@@ -16,6 +17,7 @@ let innerGap = 0;
 let queryEmpty = true;
 let translateQuery = false;
 let recentEmptyQuery = false;
+let resting = false;
 
 // Modal screens that suspend the floating home layout entirely.
 const modal = { command: false, settings: false, help: false };
@@ -122,6 +124,13 @@ function drawnImageRect(winRect) {
     return { x: 0, y: 0, w: winRect.width, h: winRect.height };
 }
 
+/** True when the results row is off screen: the empty-query rest state, or the
+ *  controls strip covering it. The strip ignores the floating-support gate, so
+ *  it can hide the row when `resting` is false. */
+export function hidesResultsForEmptyQuery() {
+    return resting || superactions.isVisible();
+}
+
 // Re-evaluate the floating gate after environment state changes at runtime
 // (the settings blur-fallback toggle flips data-disable-blur).
 export function refresh() {
@@ -136,7 +145,7 @@ function apply() {
     const supported = platform.floatingSupported();
     const onHome = !modal.command && !modal.settings && !modal.help;
     const floating = supported && innerGap > 0 && onHome; // showsFloatingCards
-    const resting = supported && queryEmpty && onHome; // hidesResultsForEmptyQuery
+    resting = supported && queryEmpty && onHome; // hidesResultsForEmptyQuery
     const barFree = floating || resting; // barFloatsFree
     const floatingGrid = floating && !translateQuery && !recentEmptyQuery;
 

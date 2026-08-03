@@ -17,6 +17,7 @@ import {
     WEB_URL_OPEN_SUBTITLE,
     WEB_URL_RECENT_SUBTITLE,
 } from './catalog.js';
+import * as layout from './layout.js';
 
 const DEBOUNCE_MS = 70;
 const MIN_QUICK_FOLDER_PREFIX = 2;
@@ -58,13 +59,6 @@ let webInFlight = false;
 // web suggestions need) and refilled by fetchUrlRows.
 let lastUrlMatch = null;
 let lastRecentUrls = [];
-
-function hidesResultsForEmptyQuery() {
-    return (
-        document.documentElement.classList.contains('controls-open') ||
-        document.getElementById('app')?.classList.contains('resting')
-    );
-}
 
 /** Resolved by the backend (Windows: SHGetKnownFolderPath; *nix: $HOME/<name>).
  *  Empty until setQuickFolders is called at boot. */
@@ -212,7 +206,7 @@ export function handleQueryInput(query) {
     if (query.trim() === '') {
         // The rest screen shows no rows, and the engine answers an empty query
         // by scoring the whole index. Clear instead of searching for nothing.
-        if (hidesResultsForEmptyQuery()) {
+        if (layout.hidesResultsForEmptyQuery()) {
             if (onResultsCallback) onResultsCallback([], query);
             return;
         }

@@ -12,6 +12,7 @@ import {
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
 import { webSuggestionFromResultId } from '../catalog.js';
 import { isWindows } from '../platform.js';
+import * as layout from '../layout.js';
 
 // LRU-bounded icon cache (cacheKey -> data URL | null). A plain Map keeps
 // insertion order, so re-inserting on a hit marks it most-recently-used and the
@@ -61,13 +62,6 @@ let emptyState = { mode: 'default' };
 // the gate the cursor follows it there instead of resting on the top result.
 let userNavigated = false;
 let lastRenderQuery = null;
-
-function hidesResultsForEmptyQuery() {
-    return (
-        document.documentElement.classList.contains('controls-open') ||
-        document.getElementById('app')?.classList.contains('resting')
-    );
-}
 
 export function init(containerEl) {
     container = containerEl;
@@ -158,7 +152,7 @@ export function render(results, query = null) {
         if (idx >= 0) nextIndex = idx;
     }
 
-    if (hidesResultsForEmptyQuery()) {
+    if (layout.hidesResultsForEmptyQuery()) {
         // No rows on screen. A seeded selection here is one the user cannot
         // see, and Enter / Ctrl+D / Ctrl+Shift+H would still act on it.
         selectedIndex = -1;
