@@ -17,7 +17,6 @@ let innerGap = 0;
 let queryEmpty = true;
 let translateQuery = false;
 let recentEmptyQuery = false;
-let resting = false;
 
 // Modal screens that suspend the floating home layout entirely.
 const modal = { command: false, settings: false, help: false };
@@ -124,11 +123,21 @@ function drawnImageRect(winRect) {
     return { x: 0, y: 0, w: winRect.width, h: winRect.height };
 }
 
-/** True when the results row is off screen: the empty-query rest state, or the
- *  controls strip covering it. The strip ignores the floating-support gate, so
- *  it can hide the row when `resting` is false. */
+/** One rule for "empty query", shared by the layout gate and by the search and
+ *  selection guards below. Whitespace still searches, so it is not empty. */
+export function isEmptyQuery(query) {
+    return query === '';
+}
+
+/** True when an empty query leaves the results row off screen: the rest state,
+ *  or the controls strip covering it. The strip ignores the floating-support
+ *  gate, so it can hide the row when floating is unavailable.
+ *
+ *  Derived from mode state only, never the cached `queryEmpty`: app.js updates
+ *  layout after handing the new query to search.js, and the discovery menus
+ *  publish rows synchronously from there. Callers gate on the query itself. */
 export function hidesResultsForEmptyQuery() {
-    return resting || superactions.isVisible();
+    return onHome() && (platform.floatingSupported() || superactions.isEnabled());
 }
 
 // Re-evaluate the floating gate after environment state changes at runtime
@@ -137,15 +146,20 @@ export function refresh() {
     apply();
 }
 
+// Modal screens suspend the floating home layout; every gate below is off there.
+function onHome() {
+    return !modal.command && !modal.settings && !modal.help;
+}
+
 function apply() {
     if (!win) return;
     // Degraded-rendering environments keep the classic framed panel: both the
     // gaps and the resting bar depend on real transparency. Still coarse -
     // platform info is static and the attribute only flips from settings.
     const supported = platform.floatingSupported();
-    const onHome = !modal.command && !modal.settings && !modal.help;
-    const floating = supported && innerGap > 0 && onHome; // showsFloatingCards
-    resting = supported && queryEmpty && onHome; // hidesResultsForEmptyQuery
+    const home = onHome();
+    const floating = supported && innerGap > 0 && home; // showsFloatingCards
+    const resting = supported && queryEmpty && home; // macOS hidesResultsForEmptyQuery, as a CSS state
     const barFree = floating || resting; // barFloatsFree
     const floatingGrid = floating && !translateQuery && !recentEmptyQuery;
 

@@ -152,7 +152,7 @@ export function render(results, query = null) {
         if (idx >= 0) nextIndex = idx;
     }
 
-    if (layout.hidesResultsForEmptyQuery()) {
+    if (layout.isEmptyQuery(query) && layout.hidesResultsForEmptyQuery()) {
         // No rows on screen. A seeded selection here is one the user cannot
         // see, and Enter / Ctrl+D / Ctrl+Shift+H would still act on it.
         selectedIndex = -1;

@@ -206,7 +206,7 @@ export function handleQueryInput(query) {
     if (query.trim() === '') {
         // The rest screen shows no rows, and the engine answers an empty query
         // by scoring the whole index. Clear instead of searching for nothing.
-        if (layout.hidesResultsForEmptyQuery()) {
+        if (layout.isEmptyQuery(query) && layout.hidesResultsForEmptyQuery()) {
             if (onResultsCallback) onResultsCallback([], query);
             return;
         }
