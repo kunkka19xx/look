@@ -138,6 +138,11 @@ struct look_appApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
 
+            // The Settings scene above only keeps SwiftUI's command
+            // infrastructure alive. Remove macOS's default Cmd+, action so the
+            // documented Cmd+Shift+, shortcut is the only way to open settings.
+            CommandGroup(replacing: .appSettings) {}
+
             CommandGroup(replacing: .appTermination) {
                 Button("Hide Look") {
                     NotificationCenter.default.post(name: .lookHideLauncherRequested, object: nil)
@@ -152,9 +157,7 @@ struct look_appApp: App {
 
             CommandGroup(after: .appSettings) {
                 Button("Theme Settings") {
-                    DispatchQueue.main.async {
-                        appUIState.showsThemeSettings.toggle()
-                    }
+                    openThemeSettings()
                 }
                 .keyboardShortcut(",", modifiers: [.command, .shift])
 
@@ -188,6 +191,13 @@ struct look_appApp: App {
                 }
                 .keyboardShortcut("0", modifiers: [.command])
             }
+        }
+    }
+
+    private func openThemeSettings() {
+        DispatchQueue.main.async {
+            appUIState.showsThemeSettings = true
+            NotificationCenter.default.post(name: .lookActivateLauncherRequested, object: nil)
         }
     }
 }

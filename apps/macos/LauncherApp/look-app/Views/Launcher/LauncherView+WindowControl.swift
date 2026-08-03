@@ -41,6 +41,14 @@ extension LauncherView {
         focusActiveInput()
     }
 
+    func activateLauncherOrSettings() {
+        if appUIState.showsThemeSettings {
+            showThemeSettings()
+        } else {
+            activateLauncherModeAndFocus()
+        }
+    }
+
     func scheduleFocusRecovery(delays: [Double], token: UInt64) {
         for delay in delays {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -162,6 +170,21 @@ extension LauncherView {
             }
             activateLauncherModeAndFocus()
         }
+    }
+
+    /// Opens the real settings panel hosted inside the AppKit-owned launcher.
+    /// The SwiftUI Settings scene exists only as a command carrier and must not
+    /// create a separate window of its own.
+    func showThemeSettings() {
+        appUIState.showsThemeSettings = true
+        captureFrontmostAppForRestoreIfNeeded()
+        NSApplication.shared.unhide(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        guard let window = launcherWindow() else { return }
+        positionOnActiveScreen(window)
+        window.makeKeyAndOrderFront(nil)
+        focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
     }
 
     /// Places the launcher at its fixed position on whichever

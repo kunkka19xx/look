@@ -813,7 +813,7 @@ struct LauncherView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookActivateLauncherRequested)) { _ in
-            activateLauncherModeAndFocus()
+            activateLauncherOrSettings()
             refreshClipboardMonitoringMode()
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookHideLauncherRequested)) { _ in
