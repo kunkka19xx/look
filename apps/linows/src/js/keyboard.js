@@ -398,7 +398,7 @@ function allowShortcut() {
         !search.isTranslateMode() &&
         !search.isClipboardMode() &&
         !search.isProcessMode() &&
-        queryInput.value.trim() !== ''
+        queryInput.value !== ''
     );
 }
 
