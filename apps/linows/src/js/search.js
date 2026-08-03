@@ -59,6 +59,13 @@ let webInFlight = false;
 let lastUrlMatch = null;
 let lastRecentUrls = [];
 
+function hidesResultsForEmptyQuery() {
+    return (
+        document.documentElement.classList.contains('controls-open') ||
+        document.getElementById('app')?.classList.contains('resting')
+    );
+}
+
 /** Resolved by the backend (Windows: SHGetKnownFolderPath; *nix: $HOME/<name>).
  *  Empty until setQuickFolders is called at boot. */
 let quickFolders = [];
@@ -203,6 +210,11 @@ export function handleQueryInput(query) {
 
     const myVersion = queryVersion;
     if (query.trim() === '') {
+        // The rest screen shows no rows, and the engine answers an empty query
+        // by scoring the whole index. Clear instead of searching for nothing.
+        if (hidesResultsForEmptyQuery()) {
+            return;
+        }
         performSearch('', myVersion);
         return;
     }

@@ -62,6 +62,13 @@ let emptyState = { mode: 'default' };
 let userNavigated = false;
 let lastRenderQuery = null;
 
+function hidesResultsForEmptyQuery() {
+    return (
+        document.documentElement.classList.contains('controls-open') ||
+        document.getElementById('app')?.classList.contains('resting')
+    );
+}
+
 export function init(containerEl) {
     container = containerEl;
 }
@@ -150,6 +157,14 @@ export function render(results, query = null) {
         const idx = results.findIndex((r) => r.id === prevSelectedId);
         if (idx >= 0) nextIndex = idx;
     }
+
+    if (hidesResultsForEmptyQuery()) {
+        // No rows on screen. A seeded selection here is one the user cannot
+        // see, and Enter / Ctrl+D / Ctrl+Shift+H would still act on it.
+        selectedIndex = -1;
+        return;
+    }
+
     select(nextIndex);
 }
 
