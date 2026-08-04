@@ -9,6 +9,10 @@ extension LauncherView {
             } else {
                 selectedCommandID = filteredCommands.first?.id
             }
+        } else if hidesResultsForEmptyQuery {
+            // No rows on screen. A seeded selection here is one the user cannot
+            // see, and Enter / Cmd+D / Cmd+Shift+H would still act on it.
+            selectedResultID = nil
         } else {
             selectedResultID = displayedResults.first?.id
         }

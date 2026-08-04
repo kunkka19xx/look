@@ -50,7 +50,7 @@ Quick Actions are the interactive toggles/buttons in the launcher's right panel 
 
 ## Development setup
 
-[DEVELOPMENT.md](DEVELOPMENT.md) has the full per-platform prerequisites and build walkthrough. In short: Rust stable plus GNU Make everywhere, with Xcode on macOS and Visual Studio 2022 Build Tools (Desktop C++ workload) for the Tauri app on Windows and Linux.
+[DEVELOPMENT.md](DEVELOPMENT.md) has the full per-platform prerequisites and build walkthrough. In short: Rust stable plus GNU Make everywhere, with Xcode on macOS, Visual Studio 2022 Build Tools (Desktop C++ workload) for the Tauri app on Windows, and the WebKitGTK/GTK system libraries on Linux.
 
 Before opening a PR, run the cross-platform checks:
 
@@ -112,7 +112,7 @@ CI runs for pushes to `main` and for pull requests targeting `main`.
 - Rust jobs (`lint`, `test`, `cargo-audit`, release `build`) run only when Rust-related paths change
 - secrets scanning (`gitleaks`) always runs
 - macOS app build runs only for PRs to `main` when Swift files change
-- linows (Tauri) build runs when `apps/linows/**` or `core/**` changes; the legacy WinUI3 app build is disabled, since that app is archived
+- linows (Tauri) build runs when `apps/linows/**` or `core/**` changes
 - release-style Rust build artifacts run only on push to `main`
 
 ## Pull request checklist

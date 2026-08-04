@@ -563,8 +563,11 @@ private let launchpadAlertBorderOpacity = 0.3
 func frostedTile(themeStore: ThemeStore, tint: Color? = nil, tintOpacity: Double = 0) -> some View {
     let radius = AppConstants.Launcher.Launchpad.cornerRadius
     return ZStack {
-        VisualEffectBlur(material: themeStore.settings.blurMaterial.material)
-        Color.black.opacity(launchpadTileScrimOpacity)
+        VisualEffectBlur(
+            material: themeStore.settings.blurMaterial.material,
+            appearance: themeStore.themeAppearance()
+        )
+        themeStore.scrimColor(opacity: launchpadTileScrimOpacity)
         themeStore.controlFillColor()
         if let tint {
             tint.opacity(tintOpacity)

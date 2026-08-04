@@ -12,6 +12,7 @@ import {
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
 import { webSuggestionFromResultId } from '../catalog.js';
 import { isWindows } from '../platform.js';
+import * as layout from '../layout.js';
 
 // LRU-bounded icon cache (cacheKey -> data URL | null). A plain Map keeps
 // insertion order, so re-inserting on a hit marks it most-recently-used and the
@@ -150,6 +151,14 @@ export function render(results, query = null) {
         const idx = results.findIndex((r) => r.id === prevSelectedId);
         if (idx >= 0) nextIndex = idx;
     }
+
+    if (layout.isEmptyQuery(query) && layout.hidesResultsForEmptyQuery()) {
+        // No rows on screen. A seeded selection here is one the user cannot
+        // see, and Enter / Ctrl+D / Ctrl+Shift+H would still act on it.
+        selectedIndex = -1;
+        return;
+    }
+
     select(nextIndex);
 }
 

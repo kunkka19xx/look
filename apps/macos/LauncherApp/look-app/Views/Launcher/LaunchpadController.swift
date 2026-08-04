@@ -59,15 +59,24 @@ final class LaunchpadController {
         self.tiles = tiles
     }
 
+    /// Bumped by every write to `systemStates`. Each `state()` read suspends, so
+    /// two refreshes (or a refresh and a toggle) interleave on the main actor and
+    /// the slower one would otherwise land last and revert the tiles.
+    @ObservationIgnored private var stateGeneration: UInt64 = 0
+
     /// Reads the current state of every adapter-backed tile. Called on launcher
     /// open so the strip reflects reality; tiles without an adapter are skipped
-    /// and keep their mock fallback.
+    /// and keep their mock fallback. A snapshot superseded while it was being
+    /// gathered is dropped rather than applied.
     func refreshStates() async {
+        stateGeneration &+= 1
+        let generation = stateGeneration
         var resolved: [String: ActionState] = [:]
         for tile in tiles {
             guard let adapter = ActionAdapterRegistry.adapter(for: tile.actionId) else { continue }
             resolved[tile.actionId] = await adapter.state()
         }
+        guard generation == stateGeneration else { return }
         systemStates = resolved
     }
 
@@ -229,9 +238,16 @@ final class LaunchpadController {
 
     /// Applies an intent to an adapter off the main run loop, reports the
     /// outcome, then re-reads the control's state so the tile reflects reality.
+    /// Supersedes any refresh still in flight, whose snapshot predates the change
+    /// and would flip the tile back.
     private func perform(_ intent: ActionIntent, on adapter: any SystemControl, actionID: String) {
         Task {
             report(await adapter.apply(intent))
+            stateGeneration &+= 1
+            let generation = stateGeneration
+            let state = await adapter.state()
+            guard generation == stateGeneration else { return }
+            systemStates[actionID] = state
             systemStates[actionID] = await adapter.state()
         }
     }

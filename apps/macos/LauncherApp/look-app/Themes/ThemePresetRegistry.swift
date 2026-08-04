@@ -17,6 +17,20 @@ extension BuiltinThemePreset {
             return DraculaTheme.style
         case .kanagawa:
             return KanagawaTheme.style
+        case .kindle:
+            return KindleTheme.style
         }
+    }
+}
+
+extension BuiltinThemePreset {
+    /// Resolves the `ui_theme` config value in any casing. Matches on the
+    /// style's `themeName`, not the enum raw value, so `tokyoNight` resolves.
+    static func preset(forThemeName name: String) -> BuiltinThemePreset? {
+        let needle = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !needle.isEmpty else {
+            return nil
+        }
+        return allCases.first { $0.style?.themeName.lowercased() == needle }
     }
 }

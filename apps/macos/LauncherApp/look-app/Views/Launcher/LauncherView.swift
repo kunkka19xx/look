@@ -108,6 +108,9 @@ struct LauncherView: View {
     @State private var panelSize: CGSize = .zero
     static let panelCoordinateSpace = "launcherPanel"
 
+    static let floatingTileScrimOpacity = 0.30
+    static let attachedPanelScrimOpacity = 0.16
+
     var runningAppsPlacement: RunningAppsPlacement {
         themeStore.settings.runningAppsPlacement
     }
@@ -648,10 +651,7 @@ struct LauncherView: View {
         .onAppear {
             refreshSearchResults()
             configureLaunchpadIfNeeded()
-            if themeStore.settings.superActionsEnabled {
-                Task { await launchpadController.refreshStates() }
-                Task { await launchpadController.refreshWeather() }
-            }
+            refreshLaunchpadState()
             startKeyboardNavigationIfNeeded()
             focusActiveInput()
             refreshClipboardMonitoringMode()
@@ -668,6 +668,10 @@ struct LauncherView: View {
         }
         .onChange(of: themeStore.settings.superActionsEnabled) { _, enabled in
             launchpadSettingChanged(enabled: enabled)
+        }
+        // Bumped on every show, so it stands in for the missing re-onAppear.
+        .onChange(of: appearanceRevealToken) { _, _ in
+            refreshLaunchpadState()
         }
         .onChange(of: query) { _, _ in
             // Editing the query dismisses a pending Empty Trash confirmation,
@@ -838,6 +842,9 @@ struct LauncherView: View {
     @ViewBuilder
     private func borderedPanel(windowCornerRadius: CGFloat, contentSpacing: CGFloat, contentPadding: CGFloat) -> some View {
         ZStack {
+            WindowAppearancePin(appearance: themeStore.themeAppearance())
+                .frame(width: 0, height: 0)
+
             // When the content floats free (floating panes, or resting on an empty
             // query) the blur + tint backdrop box is dropped so the tiles sit on
             // the bare desktop. A background image, if set, is cropped into each
@@ -857,7 +864,10 @@ struct LauncherView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .font(themeStore.uiFont())
             .foregroundStyle(themeStore.fontColor())
-            .background(.black.opacity(barFloatsFree ? 0 : 0.16), in: RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous))
+            .background(
+                themeStore.scrimColor(opacity: barFloatsFree ? 0 : Self.attachedPanelScrimOpacity),
+                in: RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous)
+            )
             .contentShape(Rectangle())
             .onTapGesture { focusActiveInput() }
         }
@@ -1006,7 +1016,7 @@ struct LauncherView: View {
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(.white.opacity(0.18), in: Capsule())
+                .background(themeStore.controlFillColor(), in: Capsule())
             }
         }
         .padding(.horizontal, 10)
@@ -1307,9 +1317,12 @@ struct LauncherView: View {
                 if let image = themeStore.backgroundImage {
                     croppedBackgroundImage(image)
                 } else {
-                    VisualEffectBlur(material: themeStore.settings.blurMaterial.material)
+                    VisualEffectBlur(
+                        material: themeStore.settings.blurMaterial.material,
+                        appearance: themeStore.themeAppearance()
+                    )
                 }
-                Color.black.opacity(0.30)
+                themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
                 themeStore.controlFillColor()
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -1407,7 +1420,7 @@ struct LauncherView: View {
 
     private var resultsDivider: some View {
         Rectangle()
-            .fill(.white.opacity(0.08))
+            .fill(themeStore.dividerColor())
             .frame(width: 1)
             .padding(.vertical, 4)
     }

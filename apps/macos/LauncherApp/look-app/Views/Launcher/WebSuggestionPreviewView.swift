@@ -32,7 +32,7 @@ struct WebSuggestionPreviewView: View {
                     .fontWeight(.semibold)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
-                    .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .background(themeStore.liftColor(opacity: 0.12), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                 Text("to search the web")
             }
             .font(themeStore.uiFont(size: fontSize - 2, weight: .regular))

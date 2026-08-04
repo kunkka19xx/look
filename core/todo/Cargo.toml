@@ -1,7 +1,8 @@
 [package]
 name = "look-todo"
 edition = "2024"
-license = "MIT"
+license.workspace = true
+authors.workspace = true
 version = "0.1.0"
 
 [dependencies]

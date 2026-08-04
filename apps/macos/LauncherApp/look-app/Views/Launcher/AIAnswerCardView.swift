@@ -42,7 +42,7 @@ struct AIAnswerCardView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                .strokeBorder(themeStore.liftColor(opacity: 0.08), lineWidth: 1)
         )
     }
 

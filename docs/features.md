@@ -24,6 +24,8 @@ This document tracks what `look` supports today and what is planned next.
 - move selected file/folder (or all picked items) to the Trash with `Cmd+D` - recoverable, no confirmation (macOS only for now)
 - pinned **Trash** quick folder (type `trash`): `Enter` opens it in Finder, its preview shows the item count, and `Cmd+D` empties it via Finder (confirmed, since it's permanent)
 - preview pane: text/image file previews, plus folder previews listing the immediate children (folders first, capped at 30, click to open)
+- hide the selected app from Look with `Cmd+Shift+H` / `Ctrl+Shift+H` so it stops appearing in results
+- run the selected app as administrator with `Ctrl+Shift+Enter` (Windows only, triggers a UAC prompt)
 
 ### Clipboard and translation
 
@@ -68,7 +70,7 @@ This document tracks what `look` supports today and what is planned next.
 ### Super actions
 
 - a control strip on the empty home screen (no query typed) with system toggles, one-shot actions and read-only info tiles
-- the tile set, order, sizes and mnemonics come from the shared `core/qactions` catalog, so macOS, Linux and Windows render the same strip; only the native state reads and control paths differ
+- the tile set, order, sizes and mnemonics come from the shared `core/qactions` catalog, so macOS, Linux and Windows render the same strip; only the native state reads and control paths differ. On Linux the strip works across GNOME, KDE and tiling WMs including i3
 - tiles: L slot (Pomodoro session > remaining todos > clock), Bluetooth, Wi-Fi, Battery, Theme, Keep Awake, Screensaver, Weather, Mic, Restart, Shut Down, Now Playing
 - activation: click a tile, or press the platform modifier + its highlighted letter - `Cmd` (macOS) / `Alt` (Linux, Windows): `B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `R` Restart, `D` Shut Down, `P` Now Playing play/pause
 - Restart and Shut Down arm on the first press and fire on the second; `Esc` (macOS) or the auto-disarm timeout cancels
@@ -81,7 +83,7 @@ This document tracks what `look` supports today and what is planned next.
 - in-app settings panel (`Cmd+Shift+,`)
 - local config file `~/.look.config`
 - runtime reload (`Cmd+Shift+;`)
-- 7 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Custom)
+- 8 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Custom)
 - query alias presets in `~/.look.config` for app + System Settings intent expansion (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`)
 - in-app config reset (`Settings > Advanced > Create Fresh Config`) with confirmation popup
 - semantic color system with auto-derived text colors in Custom mode
@@ -107,7 +109,7 @@ This document tracks what `look` supports today and what is planned next.
 ## Planned direction
 
 - optional extension/plugin injection model (without bloating base UX)
-- broader platform support after macOS quality stabilizes (Windows first)
+- deeper per-desktop-environment polish across Linux compositors
 
 ## Out of scope for v1
 

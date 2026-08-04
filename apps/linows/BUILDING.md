@@ -158,36 +158,30 @@ If FUSE is missing, run with `--appimage-extract-and-run`, or install it (Fedora
 
 ---
 
-## Planned: Package Manager Installation
+## Package Manager Installation
 
-The following installation methods are planned but **not yet available**.
-For now, build from source using the instructions above.
+Prebuilt packages are published on every tagged release. To build from source instead, use the instructions above.
 
 ### Ubuntu / Debian (.deb)
 
-**Target:** `sudo dpkg -i Look_*.deb` or download from GitHub Releases.
+**Status:** Available now.
 
-Steps to implement:
+Download `Look_<version>_amd64.deb` from GitHub Releases, then:
 
-1. Generate multi-size icons from `icon.png` (`cargo tauri icon`)
-2. Add `bundle` section to `tauri.conf.json` with deb runtime deps
-3. Create `.desktop` file at `apps/linows/assets/lookapp.desktop`
-4. Create CI workflow (`.github/workflows/release-linux.yml`, ubuntu-22.04 runner)
-5. Test: `cargo tauri build` → install .deb on Ubuntu → verify launch + hotkey
+```bash
+sudo dpkg -i Look_*.deb
+sudo apt-get install -f   # pull in any missing runtime deps
+```
+
+Built by CI (`.github/workflows/release-linux.yml`) alongside the AppImage.
 
 ### Arch Linux (AUR)
 
-**Target:** `yay -S look-bin`
+**Status:** Available now.
 
-Steps to implement:
-
-1. Create `apps/linows/packaging/PKGBUILD` (source build from GitHub tarball)
-2. `makedepends`: rust, cargo, cargo-tauri, pkg-config, openssl, librsvg
-3. `depends`: webkit2gtk-4.1, gtk3, libsoup3, alsa-lib, dbus, xdg-desktop-portal
-4. Build step: `cargo tauri build --bundles none` (binary only, pacman handles install)
-5. Install: binary → `/usr/bin/`, .desktop → `/usr/share/applications/`, icon → `/usr/share/icons/`
-6. Generate `.SRCINFO` and push to AUR git repo
-7. Test: `makepkg -si` in clean Arch container
+```bash
+yay -S look-bin
+```
 
 ### NixOS (flake)
 
@@ -195,10 +189,10 @@ Steps to implement:
 
 ```bash
 # Run directly
-nix run github:kunkka19xx/look?dir=apps/linows
+nix run 'github:kunkka19xx/look?dir=apps/linows'
 
 # Install to profile
-nix profile install github:kunkka19xx/look?dir=apps/linows
+nix profile install 'github:kunkka19xx/look?dir=apps/linows'
 
 # Build locally
 cd apps/linows

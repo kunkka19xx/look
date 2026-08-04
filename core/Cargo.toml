@@ -14,5 +14,6 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-license = "MIT"
+license = "GPL-3.0-or-later"
+authors = ["kunkka19xx <nobita079x@gmail.com>"]
 version = "0.1.0"

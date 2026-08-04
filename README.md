@@ -253,6 +253,8 @@ open "/Applications/Look.app"
 | Settings                                      | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
 | Back / hide                                   | `Escape`         | `Escape`            | `Escape`         |
 | Switch to running app N (home screen)         | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
+| Hide selected app from Look                    | `Cmd+Shift+H`    | `Ctrl+Shift+H`      | `Ctrl+Shift+H`   |
+| Run selected app as admin                      | n/a              | `Ctrl+Shift+Enter`  | n/a              |
 | Fire a super action (empty home screen)       | `Cmd+<letter>`   | `Alt+<letter>`      | `Alt+<letter>`   |
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
@@ -261,7 +263,7 @@ Full reference: [docs/user-guide.md](docs/user-guide.md).
 
 ## Themes
 
-Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, plus Custom. Switch in `Settings > Appearance`.
+Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, plus Custom. Kindle is the one light preset - paper, ink, and a serif face. Switch in `Settings > Appearance`.
 
 <p align="center">
   <img src="assets/look-ui/1.png" width="45%" />
@@ -288,7 +290,12 @@ Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, plus C
 
 ## License
 
-GPLv3 - see [LICENSE](LICENSE).
+Copyright (C) 2026 kunkka19xx
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. See [LICENSE](LICENSE) for the full text.
 
 ## Contributors
 

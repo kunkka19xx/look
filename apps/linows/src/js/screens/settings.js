@@ -23,6 +23,12 @@ let onConfigReloadFn = null;
 
 const TABS = ['appearance', 'shortcuts', 'advanced'];
 
+// Sentinel the Font field falls back to: "let the theme decide", not a family.
+const DEFAULT_FONT_NAME = 'system-ui';
+
+const SAVE_MSG_MS = 1600;
+let saveMsgTimer = null;
+
 // Maps config keys to CSS custom property update functions.
 // Each slider with data-key drives live CSS + config persistence.
 const BLUR_PRESETS = {
@@ -153,8 +159,9 @@ export function init(exitFn) {
         for (const el of themeMenu.children) el.classList.remove('settings-dropdown-active');
         item.classList.add('settings-dropdown-active');
         themeMenu.hidden = true;
-        applyThemePreset(theme);
-        saveConfig({ ui_theme: theme });
+        const overrides = lightSwitchOverrides(theme);
+        applyThemePreset(theme, overrides);
+        saveConfig({ ui_theme: theme, ...overrides });
     });
 
     // Blur style dropdown - populate labels from platform
@@ -430,6 +437,7 @@ export function init(exitFn) {
             await forceIndexRefresh();
             await loadConfig();
             clearBackgroundImage();
+            applyFontFamily(DEFAULT_FONT_NAME);
             applyThemePreset('');
             banner.show('Config reset to defaults', 'success', 1.5);
         } catch {
@@ -459,10 +467,7 @@ export function init(exitFn) {
 
     function applyFontName(name) {
         fontNameInput.value = name;
-        document.documentElement.style.setProperty(
-            '--font-family',
-            `"${name}", system-ui, sans-serif`,
-        );
+        applyFontFamily(name);
         saveConfig({ ui_font_name: name });
         fontSuggestions.hidden = true;
     }
@@ -564,7 +569,7 @@ export function init(exitFn) {
 
             // Font
             updates.ui_font_name =
-                document.getElementById('settings-font-name').value.trim() || 'system-ui';
+                document.getElementById('settings-font-name').value.trim() || DEFAULT_FONT_NAME;
 
             // Background
             const bgPath = document.getElementById('settings-bg-path').textContent;
@@ -603,22 +608,15 @@ export function init(exitFn) {
                 : 'false';
 
             await saveConfig(updates);
+            // Clearing the field saves the sentinel; the live inline override
+            // has to go with it or the old family outlives the config value.
+            applyFontFamily(updates.ui_font_name);
             await reloadConfig();
             await forceIndexRefresh();
 
-            const msg = document.getElementById('settings-save-msg');
-            msg.textContent = 'Saved';
-            setTimeout(() => {
-                msg.textContent = '';
-            }, 1600);
+            showSaveMessage('Saved', false);
         } catch {
-            const msg = document.getElementById('settings-save-msg');
-            msg.textContent = 'Save failed';
-            msg.style.background = 'rgba(220, 60, 60, 0.42)';
-            setTimeout(() => {
-                msg.textContent = '';
-                msg.style.background = '';
-            }, 1600);
+            showSaveMessage('Save failed', true);
         }
     });
 }
@@ -655,12 +653,7 @@ export async function reloadFromFile() {
 
         // Font
         if (map.ui_font_size) CSS_MAP.ui_font_size(map.ui_font_size);
-        if (map.ui_font_name) {
-            document.documentElement.style.setProperty(
-                '--font-family',
-                `"${map.ui_font_name}", system-ui, sans-serif`,
-            );
-        }
+        applyFontFamily(map.ui_font_name);
 
         // Border thickness
         if (map.ui_border_thickness) CSS_MAP.ui_border_thickness(map.ui_border_thickness);
@@ -773,12 +766,7 @@ export async function restoreOnStartup() {
 
         // Font
         if (map.ui_font_size) CSS_MAP.ui_font_size(map.ui_font_size);
-        if (map.ui_font_name) {
-            document.documentElement.style.setProperty(
-                '--font-family',
-                `"${map.ui_font_name}", system-ui, sans-serif`,
-            );
-        }
+        applyFontFamily(map.ui_font_name);
 
         // Blur - drive --blur-radius from saved style so the launcher renders
         // with the user's blur on first paint, not only after they open Settings.
@@ -797,6 +785,19 @@ export async function restoreOnStartup() {
 }
 
 // --- Internal ---
+
+// One timer: a pending clear from an earlier save must not wipe a newer result.
+function showSaveMessage(text, isError) {
+    const msg = document.getElementById('settings-save-msg');
+    if (!msg) return;
+    clearTimeout(saveMsgTimer);
+    msg.textContent = text;
+    msg.classList.toggle('settings-save-msg-error', isError);
+    saveMsgTimer = setTimeout(() => {
+        msg.textContent = '';
+        msg.classList.remove('settings-save-msg-error');
+    }, SAVE_MSG_MS);
+}
 
 function switchTab(tabId) {
     if (!TABS.includes(tabId)) return;
@@ -882,7 +883,7 @@ async function loadConfig() {
         }
 
         // Font name
-        const fontName = map.ui_font_name || 'system-ui';
+        const fontName = map.ui_font_name || DEFAULT_FONT_NAME;
         document.getElementById('settings-font-name').value = fontName;
 
         // Populate all data-key sliders
@@ -1009,7 +1010,7 @@ const THEME_PRESETS = {
         ui_tint_red: 0.1,
         ui_tint_green: 0.11,
         ui_tint_blue: 0.15,
-        ui_tint_opacity: 0.6,
+        ui_tint_opacity: 0.95,
         ui_font_red: 0.84,
         ui_font_green: 0.87,
         ui_font_blue: 0.96,
@@ -1024,7 +1025,7 @@ const THEME_PRESETS = {
         ui_tint_red: 0.1,
         ui_tint_green: 0.09,
         ui_tint_blue: 0.14,
-        ui_tint_opacity: 0.58,
+        ui_tint_opacity: 0.95,
         ui_font_red: 0.95,
         ui_font_green: 0.93,
         ui_font_blue: 0.91,
@@ -1039,7 +1040,7 @@ const THEME_PRESETS = {
         ui_tint_red: 0.16,
         ui_tint_green: 0.16,
         ui_tint_blue: 0.16,
-        ui_tint_opacity: 0.6,
+        ui_tint_opacity: 0.95,
         ui_font_red: 0.93,
         ui_font_green: 0.89,
         ui_font_blue: 0.79,
@@ -1054,7 +1055,7 @@ const THEME_PRESETS = {
         ui_tint_red: 0.16,
         ui_tint_green: 0.16,
         ui_tint_blue: 0.21,
-        ui_tint_opacity: 0.58,
+        ui_tint_opacity: 0.95,
         ui_font_red: 0.97,
         ui_font_green: 0.97,
         ui_font_blue: 0.98,
@@ -1069,7 +1070,7 @@ const THEME_PRESETS = {
         ui_tint_red: 0.09,
         ui_tint_green: 0.09,
         ui_tint_blue: 0.11,
-        ui_tint_opacity: 0.6,
+        ui_tint_opacity: 0.95,
         ui_font_red: 0.87,
         ui_font_green: 0.86,
         ui_font_blue: 0.79,
@@ -1078,6 +1079,21 @@ const THEME_PRESETS = {
         ui_border_green: 0.84,
         ui_border_blue: 0.73,
         ui_border_opacity: 0.1,
+        ui_border_thickness: 1.0,
+    },
+    kindle: {
+        ui_tint_red: 0.97,
+        ui_tint_green: 0.95,
+        ui_tint_blue: 0.9,
+        ui_tint_opacity: 0.93,
+        ui_font_red: 0.13,
+        ui_font_green: 0.12,
+        ui_font_blue: 0.1,
+        ui_font_opacity: 1.0,
+        ui_border_red: 0.42,
+        ui_border_green: 0.38,
+        ui_border_blue: 0.32,
+        ui_border_opacity: 0.26,
         ui_border_thickness: 1.0,
     },
 };
@@ -1091,7 +1107,26 @@ const USER_CONTROLLED_KEYS = new Set([
     'ui_border_thickness',
 ]);
 
-function applyThemePreset(themeId) {
+// A paper tint carrying a dark theme's transparency doesn't read as paper, so
+// switching to a light preset is the one moment it takes the opacities back.
+// They are the user's again from the next drag on, which is why the switch also
+// persists them: config and sliders have to agree on the next launch.
+const LIGHT_THEMES = new Set(['kindle']);
+const LIGHT_SWITCH_KEYS = ['ui_tint_opacity', 'ui_font_opacity', 'ui_border_opacity'];
+
+function lightSwitchOverrides(themeId) {
+    const preset = THEME_PRESETS[themeId];
+    if (!preset || !LIGHT_THEMES.has(themeId)) return {};
+    const out = {};
+    for (const key of LIGHT_SWITCH_KEYS) {
+        if (preset[key] !== undefined) out[key] = preset[key];
+    }
+    return out;
+}
+
+// `overrides` carries the keys this apply is allowed to take back from the user
+// (see lightSwitchOverrides). Empty on restore, so saved values win there.
+function applyThemePreset(themeId, overrides = {}) {
     // "custom" = user-modified values, don't override anything
     if (themeId === 'custom') return;
 
@@ -1109,13 +1144,15 @@ function applyThemePreset(themeId) {
     // theme switch.
     for (const row of screen.querySelectorAll('.settings-row[data-key]')) {
         const key = row.dataset.key;
-        if (USER_CONTROLLED_KEYS.has(key)) continue;
-        if (preset[key] !== undefined) {
+        const forced = overrides[key];
+        if (forced === undefined && USER_CONTROLLED_KEYS.has(key)) continue;
+        const val = forced !== undefined ? forced : preset[key];
+        if (val !== undefined) {
             const slider = row.querySelector('.settings-slider');
             const valueEl = row.querySelector('.settings-slider-value');
             if (slider) {
-                slider.value = preset[key];
-                valueEl.textContent = formatValue(key, preset[key]);
+                slider.value = val;
+                valueEl.textContent = formatValue(key, val);
             }
         }
     }
@@ -1175,6 +1212,19 @@ function applytint() {
         '--bg-tint',
         `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})`,
     );
+}
+
+// An inline --font-family beats every theme block, so a preset that ships its
+// own stack (Kindle's serif) only survives while the user has picked no font of
+// their own. Save Config stores DEFAULT_FONT_NAME for an empty field, so that
+// value has to read as "no choice" rather than as a literal family.
+function applyFontFamily(name) {
+    const style = document.documentElement.style;
+    if (!name || name === DEFAULT_FONT_NAME) {
+        style.removeProperty('--font-family');
+        return;
+    }
+    style.setProperty('--font-family', `"${name}", system-ui, sans-serif`);
 }
 
 function applyFontColor() {

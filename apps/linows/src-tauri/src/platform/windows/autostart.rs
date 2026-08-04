@@ -1,9 +1,8 @@
 //! Windows autostart via `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 //!
-//! Per-user, no admin - matches the WinUI3 reference and `%LOCALAPPDATA%`
-//! install convention. The value name is "Look"; the data is the current
-//! exe path wrapped in quotes so paths with spaces survive Run's command
-//! parsing.
+//! Per-user, no admin - matches the `%LOCALAPPDATA%` install convention. The
+//! value name is "Look"; the data is the current exe path wrapped in quotes so
+//! paths with spaces survive Run's command parsing.
 
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_SZ, RegCloseKey, RegDeleteValueW,

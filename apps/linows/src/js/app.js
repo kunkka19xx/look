@@ -504,7 +504,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         search.handleQueryInput(value);
         const translating = search.isTranslateMode();
-        layout.setQuery({ empty: value === '', translate: translating });
+        layout.setQuery({ empty: layout.isEmptyQuery(value), translate: translating });
         syncControlStrip();
         resultsList.hidden = translating;
         runningApps.setSuspended(translating);
