@@ -614,6 +614,9 @@ async function refreshInfo(ctl, status, myToken) {
     if (myToken !== stateToken) return;
     ctl.capsEl.textContent = uptime ? 'Uptime' : ctl.title;
     ctl.valueEl.textContent = uptime || '--';
+    if (ctl.actionId === 'battery') {
+        ctl.iconEl.innerHTML = battery;
+    }
 }
 
 function setToggleState(ctl, on) {
