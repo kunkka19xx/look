@@ -26,9 +26,9 @@ final class AIAnswerController: ObservableObject {
     }
 
     @Published private(set) var question: String = ""
-    /// Finished blocks (Calculator / DuckDuckGo / Wikipedia), in arrival order.
+    /// Finished blocks (DuckDuckGo / Wikipedia), in arrival order.
     @Published private(set) var items: [Item] = []
-    /// Streaming on-device model answer, used only when no web/calc source hit.
+    /// Streaming on-device model answer, used only when no web source hit.
     @Published private(set) var llmAnswer: String = ""
     @Published private(set) var state: State = .idle
 
@@ -81,14 +81,6 @@ final class AIAnswerController: ObservableObject {
         task = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.debounceNanoseconds)
             guard let self, !Task.isCancelled else { return }
-
-            // Fastest path: local arithmetic. No network, no model - instant.
-            if let calc = Self.calcAnswer(for: trimmed) {
-                if Task.isCancelled { return }
-                self.items = [Item(text: calc, source: "Calculator", url: nil, imageURL: nil)]
-                self.state = .done
-                return
-            }
 
             // Web sources run concurrently and each renders the moment it lands -
             // first available first, the slower one slots in below it.
@@ -223,20 +215,5 @@ final class AIAnswerController: ObservableObject {
         guard text.count >= 5 else { return false }
         let words = text.split(whereSeparator: { $0 == " " || $0 == "\n" })
         return words.count >= 2
-    }
-
-    /// Evaluates a math query like "1+1=?" -> "1+1 = 2" using the launcher's own
-    /// calculator. Returns nil for anything that isn't a pure arithmetic
-    /// expression, so real questions fall through to web/LLM.
-    private static func calcAnswer(for query: String) -> String? {
-        var expr = query
-        // People tack "=?", "=", or "?" onto math; strip it before evaluating.
-        while let last = expr.last, "=? ".contains(last) { expr.removeLast() }
-        guard !expr.isEmpty else { return nil }
-        // Require an operator so a bare number or word isn't "calculated".
-        guard expr.contains(where: { "+-*/^%".contains($0) }) else { return nil }
-        guard CalcCommand.isReadyForEvaluation(expr) else { return nil }
-        guard case .value(let result) = CalcCommand.evaluate(expr) else { return nil }
-        return "\(expr) = \(result)"
     }
 }

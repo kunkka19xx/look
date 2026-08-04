@@ -31,6 +31,7 @@ enum LauncherClipboardFeature {
         result.clipboardCapturedAt = entry.capturedAt
         result.clipboardCharacterCount = entry.characterCount
         result.clipboardLineCount = entry.lineCount
+        result.clipboardPayload = entry.payload
         return result
     }
 

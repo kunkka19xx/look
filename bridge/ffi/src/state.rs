@@ -282,6 +282,16 @@ impl Drop for IndexRefreshGuard {
     }
 }
 
+/// Wraps an optional pre-serialized JSON string into an owned C string, falling
+/// back to the JSON literal `null`. Shared by every FFI wrapper whose result is
+/// "an object on a hit, or nothing" (answers, calc's inline row, ...).
+pub(crate) fn json_cstring_or_null(json: Option<String>) -> *mut c_char {
+    const JSON_NULL: &str = "null";
+    let json = json.unwrap_or_else(|| JSON_NULL.to_string());
+    let cstring = CString::new(json).unwrap_or_else(|_| CString::new(JSON_NULL).expect("valid"));
+    store_json_allocation(cstring)
+}
+
 pub(crate) fn store_json_allocation(cstring: CString) -> *mut c_char {
     let ptr = cstring.as_ptr() as usize;
 
