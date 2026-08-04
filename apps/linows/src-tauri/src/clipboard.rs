@@ -13,9 +13,8 @@ pub struct ClipboardEntry {
     pub timestamp: u64,
     pub char_count: usize,
     pub line_count: usize,
-    /// What re-copying this entry actually puts on the clipboard, when that
-    /// differs from the text shown in the list. The calculator uses it to read
-    /// as `1/1000 = 0.001` while still pasting `0.001`.
+    /// What re-copying puts on the clipboard, when that differs from the text
+    /// shown in the list: `1/1000 = 0.001` in the list, `0.001` pasted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<String>,
 }
@@ -205,12 +204,8 @@ pub fn copy_to_clipboard(text: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Copy `text` but file it under `label` in the history. The calculator uses
-/// this so the list reads `1/1000 = 0.001` while the clipboard - and every
-/// later paste, including re-copying the entry - carries just `0.001`.
-///
-/// The monitor is told to skip its own detection of this write, so the labelled
-/// entry is the only one recorded rather than racing a bare one.
+/// Copy `text` but file it under `label` in the history. `last_text` is set so
+/// the monitor doesn't race a second, unlabelled entry for the same write.
 #[tauri::command]
 pub fn copy_to_clipboard_labeled(text: String, label: String) -> Result<(), String> {
     copy_to_clipboard(text.clone())?;

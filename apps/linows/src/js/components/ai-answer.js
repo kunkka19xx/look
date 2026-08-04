@@ -6,10 +6,8 @@
 // DuckDuckGo + Wikipedia + the pattern-gated instant providers (currency /
 // weather / crypto) and stop there.
 //
-// Arithmetic used to be answered here too, which is why it needed a question
-// mark to show up at all: the card's triggers are written for knowledge
-// lookups. It now has its own row, gated by core/calc and painted without a
-// debounce - see search.js `fetchCalc`.
+// Arithmetic has its own row now (search.js `fetchCalc`); it used to answer
+// here, which is why it needed a question mark to trigger at all.
 
 import {
     instantHasMatch,
@@ -158,9 +156,8 @@ async function runFetch(query, questionLike, instant, myVersion) {
     await collect(tasks, myVersion);
     if (isStale(myVersion)) return;
 
-    // A matched instant provider that came back empty means its API failed or
-    // doesn't know the place - not that there's nothing to say. Fall through to
-    // the generic sources rather than reporting no answer at all.
+    // An instant provider that came back empty means its API failed, not that
+    // there's nothing to say.
     if (instant && items.length === 0) {
         await collect(
             [
@@ -176,9 +173,8 @@ async function runFetch(query, questionLike, instant, myVersion) {
     emitChange();
 }
 
-// Awaits every task, appending each answer as it lands so the first source to
-// resolve paints immediately. Duplicates (same source, or near-identical text)
-// are dropped.
+// Appends each answer as it lands, so the first source to resolve paints
+// immediately. Duplicate sources and near-identical text are dropped.
 async function collect(tasks, myVersion) {
     await Promise.all(
         tasks.map(async (p) => {

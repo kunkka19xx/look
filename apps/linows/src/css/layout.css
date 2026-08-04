@@ -244,8 +244,7 @@ html[data-os="windows"] .launcher-window {
 .results-area.ai-mode-full .results-list {
     display: none;
 }
-/* Set on the list, not the rows: the selection pill reads the same two
- * properties, so it stays lined up with what it is highlighting. */
+/* On the list, not the rows, so the selection pill inherits it too. */
 #preview-col .results-list {
     --row-inset-left: 2px;
     --row-inset-right: 4px;

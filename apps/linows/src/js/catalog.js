@@ -180,18 +180,16 @@ export function webUrlFromResultId(resultId) {
     return resultId?.startsWith(WEB_URL_ID) ? resultId.slice(WEB_URL_ID.length) : null;
 }
 
-// The calculator row that sits above the results whenever the query is
-// arithmetic. The title is the answer because that is what the eye is looking
-// for; the expression goes underneath as confirmation of what was parsed.
-// Enter copies `raw` - grouped digits are for reading, not for pasting.
+// Pinned above the results whenever the query is arithmetic. Title is the
+// answer, subtitle the expression it was parsed from.
 export function calcResult(expr, calculation) {
     return {
         id: `${CALC_ID}${calculation.raw}`,
         kind: 'app',
         title: calculation.display,
         subtitle: `${expr}  •  Enter to copy`,
-        // The raw answer doubles as the path: it keeps the preview's cache key
-        // distinct from other pathless rows, and makes Ctrl+C copy the result.
+        // Doubles as the path: keeps the preview cache key distinct from
+        // other pathless rows, and makes Ctrl+C copy the result.
         path: calculation.raw,
         score: Number.MAX_SAFE_INTEGER,
         iconSvg: calculator,

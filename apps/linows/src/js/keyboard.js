@@ -591,9 +591,8 @@ async function openSelected(elevated = false) {
         queryInput.value = '';
         return;
     }
-    // Calculator row → the answer goes to the clipboard, ungrouped, and the
-    // launcher gets out of the way. History keeps the working (`2+2 = 4`) so
-    // the list stays readable; the paste is still just the number.
+    // Calculator row → ungrouped answer to the clipboard, launcher out of the
+    // way. History keeps the working (`2+2 = 4`); the paste is the number.
     const calcRaw = calcRawFromResultId(item.id);
     if (calcRaw != null) {
         await copyToClipboardLabeled(calcRaw, `${item.calcExpr} = ${item.title}`);

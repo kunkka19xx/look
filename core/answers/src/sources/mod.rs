@@ -33,9 +33,7 @@ pub fn has_match(query: &str) -> bool {
     if parse::currency(q).is_some() || parse::crypto(q).is_some() {
         return true;
     }
-    // A bare `weather` only counts once some place has resolved this session;
-    // until then the word is just a word, and someone typing it is looking for
-    // a file.
+    // A bare `weather` only counts once some place has resolved this session.
     match parse::weather(q) {
         Some(place) => !place.is_empty() || weather::has_remembered_place(),
         None => false,

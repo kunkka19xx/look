@@ -1,13 +1,6 @@
-//! Current conditions via Open-Meteo: geocode the place name, then fetch the
-//! current forecast. Two sequential calls, both keyless. The geocoder can have a
-//! multi-second cold start, hence the longer timeout.
-//!
-//! Two caches keep the common case off the wire entirely. Coordinates never
-//! change, so a resolved place is remembered for the life of the process; the
-//! forecast is held for a few minutes, which is far shorter than the weather
-//! takes to move and long enough to cover typing the same query twice. Without
-//! them every keystroke-completed query paid for two cold round trips, and a
-//! single slow one turned into "Couldn't find an answer".
+//! Current conditions via Open-Meteo: geocode the place, then fetch the
+//! forecast. Two keyless calls, and the geocoder has a multi-second cold start,
+//! so both are cached - coordinates forever, the forecast for a few minutes.
 
 use crate::{http, json::ValueExt, types::Answer};
 use std::collections::HashMap;
@@ -22,41 +15,36 @@ static GEO_CACHE: LazyLock<Mutex<HashMap<String, Geo>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static FORECAST_CACHE: LazyLock<Mutex<HashMap<String, (Instant, Answer)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
-/// The last place that resolved, so a bare `weather` means "same place as
-/// before" instead of nothing at all.
+/// Lets a bare `weather` mean "same place as before".
 static LAST_PLACE: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 fn cache_key(place: &str) -> String {
     place.trim().to_lowercase()
 }
 
-/// Whether a bare `weather` has somewhere to report on yet. The gate consults
-/// this so the word alone doesn't claim a query before it can answer one.
-pub fn has_remembered_place() -> bool {
-    LAST_PLACE
-        .lock()
-        .map(|last| last.is_some())
-        .unwrap_or(false)
-}
-
 fn remembered_place() -> Option<String> {
     LAST_PLACE.lock().ok()?.clone()
 }
 
+/// Whether a bare `weather` has somewhere to report on yet, so the word alone
+/// doesn't claim a query it can't answer.
+pub fn has_remembered_place() -> bool {
+    remembered_place().is_some()
+}
+
 pub fn answer(place: &str) -> Option<Answer> {
-    let place = &if place.trim().is_empty() {
-        remembered_place()?
-    } else {
-        place.to_string()
+    let place = match place.trim() {
+        "" => remembered_place()?,
+        named => named.to_string(),
     };
-    let key = cache_key(place);
+    let key = cache_key(&place);
     if let Ok(cache) = FORECAST_CACHE.lock()
         && let Some((at, answer)) = cache.get(&key)
         && at.elapsed() < FORECAST_TTL
     {
         return Some(answer.clone());
     }
-    let answer = fetch(place)?;
+    let answer = fetch(&place)?;
     if let Ok(mut cache) = FORECAST_CACHE.lock() {
         cache.insert(key, (Instant::now(), answer.clone()));
     }
@@ -109,18 +97,15 @@ struct Geo {
     country: String,
 }
 
-/// A geocoder lookup: the place resolved, the geocoder answered but knows no
-/// such place, or the request never completed. The last two look identical to
-/// the caller of an `Option` and must not: one is final, the other is worth
-/// asking again.
+/// "No such place" and "request failed" collapse into one `None`, and must
+/// not: the first is final, the second is worth asking again.
 enum Lookup {
     Found(Geo),
     NotFound,
     Failed,
 }
 
-/// Coordinates for a place name, cached for the process lifetime - a city's
-/// latitude is not news.
+/// Cached for the process lifetime; a city's latitude is not news.
 fn geocode(place: &str) -> Option<Geo> {
     let key = cache_key(place);
     if let Ok(cache) = GEO_CACHE.lock()
@@ -150,9 +135,7 @@ fn resolve(place: &str) -> Option<Geo> {
         let candidate = words[..end].join(" ");
         match geocode_one(&candidate) {
             Lookup::Found(geo) => return Some(geo),
-            // A request that didn't complete is the geocoder's cold start, not
-            // a misspelled city. One retry costs a second; giving up costs the
-            // user the feature for a place that exists.
+            // Cold start, not a misspelled city: one retry costs a second.
             Lookup::Failed => {
                 if let Lookup::Found(geo) = geocode_one(&candidate) {
                     return Some(geo);

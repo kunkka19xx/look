@@ -99,8 +99,7 @@ export function update(result) {
         return;
     }
 
-    // Calculator row - shows the answer at size, with the expression it came
-    // from underneath. Same reason as above: no file behind it.
+    // Calculator row - same reason as above, no file behind it.
     if (calcRawFromResultId(result.id) != null) {
         renderCalcPreview(result);
         return;
@@ -667,8 +666,7 @@ function renderWebSuggestionPreview(query) {
     panel.appendChild(wrap);
 }
 
-// Calculator rows reuse the same layout. The expression is the subtitle here
-// rather than a source label, so the panel reads as `answer / from this`.
+// Same layout again, with the expression as the subtitle.
 function renderCalcPreview(result) {
     const wrap = document.createElement('div');
     wrap.className = 'preview-web-suggestion';

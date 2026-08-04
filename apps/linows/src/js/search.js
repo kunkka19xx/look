@@ -61,9 +61,8 @@ let webInFlight = false;
 // web suggestions need) and refilled by fetchUrlRows.
 let lastUrlMatch = null;
 let lastRecentUrls = [];
-// The calculator row for the current query, or null when the query isn't
-// arithmetic. Unlike the other legs this one is local and instant, so it runs
-// undebounced and is normally settled before the engine answers.
+// Calculator row for the current query, or null. Local and instant, so unlike
+// the other legs it runs undebounced and settles before the engine answers.
 let lastCalc = null;
 
 /** Resolved by the backend (Windows: SHGetKnownFolderPath; *nix: $HOME/<name>).
@@ -238,10 +237,8 @@ export function handleQueryInput(query) {
     // Unlike web suggestions they ignore the AI gate - opening a typed address
     // is a launcher action, not a web answer.
     const wantsUrlRows = !prefixed;
-    // No debounce: the calculator is local arithmetic on a short string, and
-    // waiting 70 ms to show `4` for `2+2` is the whole complaint about the old
-    // AI-card path. It also settles before the engine, so the row is already
-    // in place when results land and never re-seats the selection.
+    // No debounce: local arithmetic on a short string, and it settles before
+    // the engine, so the row never re-seats the selection.
     if (!prefixed) fetchCalc(query, myVersion);
     debounceTimer = setTimeout(() => {
         performSearch(query, myVersion);
@@ -302,8 +299,7 @@ async function fetchWebSuggestions(query, version) {
     }
 }
 
-// The calculator leg. Resolves to null for anything that wasn't meant as
-// arithmetic - core/calc decides, so `20-05-2026` stays a folder name.
+// core/calc decides what counts, so `20-05-2026` stays a folder name.
 async function fetchCalc(query, version) {
     try {
         const result = await ipcCalcInline(query);
@@ -387,9 +383,8 @@ function publish(query, version) {
                 ? [liveRow, ...ranked, ...suggestionRows]
                 : [...ranked, liveRow, ...suggestionRows];
     }
-    // The calculator sits above everything and takes the selection. A query
-    // that is an expression is a question, and the answer outranks a file that
-    // happened to fuzzy-match some of its digits.
+    // Above everything and takes the selection: an expression is a question,
+    // and the answer outranks a file that fuzzy-matched some of its digits.
     if (lastCalc) {
         combined = [calcResult(query.trim(), lastCalc), ...combined];
     }

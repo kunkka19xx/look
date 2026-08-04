@@ -13,9 +13,8 @@ pub struct CurrencyQuery {
     pub to: String,
 }
 
-/// Currency signs people actually type, and the code each stands for. `$` is
-/// ambiguous in principle (CAD, AUD, ...) but means USD to anyone typing it
-/// into a launcher without qualification.
+/// `$` is ambiguous in principle (CAD, AUD) but means USD to anyone typing it
+/// into a launcher unqualified.
 const CURRENCY_SIGNS: &[(&str, &str)] = &[
     ("$", "USD"),
     ("€", "EUR"),
@@ -38,13 +37,11 @@ fn currency_code(token: &str) -> String {
         .unwrap_or_else(|| token.to_uppercase())
 }
 
-/// Parses `<amount?> <FROM> (to|in|->|=>|=|>) <TO>`, where either side is a
-/// 3-letter code or a currency sign, and the amount may sit on either side of
-/// its sign (`20$` or `$20`). Amount defaults to 1 (and 0 is treated as 1).
-///
-/// Symbol operators need no whitespace, because nobody types `20 usd -> jpy`
-/// when they're in a hurry - `20usd->jpy` is the same request. Word operators
-/// still need it, so `usdtojpy` stays a word rather than a conversion.
+/// Parses `<amount?> <FROM> (to|in|->|=>|=|>) <TO>`: either side may be a
+/// 3-letter code or a sign, and the amount either side of its sign (`20$`,
+/// `$20`). Amount defaults to 1. Symbol operators need no whitespace, since
+/// `20usd->jpy` is the same request; word operators do, so `usdtojpy` stays a
+/// word.
 pub fn currency(query: &str) -> Option<CurrencyQuery> {
     const NUM: &str = r"[0-9]+(?:[.,][0-9]+)?";
     const CUR: &str = r"(?:[a-z]{3}|[$€£¥₫đ₩₹₽₴฿])";
@@ -76,9 +73,8 @@ pub fn currency(query: &str) -> Option<CurrencyQuery> {
     })
 }
 
-/// Parses `weather [in|at|for] <place>` and returns the place name, or an empty
-/// string for a bare `weather` - "the place I asked about last". The provider
-/// decides whether it has one to offer.
+/// Place name, or empty for a bare `weather` - the provider decides whether it
+/// has a last place to offer.
 pub fn weather(query: &str) -> Option<String> {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"(?i)^weather(?:\s+(?:in|at|for))?(?:\s+(.+))?$").expect("valid weather regex")

@@ -24,9 +24,8 @@
     }
 }
 
-/* One inset for the rows and the pill that highlights them. They have to agree
- * or the pill cuts into the row it is supposed to cover, and the AI two-column
- * layout insets its rows tighter than the default (layout.css). */
+/* Rows and the pill that highlights them share one inset, or the pill cuts
+ * into the row it covers (the AI two-column layout insets tighter). */
 .results-list {
     --row-inset-left: var(--content-padding);
     --row-inset-right: var(--content-padding);
