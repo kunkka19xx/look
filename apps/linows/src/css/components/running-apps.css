@@ -9,7 +9,12 @@
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    padding-right: 6px;
+    /* overflow: hidden caps the strip at half the bar, and it clips to the
+     * padding box - so this padding is what stops the badges' negative offsets
+     * from being shaved off. The negative margin cancels the height it adds, so
+     * the top bar measures the same with the strip on or off. */
+    padding: 5px 6px 5px 0;
+    margin: -5px 0;
     overflow: hidden;
 }
 
@@ -62,17 +67,20 @@
     position: absolute;
     top: -4px;
     right: -4px;
-    min-width: 14px;
+    /* Fixed 14x14 like macOS: badgeKeys tops out at 9, so a single glyph always
+     * centers without padding stealing room from it. */
+    width: 14px;
     height: 14px;
-    line-height: 14px;
+    line-height: 12px;
     text-align: center;
     font-size: 9px;
     font-weight: 700;
     font-family: var(--font-mono);
-    color: #fff;
-    background: rgba(0, 0, 0, 0.72);
-    border: 0.5px solid rgba(255, 255, 255, 0.15);
+    /* macOS RunningAppIconItem.badge: scrim fill under the text color, so the
+     * chip reads as a recess in the theme's own polarity over any icon art. */
+    color: var(--font-color);
+    background: rgba(var(--scrim), 0.72);
+    border: 1px solid color-mix(in srgb, var(--font-color) 45%, transparent);
     border-radius: 7px;
-    padding: 0 3px;
     pointer-events: none;
 }

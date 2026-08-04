@@ -30,7 +30,7 @@
     height: 100%;
     border-radius: 8px;
     object-fit: contain;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    filter: drop-shadow(0 2px 4px rgba(var(--shadow), 0.3));
 }
 
 .preview-header-text {
@@ -124,7 +124,7 @@
     max-height: calc(100vh - 260px);
     border-radius: 6px;
     object-fit: contain;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 8px rgba(var(--shadow), 0.2);
 }
 
 /* Code/text file preview */
@@ -154,21 +154,21 @@
     color: var(--font-muted);
     text-align: center;
     padding: 4px 0 6px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid rgba(var(--lift), 0.06);
 }
 
 /* Syntax token colors - matches macOS SyntaxHighlighter palette */
 .tk-kw {
-    color: var(--syntax-keyword, #d17dc9);
+    color: var(--syntax-keyword);
 }
 .tk-str {
-    color: var(--syntax-string, #e8a86b);
+    color: var(--syntax-string);
 }
 .tk-cm {
-    color: var(--syntax-comment, #737873);
+    color: var(--syntax-comment);
 }
 .tk-num {
-    color: var(--syntax-number, #8cc7d6);
+    color: var(--syntax-number);
 }
 
 /* Folder content listing */
@@ -195,7 +195,7 @@
 }
 
 .preview-folder-item:nth-child(even) {
-    background: rgba(255, 255, 255, 0.02);
+    background: rgba(var(--lift), 0.02);
 }
 
 .preview-folder-item:hover {
@@ -205,7 +205,7 @@
 /* Separator between folders and files */
 .preview-folder-separator {
     height: 1px;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--lift), 0.06);
     margin: 4px 8px;
 }
 
@@ -225,29 +225,29 @@
 .preview-folder-item-icon.ext-md,
 .preview-folder-item-icon.ext-txt,
 .preview-folder-item-icon.ext-doc {
-    color: var(--color-info, #6cb6ff);
+    color: var(--color-info);
 }
 .preview-folder-item-icon.ext-js,
 .preview-folder-item-icon.ext-ts,
 .preview-folder-item-icon.ext-jsx,
 .preview-folder-item-icon.ext-tsx {
-    color: #e8d44d;
+    color: var(--ext-script);
 }
 .preview-folder-item-icon.ext-rs,
 .preview-folder-item-icon.ext-py,
 .preview-folder-item-icon.ext-rb {
-    color: #e57a6b;
+    color: var(--ext-lang);
 }
 .preview-folder-item-icon.ext-css,
 .preview-folder-item-icon.ext-scss,
 .preview-folder-item-icon.ext-html {
-    color: #d17dc9;
+    color: var(--ext-style);
 }
 .preview-folder-item-icon.ext-json,
 .preview-folder-item-icon.ext-toml,
 .preview-folder-item-icon.ext-yaml,
 .preview-folder-item-icon.ext-yml {
-    color: #8cc7d6;
+    color: var(--ext-data);
 }
 .preview-folder-item-icon.ext-png,
 .preview-folder-item-icon.ext-jpg,
@@ -255,7 +255,7 @@
 .preview-folder-item-icon.ext-gif,
 .preview-folder-item-icon.ext-svg,
 .preview-folder-item-icon.ext-webp {
-    color: var(--color-success, #7bc77b);
+    color: var(--color-success);
 }
 
 .preview-folder-item-name {
@@ -304,8 +304,8 @@
     border-radius: 6px;
     border: none;
     cursor: pointer;
-    background: var(--color-danger, #e55);
-    color: #fff;
+    background: var(--color-danger);
+    color: var(--on-accent-color);
     display: flex;
     align-items: center;
     gap: 4px;
@@ -401,7 +401,7 @@
     font-weight: 600;
     padding: 1px 6px;
     margin: 0 2px;
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(var(--lift), 0.12);
     border-radius: 4px;
 }
 
@@ -430,7 +430,7 @@
     font-weight: 600;
     padding: 1px 6px;
     margin: 0 2px;
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(var(--lift), 0.12);
     border-radius: 4px;
 }
 

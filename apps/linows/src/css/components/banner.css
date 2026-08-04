@@ -40,30 +40,38 @@
 }
 
 /* Status tints layer over the opaque base above (background-image paints on top
- * of background-color), so the toast keeps its solid backing in every theme. */
+ * of background-color), so the toast keeps its solid backing in every theme.
+ * Mixed from the semantic token rather than a fixed hue so a light theme's
+ * darker semantics wash the paper instead of bleaching it. */
+.banner-success,
+.banner-error,
+.banner-info,
+.banner-warning {
+    background-image: linear-gradient(var(--banner-wash), var(--banner-wash));
+}
 .banner-success {
-    background-image: linear-gradient(rgba(166, 227, 161, 0.16), rgba(166, 227, 161, 0.16));
+    --banner-wash: color-mix(in srgb, var(--color-success) 16%, transparent);
 }
 .banner-success .banner-text {
     color: var(--color-success);
 }
 
 .banner-error {
-    background-image: linear-gradient(rgba(243, 139, 168, 0.16), rgba(243, 139, 168, 0.16));
+    --banner-wash: color-mix(in srgb, var(--color-danger) 16%, transparent);
 }
 .banner-error .banner-text {
     color: var(--color-danger);
 }
 
 .banner-info {
-    background-image: linear-gradient(rgba(137, 180, 250, 0.16), rgba(137, 180, 250, 0.16));
+    --banner-wash: color-mix(in srgb, var(--color-info) 16%, transparent);
 }
 .banner-info .banner-text {
     color: var(--color-info);
 }
 
 .banner-warning {
-    background-image: linear-gradient(rgba(250, 179, 135, 0.16), rgba(250, 179, 135, 0.16));
+    --banner-wash: color-mix(in srgb, var(--color-warning) 16%, transparent);
 }
 .banner-warning .banner-text {
     color: var(--color-warning);

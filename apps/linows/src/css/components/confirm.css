@@ -11,9 +11,9 @@
     gap: 14px;
     padding: 10px 14px;
     background: var(--overlay-surface);
-    border: 1px solid rgba(243, 139, 168, 0.85);
+    border: 1px solid color-mix(in srgb, var(--color-danger) 85%, transparent);
     border-radius: var(--control-radius);
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 10px 28px rgba(var(--shadow), 0.45);
     animation: confirm-in 180ms ease-out;
 }
 
@@ -79,7 +79,7 @@ body.confirm-active .hint-bar > span:first-child {
     font-weight: 600;
     font-family: var(--font-family);
     border: none;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--lift), 0.08);
     color: var(--font-color);
     cursor: pointer;
     transition:
@@ -88,7 +88,7 @@ body.confirm-active .hint-bar > span:first-child {
 }
 
 .confirm-btn:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(var(--lift), 0.14);
 }
 
 .confirm-btn:active {
@@ -97,11 +97,11 @@ body.confirm-active .hint-bar > span:first-child {
 
 .confirm-yes {
     background: var(--color-danger);
-    color: rgba(15, 15, 22, 0.95);
+    color: var(--on-accent-color);
 }
 
 .confirm-yes:hover {
-    background: rgba(243, 139, 168, 0.85);
+    background: color-mix(in srgb, var(--color-danger) 85%, transparent);
 }
 
 @keyframes confirm-in {
