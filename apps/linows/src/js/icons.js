@@ -187,6 +187,9 @@ export const calendar = s(
 export const battery = s(
     '<rect x="1" y="6" width="18" height="12" rx="2" ry="2"/><line x1="23" y1="13" x2="23" y2="11"/>',
 );
+export const batteryCharging = s(
+    '<rect x="1" y="6" width="18" height="12" rx="2" ry="2"/><line x1="23" y1="13" x2="23" y2="11"/><path transform="translate(-0.5 0)" d="M11 7.5 7.5 13h3l-1 4.5 4-5.5h-3z"/>',
+);
 export const volume2 = s(
     '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>',
 );

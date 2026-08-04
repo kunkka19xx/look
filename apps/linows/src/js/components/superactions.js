@@ -27,6 +27,7 @@ import {
     wifi,
     moon,
     battery,
+    batteryCharging,
     coffee,
     sun,
     cloudSun,
@@ -159,6 +160,12 @@ const WEATHER_ICON = {
 // window so a forgotten prompt never fires on a later stray press.
 const DANGER = new Set(['restart', 'shutdown']);
 const CONFIRM_TIMEOUT_MS = 3000;
+const BATTERY_CHARGING_INFO_KEY = 'charging';
+const BATTERY_CHARGING_INFO_TEXT = 'charging';
+const CONTROL_INFO_KEYS = {
+    battery: [BATTERY_CHARGING_INFO_KEY],
+    // Add some other key
+};
 
 // action_id -> CSS grid-area suffix (pos-<area>) and glyph. The grid placement
 // lives in superactions.css; this maps the shared ids onto it.
@@ -565,7 +572,7 @@ async function refreshLunar() {
 async function refreshControl(id, ctl, myToken) {
     let status;
     try {
-        status = await quickActionState(id, []);
+        status = await quickActionState(id, CONTROL_INFO_KEYS[ctl.actionId] || []);
     } catch (_) {
         return;
     }
@@ -576,7 +583,7 @@ async function refreshControl(id, ctl, myToken) {
         ctl.wired = wired;
         setToggleState(ctl, wired && s.state === 'on');
     } else if (ctl.role === 'info') {
-        await refreshInfo(ctl, s, myToken);
+        await refreshInfo(ctl, status, myToken);
     } else if (ctl.role === 'action') {
         ctl.wired = wired;
         // The Mic action tile has toggle semantics; reflect its live/muted state.
@@ -587,10 +594,17 @@ async function refreshControl(id, ctl, myToken) {
 // The info tile shows Battery on a laptop; on a battery-less desktop the read is
 // unavailable, so fall back to Uptime (relabelling the tile). Mirrors the older
 // linows Battery/Uptime tile.
-async function refreshInfo(ctl, s, myToken) {
+async function refreshInfo(ctl, status, myToken) {
+    const s = status?.state;
     if (s?.state === 'value') {
         ctl.capsEl.textContent = ctl.title;
         ctl.valueEl.textContent = s.value;
+        if (ctl.actionId === 'battery') {
+            const charging =
+                status?.info?.[BATTERY_CHARGING_INFO_KEY]?.kind === 'text' &&
+                status.info[BATTERY_CHARGING_INFO_KEY].text === BATTERY_CHARGING_INFO_TEXT;
+            ctl.iconEl.innerHTML = charging ? batteryCharging : battery;
+        }
         return;
     }
     let uptime = null;
@@ -1099,6 +1113,8 @@ function buildInfo(tile) {
         role: 'info',
         el,
         title: tile.title,
+        actionId: tile.action_id,
+        iconEl: el.querySelector('.ctl-icon'),
         capsEl: text.querySelector('.ctl-caps'),
         valueEl: text.querySelector('.ctl-value'),
     });
