@@ -475,20 +475,36 @@ function prependQuickFolders(results, query) {
     const q = query.toLowerCase().trim();
     if (q.length < MIN_QUICK_FOLDER_PREFIX) return results;
 
-    const matched = [];
+    const merged = [...results];
+    let insertAt = 0;
+
     for (const folder of quickFolders) {
         if (!folder.title.toLowerCase().startsWith(q)) continue;
-        if (results.some((r) => r.path === folder.path)) continue;
+        if (merged.some((r) => r.path === folder.path)) continue;
+
         const isTrash = folder.title === 'Trash' || folder.title === 'Recycle Bin';
-        matched.push({
+        const quickFolderResult = {
             id: `quickfolder:${folder.title.toLowerCase()}`,
             kind: 'folder',
             title: folder.title,
             subtitle: isTrash ? 'Pinned · Ctrl+D to empty' : 'Pinned home folder',
             path: folder.path,
             score: 999999,
-        });
+        };
+
+        // A same-titled app already won the backend's type-priority ranking -
+        // don't let the pin bump it out of first place. Surface the folder
+        // right below it instead of dropping it, so it's still reachable.
+        const rivalAppIndex = merged.findIndex(
+            (r) => r.kind === 'app' && r.title.toLowerCase() === folder.title.toLowerCase()
+        );
+        if (rivalAppIndex === -1) {
+            merged.splice(insertAt, 0, quickFolderResult);
+            insertAt += 1;
+        } else {
+            merged.splice(rivalAppIndex + 1, 0, quickFolderResult);
+        }
     }
 
-    return [...matched, ...results];
+    return merged;
 }

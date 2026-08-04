@@ -267,9 +267,17 @@ struct LauncherView: View {
             let alreadyPresent = sourceResults.contains { item in
                 item.kind == .folder && item.path == quickFolder.path
             }
-            if !alreadyPresent {
-                sourceResults.insert(quickFolder, at: 0)
+            guard !alreadyPresent else { continue }
+
+            // A same-titled app (e.g. Apple Music.app vs the ~/Music quick folder)
+            // already won the backend's type-priority ranking - don't let the pin
+            // bump it out of first place. Surface the folder right below it instead
+            // of dropping it, so it's still reachable.
+            let rivalAppIndex = sourceResults.firstIndex { item in
+                item.kind == .app
+                    && item.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == quickFolder.title.lowercased()
             }
+            sourceResults.insert(quickFolder, at: rivalAppIndex.map { $0 + 1 } ?? 0)
         }
 
         if shouldInjectFinderResult {
