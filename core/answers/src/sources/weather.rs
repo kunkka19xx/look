@@ -38,17 +38,31 @@ pub fn answer(place: &str) -> Option<Answer> {
         named => named.to_string(),
     };
     let key = cache_key(&place);
-    if let Ok(cache) = FORECAST_CACHE.lock()
-        && let Some((at, answer)) = cache.get(&key)
-        && at.elapsed() < FORECAST_TTL
-    {
-        return Some(answer.clone());
+    let cached = FORECAST_CACHE
+        .lock()
+        .ok()
+        .and_then(|cache| match cache.get(&key) {
+            Some((at, answer)) if at.elapsed() < FORECAST_TTL => Some(answer.clone()),
+            _ => None,
+        });
+    if let Some(answer) = cached {
+        remember(&place);
+        return Some(answer);
     }
     let answer = fetch(&place)?;
     if let Ok(mut cache) = FORECAST_CACHE.lock() {
         cache.insert(key, (Instant::now(), answer.clone()));
     }
+    remember(&place);
     Some(answer)
+}
+
+/// Every answered place, cached or not: a bare `weather` follows the last one
+/// you asked about, not the last one that missed both caches.
+fn remember(place: &str) {
+    if let Ok(mut last) = LAST_PLACE.lock() {
+        *last = Some(place.trim().to_string());
+    }
 }
 
 fn fetch(place: &str) -> Option<Answer> {
@@ -117,9 +131,6 @@ fn geocode(place: &str) -> Option<Geo> {
     if let Ok(mut cache) = GEO_CACHE.lock() {
         cache.insert(key, geo.clone());
     }
-    if let Ok(mut last) = LAST_PLACE.lock() {
-        *last = Some(place.trim().to_string());
-    }
     Some(geo)
 }
 
@@ -135,11 +146,15 @@ fn resolve(place: &str) -> Option<Geo> {
         let candidate = words[..end].join(" ");
         match geocode_one(&candidate) {
             Lookup::Found(geo) => return Some(geo),
-            // Cold start, not a misspelled city: one retry costs a second.
+            // Cold start, not a misspelled city: one retry costs a second. If
+            // that fails too the geocoder is unreachable, and a shorter
+            // candidate can't change that - stop rather than spend the whole
+            // word list on timeouts.
             Lookup::Failed => {
-                if let Lookup::Found(geo) = geocode_one(&candidate) {
-                    return Some(geo);
-                }
+                return match geocode_one(&candidate) {
+                    Lookup::Found(geo) => Some(geo),
+                    _ => None,
+                };
             }
             Lookup::NotFound => {}
         }

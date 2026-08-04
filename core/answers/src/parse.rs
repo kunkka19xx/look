@@ -30,11 +30,29 @@ const CURRENCY_SIGNS: &[(&str, &str)] = &[
 ];
 
 fn currency_code(token: &str) -> String {
+    // The patterns are case-insensitive, so a sign arrives in the user's case
+    // and `Đ` has to find `đ`.
+    let lowered = token.to_lowercase();
     CURRENCY_SIGNS
         .iter()
-        .find(|(sign, _)| *sign == token)
+        .find(|(sign, _)| *sign == lowered)
         .map(|(_, code)| (*code).to_string())
         .unwrap_or_else(|| token.to_uppercase())
+}
+
+/// `1,000` is a thousands separator and `1,5` a decimal comma, the same rule
+/// the calculator reads numbers by. Getting this wrong is worse than not
+/// parsing: `1,000 usd to jpy` would silently convert 1 dollar.
+fn parse_amount(raw: &str) -> f64 {
+    static GROUPED: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?$").expect("valid amount regex")
+    });
+    let normalized = if GROUPED.is_match(raw) {
+        raw.replace(',', "")
+    } else {
+        raw.replace(',', ".")
+    };
+    normalized.parse::<f64>().unwrap_or(1.0)
 }
 
 /// Parses `<amount?> <FROM> (to|in|->|=>|=|>) <TO>`: either side may be a
@@ -43,7 +61,7 @@ fn currency_code(token: &str) -> String {
 /// `20usd->jpy` is the same request; word operators do, so `usdtojpy` stays a
 /// word.
 pub fn currency(query: &str) -> Option<CurrencyQuery> {
-    const NUM: &str = r"[0-9]+(?:[.,][0-9]+)?";
+    const NUM: &str = r"(?:[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?|[0-9]+(?:[.,][0-9]+)?)";
     const CUR: &str = r"(?:[a-z]{3}|[$€£¥₫đ₩₹₽₴฿])";
     // Groups: 1 amount-before, 2 unit-after, 3 unit-before, 4 amount-after, 5 target.
     static SYMBOL: LazyLock<Regex> = LazyLock::new(|| {
@@ -63,7 +81,7 @@ pub fn currency(query: &str) -> Option<CurrencyQuery> {
     let amount = caps
         .get(1)
         .or_else(|| caps.get(4))
-        .map(|m| m.as_str().replace(',', ".").parse::<f64>().unwrap_or(1.0))
+        .map(|m| parse_amount(m.as_str()))
         .unwrap_or(1.0);
     let from = caps.get(2).or_else(|| caps.get(3))?.as_str();
     Some(CurrencyQuery {
@@ -188,6 +206,26 @@ mod tests {
         }
     }
 
+    /// A dropped thousands separator converts the wrong amount and says
+    /// nothing about it, so it has to survive the parse.
+    #[test]
+    fn currency_amounts_keep_their_thousands_separators() {
+        assert_eq!(currency("1,000 usd to jpy").unwrap().amount, 1000.0);
+        assert_eq!(
+            currency("1,234,567 usd to jpy").unwrap().amount,
+            1_234_567.0
+        );
+        assert_eq!(currency("1,000.50 usd to jpy").unwrap().amount, 1000.5);
+        // Not a group of three: a decimal comma, as European keyboards write it.
+        assert_eq!(currency("1,5 usd to jpy").unwrap().amount, 1.5);
+    }
+
+    #[test]
+    fn currency_signs_are_case_insensitive() {
+        assert_eq!(currency("Đ20 to usd").unwrap().from, "VND");
+        assert_eq!(currency("20đ to usd").unwrap().from, "VND");
+    }
+
     #[test]
     fn currency_signs_map_to_codes_on_both_sides() {
         assert_eq!(currency("100€ to ¥").unwrap().from, "EUR");
@@ -212,6 +250,25 @@ mod tests {
     fn weather_alone_leaves_the_place_open() {
         assert_eq!(weather("weather").unwrap(), "");
         assert_eq!(weather("  weather  ").unwrap(), "");
+    }
+
+    /// Shapes neither the fix nor the review covered.
+    #[test]
+    fn currency_amount_edge_cases() {
+        // Group of three that is the whole number.
+        assert_eq!(currency("100 usd to jpy").unwrap().amount, 100.0);
+        // Leading group shorter than three.
+        assert_eq!(currency("12,345 usd to jpy").unwrap().amount, 12345.0);
+        // Four digits with no separator stay themselves.
+        assert_eq!(currency("1000 usd to jpy").unwrap().amount, 1000.0);
+        // Decimal point, no grouping.
+        assert_eq!(currency("0.5 usd to jpy").unwrap().amount, 0.5);
+        // Not groups of three, so they read as decimal commas.
+        assert_eq!(currency("1,00 usd to jpy").unwrap().amount, 1.0);
+        assert_eq!(currency("1,0000 usd to jpy").unwrap().amount, 1.0);
+        // Amount attached to a sign, grouped.
+        assert_eq!(currency("$1,500->jpy").unwrap().amount, 1500.0);
+        assert_eq!(currency("1,500$->jpy").unwrap().amount, 1500.0);
     }
 
     #[test]

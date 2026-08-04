@@ -157,13 +157,11 @@ async function runFetch(query, questionLike, instant, myVersion) {
     if (isStale(myVersion)) return;
 
     // An instant provider that came back empty means its API failed, not that
-    // there's nothing to say.
+    // there's nothing to say. wikiTerm is only resolved on the non-instant
+    // path, so this one searches for the query itself.
     if (instant && items.length === 0) {
         await collect(
-            [
-                duckduckgoAnswer(query).then(toItem),
-                ...(wikiTerm ? [wikipediaAnswer(wikiTerm).then(toItem)] : []),
-            ],
+            [duckduckgoAnswer(query).then(toItem), wikipediaAnswer(query).then(toItem)],
             myVersion,
         );
         if (isStale(myVersion)) return;

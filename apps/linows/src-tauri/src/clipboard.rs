@@ -212,6 +212,9 @@ pub fn copy_to_clipboard_labeled(text: String, label: String) -> Result<(), Stri
     let mut lock = STATE.lock().unwrap();
     if let Some(state) = lock.as_mut() {
         state.last_text = text.clone();
+        // The entry is recorded here, so the monitor has nothing left to skip.
+        // Leaving the flag armed would swallow the next external copy instead.
+        SKIP_NEXT.store(false, Ordering::Relaxed);
         push_entry(state, label, Some(text));
     }
     Ok(())
