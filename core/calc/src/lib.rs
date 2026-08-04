@@ -64,6 +64,25 @@ pub fn eval(expr: &str) -> Result<Calculation, String> {
     })
 }
 
+/// The whole inline path in one call: is this query arithmetic, and if so what
+/// does it come to? `None` means "leave the search alone".
+///
+/// This is what a launcher's main field should call on every keystroke. It is
+/// pure arithmetic on a short string, so it costs nothing and needs no debounce.
+pub fn eval_query(query: &str) -> Option<Calculation> {
+    let expr = normalize(query);
+    if !is_math(expr) {
+        return None;
+    }
+    eval(expr).ok()
+}
+
+/// Strip the punctuation people tack onto arithmetic when they expect an
+/// answer back: `2+2=`, `2+2?`, `2+2 =?`.
+pub fn normalize(query: &str) -> &str {
+    query.trim().trim_end_matches(['=', '?', ' ', '\t'])
+}
+
 /// Evaluate to a bare `f64`, for callers that do their own formatting.
 pub fn eval_value(expr: &str) -> Result<f64, String> {
     let tokens = tokenize(expr, Aliases::Free)?;
@@ -822,5 +841,26 @@ mod tests {
     fn calc_panel_accepts_glued_aliases() {
         assert_eq!(calc("1920x1080"), "2,073,600");
         assert_eq!(calc("16:9"), "1.7777777778");
+    }
+
+    // --- The inline path ---
+
+    #[test]
+    fn eval_query_answers_or_stays_quiet() {
+        assert_eq!(eval_query("1/1000").unwrap().display, "0.001");
+        assert_eq!(eval_query("2+2").unwrap().raw, "4");
+        assert!(eval_query("20-05-2026").is_none());
+        assert!(eval_query("look 2").is_none());
+        assert!(eval_query("2 +").is_none());
+    }
+
+    /// The `=?` habit the old AI-card trigger accidentally trained. It costs
+    /// nothing to keep honouring it.
+    #[test]
+    fn trailing_equals_and_question_marks_are_stripped() {
+        for q in ["2+2=", "2+2?", "2+2=?", "2+2 = ?", "1 / 1000 =?"] {
+            assert!(eval_query(q).is_some(), "{q} should still evaluate");
+        }
+        assert_eq!(eval_query("2+2=?").unwrap().display, "4");
     }
 }

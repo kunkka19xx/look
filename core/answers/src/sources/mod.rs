@@ -30,5 +30,14 @@ pub fn instant(query: &str) -> Option<Answer> {
 /// Whether any provider's pattern matches - network-free gate.
 pub fn has_match(query: &str) -> bool {
     let q = query.trim();
-    parse::currency(q).is_some() || parse::weather(q).is_some() || parse::crypto(q).is_some()
+    if parse::currency(q).is_some() || parse::crypto(q).is_some() {
+        return true;
+    }
+    // A bare `weather` only counts once some place has resolved this session;
+    // until then the word is just a word, and someone typing it is looking for
+    // a file.
+    match parse::weather(q) {
+        Some(place) => !place.is_empty() || weather::has_remembered_place(),
+        None => false,
+    }
 }

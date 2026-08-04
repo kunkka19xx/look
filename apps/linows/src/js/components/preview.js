@@ -18,10 +18,12 @@ import {
     folderIcon,
     settingIcon,
     globeLg,
+    calculatorLg,
 } from '../icons.js';
 import {
     webSuggestionFromResultId,
     webUrlFromResultId,
+    calcRawFromResultId,
     WEB_URL_OPEN_SUBTITLE,
 } from '../catalog.js';
 import * as qactions from './qactions.js';
@@ -94,6 +96,13 @@ export function update(result) {
     const urlTarget = webUrlFromResultId(result.id);
     if (urlTarget != null) {
         renderWebUrlPreview(urlTarget, result.subtitle || WEB_URL_OPEN_SUBTITLE);
+        return;
+    }
+
+    // Calculator row - shows the answer at size, with the expression it came
+    // from underneath. Same reason as above: no file behind it.
+    if (calcRawFromResultId(result.id) != null) {
+        renderCalcPreview(result);
         return;
     }
 
@@ -653,6 +662,35 @@ function renderWebSuggestionPreview(query) {
     const hint = document.createElement('div');
     hint.className = 'preview-web-suggestion-hint';
     hint.innerHTML = `Press <kbd>Enter</kbd> to search the web`;
+    wrap.appendChild(hint);
+
+    panel.appendChild(wrap);
+}
+
+// Calculator rows reuse the same layout. The expression is the subtitle here
+// rather than a source label, so the panel reads as `answer / from this`.
+function renderCalcPreview(result) {
+    const wrap = document.createElement('div');
+    wrap.className = 'preview-web-suggestion';
+
+    const icon = document.createElement('div');
+    icon.className = 'preview-web-suggestion-icon';
+    icon.innerHTML = calculatorLg;
+    wrap.appendChild(icon);
+
+    const title = document.createElement('div');
+    title.className = 'preview-web-suggestion-title';
+    title.textContent = result.title;
+    wrap.appendChild(title);
+
+    const sub = document.createElement('div');
+    sub.className = 'preview-web-suggestion-subtitle';
+    sub.textContent = result.calcExpr || '';
+    wrap.appendChild(sub);
+
+    const hint = document.createElement('div');
+    hint.className = 'preview-web-suggestion-hint';
+    hint.innerHTML = `Press <kbd>Enter</kbd> to copy`;
     wrap.appendChild(hint);
 
     panel.appendChild(wrap);

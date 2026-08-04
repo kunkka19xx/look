@@ -45,6 +45,7 @@ import {
     commandIdFromResultId,
     webSuggestionFromResultId,
     webUrlFromResultId,
+    calcRawFromResultId,
     isPrefixedQuery,
 } from './catalog.js';
 
@@ -565,6 +566,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             commands.enterById(hintedCmd);
             enterCommandMode();
             queryInput.value = '';
+            return;
+        }
+        // Calculator row: click copies the answer, same as Enter.
+        const calcRaw = calcRawFromResultId(item.id);
+        if (calcRaw != null) {
+            import('./ipc.js').then(({ copyToClipboardLabeled, hideWindow }) =>
+                copyToClipboardLabeled(calcRaw, `${item.calcExpr} = ${item.title}`).then(
+                    hideWindow,
+                ),
+            );
             return;
         }
         const suggestionText = webSuggestionFromResultId(item.id);

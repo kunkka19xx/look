@@ -244,9 +244,14 @@ html[data-os="windows"] .launcher-window {
 .results-area.ai-mode-full .results-list {
     display: none;
 }
+/* Set on the list, not the rows: the selection pill reads the same two
+ * properties, so it stays lined up with what it is highlighting. */
+#preview-col .results-list {
+    --row-inset-left: 2px;
+    --row-inset-right: 4px;
+}
+
 #preview-col .result-row-web-suggest {
-    margin-left: 2px;
-    margin-right: 4px;
     padding-left: 4px;
 }
 

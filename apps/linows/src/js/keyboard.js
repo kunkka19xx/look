@@ -10,6 +10,7 @@ import {
     hideWindow,
     copyFilesToClipboard,
     copyToClipboard,
+    copyToClipboardLabeled,
     deleteClipboardEntry,
     killProcess,
     trashPaths,
@@ -33,6 +34,7 @@ import {
     commandIdFromResultId,
     webSuggestionFromResultId,
     webUrlFromResultId,
+    calcRawFromResultId,
     isSyntheticResultId,
 } from './catalog.js';
 import * as platform from './platform.js';
@@ -589,6 +591,15 @@ async function openSelected(elevated = false) {
         queryInput.value = '';
         return;
     }
+    // Calculator row → the answer goes to the clipboard, ungrouped, and the
+    // launcher gets out of the way. History keeps the working (`2+2 = 4`) so
+    // the list stays readable; the paste is still just the number.
+    const calcRaw = calcRawFromResultId(item.id);
+    if (calcRaw != null) {
+        await copyToClipboardLabeled(calcRaw, `${item.calcExpr} = ${item.title}`);
+        hideWindow();
+        return;
+    }
     // Google autocomplete row → open the search in the browser.
     const suggestionText = webSuggestionFromResultId(item.id);
     if (suggestionText != null) {
@@ -659,7 +670,8 @@ async function copyClipboardEntry() {
     const item = results.getSelected();
     if (!item || item.kind !== 'clipboard') return;
     try {
-        await copyToClipboard(item.clipText);
+        // Labelled entries (calculator results) paste their value, not their label.
+        await copyToClipboard(item.clipPayload || item.clipText);
         banner.show('Copied to clipboard', 'success', 1.0);
     } catch (err) {
         banner.show('Copy failed', 'error', 1.2);

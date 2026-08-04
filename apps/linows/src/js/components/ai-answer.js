@@ -3,8 +3,13 @@
 // heuristics, same 350 ms debounce, same source-fan-out + dedup, same state
 // names. linows has no on-device LLM, so the streaming fallback that macOS
 // uses ("Apple Intelligence" block) is intentionally absent - we surface
-// Calculator + DuckDuckGo + Wikipedia + the pattern-gated instant providers
-// (currency / weather / crypto) and stop there.
+// DuckDuckGo + Wikipedia + the pattern-gated instant providers (currency /
+// weather / crypto) and stop there.
+//
+// Arithmetic used to be answered here too, which is why it needed a question
+// mark to show up at all: the card's triggers are written for knowledge
+// lookups. It now has its own row, gated by core/calc and painted without a
+// debounce - see search.js `fetchCalc`.
 
 import {
     instantHasMatch,
@@ -12,22 +17,12 @@ import {
     duckduckgoAnswer,
     wikipediaAnswer,
     definitionalEntity,
-    evalCalc,
 } from '../ipc.js';
 
 const DEBOUNCE_MS = 350;
-// Chars stripped from the trailing end of a calc query - people tack
-// "=?", "=", or "?" onto math expressions before pressing Enter.
-const CALC_TRIM_TRAILING = '=? ';
-// Require at least one arithmetic operator so a bare number or word
-// ("hello") isn't sent to the calculator.
-const CALC_OPERATOR = /[+\-*/^%]/;
 // Two answer texts are "the same" when their leading N chars match -
 // DuckDuckGo abstracts are often verbatim Wikipedia, so we don't show both.
 const SIMILARITY_PREFIX_LEN = 60;
-// Source labels - exposed as constants so the card view can match against
-// them without restating the magic string. Mirror macOS source names.
-export const SOURCE_CALCULATOR = 'Calculator';
 
 // State machine: same names + meanings as macOS AIAnswerController.State.
 //   idle      - not a question / AI off / no answer to show
@@ -134,33 +129,7 @@ function isStale(myVersion) {
     return myVersion !== runVersion;
 }
 
-// Fastest path: local arithmetic. No network, no provider - instant. The
-// macOS version uses CalcCommand.evaluate; we use the same backend
-// (`eval_calc` Tauri command) so behaviour matches.
-async function tryCalc(query, myVersion) {
-    let expr = query;
-    while (expr.length && CALC_TRIM_TRAILING.includes(expr[expr.length - 1])) {
-        expr = expr.slice(0, -1);
-    }
-    if (!expr || !CALC_OPERATOR.test(expr)) return false;
-    try {
-        const result = await evalCalc(expr);
-        if (isStale(myVersion) || !result) return false;
-        items = [
-            { text: `${expr} = ${result}`, source: SOURCE_CALCULATOR, url: null, imageUrl: null },
-        ];
-        state = State.done;
-        emitChange();
-        return true;
-    } catch {
-        return false;
-    }
-}
-
 async function runFetch(query, questionLike, instant, myVersion) {
-    if (isStale(myVersion)) return;
-
-    if (await tryCalc(query, myVersion)) return;
     if (isStale(myVersion)) return;
 
     // Choose what (if anything) to search Wikipedia for. Mirrors macOS
@@ -186,6 +155,31 @@ async function runFetch(query, questionLike, instant, myVersion) {
               ...(wikiTerm ? [wikipediaAnswer(wikiTerm).then(toItem)] : []),
           ];
 
+    await collect(tasks, myVersion);
+    if (isStale(myVersion)) return;
+
+    // A matched instant provider that came back empty means its API failed or
+    // doesn't know the place - not that there's nothing to say. Fall through to
+    // the generic sources rather than reporting no answer at all.
+    if (instant && items.length === 0) {
+        await collect(
+            [
+                duckduckgoAnswer(query).then(toItem),
+                ...(wikiTerm ? [wikipediaAnswer(wikiTerm).then(toItem)] : []),
+            ],
+            myVersion,
+        );
+        if (isStale(myVersion)) return;
+    }
+
+    state = items.length ? State.done : State.failed;
+    emitChange();
+}
+
+// Awaits every task, appending each answer as it lands so the first source to
+// resolve paints immediately. Duplicates (same source, or near-identical text)
+// are dropped.
+async function collect(tasks, myVersion) {
     await Promise.all(
         tasks.map(async (p) => {
             const result = await p;
@@ -197,10 +191,6 @@ async function runFetch(query, questionLike, instant, myVersion) {
             emitChange();
         }),
     );
-
-    if (isStale(myVersion)) return;
-    state = items.length ? State.done : State.failed;
-    emitChange();
 }
 
 // Normalise the Rust `Answer` (snake_case wire shape) to the controller's

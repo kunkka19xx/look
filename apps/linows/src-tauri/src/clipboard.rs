@@ -13,6 +13,11 @@ pub struct ClipboardEntry {
     pub timestamp: u64,
     pub char_count: usize,
     pub line_count: usize,
+    /// What re-copying this entry actually puts on the clipboard, when that
+    /// differs from the text shown in the list. The calculator uses it to read
+    /// as `1/1000 = 0.001` while still pasting `0.001`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<String>,
 }
 
 struct ClipboardState {
@@ -111,21 +116,27 @@ pub fn start_monitor() {
                 continue;
             }
 
-            // Deduplicate: remove existing entry with same text
-            state.entries.retain(|e| e.text != text);
-
-            let entry = ClipboardEntry {
-                char_count: text.chars().count(),
-                line_count: text.lines().count(),
-                text,
-                timestamp: now_secs(),
-            };
-
-            state.entries.insert(0, entry);
-            state.entries.truncate(state.max_entries);
-            save_entries(&state.entries);
+            push_entry(state, text, None);
         }
     });
+}
+
+/// Insert `text` at the head of the history, dropping any earlier copy of it.
+/// `payload` overrides what re-copying the entry writes to the clipboard.
+fn push_entry(state: &mut ClipboardState, text: String, payload: Option<String>) {
+    state.entries.retain(|e| e.text != text);
+    state.entries.insert(
+        0,
+        ClipboardEntry {
+            char_count: text.chars().count(),
+            line_count: text.lines().count(),
+            text,
+            timestamp: now_secs(),
+            payload,
+        },
+    );
+    state.entries.truncate(state.max_entries);
+    save_entries(&state.entries);
 }
 
 /// Re-reads the clipboard section of `~/.look.config` and applies it to the running
@@ -194,6 +205,23 @@ pub fn copy_to_clipboard(text: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Copy `text` but file it under `label` in the history. The calculator uses
+/// this so the list reads `1/1000 = 0.001` while the clipboard - and every
+/// later paste, including re-copying the entry - carries just `0.001`.
+///
+/// The monitor is told to skip its own detection of this write, so the labelled
+/// entry is the only one recorded rather than racing a bare one.
+#[tauri::command]
+pub fn copy_to_clipboard_labeled(text: String, label: String) -> Result<(), String> {
+    copy_to_clipboard(text.clone())?;
+    let mut lock = STATE.lock().unwrap();
+    if let Some(state) = lock.as_mut() {
+        state.last_text = text.clone();
+        push_entry(state, label, Some(text));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ClipboardEntry, remove_clipboard_entry};
@@ -204,6 +232,7 @@ mod tests {
             timestamp,
             char_count: text.chars().count(),
             line_count: text.lines().count(),
+            payload: None,
         }
     }
 

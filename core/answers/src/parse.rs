@@ -13,32 +13,82 @@ pub struct CurrencyQuery {
     pub to: String,
 }
 
-/// Parses `<amount?> <FROM> (to|in|->|=) <TO>` with 3-letter codes. Amount
-/// defaults to 1 (and 0 is treated as 1). Codes are upper-cased.
+/// Currency signs people actually type, and the code each stands for. `$` is
+/// ambiguous in principle (CAD, AUD, ...) but means USD to anyone typing it
+/// into a launcher without qualification.
+const CURRENCY_SIGNS: &[(&str, &str)] = &[
+    ("$", "USD"),
+    ("€", "EUR"),
+    ("£", "GBP"),
+    ("¥", "JPY"),
+    ("₫", "VND"),
+    ("đ", "VND"),
+    ("₩", "KRW"),
+    ("₹", "INR"),
+    ("₽", "RUB"),
+    ("₴", "UAH"),
+    ("฿", "THB"),
+];
+
+fn currency_code(token: &str) -> String {
+    CURRENCY_SIGNS
+        .iter()
+        .find(|(sign, _)| *sign == token)
+        .map(|(_, code)| (*code).to_string())
+        .unwrap_or_else(|| token.to_uppercase())
+}
+
+/// Parses `<amount?> <FROM> (to|in|->|=>|=|>) <TO>`, where either side is a
+/// 3-letter code or a currency sign, and the amount may sit on either side of
+/// its sign (`20$` or `$20`). Amount defaults to 1 (and 0 is treated as 1).
+///
+/// Symbol operators need no whitespace, because nobody types `20 usd -> jpy`
+/// when they're in a hurry - `20usd->jpy` is the same request. Word operators
+/// still need it, so `usdtojpy` stays a word rather than a conversion.
 pub fn currency(query: &str) -> Option<CurrencyQuery> {
-    static RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"(?i)^([0-9]+(?:[.,][0-9]+)?)?\s*([a-z]{3})\s+(?:to|in|->|=)\s+([a-z]{3})$")
-            .expect("valid currency regex")
+    const NUM: &str = r"[0-9]+(?:[.,][0-9]+)?";
+    const CUR: &str = r"(?:[a-z]{3}|[$€£¥₫đ₩₹₽₴฿])";
+    // Groups: 1 amount-before, 2 unit-after, 3 unit-before, 4 amount-after, 5 target.
+    static SYMBOL: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(&format!(
+            r"(?i)^(?:({NUM})?\s*({CUR})|({CUR})\s*({NUM}))\s*(?:->|=>|→|=|>)\s*({CUR})$"
+        ))
+        .expect("valid currency regex")
     });
-    let caps = RE.captures(query.trim())?;
+    static WORD: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(&format!(
+            r"(?i)^(?:({NUM})?\s*({CUR})|({CUR})\s*({NUM}))\s+(?:to|in)\s+({CUR})$"
+        ))
+        .expect("valid currency regex")
+    });
+    let q = query.trim();
+    let caps = SYMBOL.captures(q).or_else(|| WORD.captures(q))?;
     let amount = caps
         .get(1)
+        .or_else(|| caps.get(4))
         .map(|m| m.as_str().replace(',', ".").parse::<f64>().unwrap_or(1.0))
         .unwrap_or(1.0);
+    let from = caps.get(2).or_else(|| caps.get(3))?.as_str();
     Some(CurrencyQuery {
         amount: if amount == 0.0 { 1.0 } else { amount },
-        from: caps[2].to_uppercase(),
-        to: caps[3].to_uppercase(),
+        from: currency_code(from),
+        to: currency_code(&caps[5]),
     })
 }
 
-/// Parses `weather [in|at|for] <place>` and returns the place name.
+/// Parses `weather [in|at|for] <place>` and returns the place name, or an empty
+/// string for a bare `weather` - "the place I asked about last". The provider
+/// decides whether it has one to offer.
 pub fn weather(query: &str) -> Option<String> {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"(?i)^weather(?:\s+(?:in|at|for))?\s+(.+)$").expect("valid weather regex")
+        Regex::new(r"(?i)^weather(?:\s+(?:in|at|for))?(?:\s+(.+))?$").expect("valid weather regex")
     });
-    let place = RE.captures(query.trim())?[1].trim().to_string();
-    (!place.is_empty()).then_some(place)
+    let caps = RE.captures(query.trim())?;
+    Some(
+        caps.get(1)
+            .map(|m| m.as_str().trim().to_string())
+            .unwrap_or_default(),
+    )
 }
 
 /// Parses `<coin> price` or `price of <coin>` and returns a CoinGecko id
@@ -90,11 +140,82 @@ mod tests {
         assert!(currency("hello world").is_none());
     }
 
+    /// Spacing is a typing habit, not a different request.
+    #[test]
+    fn currency_ignores_spacing_around_symbols() {
+        for q in [
+            "20usd->jpy",
+            "20 usd->jpy",
+            "20usd -> jpy",
+            "20 usd -> jpy",
+            "20usd=>jpy",
+            "20usd>jpy",
+            "20usd=jpy",
+            "20usd→jpy",
+        ] {
+            let parsed = currency(q).unwrap_or_else(|| panic!("{q} should parse"));
+            assert_eq!(
+                (parsed.amount, parsed.from.as_str(), parsed.to.as_str()),
+                (20.0, "USD", "JPY"),
+                "{q}"
+            );
+        }
+        assert_eq!(currency("usd->jpy").unwrap().amount, 1.0);
+    }
+
+    /// Word operators still need their spaces, or every six-letter word would
+    /// look like a conversion.
+    #[test]
+    fn currency_word_operators_need_spacing() {
+        assert!(currency("usdtojpy").is_none());
+        assert!(currency("20usdtojpy").is_none());
+        assert!(currency("usd to jpy").is_some());
+    }
+
+    /// People type the sign, not the ISO code, and put it on whichever side
+    /// their keyboard habits favour.
+    #[test]
+    fn currency_accepts_signs_on_either_side_of_the_amount() {
+        for q in [
+            "20$ to jpy",
+            "$20 to jpy",
+            "20$->jpy",
+            "$20->jpy",
+            "20 $ to jpy",
+        ] {
+            let parsed = currency(q).unwrap_or_else(|| panic!("{q} should parse"));
+            assert_eq!(
+                (parsed.amount, parsed.from.as_str(), parsed.to.as_str()),
+                (20.0, "USD", "JPY"),
+                "{q}"
+            );
+        }
+    }
+
+    #[test]
+    fn currency_signs_map_to_codes_on_both_sides() {
+        assert_eq!(currency("100€ to ¥").unwrap().from, "EUR");
+        assert_eq!(currency("100€ to ¥").unwrap().to, "JPY");
+        assert_eq!(currency("50 usd to ₫").unwrap().to, "VND");
+        assert_eq!(currency("£5->usd").unwrap().from, "GBP");
+        assert_eq!(currency("₹99 in usd").unwrap().amount, 99.0);
+    }
+
     #[test]
     fn weather_place() {
         assert_eq!(weather("weather in Hanoi").unwrap(), "Hanoi");
         assert_eq!(weather("weather Tokyo").unwrap(), "Tokyo");
-        assert!(weather("weather").is_none());
+        assert_eq!(weather("weather at Osaka").unwrap(), "Osaka");
+        assert!(weather("weathering heights").is_none());
+        assert!(weather("the weather").is_none());
+    }
+
+    /// A bare `weather` parses to "no place given"; whether that can be
+    /// answered is the provider's call, not the pattern's.
+    #[test]
+    fn weather_alone_leaves_the_place_open() {
+        assert_eq!(weather("weather").unwrap(), "");
+        assert_eq!(weather("  weather  ").unwrap(), "");
     }
 
     #[test]

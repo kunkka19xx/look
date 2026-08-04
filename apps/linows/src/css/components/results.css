@@ -24,6 +24,14 @@
     }
 }
 
+/* One inset for the rows and the pill that highlights them. They have to agree
+ * or the pill cuts into the row it is supposed to cover, and the AI two-column
+ * layout insets its rows tighter than the default (layout.css). */
+.results-list {
+    --row-inset-left: var(--content-padding);
+    --row-inset-right: var(--content-padding);
+}
+
 /* The selection is a single pill that glides between rows (results.js
  * placeSelectionPill), not a per-row background. It sits in the list's content
  * box behind the rows; its left/right insets match the row margin so it lines
@@ -31,8 +39,8 @@
 .results-selection {
     position: absolute;
     top: 0;
-    left: var(--content-padding);
-    right: var(--content-padding);
+    left: var(--row-inset-left);
+    right: var(--row-inset-right);
     z-index: 0;
     border-radius: var(--control-radius);
     background: var(--selection-fill);
@@ -70,7 +78,7 @@
     min-height: var(--row-height);
     cursor: default;
     border-radius: var(--control-radius);
-    margin: 0 var(--content-padding) 4px;
+    margin: 0 var(--row-inset-right) 4px var(--row-inset-left);
 }
 
 /* Clean horizontal divider drawn as a pseudo-element so it sits full-width

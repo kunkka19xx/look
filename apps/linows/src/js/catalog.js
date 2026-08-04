@@ -11,6 +11,7 @@ const PREFIX_HINT_ID = 'prefixhint:';
 const COMMAND_HINT_ID = 'cmdhint:';
 const WEB_SUGGEST_ID = 'websuggest:';
 const WEB_URL_ID = 'weburl:';
+const CALC_ID = 'calc:';
 const DISCOVERY_CHAR = '"';
 
 // Google-autocomplete row glyph: Lucide `search` (mirrors macOS, which uses
@@ -179,9 +180,38 @@ export function webUrlFromResultId(resultId) {
     return resultId?.startsWith(WEB_URL_ID) ? resultId.slice(WEB_URL_ID.length) : null;
 }
 
+// The calculator row that sits above the results whenever the query is
+// arithmetic. The title is the answer because that is what the eye is looking
+// for; the expression goes underneath as confirmation of what was parsed.
+// Enter copies `raw` - grouped digits are for reading, not for pasting.
+export function calcResult(expr, calculation) {
+    return {
+        id: `${CALC_ID}${calculation.raw}`,
+        kind: 'app',
+        title: calculation.display,
+        subtitle: `${expr}  •  Enter to copy`,
+        // The raw answer doubles as the path: it keeps the preview's cache key
+        // distinct from other pathless rows, and makes Ctrl+C copy the result.
+        path: calculation.raw,
+        score: Number.MAX_SAFE_INTEGER,
+        iconSvg: calculator,
+        calcExpr: expr,
+    };
+}
+
+export function calcRawFromResultId(resultId) {
+    return resultId?.startsWith(CALC_ID) ? resultId.slice(CALC_ID.length) : null;
+}
+
 // True for the synthetic kind:'app' rows (prefix/command hints, Google
 // suggestions, URL rows), so callers can tell them from real launcher apps.
-const SYNTHETIC_RESULT_ID_PREFIXES = [PREFIX_HINT_ID, COMMAND_HINT_ID, WEB_SUGGEST_ID, WEB_URL_ID];
+const SYNTHETIC_RESULT_ID_PREFIXES = [
+    PREFIX_HINT_ID,
+    COMMAND_HINT_ID,
+    WEB_SUGGEST_ID,
+    WEB_URL_ID,
+    CALC_ID,
+];
 
 export function isSyntheticResultId(resultId) {
     return SYNTHETIC_RESULT_ID_PREFIXES.some((prefix) => resultId?.startsWith(prefix));
