@@ -373,11 +373,14 @@ mirroring the raw slider values in `THEME_PRESETS` (tint, text and border are
 also written as inline custom properties, so both sides must agree). Appearance
 is not a flag there: a light preset flips the `--lift` / `--shadow` RGB
 triplets that stand chips off the backdrop and seat panes on it, and repaints
-the semantic tokens the dark presets inherit from `:root`. A preset also owns
-the tint/text/border opacities that dark presets leave to the user
-(`LIGHT_THEMES`), because a paper tint at a dark theme's opacity reads as a
-wash. Its font stack stays in CSS and applies while the Font field is left at
-`system-ui`; an explicit font still wins.
+the semantic tokens the dark presets inherit from `:root`. Opacities are the
+user's (`USER_CONTROLLED_KEYS`) except at one moment: picking a light preset
+from the theme dropdown snaps tint/text/border opacity back to the preset
+(`LIGHT_THEMES`), because paper at a dark theme's transparency doesn't read as
+paper. The switch persists those values, so restore paths stay dumb and the
+sliders are the user's again from the next drag. Its font stack stays in CSS
+and applies while the Font field is left at `system-ui`; an explicit font still
+wins.
 
 ### Config File Integration
 

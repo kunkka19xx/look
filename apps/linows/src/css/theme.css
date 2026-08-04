@@ -72,7 +72,7 @@
 
 /* Tokyo Night */
 :root[data-theme="tokyo-night"] {
-    --bg-tint: rgba(26, 27, 38, 0.6);
+    --bg-tint: rgba(26, 27, 38, 0.95);
     --font-color: rgba(214, 222, 245, 0.98);
     --font-secondary: rgba(189, 204, 230, 1);
     --font-muted: rgba(143, 163, 199, 0.78);
@@ -86,7 +86,7 @@
 
 /* Rose Pine */
 :root[data-theme="rose-pine"] {
-    --bg-tint: rgba(25, 23, 36, 0.58);
+    --bg-tint: rgba(25, 23, 36, 0.95);
     --font-color: rgba(242, 237, 232, 0.98);
     --font-secondary: rgba(224, 214, 207, 1);
     --font-muted: rgba(189, 178, 168, 0.78);
@@ -100,7 +100,7 @@
 
 /* Gruvbox */
 :root[data-theme="gruvbox"] {
-    --bg-tint: rgba(40, 40, 40, 0.6);
+    --bg-tint: rgba(40, 40, 40, 0.95);
     --font-color: rgba(237, 227, 201, 0.98);
     --font-secondary: rgba(222, 204, 163, 1);
     --font-muted: rgba(184, 163, 122, 0.78);
@@ -114,7 +114,7 @@
 
 /* Dracula */
 :root[data-theme="dracula"] {
-    --bg-tint: rgba(40, 42, 54, 0.58);
+    --bg-tint: rgba(40, 42, 54, 0.95);
     --font-color: rgba(248, 248, 250, 0.98);
     --font-secondary: rgba(235, 222, 250, 1);
     --font-muted: rgba(196, 189, 217, 0.78);
@@ -128,7 +128,7 @@
 
 /* Kanagawa */
 :root[data-theme="kanagawa"] {
-    --bg-tint: rgba(22, 22, 29, 0.6);
+    --bg-tint: rgba(22, 22, 29, 0.95);
     --font-color: rgba(222, 219, 201, 0.98);
     --font-secondary: rgba(204, 199, 168, 1);
     --font-muted: rgba(168, 161, 128, 0.78);
@@ -185,6 +185,6 @@
 
 /* Transparency-capable environments (macOS, Windows, Wayland, X11 with compositor) */
 [data-transparent="true"] {
-    --bg-tint: rgba(30, 30, 46, 0.85);
+    --bg-tint: rgba(30, 30, 46, 0.95);
     --corner-radius: 16px;
 }

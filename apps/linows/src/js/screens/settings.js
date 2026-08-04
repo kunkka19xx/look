@@ -26,6 +26,9 @@ const TABS = ['appearance', 'shortcuts', 'advanced'];
 // Sentinel the Font field falls back to: "let the theme decide", not a family.
 const DEFAULT_FONT_NAME = 'system-ui';
 
+const SAVE_MSG_MS = 1600;
+let saveMsgTimer = null;
+
 // Maps config keys to CSS custom property update functions.
 // Each slider with data-key drives live CSS + config persistence.
 const BLUR_PRESETS = {
@@ -156,8 +159,9 @@ export function init(exitFn) {
         for (const el of themeMenu.children) el.classList.remove('settings-dropdown-active');
         item.classList.add('settings-dropdown-active');
         themeMenu.hidden = true;
-        applyThemePreset(theme);
-        saveConfig({ ui_theme: theme });
+        const overrides = lightSwitchOverrides(theme);
+        applyThemePreset(theme, overrides);
+        saveConfig({ ui_theme: theme, ...overrides });
     });
 
     // Blur style dropdown - populate labels from platform
@@ -433,6 +437,7 @@ export function init(exitFn) {
             await forceIndexRefresh();
             await loadConfig();
             clearBackgroundImage();
+            applyFontFamily(DEFAULT_FONT_NAME);
             applyThemePreset('');
             banner.show('Config reset to defaults', 'success', 1.5);
         } catch {
@@ -603,22 +608,15 @@ export function init(exitFn) {
                 : 'false';
 
             await saveConfig(updates);
+            // Clearing the field saves the sentinel; the live inline override
+            // has to go with it or the old family outlives the config value.
+            applyFontFamily(updates.ui_font_name);
             await reloadConfig();
             await forceIndexRefresh();
 
-            const msg = document.getElementById('settings-save-msg');
-            msg.textContent = 'Saved';
-            setTimeout(() => {
-                msg.textContent = '';
-            }, 1600);
+            showSaveMessage('Saved', false);
         } catch {
-            const msg = document.getElementById('settings-save-msg');
-            msg.textContent = 'Save failed';
-            msg.classList.add('settings-save-msg-error');
-            setTimeout(() => {
-                msg.textContent = '';
-                msg.classList.remove('settings-save-msg-error');
-            }, 1600);
+            showSaveMessage('Save failed', true);
         }
     });
 }
@@ -787,6 +785,19 @@ export async function restoreOnStartup() {
 }
 
 // --- Internal ---
+
+// One timer: a pending clear from an earlier save must not wipe a newer result.
+function showSaveMessage(text, isError) {
+    const msg = document.getElementById('settings-save-msg');
+    if (!msg) return;
+    clearTimeout(saveMsgTimer);
+    msg.textContent = text;
+    msg.classList.toggle('settings-save-msg-error', isError);
+    saveMsgTimer = setTimeout(() => {
+        msg.textContent = '';
+        msg.classList.remove('settings-save-msg-error');
+    }, SAVE_MSG_MS);
+}
 
 function switchTab(tabId) {
     if (!TABS.includes(tabId)) return;
@@ -999,7 +1010,7 @@ const THEME_PRESETS = {
         ui_tint_red: 0.1,
         ui_tint_green: 0.11,
         ui_tint_blue: 0.15,
-        ui_tint_opacity: 0.6,
+        ui_tint_opacity: 0.95,
         ui_font_red: 0.84,
         ui_font_green: 0.87,
         ui_font_blue: 0.96,
@@ -1014,7 +1025,7 @@ const THEME_PRESETS = {
         ui_tint_red: 0.1,
         ui_tint_green: 0.09,
         ui_tint_blue: 0.14,
-        ui_tint_opacity: 0.58,
+        ui_tint_opacity: 0.95,
         ui_font_red: 0.95,
         ui_font_green: 0.93,
         ui_font_blue: 0.91,
@@ -1029,7 +1040,7 @@ const THEME_PRESETS = {
         ui_tint_red: 0.16,
         ui_tint_green: 0.16,
         ui_tint_blue: 0.16,
-        ui_tint_opacity: 0.6,
+        ui_tint_opacity: 0.95,
         ui_font_red: 0.93,
         ui_font_green: 0.89,
         ui_font_blue: 0.79,
@@ -1044,7 +1055,7 @@ const THEME_PRESETS = {
         ui_tint_red: 0.16,
         ui_tint_green: 0.16,
         ui_tint_blue: 0.21,
-        ui_tint_opacity: 0.58,
+        ui_tint_opacity: 0.95,
         ui_font_red: 0.97,
         ui_font_green: 0.97,
         ui_font_blue: 0.98,
@@ -1059,7 +1070,7 @@ const THEME_PRESETS = {
         ui_tint_red: 0.09,
         ui_tint_green: 0.09,
         ui_tint_blue: 0.11,
-        ui_tint_opacity: 0.6,
+        ui_tint_opacity: 0.95,
         ui_font_red: 0.87,
         ui_font_green: 0.86,
         ui_font_blue: 0.79,
@@ -1096,13 +1107,26 @@ const USER_CONTROLLED_KEYS = new Set([
     'ui_border_thickness',
 ]);
 
-// A light preset's paper tint and ink text only read correctly together, so a
-// dark theme's preserved opacity would leave the window washed out. Picking one
-// hands the opacities back to the preset; border thickness stays the user's.
+// A paper tint carrying a dark theme's transparency doesn't read as paper, so
+// switching to a light preset is the one moment it takes the opacities back.
+// They are the user's again from the next drag on, which is why the switch also
+// persists them: config and sliders have to agree on the next launch.
 const LIGHT_THEMES = new Set(['kindle']);
-const LIGHT_THEME_PRESERVED_KEYS = new Set(['ui_border_thickness']);
+const LIGHT_SWITCH_KEYS = ['ui_tint_opacity', 'ui_font_opacity', 'ui_border_opacity'];
 
-function applyThemePreset(themeId) {
+function lightSwitchOverrides(themeId) {
+    const preset = THEME_PRESETS[themeId];
+    if (!preset || !LIGHT_THEMES.has(themeId)) return {};
+    const out = {};
+    for (const key of LIGHT_SWITCH_KEYS) {
+        if (preset[key] !== undefined) out[key] = preset[key];
+    }
+    return out;
+}
+
+// `overrides` carries the keys this apply is allowed to take back from the user
+// (see lightSwitchOverrides). Empty on restore, so saved values win there.
+function applyThemePreset(themeId, overrides = {}) {
     // "custom" = user-modified values, don't override anything
     if (themeId === 'custom') return;
 
@@ -1118,16 +1142,17 @@ function applyThemePreset(themeId) {
     // Update slider DOMs first (so getSliderVal reads correct values).
     // Skip user-controlled keys so the user's existing values survive a
     // theme switch.
-    const preserved = LIGHT_THEMES.has(themeId) ? LIGHT_THEME_PRESERVED_KEYS : USER_CONTROLLED_KEYS;
     for (const row of screen.querySelectorAll('.settings-row[data-key]')) {
         const key = row.dataset.key;
-        if (preserved.has(key)) continue;
-        if (preset[key] !== undefined) {
+        const forced = overrides[key];
+        if (forced === undefined && USER_CONTROLLED_KEYS.has(key)) continue;
+        const val = forced !== undefined ? forced : preset[key];
+        if (val !== undefined) {
             const slider = row.querySelector('.settings-slider');
             const valueEl = row.querySelector('.settings-slider-value');
             if (slider) {
-                slider.value = preset[key];
-                valueEl.textContent = formatValue(key, preset[key]);
+                slider.value = val;
+                valueEl.textContent = formatValue(key, val);
             }
         }
     }
