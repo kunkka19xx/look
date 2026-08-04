@@ -17,6 +17,7 @@ import {
     WEB_URL_OPEN_SUBTITLE,
     WEB_URL_RECENT_SUBTITLE,
 } from './catalog.js';
+import * as layout from './layout.js';
 
 const DEBOUNCE_MS = 70;
 const MIN_QUICK_FOLDER_PREFIX = 2;
@@ -203,6 +204,12 @@ export function handleQueryInput(query) {
 
     const myVersion = queryVersion;
     if (query.trim() === '') {
+        // The rest screen shows no rows, and the engine answers an empty query
+        // by scoring the whole index. Clear instead of searching for nothing.
+        if (layout.isEmptyQuery(query) && layout.hidesResultsForEmptyQuery()) {
+            if (onResultsCallback) onResultsCallback([], query);
+            return;
+        }
         performSearch('', myVersion);
         return;
     }
