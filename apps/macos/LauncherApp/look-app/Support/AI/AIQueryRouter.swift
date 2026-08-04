@@ -29,8 +29,8 @@ final class AIQueryRouter: @unchecked Sendable {
         switch kind {
         case .appleIntelligence:
             return AppleIntelligenceProvider()
-        // Future providers slot in here, e.g.:
-        // case .claude: return ClaudeProvider()
+        case .ollama:
+            return OllamaProvider()
         }
     }
 

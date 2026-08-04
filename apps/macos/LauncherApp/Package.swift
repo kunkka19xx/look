@@ -22,6 +22,7 @@ let package = Package(
                 "Support/Launcher/DeleteTargetLogic.swift",
                 "Support/Launcher/BridgeErrorMapping.swift",
                 "Support/Launcher/SyntheticRow.swift",
+                "Support/AI/OllamaCodec.swift",
                 "Support/SingleInstanceLock.swift",
                 "Models/LauncherResult.swift",
             ]

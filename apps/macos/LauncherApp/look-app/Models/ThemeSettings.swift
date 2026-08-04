@@ -148,12 +148,14 @@ enum RunningAppsPlacement: String, CaseIterable, Codable, Identifiable {
 /// touching the rest of the app. Persisted in `~/.look.config` as `ai_provider`.
 enum AIProviderKind: String, CaseIterable, Codable, Identifiable {
     case appleIntelligence
+    case ollama
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .appleIntelligence: return "Apple Intelligence (on-device)"
+        case .ollama: return "Ollama (local)"
         }
     }
 }
@@ -231,6 +233,14 @@ struct ThemeSettings: Codable, Equatable {
 
     /// Which AI backend powers query understanding when `aiEnabled` is on.
     var aiProvider: AIProviderKind = .appleIntelligence
+
+    /// Ollama daemon endpoint, used when `aiProvider` is `.ollama`. Persisted in
+    /// `~/.look.config` under `ollama_host`.
+    var ollamaHost: String = "http://localhost:11434"
+
+    /// Ollama model tag, used when `aiProvider` is `.ollama`. Persisted in
+    /// `~/.look.config` under `ollama_model`.
+    var ollamaModel: String = "llama3.1"
 
     /// Whether the empty-state super actions launchpad is shown. Off hides the
     /// strip and makes its ⌘-mnemonics inert. Persisted in `~/.look.config`

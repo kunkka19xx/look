@@ -26,6 +26,9 @@ final class AIAnswerController: ObservableObject {
     }
 
     @Published private(set) var question: String = ""
+    /// The provider that produced (or is producing) the streamed answer, so the
+    /// card can label it truthfully instead of assuming Apple Intelligence.
+    @Published private(set) var llmProvider: AIProviderKind = .appleIntelligence
     /// Finished blocks (DuckDuckGo / Wikipedia), in arrival order.
     @Published private(set) var items: [Item] = []
     /// Streaming on-device model answer, used only when no web source hit.
@@ -34,6 +37,18 @@ final class AIAnswerController: ObservableObject {
 
     /// Whether the card should be shown at all.
     var isActive: Bool { state != .idle }
+
+    /// Source label for the streamed model answer: the exact provider, plus the
+    /// model tag for Ollama (e.g. "Ollama · qwen2.5-coder:7b").
+    var llmSourceLabel: String {
+        switch llmProvider {
+        case .appleIntelligence:
+            return "Apple Intelligence"
+        case .ollama:
+            let model = ThemeStore.shared.settings.ollamaModel
+            return model.isEmpty ? "Ollama" : "Ollama · \(model)"
+        }
+    }
 
     private var task: Task<Void, Never>?
     private let router: AIQueryRouter
@@ -78,6 +93,7 @@ final class AIAnswerController: ObservableObject {
 
         task?.cancel()
         question = trimmed
+        llmProvider = provider
         items = []
         llmAnswer = ""
         state = .streaming

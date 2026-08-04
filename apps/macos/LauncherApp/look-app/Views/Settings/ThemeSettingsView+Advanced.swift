@@ -24,14 +24,15 @@ extension ThemeSettingsView {
     var aiAvailabilityTooltip: String {
         let base = "Shows instant answers (facts, definitions, weather, currency, "
             + "crypto, calculations) and web search suggestions for your queries. "
-            + "Powered by free web sources (Wikipedia, DuckDuckGo) plus on-device "
-            + "Apple Intelligence where available. Queries are sent to the web "
+            + "Powered by free web sources (Wikipedia, DuckDuckGo) plus the "
+            + "selected AI provider where available. Queries are sent to the web "
             + "while this is on."
+        let providerName = settings.aiProvider.title
         switch aiAvailability {
         case .available:
-            return base + "\n\nApple Intelligence: Ready on this Mac."
+            return base + "\n\n\(providerName): Ready."
         case .unavailable(let reason):
-            return base + "\n\nApple Intelligence: \(reason.userFacingMessage) "
+            return base + "\n\n\(providerName): \(reason.userFacingMessage) "
                 + "(Web answers and suggestions still work without it.)"
         }
     }
@@ -62,6 +63,46 @@ extension ThemeSettingsView {
                         aiInfoIndicator
 
                         Spacer(minLength: 0)
+                    }
+
+                    HStack(spacing: 10) {
+                        Text("Provider")
+                            .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
+                            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+                            .foregroundStyle(themeStore.secondaryTextColor())
+
+                        Picker("AI provider", selection: $settings.aiProvider) {
+                            ForEach(AIProviderKind.allCases) { kind in
+                                Text(kind.title).tag(kind)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 260, alignment: .leading)
+
+                        Spacer(minLength: 0)
+                    }
+
+                    if settings.aiProvider == .ollama {
+                        HStack(spacing: 10) {
+                            Text("Ollama host")
+                                .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
+                                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+                                .foregroundStyle(themeStore.secondaryTextColor())
+                            TextField("http://localhost:11434", text: $settings.ollamaHost)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 260, alignment: .leading)
+                            Spacer(minLength: 0)
+                        }
+                        HStack(spacing: 10) {
+                            Text("Ollama model")
+                                .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
+                                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+                                .foregroundStyle(themeStore.secondaryTextColor())
+                            TextField("llama3.1", text: $settings.ollamaModel)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 260, alignment: .leading)
+                            Spacer(minLength: 0)
+                        }
                     }
 
                     Divider()
