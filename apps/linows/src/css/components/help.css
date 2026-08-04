@@ -17,7 +17,7 @@ html:not([data-os="linux"]) .help-linux-only {
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: rgba(20, 22, 30, 0.97);
+    background-color: var(--overlay-surface);
     background-image: linear-gradient(var(--bg-tint), var(--bg-tint));
 }
 
@@ -94,7 +94,7 @@ html:not([data-os="linux"]) .help-linux-only {
     font-size: calc(var(--font-size) - 2px);
     font-weight: 400;
     color: var(--font-color);
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(var(--lift), 0.14);
     padding: 3px 8px;
     border-radius: 999px;
     white-space: nowrap;

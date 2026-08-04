@@ -18,7 +18,7 @@
     margin: 6px var(--content-padding) 8px;
     padding: 12px;
     background: var(--control-fill);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(var(--lift), 0.08);
     border-radius: 10px;
     display: flex;
     flex-direction: column;
@@ -152,7 +152,7 @@
 }
 .ai-card-copy:hover {
     color: var(--font-color);
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--lift), 0.08);
 }
 
 .ai-card-block-body {
@@ -167,7 +167,7 @@
     border-radius: 8px;
     object-fit: cover;
     cursor: pointer;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(var(--lift), 0.04);
 }
 
 .ai-card-text {
