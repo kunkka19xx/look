@@ -99,7 +99,13 @@ features.
   and cloud providers plug in with no other changes. On-device by default.
 - **Context provider.** Frontmost app, current selection, clipboard, recents.
 - **Local memory.** Embeddings over clipboard, files, and todos. Powers Recall.
-- **Tool layer.** Audited action primitives with the safety spine above.
+- **Tool layer.** A registry of audited action primitives with the safety spine
+  above. Each capability registers a tool (id + params schema + a `plan()` that
+  resolves and validates); one generic confirm/preview/undo surface renders any
+  tool. Act is NOT a command-mode palette: the main box + intent router + this
+  registry is what scales to many connectors. Adding a connector means
+  registering tools, not editing a switch or the UI. See
+  `ai-eventkit-pr1-checklist.md`.
 
 ## Provider strategy and the setup-cost tradeoff
 
