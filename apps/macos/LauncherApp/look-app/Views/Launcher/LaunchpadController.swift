@@ -46,16 +46,20 @@ final class LaunchpadController {
     /// The system-wide now-playing track (any app), or nil when nothing plays.
     private(set) var nowPlaying: NowPlayingSnapshot?
 
-    /// When the last transport command was issued. A background poll ignores a
-    /// read for this long afterward so it cannot clobber the optimistic update
-    /// before the command has settled; the forced reconcile applies the truth.
-    @ObservationIgnored private var lastNowPlayingCommandAt = Date.distantPast
+    /// The play state a just-issued command should produce, held until a read
+    /// agrees. Commands apply asynchronously, so without this the tile flips
+    /// three times per press: optimistic, stale read, then the truth.
+    @ObservationIgnored private var expectedIsPlaying: Bool?
+    @ObservationIgnored private var expectationDeadline = Date.distantPast
     @ObservationIgnored private var nowPlayingReconcile: Task<Void, Never>?
 
-    /// Delay before re-reading after a command (commands apply asynchronously).
-    private static let nowPlayingSettleNanos: UInt64 = 350_000_000
-    /// A poll read is skipped when a command was issued within this window.
-    private static let nowPlayingCommandGuard: TimeInterval = 0.4
+    /// Stops an earlier read resuming last over a newer one, as `stateGeneration` does.
+    @ObservationIgnored private var nowPlayingGeneration: UInt64 = 0
+
+    private static let nowPlayingSettleNanos: UInt64 = 300_000_000
+    /// Cap on holding the expected state, so a command that never lands cannot
+    /// freeze the tile.
+    private static let nowPlayingSettleTimeout: TimeInterval = 2.5
 
     /// The destructive tile currently awaiting an inline confirm, or nil.
     private(set) var pendingConfirmActionID: String?
@@ -106,29 +110,50 @@ final class LaunchpadController {
         weather = await weatherService.currentWeather()
     }
 
-    /// Reads the current system-wide now-playing track. `force` bypasses the
-    /// post-command guard and is used by the reconcile after a transport command;
-    /// the periodic poll passes `force: false` so it never overrides a fresh
-    /// optimistic update mid-flight.
-    func refreshNowPlaying(force: Bool = false) async {
-        if !force, Date().timeIntervalSince(lastNowPlayingCommandAt) < Self.nowPlayingCommandGuard {
+    /// Reads the current now-playing track. While a command is still settling,
+    /// fresh metadata is adopted but the expected play state is kept.
+    func refreshNowPlaying() async {
+        nowPlayingGeneration &+= 1
+        let generation = nowPlayingGeneration
+        let fresh = await SystemNowPlaying.shared.current()
+        guard generation == nowPlayingGeneration else { return }
+
+        guard let expected = expectedIsPlaying, Date() < expectationDeadline else {
+            expectedIsPlaying = nil
+            nowPlaying = fresh
             return
         }
-        nowPlaying = await SystemNowPlaying.shared.current()
+        if fresh?.isPlaying == expected {
+            expectedIsPlaying = nil
+            nowPlaying = fresh
+            return
+        }
+        // Reads come back empty when the player moves mid-read. Blanking here
+        // would strip the path the next press needs.
+        guard let fresh else { return }
+        nowPlaying = NowPlayingSnapshot(
+            title: fresh.title,
+            artist: fresh.artist,
+            app: fresh.app,
+            isPlaying: expected,
+            playerPath: fresh.playerPath
+        )
     }
 
-    /// Toggles play/pause on whatever app owns system now-playing.
+    /// Toggles play/pause on the player the tile is showing. Flips optimistically
+    /// so the button responds without waiting for the read.
     func nowPlayingToggle() {
-        // Optimistic: flip immediately so the button responds without waiting for
-        // the read; the reconcile confirms the real state shortly after.
-        if let current = nowPlaying {
-            nowPlaying = NowPlayingSnapshot(
-                title: current.title,
-                artist: current.artist,
-                app: current.app,
-                isPlaying: !current.isPlaying
-            )
-        }
+        guard let current = nowPlaying else { return }
+        let target = !current.isPlaying
+        nowPlaying = NowPlayingSnapshot(
+            title: current.title,
+            artist: current.artist,
+            app: current.app,
+            isPlaying: target,
+            playerPath: current.playerPath
+        )
+        expectedIsPlaying = target
+        expectationDeadline = Date().addingTimeInterval(Self.nowPlayingSettleTimeout)
         issueNowPlayingCommand(.togglePlayPause)
     }
 
@@ -138,15 +163,26 @@ final class LaunchpadController {
     /// Returns the current system media to the previous track.
     func nowPlayingPrevious() { issueNowPlayingCommand(.previousTrack) }
 
-    /// Sends a transport command, then re-reads once the change has settled.
+    /// Sends a command to the player on the tile, then re-reads until it lands.
+    /// Targeting that exact player is what stops "pause, then play" from
+    /// resuming Pomodoro music instead of the browser.
     private func issueNowPlayingCommand(_ command: SystemNowPlaying.Command) {
-        lastNowPlayingCommandAt = Date()
-        SystemNowPlaying.shared.send(command)
+        let target = nowPlaying?.playerPath
         nowPlayingReconcile?.cancel()
         nowPlayingReconcile = Task {
-            try? await Task.sleep(nanoseconds: Self.nowPlayingSettleNanos)
-            guard !Task.isCancelled else { return }
-            await refreshNowPlaying(force: true)
+            guard await SystemNowPlaying.shared.send(command, to: target) else {
+                // Undelivered, so no change is coming: drop the optimistic flip
+                // now rather than polling to the deadline.
+                expectedIsPlaying = nil
+                await refreshNowPlaying()
+                return
+            }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: Self.nowPlayingSettleNanos)
+                guard !Task.isCancelled else { return }
+                await refreshNowPlaying()
+                guard expectedIsPlaying != nil else { return }
+            }
         }
     }
 
