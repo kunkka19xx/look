@@ -6,14 +6,15 @@
 //! Desktops without a battery report `Unavailable`, which the shell renders as
 //! a dimmed placeholder.
 
-use crate::qactions::{ActionIntent, ActionOutcome, ActionState, InfoValue, SystemControl};
+use crate::qactions::{
+    ActionIntent, ActionOutcome, ActionState, BATTERY_CHARGING_INFO_KEY, InfoValue, SystemControl,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
 const POWER_SUPPLY_DIR: &str = "/sys/class/power_supply";
 const NO_BATTERY: &str = "No battery";
-const CHARGING_INFO_KEY: &str = "charging";
 
 /// Reports the system battery charge. Action id: `"battery"`.
 pub struct BatteryControl;
@@ -31,11 +32,11 @@ impl SystemControl for BatteryControl {
     }
 
     fn info(&self, keys: &[String]) -> HashMap<String, InfoValue> {
-        if !keys.iter().any(|k| k == CHARGING_INFO_KEY) {
+        if !keys.iter().any(|k| k == BATTERY_CHARGING_INFO_KEY) {
             return HashMap::new();
         }
         HashMap::from([(
-            CHARGING_INFO_KEY.to_string(),
+            BATTERY_CHARGING_INFO_KEY.to_string(),
             InfoValue::Text {
                 text: if is_charging() {
                     "charging".to_string()

@@ -2,12 +2,13 @@
 //! Windows peer of `battery.rs`; reads `GetSystemPowerStatus` (as
 //! `platform/windows/sysinfo.rs` does) and reports `Unavailable` with no battery.
 
-use crate::qactions::{ActionIntent, ActionOutcome, ActionState, InfoValue, SystemControl};
+use crate::qactions::{
+    ActionIntent, ActionOutcome, ActionState, BATTERY_CHARGING_INFO_KEY, InfoValue, SystemControl,
+};
 use std::collections::HashMap;
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 
 const NO_BATTERY: &str = "No battery";
-const CHARGING_INFO_KEY: &str = "charging";
 
 /// Reports the system battery charge. Action id: `"battery"`.
 pub struct BatteryControl;
@@ -25,11 +26,11 @@ impl SystemControl for BatteryControl {
     }
 
     fn info(&self, keys: &[String]) -> HashMap<String, InfoValue> {
-        if !keys.iter().any(|k| k == CHARGING_INFO_KEY) {
+        if !keys.iter().any(|k| k == BATTERY_CHARGING_INFO_KEY) {
             return HashMap::new();
         }
         HashMap::from([(
-            CHARGING_INFO_KEY.to_string(),
+            BATTERY_CHARGING_INFO_KEY.to_string(),
             InfoValue::Text {
                 text: if charging_flag() {
                     "charging".to_string()

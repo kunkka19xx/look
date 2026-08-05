@@ -164,7 +164,6 @@ const BATTERY_CHARGING_INFO_KEY = 'charging';
 const BATTERY_CHARGING_INFO_TEXT = 'charging';
 const CONTROL_INFO_KEYS = {
     battery: [BATTERY_CHARGING_INFO_KEY],
-    // Add some other key
 };
 
 // action_id -> CSS grid-area suffix (pos-<area>) and glyph. The grid placement
