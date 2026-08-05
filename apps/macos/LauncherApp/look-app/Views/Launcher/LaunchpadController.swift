@@ -42,6 +42,9 @@ final class LaunchpadController {
     @ObservationIgnored private var expectationDeadline = Date.distantPast
     @ObservationIgnored private var nowPlayingReconcile: Task<Void, Never>?
 
+    /// Stops an earlier read resuming last over a newer one, as `stateGeneration` does.
+    @ObservationIgnored private var nowPlayingGeneration: UInt64 = 0
+
     private static let nowPlayingSettleNanos: UInt64 = 300_000_000
     /// Cap on holding the expected state, so a command that never lands cannot
     /// freeze the tile.
@@ -94,7 +97,10 @@ final class LaunchpadController {
     /// Reads the current now-playing track. While a command is still settling,
     /// fresh metadata is adopted but the expected play state is kept.
     func refreshNowPlaying() async {
+        nowPlayingGeneration &+= 1
+        let generation = nowPlayingGeneration
         let fresh = await SystemNowPlaying.shared.current()
+        guard generation == nowPlayingGeneration else { return }
 
         guard let expected = expectedIsPlaying, Date() < expectationDeadline else {
             expectedIsPlaying = nil
@@ -106,15 +112,16 @@ final class LaunchpadController {
             nowPlaying = fresh
             return
         }
-        nowPlaying = fresh.map {
-            NowPlayingSnapshot(
-                title: $0.title,
-                artist: $0.artist,
-                app: $0.app,
-                isPlaying: expected,
-                playerPath: $0.playerPath
-            )
-        }
+        // Reads come back empty when the player moves mid-read. Blanking here
+        // would strip the path the next press needs.
+        guard let fresh else { return }
+        nowPlaying = NowPlayingSnapshot(
+            title: fresh.title,
+            artist: fresh.artist,
+            app: fresh.app,
+            isPlaying: expected,
+            playerPath: fresh.playerPath
+        )
     }
 
     /// Toggles play/pause on the player the tile is showing. Flips optimistically
@@ -147,7 +154,13 @@ final class LaunchpadController {
         let target = nowPlaying?.playerPath
         nowPlayingReconcile?.cancel()
         nowPlayingReconcile = Task {
-            await SystemNowPlaying.shared.send(command, to: target)
+            guard await SystemNowPlaying.shared.send(command, to: target) else {
+                // Undelivered, so no change is coming: drop the optimistic flip
+                // now rather than polling to the deadline.
+                expectedIsPlaying = nil
+                await refreshNowPlaying()
+                return
+            }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: Self.nowPlayingSettleNanos)
                 guard !Task.isCancelled else { return }
