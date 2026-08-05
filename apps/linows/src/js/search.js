@@ -139,14 +139,6 @@ export function handleQueryInput(query) {
     }
     lastQueryString = query;
 
-    // Mutually-exclusive query modes, checked in a fixed order. Each branch
-    // below only clears the sibling flags no *earlier* branch already
-    // cleared - by the time control reaches the c"/rc"/ps" checks,
-    // prefixHintMode/commandHintMode/translateMode are already false, so
-    // they're not re-listed there. This is deliberate economy, not
-    // partial/inconsistent duplication: reading top-to-bottom, every flag is
-    // false by the time a later branch could need to clear it again.
-    //
     // Discovery menus - `"` lists every query prefix, `:` lists every slash
     // command, both filterable by what follows the leading character. Must
     // run before the t"/c"/rc" branches because the leading chars overlap.
@@ -280,10 +272,8 @@ async function performSearch(query, version) {
 }
 
 async function fetchWebSuggestions(query, version) {
-    // Only aiEnabled is worth re-checking here: it's a mutable setting that
-    // can flip during the debounce window between scheduling and firing,
-    // unlike the length gate, which already tested this exact (immutable)
-    // query string as part of `wantsWeb` before the timer was even set.
+    // aiEnabled can flip during the debounce window, so re-check it. The
+    // length gate can't: `wantsWeb` already applied it to this same query.
     if (!aiEnabled) {
         webInFlight = false;
         return;

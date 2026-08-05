@@ -1,10 +1,8 @@
 import Foundation
 
 /// What kind of synthesized (not-a-real-candidate) result row this is,
-/// classified once from its id prefix instead of re-derived independently by
-/// every caller. The per-kind `fromResultID` accessors in `AppConstants.swift`
-/// stay as the underlying primitives - `classify(resultID:)` just calls each
-/// of them once, in one place.
+/// classified from its id prefix. The prefixes are disjoint, so at most one
+/// arm can match. Mirrors `classifyResultId` in the linows `catalog.js`.
 enum SyntheticRow {
     case prefixSuggestion(prefix: String)
     case webSuggestion(text: String)
