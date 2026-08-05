@@ -180,6 +180,23 @@ enum AppConstants {
             }
         }
 
+        // Synthesized calculator row, pinned above everything else while the
+        // query is arithmetic (shared `core/calc` intent gate via EngineBridge).
+        // Like WebSuggestion/WebURL, told apart from real candidates by id.
+        enum Calc {
+            static let resultIDPrefix = "calc:"
+            static let enterToCopyHint = "Enter to copy"
+            // SF Symbols has no calculator glyph; borrow the real app's icon
+            // instead of an abstract stand-in.
+            static let appIconPath = "/System/Applications/Calculator.app"
+
+            /// Recovers the raw (paste-safe) value encoded in a result id, or nil.
+            static func rawValue(fromResultID resultID: String) -> String? {
+                guard resultID.hasPrefix(resultIDPrefix) else { return nil }
+                return String(resultID.dropFirst(resultIDPrefix.count))
+            }
+        }
+
         // Synthesized "Open <url>" row for a URL-like query (issue #232). Told
         // apart from real candidates by id; the resolved URL is encoded in it.
         enum WebURL {

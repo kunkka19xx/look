@@ -5,6 +5,7 @@ import {
     webSuggestions as ipcWebSuggestions,
     classifyUrl as ipcClassifyUrl,
     recentUrls as ipcRecentUrls,
+    calcInline as ipcCalcInline,
 } from './ipc.js';
 import {
     isPrefixSuggestionQuery,
@@ -14,6 +15,7 @@ import {
     commandSuggestionResults,
     webSuggestionResults,
     webUrlResult,
+    calcResult,
     WEB_URL_OPEN_SUBTITLE,
     WEB_URL_RECENT_SUBTITLE,
 } from './catalog.js';
@@ -59,6 +61,9 @@ let webInFlight = false;
 // web suggestions need) and refilled by fetchUrlRows.
 let lastUrlMatch = null;
 let lastRecentUrls = [];
+// Calculator row for the current query, or null. Local and instant, so unlike
+// the other legs it runs undebounced and settles before the engine answers.
+let lastCalc = null;
 
 /** Resolved by the backend (Windows: SHGetKnownFolderPath; *nix: $HOME/<name>).
  *  Empty until setQuickFolders is called at boot. */
@@ -128,6 +133,7 @@ export function handleQueryInput(query) {
     lastEnginePayload = [];
     lastUrlMatch = null;
     lastRecentUrls = [];
+    lastCalc = null;
     if (query !== lastQueryString) {
         lastWebSuggestions = [];
     }
@@ -222,16 +228,18 @@ export function handleQueryInput(query) {
     // empty list. Skip web suggestions entirely for prefixed queries
     // (a"chrome, f"doc, r"regex ...). The engine handles those as scoped
     // filters; Google-autocomplete rows would be noise.
+    const prefixed = isPrefixedQuery(query);
     const wantsWeb =
-        aiEnabled &&
-        !isPrefixedQuery(query) &&
-        query.trim().length >= MIN_WEB_SUGGESTION_QUERY_LENGTH;
+        aiEnabled && !prefixed && query.trim().length >= MIN_WEB_SUGGESTION_QUERY_LENGTH;
     webInFlight = wantsWeb;
     // URL rows share the engine debounce: both are local round-trips, and the
     // URL leg must not run per keystroke ahead of it (SQLite open per call).
     // Unlike web suggestions they ignore the AI gate - opening a typed address
     // is a launcher action, not a web answer.
-    const wantsUrlRows = !isPrefixedQuery(query);
+    const wantsUrlRows = !prefixed;
+    // No debounce: local arithmetic on a short string, and it settles before
+    // the engine, so the row never re-seats the selection.
+    if (!prefixed) fetchCalc(query, myVersion);
     debounceTimer = setTimeout(() => {
         performSearch(query, myVersion);
         if (wantsUrlRows) fetchUrlRows(query, myVersion);
@@ -289,6 +297,20 @@ async function fetchWebSuggestions(query, version) {
             publish(query, version);
         }
     }
+}
+
+// core/calc decides what counts, so `20-05-2026` stays a folder name.
+async function fetchCalc(query, version) {
+    try {
+        const result = await ipcCalcInline(query);
+        if (isStale(version)) return;
+        lastCalc = result || null;
+    } catch (err) {
+        console.warn('Calc failed:', err);
+        if (isStale(version)) return;
+        lastCalc = null;
+    }
+    if (lastCalc) publish(query, version);
 }
 
 // Classification + history lookup for the current query. Both run in one leg
@@ -361,6 +383,11 @@ function publish(query, version) {
                 ? [liveRow, ...ranked, ...suggestionRows]
                 : [...ranked, liveRow, ...suggestionRows];
     }
+    // Above everything and takes the selection: an expression is a question,
+    // and the answer outranks a file that fuzzy-matched some of its digits.
+    if (lastCalc) {
+        combined = [calcResult(query.trim(), lastCalc), ...combined];
+    }
     // Hold an empty render while web suggestions are still loading. The
     // engine returns instantly (~50 ms) but DDG /ac/ takes 500 ms-2 s; on a
     // fresh query we'd otherwise paint "No results" for a couple of seconds
@@ -423,6 +450,7 @@ async function performClipboardSearch(filter) {
                 path: 'clipboard://history',
                 score: 0,
                 clipText: e.text,
+                clipPayload: e.payload || null,
                 clipTimestamp: e.timestamp,
                 clipCharCount: e.char_count,
                 clipLineCount: e.line_count,

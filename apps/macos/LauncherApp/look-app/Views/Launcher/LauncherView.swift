@@ -415,18 +415,25 @@ struct LauncherView: View {
         // stay last.
         let ranked = mergeByScore(backendFilteredResults, recentURLResults)
         let tail = webSuggestionResults
-        guard let urlResult else {
-            return ranked + tail
+        let base: [LauncherResult]
+        if let urlResult {
+            // Structural matches can't be a file/search, so rank on top. A bare-host
+            // match must never take the default slot from a real local result, so it
+            // sits after the backend results (issue #232).
+            switch urlResult.tier {
+            case .structural:
+                base = [urlResult.result] + ranked + tail
+            case .bareHost:
+                base = ranked + [urlResult.result] + tail
+            }
+        } else {
+            base = ranked + tail
         }
-        // Structural matches can't be a file/search, so rank on top. A bare-host
-        // match must never take the default slot from a real local result, so it
-        // sits after the backend results (issue #232).
-        switch urlResult.tier {
-        case .structural:
-            return [urlResult.result] + ranked + tail
-        case .bareHost:
-            return ranked + [urlResult.result] + tail
-        }
+        // An arithmetic expression is a question, and the answer outranks a
+        // file that fuzzy-matched some of its digits - above everything,
+        // including the structural URL row.
+        guard let calcResult else { return base }
+        return [calcResult] + base
     }
 
     var isTranslationQuery: Bool {
@@ -609,18 +616,33 @@ struct LauncherView: View {
 
         if activeCommandID == AppConstants.Launcher.Command.calc {
             let expr = commandInput.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !expr.isEmpty else { return nil }
-            guard CalcCommand.isReadyForEvaluation(expr) else { return nil }
+            // Stay quiet on a half-typed expression (trailing operator, open
+            // paren) rather than flashing an error mid-keystroke; the shared
+            // engine itself decides everything else.
+            guard !expr.isEmpty, !Self.isLikelyIncompleteCalcExpression(expr) else { return nil }
 
-            switch CalcCommand.evaluate(expr) {
-            case .value(let value):
-                return "Result: \(value)"
-            case .error(let message):
-                return message
+            let result = bridge.calcEval(expr: expr)
+            if let calculation = result.calculation {
+                return "Result: \(calculation.display)"
             }
+            return result.error ?? "Invalid expression"
         }
 
         return nil
+    }
+
+    /// A trailing operator or an unclosed paren - not a parser, just enough to
+    /// tell "still typing" from "actually wrong" so the `/calc` live preview
+    /// doesn't flash an error on every keystroke. An unmatched *closing* paren
+    /// is never "still typing", so it falls through to the real error instead.
+    private static func isLikelyIncompleteCalcExpression(_ expr: String) -> Bool {
+        if let last = expr.last, "+-*/^.(".contains(last) { return true }
+        var balance = 0
+        for ch in expr {
+            if ch == "(" { balance += 1 }
+            if ch == ")" { balance -= 1 }
+        }
+        return balance > 0
     }
 
     var hasSudoWarning: Bool {

@@ -1,12 +1,71 @@
-//! Current conditions via Open-Meteo: geocode the place name, then fetch the
-//! current forecast. Two sequential calls, both keyless. The geocoder can have a
-//! multi-second cold start, hence the longer timeout.
+//! Current conditions via Open-Meteo: geocode the place, then fetch the
+//! forecast. Two keyless calls, and the geocoder has a multi-second cold start,
+//! so both are cached - coordinates forever, the forecast for a few minutes.
 
 use crate::{http, json::ValueExt, types::Answer};
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 const TIMEOUT_SECS: u32 = 6;
+/// How long a fetched forecast stays fresh.
+const FORECAST_TTL: Duration = Duration::from_secs(300);
+
+static GEO_CACHE: LazyLock<Mutex<HashMap<String, Geo>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static FORECAST_CACHE: LazyLock<Mutex<HashMap<String, (Instant, Answer)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+/// Lets a bare `weather` mean "same place as before".
+static LAST_PLACE: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
+
+fn cache_key(place: &str) -> String {
+    place.trim().to_lowercase()
+}
+
+fn remembered_place() -> Option<String> {
+    LAST_PLACE.lock().ok()?.clone()
+}
+
+/// Whether a bare `weather` has somewhere to report on yet, so the word alone
+/// doesn't claim a query it can't answer.
+pub fn has_remembered_place() -> bool {
+    remembered_place().is_some()
+}
 
 pub fn answer(place: &str) -> Option<Answer> {
+    let place = match place.trim() {
+        "" => remembered_place()?,
+        named => named.to_string(),
+    };
+    let key = cache_key(&place);
+    let cached = FORECAST_CACHE
+        .lock()
+        .ok()
+        .and_then(|cache| match cache.get(&key) {
+            Some((at, answer)) if at.elapsed() < FORECAST_TTL => Some(answer.clone()),
+            _ => None,
+        });
+    if let Some(answer) = cached {
+        remember(&place);
+        return Some(answer);
+    }
+    let answer = fetch(&place)?;
+    if let Ok(mut cache) = FORECAST_CACHE.lock() {
+        cache.insert(key, (Instant::now(), answer.clone()));
+    }
+    remember(&place);
+    Some(answer)
+}
+
+/// Every answered place, cached or not: a bare `weather` follows the last one
+/// you asked about, not the last one that missed both caches.
+fn remember(place: &str) {
+    if let Ok(mut last) = LAST_PLACE.lock() {
+        *last = Some(place.trim().to_string());
+    }
+}
+
+fn fetch(place: &str) -> Option<Answer> {
     let geo = geocode(place)?;
     let (lat, lon) = (geo.lat, geo.lon);
     let name = geo.name.as_str();
@@ -44,6 +103,7 @@ pub fn answer(place: &str) -> Option<Answer> {
     Some(Answer::text(text, "Weather"))
 }
 
+#[derive(Clone)]
 struct Geo {
     lat: f64,
     lon: f64,
@@ -51,38 +111,79 @@ struct Geo {
     country: String,
 }
 
+/// "No such place" and "request failed" collapse into one `None`, and must
+/// not: the first is final, the second is worth asking again.
+enum Lookup {
+    Found(Geo),
+    NotFound,
+    Failed,
+}
+
+/// Cached for the process lifetime; a city's latitude is not news.
+fn geocode(place: &str) -> Option<Geo> {
+    let key = cache_key(place);
+    if let Ok(cache) = GEO_CACHE.lock()
+        && let Some(hit) = cache.get(&key)
+    {
+        return Some(hit.clone());
+    }
+    let geo = resolve(place)?;
+    if let Ok(mut cache) = GEO_CACHE.lock() {
+        cache.insert(key, geo.clone());
+    }
+    Some(geo)
+}
+
 /// Resolves a place name to coordinates, tolerating trailing qualifier words the
 /// geocoder rejects. Open-Meteo's geocoder matches a single place name, so
 /// "haiphong vietnam" returns nothing while "haiphong" resolves - try the full
 /// string first (so multi-word cities like "san francisco" still match), then
 /// drop trailing words until something hits. Commas are treated as spaces.
-fn geocode(place: &str) -> Option<Geo> {
+fn resolve(place: &str) -> Option<Geo> {
     let normalized = place.replace(',', " ");
     let words: Vec<&str> = normalized.split_whitespace().collect();
     for end in (1..=words.len()).rev() {
         let candidate = words[..end].join(" ");
-        if let Some(geo) = geocode_one(&candidate) {
-            return Some(geo);
+        match geocode_one(&candidate) {
+            Lookup::Found(geo) => return Some(geo),
+            // Cold start, not a misspelled city: one retry costs a second. If
+            // that fails too the geocoder is unreachable, and a shorter
+            // candidate can't change that - stop rather than spend the whole
+            // word list on timeouts.
+            Lookup::Failed => {
+                return match geocode_one(&candidate) {
+                    Lookup::Found(geo) => Some(geo),
+                    _ => None,
+                };
+            }
+            Lookup::NotFound => {}
         }
     }
     None
 }
 
-fn geocode_one(name_query: &str) -> Option<Geo> {
-    let geo = http::get_json(
+fn geocode_one(name_query: &str) -> Lookup {
+    let Some(geo) = http::get_json(
         &format!(
             "https://geocoding-api.open-meteo.com/v1/search?name={}&count=1",
             http::encode(name_query),
         ),
         TIMEOUT_SECS,
-    )?;
-    let first = geo.get_arr("results")?.first()?;
-    Some(Geo {
-        lat: first.get_f64("latitude")?,
-        lon: first.get_f64("longitude")?,
-        name: first.get_str("name").unwrap_or(name_query).to_string(),
-        country: first.get_str("country").unwrap_or("").to_string(),
-    })
+    ) else {
+        return Lookup::Failed;
+    };
+    let Some(first) = geo.get_arr("results").and_then(|list| list.first()) else {
+        return Lookup::NotFound;
+    };
+    match (first.get_f64("latitude"), first.get_f64("longitude")) {
+        (Some(lat), Some(lon)) => Lookup::Found(Geo {
+            lat,
+            lon,
+            name: first.get_str("name").unwrap_or(name_query).to_string(),
+            country: first.get_str("country").unwrap_or("").to_string(),
+        }),
+        _ => Lookup::NotFound,
+    }
 }
 
 /// WMO weather-interpretation codes -> short description.

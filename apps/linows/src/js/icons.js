@@ -147,6 +147,11 @@ export const globeLg = s(
     '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
     36,
 );
+// Preview-panel size of `calculator`, for the inline calculator row.
+export const calculatorLg = s(
+    '<rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="8" y1="18" x2="8" y2="18.01"/><line x1="12" y1="18" x2="12" y2="18.01"/>',
+    36,
+);
 // Lucide "history": counterpart to macOS SF clock.arrow.circlepath; used in
 // the rc" recent-files empty-state placeholder.
 export const historyLg = s(

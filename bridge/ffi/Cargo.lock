@@ -271,6 +271,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "look-calc"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "look-engine"
 version = "0.1.0"
 dependencies = [
@@ -294,6 +301,7 @@ name = "look-ffi"
 version = "0.1.0"
 dependencies = [
  "look-answers",
+ "look-calc",
  "look-engine",
  "look-indexing",
  "look-lunar",

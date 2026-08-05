@@ -42,6 +42,14 @@ extension LauncherView {
             return
         }
 
+        // Calculator row: copy the raw value, launcher out of the way. History
+        // keeps the labeled working (`2+2 = 4`); the paste is the number.
+        if let raw = AppConstants.Launcher.Calc.rawValue(fromResultID: selected.id) {
+            clipboardStore.recordLabeled(display: "\(selected.calcExpression ?? "") = \(selected.title)", payload: raw)
+            hideLauncherWindow(restorePreviousApp: false)
+            return
+        }
+
         switch selected.kind {
         case .app:
             guard ensureTargetExists(selected) else { return }
@@ -63,7 +71,9 @@ extension LauncherView {
             }
             hideLauncherWindow(restorePreviousApp: false)
         case .clipboard:
-            guard let content = selected.clipboardContent, !content.isEmpty else { return }
+            // Labeled entries (e.g. calculator results) paste their value, not
+            // the label shown in the list.
+            guard let content = selected.clipboardPayload ?? selected.clipboardContent, !content.isEmpty else { return }
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(content, forType: .string)
             showBanner(

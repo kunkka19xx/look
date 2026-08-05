@@ -149,14 +149,15 @@ extension LauncherView {
                 setCommandError("Usage: /calc <expression>")
                 return
             }
-            let result = CalcCommand.evaluate(commandArgsPart)
-            switch result {
-            case .value(let value):
-                commandFeedback = "Result: \(value)"
+            let result = bridge.calcEval(expr: commandArgsPart)
+            if let calculation = result.calculation {
+                commandFeedback = "Result: \(calculation.display)"
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(value, forType: .string)
-            case .error(let message):
-                setCommandError(message)
+                // The clipboard gets the paste-safe raw value, not the
+                // comma-grouped display text.
+                NSPasteboard.general.setString(calculation.raw, forType: .string)
+            } else {
+                setCommandError(result.error ?? "Invalid expression")
             }
         case AppConstants.Launcher.Command.kill:
             let searchTerm = commandArgsPart.trimmingCharacters(in: .whitespacesAndNewlines)

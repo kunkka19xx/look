@@ -2450,6 +2450,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "look-calc"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "look-engine"
 version = "0.1.0"
 dependencies = [
@@ -2525,6 +2532,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "look-answers",
+ "look-calc",
  "look-engine",
  "look-lunar",
  "look-matching",
