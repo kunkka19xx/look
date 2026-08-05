@@ -10,6 +10,7 @@ tauri = { version = "2.11.1", features = ["protocol-asset"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 look-answers = { path = "../../../core/answers" }
+look-calc = { path = "../../../core/calc" }
 look-engine = { path = "../../../core/engine" }
 look-lunar = { path = "../../../core/lunar" }
 look-matching = { path = "../../../core/matching" }

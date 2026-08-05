@@ -1,6 +1,7 @@
 #![allow(unsafe_code)]
 
 mod answers_api;
+mod calc_api;
 mod lunar_api;
 mod matching_api;
 mod qactions_api;
@@ -150,6 +151,31 @@ pub extern "C" fn look_translate_json(
 pub extern "C" fn look_instant_answer_json(query: *const c_char) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         answers_api::look_instant_answer_json_impl(query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Evaluates `expr` as arithmetic - the dedicated `/calc` panel, where aliases
+/// (`x`, `:`, glued `1920x1080`) are honoured wherever they land. Returns an
+/// owned JSON C string shaped `{"calculation": Calculation | null, "error":
+/// string | null}`, so a specific failure (division by zero, unbalanced
+/// parens, ...) can still be shown. Free the result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_calc_eval_json(expr: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        calc_api::look_calc_eval_json_impl(expr)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The main search field: resolves `query` only when it was clearly meant as
+/// arithmetic. Returns an owned JSON C string - a `Calculation` object on a
+/// hit, or the JSON literal `null` otherwise. Cheap enough to call on every
+/// keystroke. Free the result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_calc_inline_json(query: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        calc_api::look_calc_inline_json_impl(query)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

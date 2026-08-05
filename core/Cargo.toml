@@ -2,6 +2,7 @@
 members = [
   "qactions",
   "answers",
+  "calc",
   "engine",
   "indexing",
   "lunar",

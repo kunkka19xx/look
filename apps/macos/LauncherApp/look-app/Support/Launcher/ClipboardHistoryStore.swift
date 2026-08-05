@@ -11,14 +11,19 @@ struct ClipboardHistoryEntry: Identifiable, Equatable {
     let title: String
     let lineCount: Int
     let characterCount: Int
+    /// What re-copying this entry actually pastes, when it differs from
+    /// `content` (a labeled entry like `2+2 = 4` pastes `4`). Nil for entries
+    /// captured passively off the system pasteboard.
+    let payload: String?
 
-    init(id: UUID = UUID(), content: String, capturedAt: Date = Date()) {
+    init(id: UUID = UUID(), content: String, capturedAt: Date = Date(), payload: String? = nil) {
         self.id = id
         self.content = content
         self.capturedAt = capturedAt
         self.title = Self.makeTitle(from: content)
         self.lineCount = Self.makeLineCount(from: content)
         self.characterCount = content.count
+        self.payload = payload
     }
 
     /// CRLF and bare CR both read as one line break (terminal output carries CR).
@@ -149,6 +154,28 @@ final class ClipboardHistoryStore: ObservableObject {
         entries.removeAll { $0.id == id }
     }
 
+    /// Copies `payload` to the pasteboard but files it in history under
+    /// `display` (e.g. the calculator row's `2+2 = 4`); re-copying the entry
+    /// still pastes `payload`. Marks the pasteboard change as already seen so
+    /// the passive poller doesn't also insert an unlabeled duplicate.
+    func recordLabeled(display: String, payload: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(payload, forType: .string)
+        lastChangeCount = pasteboard.changeCount
+
+        entries.removeAll { $0.content == display }
+        prepend(ClipboardHistoryEntry(content: display, payload: payload))
+    }
+
+    /// Inserts `entry` at the front and drops anything beyond `maxEntries`.
+    private func prepend(_ entry: ClipboardHistoryEntry) {
+        entries.insert(entry, at: 0)
+        if entries.count > maxEntries {
+            entries.removeLast(entries.count - maxEntries)
+        }
+    }
+
     func setMonitoringMode(_ mode: MonitoringMode) {
         guard monitoringMode != mode else { return }
         monitoringMode = mode
@@ -189,16 +216,11 @@ final class ClipboardHistoryStore: ObservableObject {
         guard !normalized.isEmpty else { return }
 
         if let existingIndex = entries.firstIndex(where: { $0.content == text }) {
+            // Keep the existing id so SwiftUI identity survives the re-capture.
             let existing = entries.remove(at: existingIndex)
-            let movedEntry = ClipboardHistoryEntry(id: existing.id, content: text)
-            entries.insert(movedEntry, at: 0)
+            prepend(ClipboardHistoryEntry(id: existing.id, content: text))
         } else {
-            let newEntry = ClipboardHistoryEntry(content: text)
-            entries.insert(newEntry, at: 0)
-        }
-
-        if entries.count > maxEntries {
-            entries.removeLast(entries.count - maxEntries)
+            prepend(ClipboardHistoryEntry(content: text))
         }
     }
 

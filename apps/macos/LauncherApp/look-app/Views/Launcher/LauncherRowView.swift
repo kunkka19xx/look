@@ -34,10 +34,18 @@ struct LauncherRowView: View {
         result.id.hasPrefix(AppConstants.Launcher.WebURL.resultIDPrefix)
     }
 
+    private var isCalcResult: Bool {
+        result.id.hasPrefix(AppConstants.Launcher.Calc.resultIDPrefix)
+    }
+
     private var rowIcon: NSImage {
         if isCommandSuggestion {
             return NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
                 ?? NSWorkspace.shared.icon(for: .plainText)
+        }
+
+        if isCalcResult {
+            return LauncherCalcFeature.icon()
         }
 
         if isURLResult {
@@ -103,7 +111,7 @@ struct LauncherRowView: View {
     }
 
     private var metaLabel: String {
-        if isPrefixSuggestion || isWebSuggestion || isCommandSuggestion || isURLResult {
+        if isPrefixSuggestion || isWebSuggestion || isCommandSuggestion || isURLResult || isCalcResult {
             return result.subtitle ?? ""
         }
         if result.kind == .clipboard {

@@ -671,6 +671,7 @@ fn main() {
             platform::set_window_effect,
             // Commands
             calc::eval_calc,
+            calc::calc_inline,
             sysinfo::get_system_info,
             sysinfo::system_uptime,
             process::list_processes,
@@ -714,6 +715,7 @@ fn main() {
             clipboard::get_clipboard_history,
             clipboard::delete_clipboard_entry,
             clipboard::copy_to_clipboard,
+            clipboard::copy_to_clipboard_labeled,
             // Music
             music::music_play,
             music::music_pause,

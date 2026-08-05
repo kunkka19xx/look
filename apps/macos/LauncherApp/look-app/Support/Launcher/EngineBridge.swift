@@ -40,6 +40,14 @@ private func look_instant_answer_json(_ query: UnsafePointer<CChar>?) -> UnsafeM
 nonisolated
 private func look_instant_has_match(_ query: UnsafePointer<CChar>?) -> Bool
 
+@_silgen_name("look_calc_eval_json")
+nonisolated
+private func look_calc_eval_json(_ expr: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_calc_inline_json")
+nonisolated
+private func look_calc_inline_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_web_suggestions_json")
 nonisolated
 private func look_web_suggestions_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
@@ -259,6 +267,27 @@ final class EngineBridge: @unchecked Sendable {
         query.withCString { look_instant_has_match($0) }
     }
 
+    /// Evaluates `expr` as arithmetic via the shared `core/calc` engine - the
+    /// dedicated `/calc` panel, where the user already declared this is a
+    /// calculation and a specific error is worth showing. Network-free; safe
+    /// to call while typing.
+    nonisolated func calcEval(expr: String) -> CalcEvalResult {
+        let fallback = CalcEvalResult(calculation: nil, error: "Invalid expression")
+        guard let ptr = expr.withCString({ look_calc_eval_json($0) }) else { return fallback }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8),
+            let result = try? JSONDecoder().decode(CalcEvalResult.self, from: data)
+        else { return fallback }
+        return result
+    }
+
+    /// The main search field: resolves `query` only when it was clearly meant
+    /// as arithmetic (dates/resolutions/ratios stay untouched). Network-free
+    /// and cheap enough to call on every keystroke.
+    nonisolated func calcInline(query: String) -> CalculationDTO? {
+        decodeCalculation(query.withCString { look_calc_inline_json($0) })
+    }
+
     /// Resolves a shared instant answer (currency/weather/crypto) for `query`,
     /// or nil when nothing matches / the lookup fails. Blocking - call off the
     /// main thread (it performs network I/O in the Rust core).
@@ -380,6 +409,17 @@ final class EngineBridge: @unchecked Sendable {
         )
     }
 
+    /// Decodes a `look_calc::Calculation` JSON C string (or `null`), freeing
+    /// the pointer.
+    nonisolated private func decodeCalculation(_ ptr: UnsafeMutablePointer<CChar>?) -> CalculationDTO? {
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+
+        let raw = String(cString: ptr)
+        guard raw != "null", let data = raw.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(CalculationDTO.self, from: data)
+    }
+
     nonisolated private func fallbackResults() -> [LauncherResult] {
         []
     }
@@ -392,6 +432,21 @@ private nonisolated struct AnswerDTO: Decodable {
     let source: String
     let url: String?
     let imageUrl: String?
+}
+
+/// Wire shape of a `look_calc::Calculation` JSON object: `display` is grouped
+/// for showing (`1,000,000`), `raw` is bare and re-parseable, for the clipboard
+/// (`1000000`).
+nonisolated struct CalculationDTO: Decodable {
+    let display: String
+    let raw: String
+    let value: Double
+}
+
+/// Wire shape of `look_calc_eval_json`: exactly one of the two is non-nil.
+nonisolated struct CalcEvalResult: Decodable {
+    let calculation: CalculationDTO?
+    let error: String?
 }
 
 nonisolated struct TranslationResult: Decodable {

@@ -23,7 +23,6 @@ let package = Package(
                 "Support/Launcher/BridgeErrorMapping.swift",
                 "Support/SingleInstanceLock.swift",
                 "Models/LauncherResult.swift",
-                "Views/Commands/CalcCommand.swift",
             ]
         ),
         .testTarget(

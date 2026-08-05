@@ -69,6 +69,47 @@ struct ResultPreviewView: View {
             ?? NSWorkspace.shared.icon(for: .plainText)
     }
 
+    /// The synthesized calculator row - no file/bundle behind it, so it gets
+    /// its own branch like clipboard rows do.
+    private var isCalcResult: Bool {
+        result.id.hasPrefix(AppConstants.Launcher.Calc.resultIDPrefix)
+    }
+
+    private var calcIcon: NSImage { LauncherCalcFeature.icon() }
+
+    /// No file/bundle behind this row, so - like a web-search suggestion -
+    /// it gets a centered hero layout instead of the header+detail one above:
+    /// icon, the answer (the point of the row), the expression it came from,
+    /// then the hint.
+    private var calcPreview: some View {
+        VStack(spacing: 14) {
+            Spacer(minLength: 0)
+
+            Image(nsImage: calcIcon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 56, height: 56)
+
+            Text(result.title)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 14), weight: .bold))
+                .foregroundStyle(themeStore.fontColor())
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+
+            Text(result.calcExpression ?? "")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .regular))
+                .foregroundStyle(themeStore.mutedTextColor())
+
+            Text("Press \(AppConstants.Launcher.Calc.enterToCopyHint)")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                .foregroundStyle(themeStore.secondaryTextColor())
+
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private var largeIcon: NSImage {
         if result.id.hasPrefix("setting:") {
             let settingsPath = "/System/Applications/System Settings.app"
@@ -130,6 +171,8 @@ struct ResultPreviewView: View {
             processPreview
         } else if result.kind == .clipboard {
             clipboardPreview
+        } else if isCalcResult {
+            calcPreview
         } else {
         let info = bundleInfo
 
