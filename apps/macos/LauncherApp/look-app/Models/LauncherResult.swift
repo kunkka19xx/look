@@ -8,6 +8,12 @@ enum LauncherResultKind: String, Codable {
     /// A running process row from the `ps"` finder. Carries `processPID` /
     /// `processPorts`; detail (cmdline, memory, …) loads per-selection.
     case process
+
+    /// Filesystem targets - the only kinds `Cmd+D`/`Cmd+P`/pick-to-pasteboard
+    /// operate on.
+    var isFileOrFolder: Bool {
+        self == .file || self == .folder
+    }
 }
 
 struct LauncherResult: Identifiable {

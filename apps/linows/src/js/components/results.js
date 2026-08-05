@@ -10,7 +10,7 @@ import {
     historyLg,
 } from '../icons.js';
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
-import { webSuggestionFromResultId } from '../catalog.js';
+import { classifyResultId } from '../catalog.js';
 import { isWindows } from '../platform.js';
 import * as layout from '../layout.js';
 
@@ -320,7 +320,7 @@ function createRow(result, index) {
     // Web-suggestion rows live in a narrow 320 px column when the AI card is
     // active; let their title wrap to multiple lines instead of truncating
     // (matches macOS WebSuggestionPreviewView's 3-line title cap).
-    if (webSuggestionFromResultId(result.id) != null) {
+    if (classifyResultId(result.id)?.kind === 'webSuggestion') {
         row.classList.add('result-row-web-suggest');
     }
 

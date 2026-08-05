@@ -72,7 +72,8 @@ struct ResultPreviewView: View {
     /// The synthesized calculator row - no file/bundle behind it, so it gets
     /// its own branch like clipboard rows do.
     private var isCalcResult: Bool {
-        result.id.hasPrefix(AppConstants.Launcher.Calc.resultIDPrefix)
+        if case .calc = SyntheticRow.classify(resultID: result.id) { return true }
+        return false
     }
 
     private var calcIcon: NSImage { LauncherCalcFeature.icon() }
