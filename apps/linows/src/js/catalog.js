@@ -201,6 +201,30 @@ export function calcRawFromResultId(resultId) {
     return resultId?.startsWith(CALC_ID) ? resultId.slice(CALC_ID.length) : null;
 }
 
+// Classifies a result id into exactly one synthetic-row kind (or null for a
+// real candidate), in the order app.js's click handler and keyboard.js's
+// Enter handler used to each re-derive by hand as an identical five-step
+// cascade; preview.js and results.js each re-ran a subset. One source of
+// truth instead of four.
+export function classifyResultId(resultId) {
+    const prefix = prefixFromResultId(resultId);
+    if (prefix != null) return { kind: 'prefixSuggestion', prefix };
+
+    const commandId = commandIdFromResultId(resultId);
+    if (commandId != null) return { kind: 'commandSuggestion', commandId };
+
+    const raw = calcRawFromResultId(resultId);
+    if (raw != null) return { kind: 'calc', raw };
+
+    const suggestion = webSuggestionFromResultId(resultId);
+    if (suggestion != null) return { kind: 'webSuggestion', text: suggestion };
+
+    const url = webUrlFromResultId(resultId);
+    if (url != null) return { kind: 'webUrl', url };
+
+    return null;
+}
+
 // True for the synthetic kind:'app' rows (prefix/command hints, Google
 // suggestions, URL rows), so callers can tell them from real launcher apps.
 const SYNTHETIC_RESULT_ID_PREFIXES = [
