@@ -64,7 +64,11 @@ final class AIAnswerController: ObservableObject {
         let questionLike = Self.isQuestionLike(trimmed)
         let orphanEntity = resultCount == 0 && Self.isEntityLookup(trimmed)
         let instant = EngineBridge.shared.instantAnswerMatches(trimmed)
-        guard aiEnabled, questionLike || orphanEntity || instant else {
+        // Arithmetic already has its own pinned row - a numeric-heavy query like
+        // "1011 * 20" would otherwise also read as an orphan entity and send a
+        // stray Wikipedia lookup ("1011" resolving to some unrelated decade).
+        let isCalc = EngineBridge.shared.calcInline(query: trimmed) != nil
+        guard aiEnabled, !isCalc, questionLike || orphanEntity || instant else {
             cancel()
             return
         }

@@ -15,6 +15,7 @@ import {
     duckduckgoAnswer,
     wikipediaAnswer,
     definitionalEntity,
+    calcInline,
 } from '../ipc.js';
 
 const DEBOUNCE_MS = 350;
@@ -77,8 +78,13 @@ export async function update(rawQuery, resultCount) {
     const questionLike = isQuestionLike(query);
     const orphanEntity = resultCount === 0 && isEntityLookup(query);
     const instant = aiEnabled && query.length > 0 ? await instantHasMatch(query) : false;
+    // Arithmetic already has its own pinned row (search.js `fetchCalc`) - a
+    // numeric-heavy query like "1011 * 20" would otherwise also read as an
+    // orphan entity and send a stray Wikipedia lookup ("1011" resolving to
+    // some unrelated decade).
+    const isCalc = aiEnabled && query.length > 0 ? (await calcInline(query)) != null : false;
 
-    if (!aiEnabled || !(questionLike || orphanEntity || instant)) {
+    if (!aiEnabled || isCalc || !(questionLike || orphanEntity || instant)) {
         cancel();
         return;
     }
