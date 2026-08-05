@@ -14,7 +14,7 @@ extension LauncherView {
               !selected.path.isEmpty,
               selected.path.hasSuffix(Self.appBundleExtension)
         else {
-            showBanner("Select an app first", style: .info, duration: 1.2)
+            showBanner("Select an app to hide", style: .info, duration: 1.2)
             return true
         }
 
