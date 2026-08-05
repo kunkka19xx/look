@@ -153,7 +153,9 @@ extension LauncherView {
             if let calculation = result.calculation {
                 commandFeedback = "Result: \(calculation.display)"
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(calculation.display, forType: .string)
+                // The clipboard gets the paste-safe raw value, not the
+                // comma-grouped display text.
+                NSPasteboard.general.setString(calculation.raw, forType: .string)
             } else {
                 setCommandError(result.error ?? "Invalid expression")
             }

@@ -633,7 +633,8 @@ struct LauncherView: View {
 
     /// A trailing operator or an unclosed paren - not a parser, just enough to
     /// tell "still typing" from "actually wrong" so the `/calc` live preview
-    /// doesn't flash an error on every keystroke.
+    /// doesn't flash an error on every keystroke. An unmatched *closing* paren
+    /// is never "still typing", so it falls through to the real error instead.
     private static func isLikelyIncompleteCalcExpression(_ expr: String) -> Bool {
         if let last = expr.last, "+-*/^.(".contains(last) { return true }
         var balance = 0
@@ -641,7 +642,7 @@ struct LauncherView: View {
             if ch == "(" { balance += 1 }
             if ch == ")" { balance -= 1 }
         }
-        return balance != 0
+        return balance > 0
     }
 
     var hasSudoWarning: Bool {

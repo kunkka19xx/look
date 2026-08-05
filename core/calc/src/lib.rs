@@ -12,8 +12,11 @@ use std::f64::consts;
 const MAX_FACTORIAL: u64 = 170;
 
 /// Outside this range plain decimal stops being readable; scientific instead.
+/// `SCI_LOWER` also protects precision: decimal formatting spends `DECIMALS`
+/// digits after the point regardless of magnitude, so below this a small
+/// value's leading zeros would eat the digits that actually distinguish it.
 const SCI_UPPER: f64 = 1e15;
-const SCI_LOWER: f64 = 1e-10;
+const SCI_LOWER: f64 = 1e-6;
 
 /// Wide enough to show `1/100000`, narrow enough to hide float noise.
 const DECIMALS: usize = 10;
@@ -62,7 +65,17 @@ pub fn normalize(query: &str) -> &str {
 }
 
 /// Evaluate to a bare `f64`, for callers that do their own formatting.
+///
+/// Enforces `MAX_QUERY_LEN` itself rather than relying on callers to gate
+/// first: the parser recurses once per `(` (and once per leading unary sign),
+/// so an ungated, arbitrarily long input - e.g. pasted into the dedicated
+/// `/calc` panel, which skips `is_math`'s intent gate on purpose - can recurse
+/// deep enough to overflow the stack and abort the whole process. A catchable
+/// error here is the only way callers stay safe from that.
 pub fn eval_value(expr: &str) -> Result<f64, String> {
+    if expr.len() > MAX_QUERY_LEN {
+        return Err("Expression is too long".into());
+    }
     let tokens = tokenize(expr, Aliases::Free)?;
     if tokens.is_empty() {
         return Err("Empty expression".into());
@@ -663,6 +676,13 @@ mod tests {
         assert_eq!(calc("2 / 300000"), "0.0000066667");
     }
 
+    /// Below `SCI_LOWER`, a fixed `DECIMALS` decimal places would round away
+    /// everything but the leading digit - scientific notation keeps them all.
+    #[test]
+    fn smaller_magnitudes_switch_to_scientific_instead_of_losing_digits() {
+        assert_eq!(calc("1 / 7000000000"), "1.4285714286e-10");
+    }
+
     /// The formatter emits `1,500`, so the tokenizer has to accept it back.
     #[test]
     fn comma_grouped_input_round_trips() {
@@ -704,6 +724,16 @@ mod tests {
         assert!(eval("(-1)!").is_err());
         assert!(eval("sqrt(-4)").is_err());
         assert!(eval("2 +").is_err());
+    }
+
+    /// `eval`/`eval_value` gate their own length, so a caller that skips
+    /// `is_math` on purpose (the dedicated `/calc` panel) still can't drive
+    /// the recursive-descent parser deep enough to overflow the stack.
+    #[test]
+    fn overlong_expressions_are_rejected_before_parsing() {
+        let deeply_nested = "(".repeat(MAX_QUERY_LEN + 1);
+        assert!(eval(&deeply_nested).is_err());
+        assert!(eval_value(&deeply_nested).is_err());
     }
 
     // --- Intent gate ---
