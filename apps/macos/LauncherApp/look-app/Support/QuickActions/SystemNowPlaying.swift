@@ -1,77 +1,113 @@
 import Foundation
 import OSLog
 
-/// A snapshot of the system-wide "now playing" media, whatever app owns it
-/// (a browser tab, Spotify, Apple Music, Look's own Pomodoro player, ...).
+/// A snapshot of the current now-playing media, whatever app owns it.
 struct NowPlayingSnapshot: Equatable {
     let title: String?
     let artist: String?
-    /// The owning app's display name, e.g. "Firefox", "Spotify".
     let app: String?
     let isPlaying: Bool
+    /// Serialized `MRPlayerPath` identifying the player (not the track), so it
+    /// stays valid across track changes.
+    let playerPath: Data?
 
     var hasTrack: Bool { title?.isEmpty == false }
 }
 
-/// Reads and controls the system-wide now-playing media via Apple's private
-/// MediaRemote framework.
+/// Reads and controls system-wide now-playing via Apple's private MediaRemote
+/// framework.
 ///
-/// macOS 15.4+ blocks a normal app from reading now-playing directly (the
-/// `mediaremoted` daemon checks for an Apple-only entitlement), so the READ is
-/// delegated to `/usr/bin/osascript`, a system binary that *is* entitled; its
-/// bundled JXA loads MediaRemote and prints the track as JSON. Sending transport
-/// commands was never gated, so that path calls `MRMediaRemoteSendCommand`
-/// directly. This is a private-API path (not App Store safe) and could break on
-/// a future macOS update; it is used only for this read-only glance + transport.
-final class SystemNowPlaying: Sendable {
+/// macOS 15.4+ lets only Apple-entitled binaries read now-playing, so the work
+/// is delegated to `/usr/bin/osascript`, which is entitled. Not App Store safe,
+/// and liable to break on a macOS update.
+///
+/// Commands must be addressed to a specific player, as the Linux/Windows app
+/// does with an MPRIS bus name (`apps/linows/src-tauri/src/nowplaying.rs`). The
+/// untargeted `MRMediaRemoteSendCommand` reports success but is answered by
+/// Look's own `MPRemoteCommandCenter`, so it resumes Pomodoro music instead of
+/// the tab on screen.
+///
+/// `nonisolated` because the target defaults to `MainActor` isolation, which
+/// would make even closure literals here main-actor bound and trap the
+/// concurrency runtime when reached from the background queue below.
+nonisolated final class SystemNowPlaying: Sendable {
     static let shared = SystemNowPlaying()
 
-    /// `MRMediaRemoteSendCommand` command codes (stable for years).
+    /// `MRMediaRemoteSendCommand` command codes.
     enum Command: Int32 {
         case togglePlayPause = 2
         case nextTrack = 4
         case previousTrack = 5
     }
 
-    private static let mediaRemotePath =
-        "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote"
-    /// Kill the `osascript` read if it hangs past this, so the poll never stalls.
-    private static let readTimeout: TimeInterval = 4
-
-    private typealias SendCommand = @convention(c) (Int32, CFDictionary?) -> Bool
-    private let sendCommand: SendCommand?
+    private static let mediaRemoteBundlePath =
+        "/System/Library/PrivateFrameworks/MediaRemote.framework/"
+    /// Kill a hung `osascript` so the poll never stalls.
+    private static let scriptTimeout: TimeInterval = 4
+    private static let commandPathEnvKey = "LOOK_NOWPLAYING_COMMAND_PATH"
+    private static let commandCodeEnvKey = "LOOK_NOWPLAYING_COMMAND_CODE"
+    private static let sendSuccessMarker = "ok"
 
     private let log = Logger(subsystem: "noah-code.Look", category: "nowplaying")
 
-    private init() {
-        if let handle = dlopen(Self.mediaRemotePath, RTLD_NOW),
-           let symbol = dlsym(handle, "MRMediaRemoteSendCommand") {
-            sendCommand = unsafeBitCast(symbol, to: SendCommand.self)
-        } else {
-            sendCommand = nil
-        }
-    }
+    private init() {}
 
-    /// Sends a transport command to whichever app owns now-playing.
-    @discardableResult
-    func send(_ command: Command) -> Bool {
-        sendCommand?(command.rawValue, nil) ?? false
-    }
+    // MARK: Reading
 
-    /// Reads the current now-playing track, or nil when nothing is playing or the
-    /// read fails. Runs `osascript` off the main thread.
+    /// The current track, or nil when nothing is playing or the read fails.
     func current() async -> NowPlayingSnapshot? {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: self.readViaOSAScript())
+                continuation.resume(returning: self.read())
             }
         }
     }
 
-    private func readViaOSAScript() -> NowPlayingSnapshot? {
+    private func read() -> NowPlayingSnapshot? {
+        guard let output = runScript(Self.readScript, environment: [:]),
+              let result = try? JSONDecoder().decode(ReadResult.self, from: output),
+              result.hasTrack else {
+            return nil
+        }
+        return NowPlayingSnapshot(
+            title: result.title,
+            artist: result.artist,
+            app: result.appName,
+            isPlaying: result.isPlaying ?? false,
+            playerPath: result.path.flatMap { Data(base64Encoded: $0) }
+        )
+    }
+
+    // MARK: Sending
+
+    /// Sends a transport command to the player `playerPath` identifies.
+    @discardableResult
+    func send(_ command: Command, to playerPath: Data?) async -> Bool {
+        guard let playerPath else { return false }
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: self.sendTargeted(command, to: playerPath))
+            }
+        }
+    }
+
+    private func sendTargeted(_ command: Command, to playerPath: Data) -> Bool {
+        let environment = [
+            Self.commandPathEnvKey: playerPath.base64EncodedString(),
+            Self.commandCodeEnvKey: String(command.rawValue),
+        ]
+        guard let output = runScript(Self.sendScript, environment: environment) else { return false }
+        let text = String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return text == Self.sendSuccessMarker
+    }
+
+    // MARK: osascript plumbing
+
+    private func runScript(_ script: String, environment: [String: String]) -> Data? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-l", "JavaScript", "-"]
+        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
         let input = Pipe()
         let output = Pipe()
         process.standardInput = input
@@ -80,78 +116,132 @@ final class SystemNowPlaying: Sendable {
 
         do {
             try process.run()
-            input.fileHandleForWriting.write(Data(Self.readScript.utf8))
+            input.fileHandleForWriting.write(Data(script.utf8))
             input.fileHandleForWriting.closeFile()
 
-            // Guard against a hung osascript: terminate it after the timeout so
-            // the pipe closes, the blocking read returns, and current()'s
-            // continuation always resumes rather than stalling the poll.
+            // Terminate on timeout so the pipe closes and the blocking read
+            // below returns instead of hanging the caller.
             let terminator = DispatchWorkItem {
                 if process.isRunning { process.terminate() }
             }
-            DispatchQueue.global().asyncAfter(deadline: .now() + Self.readTimeout, execute: terminator)
+            DispatchQueue.global().asyncAfter(deadline: .now() + Self.scriptTimeout, execute: terminator)
 
             let data = output.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
             terminator.cancel()
-            return Self.parse(data)
+            guard process.terminationStatus == 0 else { return nil }
+            return data
         } catch {
-            log.error("now-playing read failed: \(error.localizedDescription, privacy: .public)")
+            log.error("now-playing script failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
 
-    private static func parse(_ data: Data) -> NowPlayingSnapshot? {
-        guard let result = try? JSONDecoder().decode(ReadResult.self, from: data) else { return nil }
-        guard result.track == true, let title = result.title, !title.isEmpty else { return nil }
-        return NowPlayingSnapshot(
-            title: title,
-            artist: result.artist,
-            app: result.app,
-            isPlaying: result.isPlaying ?? false
-        )
-    }
+    // MARK: Decoding
 
     private struct ReadResult: Decodable {
-        let track: Bool?
         let title: String?
         let artist: String?
-        let app: String?
+        let displayName: String?
         let isPlaying: Bool?
-    }
+        /// Base64 `MRPlayerPath`.
+        let path: String?
 
-    /// JXA run under `osascript` (an Apple-entitled binary): loads MediaRemote,
-    /// reads `MRNowPlayingRequest`, and prints the track as JSON. Kept minimal and
-    /// defensive so any failure yields parseable output rather than a crash.
-    private static let readScript = """
+        var hasTrack: Bool { title?.isEmpty == false }
+
+        var appName: String? { displayName?.isEmpty == false ? displayName : nil }
+    }
+}
+
+// MARK: - Scripts
+
+private nonisolated extension SystemNowPlaying {
+    /// Reports the elected player as JSON.
+    ///
+    /// The track and the owning app come from two independent calls, and the
+    /// system can hand the slot to another app in between, pairing one app's
+    /// track with another's name. The path is read on both sides and the result
+    /// discarded if it moved.
+    static let readScript = """
     function run() {
         try {
-            const MediaRemote = $.NSBundle.bundleWithPath('/System/Library/PrivateFrameworks/MediaRemote.framework/');
-            MediaRemote.load;
+            const bundle = $.NSBundle.bundleWithPath('\(mediaRemoteBundlePath)');
+            bundle.load;
             const Req = $.NSClassFromString('MRNowPlayingRequest');
-            if (!Req) return JSON.stringify({ track: false });
+            if (!Req) return JSON.stringify({});
+
+            const unwrap = (v) => (v && !v.isNil()) ? ObjC.unwrap(v) : null;
+            const pathData = () => {
+                const p = Req.localNowPlayingPlayerPath;
+                if (!p || p.isNil()) return null;
+                try { return unwrap(p.data.base64EncodedStringWithOptions(0)); } catch (e) { return null; }
+            };
+
+            const before = pathData();
             const item = Req.localNowPlayingItem;
-            if (!item || item.isNil()) return JSON.stringify({ track: false });
+            if (!item || item.isNil()) return JSON.stringify({});
             const info = item.nowPlayingInfo;
+            if (!info || info.isNil()) return JSON.stringify({});
+            const after = pathData();
+            if (before !== after) return JSON.stringify({});
+
             const get = (k) => {
                 const v = info.valueForKey(k);
                 return (v && !v.isNil()) ? ObjC.deepUnwrap(v) : null;
             };
-            let app = null;
-            try {
-                const client = Req.localNowPlayingPlayerPath.client;
-                if (client && !client.isNil()) app = ObjC.unwrap(client.displayName);
-            } catch (e) {}
-            const rate = get('kMRMediaRemoteNowPlayingInfoPlaybackRate');
-            return JSON.stringify({
-                track: true,
+            const out = {
                 title: get('kMRMediaRemoteNowPlayingInfoTitle'),
                 artist: get('kMRMediaRemoteNowPlayingInfoArtist'),
-                app: app,
-                isPlaying: (typeof rate === 'number') ? rate > 0 : false
-            });
+                isPlaying: false,
+                path: after
+            };
+            const rate = get('kMRMediaRemoteNowPlayingInfoPlaybackRate');
+            if (typeof rate === 'number') out.isPlaying = rate > 0;
+
+            const path = Req.localNowPlayingPlayerPath;
+            if (path && !path.isNil()) {
+                try {
+                    const client = path.client;
+                    if (client && !client.isNil()) {
+                        out.displayName = unwrap(client.displayName);
+                    }
+                } catch (e) {}
+            }
+            return JSON.stringify(out);
         } catch (e) {
-            return JSON.stringify({ track: false });
+            return JSON.stringify({});
+        }
+    }
+    """
+
+    /// Rebuilds a player path and sends one transport command to it.
+    static let sendScript = """
+    function run() {
+        const env = $.NSProcessInfo.processInfo.environment;
+        const envValue = (key) => {
+            const v = env.objectForKey(key);
+            return (v && !v.isNil()) ? ObjC.unwrap(v) : null;
+        };
+        try {
+            const bundle = $.NSBundle.bundleWithPath('\(mediaRemoteBundlePath)');
+            bundle.load;
+            const encoded = envValue('\(commandPathEnvKey)');
+            const code = parseInt(envValue('\(commandCodeEnvKey)'), 10);
+            if (!encoded || isNaN(code)) return '';
+
+            const raw = $.NSData.alloc.initWithBase64EncodedStringOptions(encoded, 0);
+            const PathClass = $.NSClassFromString('MRPlayerPath');
+            const path = PathClass.alloc.initWithData(raw);
+            if (!path || path.isNil()) return '';
+
+            const Req = $.NSClassFromString('MRNowPlayingRequest');
+            const request = Req.alloc.initWithPlayerPath(path);
+            if (!request || request.isNil()) return '';
+
+            request.sendCommandOptionsQueueCompletion(code, $(), $(), $());
+            return '\(sendSuccessMarker)';
+        } catch (e) {
+            return '';
         }
     }
     """
