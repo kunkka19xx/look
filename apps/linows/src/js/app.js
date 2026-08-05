@@ -45,7 +45,7 @@ import {
     commandIdFromResultId,
     webSuggestionFromResultId,
     webUrlFromResultId,
-    calcRawFromResultId,
+    classifyResultId,
     isPrefixedQuery,
 } from './catalog.js';
 
@@ -551,47 +551,41 @@ document.addEventListener('DOMContentLoaded', async () => {
         const item = results.getSelected();
         if (!item) return;
 
-        // Discovery rows behave the same on click as on Enter: pick a prefix fills
-        // the query, pick a command enters that command's panel.
-        const hintedPrefix = prefixFromResultId(item.id);
-        if (hintedPrefix != null) {
-            queryInput.value = hintedPrefix;
-            queryInput.focus();
-            queryInput.setSelectionRange(hintedPrefix.length, hintedPrefix.length);
-            queryInput.dispatchEvent(new Event('input'));
-            return;
-        }
-        const hintedCmd = commandIdFromResultId(item.id);
-        if (hintedCmd != null) {
-            commands.enterById(hintedCmd);
-            enterCommandMode();
-            queryInput.value = '';
-            return;
-        }
-        // Calculator row: click copies the answer, same as Enter.
-        const calcRaw = calcRawFromResultId(item.id);
-        if (calcRaw != null) {
-            import('./ipc.js').then(({ copyToClipboardLabeled, hideWindow }) =>
-                copyToClipboardLabeled(calcRaw, `${item.calcExpr} = ${item.title}`).then(
-                    hideWindow,
-                ),
-            );
-            return;
-        }
-        const suggestionText = webSuggestionFromResultId(item.id);
-        if (suggestionText != null) {
-            const url = `https://www.google.com/search?q=${encodeURIComponent(suggestionText)}`;
-            import('./ipc.js').then(({ openPath }) => openPath(url, 'browser', ''));
-            return;
-        }
-        // URL row: same behavior on click as on Enter (keyboard.js openSelected).
-        const urlTarget = webUrlFromResultId(item.id);
-        if (urlTarget != null) {
-            import('./ipc.js').then(({ openPath, recordUrlHit }) => {
-                openPath(urlTarget, 'browser', '');
-                recordUrlHit(urlTarget);
-            });
-            return;
+        // Discovery/synthetic rows behave the same on click as on Enter
+        // (keyboard.js openSelected): pick a prefix fills the query, pick a
+        // command enters that command's panel, calc copies the answer, a
+        // web-suggestion/URL row opens in the browser.
+        const classified = classifyResultId(item.id);
+        switch (classified?.kind) {
+            case 'prefixSuggestion':
+                queryInput.value = classified.prefix;
+                queryInput.focus();
+                queryInput.setSelectionRange(classified.prefix.length, classified.prefix.length);
+                queryInput.dispatchEvent(new Event('input'));
+                return;
+            case 'commandSuggestion':
+                commands.enterById(classified.commandId);
+                enterCommandMode();
+                queryInput.value = '';
+                return;
+            case 'calc':
+                import('./ipc.js').then(({ copyToClipboardLabeled, hideWindow }) =>
+                    copyToClipboardLabeled(classified.raw, `${item.calcExpr} = ${item.title}`).then(
+                        hideWindow,
+                    ),
+                );
+                return;
+            case 'webSuggestion': {
+                const url = `https://www.google.com/search?q=${encodeURIComponent(classified.text)}`;
+                import('./ipc.js').then(({ openPath }) => openPath(url, 'browser', ''));
+                return;
+            }
+            case 'webUrl':
+                import('./ipc.js').then(({ openPath, recordUrlHit }) => {
+                    openPath(classified.url, 'browser', '');
+                    recordUrlHit(classified.url);
+                });
+                return;
         }
         // Process row has no path to open; a click measures CPU like Enter.
         if (item.kind === 'process') {

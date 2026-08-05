@@ -16,33 +16,10 @@ A keyboard-first, local-first launcher for macOS, Windows, and Linux. Open apps,
 
 https://github.com/user-attachments/assets/167b028b-04b2-4c62-ba93-c2321482ac94
 
-## What you can do
+Results land as fast as you can type. A Rust core under a native SwiftUI app on macOS, and Tauri on Windows and Linux, riding the system WebView instead of shipping a browser like Electron does. No background daemons. Your index, clipboard, and history stay on your machine; no telemetry.
 
-- **Find and open anything** - apps, files, folders indexed locally. Type, Enter, done.
-- **Calc inline** - type `2^10`, `4!`, `200*15%`, `sqrt(2)`, `2*pi`. No command mode needed.
-- **Kill a process by port** - `Cmd+/` then `kill :3000`. Confirms before killing.
-- **Track daily tasks** - `:todo` groups tasks by day with overdue badges, a done-today stat in the footer, and a Stats page (streak, 30-day trend, year heatmap).
-- **Search clipboard history** - `c"meeting` finds the snippet you copied an hour ago.
-- **Translate or look up a word** - `t"hello` for quick translation, `tw"word` for a definition panel.
-- **Regex, path, and kind-scoped search** - `r"^Visual.*`, `git/project/readme`, `a"safari`, `f"note`, `d"documents`.
-- **Browse recent files/folders** - `rc"` lists what you most recently opened *and* what recently landed on disk (downloads, screenshots), newest first; `rc"word` filters. macOS for now.
-- **Switch running apps from the launcher** - an icon strip on the right half of the search bar. `Cmd+1`..`Cmd+9` on macOS / `Alt+1`..`Alt+9` on Linux+Windows jumps to a running app. Toggle on/off in `Settings > Appearance > Running Apps`.
-- **Toggle system controls** - an empty query shows super actions: Bluetooth, Wi-Fi, theme, mic, media, restart, plus battery and weather tiles. Press the modifier + the tile's letter (`Cmd+B` / `Alt+B` for Bluetooth). Toggle the strip in `Settings > Appearance > Super Actions`.
-- **Ask a question or look something up** *(macOS, Linux, Windows, optional)* - with AI features on, a question or an entity that isn't indexed locally (e.g. `sir alex ferguson`) shows an answer card from DuckDuckGo/Wikipedia, alongside Google search suggestions. On macOS it can also fall back to the on-device Apple Intelligence model (macOS-only; Linux/Windows use web sources). On by default; turn it off in Settings.
-
-No account. No telemetry. No plugin marketplace to manage. Local-first by default - the optional AI/web features (macOS, Linux, Windows) are the only things that reach the network, and you can switch them off.
-
-## Why look
-
-- **Fast** - typical search under 1 ms on a 2000-item index; empty-query browse under 30 µs.
-- **Small** - single native app per platform. No Electron, no background daemons.
-- **Local-first** - candidates indexed in a local SQLite file. Network calls are limited and controllable: the explicit `t"`, `tw"`, and `Cmd+Enter` web search, plus the optional AI features (macOS, Linux, Windows): Google search suggestions and DuckDuckGo/Wikipedia answer cards, which you can disable in Settings (`ai_enabled`). The on-device Apple Intelligence model (macOS-only) itself runs locally.
-- **Zero-config by default** - presets cover common apps (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`). Configure more via `~/.look.config` when you want to.
-- **Keyboard-first** - every action has a key; mouse never required.
-
-If you want a launcher that stays out of your way and does exactly what you asked, that's the pitch.
-
-## How it compares
+<details>
+<summary><b>How it compares</b></summary>
 
 |                 | **look**                | Spotlight  | Raycast            | Alfred       | ulauncher  | rofi       |
 | --------------- | ----------------------- | ---------- | ------------------ | ------------ | ---------- | ---------- |
@@ -51,6 +28,8 @@ If you want a launcher that stays out of your way and does exactly what you aske
 | Local-first     | ✅                      | ✅         | ❌ cloud sync      | ✅           | ✅         | ✅         |
 | No Electron     | ✅                      | ✅         | ❌                 | ✅           | ✅         | ✅         |
 | No plugin store | ✅                      | ✅         | ❌                 | ❌ Powerpack | ✅         | ✅         |
+
+</details>
 
 > If this is useful, ⭐ star the repo - it's the single biggest signal that helps the project keep shipping.
 
@@ -242,20 +221,20 @@ open "/Applications/Look.app"
 
 ## Essential shortcuts
 
-| Action                                        | macOS            | Windows             | Linux            |
-| --------------------------------------------- | ---------------- | ------------------- | ---------------- |
-| Toggle launcher                               | `Cmd+Space`      | `Alt+Space`         | `Alt+Space`      |
-| Open / run                                    | `Enter`          | `Enter`             | `Enter`          |
-| Web search                                    | `Cmd+Enter`      | `Ctrl+Enter`        | `Ctrl+Enter`     |
-| Reveal in file manager                        | `Cmd+F` (Finder) | `Ctrl+F` (Explorer) | `Ctrl+F` (Files) |
-| Move to Trash (or empty the Trash folder)     | `Cmd+D`          | n/a                 | n/a              |
-| Command mode (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`) | `Cmd+/` | `Ctrl+/` | `Ctrl+/` |
-| Settings                                      | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
-| Back / hide                                   | `Escape`         | `Escape`            | `Escape`         |
-| Switch to running app N (home screen)         | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
-| Hide selected app from Look                    | `Cmd+Shift+H`    | `Ctrl+Shift+H`      | `Ctrl+Shift+H`   |
-| Run selected app as admin                      | n/a              | `Ctrl+Shift+Enter`  | n/a              |
-| Fire a super action (empty home screen)       | `Cmd+<letter>`   | `Alt+<letter>`      | `Alt+<letter>`   |
+| Action                                                        | macOS            | Windows             | Linux            |
+| ------------------------------------------------------------- | ---------------- | ------------------- | ---------------- |
+| Toggle launcher                                               | `Cmd+Space`      | `Alt+Space`         | `Alt+Space`      |
+| Open / run                                                    | `Enter`          | `Enter`             | `Enter`          |
+| Web search                                                    | `Cmd+Enter`      | `Ctrl+Enter`        | `Ctrl+Enter`     |
+| Reveal in file manager                                        | `Cmd+F` (Finder) | `Ctrl+F` (Explorer) | `Ctrl+F` (Files) |
+| Move to Trash (or empty the Trash folder)                     | `Cmd+D`          | n/a                 | n/a              |
+| Command mode (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
+| Settings                                                      | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
+| Back / hide                                                   | `Escape`         | `Escape`            | `Escape`         |
+| Switch to running app N (home screen)                         | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
+| Hide selected app from Look                                   | `Cmd+Shift+H`    | `Ctrl+Shift+H`      | `Ctrl+Shift+H`   |
+| Run selected app as admin                                     | n/a              | `Ctrl+Shift+Enter`  | n/a              |
+| Fire a super action (empty home screen)                       | `Cmd+<letter>`   | `Alt+<letter>`      | `Alt+<letter>`   |
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
 

@@ -115,11 +115,17 @@ struct LauncherView: View {
         themeStore.settings.runningAppsPlacement
     }
 
+    /// Not in command mode, not showing theme settings, not showing the help
+    /// screen - the coarse "nothing else has taken over the launcher" gate
+    /// shared by the running-apps strip, floating-card layout, home hint,
+    /// empty-query rest state, and delete confirmation.
+    var isLauncherIdle: Bool {
+        !isCommandMode && !appUIState.showsThemeSettings && !showsHelpScreen
+    }
+
     var shouldShowRunningAppsStrip: Bool {
         runningAppsPlacement != .none
-            && !isCommandMode
-            && !appUIState.showsThemeSettings
-            && !showsHelpScreen
+            && isLauncherIdle
             && !runningAppsService.items.isEmpty
     }
 
@@ -136,8 +142,8 @@ struct LauncherView: View {
         let log = RunningAppsLog.logger
         let total = runningAppsService.items.count
 
-        if runningAppsPlacement == .none || isCommandMode || appUIState.showsThemeSettings {
-            log.debug("⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public))")
+        if runningAppsPlacement == .none || !isLauncherIdle {
+            log.debug("⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public) help=\(self.showsHelpScreen, privacy: .public))")
             return false
         }
         guard let position = AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey: key, total: total) else {
@@ -542,7 +548,7 @@ struct LauncherView: View {
     /// whose hint falls through to the list above), where the /todo quick
     /// view is shown in place of the command-mode hint.
     var isHomeHintScreen: Bool {
-        guard !appUIState.showsThemeSettings, !isCommandMode, !showsHelpScreen else { return false }
+        guard isLauncherIdle else { return false }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if extractTranslationQuery(from: trimmed) != nil { return false }
         if isPrefixSuggestionQuery || isCommandSuggestionQuery || isClipboardQuery || isProcessQuery { return false }
@@ -1278,10 +1284,7 @@ struct LauncherView: View {
     /// letting it flip per keystroke (e.g. as clipboard/translation results stream
     /// in) churned NSVisualEffectViews on the main thread and froze typing.
     private var showsFloatingCards: Bool {
-        usesPanes
-            && !isCommandMode
-            && !appUIState.showsThemeSettings
-            && !showsHelpScreen
+        usesPanes && isLauncherIdle
     }
 
     /// True when the floating content is the two-card grid (results or clipboard
@@ -1302,10 +1305,7 @@ struct LauncherView: View {
     /// the results columns and the hint bar below it. Applies in both modes (gap
     /// or no gap), so an empty launcher is always just the top bar.
     var hidesResultsForEmptyQuery: Bool {
-        isQueryEmpty
-            && !isCommandMode
-            && !appUIState.showsThemeSettings
-            && !showsHelpScreen
+        isQueryEmpty && isLauncherIdle
     }
 
     /// True whenever the panel has no backdrop box and its content floats freely

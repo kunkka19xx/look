@@ -20,12 +20,7 @@ import {
     globeLg,
     calculatorLg,
 } from '../icons.js';
-import {
-    webSuggestionFromResultId,
-    webUrlFromResultId,
-    calcRawFromResultId,
-    WEB_URL_OPEN_SUBTITLE,
-} from '../catalog.js';
+import { classifyResultId, WEB_URL_OPEN_SUBTITLE } from '../catalog.js';
 import * as qactions from './qactions.js';
 import { canRunElevated } from '../platform.js';
 
@@ -80,29 +75,24 @@ export function update(result) {
         return;
     }
 
-    // Google autocomplete row - mirror macOS WebSuggestionPreviewView: a
-    // big magnifying-glass icon, the suggestion text, "Search Google", and
-    // an Enter hint. No file metadata to show.
-    const suggestionText = webSuggestionFromResultId(result.id);
-    if (suggestionText != null) {
-        renderWebSuggestionPreview(suggestionText);
-        return;
-    }
-
-    // URL row (live or history) - same layout as the web-suggestion preview
-    // but with a globe and the row's subtitle ("Open in browser" / "Recently
-    // opened"). Must run before the generic app branch: the row's kind is
-    // `app` and its path is a URL, so the file/app metadata path would break.
-    const urlTarget = webUrlFromResultId(result.id);
-    if (urlTarget != null) {
-        renderWebUrlPreview(urlTarget, result.subtitle || WEB_URL_OPEN_SUBTITLE);
-        return;
-    }
-
-    // Calculator row - same reason as above, no file behind it.
-    if (calcRawFromResultId(result.id) != null) {
-        renderCalcPreview(result);
-        return;
+    // Synthetic rows with no file behind them get their own preview layout;
+    // must run before the generic app branch below, since a URL row's kind
+    // is `app` and its path is a URL, so the file/app metadata path would break.
+    const classified = classifyResultId(result.id);
+    switch (classified?.kind) {
+        case 'webSuggestion':
+            // Mirror macOS WebSuggestionPreviewView: a big magnifying-glass
+            // icon, the suggestion text, "Search Google", and an Enter hint.
+            renderWebSuggestionPreview(classified.text);
+            return;
+        case 'webUrl':
+            // Same layout as the web-suggestion preview but with a globe and
+            // the row's subtitle ("Open in browser" / "Recently opened").
+            renderWebUrlPreview(classified.url, result.subtitle || WEB_URL_OPEN_SUBTITLE);
+            return;
+        case 'calc':
+            renderCalcPreview(result);
+            return;
     }
 
     // Header: icon + title + badge + size

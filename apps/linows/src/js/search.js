@@ -272,11 +272,13 @@ async function performSearch(query, version) {
 }
 
 async function fetchWebSuggestions(query, version) {
-    const trimmed = query.trim();
-    if (!aiEnabled || trimmed.length < MIN_WEB_SUGGESTION_QUERY_LENGTH) {
+    // aiEnabled can flip during the debounce window, so re-check it. The
+    // length gate can't: `wantsWeb` already applied it to this same query.
+    if (!aiEnabled) {
         webInFlight = false;
         return;
     }
+    const trimmed = query.trim();
     try {
         const list = await ipcWebSuggestions(trimmed, WEB_SUGGESTIONS_LIMIT);
         if (isStale(version)) return;

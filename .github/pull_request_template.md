@@ -4,7 +4,6 @@
 
 ## Why
 
-
 ## Changes
 
 -
@@ -24,9 +23,9 @@
   - [ ] `cargo test --locked --manifest-path apps/linows/src-tauri/Cargo.toml`
   - [ ] `cargo fmt --all --manifest-path apps/linows/src-tauri/Cargo.toml -- --check`
   - [ ] `cargo clippy --locked --manifest-path apps/linows/src-tauri/Cargo.toml -- -D warnings`
+  - [ ] Tauri release bundle (if packaging / release flow changed): `cd apps/linows && cargo tauri build`
   - [ ] macOS app (if `apps/macos/**` touched): `cd apps/macos/LauncherApp && swift test`
   - [ ] macOS app (if `apps/macos/**` touched): `xcodebuild -project "apps/macos/LauncherApp/look-app.xcodeproj" -scheme "Look" -configuration Debug -sdk macosx build`
-  - [ ] Tauri release bundle (if packaging / release flow changed): `cd apps/linows && cargo tauri build`
   - [ ] Manual verification completed (if UI/behavior changed)
 
 ## Screenshots / Recordings (if UI changed)
@@ -41,6 +40,7 @@
 
 ## Checklist
 
+- [ ] I have read and agree to the CLA (CLA.md)
 - [ ] PR title is clear and scoped
 - [ ] Docs updated for user-visible changes
 - [ ] No secrets or private files included

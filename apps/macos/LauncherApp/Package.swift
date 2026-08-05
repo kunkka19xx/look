@@ -21,6 +21,7 @@ let package = Package(
                 "Support/Launcher/ProcessScoring.swift",
                 "Support/Launcher/DeleteTargetLogic.swift",
                 "Support/Launcher/BridgeErrorMapping.swift",
+                "Support/Launcher/SyntheticRow.swift",
                 "Support/SingleInstanceLock.swift",
                 "Models/LauncherResult.swift",
             ]
