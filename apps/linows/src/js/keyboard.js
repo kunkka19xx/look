@@ -520,7 +520,7 @@ async function handleHideSelectApp() {
     const item = results.getSelected();
     // Only real launcher apps carry a path; synthetic rows must not be excluded.
     if (!item || item.kind !== 'app' || !item.path || isSyntheticResultId(item.id)) {
-        banner.show('Select an app first', 'warning', 1.2);
+        banner.show('Select an app to hide', 'warning', 1.2);
         return;
     }
 
