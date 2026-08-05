@@ -16,7 +16,7 @@ A keyboard-first, local-first launcher for macOS, Windows, and Linux. Open apps,
 
 https://github.com/user-attachments/assets/167b028b-04b2-4c62-ba93-c2321482ac94
 
-Results land as fast as you can type. Single native app per platform, no Electron, no background daemons. Your index, clipboard, and history stay in local; no telemetry.
+Results land as fast as you can type. A Rust core under a native SwiftUI app on macOS, and Tauri on Windows and Linux, riding the system WebView instead of shipping a browser like Electron does. No background daemons. Your index, clipboard, and history stay on your machine; no telemetry.
 
 <details>
 <summary><b>How it compares</b></summary>
