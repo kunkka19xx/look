@@ -433,6 +433,8 @@ enum AppConstants {
             /// SF Symbol for the Battery info tile, and its label when a battery
             /// is present.
             static let batteryIconName = "battery.100"
+            /// SF Symbol shown in place of `batteryIconName` while charging.
+            static let batteryChargingIconName = "battery.100.bolt"
             /// On a machine with no battery (e.g. a Mac mini), the Battery tile
             /// shows system uptime instead, with this label and icon.
             static let uptimeLabel = "Uptime"

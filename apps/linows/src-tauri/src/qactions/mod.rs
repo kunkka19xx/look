@@ -78,6 +78,12 @@ pub enum ActionOutcome {
     },
 }
 
+/// `info()` key for the Battery adapters' charging flag. Battery is a
+/// presentational tile with no shared `core/qactions` descriptor, so this key
+/// is linows-only; defined once here rather than in each per-OS adapter file
+/// so the Linux and Windows adapters can't drift out of sync on the spelling.
+pub const BATTERY_CHARGING_INFO_KEY: &str = "charging";
+
 /// A resolved info-field value. The shared descriptor declares `label` +
 /// `value_key`; the adapter resolves the key to what to display.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

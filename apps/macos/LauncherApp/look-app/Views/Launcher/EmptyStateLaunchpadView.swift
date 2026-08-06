@@ -146,6 +146,7 @@ struct EmptyStateLaunchpadView: View {
                 batteryValue: controller.displayValue(for: model.actionId),
                 showsUptime: model.actionId == LaunchpadActionID.battery
                     && controller.isUnavailable(model.actionId),
+                charging: controller.batteryCharging,
                 themeStore: themeStore
             )
         case .action:
@@ -276,12 +277,16 @@ private struct LaunchpadInfoTile: View {
     let batteryValue: String?
     /// True when there is no battery, so the tile shows uptime instead.
     let showsUptime: Bool
+    /// True while the battery is actively charging, so the tile shows the
+    /// bolt variant of the battery icon.
+    let charging: Bool
     var themeStore: ThemeStore
 
     private typealias Const = AppConstants.Launcher.Launchpad
 
     private var iconName: String {
-        showsUptime ? Const.uptimeIconName : Const.batteryIconName
+        if showsUptime { return Const.uptimeIconName }
+        return charging ? Const.batteryChargingIconName : Const.batteryIconName
     }
 
     private var label: String {

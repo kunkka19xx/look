@@ -22,6 +22,17 @@ final class LaunchpadController {
     /// each control's `state()` read.
     private(set) var systemStates: [String: ActionState] = [:]
 
+    /// The Battery adapter's resolved info fields (currently just "charging"),
+    /// refreshed alongside `systemStates`. Info tiles are the only role that
+    /// reads `info()`; only Battery has one today.
+    private(set) var batteryInfo: [String: InfoValue] = [:]
+
+    /// Whether the battery is actively charging, for the launchpad tile's icon.
+    var batteryCharging: Bool {
+        if case .text(let text) = batteryInfo["charging"] { return text == "charging" }
+        return false
+    }
+
     /// Mic mute state (true = muted); rendered amber when muted. Backed by the
     /// Mic adapter: muted means its state read as `.off` (input volume 0).
     var micMuted: Bool { systemStates[LaunchpadActionID.mic] == .off }
@@ -76,12 +87,17 @@ final class LaunchpadController {
         stateGeneration &+= 1
         let generation = stateGeneration
         var resolved: [String: ActionState] = [:]
+        var resolvedBatteryInfo: [String: InfoValue] = [:]
         for tile in tiles {
             guard let adapter = ActionAdapterRegistry.adapter(for: tile.actionId) else { continue }
             resolved[tile.actionId] = await adapter.state()
+            if tile.actionId == LaunchpadActionID.battery {
+                resolvedBatteryInfo = await adapter.info(keys: ["charging"])
+            }
         }
         guard generation == stateGeneration else { return }
         systemStates = resolved
+        batteryInfo = resolvedBatteryInfo
     }
 
     /// Resolves the Weather tile's value. Cheap to call on every launcher open:
