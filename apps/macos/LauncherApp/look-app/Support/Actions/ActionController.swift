@@ -20,7 +20,15 @@ struct ActionSessionItem: Identifiable, Equatable {
 final class ActionController: ObservableObject {
     static let shared = ActionController()
 
+    /// A disambiguation in progress: the tool call awaiting the user's pick.
+    struct PendingChoice {
+        let toolID: String
+        var params: [String: AIValue]
+        let candidates: [ActionCandidate]
+    }
+
     @Published private(set) var pending: PlannedAction?
+    @Published private(set) var pendingChoice: PendingChoice?
     @Published private(set) var lastReceipt: ActionReceipt?
     @Published private(set) var feedback: String = ""
     /// Completed actions this session, shown as a stack in the AI panel. The
@@ -50,6 +58,9 @@ final class ActionController: ObservableObject {
         let registry = ActionRegistry()
         registry.register(CalendarAddEventTool(store: EventKitService.shared))
         registry.register(ReminderAddTool(store: EventKitService.shared))
+        registry.register(CalendarCancelEventTool(store: EventKitService.shared))
+        registry.register(CalendarMoveEventTool(store: EventKitService.shared))
+        registry.register(ReminderCompleteTool(store: EventKitService.shared))
         self.registry = registry
         self.planner = ActionPlanner(registry: registry)
     }
@@ -76,6 +87,7 @@ final class ActionController: ObservableObject {
         sessionItems.removeAll()
         lastReceipt = nil
         undoableItemID = nil
+        recentTargets = []
         conversationID = UUID()
     }
 
@@ -169,7 +181,8 @@ final class ActionController: ObservableObject {
             guard !Task.isCancelled else { return }  // superseded: newer task owns state
             self.isPlanning = false
             if let call {
-                self.propose(call)
+                // Live preview never pops a choice list mid-typing; Enter does.
+                self.propose(call, allowChoice: false)
             }
             // Not an action: stay quiet. Enter routes the text to chat instead.
         }
@@ -182,6 +195,7 @@ final class ActionController: ObservableObject {
         idleTask?.cancel()
         let query = stripPrefix(rawQuery)
         guard !query.isEmpty else { return }
+        EventKitService.shared.refreshReminderCache()
 
         let modelAvailable = planner.isAvailable
         if let call = ExplicitActionParser.parse(">" + query, modelAvailable: modelAvailable),
@@ -349,14 +363,27 @@ final class ActionController: ObservableObject {
     /// text plus a human label ("for next week").
     private func scheduleSummary(for query: String) -> (String, String)? {
         if let window = DatePhrase.queryWindow(for: query, now: Date()) {
-            guard let summary = EventKitService.shared.eventsSummary(
+            guard let (summary, events) = EventKitService.shared.eventsSummary(
                 from: window.start, to: window.end,
                 emptyText: "No events \(window.label).")
             else { return nil }
+            rememberListedEvents(events)
             return (summary, "for \(window.label)")
         }
-        guard let summary = EventKitService.shared.upcomingEventsSummary() else { return nil }
+        guard let (summary, events) = EventKitService.shared.upcomingEventsSummary() else { return nil }
+        rememberListedEvents(events)
         return (summary, "for the next 7 days")
+    }
+
+    /// A listing shown to the user becomes the referent set: "remove this
+    /// event" right after "what's on this week?" targets what was listed.
+    private func rememberListedEvents(_ events: [EventCandidateData]) {
+        guard !events.isEmpty else { return }
+        recentTargets = events.map {
+            RecentTarget(
+                domain: "calendar", id: $0.id,
+                label: "\($0.title)  ·  \(DatePhrase.format($0.start))")
+        }
     }
 
     /// Cheap word gate for injecting calendar context into a chat turn.
@@ -386,7 +413,30 @@ final class ActionController: ObservableObject {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func propose(_ call: ToolCall) {
+    var awaitingChoice: Bool { pendingChoice != nil }
+
+    func propose(_ call: ToolCall, allowChoice: Bool = true) {
+        pendingChoice = nil
+        var params = call.params
+        // "remove it" / "cancel this event": referent phrases resolve against
+        // what the conversation just touched or LISTED. One target -> direct;
+        // several -> the listing becomes the choice list; none -> normal match.
+        if let match = params["match"]?.stringValue, ReferentPhrase.isReferent(match) {
+            let domain = call.toolID.hasPrefix("reminder") ? "reminder" : "calendar"
+            let targets = recentTargets.filter { $0.domain == domain }
+            if targets.count == 1 {
+                params["chosen_id"] = .string(targets[0].id)
+            } else if targets.count > 1 {
+                guard allowChoice else { return }
+                pending = nil
+                pendingChoice = PendingChoice(
+                    toolID: call.toolID, params: params,
+                    candidates: targets.map { ActionCandidate(id: $0.id, label: $0.label) })
+                feedback = ""
+                return
+            }
+        }
+        let call = ToolCall(toolID: call.toolID, params: params)
         switch registry.plan(call, now: Date()) {
         case .planned(let action):
             pending = action
@@ -394,11 +444,32 @@ final class ActionController: ObservableObject {
         case .invalid(let message):
             pending = nil
             feedback = message
-        case .needsChoice:
+        case .needsChoice(let candidates):
             pending = nil
-            feedback = "Multiple matches. Be more specific."
+            guard allowChoice else { return }  // live preview stays quiet
+            pendingChoice = PendingChoice(
+                toolID: call.toolID, params: call.params, candidates: candidates)
+            feedback = ""
         }
     }
+
+    /// The user picked from the disambiguation list: re-plan with the exact id.
+    func choose(_ candidate: ActionCandidate) {
+        guard var choice = pendingChoice else { return }
+        choice.params["chosen_id"] = .string(candidate.id)
+        pendingChoice = nil
+        propose(ToolCall(toolID: choice.toolID, params: choice.params))
+    }
+
+    /// What "it" / "this event" can refer to: the last confirmed action's
+    /// subject, or the events of the last listing shown in this conversation.
+    struct RecentTarget {
+        let domain: String
+        let id: String
+        let label: String
+    }
+
+    private var recentTargets: [RecentTarget] = []
 
     /// Confirm the pending action. Requests calendar/reminder access on first use
     /// (the only place a permission prompt appears, besides the Settings button).
@@ -410,6 +481,12 @@ final class ActionController: ObservableObject {
             do {
                 let receipt = try action.perform()
                 lastReceipt = receipt
+                if let subjectID = receipt.subjectID {
+                    recentTargets = [RecentTarget(
+                        domain: action.toolID.hasPrefix("reminder") ? "reminder" : "calendar",
+                        id: subjectID,
+                        label: receipt.summary)]
+                }
                 let item = ActionSessionItem(text: receipt.summary)
                 sessionItems.append(item)
                 undoableItemID = item.id
@@ -426,6 +503,7 @@ final class ActionController: ObservableObject {
         idleTask?.cancel()
         chatTask?.cancel()
         pending = nil
+        pendingChoice = nil
         feedback = ""
         isPlanning = false
     }

@@ -45,6 +45,9 @@ nonisolated struct ActionPreview: Equatable {
 
 nonisolated struct ActionReceipt {
     let summary: String
+    /// Identifier of the item this action created or touched, so a follow-up
+    /// "move it" / "remove it" can resolve the pronoun. Nil when gone (cancel).
+    var subjectID: String? = nil
     let undo: () throws -> Void
 }
 
@@ -64,10 +67,31 @@ nonisolated protocol ActionTool {
     func plan(_ params: [String: AIValue], now: Date) -> PlanResult
 }
 
+/// A calendar event as seen by the matching tools.
+nonisolated struct EventCandidateData: Equatable {
+    let id: String
+    let title: String
+    let start: Date
+    let end: Date
+    let isAllDay: Bool
+}
+
+/// An incomplete reminder as seen by the matching tools.
+nonisolated struct ReminderCandidateData: Equatable {
+    let id: String
+    let title: String
+    let due: Date?
+}
+
 /// Seam over EventKit so tools stay in the package and are tested with a fake.
 nonisolated protocol EventStoring {
     func addEvent(title: String, start: Date, end: Date, isAllDay: Bool) throws -> String
     func removeEvent(id: String) throws
     func addReminder(title: String, due: Date?) throws -> String
     func removeReminder(id: String) throws
+    func eventCandidates(from: Date, to: Date) -> [EventCandidateData]
+    func moveEvent(id: String, start: Date, end: Date) throws
+    func reminderCandidates() -> [ReminderCandidateData]
+    func completeReminder(id: String) throws
+    func uncompleteReminder(id: String) throws
 }

@@ -257,7 +257,7 @@ extension LauncherView {
                 // Two-step Esc: first cancels a pending confirm (keep composing);
                 // with nothing pending, it saves the conversation and leaves AI
                 // mode for home.
-                if actionController.isPresenting {
+                if actionController.isPresenting || actionController.awaitingChoice {
                     actionController.cancel()
                 } else {
                     actionController.endSession()

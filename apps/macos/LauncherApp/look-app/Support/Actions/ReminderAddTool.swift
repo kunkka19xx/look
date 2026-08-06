@@ -37,7 +37,7 @@ nonisolated struct ReminderAddTool: ActionTool {
         let capturedDue = due
         return .planned(PlannedAction(toolID: id, preview: preview, perform: {
             let reminderID = try store.addReminder(title: title, due: capturedDue)
-            return ActionReceipt(summary: "Added reminder \"\(title)\"", undo: {
+            return ActionReceipt(summary: "Added reminder \"\(title)\"", subjectID: reminderID, undo: {
                 try store.removeReminder(id: reminderID)
             })
         }))

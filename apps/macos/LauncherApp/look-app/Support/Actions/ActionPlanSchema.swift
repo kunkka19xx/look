@@ -15,8 +15,12 @@ nonisolated enum ActionPlanSchema {
                     "enum": .array(toolIDs.map { .string($0) }),
                 ]),
                 "params": .schema(
-                    properties: ["title": .schemaType("string")],
-                    required: ["title"]),
+                    properties: [
+                        "title": .schemaType("string"),
+                        "match": .schemaType("string"),
+                        "when": .schemaType("string"),
+                    ],
+                    required: []),
             ]),
             "required": .array([.string("tool"), .string("params")]),
         ])

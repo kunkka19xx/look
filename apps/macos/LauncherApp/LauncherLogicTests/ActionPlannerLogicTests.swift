@@ -22,17 +22,21 @@ final class ActionPlannerLogicTests: XCTestCase {
         XCTAssertEqual(enumVals, [.string("calendar.add_event"), .string("reminder.add")])
     }
 
-    func testSchemaParamsAreTitleOnly() {
+    func testSchemaParamsShape() {
         let schema = ActionPlanSchema.chatFormat(toolIDs: ["event"])
         guard
             let items = schema.objectValue?["properties"]?.objectValue?["steps"]?
                 .objectValue?["items"]?.objectValue,
             let params = items["properties"]?.objectValue?["params"]?.objectValue,
+            let properties = params["properties"]?.objectValue,
             let required = params["required"]?.arrayValue
         else {
             return XCTFail("schema shape wrong")
         }
-        XCTAssertEqual(required, [.string("title")])
+        // The minimal param vocabulary the planner can emit; per-tool needs are
+        // validated in tool.plan(), so nothing is schema-required.
+        XCTAssertEqual(Set(properties.keys), ["title", "match", "when"])
+        XCTAssertTrue(required.isEmpty)
     }
 
     func testSchemaSerializesToJSON() throws {

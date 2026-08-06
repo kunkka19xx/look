@@ -31,6 +31,8 @@ let package = Package(
                 "Support/Actions/CalendarAddEventTool.swift",
                 "Support/Actions/ReminderAddTool.swift",
                 "Support/Actions/ExplicitActionParser.swift",
+                "Support/Actions/TitleMatcher.swift",
+                "Support/Actions/CalendarMutationTools.swift",
                 "Support/Actions/ActionPlanSchema.swift",
                 "Support/Actions/ActionPlanParser.swift",
                 "Support/SingleInstanceLock.swift",

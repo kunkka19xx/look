@@ -1,14 +1,15 @@
 # EventKit Connector: build-level spec
 
-> **Status: add-only slice SHIPPED** (`calendar.add_event`, `reminder.add`,
-> all-day support) via the registry + `>` session design; see `ai-session.md`.
-> As-built delta from this spec: the planner's wire contract is leaner than
-> Section 4 describes - the model emits only a tool alias + clean title, and
-> time phrases are extracted from the raw query in code (NSDataDetector's date
-> value is robust; only its text range was not). The un-shipped parts below
-> (move/cancel/complete/snooze, the ambiguity gate, find_free_slot/block_time)
-> remain the plan for the next slices, with one improvement now available:
-> session context ("remove it") can shrink the match/ambiguity problem.
+> **Status: core connector SHIPPED.** Add (`calendar.add_event`, `reminder.add`,
+> all-day), read (schedule answers with grammar-parsed windows), and mutate
+> (`calendar.cancel_event`, `calendar.move_event`, `reminder.complete`) with the
+> ambiguity gate: `TitleMatcher.resolve` plans only a confident winner, near-ties
+> render a numbered `.needsChoice` list, no match is an honest error. Undo is
+> faithful (cancel recreates from a snapshot, move restores times, complete
+> uncompletes). "it"/"that" resolves via the last receipt's `subjectID`, skipping
+> matching. As-built deltas from this spec: the planner emits tool alias +
+> title/match (+ verbatim NEW time for move); other dates are extracted in code.
+> Still open: `find_free_slot`/`block_time`, reminder snooze, Windows/Linux.
 
 Scope: macOS. EventKit is an Apple system framework, so this connector lives
 entirely on the Swift side (`apps/macos`), not in the Rust core. Windows/Linux

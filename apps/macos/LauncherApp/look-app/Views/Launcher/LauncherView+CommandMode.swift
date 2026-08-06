@@ -103,11 +103,17 @@ extension LauncherView {
             return
         }
 
-        // AI mode: a bare number continues a listed conversation; anything else
-        // is a message (deterministic `@` first, then planner/chat).
+        // AI mode: a bare number answers a disambiguation first, then continues
+        // a listed conversation; anything else is a message (deterministic `@`
+        // first, then planner/chat).
         let submitTrimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if !isCommandMode, isAIMode {
-            if actionController.sessionItems.isEmpty,
+            if let choice = actionController.pendingChoice,
+               let number = Int(submitTrimmed),
+               number >= 1, number <= choice.candidates.count {
+                actionController.choose(choice.candidates[number - 1])
+                query = ""
+            } else if actionController.sessionItems.isEmpty,
                let number = Int(submitTrimmed),
                number >= 1, number <= filteredConversations.count {
                 actionController.continueConversation(filteredConversations[number - 1])

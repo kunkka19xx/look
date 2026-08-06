@@ -15,6 +15,9 @@ final class ActionPlanner {
     private static let aliasToToolID = [
         "event": "calendar.add_event",
         "reminder": "reminder.add",
+        "cancel": "calendar.cancel_event",
+        "move": "calendar.move_event",
+        "complete": "reminder.complete",
     ]
 
     init(registry: ActionRegistry) {
@@ -60,24 +63,42 @@ final class ActionPlanner {
                 ],
                 format: Self.format()),
             let plan = ActionPlanParser.parse(chatResponse: data),
-            let step = plan.steps.first,
-            let call = resolveCall(step: step, query: query),
-            case .planned = registry.plan(call, now: Date())
+            let step = plan.steps.first
         else {
             return nil
         }
-        return call
+        // No registry validation here: an .invalid ("no event matching ...") or
+        // .needsChoice outcome is informative and handled by the controller.
+        return resolveCall(step: step, query: query)
     }
 
-    /// Maps the model's minimal step (alias + title) to a full `ToolCall`,
-    /// injecting the `when` phrase from the original query when a date resolves
-    /// in it. No date in the query -> `when` omitted (all-day / undated).
+    /// Maps the model's minimal step to a full `ToolCall`. Add tools: clean
+    /// title from the model, `when` injected from the raw query in code. Mutate
+    /// tools: `match` (and, for move, the model-supplied NEW time phrase).
     private func resolveCall(step: PlanStep, query: String) -> ToolCall? {
         guard let toolID = Self.aliasToToolID[step.tool] else { return nil }
-        guard let title = step.params["title"]?.stringValue, !title.isEmpty else { return nil }
-        var params: [String: AIValue] = ["title": .string(title)]
-        if DatePhrase.resolve(query, now: Date()) != nil {
-            params["when"] = .string(query)
+        var params: [String: AIValue] = [:]
+        switch toolID {
+        case "calendar.add_event", "reminder.add":
+            guard let title = step.params["title"]?.stringValue, !title.isEmpty else { return nil }
+            params["title"] = .string(title)
+            if DatePhrase.resolve(query, now: Date()) != nil {
+                params["when"] = .string(query)
+            }
+        case "calendar.move_event":
+            guard
+                let match = step.params["match"]?.stringValue, !match.isEmpty,
+                let when = step.params["when"]?.stringValue, !when.isEmpty
+            else { return nil }
+            params["match"] = .string(match)
+            params["when"] = .string(when)
+        default:  // cancel, complete: just a match (title tolerated as fallback)
+            guard
+                let match = step.params["match"]?.stringValue
+                    ?? step.params["title"]?.stringValue,
+                !match.isEmpty
+            else { return nil }
+            params["match"] = .string(match)
         }
         return ToolCall(toolID: toolID, params: params)
     }
@@ -90,12 +111,19 @@ final class ActionPlanner {
     /// Static (never includes the date/time), so Ollama caches the prompt prefix
     /// across calls and prompt processing stays near-zero.
     private static let systemPrompt = """
-        Classify the request as "event" (calendar) or "reminder" and produce a \
-        clean short title: drop the leading verb, filler words, and all \
-        date/time words. Capitalize the first word.
-        Reply with JSON only: {"steps":[{"tool":"event","params":{"title":"..."}}]}.
-        Only CREATING is supported. If the request is to remove, delete, cancel, \
-        move, reschedule, or edit something, or is not a calendar/reminder \
-        request at all, reply {"steps":[]}.
+        Classify the request into ONE tool and extract its params:
+        - "event": add a calendar event. params: title (clean short title; drop \
+        the leading verb, filler words, and all date/time words; capitalize the \
+        first word).
+        - "reminder": add a reminder. params: title (same rules).
+        - "cancel": remove an EXISTING event. params: match (the words that \
+        identify which event, e.g. "dentist").
+        - "move": reschedule an EXISTING event. params: match, when (the NEW \
+        time phrase copied verbatim, e.g. "4pm", "friday 9am").
+        - "complete": mark an EXISTING reminder done. params: match.
+        Pronouns and references are valid match values: "remove it" -> match \
+        "it"; "cancel this event" -> match "this event".
+        Reply with JSON only: {"steps":[{"tool":"...","params":{...}}]}.
+        If it is none of these, reply {"steps":[]}.
         """
 }

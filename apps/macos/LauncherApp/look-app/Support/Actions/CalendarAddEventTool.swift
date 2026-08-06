@@ -51,7 +51,7 @@ nonisolated struct CalendarAddEventTool: ActionTool {
         let store = self.store
         return .planned(PlannedAction(toolID: id, preview: preview, perform: {
             let eventID = try store.addEvent(title: title, start: resolved, end: end, isAllDay: false)
-            return ActionReceipt(summary: "Added \"\(title)\"", undo: {
+            return ActionReceipt(summary: "Added \"\(title)\"", subjectID: eventID, undo: {
                 try store.removeEvent(id: eventID)
             })
         }))
@@ -66,7 +66,7 @@ nonisolated struct CalendarAddEventTool: ActionTool {
         let store = self.store
         return .planned(PlannedAction(toolID: id, preview: preview, perform: {
             let eventID = try store.addEvent(title: title, start: start, end: end, isAllDay: true)
-            return ActionReceipt(summary: "Added \"\(title)\"", undo: {
+            return ActionReceipt(summary: "Added \"\(title)\"", subjectID: eventID, undo: {
                 try store.removeEvent(id: eventID)
             })
         }))

@@ -1162,7 +1162,35 @@ struct LauncherView: View {
                         // Current activity sits right under the input; completed
                         // turns follow newest-first, so the latest is always on
                         // top without scrolling.
-                        if let pendingAction = actionController.pending {
+                        if let choice = actionController.pendingChoice {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Which one?  ·  number + Enter  ·  Esc cancels")
+                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .semibold))
+                                    .foregroundStyle(themeStore.mutedTextColor())
+                                ForEach(Array(choice.candidates.enumerated()), id: \.element.id) { index, candidate in
+                                    Button {
+                                        actionController.choose(candidate)
+                                        query = ""
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            Text("\(index + 1)")
+                                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
+                                                .foregroundStyle(themeStore.accentColor())
+                                            Text(candidate.label)
+                                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
+                                                .foregroundStyle(themeStore.fontColor())
+                                                .lineLimit(1)
+                                            Spacer()
+                                        }
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(themeStore.controlFillColor().opacity(0.55), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 4)
+                        } else if let pendingAction = actionController.pending {
                             PendingActionBar(
                                 action: pendingAction,
                                 themeStore: themeStore,

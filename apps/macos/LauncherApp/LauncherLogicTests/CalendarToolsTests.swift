@@ -4,7 +4,7 @@ import XCTest
 /// In-memory `EventStoring` for tool tests. No EventKit, no permission.
 final class FakeStore: EventStoring {
     private(set) var events: [String: (title: String, start: Date, end: Date, isAllDay: Bool)] = [:]
-    private(set) var reminders: [String: (title: String, due: Date?)] = [:]
+    private(set) var reminders: [String: (title: String, due: Date?, completed: Bool)] = [:]
     private var counter = 0
 
     func addEvent(title: String, start: Date, end: Date, isAllDay: Bool) throws -> String {
@@ -19,11 +19,46 @@ final class FakeStore: EventStoring {
     func addReminder(title: String, due: Date?) throws -> String {
         counter += 1
         let id = "r\(counter)"
-        reminders[id] = (title, due)
+        reminders[id] = (title, due, false)
         return id
     }
 
     func removeReminder(id: String) throws { reminders[id] = nil }
+
+    func eventCandidates(from: Date, to: Date) -> [EventCandidateData] {
+        events
+            .filter { $0.value.start >= from && $0.value.start < to }
+            .map { EventCandidateData(
+                id: $0.key, title: $0.value.title, start: $0.value.start,
+                end: $0.value.end, isAllDay: $0.value.isAllDay) }
+            .sorted { $0.start < $1.start }
+    }
+
+    func moveEvent(id: String, start: Date, end: Date) throws {
+        guard var event = events[id] else { throw NSError(domain: "fake", code: 1) }
+        event.start = start
+        event.end = end
+        events[id] = event
+    }
+
+    func reminderCandidates() -> [ReminderCandidateData] {
+        reminders
+            .filter { !$0.value.completed }
+            .map { ReminderCandidateData(id: $0.key, title: $0.value.title, due: $0.value.due) }
+            .sorted { $0.id < $1.id }
+    }
+
+    func completeReminder(id: String) throws {
+        guard var reminder = reminders[id] else { throw NSError(domain: "fake", code: 1) }
+        reminder.completed = true
+        reminders[id] = reminder
+    }
+
+    func uncompleteReminder(id: String) throws {
+        guard var reminder = reminders[id] else { throw NSError(domain: "fake", code: 1) }
+        reminder.completed = false
+        reminders[id] = reminder
+    }
 }
 
 final class CalendarToolsTests: XCTestCase {
