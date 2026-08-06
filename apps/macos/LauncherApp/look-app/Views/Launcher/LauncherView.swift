@@ -1338,21 +1338,20 @@ struct LauncherView: View {
     /// The frosted surface shared by every floating tile (top bar + columns). When
     /// a background image is set, each tile shows its own aligned slice of that
     /// image (cropped to the tile's window position) instead of a blurred desktop,
-    /// so the tiles read as separate windows onto one image. A dark scrim + tint
-    /// on top keeps the tile content legible.
+    /// so the tiles read as separate windows onto one image. Otherwise it takes the
+    /// themed backdrop, at the same blur and tint opacities as the window.
     @ViewBuilder
     private func tileBackground(cornerRadius: CGFloat, floats: Bool) -> some View {
         if floats {
             ZStack {
                 if let image = themeStore.backgroundImage {
                     croppedBackgroundImage(image)
+                    // Only the opaque image needs a scrim; the blur path is
+                    // covered by the tint.
+                    themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
                 } else {
-                    VisualEffectBlur(
-                        material: themeStore.settings.blurMaterial.material,
-                        appearance: themeStore.themeAppearance()
-                    )
+                    ThemedBackdrop(themeStore: themeStore)
                 }
-                themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
                 themeStore.controlFillColor()
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
