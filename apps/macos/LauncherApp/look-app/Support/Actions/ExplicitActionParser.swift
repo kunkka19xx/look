@@ -7,7 +7,7 @@ import Foundation
 /// Anything without `@` is natural language and returns nil, so the model
 /// normalizes it into a clean, finalized output (no brittle heuristics here).
 nonisolated enum ExplicitActionParser {
-    static func parse(_ input: String) -> ToolCall? {
+    static func parse(_ input: String, modelAvailable: Bool = true) -> ToolCall? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix(">") else { return nil }
         let body = trimmed.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines)
@@ -28,11 +28,17 @@ nonisolated enum ExplicitActionParser {
         let whenText = String(rest[sep.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return nil }
         // A day word in the title half ("call mom on sunday @ 5pm") means the
-        // user's date intent is NOT all after the `@`; taking the fast path
-        // would silently schedule the wrong day. Defer to the model, which
-        // reads the whole phrase.
-        guard !containsDayWord(title) else { return nil }
-        let when = whenText.isEmpty ? nil : whenText
+        // user's date intent is NOT all after the `@`; taking only the after-`@`
+        // time would silently schedule the wrong day.
+        var when = whenText.isEmpty ? nil : whenText
+        if containsDayWord(title) {
+            // With a model: defer, it produces a clean title AND the right day.
+            guard !modelAvailable else { return nil }
+            // Without one: keep the verbatim title but resolve the date from the
+            // whole phrase, so the day is still correct. Deterministic, no
+            // surgery on the title.
+            when = rest
+        }
 
         return call(verb: verb, title: title, when: when)
     }

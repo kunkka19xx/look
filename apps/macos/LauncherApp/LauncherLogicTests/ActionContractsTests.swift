@@ -81,6 +81,81 @@ final class ActionContractsTests: XCTestCase {
         XCTAssertNotNil(ExplicitActionParser.parse(">remind call mom @ sunday 5pm"))
     }
 
+    func testNoModelLenientModeResolvesDayFromWholePhrase() {
+        // Without a planner, the fast path must not dead-end: verbatim title,
+        // but the `when` becomes the whole phrase so the day resolves right.
+        let call = ExplicitActionParser.parse(">add call GF today @2pm", modelAvailable: false)
+        XCTAssertEqual(call?.toolID, "calendar.add_event")
+        XCTAssertEqual(call?.params["title"], .string("call GF today"))
+        XCTAssertEqual(call?.params["when"], .string("call GF today @2pm"))
+        // Clean splits keep the exact after-@ phrase even in lenient mode.
+        let clean = ExplicitActionParser.parse(">add lunch @ 1pm", modelAvailable: false)
+        XCTAssertEqual(clean?.params["when"], .string("1pm"))
+    }
+
+    // ── query windows for schedule questions ────────────────────────────
+
+    func testQueryWindowNextWeekStartsAtEndOfThisWeek() {
+        let now = Date(timeIntervalSince1970: 1_754_000_000)
+        let window = DatePhrase.queryWindow(for: "what's on my calendar next week?", now: now)
+        let thisWeek = Calendar.current.dateInterval(of: .weekOfYear, for: now)!
+        XCTAssertEqual(window?.start, thisWeek.end)
+        XCTAssertEqual(window?.label, "next week")
+    }
+
+    func testQueryWindowTomorrowIsOneDay() {
+        let now = Date(timeIntervalSince1970: 1_754_000_000)
+        let window = DatePhrase.queryWindow(for: "am I busy tomorrow", now: now)!
+        let expectedStart = Calendar.current.startOfDay(
+            for: Calendar.current.date(byAdding: .day, value: 1, to: now)!)
+        XCTAssertEqual(window.start, expectedStart)
+        XCTAssertEqual(window.label, "tomorrow")
+    }
+
+    func testQueryWindowWeekdayName() {
+        let now = Date(timeIntervalSince1970: 1_754_000_000)
+        let window = DatePhrase.queryWindow(for: "what's on friday?", now: now)!
+        XCTAssertEqual(Calendar.current.component(.weekday, from: window.start), 6)
+        XCTAssertEqual(window.label, "Friday")
+    }
+
+    func testQueryWindowNilWithoutTimeframe() {
+        let now = Date(timeIntervalSince1970: 1_754_000_000)
+        XCTAssertNil(DatePhrase.queryWindow(for: "what's on my calendar?", now: now))
+    }
+
+    func testQueryWindowComposesUnits() {
+        let now = Date(timeIntervalSince1970: 1_754_000_000)
+        let cal = Calendar.current
+
+        let nextMonth = DatePhrase.queryWindow(for: "what's on next month", now: now)!
+        let expectedMonth = cal.dateInterval(
+            of: .month, for: cal.date(byAdding: .month, value: 1, to: now)!)!
+        XCTAssertEqual(nextMonth.start, expectedMonth.start)
+        XCTAssertEqual(nextMonth.label, "next month")
+
+        let thisYear = DatePhrase.queryWindow(for: "events this year", now: now)!
+        XCTAssertEqual(thisYear.start, now)  // clamped: no point listing the past
+        XCTAssertEqual(thisYear.end, cal.dateInterval(of: .year, for: now)!.end)
+
+        let inTwoWeeks = DatePhrase.queryWindow(for: "am I busy in 2 weeks", now: now)!
+        let expectedWeek = cal.dateInterval(
+            of: .weekOfYear, for: cal.date(byAdding: .weekOfYear, value: 2, to: now)!)!
+        XCTAssertEqual(inTwoWeeks.start, expectedWeek.start)
+        XCTAssertEqual(inTwoWeeks.label, "in 2 weeks")
+    }
+
+    func testQueryWindowMonthNames() {
+        let now = Date(timeIntervalSince1970: 1_754_000_000)  // early Aug 2025
+        let august = DatePhrase.queryWindow(for: "what's happening in august", now: now)!
+        XCTAssertEqual(Calendar.current.component(.month, from: august.start), 8)
+        XCTAssertEqual(august.label, "August")
+
+        // "may" as a verb must not become the month May.
+        let mayVerb = DatePhrase.queryWindow(for: "what may be on tomorrow", now: now)!
+        XCTAssertEqual(mayVerb.label, "tomorrow")
+    }
+
     func testNormalizeMapsAtSignToAt() {
         XCTAssertEqual(DatePhrase.normalizeShorthand("sunday @ 5pm"), "sunday at 5pm")
         XCTAssertEqual(DatePhrase.normalizeShorthand("sunday @5pm"), "sunday at 5pm")

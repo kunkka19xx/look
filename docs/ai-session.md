@@ -24,6 +24,11 @@ powered by the user's Ollama model (see `ai-vision.md` for provider strategy).
    planner classifies + normalizes the title; dates are extracted in code (see
    Speed below). While typing, a plan runs on a 300ms idle so the confirm bar
    appears without pressing Enter; non-actions stay quiet.
+Provider degradation: with no capable planner (e.g. Apple Intelligence
+selected), the `@` form runs the parser in lenient mode (verbatim title, date
+resolved from the whole phrase so the day stays correct) and chat falls back to
+the selected provider's single-turn answer stream. `>` never dead-ends.
+
 3. **Chat** - anything the planner declines becomes a chat turn on Enter: the
    question and a streamed answer join the session. Context is the last ~10
    session items, including performed actions (as `[Done: ...]`), so follow-ups
@@ -34,32 +39,32 @@ All actions flow through the same spine regardless of producer:
 `ToolCall -> registry.plan -> preview -> confirm (Enter) -> receipt -> undo`
 (see `ai-action-contracts.md`).
 
-## Lifecycle (Esc ends, everything else suspends)
+## AI mode and lifecycle
 
-- **Enter** on a pending bar confirms; the query resets to a bare `>` and the
-  session continues.
+`>` is a MODE, not a per-message prefix: typing `>` consumes the prefix and
+enters AI mode (sparkles icon + its own placeholder in the input bar); every
+message after is AI input until Esc leaves.
+
+- **Enter** on a pending bar confirms; the input clears and the mode continues.
 - **Esc** is two-step: with a pending confirm it cancels just that; otherwise it
-  ends the session (archives, clears) and returns home.
-- **Cmd+Space (hide/recall)** suspends: the session and the query text survive,
-  so recall lands back in the conversation.
-- **A normal (non-`>`) query** yields the screen to search but keeps the session
-  alive in the background; `>` returns to it. Moving on closes the undo window.
+  saves the conversation and leaves the mode for home.
+- **Cmd+Space (hide/recall)** suspends: mode and conversation survive.
 - **Cmd+Z** undoes the last action while its session item is undoable; otherwise
   it passes through to normal text-field undo.
 
-## Persistence
+## Conversations (bounded memory)
 
-Incremental JSONL transcript, one line per item the moment it completes
-(quit-safe), at `~/Library/Application Support/Look/ai-sessions.jsonl`:
+Stored in one human-readable JSON file,
+`~/Library/Application Support/Look/ai-conversations.json`, upserted
+incrementally as items complete (quit-safe). Bounds: 20 conversations, last 60
+items each; the model context per turn stays capped at the last 10 items, so
+continuing an old conversation carries reasonable, bounded weight.
 
-```json
-{"ts":"2026-08-06T12:00:00Z","session":"<uuid>","kind":"user","text":"..."}
-```
-
-Kinds: `action`, `user`, `answer`, `undo`. Lines share a `session` id so a
-conversation can be reassembled. Esc sweeps anything unarchived (e.g. a partial
-answer cut off mid-stream). Placeholder-only answers are skipped. No browsing UI
-yet; the file is human-readable.
+Empty AI mode shows the recent conversations: typing searches them (title +
+content), **number + Enter** (or click) continues one - the full transcript
+restores and the chat picks up with context - and typing a real prompt starts a
+fresh conversation. While browsing the list, no model calls fire; Enter drives
+everything (instant `@` forms still preview live).
 
 ## Markdown in answers
 

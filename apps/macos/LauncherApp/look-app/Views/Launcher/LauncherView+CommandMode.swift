@@ -94,20 +94,27 @@ extension LauncherView {
     func handleSubmit() {
         logUIEvent("submit isCommand=\(isCommandMode) active=\(activeCommandID ?? "nil") selectedKill=\(selectedKillSuggestionIndex.map(String.init) ?? "nil") pendingKill=\(pendingKillCandidate?.displayName ?? "nil") input='\(commandArgsPart)'")
 
-        // A pending action bar takes Enter as "confirm". Stay in the AI session
-        // (query resets to the bare `>`), ready for the next action; Esc leaves.
+        // A pending action bar takes Enter as "confirm". Stay in AI mode with a
+        // cleared input, ready for the next message; Esc leaves.
         if actionController.isPresenting {
             actionController.confirm()
-            query = ">"
+            query = ""
             DispatchQueue.main.async { isQueryFocused = true }
             return
         }
 
-        // `>` query: plan on Enter (deterministic first, model fallback). Not
-        // live, so the model never re-runs while typing.
+        // AI mode: a bare number continues a listed conversation; anything else
+        // is a message (deterministic `@` first, then planner/chat).
         let submitTrimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !isCommandMode, submitTrimmed.hasPrefix(">") {
-            actionController.submitExplicitAIQuery(submitTrimmed)
+        if !isCommandMode, isAIMode {
+            if actionController.sessionItems.isEmpty,
+               let number = Int(submitTrimmed),
+               number >= 1, number <= filteredConversations.count {
+                actionController.continueConversation(filteredConversations[number - 1])
+                query = ""
+            } else if !submitTrimmed.isEmpty {
+                actionController.submitExplicitAIQuery(submitTrimmed)
+            }
             DispatchQueue.main.async { isQueryFocused = true }
             return
         }

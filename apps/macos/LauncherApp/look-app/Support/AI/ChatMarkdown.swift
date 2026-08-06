@@ -7,24 +7,35 @@ import Foundation
 nonisolated enum ChatMarkdown {
     enum Segment: Equatable {
         case text(String)
-        case code(String)
+        case code(String, language: String?)
     }
 
     static func segments(from raw: String) -> [Segment] {
         var segments: [Segment] = []
         var buffer: [String] = []
         var inCode = false
+        var codeLanguage: String?
 
         func flush() {
             let joined = buffer.joined(separator: "\n")
             buffer.removeAll()
             guard !joined.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            segments.append(inCode ? .code(joined) : .text(joined))
+            segments.append(inCode ? .code(joined, language: codeLanguage) : .text(joined))
         }
 
         for line in raw.components(separatedBy: "\n") {
-            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") {
                 flush()
+                if !inCode {
+                    // Opening fence may carry a language tag: ```swift
+                    let tag = trimmed.dropFirst(3).trimmingCharacters(in: .whitespaces)
+                    codeLanguage = tag.isEmpty
+                        ? nil
+                        : tag.split(separator: " ").first.map { String($0).lowercased() }
+                } else {
+                    codeLanguage = nil
+                }
                 inCode.toggle()
             } else {
                 buffer.append(line)

@@ -11,6 +11,9 @@ struct ActionSessionItem: Identifiable, Equatable {
     let id = UUID()
     var kind: Kind = .action
     var text: String
+    /// Who produced an answer (model tag, "Apple Intelligence", "Calendar"),
+    /// captured at creation so the chat header stays truthful per message.
+    var source: String? = nil
 }
 
 @MainActor
@@ -64,61 +67,51 @@ final class ActionController: ObservableObject {
         feedback = ""
     }
 
-    /// Leave the AI session entirely: sweep anything not yet archived (e.g. a
-    /// partial answer cut off by Esc), then drop pending work, results, and the
-    /// item stack. Fired only by Esc with nothing pending.
+    /// Close the current conversation: save it, drop pending work, clear the
+    /// stack, and mint a fresh conversation id. Fired by Esc with nothing
+    /// pending (leaving AI mode).
     func endSession() {
-        for item in sessionItems { archive(item) }
+        saveConversation()
         cancel()
         sessionItems.removeAll()
         lastReceipt = nil
         undoableItemID = nil
-        sessionID = UUID().uuidString
-        archivedIDs.removeAll()
+        conversationID = UUID()
     }
 
-    private var sessionID = UUID().uuidString
-    private var archivedIDs: Set<UUID> = []
-
-    /// Incremental transcript: one JSONL line per item, appended the moment the
-    /// item completes, so nothing is lost if the app quits mid-session. File:
-    /// `~/Library/Application Support/Look/ai-sessions.jsonl`. Lines share a
-    /// `session` id so a conversation can be reassembled.
-    private func archive(_ item: ActionSessionItem) {
-        guard !archivedIDs.contains(item.id) else { return }
-        // Don't archive an answer that never got content (placeholder only).
-        if item.kind == .answer,
-           item.text == "…" || item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return
+    /// Restore a stored conversation to continue it. The full transcript shows;
+    /// the model context stays capped (last 10 items) so continuing an old
+    /// conversation carries reasonable, bounded weight.
+    func continueConversation(_ conversation: AIConversation) {
+        endSession()
+        conversationID = conversation.id
+        sessionItems = conversation.items.map { stored in
+            ActionSessionItem(
+                kind: ActionSessionItem.Kind(rawValue: stored.kind) ?? .answer,
+                text: stored.text,
+                source: stored.source)
         }
-        archivedIDs.insert(item.id)
-        Self.appendArchiveRecord(kind: item.kind.rawValue, text: item.text, session: sessionID)
     }
 
-    private static func appendArchiveRecord(kind: String, text: String, session: String) {
-        let record: [String: Any] = [
-            "ts": ISO8601DateFormatter().string(from: Date()),
-            "session": session,
-            "kind": kind,
-            "text": text,
-        ]
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: record),
-            let line = String(data: data, encoding: .utf8),
-            let dir = FileManager.default.urls(
-                for: .applicationSupportDirectory, in: .userDomainMask
-            ).first?.appendingPathComponent("Look", isDirectory: true)
-        else { return }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let file = dir.appendingPathComponent("ai-sessions.jsonl")
-        let payload = Data((line + "\n").utf8)
-        if let handle = try? FileHandle(forWritingTo: file) {
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: payload)
-        } else {
-            try? payload.write(to: file)
+    private var conversationID = UUID()
+
+    /// Upserts the live conversation into the capped store. Called whenever an
+    /// item completes, so quitting mid-session loses nothing that finished.
+    private func saveConversation() {
+        let items = sessionItems.filter { item in
+            // Skip an answer that never got content (placeholder only).
+            !(item.kind == .answer
+                && (item.text == "…"
+                    || item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
         }
+        guard !items.isEmpty else { return }
+        ConversationStore.upsert(AIConversation(
+            id: conversationID,
+            title: String((items.first?.text ?? "Conversation").prefix(48)),
+            updatedAt: Date(),
+            items: items.map {
+                AIConversation.StoredItem(kind: $0.kind.rawValue, text: $0.text, source: $0.source)
+            }))
     }
 
     /// Live preview while typing a `>` query. Two stages: an instant deterministic
@@ -135,8 +128,11 @@ final class ActionController: ObservableObject {
             return
         }
 
-        // Explicit `@` form: instant, exact, no model.
-        if let call = ExplicitActionParser.parse(">" + query),
+        // Explicit `@` form: instant, exact, no model. Without a planner the
+        // parser runs lenient (whole-phrase date resolution), so `@` entries
+        // stay fully functional on any provider.
+        let modelAvailable = planner.isAvailable
+        if let call = ExplicitActionParser.parse(">" + query, modelAvailable: modelAvailable),
            case .planned(let action) = registry.plan(call, now: Date()) {
             isPlanning = false
             pending = action
@@ -147,10 +143,15 @@ final class ActionController: ObservableObject {
         // Natural language: never show a rough/wrong title. Instead show the
         // working indicator IMMEDIATELY (no dead air) and normalize in the
         // background; the clean preview replaces the indicator when ready.
-        guard planner.isAvailable else {
+        guard modelAvailable else {
+            // No planner: stay quiet while composing; Enter routes to the
+            // provider's chat/answer path, and the footer teaches the `@` form.
+            // Prewarm kicks the on-device model awake while the user types
+            // (FoundationModels can report unavailable until first touched).
+            AIQueryRouter.shared.prewarm(ThemeStore.shared.settings.aiProvider)
             pending = nil
             isPlanning = false
-            feedback = "Connect a model, or use: >add <title> @ <time>"
+            feedback = ""
             return
         }
         pending = nil
@@ -182,7 +183,8 @@ final class ActionController: ObservableObject {
         let query = stripPrefix(rawQuery)
         guard !query.isEmpty else { return }
 
-        if let call = ExplicitActionParser.parse(">" + query),
+        let modelAvailable = planner.isAvailable
+        if let call = ExplicitActionParser.parse(">" + query, modelAvailable: modelAvailable),
            case .planned(let action) = registry.plan(call, now: Date()) {
             planTask?.cancel()
             isPlanning = false
@@ -191,8 +193,10 @@ final class ActionController: ObservableObject {
             return
         }
 
-        guard planner.isAvailable else {
-            feedback = "Couldn't parse. Try: >add <title> @ <time>"
+        guard modelAvailable else {
+            // No planner: hand the text to the provider's answer path instead of
+            // dead-ending (askChat itself reports if no provider is usable).
+            askChat(query)
             return
         }
         planTask?.cancel()
@@ -221,24 +225,31 @@ final class ActionController: ObservableObject {
         chatTask?.cancel()
         let userItem = ActionSessionItem(kind: .user, text: query)
         sessionItems.append(userItem)
-        archive(userItem)
+        saveConversation()
+
+        // Schedule-sounding questions get the calendar as context, so "what's my
+        // next meeting" / "am I free friday" just answer. The data only ever
+        // goes to the on-machine model. Without read access, the model is told
+        // to point at Settings instead of failing mysteriously.
+        let scheduleContext: String? = {
+            guard Self.mentionsSchedule(query) else { return nil }
+            guard let (summary, label) = scheduleSummary(for: query) else {
+                return "You cannot see the user's calendar because access is not "
+                    + "granted. Tell them to connect Calendar via the Permissions "
+                    + "row in Look's Settings."
+            }
+            let df = DateFormatter()
+            df.dateFormat = "EEEE, MMMM d yyyy, HH:mm"
+            return "Now: \(df.string(from: Date())). "
+                + "The user's calendar \(label):\n\(summary)"
+        }()
 
         var messages: [[String: String]] = [
             ["role": "system", "content": Self.chatInstructions]
         ]
-        // Schedule-sounding questions get the calendar as context, so "what's my
-        // next meeting" / "am I free friday" just answer. Injected after the
-        // static prompt so the prompt-cache prefix stays effective; the data
-        // only ever goes to the local model.
-        if Self.mentionsSchedule(query),
-           let summary = EventKitService.shared.upcomingEventsSummary() {
-            let df = DateFormatter()
-            df.dateFormat = "EEEE, MMMM d yyyy, HH:mm"
-            messages.append([
-                "role": "system",
-                "content": "Now: \(df.string(from: Date())). "
-                    + "The user's calendar for the next 7 days:\n\(summary)",
-            ])
+        // Injected after the static prompt so the prompt-cache prefix holds.
+        if let scheduleContext {
+            messages.append(["role": "system", "content": scheduleContext])
         }
         for item in sessionItems.suffix(10) {
             switch item.kind {
@@ -253,36 +264,99 @@ final class ActionController: ObservableObject {
             }
         }
 
-        let placeholder = ActionSessionItem(kind: .answer, text: "…")
+        let settings = ThemeStore.shared.settings
+        let sourceLabel = settings.aiProvider == .ollama
+            ? settings.ollamaModel
+            : settings.aiProvider.title
+        let placeholder = ActionSessionItem(kind: .answer, text: "…", source: sourceLabel)
         sessionItems.append(placeholder)
         let placeholderID = placeholder.id
-        let settings = ThemeStore.shared.settings
 
+        // Ollama gets the full session as context; any other provider (e.g.
+        // Apple Intelligence) answers single-turn through the router (with the
+        // schedule context folded into the prompt), so `>` chat works on-device.
+        let provider = settings.aiProvider
+        let routed = scheduleContext.map { "\($0)\n\nUser question: \(query)" } ?? query
+        let host = settings.ollamaHost
+        let model = settings.ollamaModel
+        let makeStream: @MainActor () -> AsyncThrowingStream<String, Error>? = {
+            if provider == .ollama {
+                return OllamaProvider.chatStream(host: host, model: model, messages: messages)
+            }
+            return AIQueryRouter.shared.answer(query: routed, using: provider)
+        }
+
+        if let stream = makeStream() {
+            chatTask = Task { [weak self] in await self?.consume(stream, into: placeholderID) }
+            return
+        }
+
+        // Schedule questions don't actually need a model: answer with the
+        // deterministic listing.
+        if Self.mentionsSchedule(query), let (summary, label) = scheduleSummary(for: query) {
+            updateItem(placeholderID, text: "Your calendar \(label):\n\(summary)", source: "Calendar")
+            saveConversation()
+            return
+        }
+
+        // FoundationModels can report unavailable right after app launch until
+        // first touched; the prewarm above touches it, so retry briefly before
+        // surfacing the real reason.
         chatTask = Task { [weak self] in
-            guard let self else { return }
-            let stream = OllamaProvider.chatStream(
-                host: settings.ollamaHost, model: settings.ollamaModel, messages: messages)
-            do {
-                for try await partial in stream {
-                    if Task.isCancelled { return }
-                    self.updateItem(placeholderID, text: partial)
-                }
-            } catch {
-                if !Task.isCancelled {
-                    self.updateItem(placeholderID, text: "Answer failed. Is Ollama running?")
+            for delaySeconds in [1.0, 2.0] {
+                try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+                guard let self, !Task.isCancelled else { return }
+                if let stream = makeStream() {
+                    await self.consume(stream, into: placeholderID)
+                    return
                 }
             }
-            // Stream done (or failed with a message): archive the final answer.
-            if !Task.isCancelled,
-               let item = self.sessionItems.first(where: { $0.id == placeholderID }) {
-                self.archive(item)
+            guard let self, !Task.isCancelled else { return }
+            var reason = ""
+            if case .unavailable(let r) = AIQueryRouter.shared.availability(of: provider) {
+                reason = " " + r.userFacingMessage
             }
+            self.updateItem(
+                placeholderID,
+                text: "No model available.\(reason) Or use: >add <title> @ <time>")
+            self.saveConversation()
         }
     }
 
-    private func updateItem(_ id: UUID, text: String) {
+    /// Streams cumulative snapshots into the answer item, then archives it.
+    private func consume(_ stream: AsyncThrowingStream<String, Error>, into id: UUID) async {
+        do {
+            for try await partial in stream {
+                if Task.isCancelled { return }
+                updateItem(id, text: partial)
+            }
+        } catch {
+            if !Task.isCancelled {
+                updateItem(id, text: "Answer failed. Is the model available?")
+            }
+        }
+        if !Task.isCancelled { saveConversation() }
+    }
+
+    private func updateItem(_ id: UUID, text: String, source: String? = nil) {
         guard let idx = sessionItems.firstIndex(where: { $0.id == id }) else { return }
         sessionItems[idx].text = text
+        if let source { sessionItems[idx].source = source }
+    }
+
+    /// Calendar listing scoped to the timeframe the question names ("next
+    /// week", "tomorrow", "friday"), defaulting to the next 7 days. Returns the
+    /// text plus a human label ("for next week").
+    private func scheduleSummary(for query: String) -> (String, String)? {
+        if let window = DatePhrase.queryWindow(for: query, now: Date()) {
+            guard let summary = EventKitService.shared.eventsSummary(
+                from: window.start, to: window.end,
+                emptyText: "No events \(window.label).")
+            else { return nil }
+            return (summary, "for \(window.label)")
+        }
+        guard let summary = EventKitService.shared.upcomingEventsSummary() else { return nil }
+        return (summary, "for the next 7 days")
     }
 
     /// Cheap word gate for injecting calendar context into a chat turn.
@@ -339,7 +413,7 @@ final class ActionController: ObservableObject {
                 let item = ActionSessionItem(text: receipt.summary)
                 sessionItems.append(item)
                 undoableItemID = item.id
-                archive(item)
+                saveConversation()
                 feedback = ""
             } catch {
                 feedback = "Failed: \(error.localizedDescription)"
@@ -362,8 +436,7 @@ final class ActionController: ObservableObject {
             try receipt.undo()
             if let idx = sessionItems.firstIndex(where: { $0.id == undoableItemID }) {
                 sessionItems[idx].text += "  ·  undone"
-                Self.appendArchiveRecord(
-                    kind: "undo", text: sessionItems[idx].text, session: sessionID)
+                saveConversation()
             }
             feedback = ""
         } catch {

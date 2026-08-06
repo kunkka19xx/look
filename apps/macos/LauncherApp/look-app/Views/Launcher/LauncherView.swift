@@ -36,6 +36,12 @@ struct LauncherView: View {
     @StateObject var clipboardStore = ClipboardHistoryStore()
     @StateObject var aiAnswer = AIAnswerController()
     @ObservedObject var actionController = ActionController.shared
+    /// AI mode: entered by typing `>`, left with Esc. While on, everything typed
+    /// is AI input (no per-message prefix) and the session panel owns the area.
+    @State var isAIMode = false
+    /// Stored conversations, refreshed when entering AI mode; searched by typing
+    /// while no conversation is active.
+    @State var conversationCache: [AIConversation] = []
 
     @State var query = ""
     @State var commandInput = ""
@@ -738,20 +744,29 @@ struct LauncherView: View {
                 pendingHideAppResult = nil
             }
             let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            // Moving on to a normal query yields the screen but keeps the session
-            // alive in the background (type `>` to return to it). It only closes
-            // the undo window and clears transient feedback; Esc is what ends the
-            // session for real.
-            if !trimmedQuery.isEmpty, !trimmedQuery.hasPrefix(">"),
-               actionController.hasResult {
-                actionController.dismissResult()
+            // `>` jumps into AI mode: the prefix is consumed once, and everything
+            // typed after is AI input until Esc leaves the mode.
+            if !isCommandMode, !isAIMode, trimmedQuery.hasPrefix(">") {
+                isAIMode = true
+                conversationCache = ConversationStore.load()
+                query = String(trimmedQuery.dropFirst())
+                return
             }
-            // `>` is the explicit "talk to AI" trigger. An instant deterministic
-            // preview tracks each keystroke; the model refines it only once typing
-            // pauses (see previewExplicitAIQuery). Suppress search/AI answers here.
-            if !isCommandMode, trimmedQuery.hasPrefix(">") {
+            if isAIMode {
                 aiAnswer.cancel()
-                actionController.previewExplicitAIQuery(trimmedQuery)
+                // While browsing/searching stored conversations (no active one),
+                // don't churn the model per keystroke; typing filters the list
+                // and Enter drives everything. Instant `@` forms still preview.
+                let browsing = actionController.sessionItems.isEmpty
+                    && !conversationCache.isEmpty
+                    && !trimmedQuery.contains("@")
+                if browsing {
+                    if actionController.isPresenting || actionController.isPlanning {
+                        actionController.cancel()
+                    }
+                } else {
+                    actionController.previewExplicitAIQuery(trimmedQuery)
+                }
                 return
             }
             // Editing away from `>` drops any pending or in-flight action.
@@ -974,6 +989,7 @@ struct LauncherView: View {
             isQueryFocused: $isQueryFocused,
             activeCommand: activeCommand,
             themeStore: themeStore,
+            isAIMode: isAIMode,
             showsBackground: showsBackground,
             revealToken: appearanceRevealToken,
             onSubmit: handleSubmit,
@@ -1113,15 +1129,23 @@ struct LauncherView: View {
         resultsContent
     }
 
-    /// Whether the AI session screen owns the panel area: composing a `>` query
-    /// (or session work is in flight). The session itself may stay alive in the
-    /// background while other screens show; `>` always returns to it. The query
-    /// text survives hide/recall, so Cmd+Space away and back lands on the panel.
+    /// Whether the AI session screen owns the panel area: simply, AI mode is on.
+    /// The mode (and its live conversation) survives hide/recall; Esc leaves.
     var isActionSessionUI: Bool {
-        guard !isCommandMode else { return false }
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasPrefix(">") { return true }
-        return actionController.isPresenting || actionController.isPlanning
+        isAIMode && !isCommandMode
+    }
+
+    /// Stored conversations matching the typed text (title or content), for the
+    /// browse list shown while no conversation is active. Capped at 9 so the
+    /// "number + Enter continues" affordance stays unambiguous.
+    var filteredConversations: [AIConversation] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let all = conversationCache
+        guard !term.isEmpty, Int(term) == nil else { return Array(all.prefix(9)) }
+        return Array(all.filter { convo in
+            convo.title.lowercased().contains(term)
+                || convo.items.contains { $0.text.lowercased().contains(term) }
+        }.prefix(9))
     }
 
     /// The AI session screen: actions, questions, and streaming answers stack in
@@ -1133,10 +1157,11 @@ struct LauncherView: View {
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 8) {
-                        ForEach(actionController.sessionItems) { item in
-                            sessionItemView(item)
-                        }
+                        Color.clear.frame(height: 1).id("session-top")
 
+                        // Current activity sits right under the input; completed
+                        // turns follow newest-first, so the latest is always on
+                        // top without scrolling.
                         if let pendingAction = actionController.pending {
                             PendingActionBar(
                                 action: pendingAction,
@@ -1157,23 +1182,67 @@ struct LauncherView: View {
                                 onUndo: {}
                             )
                         } else if actionController.sessionItems.isEmpty {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Add events and reminders, or ask anything")
-                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
-                                    .foregroundStyle(themeStore.fontColor())
-                                Text(">add lunch with Sarah tomorrow 1pm\n>remind me to call mom @ 5pm\n>how do I list open ports on macOS?")
-                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                                    .foregroundStyle(themeStore.mutedTextColor())
+                            if !filteredConversations.isEmpty {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Conversations  ·  type to search  ·  number + Enter continues")
+                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .semibold))
+                                        .foregroundStyle(themeStore.mutedTextColor())
+                                    ForEach(Array(filteredConversations.enumerated()), id: \.element.id) { index, convo in
+                                        Button {
+                                            actionController.continueConversation(convo)
+                                            query = ""
+                                        } label: {
+                                            HStack(spacing: 8) {
+                                                Text("\(index + 1)")
+                                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
+                                                    .foregroundStyle(themeStore.accentColor())
+                                                Text(convo.title)
+                                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
+                                                    .foregroundStyle(themeStore.fontColor())
+                                                    .lineLimit(1)
+                                                Spacer()
+                                                Text(convo.updatedAt.formatted(.relative(presentation: .named)))
+                                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                                                    .foregroundStyle(themeStore.mutedTextColor())
+                                            }
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 6)
+                                            .background(themeStore.controlFillColor().opacity(0.55), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.horizontal, 4)
+                            } else {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Add events and reminders, or ask anything")
+                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
+                                        .foregroundStyle(themeStore.fontColor())
+                                    Text("add lunch with Sarah tomorrow 1pm\nremind me to call mom @ 5pm\nhow do I list open ports on macOS?")
+                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                                        .foregroundStyle(themeStore.mutedTextColor())
+                                }
+                                .padding(.horizontal, 4)
+                                .padding(.top, 6)
                             }
-                            .padding(.horizontal, 4)
-                            .padding(.top, 6)
                         }
 
-                        Color.clear.frame(height: 1).id("session-bottom")
+                        // Newest TURN first, but a question stays glued above its
+                        // answer inside the turn, so reading order within an
+                        // exchange is never flipped.
+                        ForEach(sessionTurns.reversed()) { turn in
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(turn.items) { item in
+                                    sessionItemView(item)
+                                }
+                            }
+                        }
                     }
                 }
-                .onChange(of: actionController.sessionItems) { _, _ in
-                    proxy.scrollTo("session-bottom", anchor: .bottom)
+                // Scroll only when a NEW item lands, not on every streamed token,
+                // so the user can scroll freely while an answer generates.
+                .onChange(of: actionController.sessionItems.count) { _, _ in
+                    proxy.scrollTo("session-top", anchor: .top)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1185,6 +1254,50 @@ struct LauncherView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// A conversational exchange: a user question plus its answer, or one
+    /// standalone item (an action bar). Display reverses by turn, never within.
+    private struct SessionTurn: Identifiable {
+        let id: UUID
+        let items: [ActionSessionItem]
+    }
+
+    private var sessionTurns: [SessionTurn] {
+        var groups: [[ActionSessionItem]] = []
+        for item in actionController.sessionItems {
+            if item.kind == .answer, groups.last?.last?.kind == .user {
+                groups[groups.count - 1].append(item)
+            } else {
+                groups.append([item])
+            }
+        }
+        return groups.map { SessionTurn(id: $0[0].id, items: $0) }
+    }
+
+    private static let userDisplayName: String = {
+        let name = NSFullUserName()
+        return name.isEmpty ? "You" : name
+    }()
+
+    /// Chat header: a system symbol for the user, Look's own app icon (nil
+    /// symbol) for the assistant, with the speaker's name.
+    private func chatHeader(name: String, systemIcon: String? = nil) -> some View {
+        HStack(spacing: 5) {
+            if let systemIcon {
+                Image(systemName: systemIcon)
+                    .font(.system(size: CGFloat(themeStore.settings.fontSize - 3)))
+                    .foregroundStyle(themeStore.accentColor())
+            } else {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 16, height: 16)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            }
+            Text(name)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .semibold))
+                .foregroundStyle(themeStore.mutedTextColor())
+        }
     }
 
     @ViewBuilder
@@ -1199,17 +1312,32 @@ struct LauncherView: View {
                 onUndo: { actionController.undoLast() }
             )
         case .user:
-            HStack(alignment: .top, spacing: 8) {
-                Text("›")
-                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
-                    .foregroundStyle(themeStore.accentColor())
-                Text(item.text)
-                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
-                    .foregroundStyle(themeStore.fontColor())
+            HStack(alignment: .top, spacing: 0) {
+                Spacer(minLength: 60)
+                VStack(alignment: .trailing, spacing: 4) {
+                    chatHeader(name: Self.userDisplayName, systemIcon: "person.crop.circle.fill")
+                    Text(item.text)
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
+                        .foregroundStyle(themeStore.fontColor())
+                        .textSelection(.enabled)
+                        .padding(10)
+                        .background(
+                            themeStore.accentColor().opacity(0.14),
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
             }
-            .padding(.horizontal, 4)
-            .padding(.top, 4)
         case .answer:
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: 4) {
+                    chatHeader(name: item.source ?? "AI")
+                    answerBody(item)
+                }
+                Spacer(minLength: 60)
+            }
+        }
+    }
+
+    private func answerBody(_ item: ActionSessionItem) -> some View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(ChatMarkdown.segments(from: item.text).enumerated()), id: \.offset) { _, segment in
                     switch segment {
@@ -1219,20 +1347,13 @@ struct LauncherView: View {
                             .foregroundStyle(themeStore.fontColor())
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                    case .code(let code):
-                        Text(code)
-                            .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
-                            .foregroundStyle(themeStore.fontColor())
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                            .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    case .code(let code, let language):
+                        AICodeBlockView(code: code, language: language, themeStore: themeStore)
                     }
                 }
             }
             .padding(10)
             .background(themeStore.controlFillColor().opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
     }
 
     /// Inline markdown (bold, italic, `code`, links) for chat prose. Block

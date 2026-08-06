@@ -50,14 +50,19 @@ nonisolated final class EventKitService: EventStoring, @unchecked Sendable {
     /// context so schedule questions are answerable. Nil without full (read)
     /// access. Local only: this text goes to the local model, nowhere else.
     func upcomingEventsSummary(days: Int = 7) -> String? {
-        guard calendarAccess == .authorized else { return nil }
         let start = Date()
         guard let end = Calendar.current.date(byAdding: .day, value: days, to: start) else {
             return nil
         }
+        return eventsSummary(from: start, to: end, emptyText: "No events in the next \(days) days.")
+    }
+
+    /// Window variant, so "next week" / "tomorrow" questions list the right days.
+    func eventsSummary(from start: Date, to end: Date, emptyText: String) -> String? {
+        guard calendarAccess == .authorized else { return nil }
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
         let events = store.events(matching: predicate).prefix(30)
-        guard !events.isEmpty else { return "No events in the next \(days) days." }
+        guard !events.isEmpty else { return emptyText }
 
         let dayFormat = DateFormatter()
         dayFormat.dateFormat = "EEE MMM d"

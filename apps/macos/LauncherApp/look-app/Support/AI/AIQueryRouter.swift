@@ -57,10 +57,10 @@ final class AIQueryRouter: @unchecked Sendable {
     }
 
     /// Warm up the provider so the next answer is faster. Safe to call often.
+    /// Not gated on availability: providers self-guard, and touching a provider
+    /// that reports transiently-unavailable is exactly what wakes it up.
     func prewarm(_ kind: AIProviderKind) {
-        let provider = provider(for: kind)
-        guard provider.availability.isAvailable else { return }
-        provider.prewarm()
+        provider(for: kind).prewarm()
     }
 
     /// Current availability of `kind`, for surfacing status in Settings.

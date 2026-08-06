@@ -12,7 +12,7 @@ final class ChatMarkdownTests: XCTestCase {
         let raw = "Before\n```swift\nlet x = 1\n```\nAfter"
         XCTAssertEqual(
             ChatMarkdown.segments(from: raw),
-            [.text("Before"), .code("let x = 1"), .text("After")])
+            [.text("Before"), .code("let x = 1", language: "swift"), .text("After")])
     }
 
     func testUnclosedFenceRendersAsCode() {
@@ -20,14 +20,14 @@ final class ChatMarkdownTests: XCTestCase {
         let raw = "Intro\n```\nfn main() {"
         XCTAssertEqual(
             ChatMarkdown.segments(from: raw),
-            [.text("Intro"), .code("fn main() {")])
+            [.text("Intro"), .code("fn main() {", language: nil)])
     }
 
     func testMultipleCodeBlocks() {
-        let raw = "```\na\n```\nmiddle\n```\nb\n```"
+        let raw = "```rust\na\n```\nmiddle\n```\nb\n```"
         XCTAssertEqual(
             ChatMarkdown.segments(from: raw),
-            [.code("a"), .text("middle"), .code("b")])
+            [.code("a", language: "rust"), .text("middle"), .code("b", language: nil)])
     }
 
     func testEmptySegmentsAreDropped() {

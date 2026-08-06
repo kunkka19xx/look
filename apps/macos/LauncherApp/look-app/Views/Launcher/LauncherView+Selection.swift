@@ -255,12 +255,14 @@ extension LauncherView {
             },
             onCancelAction: { [self] in
                 // Two-step Esc: first cancels a pending confirm (keep composing);
-                // with nothing pending, it leaves the AI session for home.
+                // with nothing pending, it saves the conversation and leaves AI
+                // mode for home.
                 if actionController.isPresenting {
                     actionController.cancel()
                 } else {
                     actionController.endSession()
                     query = ""
+                    isAIMode = false
                 }
             },
             actionConfirmationActive: { [self] in

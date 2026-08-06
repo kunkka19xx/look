@@ -65,7 +65,10 @@ struct AppleIntelligenceProvider: AIQueryProvider {
     /// user types.
     func prewarm() {
         #if canImport(FoundationModels)
-        guard #available(macOS 26, *), availability.isAvailable else { return }
+        // Deliberately NOT gated on availability: right after app launch the
+        // framework can report unavailable until first touched, and touching it
+        // here is what wakes it up.
+        guard #available(macOS 26, *) else { return }
         Task { @MainActor in AppleIntelligenceWarmer.shared.prewarm() }
         #endif
     }
