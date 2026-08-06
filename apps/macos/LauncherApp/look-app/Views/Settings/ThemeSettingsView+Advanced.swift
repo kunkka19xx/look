@@ -105,6 +105,8 @@ extension ThemeSettingsView {
                         }
                     }
 
+                    CalendarConnectRow(themeStore: themeStore)
+
                     Divider()
                         .overlay(themeStore.dividerColor())
                         .padding(.vertical, 4)

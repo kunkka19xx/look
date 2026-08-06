@@ -292,6 +292,8 @@
 				INFOPLIST_KEY_LSMultipleInstancesProhibited = NO;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Look uses Finder to empty the Trash and read how many items it contains.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Look reads and toggles Bluetooth power from the launcher's quick actions.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Look creates and edits calendar events when you ask it to.";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Look creates and completes reminders when you ask it to.";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				OTHER_LDFLAGS = (
@@ -335,6 +337,8 @@
 				INFOPLIST_KEY_LSMultipleInstancesProhibited = NO;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Look uses Finder to empty the Trash and read how many items it contains.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Look reads and toggles Bluetooth power from the launcher's quick actions.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Look creates and edits calendar events when you ask it to.";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Look creates and completes reminders when you ask it to.";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				OTHER_LDFLAGS = (

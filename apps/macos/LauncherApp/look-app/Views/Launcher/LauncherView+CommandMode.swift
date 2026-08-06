@@ -93,6 +93,23 @@ extension LauncherView {
 
     func handleSubmit() {
         logUIEvent("submit isCommand=\(isCommandMode) active=\(activeCommandID ?? "nil") selectedKill=\(selectedKillSuggestionIndex.map(String.init) ?? "nil") pendingKill=\(pendingKillCandidate?.displayName ?? "nil") input='\(commandArgsPart)'")
+
+        // A pending action bar takes Enter as "confirm".
+        if actionController.isPresenting {
+            actionController.confirm()
+            query = ""
+            DispatchQueue.main.async { isQueryFocused = true }
+            return
+        }
+
+        // `>add ...` / `>remind ...` typed in the main box proposes an action.
+        if !isCommandMode, let toolCall = ExplicitActionParser.parse(
+            query.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            actionController.propose(toolCall)
+            DispatchQueue.main.async { isQueryFocused = true }
+            return
+        }
+
         if isCommandMode {
             if activeCommandID == AppConstants.Launcher.Command.kill, let selectedNum = selectedKillSuggestionIndex {
                 if let candidate = killSuggestions.first(where: { $0.number == selectedNum }) {

@@ -35,6 +35,7 @@ struct LauncherView: View {
     @Environment(\.openWindow) var openWindow
     @StateObject var clipboardStore = ClipboardHistoryStore()
     @StateObject var aiAnswer = AIAnswerController()
+    @ObservedObject var actionController = ActionController.shared
 
     @State var query = ""
     @State var commandInput = ""
@@ -736,6 +737,23 @@ struct LauncherView: View {
             if pendingHideAppResult != nil {
                 pendingHideAppResult = nil
             }
+            // `>add ...` / `>remind ...` is an action, not a search or a question.
+            // Live-propose so the confirm bar tracks what's typed; suppress search,
+            // AI answers, and web suggestions entirely.
+            let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !isCommandMode, trimmedQuery.hasPrefix(">") {
+                aiAnswer.cancel()
+                if let toolCall = ExplicitActionParser.parse(trimmedQuery) {
+                    actionController.propose(toolCall)
+                } else {
+                    actionController.cancel()
+                }
+                return
+            }
+            // Editing away from a `>` line dismisses any pending action.
+            if actionController.isPresenting {
+                actionController.cancel()
+            }
             if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
                 aiAnswer.cancel()
                 enterCommandMode(commandID: cmd.id, prefilledInput: cmd.args)
@@ -1083,6 +1101,25 @@ struct LauncherView: View {
 
     @ViewBuilder
     private var resultsRow: some View {
+        if let pending = actionController.pending {
+            VStack(spacing: 8) {
+                PendingActionBar(
+                    action: pending,
+                    themeStore: themeStore,
+                    onConfirm: { actionController.confirm() },
+                    onCancel: { actionController.cancel() }
+                )
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+                resultsContent
+            }
+        } else {
+            resultsContent
+        }
+    }
+
+    @ViewBuilder
+    private var resultsContent: some View {
         if aiAnswer.isActive {
             if displayedResults.isEmpty {
                 aiAnswerOnlyRow

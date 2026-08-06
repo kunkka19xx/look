@@ -253,6 +253,12 @@ extension LauncherView {
             hideAppConfirmationActive: { [self] in
                 pendingHideAppResult != nil
             },
+            onCancelAction: { [self] in
+                actionController.cancel()
+            },
+            actionConfirmationActive: { [self] in
+                actionController.isPresenting
+            },
             onToggleQuickAction: { [self] in
                 togglePrimaryQuickAction()
             },

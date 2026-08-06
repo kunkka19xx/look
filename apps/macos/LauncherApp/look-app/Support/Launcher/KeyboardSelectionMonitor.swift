@@ -51,6 +51,8 @@ final class KeyboardSelectionMonitor {
         onConfirmHideApp: (@MainActor () -> Void)? = nil,
         onCancelHideApp: (@MainActor () -> Void)? = nil,
         hideAppConfirmationActive: @escaping @MainActor () -> Bool = { false },
+        onCancelAction: (@MainActor () -> Void)? = nil,
+        actionConfirmationActive: @escaping @MainActor () -> Bool = { false },
         onToggleQuickAction: (@MainActor () -> Void)? = nil,
         hasToggleQuickAction: @escaping @MainActor () -> Bool = { false },
         isLaunchpadActive: @escaping @MainActor () -> Bool = { false },
@@ -288,6 +290,11 @@ final class KeyboardSelectionMonitor {
 
                 if deleteConfirmationActive() {
                     onCancelDelete?()
+                    return nil
+                }
+
+                if actionConfirmationActive() {
+                    onCancelAction?()
                     return nil
                 }
 

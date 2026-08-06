@@ -23,6 +23,13 @@ let package = Package(
                 "Support/Launcher/BridgeErrorMapping.swift",
                 "Support/Launcher/SyntheticRow.swift",
                 "Support/AI/OllamaCodec.swift",
+                "Support/Actions/AIValue.swift",
+                "Support/Actions/ActionTypes.swift",
+                "Support/Actions/ActionRegistry.swift",
+                "Support/Actions/DatePhrase.swift",
+                "Support/Actions/CalendarAddEventTool.swift",
+                "Support/Actions/ReminderAddTool.swift",
+                "Support/Actions/ExplicitActionParser.swift",
                 "Support/SingleInstanceLock.swift",
                 "Models/LauncherResult.swift",
             ]
