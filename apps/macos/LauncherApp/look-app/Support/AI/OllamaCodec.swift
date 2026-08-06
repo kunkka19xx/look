@@ -75,6 +75,18 @@ nonisolated enum OllamaCodec {
         return present ? .available : .modelMissing
     }
 
+    /// Names of installed models from `GET /api/tags`, sorted. Empty on any
+    /// failure, so the caller can fall back to manual entry.
+    static func modelNames(fromTags data: Data) -> [String] {
+        guard
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let models = root["models"] as? [[String: Any]]
+        else {
+            return []
+        }
+        return models.compactMap { $0["name"] as? String }.sorted()
+    }
+
     /// Decodes the `message.content` JSON string of a non-streamed understand
     /// call into a `Plan`. Returns nil on any shape mismatch.
     static func decodePlan(fromChatResponse data: Data) -> Plan? {

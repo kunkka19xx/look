@@ -111,6 +111,21 @@ struct OllamaProvider: AIQueryProvider {
         }
     }
 
+    /// Installed model names from `GET /api/tags`, for the Settings picker. Empty
+    /// when Ollama is unreachable, so the UI falls back to manual entry.
+    nonisolated static func listModels(host: String) async -> [String] {
+        guard let url = URL(string: host + "/api/tags") else { return [] }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2
+        guard
+            let (data, response) = try? await URLSession.shared.data(for: request),
+            (response as? HTTPURLResponse)?.statusCode == 200
+        else {
+            return []
+        }
+        return OllamaCodec.modelNames(fromTags: data)
+    }
+
     private static func jsonPost(_ url: URL, _ body: Data) -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

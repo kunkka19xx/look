@@ -24,8 +24,13 @@ extension LauncherView {
     }
 
     func activateLauncherModeAndFocus() {
+        // Preserve the Settings screen across hide/recall. Leaving Settings is an
+        // explicit action (Escape / close button -> closeSettingsPanel); recalling
+        // Look should not silently drop the user back to home. Just restore focus
+        // to the settings input (focusActiveInput routes there when in Settings).
         if appUIState.showsThemeSettings {
-            appUIState.showsThemeSettings = false
+            focusActiveInput()
+            return
         }
 
         if isCommandMode {
