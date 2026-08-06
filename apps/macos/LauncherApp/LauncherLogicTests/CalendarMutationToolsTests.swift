@@ -30,18 +30,6 @@ final class CalendarMutationToolsTests: XCTestCase {
         XCTAssertNil(TitleMatcher.score(query: "zebra", title: "Team Sync"))
     }
 
-    // ── referent phrases ("this event", "it") ───────────────────────────
-
-    func testReferentPhrases() {
-        XCTAssertTrue(ReferentPhrase.isReferent("it"))
-        XCTAssertTrue(ReferentPhrase.isReferent("this event"))
-        XCTAssertTrue(ReferentPhrase.isReferent("that meeting"))
-        XCTAssertTrue(ReferentPhrase.isReferent("the last one"))
-        XCTAssertFalse(ReferentPhrase.isReferent("dentist"))
-        XCTAssertFalse(ReferentPhrase.isReferent("this dentist visit"))
-        XCTAssertFalse(ReferentPhrase.isReferent("the meeting"))  // names, not refers
-    }
-
     // ── cancel ──────────────────────────────────────────────────────────
 
     func testCancelConfidentMatchPerformsAndUndoRecreates() throws {
@@ -121,6 +109,35 @@ final class CalendarMutationToolsTests: XCTestCase {
         let newClock = Calendar.current.dateComponents(
             [.hour, .minute], from: store.events[dentistID]!.start)
         XCTAssertEqual(newClock, oldClock)
+    }
+
+    func testLoneWeakSubsequenceMatchBecomesChoiceNotMutation() throws {
+        // The wrong-target bug: "it" subsequence-matches "DentIsT". A lone weak
+        // match must never auto-plan a mutation; it becomes a one-item choice.
+        let (store, dentistID, _, _) = try seededStore()
+        let tool = CalendarCancelEventTool(store: store)
+        guard case .needsChoice(let options) = tool.plan(["match": .string("it")], now: now)
+        else { return XCTFail("expected needsChoice, never a silent mutation") }
+        XCTAssertEqual(options.first?.id, dentistID)
+        XCTAssertEqual(store.events.count, 3)  // untouched
+    }
+
+    // ── remove reminder ─────────────────────────────────────────────────
+
+    func testRemoveReminderAndUndoRecreates() throws {
+        let store = FakeStore()
+        let id = try store.addReminder(title: "Walk Dog", due: nil)
+        let tool = ReminderRemoveTool(store: store)
+
+        guard case .planned(let action) = tool.plan(["match": .string("walk dog")], now: now)
+        else { return XCTFail("expected planned") }
+        XCTAssertTrue(action.preview.detail.contains("Walk Dog"))
+
+        let receipt = try action.perform()
+        XCTAssertNil(store.reminders[id])
+
+        try receipt.undo()
+        XCTAssertTrue(store.reminders.values.contains { $0.title == "Walk Dog" })
     }
 
     // ── complete reminder ───────────────────────────────────────────────

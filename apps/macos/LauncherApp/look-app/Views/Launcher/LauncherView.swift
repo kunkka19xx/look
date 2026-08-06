@@ -1367,16 +1367,15 @@ struct LauncherView: View {
 
     private func answerBody(_ item: ActionSessionItem) -> some View {
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(ChatMarkdown.segments(from: item.text).enumerated()), id: \.offset) { _, segment in
-                    switch segment {
-                    case .text(let text):
-                        Text(inlineMarkdown(text))
+                ForEach(Array(EngineBridge.shared.aiMarkdownSegments(item.text).enumerated()), id: \.offset) { _, segment in
+                    if segment.kind == "code" {
+                        AICodeBlockView(code: segment.text, language: segment.language, themeStore: themeStore)
+                    } else {
+                        Text(inlineMarkdown(segment.text))
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                             .foregroundStyle(themeStore.fontColor())
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                    case .code(let code, let language):
-                        AICodeBlockView(code: code, language: language, themeStore: themeStore)
                     }
                 }
             }

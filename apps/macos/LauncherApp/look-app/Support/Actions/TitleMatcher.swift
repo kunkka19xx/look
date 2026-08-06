@@ -43,30 +43,13 @@ nonisolated enum TitleMatcher {
             }
             .sorted { $0.1 > $1.1 }
         guard let top = scored.first else { return .none }
-        if scored.count == 1 { return .one(top.0) }
-        if top.1 >= 300, top.1 > scored[1].1 { return .one(top.0) }
+        // Auto-plan requires a STRONG score (>= word-prefix tier) AND a clear
+        // lead. A lone weak subsequence hit becomes a one-item choice instead of
+        // silently mutating the wrong thing.
+        if top.1 >= 300, scored.count == 1 || top.1 > scored[1].1 {
+            return .one(top.0)
+        }
         return .several(scored.prefix(5).map { $0.0 })
     }
 }
 
-/// "it", "that", "this event", "the last one": phrases that refer to something
-/// from the conversation rather than naming it. Resolved against the session's
-/// recent targets (last action + last listing) before any store matching.
-nonisolated enum ReferentPhrase {
-    private static let pronouns: Set<String> = ["it", "that", "this"]
-    private static let nouns: Set<String> = [
-        "event", "meeting", "appointment", "reminder", "task", "one",
-    ]
-
-    static func isReferent(_ phrase: String) -> Bool {
-        var words = phrase.lowercased()
-            .split(whereSeparator: { !$0.isLetter })
-            .map(String.init)
-        if words.first == "the" { words.removeFirst() }
-        if words == ["last", "one"] { return true }
-        guard let first = words.first else { return false }
-        if words.count == 1 { return pronouns.contains(first) }
-        if words.count == 2 { return pronouns.contains(first) && nouns.contains(words[1]) }
-        return false
-    }
-}

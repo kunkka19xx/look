@@ -158,6 +158,59 @@ nonisolated struct ReminderCompleteTool: ActionTool {
     }
 }
 
+nonisolated struct ReminderRemoveTool: ActionTool {
+    let id = "reminder.remove"
+    let title = "Remove reminder"
+    let store: EventStoring
+
+    var planningDescription: String {
+        "reminder.remove: delete an existing reminder. params: match "
+            + "(words identifying the reminder)."
+    }
+
+    var paramsSchema: AIValue {
+        .schema(properties: ["match": .schemaType("string")], required: ["match"])
+    }
+
+    func plan(_ params: [String: AIValue], now: Date) -> PlanResult {
+        let candidates = store.reminderCandidates()
+
+        let picked: ReminderCandidateData?
+        if let chosen = params["chosen_id"]?.stringValue {
+            guard let match = candidates.first(where: { $0.id == chosen }) else {
+                return .invalid("That reminder is gone.")
+            }
+            picked = match
+        } else {
+            guard let match = params["match"]?.stringValue, !match.isEmpty else {
+                return .invalid("Which reminder?")
+            }
+            switch TitleMatcher.resolve(candidates, query: match, title: \.title) {
+            case .none:
+                return .invalid("No open reminder matching \"\(match)\".")
+            case .several(let options):
+                return .needsChoice(options.map {
+                    ActionCandidate(id: $0.id, label: $0.title)
+                })
+            case .one(let winner):
+                picked = winner
+            }
+        }
+        guard let reminder = picked else { return .invalid("Which reminder?") }
+
+        let store = self.store
+        let preview = ActionPreview(
+            title: "Remove reminder", detail: "\"\(reminder.title)\"")
+        return .planned(PlannedAction(toolID: id, preview: preview, perform: {
+            try store.removeReminder(id: reminder.id)
+            // Undo recreates from the snapshot (new id; content identical).
+            return ActionReceipt(summary: "Removed reminder \"\(reminder.title)\"", undo: {
+                _ = try store.addReminder(title: reminder.title, due: reminder.due)
+            })
+        }))
+    }
+}
+
 /// Shared event resolution: `chosen_id` bypass, then the match gate.
 nonisolated private enum EventResolution {
     case planned(EventCandidateData)

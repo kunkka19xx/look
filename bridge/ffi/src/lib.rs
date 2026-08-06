@@ -1,5 +1,6 @@
 #![allow(unsafe_code)]
 
+mod ai_api;
 mod answers_api;
 mod calc_api;
 mod lunar_api;
@@ -204,6 +205,26 @@ pub extern "C" fn look_fuzzy_score(query: *const c_char, title: *const c_char) -
 }
 
 /// Network-free check of whether `query` matches an instant-answer provider.
+/// Whether a mutate-tool `match` phrase refers to something from the AI
+/// session ("it", "this event") rather than naming it. Pure, no allocation.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_is_referent(phrase: *const c_char) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_is_referent_impl(phrase)
+    }))
+    .unwrap_or(false)
+}
+
+/// Markdown segmentation for AI chat answers: JSON array of
+/// `{kind: "text"|"code", text, language?}`. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_markdown_segments_json(text: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_markdown_segments_json_impl(text)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn look_instant_has_match(query: *const c_char) -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

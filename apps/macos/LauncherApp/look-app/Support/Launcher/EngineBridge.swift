@@ -36,6 +36,14 @@ private func look_fuzzy_score(_ query: UnsafePointer<CChar>?, _ title: UnsafePoi
 nonisolated
 private func look_instant_answer_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_ai_is_referent")
+nonisolated
+private func look_ai_is_referent(_ phrase: UnsafePointer<CChar>?) -> Bool
+
+@_silgen_name("look_ai_markdown_segments_json")
+nonisolated
+private func look_ai_markdown_segments_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_instant_has_match")
 nonisolated
 private func look_instant_has_match(_ query: UnsafePointer<CChar>?) -> Bool
@@ -318,6 +326,30 @@ final class EngineBridge: @unchecked Sendable {
     /// Shared `core/matching` fuzzy score for `query` vs `title` (identical
     /// ranking to linows), or nil on no match. Both sides must be pre-lowercased
     /// by the caller (the scorer is case-sensitive). Cheap - safe while typing.
+    /// One chat-answer chunk from the Rust-core markdown segmentation (core/ai).
+    struct AIMarkdownSegment: Decodable, Equatable {
+        let kind: String  // "text" | "code"
+        let text: String
+        let language: String?
+    }
+
+    /// Whether a mutate `match` phrase refers to conversation context ("it",
+    /// "this event") rather than naming an item. Rust core (core/ai).
+    nonisolated func aiIsReferent(_ phrase: String) -> Bool {
+        phrase.withCString { look_ai_is_referent($0) }
+    }
+
+    /// Markdown segmentation for AI chat answers. Rust core (core/ai).
+    nonisolated func aiMarkdownSegments(_ text: String) -> [AIMarkdownSegment] {
+        guard let ptr = text.withCString({ look_ai_markdown_segments_json($0) }) else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let segments = try? JSONDecoder().decode([AIMarkdownSegment].self, from: data)
+        else { return [] }
+        return segments
+    }
+
     nonisolated func fuzzyScore(query: String, title: String) -> Int? {
         let score = query.withCString { queryCstr in
             title.withCString { titleCstr in

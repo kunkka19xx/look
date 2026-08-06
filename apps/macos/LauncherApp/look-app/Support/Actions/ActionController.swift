@@ -61,6 +61,7 @@ final class ActionController: ObservableObject {
         registry.register(CalendarCancelEventTool(store: EventKitService.shared))
         registry.register(CalendarMoveEventTool(store: EventKitService.shared))
         registry.register(ReminderCompleteTool(store: EventKitService.shared))
+        registry.register(ReminderRemoveTool(store: EventKitService.shared))
         self.registry = registry
         self.planner = ActionPlanner(registry: registry)
     }
@@ -415,28 +416,49 @@ final class ActionController: ObservableObject {
 
     var awaitingChoice: Bool { pendingChoice != nil }
 
+    /// Destructive tools that mean the same intent in the other domain, so
+    /// "remove it" right after adding a REMINDER remaps event-cancel to
+    /// reminder-remove instead of fuzzy-matching "it" against event titles.
+    private static let domainSibling: [String: String] = [
+        "calendar.cancel_event": "reminder.remove",
+        "reminder.remove": "calendar.cancel_event",
+    ]
+
     func propose(_ call: ToolCall, allowChoice: Bool = true) {
         pendingChoice = nil
+        var toolID = call.toolID
         var params = call.params
         // "remove it" / "cancel this event": referent phrases resolve against
         // what the conversation just touched or LISTED. One target -> direct;
-        // several -> the listing becomes the choice list; none -> normal match.
-        if let match = params["match"]?.stringValue, ReferentPhrase.isReferent(match) {
-            let domain = call.toolID.hasPrefix("reminder") ? "reminder" : "calendar"
-            let targets = recentTargets.filter { $0.domain == domain }
+        // several -> the listing becomes the choice list. A referent NEVER falls
+        // through to title matching ("it" must not fuzzy-match "DentIsT").
+        if let match = params["match"]?.stringValue, EngineBridge.shared.aiIsReferent(match) {
+            let domain = toolID.hasPrefix("reminder") ? "reminder" : "calendar"
+            var targets = recentTargets.filter { $0.domain == domain }
+            if targets.isEmpty, let sibling = Self.domainSibling[toolID] {
+                let others = recentTargets.filter { $0.domain != domain }
+                if !others.isEmpty {
+                    toolID = sibling
+                    targets = others
+                }
+            }
             if targets.count == 1 {
                 params["chosen_id"] = .string(targets[0].id)
             } else if targets.count > 1 {
                 guard allowChoice else { return }
                 pending = nil
                 pendingChoice = PendingChoice(
-                    toolID: call.toolID, params: params,
+                    toolID: toolID, params: params,
                     candidates: targets.map { ActionCandidate(id: $0.id, label: $0.label) })
                 feedback = ""
                 return
+            } else {
+                pending = nil
+                feedback = "Nothing recent to refer to. Name the item instead."
+                return
             }
         }
-        let call = ToolCall(toolID: call.toolID, params: params)
+        let call = ToolCall(toolID: toolID, params: params)
         switch registry.plan(call, now: Date()) {
         case .planned(let action):
             pending = action

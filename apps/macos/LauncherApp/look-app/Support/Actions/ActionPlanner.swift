@@ -18,6 +18,7 @@ final class ActionPlanner {
         "cancel": "calendar.cancel_event",
         "move": "calendar.move_event",
         "complete": "reminder.complete",
+        "delete": "reminder.remove",
     ]
 
     init(registry: ActionRegistry) {
@@ -121,6 +122,7 @@ final class ActionPlanner {
         - "move": reschedule an EXISTING event. params: match, when (the NEW \
         time phrase copied verbatim, e.g. "4pm", "friday 9am").
         - "complete": mark an EXISTING reminder done. params: match.
+        - "delete": remove an EXISTING reminder from the list. params: match.
         Pronouns and references are valid match values: "remove it" -> match \
         "it"; "cancel this event" -> match "this event".
         Reply with JSON only: {"steps":[{"tool":"...","params":{...}}]}.
