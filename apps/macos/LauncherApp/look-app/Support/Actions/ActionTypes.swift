@@ -58,12 +58,15 @@ nonisolated protocol ActionTool {
     var id: String { get }
     var title: String { get }
     var paramsSchema: AIValue { get }
+    /// One line for the model planner: what the tool does and its params, so the
+    /// system prompt can list it. New tools document themselves here.
+    var planningDescription: String { get }
     func plan(_ params: [String: AIValue], now: Date) -> PlanResult
 }
 
 /// Seam over EventKit so tools stay in the package and are tested with a fake.
 nonisolated protocol EventStoring {
-    func addEvent(title: String, start: Date, end: Date) throws -> String
+    func addEvent(title: String, start: Date, end: Date, isAllDay: Bool) throws -> String
     func removeEvent(id: String) throws
     func addReminder(title: String, due: Date?) throws -> String
     func removeReminder(id: String) throws

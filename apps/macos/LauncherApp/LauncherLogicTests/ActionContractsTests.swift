@@ -58,17 +58,17 @@ final class ActionContractsTests: XCTestCase {
         XCTAssertEqual(call?.params["when"], .string("tomorrow 12pm"))
     }
 
-    func testParsesRemindWithoutWhen() {
-        let call = ExplicitActionParser.parse(">remind call mom")
-        XCTAssertEqual(call?.toolID, "reminder.add")
-        XCTAssertEqual(call?.params["title"], .string("call mom"))
-        XCTAssertNil(call?.params["when"])
-    }
-
     func testParsesRemindWithSeparator() {
         let call = ExplicitActionParser.parse(">remind call mom @ 5pm")
+        XCTAssertEqual(call?.toolID, "reminder.add")
         XCTAssertEqual(call?.params["title"], .string("call mom"))
         XCTAssertEqual(call?.params["when"], .string("5pm"))
+    }
+
+    func testNaturalLanguageWithoutSeparatorReturnsNil() {
+        // No `@` = natural language, deferred to the model, never guessed here.
+        XCTAssertNil(ExplicitActionParser.parse(">remind me to walk my dog at 7pm"))
+        XCTAssertNil(ExplicitActionParser.parse(">add lunch tomorrow"))
     }
 
     // ── Date shorthand normalization ────────────────────────────────────
@@ -85,8 +85,8 @@ final class ActionContractsTests: XCTestCase {
     }
 
     func testNonActionInputReturnsNil() {
-        XCTAssertNil(ExplicitActionParser.parse("add lunch tomorrow"))
-        XCTAssertNil(ExplicitActionParser.parse(">bogus something"))
-        XCTAssertNil(ExplicitActionParser.parse(">add"))
+        XCTAssertNil(ExplicitActionParser.parse("add lunch @ 1pm"))    // no `>`
+        XCTAssertNil(ExplicitActionParser.parse(">bogus something @ 5pm")) // unknown verb
+        XCTAssertNil(ExplicitActionParser.parse(">add"))               // no spec
     }
 }

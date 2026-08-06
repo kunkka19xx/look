@@ -102,10 +102,11 @@ extension LauncherView {
             return
         }
 
-        // `>add ...` / `>remind ...` typed in the main box proposes an action.
-        if !isCommandMode, let toolCall = ExplicitActionParser.parse(
-            query.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            actionController.propose(toolCall)
+        // `>` query: plan on Enter (deterministic first, model fallback). Not
+        // live, so the model never re-runs while typing.
+        let submitTrimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !isCommandMode, submitTrimmed.hasPrefix(">") {
+            actionController.submitExplicitAIQuery(submitTrimmed)
             DispatchQueue.main.async { isQueryFocused = true }
             return
         }

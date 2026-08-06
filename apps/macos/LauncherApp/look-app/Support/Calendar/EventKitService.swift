@@ -48,11 +48,12 @@ nonisolated final class EventKitService: EventStoring, @unchecked Sendable {
 
     // MARK: EventStoring
 
-    func addEvent(title: String, start: Date, end: Date) throws -> String {
+    func addEvent(title: String, start: Date, end: Date, isAllDay: Bool) throws -> String {
         let event = EKEvent(eventStore: store)
         event.title = title
         event.startDate = start
         event.endDate = end
+        event.isAllDay = isAllDay
         event.calendar = store.defaultCalendarForNewEvents
         try store.save(event, span: .thisEvent, commit: true)
         return event.eventIdentifier

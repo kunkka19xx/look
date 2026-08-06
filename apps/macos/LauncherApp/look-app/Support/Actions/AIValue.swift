@@ -32,6 +32,19 @@ nonisolated enum AIValue: Equatable, Codable {
         .object(["type": .string(type)])
     }
 
+    /// Foundation JSON representation (for `JSONSerialization`, e.g. the Ollama
+    /// `format` field).
+    var jsonObject: Any {
+        switch self {
+        case .string(let s): return s
+        case .number(let n): return n
+        case .bool(let b): return b
+        case .null: return NSNull()
+        case .array(let a): return a.map { $0.jsonObject }
+        case .object(let o): return o.mapValues { $0.jsonObject }
+        }
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         // Order matters: bool before number so `true` isn't read as a number.

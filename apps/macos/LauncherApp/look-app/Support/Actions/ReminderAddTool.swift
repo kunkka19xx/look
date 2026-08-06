@@ -6,6 +6,10 @@ nonisolated struct ReminderAddTool: ActionTool {
     let title = "Add reminder"
     let store: EventStoring
 
+    var planningDescription: String {
+        "reminder.add: create a reminder. params: title, when (optional time phrase)."
+    }
+
     var paramsSchema: AIValue {
         .schema(
             properties: [

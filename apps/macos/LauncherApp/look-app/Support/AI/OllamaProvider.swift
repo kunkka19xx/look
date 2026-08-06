@@ -87,6 +87,17 @@ struct OllamaProvider: AIQueryProvider {
     func prewarm() {
         let (host, model) = config
         OllamaHealthCache.shared.refreshIfStale(host: host, model: model)
+        OllamaHealthCache.shared.warmModelIfDue(host: host, model: model)
+    }
+
+    /// Loads the model into memory (no generation), so the first real request is
+    /// warm. Held resident by `keep_alive`.
+    nonisolated static func warm(host: String, model: String) async {
+        guard
+            let url = URL(string: host + "/api/generate"),
+            let body = OllamaCodec.warmRequestBody(model: model)
+        else { return }
+        _ = try? await URLSession.shared.data(for: jsonPost(url, body))
     }
 
     /// One-shot `GET /api/tags` probe mapped to availability. Called only from
@@ -124,6 +135,27 @@ struct OllamaProvider: AIQueryProvider {
             return []
         }
         return OllamaCodec.modelNames(fromTags: data)
+    }
+
+    /// Non-streamed `/api/chat` returning the raw response data, for the action
+    /// planner (which needs multi-message + repair rounds). Nil on any failure.
+    nonisolated static func chatJSON(
+        host: String,
+        model: String,
+        messages: [[String: String]],
+        format: [String: Any]?
+    ) async -> Data? {
+        guard
+            let url = URL(string: host + "/api/chat"),
+            let body = OllamaCodec.chatRequestBody(
+                model: model, messages: messages, stream: false,
+                format: format, numPredict: 80)
+        else { return nil }
+        guard
+            let (data, response) = try? await URLSession.shared.data(for: jsonPost(url, body)),
+            (response as? HTTPURLResponse)?.statusCode == 200
+        else { return nil }
+        return data
     }
 
     private static func jsonPost(_ url: URL, _ body: Data) -> URLRequest {
@@ -177,10 +209,14 @@ nonisolated final class OllamaHealthCache: @unchecked Sendable {
     private var cachedKey = ""
     private var lastRefresh = Date.distantPast
     private var inFlight = false
+    private var lastWarm = Date.distantPast
+    private var warmInFlight = false
 
     private init() {}
 
     private static let staleAfter: TimeInterval = 5
+    // keep_alive holds the model ~30m; re-warm well within that to refresh it.
+    private static let warmAfter: TimeInterval = 300
 
     func current(host: String, model: String) -> AIProviderAvailability {
         lock.lock()
@@ -206,6 +242,31 @@ nonisolated final class OllamaHealthCache: @unchecked Sendable {
             let availability = await OllamaProvider.probe(host: host, model: model)
             self?.store(availability, host: host, model: model)
         }
+    }
+
+    /// Warm the model in the background, throttled, so typing a `>` query while
+    /// it loads makes the first plan fast.
+    func warmModelIfDue(host: String, model: String) {
+        lock.lock()
+        let due = Date().timeIntervalSince(lastWarm) > Self.warmAfter
+        guard due, !warmInFlight else {
+            lock.unlock()
+            return
+        }
+        warmInFlight = true
+        lastWarm = Date()
+        lock.unlock()
+
+        Task.detached(priority: .utility) { [weak self] in
+            await OllamaProvider.warm(host: host, model: model)
+            self?.clearWarmInFlight()
+        }
+    }
+
+    private func clearWarmInFlight() {
+        lock.lock()
+        warmInFlight = false
+        lock.unlock()
     }
 
     private func store(_ availability: AIProviderAvailability, host: String, model: String) {

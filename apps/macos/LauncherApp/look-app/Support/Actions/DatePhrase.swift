@@ -45,25 +45,27 @@ nonisolated enum DatePhrase {
         return f.string(from: date)
     }
 
-    /// Best-effort split of "lunch tomorrow 12pm" into ("lunch", "tomorrow 12pm").
-    /// Finds the first date substring; text before it (minus a trailing "at"/"on")
-    /// is the title. Returns nil when no date is present or nothing is left as a
-    /// title.
-    static func splitTrailingDate(_ input: String) -> (title: String, when: String)? {
-        let text = normalizeShorthand(input)
-        guard let detector = try? NSDataDetector(
-            types: NSTextCheckingResult.CheckingType.date.rawValue) else { return nil }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = detector.firstMatch(in: text, options: [], range: range),
-              let matchRange = Range(match.range, in: text) else { return nil }
-        var title = String(text[..<matchRange.lowerBound])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        for connective in [" at", " on", " @"] where title.lowercased().hasSuffix(connective) {
-            title = String(title.dropLast(connective.count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Day-only preview for all-day events, e.g. "Fri Aug 7".
+    static func formatDay(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "EEE MMM d"
+        return f.string(from: date)
+    }
+
+    /// Whether a phrase names a clock time (vs just a day). Decides all-day vs
+    /// timed: "march 5" / "friday" -> false (all-day); "3pm" / "15:00" / "noon"
+    /// -> true (timed). A lexical check, not a semantic guess.
+    static func hasClockTime(_ phrase: String) -> Bool {
+        let p = phrase.lowercased()
+        if p.contains("noon") || p.contains("midnight") || p.contains("o'clock") {
+            return true
         }
-        let when = String(text[matchRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty, !when.isEmpty else { return nil }
-        return (title, when)
+        let patterns = [
+            #"\d{1,2}\s?(am|pm)"#,   // 3pm, 10 am
+            #"\d{1,2}:\d{2}"#,        // 15:00, 3:30
+        ]
+        return patterns.contains {
+            p.range(of: $0, options: .regularExpression) != nil
+        }
     }
 }

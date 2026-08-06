@@ -3,14 +3,14 @@ import XCTest
 
 /// In-memory `EventStoring` for tool tests. No EventKit, no permission.
 final class FakeStore: EventStoring {
-    private(set) var events: [String: (title: String, start: Date, end: Date)] = [:]
+    private(set) var events: [String: (title: String, start: Date, end: Date, isAllDay: Bool)] = [:]
     private(set) var reminders: [String: (title: String, due: Date?)] = [:]
     private var counter = 0
 
-    func addEvent(title: String, start: Date, end: Date) throws -> String {
+    func addEvent(title: String, start: Date, end: Date, isAllDay: Bool) throws -> String {
         counter += 1
         let id = "e\(counter)"
-        events[id] = (title, start, end)
+        events[id] = (title, start, end, isAllDay)
         return id
     }
 
@@ -66,6 +66,48 @@ final class CalendarToolsTests: XCTestCase {
         guard case .invalid = tool.plan(["when": .string("5pm")], now: now) else {
             return XCTFail("expected invalid")
         }
+    }
+
+    // ── all-day events ──────────────────────────────────────────────────
+
+    func testDayWithoutClockTimeIsAllDay() throws {
+        let store = FakeStore()
+        let tool = CalendarAddEventTool(store: store)
+        guard case .planned(let action) = tool.plan(
+            ["title": .string("Birthday"), "when": .string("March 5 2027")], now: now)
+        else { return XCTFail("expected planned") }
+        XCTAssertTrue(action.preview.detail.contains("all day"))
+        _ = try action.perform()
+        XCTAssertEqual(store.events.values.first?.isAllDay, true)
+    }
+
+    func testNoDateDefaultsToAllDayToday() throws {
+        let store = FakeStore()
+        let tool = CalendarAddEventTool(store: store)
+        guard case .planned(let action) = tool.plan(["title": .string("Lunch with Sarah")], now: now)
+        else { return XCTFail("expected planned") }
+        _ = try action.perform()
+        let event = store.events.values.first!
+        XCTAssertTrue(event.isAllDay)
+        XCTAssertEqual(Calendar.current.startOfDay(for: now), event.start)
+    }
+
+    func testDayWithClockTimeIsTimed() throws {
+        let store = FakeStore()
+        let tool = CalendarAddEventTool(store: store)
+        guard case .planned(let action) = tool.plan(
+            ["title": .string("Sync"), "when": .string("March 5 2027 3pm")], now: now)
+        else { return XCTFail("expected planned") }
+        _ = try action.perform()
+        XCTAssertEqual(store.events.values.first?.isAllDay, false)
+    }
+
+    func testHasClockTimeDetection() {
+        XCTAssertTrue(DatePhrase.hasClockTime("3pm"))
+        XCTAssertTrue(DatePhrase.hasClockTime("friday 15:00"))
+        XCTAssertTrue(DatePhrase.hasClockTime("friday noon"))
+        XCTAssertFalse(DatePhrase.hasClockTime("march 5"))
+        XCTAssertFalse(DatePhrase.hasClockTime("next friday"))
     }
 
     func testAddEventUnparseableTimeIsInvalid() {

@@ -1,11 +1,11 @@
 import Foundation
 
-/// The explicit, no-model action path: turns a `>` line typed in the main box
-/// into a `ToolCall`. Grammar:
-///   >add <title> @ <when>        /  >add <title> <when>
-///   >remind <title> [@ <when>]   /  >remind <title> <when>
-/// The `@` separator is the reliable way to split title from time; without it,
-/// a trailing date is detected best-effort. Returns nil for non-action input.
+/// The instant, no-model action path. Handles ONLY the explicit delimited form
+/// where the user separates title and time with `@`:
+///   >add <title> @ <when>       ->  calendar.add_event
+///   >remind <title> @ <when>    ->  reminder.add
+/// Anything without `@` is natural language and returns nil, so the model
+/// normalizes it into a clean, finalized output (no brittle heuristics here).
 nonisolated enum ExplicitActionParser {
     static func parse(_ input: String) -> ToolCall? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -18,8 +18,14 @@ nonisolated enum ExplicitActionParser {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !rest.isEmpty else { return nil }
 
-        let (title, when) = splitTitleWhen(rest)
+        // Deterministic parsing ONLY for the explicit `title @ when` form, where
+        // the user delimits the spec themselves - no guessing. Natural language
+        // (no `@`) returns nil so the model normalizes it into a clean output.
+        guard let sep = rest.range(of: " @ ") else { return nil }
+        let title = String(rest[..<sep.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let whenText = String(rest[sep.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return nil }
+        let when = whenText.isEmpty ? nil : whenText
 
         switch verb {
         case "add", "event", "cal":
@@ -33,19 +39,5 @@ nonisolated enum ExplicitActionParser {
         default:
             return nil
         }
-    }
-
-    static func splitTitleWhen(_ text: String) -> (title: String, when: String?) {
-        if let sep = text.range(of: " @ ") {
-            let title = String(text[..<sep.lowerBound])
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let when = String(text[sep.upperBound...])
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return (title, when.isEmpty ? nil : when)
-        }
-        if let split = DatePhrase.splitTrailingDate(text) {
-            return (split.title, split.when)
-        }
-        return (text, nil)
     }
 }

@@ -737,21 +737,17 @@ struct LauncherView: View {
             if pendingHideAppResult != nil {
                 pendingHideAppResult = nil
             }
-            // `>add ...` / `>remind ...` is an action, not a search or a question.
-            // Live-propose so the confirm bar tracks what's typed; suppress search,
-            // AI answers, and web suggestions entirely.
+            // `>` is the explicit "talk to AI" trigger. An instant deterministic
+            // preview tracks each keystroke; the model refines it only once typing
+            // pauses (see previewExplicitAIQuery). Suppress search/AI answers here.
             let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
             if !isCommandMode, trimmedQuery.hasPrefix(">") {
                 aiAnswer.cancel()
-                if let toolCall = ExplicitActionParser.parse(trimmedQuery) {
-                    actionController.propose(toolCall)
-                } else {
-                    actionController.cancel()
-                }
+                actionController.previewExplicitAIQuery(trimmedQuery)
                 return
             }
-            // Editing away from a `>` line dismisses any pending action.
-            if actionController.isPresenting {
+            // Editing away from `>` drops any pending or in-flight action.
+            if actionController.isPresenting || actionController.isPlanning {
                 actionController.cancel()
             }
             if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
@@ -1113,9 +1109,28 @@ struct LauncherView: View {
                 .padding(.top, 8)
                 resultsContent
             }
+        } else if actionController.isPlanning {
+            VStack(spacing: 8) {
+                actionThinkingBar
+                    .padding(.horizontal, 8)
+                    .padding(.top, 8)
+                resultsContent
+            }
         } else {
             resultsContent
         }
+    }
+
+    private var actionThinkingBar: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text("Thinking...")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
+                .foregroundStyle(themeStore.mutedTextColor())
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(themeStore.controlFillColor().opacity(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     @ViewBuilder
