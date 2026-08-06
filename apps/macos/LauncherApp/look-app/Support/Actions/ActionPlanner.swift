@@ -94,6 +94,8 @@ final class ActionPlanner {
         clean short title: drop the leading verb, filler words, and all \
         date/time words. Capitalize the first word.
         Reply with JSON only: {"steps":[{"tool":"event","params":{"title":"..."}}]}.
-        If it is not a calendar or reminder request, reply {"steps":[]}.
+        Only CREATING is supported. If the request is to remove, delete, cancel, \
+        move, reschedule, or edit something, or is not a calendar/reminder \
+        request at all, reply {"steps":[]}.
         """
 }

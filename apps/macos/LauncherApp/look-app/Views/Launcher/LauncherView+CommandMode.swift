@@ -94,10 +94,11 @@ extension LauncherView {
     func handleSubmit() {
         logUIEvent("submit isCommand=\(isCommandMode) active=\(activeCommandID ?? "nil") selectedKill=\(selectedKillSuggestionIndex.map(String.init) ?? "nil") pendingKill=\(pendingKillCandidate?.displayName ?? "nil") input='\(commandArgsPart)'")
 
-        // A pending action bar takes Enter as "confirm".
+        // A pending action bar takes Enter as "confirm". Stay in the AI session
+        // (query resets to the bare `>`), ready for the next action; Esc leaves.
         if actionController.isPresenting {
             actionController.confirm()
-            query = ""
+            query = ">"
             DispatchQueue.main.async { isQueryFocused = true }
             return
         }

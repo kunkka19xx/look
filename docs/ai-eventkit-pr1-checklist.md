@@ -1,5 +1,17 @@
 # EventKit PR 1: add-only slice, registry-based - checklist
 
+> **Status: SHIPPED**, with deltas discovered during implementation. This doc is
+> kept as the plan of record; the as-built truth is `ai-session.md` and
+> `ai-action-contracts.md`. Deltas:
+> - Act lives in the `>` AI session screen (owns the panel area), not bars over
+>   results. Enter confirms, Esc leaves; the session survives hide/recall.
+> - The confirm UI is Enter/Esc (no Y/N); Cmd+Z undoes via a session item row.
+> - The keyword gate was removed; `>` itself is the gate.
+> - The repair retry was removed; the planner is single-shot with a title-only
+>   wire schema (dates extracted in code) for latency.
+> - Added beyond plan: all-day events, chat turns, incremental JSONL archive,
+>   markdown answers.
+
 Goal: the first shippable slice of the Act pillar. Create calendar events and
 reminders from natural language, previewed and confirmed, with undo. Built on a
 tool registry so later connectors cost almost nothing. No move/cancel yet, so no

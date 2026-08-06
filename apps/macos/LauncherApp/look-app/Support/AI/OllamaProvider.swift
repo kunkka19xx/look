@@ -137,6 +137,49 @@ struct OllamaProvider: AIQueryProvider {
         return OllamaCodec.modelNames(fromTags: data)
     }
 
+    /// Streamed multi-message `/api/chat` for the AI session's chat turns. Each
+    /// yielded value is the cumulative answer so far (same contract as `answer`).
+    nonisolated static func chatStream(
+        host: String,
+        model: String,
+        messages: [[String: String]]
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                guard
+                    let url = URL(string: host + "/api/chat"),
+                    let body = OllamaCodec.chatRequestBody(
+                        model: model, messages: messages, stream: true,
+                        format: nil, numPredict: 512)
+                else {
+                    continuation.finish(throwing: OllamaError.badStatus)
+                    return
+                }
+                do {
+                    let (bytes, response) = try await URLSession.shared.bytes(for: jsonPost(url, body))
+                    guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                        continuation.finish(throwing: OllamaError.badStatus)
+                        return
+                    }
+                    var running = ""
+                    for try await line in bytes.lines {
+                        if Task.isCancelled { break }
+                        guard let (delta, done) = OllamaCodec.parseStreamLine(line) else { continue }
+                        if !delta.isEmpty {
+                            running += delta
+                            continuation.yield(running)
+                        }
+                        if done { break }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     /// Non-streamed `/api/chat` returning the raw response data, for the action
     /// planner (which needs multi-message + repair rounds). Nil on any failure.
     nonisolated static func chatJSON(

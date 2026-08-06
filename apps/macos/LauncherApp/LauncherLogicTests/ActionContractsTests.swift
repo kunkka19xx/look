@@ -58,11 +58,32 @@ final class ActionContractsTests: XCTestCase {
         XCTAssertEqual(call?.params["when"], .string("tomorrow 12pm"))
     }
 
+    func testParsesSeparatorWithoutTrailingSpace() {
+        let call = ExplicitActionParser.parse(">add lunch @3pm")
+        XCTAssertEqual(call?.toolID, "calendar.add_event")
+        XCTAssertEqual(call?.params["title"], .string("lunch"))
+        XCTAssertEqual(call?.params["when"], .string("3pm"))
+    }
+
     func testParsesRemindWithSeparator() {
         let call = ExplicitActionParser.parse(">remind call mom @ 5pm")
         XCTAssertEqual(call?.toolID, "reminder.add")
         XCTAssertEqual(call?.params["title"], .string("call mom"))
         XCTAssertEqual(call?.params["when"], .string("5pm"))
+    }
+
+    func testDayWordInTitleDefersToModel() {
+        // "sunday" before the `@` means the date intent is split; the fast path
+        // would silently schedule today. Must defer to the model instead.
+        XCTAssertNil(ExplicitActionParser.parse(">remind me to call mom on sunday @ 5pm"))
+        XCTAssertNil(ExplicitActionParser.parse(">add standup tomorrow @ 9am"))
+        // A clean split stays on the instant path.
+        XCTAssertNotNil(ExplicitActionParser.parse(">remind call mom @ sunday 5pm"))
+    }
+
+    func testNormalizeMapsAtSignToAt() {
+        XCTAssertEqual(DatePhrase.normalizeShorthand("sunday @ 5pm"), "sunday at 5pm")
+        XCTAssertEqual(DatePhrase.normalizeShorthand("sunday @5pm"), "sunday at 5pm")
     }
 
     func testNaturalLanguageWithoutSeparatorReturnsNil() {

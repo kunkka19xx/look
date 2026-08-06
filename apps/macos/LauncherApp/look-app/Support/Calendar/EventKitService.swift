@@ -46,6 +46,33 @@ nonisolated final class EventKitService: EventStoring, @unchecked Sendable {
         _ = try? await store.requestFullAccessToReminders()
     }
 
+    /// Compact listing of the next `days` of events, for injection into chat
+    /// context so schedule questions are answerable. Nil without full (read)
+    /// access. Local only: this text goes to the local model, nowhere else.
+    func upcomingEventsSummary(days: Int = 7) -> String? {
+        guard calendarAccess == .authorized else { return nil }
+        let start = Date()
+        guard let end = Calendar.current.date(byAdding: .day, value: days, to: start) else {
+            return nil
+        }
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+        let events = store.events(matching: predicate).prefix(30)
+        guard !events.isEmpty else { return "No events in the next \(days) days." }
+
+        let dayFormat = DateFormatter()
+        dayFormat.dateFormat = "EEE MMM d"
+        let timeFormat = DateFormatter()
+        timeFormat.dateFormat = "HH:mm"
+        return events.map { event in
+            let title = event.title ?? "Untitled"
+            let day = dayFormat.string(from: event.startDate)
+            if event.isAllDay {
+                return "\(day) (all day): \(title)"
+            }
+            return "\(day) \(timeFormat.string(from: event.startDate))-\(timeFormat.string(from: event.endDate)): \(title)"
+        }.joined(separator: "\n")
+    }
+
     // MARK: EventStoring
 
     func addEvent(title: String, start: Date, end: Date, isAllDay: Bool) throws -> String {

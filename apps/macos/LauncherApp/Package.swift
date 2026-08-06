@@ -23,6 +23,7 @@ let package = Package(
                 "Support/Launcher/BridgeErrorMapping.swift",
                 "Support/Launcher/SyntheticRow.swift",
                 "Support/AI/OllamaCodec.swift",
+                "Support/AI/ChatMarkdown.swift",
                 "Support/Actions/AIValue.swift",
                 "Support/Actions/ActionTypes.swift",
                 "Support/Actions/ActionRegistry.swift",

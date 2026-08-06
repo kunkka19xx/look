@@ -13,10 +13,17 @@ nonisolated enum DatePhrase {
             "tmr": "tomorrow", "tmrw": "tomorrow", "tmw": "tomorrow",
             "tmoro": "tomorrow", "tomoro": "tomorrow", "2moro": "tomorrow",
             "tdy": "today", "tonite": "tonight",
+            // NSDataDetector reads "sunday at 5pm" but trips on "sunday @ 5pm".
+            "@": "at",
         ]
         return text
             .split(separator: " ", omittingEmptySubsequences: false)
-            .map { map[$0.lowercased()] ?? String($0) }
+            .map { token -> String in
+                let lower = token.lowercased()
+                if let mapped = map[lower] { return mapped }
+                if lower.hasPrefix("@"), lower.count > 1 { return "at " + token.dropFirst() }
+                return String(token)
+            }
             .joined(separator: " ")
     }
 

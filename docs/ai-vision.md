@@ -33,6 +33,13 @@ Four verbs:
 - **recall** - ask your own machine (files, clipboard, todos). See below.
 - **act** - describe a task, get a previewed plan, confirm with Enter.
 
+**The `>` AI session (shipped)** is where act and conversational answers live:
+an explicit prefix, so the model never runs on ordinary searches, opening a
+session screen that owns the panel area (like command mode does). Actions,
+questions, and streamed answers stack in one ephemeral session; Esc ends it
+(archived locally), hide/recall suspends it. Not a chat app: the box stays the
+only input and history is session-scoped. As-built spec: `ai-session.md`.
+
 A user who never types the new verbs has exactly the launcher they have today.
 AI is additive power, invisible until asked for.
 

@@ -254,10 +254,22 @@ extension LauncherView {
                 pendingHideAppResult != nil
             },
             onCancelAction: { [self] in
-                actionController.cancel()
+                // Two-step Esc: first cancels a pending confirm (keep composing);
+                // with nothing pending, it leaves the AI session for home.
+                if actionController.isPresenting {
+                    actionController.cancel()
+                } else {
+                    actionController.endSession()
+                    query = ""
+                }
             },
             actionConfirmationActive: { [self] in
-                actionController.isPresenting
+                isActionSessionUI
+            },
+            onUndoAction: { [self] in
+                guard actionController.lastReceipt != nil else { return false }
+                actionController.undoLast()
+                return true
             },
             onToggleQuickAction: { [self] in
                 togglePrimaryQuickAction()

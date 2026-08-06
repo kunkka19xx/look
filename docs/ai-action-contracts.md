@@ -124,36 +124,52 @@ func cancel()
 func undoLast()                  // lastReceipt.undo
 ```
 
-## 5. Two producers, one currency
+As built it also owns the AI session (item stack, chat turns, incremental
+archive); see `ai-session.md` for that layer.
 
-- **Explicit `>` prefix** (deterministic, no model): a pure parser turns
-  `>add <title> <when>` into `ToolCall("calendar.add_event", ...)`. Tested in the
-  package.
-- **Model planner** (Step B): asks the provider for an `ActionPlan` and maps each
-  `PlanStep` to a `ToolCall`.
+## 5. Producers, one currency
 
-Both converge on `ActionController.propose`. The rest of the system cannot tell
-which produced the call.
+- **Explicit `@` form** (deterministic, no model): a pure parser turns
+  `>add <title> @ <when>` into a `ToolCall`. It handles ONLY this delimited
+  form; anything without `@` is natural language and defers to the planner.
+  Tested in the package.
+- **Model planner**: asks Ollama for an `ActionPlan` (via `format` JSON Schema)
+  and maps each `PlanStep` to a `ToolCall`. Latency-driven contract (see
+  `ai-session.md`): the model emits only a 1-token tool alias
+  ("event"/"reminder", mapped to real ids in the planner) plus a clean `title`;
+  the planner injects `when` from the raw query in code (NSDataDetector's date
+  value is robust). Single-shot, static cached prompt, temperature 0. There is
+  no repair retry: the fields a repair round could fix no longer come from the
+  model.
+- Queries the planner declines become chat turns in the AI session
+  (`ai-session.md`), not `ToolCall`s.
+
+All action producers converge on `ActionController.propose`. The rest of the
+system cannot tell which produced the call.
 
 ## 6. Schema is the single source of truth (and where validation lives)
 
-Each tool's `paramsSchema` drives three things: the planner's request format,
-param validation, and help/docs. Change a param in one place.
+Each tool's `paramsSchema` drives param validation and help/docs; the planner's
+wire schema is deliberately narrower (alias enum + title-only params) for
+latency, so what the model emits stays minimal.
 
 Division of validation:
 
-- The planner's wire format constrains `tool` to the set of registered ids and
-  `params` to a generic object. It does NOT try to express a per-tool
-  discriminated union in JSON Schema (brittle for the model to honor).
+- The planner's wire format constrains `tool` to an enum of aliases, so the
+  model cannot invent one, and `params` to `{ title }`. Everything else (dates,
+  durations, all-day) is computed in code.
 - Authoritative per-tool validation happens in `tool.plan()`: required fields,
   types, date resolvability, invariants (`end > start`). Bad input -> `.invalid`.
 
-So the model's job stays simple (pick a known tool, fill a flat object) and the
-strict checks live in deterministic, testable code.
+So the model's job stays tiny (classify + title) and the strict checks live in
+deterministic, testable code.
 
 ## 7. Evolution rules
 
-- **Add a tool:** new file + `register`. No central switch, ever.
+- **Add a tool:** new file + `register`, plus one alias entry and one prompt
+  line in `ActionPlanner` (its wire schema is deliberately narrow for latency).
+  No switch statements or UI changes, ever; a new OS surface additionally needs
+  a service seam + a permission chip.
 - **Add a param:** add an optional field to the schema. Old calls stay valid; the
   model fills it when relevant. Additive only, no renames.
 - **Change a backend:** reimplement that tool's `plan`/`perform`. Its `id` and

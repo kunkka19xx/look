@@ -53,6 +53,7 @@ final class KeyboardSelectionMonitor {
         hideAppConfirmationActive: @escaping @MainActor () -> Bool = { false },
         onCancelAction: (@MainActor () -> Void)? = nil,
         actionConfirmationActive: @escaping @MainActor () -> Bool = { false },
+        onUndoAction: (@MainActor () -> Bool)? = nil,
         onToggleQuickAction: (@MainActor () -> Void)? = nil,
         hasToggleQuickAction: @escaping @MainActor () -> Bool = { false },
         isLaunchpadActive: @escaping @MainActor () -> Bool = { false },
@@ -138,6 +139,15 @@ final class KeyboardSelectionMonitor {
                 && flags == [.command]
             {
                 if onCopySelection() {
+                    return nil
+                }
+                return event
+            }
+
+            // Undo the last action (its result row is showing). The handler gates
+            // itself, so Cmd+Z passes through to text-field undo otherwise.
+            if event.charactersIgnoringModifiers?.lowercased() == "z" && flags == [.command] {
+                if onUndoAction?() == true {
                     return nil
                 }
                 return event

@@ -199,6 +199,8 @@ extension LauncherView {
         // Don't leave a stale Empty Trash confirmation to reappear on next show.
         pendingEmptyTrashCount = nil
         pendingHideAppResult = nil
+        // The AI session intentionally survives hide/recall (Cmd+Space away and
+        // back must not lose the conversation). Only Esc ends and archives it.
         let wasVisible = window.isVisible
         window.orderOut(nil)
         hotkeyLog.notice("hide: orderOut wasVisible=\(wasVisible) restore=\(restorePreviousApp)")

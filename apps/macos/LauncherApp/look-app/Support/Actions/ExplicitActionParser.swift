@@ -21,12 +21,23 @@ nonisolated enum ExplicitActionParser {
         // Deterministic parsing ONLY for the explicit `title @ when` form, where
         // the user delimits the spec themselves - no guessing. Natural language
         // (no `@`) returns nil so the model normalizes it into a clean output.
-        guard let sep = rest.range(of: " @ ") else { return nil }
+        // Accepts both `title @ 3pm` and `title @3pm`; requiring whitespace
+        // before the `@` keeps email-like titles safe.
+        guard let sep = rest.range(of: " @") else { return nil }
         let title = String(rest[..<sep.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
         let whenText = String(rest[sep.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return nil }
+        // A day word in the title half ("call mom on sunday @ 5pm") means the
+        // user's date intent is NOT all after the `@`; taking the fast path
+        // would silently schedule the wrong day. Defer to the model, which
+        // reads the whole phrase.
+        guard !containsDayWord(title) else { return nil }
         let when = whenText.isEmpty ? nil : whenText
 
+        return call(verb: verb, title: title, when: when)
+    }
+
+    private static func call(verb: String, title: String, when: String?) -> ToolCall? {
         switch verb {
         case "add", "event", "cal":
             return ToolCall(
@@ -39,5 +50,17 @@ nonisolated enum ExplicitActionParser {
         default:
             return nil
         }
+    }
+
+    private static let dayWords: Set<String> = [
+        "today", "tomorrow", "tonight", "tmr", "tmrw", "tmw", "2moro",
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+        "mon", "tue", "tues", "wed", "thu", "thur", "thurs", "fri", "sat", "sun",
+    ]
+
+    static func containsDayWord(_ text: String) -> Bool {
+        text.lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .contains { dayWords.contains(String($0)) }
     }
 }

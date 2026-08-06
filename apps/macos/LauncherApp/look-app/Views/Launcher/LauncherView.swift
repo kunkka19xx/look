@@ -737,10 +737,18 @@ struct LauncherView: View {
             if pendingHideAppResult != nil {
                 pendingHideAppResult = nil
             }
+            let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Moving on to a normal query yields the screen but keeps the session
+            // alive in the background (type `>` to return to it). It only closes
+            // the undo window and clears transient feedback; Esc is what ends the
+            // session for real.
+            if !trimmedQuery.isEmpty, !trimmedQuery.hasPrefix(">"),
+               actionController.hasResult {
+                actionController.dismissResult()
+            }
             // `>` is the explicit "talk to AI" trigger. An instant deterministic
             // preview tracks each keystroke; the model refines it only once typing
             // pauses (see previewExplicitAIQuery). Suppress search/AI answers here.
-            let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
             if !isCommandMode, trimmedQuery.hasPrefix(">") {
                 aiAnswer.cancel()
                 actionController.previewExplicitAIQuery(trimmedQuery)
@@ -1010,6 +1018,11 @@ struct LauncherView: View {
 
             if isCommandMode {
                 commandModeView
+            } else if isActionSessionUI {
+                // `>` owns the whole panel area, like translation and clipboard
+                // do: the session screen holds completed actions, the pending
+                // confirm, and progress - one coherent place, not floating bars.
+                floatingPanel { aiSessionPanel }
             } else if isTranslationQuery {
                 floatingPanel {
                     LookupDefinitionPanelView(
@@ -1097,28 +1110,139 @@ struct LauncherView: View {
 
     @ViewBuilder
     private var resultsRow: some View {
-        if let pending = actionController.pending {
-            VStack(spacing: 8) {
-                PendingActionBar(
-                    action: pending,
-                    themeStore: themeStore,
-                    onConfirm: { actionController.confirm() },
-                    onCancel: { actionController.cancel() }
-                )
-                .padding(.horizontal, 8)
-                .padding(.top, 8)
-                resultsContent
+        resultsContent
+    }
+
+    /// Whether the AI session screen owns the panel area: composing a `>` query
+    /// (or session work is in flight). The session itself may stay alive in the
+    /// background while other screens show; `>` always returns to it. The query
+    /// text survives hide/recall, so Cmd+Space away and back lands on the panel.
+    var isActionSessionUI: Bool {
+        guard !isCommandMode else { return false }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix(">") { return true }
+        return actionController.isPresenting || actionController.isPlanning
+    }
+
+    /// The AI session screen: actions, questions, and streaming answers stack in
+    /// one scrolling conversation; the pending confirm or progress sits below the
+    /// stack, and a footer teaches the keys. Enter runs, Esc leaves, the session
+    /// survives across several turns and is archived locally when it ends.
+    private var aiSessionPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(actionController.sessionItems) { item in
+                            sessionItemView(item)
+                        }
+
+                        if let pendingAction = actionController.pending {
+                            PendingActionBar(
+                                action: pendingAction,
+                                themeStore: themeStore,
+                                onConfirm: {
+                                    actionController.confirm()
+                                    query = ">"
+                                },
+                                onCancel: { actionController.cancel() }
+                            )
+                        } else if actionController.isPlanning {
+                            actionThinkingBar
+                        } else if !actionController.feedback.isEmpty {
+                            ActionResultBar(
+                                message: actionController.feedback,
+                                canUndo: false,
+                                themeStore: themeStore,
+                                onUndo: {}
+                            )
+                        } else if actionController.sessionItems.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Add events and reminders, or ask anything")
+                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
+                                    .foregroundStyle(themeStore.fontColor())
+                                Text(">add lunch with Sarah tomorrow 1pm\n>remind me to call mom @ 5pm\n>how do I list open ports on macOS?")
+                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                                    .foregroundStyle(themeStore.mutedTextColor())
+                            }
+                            .padding(.horizontal, 4)
+                            .padding(.top, 6)
+                        }
+
+                        Color.clear.frame(height: 1).id("session-bottom")
+                    }
+                }
+                .onChange(of: actionController.sessionItems) { _, _ in
+                    proxy.scrollTo("session-bottom", anchor: .bottom)
+                }
             }
-        } else if actionController.isPlanning {
-            VStack(spacing: 8) {
-                actionThinkingBar
-                    .padding(.horizontal, 8)
-                    .padding(.top, 8)
-                resultsContent
-            }
-        } else {
-            resultsContent
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            Text("Enter run  ·  Esc leave  ·  ⌘Z undo  ·  @ sets exact time")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                .foregroundStyle(themeStore.mutedTextColor())
+                .padding(.horizontal, 4)
         }
+        .padding(8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private func sessionItemView(_ item: ActionSessionItem) -> some View {
+        switch item.kind {
+        case .action:
+            ActionResultBar(
+                message: item.text,
+                canUndo: item.id == actionController.undoableItemID
+                    && actionController.lastReceipt != nil,
+                themeStore: themeStore,
+                onUndo: { actionController.undoLast() }
+            )
+        case .user:
+            HStack(alignment: .top, spacing: 8) {
+                Text("›")
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
+                    .foregroundStyle(themeStore.accentColor())
+                Text(item.text)
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
+                    .foregroundStyle(themeStore.fontColor())
+            }
+            .padding(.horizontal, 4)
+            .padding(.top, 4)
+        case .answer:
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(ChatMarkdown.segments(from: item.text).enumerated()), id: \.offset) { _, segment in
+                    switch segment {
+                    case .text(let text):
+                        Text(inlineMarkdown(text))
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                            .foregroundStyle(themeStore.fontColor())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    case .code(let code):
+                        Text(code)
+                            .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
+                            .foregroundStyle(themeStore.fontColor())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                            .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                }
+            }
+            .padding(10)
+            .background(themeStore.controlFillColor().opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+    }
+
+    /// Inline markdown (bold, italic, `code`, links) for chat prose. Block
+    /// structure is handled by `ChatMarkdown.segments`; this styles within a
+    /// prose segment, falling back to plain text on any parse failure.
+    private func inlineMarkdown(_ text: String) -> AttributedString {
+        (try? AttributedString(
+            markdown: text,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
     }
 
     private var actionThinkingBar: some View {

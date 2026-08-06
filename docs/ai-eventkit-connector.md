@@ -1,5 +1,15 @@
 # EventKit Connector: build-level spec
 
+> **Status: add-only slice SHIPPED** (`calendar.add_event`, `reminder.add`,
+> all-day support) via the registry + `>` session design; see `ai-session.md`.
+> As-built delta from this spec: the planner's wire contract is leaner than
+> Section 4 describes - the model emits only a tool alias + clean title, and
+> time phrases are extracted from the raw query in code (NSDataDetector's date
+> value is robust; only its text range was not). The un-shipped parts below
+> (move/cancel/complete/snooze, the ambiguity gate, find_free_slot/block_time)
+> remain the plan for the next slices, with one improvement now available:
+> session context ("remove it") can shrink the match/ambiguity problem.
+
 Scope: macOS. EventKit is an Apple system framework, so this connector lives
 entirely on the Swift side (`apps/macos`), not in the Rust core. Windows/Linux
 are out of scope here (see `ai-vision.md` for the platform matrix).

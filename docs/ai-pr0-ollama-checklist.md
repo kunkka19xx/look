@@ -1,5 +1,10 @@
 # PR 0: Ollama provider (macOS) - checklist
 
+> **Status: SHIPPED.** Also grown since: the Settings model field is a dropdown
+> of installed models (`GET /api/tags`), host+model share one row, the AI toggle
+> sits on the section header, and the provider gained `chatJSON` (planner) and
+> `chatStream` (session chat) plus a prompt-cache warm-up.
+
 Goal: add Ollama as a second `AIQueryProvider` so every existing AI feature
 (query understanding, the answer card) can run on a capable local model. This is
 the prerequisite for Act and semantic Recall (see `ai-vision.md`).
