@@ -13,8 +13,11 @@ nonisolated enum SpeedTestDefaults {
 /// Drives the `/speed` panel: one run at a time, the last reading kept across
 /// launches, and an elapsed counter while a run is in flight.
 ///
-/// Cancelling stops the panel waiting on the result; core's per-phase timeouts
-/// are what actually end the transfers, within a few seconds.
+/// The controller outlives the panel, and a run outlives both: the native call
+/// has no cancel, so closing `/speed` leaves it measuring and reopening rejoins
+/// it in progress. Clearing the in-flight flag on close would let a second run
+/// start alongside the first, and two measurements compete for the bandwidth
+/// they are each trying to measure.
 @MainActor
 @Observable
 final class SpeedTestController {
@@ -25,7 +28,6 @@ final class SpeedTestController {
     /// This machine's address on the LAN, refreshed with the panel.
     private(set) var localAddress: String?
 
-    @ObservationIgnored private var runTask: Task<Void, Never>?
     @ObservationIgnored private var tickTask: Task<Void, Never>?
 
     init() {
@@ -46,13 +48,11 @@ final class SpeedTestController {
         // Resolved here, on the main actor: the shared instance is isolated, the
         // bridge itself is Sendable and does the work off it.
         let bridge = EngineBridge.shared
-        runTask = Task { [weak self] in
+        Task { [weak self] in
             let outcome = await Task.detached(priority: .userInitiated) {
                 bridge.speedTest()
             }.value
 
-            // Kept even when the panel stopped waiting: the measurement was
-            // paid for either way, so the next open starts with it.
             guard let self else { return }
             self.finish(with: outcome)
         }
@@ -68,14 +68,9 @@ final class SpeedTestController {
         start()
     }
 
-    func cancel() {
-        runTask?.cancel()
-        runTask = nil
-        endRun()
-    }
-
     private func finish(with outcome: SpeedTestOutcome) {
-        endRun()
+        stopTicking()
+        isRunning = false
 
         switch outcome {
         case let .reading(value):
@@ -85,11 +80,6 @@ final class SpeedTestController {
         case let .failure(message):
             errorMessage = message
         }
-    }
-
-    private func endRun() {
-        stopTicking()
-        isRunning = false
     }
 
     private func startTicking() {
@@ -115,8 +105,13 @@ final class SpeedTestController {
         return try? JSONDecoder().decode(SpeedReading.self, from: data)
     }
 
+    /// The public address is dropped on the way to disk: the panel masks it on
+    /// screen, and a plist keeping it indefinitely is a stronger retention than
+    /// that implies. A fresh run puts it back.
     private static func saveLastReading(_ value: SpeedReading) {
-        guard let data = try? JSONEncoder().encode(value) else { return }
+        var stored = value
+        stored.publicIp = nil
+        guard let data = try? JSONEncoder().encode(stored) else { return }
         UserDefaults.standard.set(data, forKey: SpeedTestDefaults.lastReadingKey)
     }
 }

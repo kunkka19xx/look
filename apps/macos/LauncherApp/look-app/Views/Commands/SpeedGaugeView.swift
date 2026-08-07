@@ -145,6 +145,8 @@ private final class GaugeMotion {
         pulseProgress = (pulseProgress + delta / period).truncatingRemainder(dividingBy: 1)
     }
 
+    var isUnstarted: Bool { lastFrame == nil }
+
     func snap(download: Double, upload: Double) {
         shownDownload = download
         shownUpload = upload
@@ -213,7 +215,16 @@ struct SpeedGaugeView: View {
             centreReadout(palette: palette)
         }
         .aspectRatio(1, contentMode: .fit)
-        .onAppear { motion.snap(download: downloadBitsPerSecond, upload: uploadBitsPerSecond) }
+        .onAppear { snapIfStill() }
+        // A paused timeline never advances the eased values, so a reading that
+        // lands under Reduce Motion has to be placed directly.
+        .onChange(of: downloadBitsPerSecond) { _, _ in snapIfStill() }
+        .onChange(of: uploadBitsPerSecond) { _, _ in snapIfStill() }
+    }
+
+    private func snapIfStill() {
+        guard reduceMotion || motion.isUnstarted else { return }
+        motion.snap(download: downloadBitsPerSecond, upload: uploadBitsPerSecond)
     }
 
     /// The dial's geometry for one canvas size.

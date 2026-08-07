@@ -153,7 +153,7 @@ Built-in commands:
 - `sys`: show system information
 - `pomo`: pomodoro focus timer with editable session list, three timer styles (Modern Ring / Vintage Dial / Minimal Text), background-music folder, menu-bar mini-timer, and a 5-second standby fade
 - `todo`: daily tasks and progress. Two pages - a task list grouped by day, and a Stats page (weekly/monthly completion, streak, 30-day trend, GitHub-style year heatmap)
-- `speed`: measure the connection (download, upload, latency) on a live dial, with your LAN and public addresses
+- `speed` (macOS only for now): measure the connection (download, upload, latency) on a live dial, with your LAN and public addresses
 
 `calc` quick examples:
 
@@ -166,10 +166,10 @@ Built-in commands:
 - `1920x1080` -> `2,073,600` (`x` as an alias for multiply, honored even glued to digits inside `/calc`)
 - `1,500 + 1` -> `1,501` (comma-grouped input round-trips)
 
-`speed` quick reference:
+`speed` quick reference (macOS):
 
 - The test starts when the panel opens, unless the last reading is under a minute old. `R` runs a fresh one, `Escape` leaves
-- A run takes roughly 10-20 seconds and deliberately saturates the link while it does
+- A run takes about 15 seconds and deliberately saturates the link while it does. It can take longer when the primary server is refusing and a fallback mirror has to be found
 - The dial reads as an instrument: download orbits the outer ring, upload counter-rotates on the inner one, and each comet's pace and tail length grow with its rate on a log scale (1 Mbps to 1 Gbps). The centre is latency, pulsing once per round trip
 - Under the numbers is a plain-language read of them, e.g. `FAST BROADBAND · LATENCY EXCELLENT`
 - `LAN` is this machine's address on your network; `WAN` is what the far end sees. WAN is masked by default - `E` or the eye button reveals it, and clicking either address copies it (the WAN copies in full even while masked)

@@ -66,7 +66,6 @@ struct SpeedTestView: View {
                 .allowsHitTesting(false)
         }
         .onAppear { controller.startIfStale() }
-        .onDisappear { controller.cancel() }
     }
 
     /// Both addresses, since they answer different questions: LAN is what you

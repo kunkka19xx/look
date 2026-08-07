@@ -316,7 +316,7 @@ Behavioral notes:
 - global hotkey `Cmd+Space` toggles launcher visibility,
 - web search is explicit handoff (`Cmd+Enter`),
 - clipboard history mode is shell-side and in-memory for current session,
-- command mode supports `calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys` (⌘1-7 follow catalog order),
+- command mode supports `calc`, `pomo`, `todo`, `speed` (macOS shell only so far), `kill`, `shell`, `sys` (⌘1-7 follow catalog order),
 - settings panel controls theme/index/runtime knobs and persists locally.
 
 ---

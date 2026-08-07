@@ -113,7 +113,7 @@ nonisolated struct SpeedReading: Codable, Sendable, Equatable {
     let latencyVerdict: String
     let latencyLevel: String?
     let downloadSource: String?
-    let publicIp: String?
+    var publicIp: String?
     let provider: String?
     let location: String?
     let measuredAtUnix: Int
@@ -268,9 +268,9 @@ final class EngineBridge: @unchecked Sendable {
         return try? JSONDecoder().decode(LunarDate.self, from: data)
     }
 
-    /// Runs the shared core speed test. Blocks for up to roughly 20 seconds, so
-    /// call it off the main thread. There is no cancel: core bounds each phase
-    /// with its own timeout.
+    /// Runs the shared core speed test. Blocks for 15 seconds and up, so call it
+    /// off the main thread. There is no cancel: core bounds each phase with its
+    /// own timeout.
     nonisolated func speedTest() -> SpeedTestOutcome {
         guard let ptr = look_netspeed_run_json() else {
             return .failure(speedTestUnknownFailure)

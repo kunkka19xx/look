@@ -93,6 +93,7 @@ is detected. On i3, sway, or minimal distros without GNOME, these entries are sk
 
 | Package        | Used for                          | Fallback                   |
 | -------------- | --------------------------------- | -------------------------- |
+| `curl`         | Web answers, translation, `/speed` | Answers stay empty; speed test reports "curl is not available on this system" |
 | `xclip`        | Copy files to clipboard (X11)     | Shows "Copy failed" banner |
 | `wl-clipboard` | Copy files to clipboard (Wayland) | Shows "Copy failed" banner |
 

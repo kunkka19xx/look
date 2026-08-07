@@ -53,6 +53,10 @@ mod endpoint {
 const CLOUDFLARE: &str = "Cloudflare";
 /// How long a mirror gets to answer the round-trip probe that ranks it.
 const MIRROR_PROBE_TIMEOUT_SECS: u32 = 4;
+/// Only the two closest mirrors are actually tried. Walking the whole list on a
+/// bad connection would cost a full download timeout each, pushing a run far
+/// past the wait anyone expects from it.
+const MAX_MIRROR_ATTEMPTS: usize = 2;
 
 /// A single TCP stream leaves a fast link idle, so each phase runs several and
 /// sums what they report.
@@ -175,9 +179,10 @@ impl SpeedError {
     }
 }
 
-/// Runs every phase and returns the reading. Blocks for up to roughly 20
-/// seconds, so callers must drive it off their UI thread. There is no cancel:
-/// each phase carries its own timeout, which bounds the wait instead.
+/// Runs every phase and returns the reading. Blocks: about 15 seconds when the
+/// primary answers, and up to roughly 50 when every phase has to time out and
+/// fall back. Callers must drive it off their UI thread. There is no cancel;
+/// per-phase timeouts and `MAX_MIRROR_ATTEMPTS` are what bound the wait.
 pub fn run() -> Result<SpeedReading, SpeedError> {
     if !curl_available() {
         return Err(SpeedError::CurlMissing);
@@ -398,7 +403,7 @@ fn mirror_download() -> Option<Measured> {
     });
     ranked.sort_by(|left, right| left.0.total_cmp(&right.0));
 
-    for (_, name, url) in ranked {
+    for (_, name, url) in ranked.into_iter().take(MAX_MIRROR_ATTEMPTS) {
         // Each lane takes its own slice of the file, so the phase measures four
         // real transfers rather than four requests for the same bytes.
         if let Ok(bits_per_second) = phase(|lane| download_stream(url, Some(&lane_range(lane)))) {

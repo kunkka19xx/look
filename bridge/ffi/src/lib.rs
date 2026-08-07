@@ -128,8 +128,8 @@ pub extern "C" fn look_lunar_date_json(year: i64, month: i64, day: i64, tz: f64)
 }
 
 /// A full speed test as JSON (`{"ok":true,"reading":{...}}` or
-/// `{"ok":false,"error":"..."}`). Blocks for up to roughly 20 seconds, so call
-/// it off the UI thread. Free the result with `look_free_cstring`.
+/// `{"ok":false,"error":"..."}`). Blocks for 15 seconds and up, so call it off
+/// the UI thread. Free the result with `look_free_cstring`.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_netspeed_run_json() -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(
