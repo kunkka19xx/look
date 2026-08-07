@@ -55,13 +55,14 @@ flowchart LR
   - `EngineBridge`: search engine communication
   - `ClipboardHistoryStore`, `KeyboardSelectionMonitor`, `GlobalHotKeyManager`
 - `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle) and semantic color tokens
-- `bridge/ffi`: narrow C ABI surface for search, usage recording, config reload, translation, todo load/save, and error payloads.
+- `bridge/ffi`: narrow C ABI surface for search, usage recording, config reload, translation, todo load/save, speed test, and error payloads.
 - `core/answers`: platform-agnostic, network-backed "web answer" lookups shared by every shell (macOS via `bridge/ffi`, Windows/Linux via Tauri commands). Instant answers (currency/weather/crypto), search suggestions, knowledge sources, and translation. Best-effort and panic-free: every entry point returns "no answer" on failure, with cheap network-free pattern-gating (`has_match`) so callers can fire speculatively while typing. No async runtime - HTTP is a blocking `curl` subprocess.
 - `core/indexing`: candidate model and indexing helpers used by engine/storage flows.
 - `core/matching`: exact/prefix/fuzzy matching primitives.
 - `core/ranking`: ranking helpers (usage/recency-aware adjustments and score composition).
 - `core/storage`: SQLite integration, schema/migrations, candidate/usage persistence.
 - `core/todo`: shared store for the `/todo` command. Owns the `todo_tasks` table inside the app's existing `look.db` (full-set load/save, one-year retention). macOS reaches it via `bridge/ffi`, linows via its Tauri command layer. `examples/seed.rs` fills a dev database with demo history, including near-today extension-window cases for `/todo` UI testing.
+- `core/netspeed`: the `/speed` measurement, shared by every shell. Latency probe, download and upload phases (four parallel `curl` streams each), and the plain-language verdicts and display strings both shells print, so a reading reads identically everywhere. Cloudflare's keyless endpoints are the primary source; when they rate-limit a connection the download phase falls back to the nearest of several public test mirrors, ranked by a round-trip probe. No async runtime, and every phase is timeout-bounded. macOS reaches it via `bridge/ffi`, linows via its Tauri command layer (backend registered; front-end binding still to come).
 - `core/engine`: query parsing, indexing orchestration, scoring, top-k retrieval, in-memory cache management.
 
 ```mermaid
@@ -73,6 +74,7 @@ flowchart TB
       STG[look-storage]
       ENG[look-engine]
       ANS[look-answers\nweb answers + translation]
+      NET[look-netspeed\nspeed test]
     end
 
     IDX --> ENG
@@ -88,6 +90,7 @@ flowchart TB
     IDX --> FFI
     STG --> FFI
     ANS --> FFI
+    NET --> FFI
 ```
 
 ---
@@ -301,7 +304,8 @@ stateDiagram-v2
       [*] --> Calc
       Calc --> Pomo: select /pomo
       Pomo --> Todo: select /todo
-      Todo --> Kill: select /kill
+      Todo --> Speed: select /speed
+      Speed --> Kill: select /kill
       Kill --> Shell: select /shell
       Shell --> Sys: select /sys
     }
@@ -312,7 +316,7 @@ Behavioral notes:
 - global hotkey `Cmd+Space` toggles launcher visibility,
 - web search is explicit handoff (`Cmd+Enter`),
 - clipboard history mode is shell-side and in-memory for current session,
-- command mode supports `calc`, `pomo`, `todo`, `kill`, `shell`, `sys`,
+- command mode supports `calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys` (⌘1-7 follow catalog order),
 - settings panel controls theme/index/runtime knobs and persists locally.
 
 ---

@@ -228,7 +228,7 @@ open "/Applications/Look.app"
 | Web search                                                    | `Cmd+Enter`      | `Ctrl+Enter`        | `Ctrl+Enter`     |
 | Reveal in file manager                                        | `Cmd+F` (Finder) | `Ctrl+F` (Explorer) | `Ctrl+F` (Files) |
 | Move to Trash (or empty the Trash folder)                     | `Cmd+D`          | n/a                 | n/a              |
-| Command mode (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
+| Command mode (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
 | Settings                                                      | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
 | Back / hide                                                   | `Escape`         | `Escape`            | `Escape`         |
 | Switch to running app N (home screen)                         | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |

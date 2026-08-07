@@ -25,6 +25,7 @@ apps/linows/
       process.rs         Running apps list + kill
       sysinfo.rs         System info (OS, memory, CPU, battery, uptime, disk)
       todo.rs            Daily tasks (shared look-todo store in look.db)
+      netspeed.rs        Speed test (shared look-netspeed crate); no front-end screen yet
       translate.rs       Translation
       weburl.rs          URL-like query detection + opened-URL history (shared core)
       autostart.rs       Autostart management

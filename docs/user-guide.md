@@ -141,9 +141,9 @@ Enter command mode with `Cmd+/`, or jump straight to a specific command from the
 
 - `:calc` then `Enter` - open `/calc` with empty input
 - `:calc 2+2` - opens `/calc` with `2+2` already typed (the space after the command id is the trigger; you can keep typing without pressing Enter)
-- Same pattern for `:shell`, `:kill`, `:sys`, `:pomo`, `:todo`
+- Same pattern for `:shell`, `:kill`, `:sys`, `:pomo`, `:todo`, `:speed`
 
-The `:` prefix only triggers when the word right after it is a known command id (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`); anything else (`:foo`, `:Users/me/...`) stays in normal search.
+The `:` prefix only triggers when the word right after it is a known command id (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`); anything else (`:foo`, `:Users/me/...`) stays in normal search.
 
 Built-in commands:
 
@@ -153,6 +153,7 @@ Built-in commands:
 - `sys`: show system information
 - `pomo`: pomodoro focus timer with editable session list, three timer styles (Modern Ring / Vintage Dial / Minimal Text), background-music folder, menu-bar mini-timer, and a 5-second standby fade
 - `todo`: daily tasks and progress. Two pages - a task list grouped by day, and a Stats page (weekly/monthly completion, streak, 30-day trend, GitHub-style year heatmap)
+- `speed`: measure the connection (download, upload, latency) on a live dial, with your LAN and public addresses
 
 `calc` quick examples:
 
@@ -164,6 +165,16 @@ Built-in commands:
 - `10%3` -> `1` (`%` remains modulo when used between operands)
 - `1920x1080` -> `2,073,600` (`x` as an alias for multiply, honored even glued to digits inside `/calc`)
 - `1,500 + 1` -> `1,501` (comma-grouped input round-trips)
+
+`speed` quick reference:
+
+- The test starts when the panel opens, unless the last reading is under a minute old. `R` runs a fresh one, `Escape` leaves
+- A run takes roughly 10-20 seconds and deliberately saturates the link while it does
+- The dial reads as an instrument: download orbits the outer ring, upload counter-rotates on the inner one, and each comet's pace and tail length grow with its rate on a log scale (1 Mbps to 1 Gbps). The centre is latency, pulsing once per round trip
+- Under the numbers is a plain-language read of them, e.g. `FAST BROADBAND · LATENCY EXCELLENT`
+- `LAN` is this machine's address on your network; `WAN` is what the far end sees. WAN is masked by default - `E` or the eye button reveals it, and clicking either address copies it (the WAN copies in full even while masked)
+- The footer names your ISP, rough location, and which server answered. `via Cloudflare` is the primary; anything else is a fallback mirror and reads conservatively low
+- Latency is the round trip to the test server (TCP connect, minus DNS), so it sits a little above what `ping` reports
 
 `pomo` quick reference:
 
@@ -187,8 +198,9 @@ Behavior:
 - `Escape`: leave command mode
 - `Shift+Escape`: hide launcher
 - `Tab` / `Shift+Tab`: switch commands while staying in command mode
-- `Cmd+1`..`Cmd+6`: jump to specific command (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`)
+- `Cmd+1`..`Cmd+7`: jump to specific command (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`)
 - `Cmd+N` / `Cmd+S` (inside `/todo`): switch Tasks/Stats page, save changes
+- `R` / `E` (inside `/speed`): run the test again, show or hide the public address
 - `Up` / `Down`: in `kill`, navigate process/app results
 - shell text containing `sudo` shows an orange warning cue
 
@@ -348,12 +360,13 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
 - `Up` / `Down`: move selection (and in `kill`, move process selection)
 - `Cmd+/`: command mode
-- `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:todo`): jump to a command directly from the home screen
-- `Cmd+1`..`Cmd+6`: in command mode, direct command switch (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`)
+- `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:todo`, `:speed`): jump to a command directly from the home screen
+- `Cmd+1`..`Cmd+7`: in command mode, direct command switch (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`)
 - `Cmd+1`..`Cmd+9` (macOS) / `Alt+1`..`Alt+9` (Linux, Windows): on the home screen, activate the running-app whose badge shows that digit, when `Running Apps` is on. Badge labels are ergonomic, not strictly positional - see Settings → Appearance → Running Apps
 - `Cmd+<letter>` (macOS) / `Alt+<letter>` (Linux, Windows): on the empty home screen, fire the super action with that highlighted letter (`B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `P` play/pause, `R` Restart, `D` Shut Down), when `Super Actions` is on
 - `Space` / `R` / `P` (inside `/pomo`): start/pause session, reset, toggle music play/pause
 - `Cmd+N` / `Cmd+S` (inside `/todo`): switch Tasks/Stats page, save changes
+- `R` / `E` (inside `/speed`): run the test again, show or hide the public address
 - `Escape`: back/close (context dependent)
 - `Shift+Escape`: hide launcher
 - `Cmd+Enter`: web search
