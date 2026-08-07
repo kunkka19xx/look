@@ -3,7 +3,7 @@
 // `"` menu, the `:` menu, and the Help screen can't drift. linows omits
 // `tw"` (no dictionary lookup yet).
 
-import { calculator, timer, listChecks, xCircle, terminal, info, globe } from './icons.js';
+import { calculator, timer, listChecks, gauge, xCircle, terminal, info, globe } from './icons.js';
 
 // Synthetic-row id namespaces: the renderer and Enter/click handlers tell
 // synthetic rows apart from real candidates by id prefix.
@@ -38,21 +38,38 @@ const PREFIX_ENTRIES = [
     { prefix: 't"', argHint: 'word', description: 'Web translate (VI/EN/JA)' },
 ];
 
-// Shortcut numbers must match the Ctrl+1..6 bindings in
-// screens/commands/index.js, otherwise the title hint lies to the user.
-const COMMAND_ENTRIES = [
-    { id: 'calc', title: 'calc (Ctrl+1)', detail: 'Evaluate math expression', icon: calculator },
-    { id: 'pomo', title: 'pomo (Ctrl+2)', detail: 'Pomodoro focus timer', icon: timer },
-    { id: 'todo', title: 'todo (Ctrl+3)', detail: 'Daily tasks & progress', icon: listChecks },
+// Catalog order is the whole shortcut mapping: Ctrl+N selects the Nth entry
+// (see screens/commands/index.js, which builds its sidebar from this list), so
+// the number in each title is derived rather than written and reordering here
+// is enough. Mirrors the macOS `commandDefinitions`.
+const COMMAND_DEFINITIONS = [
+    { id: 'calc', detail: 'Evaluate math expression', icon: calculator },
+    { id: 'pomo', detail: 'Pomodoro focus timer', icon: timer },
+    { id: 'todo', detail: 'Daily tasks & progress', icon: listChecks },
+    {
+        id: 'speed',
+        detail: 'Measure internet download, upload, and latency',
+        icon: gauge,
+    },
     {
         id: 'kill',
-        title: 'kill (Ctrl+4)',
         detail: 'Force kill app or process by name, port, or PID',
         icon: xCircle,
     },
-    { id: 'shell', title: 'shell (Ctrl+5)', detail: 'Run a shell command', icon: terminal },
-    { id: 'sys', title: 'sys (Ctrl+6)', detail: 'Show system information', icon: info },
+    { id: 'shell', detail: 'Run a shell command', icon: terminal },
+    { id: 'sys', detail: 'Show system information', icon: info },
 ];
+
+export const COMMAND_ENTRIES = COMMAND_DEFINITIONS.map((entry, index) => ({
+    ...entry,
+    shortcut: index + 1,
+    title: `${entry.id} (Ctrl+${index + 1})`,
+}));
+
+// True when `id` names a built-in command, for the `:cmd <args>` live trigger.
+export function isCommandId(id) {
+    return COMMAND_ENTRIES.some((entry) => entry.id === id);
+}
 
 // True when `:cmd <ws>` should bypass the discovery menu and live-trigger
 // the command panel (matches macOS extractInlineCommand). Bare `:calc` keeps
@@ -61,8 +78,7 @@ function isInlineCommandWithArgs(query) {
     if (!query.startsWith(':')) return false;
     const spaceIdx = query.slice(1).search(/\s/);
     if (spaceIdx < 0) return false;
-    const id = query.slice(1, 1 + spaceIdx).toLowerCase();
-    return COMMAND_ENTRIES.some((c) => c.id === id);
+    return isCommandId(query.slice(1, 1 + spaceIdx).toLowerCase());
 }
 
 export function isPrefixSuggestionQuery(query) {

@@ -240,6 +240,18 @@ export async function lunarDate(year, month, day, tz) {
 // `{ id, name, done, due_date, created_at_unix_s }` (same JSON contract as
 // the macOS FFI bridge).
 
+// Speed test: one full measurement from the shared look-netspeed crate. Blocks
+// for ~15s and up, so the panel drives it as a single in-flight run; rejects
+// with core's own message when no direction got through.
+export async function speedTest() {
+    return invoke('speed_test');
+}
+
+// This machine's IPv4 on the local network, or null when only loopback is up.
+export async function localIpv4() {
+    return invoke('local_ipv4');
+}
+
 export async function todoList() {
     return invoke('todo_list');
 }

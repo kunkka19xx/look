@@ -21,6 +21,8 @@ struct AppCommand: Identifiable {
             return "timer"
         case AppConstants.Launcher.Command.todo:
             return "checklist"
+        case AppConstants.Launcher.Command.speed:
+            return "speedometer"
         default:
             return "terminal"
         }
@@ -72,6 +74,7 @@ enum AppConstants {
             static let sys = "sys"
             static let pomo = "pomo"
             static let todo = "todo"
+            static let speed = "speed"
         }
 
         enum QueryPrefix {
@@ -441,14 +444,27 @@ enum AppConstants {
             static let uptimeIconName = "clock.arrow.circlepath"
         }
 
-        static let commandCatalog: [AppCommand] = [
-            AppCommand(id: Command.calc, title: "calc (⌘1)", detail: "Evaluate math expression", placeholder: "Type math expression"),
-            AppCommand(id: Command.pomo, title: "pomo (⌘2)", detail: "Pomodoro focus timer", placeholder: "Manage focus sessions"),
-            AppCommand(id: Command.todo, title: "todo (⌘3)", detail: "Daily tasks & progress", placeholder: "Search tasks & dates"),
-            AppCommand(id: Command.kill, title: "kill (⌘4)", detail: "Force kill app or process by name, PID, or port", placeholder: "Type a name, PID, or port"),
-            AppCommand(id: Command.shell, title: "shell (⌘5)", detail: "Run a shell command", placeholder: "Type shell command"),
-            AppCommand(id: Command.sys, title: "sys (⌘6)", detail: "Show system information", placeholder: "View system info"),
+        /// Catalog order is the whole shortcut mapping: ⌘N selects the Nth entry
+        /// (see `onSelectCommandByIndex`), so the number in each title is
+        /// derived rather than written, and reordering this list is enough.
+        private static let commandDefinitions: [(id: String, detail: String, placeholder: String)] = [
+            (Command.calc, "Evaluate math expression", "Type math expression"),
+            (Command.pomo, "Pomodoro focus timer", "Manage focus sessions"),
+            (Command.todo, "Daily tasks & progress", "Search tasks & dates"),
+            (Command.speed, "Measure internet download, upload, and latency", "Measures on open"),
+            (Command.kill, "Force kill app or process by name, PID, or port", "Type a name, PID, or port"),
+            (Command.shell, "Run a shell command", "Type shell command"),
+            (Command.sys, "Show system information", "View system info"),
         ]
+
+        static let commandCatalog: [AppCommand] = commandDefinitions.enumerated().map { index, definition in
+            AppCommand(
+                id: definition.id,
+                title: "\(definition.id) (⌘\(index + 1))",
+                detail: definition.detail,
+                placeholder: definition.placeholder
+            )
+        }
 
         /// Commands narrowed by `filter` - the text typed after a leading `:`.
         /// Case-insensitive substring match against the command id and its

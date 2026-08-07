@@ -160,17 +160,3 @@ struct AIAnswerCardView: View {
         NSPasteboard.general.setString(trimmed, forType: .string)
     }
 }
-
-extension View {
-    /// Shows the pointing-hand cursor on hover when `enabled`.
-    @ViewBuilder
-    fileprivate func pointingHandCursor(enabled: Bool) -> some View {
-        if enabled {
-            onHover { inside in
-                if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-            }
-        } else {
-            self
-        }
-    }
-}

@@ -8,7 +8,6 @@ import {
     musicIsFinished,
 } from '../../ipc.js';
 import {
-    timer,
     settings,
     chevronRight,
     music,
@@ -159,7 +158,6 @@ export function init() {
     if (savedFolder) musicRestoreFolder(savedFolder);
 
     // Set SVG icons
-    document.getElementById('cmd-pomo-header-icon').innerHTML = timer;
     settingsBtn.innerHTML = settings;
     chevronEl.innerHTML = chevronRight;
     document.getElementById('cmd-pomo-music-icon').innerHTML = music;

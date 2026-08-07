@@ -48,9 +48,10 @@ This document tracks what `look` supports today and what is planned next.
 ### Command mode
 
 - `Cmd+/` command mode entry, or inline `:cmdid` shortcut from the home screen (e.g. `:calc 2+2`, `:kill chrome`, `:pomo`); space after a known command id triggers a live switch with args pre-filled
-- built-in commands: `calc`, `pomo`, `todo`, `kill`, `shell`, `sys`
+- built-in commands: `calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`
 - `pomo`: pomodoro focus timer with editable session list, three timer styles (Modern Ring / Vintage Dial / Minimal Text), shuffled background-music folder, menu-bar mini-timer, 5s standby fade, "ending soon" alert at 10s remaining
 - `todo`: daily tasks grouped by date (3 unfinished per day, 3 upcoming groups, past days stay non-editable, unfinished tasks 1-3 days late show an `EXTENDED` badge and can still be completed, tasks more than 3 days late show `OVERDUE`, fuzzy search over tasks and dates, manual save) plus a Stats page: weekly/monthly completion donuts, streak, 30-day trend, GitHub-style year heatmap. Today's done/total shows as a clickable stat in the home hint bar. Stored in the shared `look.db` (`core/todo`), one-year retention
+- `speed`: internet speed test on a live dial - download and upload as counter-rotating comets on a log scale (1 Mbps to 1 Gbps), latency at the centre pulsing once per round trip, plus LAN/public addresses (public masked by default, both click-to-copy), ISP, location, and a plain-language read of the result. Measurement is shared (`core/netspeed`): a latency probe plus four parallel curl streams per direction against Cloudflare's keyless endpoints, falling back to the nearest of several public test mirrors when Cloudflare rate-limits the connection. Runs on open (reusing a reading under a minute old) and on `R`, never on a timer
 - calc parser (`core/calc`, shared by every shell) supports exponent (`^`), factorial (`!`), constants (`pi`, `e`), math functions (`sqrt`, `abs`, `round`, `floor`, `ceil`), `%` shorthand while keeping modulo, implicit multiplication (`2pi`, `3sqrt(9)`), comma-grouped and scientific-notation input (`1,500`, `1e6`), and aliases `x`/`:`/leading `v` (multiply, divide, `sqrt`) honored wherever they land inside `/calc` (`1920x1080`, `16:9`) - results are limited only by what an `f64` can represent, not an artificial ceiling
 - kill flow with explicit confirmation and process-by-port lookup (`:3000` / `port 3000`)
 - warning cue when shell input contains `sudo`
@@ -61,7 +62,7 @@ This document tracks what `look` supports today and what is planned next.
   - **macOS**: from `NSWorkspace.shared.runningApplications`, filtered to regular apps
   - **Linux**: from `/proc` scan, filtered by what GNOME Shell's `Shell.AppSystem.get_running()` considers a windowed app (via Look's GNOME extension on Wayland) or by `wlr-foreign-toplevel` / X11 client-list / desktop-hints on other compositors
   - **Windows**: from running-window enumeration via Win32
-- on the home screen, activation: `Cmd`+badge digit (macOS) / `Alt`+badge digit (Linux, Windows). In command mode, `Cmd+1`..`Cmd+5` / `Ctrl+1`..`Ctrl+5` keep their existing command-catalog semantics
+- on the home screen, activation: `Cmd`+badge digit (macOS) / `Alt`+badge digit (Linux, Windows). In command mode, `Cmd+1`..`Cmd+7` / `Ctrl+1`..`Ctrl+7` keep their existing command-catalog semantics
 - badge labels follow an ergonomic outer-first layout: with N running apps we consume the easiest-to-reach keys first (`1, 2, 3, 9, 8` before `4`, then `7`, then `6`, then `5`). 5 running apps → badges `1, 2, 3, 8, 9`; 9 running apps → all of `1`..`9`
 - focus paths: macOS = `NSRunningApplication.activate()` with Dock-style reopen for windowless apps; Linux = GNOME Shell extension D-Bus on GNOME Wayland, `wlr-foreign-toplevel-management` on sway/Hyprland, `i3-msg` on i3, `_NET_ACTIVE_WINDOW` (x11rb) on other X11 WMs; Windows = `SetForegroundWindow` via window handle
 - click on an icon also switches; hover shows app name + shortcut tooltip; active app has an accent ring

@@ -4,6 +4,7 @@ mod answers_api;
 mod calc_api;
 mod lunar_api;
 mod matching_api;
+mod netspeed_api;
 mod qactions_api;
 mod runtime_config;
 mod search_api;
@@ -123,6 +124,17 @@ pub extern "C" fn look_lunar_date_json(year: i64, month: i64, day: i64, tz: f64)
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         lunar_api::look_lunar_date_json_impl(year, month, day, tz)
     }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// A full speed test as JSON (`{"ok":true,"reading":{...}}` or
+/// `{"ok":false,"error":"..."}`). Blocks for 15 seconds and up, so call it off
+/// the UI thread. Free the result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_netspeed_run_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        netspeed_api::look_netspeed_run_json_impl,
+    ))
     .unwrap_or(std::ptr::null_mut())
 }
 
@@ -300,10 +312,37 @@ mod tests {
 
     static TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 
+    /// Config the whole binary runs against, so no test reads the developer's
+    /// real `~/.look.config`.
+    const TEST_CONFIG: &str =
+        "lazy_indexing_enabled=true\nfile_scan_roots=\nfile_scan_extra_roots=\napp_scan_roots=\n";
+
+    /// Serializes the tests that share process-global state, and publishes the
+    /// scratch config path exactly once, inside the `OnceLock` initializer: every
+    /// test waits here before its body runs, so the one `set_var` in the suite
+    /// lands before any engine thread exists to read it concurrently. The
+    /// database path needs to differ per test and goes through
+    /// `state::set_db_path_for_test` instead, which touches no environment.
+    fn test_lock() -> &'static Mutex<()> {
+        TEST_MUTEX.get_or_init(|| {
+            let path = test_config_path();
+            fs::write(&path, TEST_CONFIG).expect("write test config");
+            unsafe {
+                env::set_var("LOOK_CONFIG_PATH", path.as_os_str());
+            }
+            Mutex::new(())
+        })
+    }
+
+    /// Fixed, unlike the database path: it is published to the environment once
+    /// and so cannot change between tests.
+    fn test_config_path() -> PathBuf {
+        env::temp_dir().join("look-ffi-config-smoke.config")
+    }
+
     #[test]
     fn ffi_search_and_record_usage_smoke() {
-        let lock = TEST_MUTEX.get_or_init(|| Mutex::new(()));
-        let _guard = lock.lock().expect("test lock poisoned");
+        let _guard = test_lock().lock().expect("test lock poisoned");
 
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);
@@ -313,9 +352,7 @@ mod tests {
             .upsert_candidates(&[smoke_candidate()])
             .expect("insert smoke candidate");
 
-        unsafe {
-            env::set_var("LOOK_DB_PATH", db_path.as_os_str());
-        }
+        state::set_db_path_for_test(&db_path);
         assert!(look_reload_config());
 
         let query = CString::new("smoke").expect("query cstring");
@@ -465,24 +502,11 @@ mod tests {
 
     #[test]
     fn ffi_reload_refresh_and_translate_error_smoke() {
-        let lock = TEST_MUTEX.get_or_init(|| Mutex::new(()));
-        let _guard = lock.lock().expect("test lock poisoned");
+        let _guard = test_lock().lock().expect("test lock poisoned");
 
         let db_path = unique_test_db_path();
-        let config_path = unique_test_config_path();
         let _ = fs::remove_file(&db_path);
-        let _ = fs::remove_file(&config_path);
-
-        fs::write(
-            &config_path,
-            "lazy_indexing_enabled=true\nfile_scan_roots=\nfile_scan_extra_roots=\napp_scan_roots=\n",
-        )
-        .expect("write test config");
-
-        unsafe {
-            env::set_var("LOOK_DB_PATH", db_path.as_os_str());
-            env::set_var("LOOK_CONFIG_PATH", config_path.as_os_str());
-        }
+        state::set_db_path_for_test(&db_path);
 
         assert!(look_reload_config());
 
@@ -531,7 +555,6 @@ mod tests {
 
         crate::state::stop_index_watchers_for_test();
         let _ = fs::remove_file(&db_path);
-        let _ = fs::remove_file(&config_path);
     }
 
     fn json_from_ptr(ptr: *mut std::os::raw::c_char) -> serde_json::Value {
@@ -551,26 +574,15 @@ mod tests {
         env::temp_dir().join(format!("look-ffi-smoke-{nanos}.db"))
     }
 
-    fn unique_test_config_path() -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        env::temp_dir().join(format!("look-ffi-config-smoke-{nanos}.config"))
-    }
-
     #[test]
     fn ffi_todo_save_and_list_round_trip() {
-        let lock = TEST_MUTEX.get_or_init(|| Mutex::new(()));
-        let _guard = lock.lock().expect("test lock poisoned");
+        let _guard = test_lock().lock().expect("test lock poisoned");
 
         // The todo store resolves LOOK_DB_PATH on every call, so pointing
         // it at a scratch database keeps the test off the real look.db.
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);
-        unsafe {
-            env::set_var("LOOK_DB_PATH", db_path.as_os_str());
-        }
+        state::set_db_path_for_test(&db_path);
 
         // Far-future due_date so the retention prune never removes it.
         let tasks = CString::new(
@@ -611,15 +623,12 @@ mod tests {
 
     #[test]
     fn ffi_seed_uwp_apps_json_inserts_and_search_finds() {
-        let lock = TEST_MUTEX.get_or_init(|| Mutex::new(()));
-        let _guard = lock.lock().expect("test lock poisoned");
+        let _guard = test_lock().lock().expect("test lock poisoned");
 
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);
 
-        unsafe {
-            env::set_var("LOOK_DB_PATH", db_path.as_os_str());
-        }
+        state::set_db_path_for_test(&db_path);
         assert!(look_reload_config());
 
         // Mirror the JSON format the C# UwpAppService produces (System.Text.Json with

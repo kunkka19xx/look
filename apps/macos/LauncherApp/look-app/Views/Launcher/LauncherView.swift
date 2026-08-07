@@ -74,6 +74,7 @@ struct LauncherView: View {
     /// and the controller holding its interactive state.
     @State var launchpadTiles: [LaunchpadTileModel] = []
     @State var launchpadController = LaunchpadController()
+    @State var speedTest = SpeedTestController()
     @State var searchTask: Task<Void, Never>?
     @State var latestSearchID: UInt64 = 0
     @State var bannerMessage: String?
@@ -493,18 +494,21 @@ struct LauncherView: View {
 
         if isCommandMode {
             if activeCommandID == AppConstants.Launcher.Command.kill {
-                return ["Y confirm", "N cancel", "Tab/Cmd+1-4 switch", "Esc back"]
+                return ["Y confirm", "N cancel", "Tab/\(commandSwitchHint)", "Esc back"]
             }
             if activeCommandID == AppConstants.Launcher.Command.sys {
-                return ["Esc back", "Tab/Cmd+1-6 switch", "Cmd+/ command mode", "Cmd+Shift+, settings"]
+                return ["Esc back", "Tab/\(commandSwitchHint)", "Cmd+/ command mode", "Cmd+Shift+, settings"]
+            }
+            if activeCommandID == AppConstants.Launcher.Command.speed {
+                return ["R rerun", "E show IP", "Esc back", "Tab/\(commandSwitchHint)"]
             }
             if activeCommandID == AppConstants.Launcher.Command.pomo {
-                return ["Space start/pause", "R reset", "P music", "Esc back", "Tab/Cmd+1-6 switch"]
+                return ["Space start/pause", "R reset", "P music", "Esc back", "Tab/\(commandSwitchHint)"]
             }
             if activeCommandID == AppConstants.Launcher.Command.todo {
-                return ["Cmd+N switch page", "Cmd+S save", "Cmd+1-6 switch", "Esc back"]
+                return ["Cmd+N switch page", "Cmd+S save", commandSwitchHint, "Esc back"]
             }
-            return ["Enter run", "Tab select", "Cmd+1-6 switch", "Esc back"]
+            return ["Enter run", "Tab select", commandSwitchHint, "Esc back"]
         }
 
         if let command = extractTranslationQuery(from: query.trimmingCharacters(in: .whitespacesAndNewlines)) {
@@ -585,6 +589,11 @@ struct LauncherView: View {
         return String(normalized[splitPoint...]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// "Cmd+1-7 switch", derived so a new command can't leave the hint stale.
+    var commandSwitchHint: String {
+        "Cmd+1-\(commandCatalog.count) switch"
+    }
+
     var activeCommand: AppCommand? {
         guard let activeCommandID else { return nil }
         return commandCatalog.first(where: { $0.id == activeCommandID })
@@ -593,6 +602,7 @@ struct LauncherView: View {
     var activeCommandAcceptsInput: Bool {
         guard let activeCommandID else { return false }
         if activeCommandID == AppConstants.Launcher.Command.sys { return false }
+        if activeCommandID == AppConstants.Launcher.Command.speed { return false }
         if activeCommandID == AppConstants.Launcher.Command.pomo { return false }
         // /todo owns its own top search bar, like /pomo owns its header.
         if activeCommandID == AppConstants.Launcher.Command.todo { return false }
