@@ -12,7 +12,7 @@
 > | `Cmd+C`         | `Ctrl+C`         |
 > | `Cmd+/`         | `Ctrl+/`         |
 > | `Cmd+0`         | `Ctrl+0`         |
-> | `Cmd+1`…`Cmd+5` | `Ctrl+1`…`Ctrl+5`|
+> | `Cmd+1`…`Cmd+7` (command mode) | `Ctrl+1`…`Ctrl+7`|
 > | `Cmd+1`…`Cmd+9` (running-apps switcher) | `Alt+1`…`Alt+9` |
 > | `Cmd+P`         | `Ctrl+P`         |
 > | `Cmd+Shift+P`   | `Ctrl+Shift+P`   |
