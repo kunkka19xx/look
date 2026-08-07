@@ -9,8 +9,9 @@
 
 use serde::Serialize;
 use std::io::Write;
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -20,8 +21,10 @@ mod endpoint {
     /// accepts a POST body of any size.
     pub const DOWNLOAD: &str = "https://speed.cloudflare.com/__down?bytes=";
     pub const UPLOAD: &str = "https://speed.cloudflare.com/__up";
-    /// Zero-byte download, so the timing covers the round trip and nothing else.
-    pub const LATENCY: &str = "https://speed.cloudflare.com/__down?bytes=0";
+    /// The latency probe opens a socket rather than fetching a URL, so it needs
+    /// the host and port on their own.
+    pub const LATENCY_HOST: &str = "speed.cloudflare.com";
+    pub const HTTPS_PORT: u16 = 443;
     /// Keyless lookup of who carries the traffic and roughly from where, the
     /// same service the weather tile geocodes against.
     pub const ORIGIN: &str = "https://ipwho.is/";
@@ -523,17 +526,33 @@ fn upload_stream(payload: &[u8]) -> Lane {
         .unwrap_or(Lane::Failed)
 }
 
-/// Best of several probes, since any single one can catch a scheduling hiccup.
+/// The idle round trip, as the time to complete a TCP handshake with the
+/// endpoint. Best of several probes, since any single one can catch a scheduling
+/// hiccup. Timed here rather than read off curl, whose cumulative
+/// `time_namelookup` and `time_connect` are not ordered the same way across
+/// builds, and which would leave DNS in the number unless subtracted back out.
 fn measure_latency() -> Option<f64> {
+    let address = latency_address()?;
+    let timeout = Duration::from_secs(LATENCY_TIMEOUT_SECS.into());
+
     (0..LATENCY_SAMPLES)
         .filter_map(|_| {
-            measuring_curl(LATENCY_TIMEOUT_SECS, "%{time_namelookup} %{time_connect}")
-                .arg(endpoint::LATENCY)
-                .output()
-                .ok()
-                .and_then(|output| parse_round_trip(&output.stdout))
+            let started = Instant::now();
+            TcpStream::connect_timeout(&address, timeout).ok()?;
+            let round_trip = started.elapsed().as_secs_f64() * MILLIS_PER_SEC;
+            (round_trip.is_finite() && round_trip > 0.0).then_some(round_trip)
         })
         .min_by(f64::total_cmp)
+}
+
+/// Resolved once, so no probe pays for a name lookup. IPv4 first, matching the
+/// preference the origin lookup states: it is the family the rest of the run is
+/// most likely to measure over.
+fn latency_address() -> Option<SocketAddr> {
+    (endpoint::LATENCY_HOST, endpoint::HTTPS_PORT)
+        .to_socket_addrs()
+        .ok()?
+        .min_by_key(|address| u8::from(!address.is_ipv4()))
 }
 
 fn curl_available() -> bool {
@@ -593,22 +612,6 @@ fn parse_lane(raw: &[u8]) -> Lane {
         Some(rate) if rate.is_finite() && rate > 0.0 => Lane::Rate(rate),
         _ => Lane::Failed,
     }
-}
-
-/// `time_namelookup time_connect`, in seconds, as the round trip in ms. curl's
-/// timers are cumulative from the start of the request, so the lookup has to
-/// come off the connect or a cold DNS resolve reads as latency.
-fn parse_round_trip(raw: &[u8]) -> Option<f64> {
-    let text = String::from_utf8_lossy(raw).replace(',', ".");
-    let mut fields = text.split_whitespace();
-    let lookup: f64 = fields.next()?.parse().ok()?;
-    let connect: f64 = fields.next()?.parse().ok()?;
-
-    let round_trip = (connect - lookup) * MILLIS_PER_SEC;
-    if !round_trip.is_finite() || round_trip <= 0.0 {
-        return None;
-    }
-    Some(round_trip)
 }
 
 fn now_unix() -> i64 {
@@ -734,21 +737,6 @@ mod tests {
         assert_eq!(text(&serde_json::json!("   ")), None);
         assert_eq!(text(&serde_json::json!(null)), None);
         assert_eq!(text(&serde_json::json!(42)), None);
-    }
-
-    #[test]
-    fn takes_the_round_trip_without_the_dns_lookup() {
-        // 4ms resolving, connect complete at 20ms: the round trip is the 16ms
-        // between them, not the 20 curl reports.
-        let round_trip = parse_round_trip(b"0.004000 0.020000").expect("parsed");
-        assert!((round_trip - 16.0).abs() < 1e-9);
-    }
-
-    #[test]
-    fn rejects_a_probe_that_never_connected() {
-        assert_eq!(parse_round_trip(b"0.004000 0.000000"), None);
-        assert_eq!(parse_round_trip(b"0.004000"), None);
-        assert_eq!(parse_round_trip(b"curl: (6) Could not resolve host"), None);
     }
 
     #[test]

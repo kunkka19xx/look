@@ -62,7 +62,7 @@ flowchart LR
 - `core/ranking`: ranking helpers (usage/recency-aware adjustments and score composition).
 - `core/storage`: SQLite integration, schema/migrations, candidate/usage persistence.
 - `core/todo`: shared store for the `/todo` command. Owns the `todo_tasks` table inside the app's existing `look.db` (full-set load/save, one-year retention). macOS reaches it via `bridge/ffi`, linows via its Tauri command layer. `examples/seed.rs` fills a dev database with demo history, including near-today extension-window cases for `/todo` UI testing.
-- `core/netspeed`: the `/speed` measurement, shared by every shell. Latency probe, download and upload phases (four parallel `curl` streams each), and the plain-language verdicts and display strings both shells print, so a reading reads identically everywhere. Cloudflare's keyless endpoints are the primary source; when they rate-limit a connection the download phase falls back to the nearest of several public test mirrors, ranked by a round-trip probe. No async runtime, and every phase is timeout-bounded. macOS reaches it via `bridge/ffi`, linows via its Tauri command layer (backend registered; front-end binding still to come).
+- `core/netspeed`: the `/speed` measurement, shared by every shell. A latency probe (the best of several TCP handshakes against a pre-resolved address, rather than a subtraction of two of curl's cumulative timers, whose order is not portable across curl builds), download and upload phases (four parallel `curl` streams each), and the plain-language verdicts and display strings both shells print, so a reading reads identically everywhere. Cloudflare's keyless endpoints are the primary source; when they rate-limit a connection the download phase falls back to the nearest of several public test mirrors, ranked by a round-trip probe. No async runtime, and every phase is timeout-bounded. macOS reaches it via `bridge/ffi`, linows via its Tauri command layer.
 - `core/engine`: query parsing, indexing orchestration, scoring, top-k retrieval, in-memory cache management.
 
 ```mermaid
@@ -316,7 +316,7 @@ Behavioral notes:
 - global hotkey `Cmd+Space` toggles launcher visibility,
 - web search is explicit handoff (`Cmd+Enter`),
 - clipboard history mode is shell-side and in-memory for current session,
-- command mode supports `calc`, `pomo`, `todo`, `speed` (macOS shell only so far), `kill`, `shell`, `sys` (⌘1-7 follow catalog order),
+- command mode supports `calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys` (⌘1-7 / Ctrl+1-7 follow catalog order),
 - settings panel controls theme/index/runtime knobs and persists locally.
 
 ---

@@ -68,6 +68,15 @@ export function isLinux() {
     return info?.os === 'linux';
 }
 
+// Read live off the query list so an OS toggle mid-session takes effect.
+// Windows is excluded to match the CSS: its reduce-motion flag tracks the
+// "best performance" visual-effects preset, not motion sensitivity.
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+export function prefersReducedMotion() {
+    return reduceMotion.matches && !isWindows();
+}
+
 // Ctrl+Shift+Enter target: exes and look-cmd:// applets. ms-settings: pages
 // have no elevated form, so neither gesture nor hint is offered for them.
 export function canRunElevated(item) {

@@ -25,7 +25,7 @@ apps/linows/
       process.rs         Running apps list + kill
       sysinfo.rs         System info (OS, memory, CPU, battery, uptime, disk)
       todo.rs            Daily tasks (shared look-todo store in look.db)
-      netspeed.rs        Speed test (shared look-netspeed crate); no front-end screen yet
+      netspeed.rs        Speed test (shared look-netspeed crate) + local IPv4 lookup
       translate.rs       Translation
       weburl.rs          URL-like query detection + opened-URL history (shared core)
       autostart.rs       Autostart management
@@ -47,7 +47,7 @@ apps/linows/
       icons.js           Icon resolution
       html-loader.js     Dynamic HTML template loader
       components/        results, preview, picked, banner, translate, ai-answer (web answer card)
-      screens/           settings, commands (calc, kill, pomo, shell, sys, todo)
+      screens/           settings, commands (calc, kill, pomo, shell, speed, sys, todo)
     html/screens/        HTML templates (search, settings, help, commands)
     assets/              Icons
 ```

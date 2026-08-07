@@ -1,61 +1,21 @@
 import * as calc from './calc.js';
 import * as pomo from './pomo.js';
 import * as todo from './todo.js';
+import * as speed from './speed.js';
 import * as kill from './kill.js';
 import * as shell from './shell.js';
 import * as sys from './sys.js';
-import { calculator, timer, listChecks, xCircle, terminal, info } from '../../icons.js';
+import { COMMAND_ENTRIES } from '../../catalog.js';
 
-const COMMANDS = [
-    {
-        id: 'calc',
-        label: '/calc',
-        shortcut: '1',
-        detail: 'Evaluate math...',
-        icon: calculator,
-        module: calc,
-    },
-    {
-        id: 'pomo',
-        label: '/pomo',
-        shortcut: '2',
-        detail: 'Pomodoro focus...',
-        icon: timer,
-        module: pomo,
-    },
-    {
-        id: 'todo',
-        label: '/todo',
-        shortcut: '3',
-        detail: 'Daily tasks &...',
-        icon: listChecks,
-        module: todo,
-    },
-    {
-        id: 'kill',
-        label: '/kill',
-        shortcut: '4',
-        detail: 'Force kill app...',
-        icon: xCircle,
-        module: kill,
-    },
-    {
-        id: 'shell',
-        label: '/shell',
-        shortcut: '5',
-        detail: 'Run a shell co...',
-        icon: terminal,
-        module: shell,
-    },
-    {
-        id: 'sys',
-        label: '/sys',
-        shortcut: '6',
-        detail: 'Show system in...',
-        icon: info,
-        module: sys,
-    },
-];
+// catalog.js owns the order, the details and the Ctrl+N each command answers
+// to; this side only binds an id to the panel module that renders it.
+const MODULES = { calc, pomo, todo, speed, kill, shell, sys };
+
+const COMMANDS = COMMAND_ENTRIES.map((entry) => ({
+    ...entry,
+    label: `/${entry.id}`,
+    module: MODULES[entry.id],
+}));
 
 let screen = null;
 let sidebar = null;
@@ -80,15 +40,17 @@ export function init(contentAreaEl, inputEl, { onExitMode, onExecuteCommand, onG
     calc.init(onExecuteCommand);
     pomo.init();
     todo.init();
+    speed.init();
     kill.init(onExecuteCommand, onGetIcon);
     shell.init(onExecuteCommand);
     sys.init(onExecuteCommand);
 
-    // Set header bar icons
-    document.getElementById('cmd-calc-header-icon').innerHTML = calculator;
-    document.getElementById('cmd-kill-header-icon').innerHTML = xCircle;
-    document.getElementById('cmd-shell-header-icon').innerHTML = terminal;
-    document.getElementById('cmd-sys-header-icon').innerHTML = info;
+    // Every panel names its header slot the same way, so the catalog's icon
+    // reaches it without a per-command line.
+    for (const cmd of COMMANDS) {
+        const slot = document.getElementById(`cmd-${cmd.id}-header-icon`);
+        if (slot) slot.innerHTML = cmd.icon;
+    }
 
     buildSidebar();
 }
@@ -149,7 +111,7 @@ export function handleKey(e) {
         return true;
     }
 
-    // Ctrl+1..6 jump to command
+    // Ctrl+1..N jump to command
     if (e.ctrlKey && !e.shiftKey && e.key >= '1' && e.key <= String(COMMANDS.length)) {
         e.preventDefault();
         const idx = parseInt(e.key) - 1;
