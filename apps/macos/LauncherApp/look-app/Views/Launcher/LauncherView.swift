@@ -1230,27 +1230,23 @@ struct LauncherView: View {
     /// one scrolling conversation; the pending confirm or progress sits below the
     /// stack, and a footer teaches the keys. Enter runs, Esc leaves, the session
     /// survives across several turns and is archived locally when it ends.
-    private var aiSessionPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Shift+Esc → straight home. Native key-equivalent as the reliable
-            // path (⌘+Esc is reserved by the system on some Macs).
+    /// Off-layout key-equivalents for the AI panel (attached as a background so
+    /// they never take a VStack slot): Shift+Esc → home, ⌘⌫ → delete highlight.
+    private var aiSessionShortcuts: some View {
+        ZStack {
             Button("") { exitAIToHome() }
                 .keyboardShortcut(.escape, modifiers: .shift)
-                .buttonStyle(.plain)
-                .frame(width: 0, height: 0)
-                .opacity(0)
-                .accessibilityHidden(true)
-
-            // ⌘⌫ deletes the highlighted session. Disabled (so it falls through
-            // to text editing) when nothing is highlighted.
             Button("") { deleteHighlightedSession() }
                 .keyboardShortcut(.delete, modifiers: .command)
                 .disabled(selectedConversationIndex < 0 || filteredConversations.isEmpty)
-                .buttonStyle(.plain)
-                .frame(width: 0, height: 0)
-                .opacity(0)
-                .accessibilityHidden(true)
+        }
+        .buttonStyle(.plain)
+        .opacity(0)
+        .accessibilityHidden(true)
+    }
 
+    private var aiSessionPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -1415,6 +1411,7 @@ struct LauncherView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(aiSessionShortcuts)
     }
 
     /// A conversational exchange: a user question plus its answer, or one
