@@ -110,6 +110,9 @@ let shownUpload = 0;
 let lastFrame = null;
 let frame = null;
 let pulseShown = false;
+// The launcher hides without leaving the panel, so "panel open" and "window up"
+// are separate conditions and syncMotion() needs both.
+let windowShown = true;
 // Rate positions the comets are currently shaped for; -1 forces a reshape.
 let shapedDownload = -1;
 let shapedUpload = -1;
@@ -157,19 +160,17 @@ export function init() {
     }).observe(gaugeEl);
 
     // The dial is the app's only per-frame loop, and the launcher hides without
-    // leaving the panel, so it has to stand down with the window.
-    onWindowHidden(() => stopMotion());
+    // leaving the panel, so it has to stand down with the window. The OS motion
+    // setting can flip mid-session too, including while hidden.
+    onWindowHidden(() => {
+        windowShown = false;
+        syncMotion();
+    });
     onWindowShown(() => {
-        if (!panel.hidden) startMotion();
+        windowShown = true;
+        syncMotion();
     });
-
-    // The OS setting can flip mid-session. startMotion() stands the loop down
-    // when it has just come on, which leaves the dial to be placed by hand.
-    onReducedMotionChange(() => {
-        if (panel.hidden) return;
-        startMotion();
-        if (prefersReducedMotion()) snapMotion();
-    });
+    onReducedMotionChange(syncMotion);
 }
 
 export function enter() {
@@ -177,7 +178,7 @@ export function enter() {
     measureDial();
     buildScale();
     render();
-    startMotion();
+    syncMotion();
     if (running) startTicking();
 
     refreshLocalAddress();
@@ -237,6 +238,7 @@ async function start() {
     running = false;
     stopTicking();
     render();
+    syncMotion();
 }
 
 function isFresh() {
@@ -411,10 +413,18 @@ function buildScale() {
     scaleEl.replaceChildren(fragment);
 }
 
-function startMotion() {
+// The one place that decides whether the dial should be moving: the panel has to
+// be open, the window up, and the OS not asking for less motion. Under Reduce
+// Motion the dial is placed once instead, since nothing will advance the eased
+// values. Callers re-run this rather than testing a subset of the three.
+function syncMotion() {
     stopMotion();
     lastFrame = null;
-    if (prefersReducedMotion()) return;
+    if (panel.hidden || !windowShown) return;
+    if (prefersReducedMotion()) {
+        snapMotion();
+        return;
+    }
     frame = requestAnimationFrame(tick);
 }
 
@@ -532,7 +542,6 @@ function render() {
     renderStatus();
     renderVerdict();
     renderCarrier();
-    if (prefersReducedMotion()) snapMotion();
 }
 
 // The dial shows the number alone; the caption underneath carries the unit.
