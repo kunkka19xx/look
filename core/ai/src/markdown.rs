@@ -6,8 +6,13 @@
 #[derive(Debug, PartialEq, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Segment {
-    Text { text: String },
-    Code { text: String, language: Option<String> },
+    Text {
+        text: String,
+    },
+    Code {
+        text: String,
+        language: Option<String>,
+    },
 }
 
 pub fn segments(raw: &str) -> Vec<Segment> {
@@ -16,14 +21,22 @@ pub fn segments(raw: &str) -> Vec<Segment> {
     let mut in_code = false;
     let mut language: Option<String> = None;
 
-    fn flush(out: &mut Vec<Segment>, buffer: &mut Vec<&str>, in_code: bool, language: &Option<String>) {
+    fn flush(
+        out: &mut Vec<Segment>,
+        buffer: &mut Vec<&str>,
+        in_code: bool,
+        language: &Option<String>,
+    ) {
         let joined = buffer.join("\n");
         buffer.clear();
         if joined.trim().is_empty() {
             return;
         }
         out.push(if in_code {
-            Segment::Code { text: joined, language: language.clone() }
+            Segment::Code {
+                text: joined,
+                language: language.clone(),
+            }
         } else {
             Segment::Text { text: joined }
         });
@@ -66,7 +79,10 @@ mod tests {
         Segment::Text { text: s.into() }
     }
     fn code(s: &str, lang: Option<&str>) -> Segment {
-        Segment::Code { text: s.into(), language: lang.map(Into::into) }
+        Segment::Code {
+            text: s.into(),
+            language: lang.map(Into::into),
+        }
     }
 
     #[test]
@@ -78,7 +94,11 @@ mod tests {
     fn fenced_code_splits_into_three_segments() {
         assert_eq!(
             segments("Before\n```swift\nlet x = 1\n```\nAfter"),
-            vec![text("Before"), code("let x = 1", Some("swift")), text("After")]
+            vec![
+                text("Before"),
+                code("let x = 1", Some("swift")),
+                text("After")
+            ]
         );
     }
 

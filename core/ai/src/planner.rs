@@ -132,8 +132,7 @@ mod tests {
 
     #[test]
     fn move_needs_match_and_when() {
-        let call =
-            resolve_step(&step("move", json!({"match": "sync", "when": "4pm"}))).unwrap();
+        let call = resolve_step(&step("move", json!({"match": "sync", "when": "4pm"}))).unwrap();
         assert_eq!(call["tool"], "calendar.move_event");
         assert_eq!(call["params"]["when"], "4pm");
         assert!(resolve_step(&step("move", json!({"match": "sync"}))).is_none());
@@ -157,7 +156,11 @@ mod tests {
 
     #[test]
     fn block_needs_duration() {
-        let call = resolve_step(&step("block", json!({"duration": "2 hours", "when": "friday"}))).unwrap();
+        let call = resolve_step(&step(
+            "block",
+            json!({"duration": "2 hours", "when": "friday"}),
+        ))
+        .unwrap();
         assert_eq!(call["tool"], "calendar.block_time");
         assert_eq!(call["params"]["duration"], "2 hours");
         assert_eq!(call["params"]["when"], "friday");

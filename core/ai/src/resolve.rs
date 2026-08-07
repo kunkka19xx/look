@@ -54,13 +54,34 @@ pub struct ResolveRequest {
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Execute {
-    AddEvent { title: String, start: i64, end: i64, all_day: bool },
-    AddReminder { title: String, due: Option<i64> },
-    RemoveEvent { id: String },
-    MoveEvent { id: String, start: i64, end: i64 },
-    CompleteReminder { id: String },
-    RemoveReminder { id: String },
-    SetReminderDue { id: String, due: Option<i64> },
+    AddEvent {
+        title: String,
+        start: i64,
+        end: i64,
+        all_day: bool,
+    },
+    AddReminder {
+        title: String,
+        due: Option<i64>,
+    },
+    RemoveEvent {
+        id: String,
+    },
+    MoveEvent {
+        id: String,
+        start: i64,
+        end: i64,
+    },
+    CompleteReminder {
+        id: String,
+    },
+    RemoveReminder {
+        id: String,
+    },
+    SetReminderDue {
+        id: String,
+        due: Option<i64>,
+    },
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -68,11 +89,28 @@ pub enum Execute {
 pub enum Undo {
     RemoveEventByNewId,
     RemoveReminderByNewId,
-    RecreateEvent { title: String, start: i64, end: i64, all_day: bool },
-    MoveEvent { id: String, start: i64, end: i64 },
-    UncompleteReminder { id: String },
-    RecreateReminder { title: String, due: Option<i64> },
-    SetReminderDue { id: String, due: Option<i64> },
+    RecreateEvent {
+        title: String,
+        start: i64,
+        end: i64,
+        all_day: bool,
+    },
+    MoveEvent {
+        id: String,
+        start: i64,
+        end: i64,
+    },
+    UncompleteReminder {
+        id: String,
+    },
+    RecreateReminder {
+        title: String,
+        due: Option<i64>,
+    },
+    SetReminderDue {
+        id: String,
+        due: Option<i64>,
+    },
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -94,19 +132,29 @@ pub enum ResolveOutcome {
         execute: Execute,
         undo: Undo,
     },
-    Choice { candidates: Vec<Candidate> },
-    Invalid { message: String },
+    Choice {
+        candidates: Vec<Candidate>,
+    },
+    Invalid {
+        message: String,
+    },
 }
 
 /// Precompute match keys for the request's own candidate lists. The shell can
 /// skip this per-keystroke cost by loading targets once (see the ffi store) and
 /// calling `resolve_indexed_request` directly.
 pub fn index_events(events: &[EventCandidate]) -> Vec<Indexed<EventCandidate>> {
-    events.iter().map(|e| matcher::index(e.clone(), &e.title)).collect()
+    events
+        .iter()
+        .map(|e| matcher::index(e.clone(), &e.title))
+        .collect()
 }
 
 pub fn index_reminders(reminders: &[ReminderCandidate]) -> Vec<Indexed<ReminderCandidate>> {
-    reminders.iter().map(|r| matcher::index(r.clone(), &r.title)).collect()
+    reminders
+        .iter()
+        .map(|r| matcher::index(r.clone(), &r.title))
+        .collect()
 }
 
 pub fn resolve(request: &ResolveRequest) -> ResolveOutcome {
@@ -131,14 +179,18 @@ pub fn resolve_indexed_request(
         "reminder.remove" => remove_reminder(request, events, reminders),
         "reminder.snooze" => snooze_reminder(request, reminders),
         "calendar.block_time" => block_time(request, events),
-        other => ResolveOutcome::Invalid { message: format!("Unknown action: {other}") },
+        other => ResolveOutcome::Invalid {
+            message: format!("Unknown action: {other}"),
+        },
     }
 }
 
 pub fn resolve_json(request_json: &str) -> String {
     let outcome = match serde_json::from_str::<ResolveRequest>(request_json) {
         Ok(request) => resolve(&request),
-        Err(_) => ResolveOutcome::Invalid { message: "Bad resolve request.".into() },
+        Err(_) => ResolveOutcome::Invalid {
+            message: "Bad resolve request.".into(),
+        },
     };
     serde_json::to_string(&outcome)
         .unwrap_or_else(|_| r#"{"outcome":"invalid","message":"encode failed"}"#.into())
@@ -176,7 +228,12 @@ fn add_event(request: &ResolveRequest) -> ResolveOutcome {
         preview_detail: format!("\"{title}\"  {}", fmt_range(start, end)),
         summary: format!("Added \"{title}\""),
         subject: Some("new".into()),
-        execute: Execute::AddEvent { title: title.clone(), start, end, all_day: false },
+        execute: Execute::AddEvent {
+            title: title.clone(),
+            start,
+            end,
+            all_day: false,
+        },
         undo: Undo::RemoveEventByNewId,
     }
 }
@@ -190,7 +247,12 @@ fn all_day_event(title: &str, day_epoch: i64) -> ResolveOutcome {
         preview_detail: format!("\"{title}\"  {} (all day)", fmt_day(start)),
         summary: format!("Added \"{title}\""),
         subject: Some("new".into()),
-        execute: Execute::AddEvent { title: title.into(), start, end, all_day: true },
+        execute: Execute::AddEvent {
+            title: title.into(),
+            start,
+            end,
+            all_day: true,
+        },
         undo: Undo::RemoveEventByNewId,
     }
 }
@@ -219,7 +281,10 @@ fn add_reminder(request: &ResolveRequest) -> ResolveOutcome {
         preview_detail: detail,
         summary: format!("Added reminder \"{title}\""),
         subject: Some("new".into()),
-        execute: Execute::AddReminder { title: title.clone(), due },
+        execute: Execute::AddReminder {
+            title: title.clone(),
+            due,
+        },
         undo: Undo::RemoveReminderByNewId,
     }
 }
@@ -232,7 +297,9 @@ fn plan_cancel_event(event: EventCandidate) -> ResolveOutcome {
         preview_detail: event_detail(&event),
         summary: format!("Cancelled \"{}\"", event.title),
         subject: None,
-        execute: Execute::RemoveEvent { id: event.id.clone() },
+        execute: Execute::RemoveEvent {
+            id: event.id.clone(),
+        },
         undo: Undo::RecreateEvent {
             title: event.title,
             start: event.start,
@@ -248,8 +315,13 @@ fn plan_remove_reminder(reminder: ReminderCandidate) -> ResolveOutcome {
         preview_detail: format!("\"{}\"", reminder.title),
         summary: format!("Removed reminder \"{}\"", reminder.title),
         subject: None,
-        execute: Execute::RemoveReminder { id: reminder.id.clone() },
-        undo: Undo::RecreateReminder { title: reminder.title, due: reminder.due },
+        execute: Execute::RemoveReminder {
+            id: reminder.id.clone(),
+        },
+        undo: Undo::RecreateReminder {
+            title: reminder.title,
+            due: reminder.due,
+        },
     }
 }
 
@@ -257,7 +329,10 @@ fn event_choice(options: Vec<EventCandidate>) -> ResolveOutcome {
     ResolveOutcome::Choice {
         candidates: options
             .into_iter()
-            .map(|e| Candidate { label: format!("{}  ·  {}", e.title, fmt_instant(e.start)), id: e.id })
+            .map(|e| Candidate {
+                label: format!("{}  ·  {}", e.title, fmt_instant(e.start)),
+                id: e.id,
+            })
             .collect(),
     }
 }
@@ -266,7 +341,10 @@ fn reminder_choice(options: Vec<ReminderCandidate>) -> ResolveOutcome {
     ResolveOutcome::Choice {
         candidates: options
             .into_iter()
-            .map(|r| Candidate { label: r.title.clone(), id: r.id })
+            .map(|r| Candidate {
+                label: r.title.clone(),
+                id: r.id,
+            })
             .collect(),
     }
 }
@@ -327,14 +405,25 @@ fn move_event(request: &ResolveRequest, events: &[Indexed<EventCandidate>]) -> R
                 ),
                 summary: format!("Moved \"{}\" to {}", event.title, fmt_instant(new_start)),
                 subject: Some(event.id.clone()),
-                execute: Execute::MoveEvent { id: event.id.clone(), start: new_start, end: new_end },
-                undo: Undo::MoveEvent { id: event.id, start: event.start, end: event.end },
+                execute: Execute::MoveEvent {
+                    id: event.id.clone(),
+                    start: new_start,
+                    end: new_end,
+                },
+                undo: Undo::MoveEvent {
+                    id: event.id,
+                    start: event.start,
+                    end: event.end,
+                },
             }
         }
     }
 }
 
-fn complete_reminder(request: &ResolveRequest, reminders: &[Indexed<ReminderCandidate>]) -> ResolveOutcome {
+fn complete_reminder(
+    request: &ResolveRequest,
+    reminders: &[Indexed<ReminderCandidate>],
+) -> ResolveOutcome {
     match pick_reminder(request, reminders) {
         Err(outcome) => outcome,
         Ok(reminder) => ResolveOutcome::Planned {
@@ -342,7 +431,9 @@ fn complete_reminder(request: &ResolveRequest, reminders: &[Indexed<ReminderCand
             preview_detail: format!("\"{}\"", reminder.title),
             summary: format!("Completed \"{}\"", reminder.title),
             subject: Some(reminder.id.clone()),
-            execute: Execute::CompleteReminder { id: reminder.id.clone() },
+            execute: Execute::CompleteReminder {
+                id: reminder.id.clone(),
+            },
             undo: Undo::UncompleteReminder { id: reminder.id },
         },
     }
@@ -373,7 +464,10 @@ fn remove_reminder(
     }
 }
 
-fn snooze_reminder(request: &ResolveRequest, reminders: &[Indexed<ReminderCandidate>]) -> ResolveOutcome {
+fn snooze_reminder(
+    request: &ResolveRequest,
+    reminders: &[Indexed<ReminderCandidate>],
+) -> ResolveOutcome {
     let when_phrase = param(request, "when");
     match pick_reminder(request, reminders) {
         Err(outcome) => outcome,
@@ -389,8 +483,14 @@ fn snooze_reminder(request: &ResolveRequest, reminders: &[Indexed<ReminderCandid
                 preview_detail: format!("\"{}\"  -> {}", reminder.title, fmt_instant(new_due)),
                 summary: format!("Snoozed \"{}\" to {}", reminder.title, fmt_instant(new_due)),
                 subject: Some(reminder.id.clone()),
-                execute: Execute::SetReminderDue { id: reminder.id.clone(), due: Some(new_due) },
-                undo: Undo::SetReminderDue { id: reminder.id, due: reminder.due },
+                execute: Execute::SetReminderDue {
+                    id: reminder.id.clone(),
+                    due: Some(new_due),
+                },
+                undo: Undo::SetReminderDue {
+                    id: reminder.id,
+                    due: reminder.due,
+                },
             }
         }
     }
@@ -412,7 +512,10 @@ fn block_time(request: &ResolveRequest, events: &[Indexed<EventCandidate>]) -> R
         .unwrap_or_else(|| request.now + 2 * 86_400);
 
     let duration = minutes * 60;
-    let busy: Vec<(i64, i64)> = events.iter().map(|e| (e.item().start, e.item().end)).collect();
+    let busy: Vec<(i64, i64)> = events
+        .iter()
+        .map(|e| (e.item().start, e.item().end))
+        .collect();
 
     match first_free_slot(start_bound, end_bound, duration, &busy) {
         None => invalid(&format!(
@@ -426,7 +529,12 @@ fn block_time(request: &ResolveRequest, events: &[Indexed<EventCandidate>]) -> R
                 preview_detail: format!("\"{title}\"  {}", fmt_range(slot_start, slot_end)),
                 summary: format!("Blocked \"{title}\""),
                 subject: Some("new".into()),
-                execute: Execute::AddEvent { title, start: slot_start, end: slot_end, all_day: false },
+                execute: Execute::AddEvent {
+                    title,
+                    start: slot_start,
+                    end: slot_end,
+                    all_day: false,
+                },
                 undo: Undo::RemoveEventByNewId,
             }
         }
@@ -450,7 +558,9 @@ fn first_free_slot(from: i64, to: i64, duration: i64, busy: &[(i64, i64)]) -> Op
                 continue;
             }
             let slot = (cursor, cursor + duration);
-            let clashes = busy.iter().any(|&(b_start, b_end)| b_start < slot.1 && slot.0 < b_end);
+            let clashes = busy
+                .iter()
+                .any(|&(b_start, b_end)| b_start < slot.1 && slot.0 < b_end);
             if !clashes {
                 return Some(cursor);
             }
@@ -555,7 +665,10 @@ fn pick_reminder(
         Match::Several(options) => Err(ResolveOutcome::Choice {
             candidates: options
                 .into_iter()
-                .map(|r| Candidate { label: r.title.clone(), id: r.id })
+                .map(|r| Candidate {
+                    label: r.title.clone(),
+                    id: r.id,
+                })
                 .collect(),
         }),
         Match::One(reminder) => Ok(reminder),
@@ -573,7 +686,9 @@ fn param(request: &ResolveRequest, key: &str) -> Option<String> {
 }
 
 fn invalid(message: &str) -> ResolveOutcome {
-    ResolveOutcome::Invalid { message: message.into() }
+    ResolveOutcome::Invalid {
+        message: message.into(),
+    }
 }
 
 /// Whether a phrase names a clock time (vs just a day): "3pm", "15:00", "noon".
@@ -598,7 +713,9 @@ fn local(epoch: i64) -> Option<DateTime<Local>> {
 
 fn day_bounds(epoch: i64) -> Option<(i64, i64)> {
     let date = local(epoch)?.date_naive();
-    let start = Local.from_local_datetime(&date.and_hms_opt(0, 0, 0)?).earliest()?;
+    let start = Local
+        .from_local_datetime(&date.and_hms_opt(0, 0, 0)?)
+        .earliest()?;
     let end = Local
         .from_local_datetime(&date.succ_opt()?.and_hms_opt(0, 0, 0)?)
         .earliest()?;
@@ -626,11 +743,15 @@ fn fmt_range(start: i64, end: i64) -> String {
 }
 
 fn fmt_instant(epoch: i64) -> String {
-    local(epoch).map(|d| d.format("%a %b %-d, %H:%M").to_string()).unwrap_or_default()
+    local(epoch)
+        .map(|d| d.format("%a %b %-d, %H:%M").to_string())
+        .unwrap_or_default()
 }
 
 fn fmt_day(epoch: i64) -> String {
-    local(epoch).map(|d| d.format("%a %b %-d").to_string()).unwrap_or_default()
+    local(epoch)
+        .map(|d| d.format("%a %b %-d").to_string())
+        .unwrap_or_default()
 }
 
 fn event_detail(event: &EventCandidate) -> String {
@@ -650,14 +771,39 @@ mod tests {
     fn request(tool: &str, params: &[(&str, &str)]) -> ResolveRequest {
         ResolveRequest {
             tool: tool.into(),
-            params: params.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            params: params
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
             now: NOW,
             events: vec![
-                EventCandidate { id: "e1".into(), title: "Dentist".into(), start: NOW + 3600, end: NOW + 7200, all_day: false },
-                EventCandidate { id: "e2".into(), title: "Team Sync".into(), start: NOW + 86_400, end: NOW + 90_000, all_day: false },
-                EventCandidate { id: "e3".into(), title: "Team Standup".into(), start: NOW + 172_800, end: NOW + 176_400, all_day: false },
+                EventCandidate {
+                    id: "e1".into(),
+                    title: "Dentist".into(),
+                    start: NOW + 3600,
+                    end: NOW + 7200,
+                    all_day: false,
+                },
+                EventCandidate {
+                    id: "e2".into(),
+                    title: "Team Sync".into(),
+                    start: NOW + 86_400,
+                    end: NOW + 90_000,
+                    all_day: false,
+                },
+                EventCandidate {
+                    id: "e3".into(),
+                    title: "Team Standup".into(),
+                    start: NOW + 172_800,
+                    end: NOW + 176_400,
+                    all_day: false,
+                },
             ],
-            reminders: vec![ReminderCandidate { id: "r1".into(), title: "Walk Dog".into(), due: None }],
+            reminders: vec![ReminderCandidate {
+                id: "r1".into(),
+                title: "Walk Dog".into(),
+                due: None,
+            }],
             resolved_when: None,
             window_start: None,
             window_end: None,
@@ -666,10 +812,23 @@ mod tests {
 
     #[test]
     fn add_event_timed_defaults_sixty_minutes() {
-        let mut req = request("calendar.add_event", &[("title", "Lunch"), ("when", "tomorrow 1pm")]);
+        let mut req = request(
+            "calendar.add_event",
+            &[("title", "Lunch"), ("when", "tomorrow 1pm")],
+        );
         req.resolved_when = Some(NOW + 90_000);
         match resolve(&req) {
-            ResolveOutcome::Planned { execute: Execute::AddEvent { start, end, all_day, .. }, subject, .. } => {
+            ResolveOutcome::Planned {
+                execute:
+                    Execute::AddEvent {
+                        start,
+                        end,
+                        all_day,
+                        ..
+                    },
+                subject,
+                ..
+            } => {
                 assert_eq!(end - start, 3600);
                 assert!(!all_day);
                 assert_eq!(subject.as_deref(), Some("new"));
@@ -682,11 +841,18 @@ mod tests {
     fn add_event_honors_stated_duration() {
         let mut req = request(
             "calendar.add_event",
-            &[("title", "Lunch"), ("when", "tomorrow 1pm"), ("duration", "2 hours")],
+            &[
+                ("title", "Lunch"),
+                ("when", "tomorrow 1pm"),
+                ("duration", "2 hours"),
+            ],
         );
         req.resolved_when = Some(NOW + 90_000);
         match resolve(&req) {
-            ResolveOutcome::Planned { execute: Execute::AddEvent { start, end, .. }, .. } => {
+            ResolveOutcome::Planned {
+                execute: Execute::AddEvent { start, end, .. },
+                ..
+            } => {
                 assert_eq!(end - start, 2 * 3600);
             }
             other => panic!("expected planned, got {other:?}"),
@@ -695,10 +861,17 @@ mod tests {
 
     #[test]
     fn add_event_day_without_clock_is_all_day() {
-        let mut req = request("calendar.add_event", &[("title", "Birthday"), ("when", "march 5")]);
+        let mut req = request(
+            "calendar.add_event",
+            &[("title", "Birthday"), ("when", "march 5")],
+        );
         req.resolved_when = Some(NOW + 86_400);
         match resolve(&req) {
-            ResolveOutcome::Planned { execute: Execute::AddEvent { all_day, .. }, preview_detail, .. } => {
+            ResolveOutcome::Planned {
+                execute: Execute::AddEvent { all_day, .. },
+                preview_detail,
+                ..
+            } => {
                 assert!(all_day);
                 assert!(preview_detail.contains("all day"));
             }
@@ -710,7 +883,10 @@ mod tests {
     fn add_event_no_date_is_all_day_today() {
         let req = request("calendar.add_event", &[("title", "Lunch with Sarah")]);
         match resolve(&req) {
-            ResolveOutcome::Planned { execute: Execute::AddEvent { all_day, start, .. }, .. } => {
+            ResolveOutcome::Planned {
+                execute: Execute::AddEvent { all_day, start, .. },
+                ..
+            } => {
                 assert!(all_day);
                 let (day_start, _) = day_bounds(NOW).unwrap();
                 assert_eq!(start, day_start);
@@ -723,7 +899,10 @@ mod tests {
     fn add_reminder_without_due_is_undated() {
         let req = request("reminder.add", &[("title", "Buy milk")]);
         match resolve(&req) {
-            ResolveOutcome::Planned { execute: Execute::AddReminder { due, .. }, .. } => {
+            ResolveOutcome::Planned {
+                execute: Execute::AddReminder { due, .. },
+                ..
+            } => {
                 assert!(due.is_none());
             }
             other => panic!("expected planned, got {other:?}"),
@@ -734,7 +913,12 @@ mod tests {
     fn cancel_confident_match_with_recreate_undo() {
         let req = request("calendar.cancel_event", &[("match", "dentist")]);
         match resolve(&req) {
-            ResolveOutcome::Planned { execute: Execute::RemoveEvent { id }, undo, subject, .. } => {
+            ResolveOutcome::Planned {
+                execute: Execute::RemoveEvent { id },
+                undo,
+                subject,
+                ..
+            } => {
                 assert_eq!(id, "e1");
                 assert!(subject.is_none());
                 assert!(matches!(undo, Undo::RecreateEvent { .. }));
@@ -767,19 +951,30 @@ mod tests {
     fn chosen_id_bypasses_matching() {
         let req = request("calendar.cancel_event", &[("chosen_id", "e2")]);
         match resolve(&req) {
-            ResolveOutcome::Planned { execute: Execute::RemoveEvent { id }, .. } => assert_eq!(id, "e2"),
+            ResolveOutcome::Planned {
+                execute: Execute::RemoveEvent { id },
+                ..
+            } => assert_eq!(id, "e2"),
             other => panic!("expected planned, got {other:?}"),
         }
     }
 
     #[test]
     fn move_preserves_duration_and_restores_on_undo() {
-        let mut req = request("calendar.move_event", &[("match", "dentist"), ("when", "3pm")]);
+        let mut req = request(
+            "calendar.move_event",
+            &[("match", "dentist"), ("when", "3pm")],
+        );
         req.resolved_when = Some(NOW + 200_000);
         match resolve(&req) {
             ResolveOutcome::Planned {
                 execute: Execute::MoveEvent { id, start, end },
-                undo: Undo::MoveEvent { start: old_start, end: old_end, .. },
+                undo:
+                    Undo::MoveEvent {
+                        start: old_start,
+                        end: old_end,
+                        ..
+                    },
                 subject,
                 ..
             } => {
@@ -795,10 +990,16 @@ mod tests {
 
     #[test]
     fn move_day_only_phrase_keeps_clock_time() {
-        let mut req = request("calendar.move_event", &[("match", "dentist"), ("when", "friday")]);
+        let mut req = request(
+            "calendar.move_event",
+            &[("match", "dentist"), ("when", "friday")],
+        );
         req.resolved_when = Some(NOW + 400_000);
         match resolve(&req) {
-            ResolveOutcome::Planned { execute: Execute::MoveEvent { start, .. }, .. } => {
+            ResolveOutcome::Planned {
+                execute: Execute::MoveEvent { start, .. },
+                ..
+            } => {
                 let old_clock = local(NOW + 3600).unwrap();
                 let new_clock = local(start).unwrap();
                 assert_eq!(new_clock.hour(), old_clock.hour());
@@ -811,14 +1012,21 @@ mod tests {
     #[test]
     fn reminder_complete_and_remove() {
         match resolve(&request("reminder.complete", &[("match", "walk dog")])) {
-            ResolveOutcome::Planned { execute: Execute::CompleteReminder { id }, undo, .. } => {
+            ResolveOutcome::Planned {
+                execute: Execute::CompleteReminder { id },
+                undo,
+                ..
+            } => {
                 assert_eq!(id, "r1");
                 assert!(matches!(undo, Undo::UncompleteReminder { .. }));
             }
             other => panic!("expected planned, got {other:?}"),
         }
         match resolve(&request("reminder.remove", &[("match", "walk dog")])) {
-            ResolveOutcome::Planned { undo: Undo::RecreateReminder { title, .. }, .. } => {
+            ResolveOutcome::Planned {
+                undo: Undo::RecreateReminder { title, .. },
+                ..
+            } => {
                 assert_eq!(title, "Walk Dog");
             }
             other => panic!("expected planned, got {other:?}"),
@@ -827,7 +1035,10 @@ mod tests {
 
     #[test]
     fn snooze_sets_new_due_and_restores_on_undo() {
-        let mut req = request("reminder.snooze", &[("match", "walk dog"), ("when", "tomorrow 9am")]);
+        let mut req = request(
+            "reminder.snooze",
+            &[("match", "walk dog"), ("when", "tomorrow 9am")],
+        );
         req.reminders[0].due = Some(NOW + 3600);
         req.resolved_when = Some(NOW + 90_000);
         match resolve(&req) {
@@ -859,11 +1070,23 @@ mod tests {
         req.window_end = Some(day_start + 18 * 3600);
         // Busy 09:00-11:00, so the first free 2h slot is 11:00.
         req.events = vec![EventCandidate {
-            id: "b".into(), title: "Meeting".into(),
-            start: work_open, end: work_open + 2 * 3600, all_day: false,
+            id: "b".into(),
+            title: "Meeting".into(),
+            start: work_open,
+            end: work_open + 2 * 3600,
+            all_day: false,
         }];
         match resolve(&req) {
-            ResolveOutcome::Planned { execute: Execute::AddEvent { start, end, all_day, title }, .. } => {
+            ResolveOutcome::Planned {
+                execute:
+                    Execute::AddEvent {
+                        start,
+                        end,
+                        all_day,
+                        title,
+                    },
+                ..
+            } => {
                 assert_eq!(title, "Focus");
                 assert_eq!(end - start, 2 * 3600);
                 assert!(!all_day);
@@ -902,7 +1125,10 @@ mod tests {
         let mut req = request("calendar.cancel_event", &[("match", "walk dog")]);
         // events don't contain "walk dog"; reminders do (r1 = "Walk Dog").
         match resolve(&req) {
-            ResolveOutcome::Planned { execute: Execute::RemoveReminder { id }, .. } => {
+            ResolveOutcome::Planned {
+                execute: Execute::RemoveReminder { id },
+                ..
+            } => {
                 assert_eq!(id, "r1");
             }
             other => panic!("expected reminder removal, got {other:?}"),
@@ -911,7 +1137,10 @@ mod tests {
         req.tool = "reminder.remove".into();
         req.params.insert("match".into(), "dentist".into());
         match resolve(&req) {
-            ResolveOutcome::Planned { execute: Execute::RemoveEvent { id }, .. } => {
+            ResolveOutcome::Planned {
+                execute: Execute::RemoveEvent { id },
+                ..
+            } => {
                 assert_eq!(id, "e1");
             }
             other => panic!("expected event cancel, got {other:?}"),

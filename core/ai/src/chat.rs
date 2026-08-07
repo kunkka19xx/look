@@ -67,13 +67,19 @@ pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
 
-    let Ok(mut child) = command.spawn() else { return 0 };
-    let Some(mut stdin) = child.stdin.take() else { return 0 };
+    let Ok(mut child) = command.spawn() else {
+        return 0;
+    };
+    let Some(mut stdin) = child.stdin.take() else {
+        return 0;
+    };
     if stdin.write_all(body.as_bytes()).is_err() {
         return 0;
     }
     drop(stdin);
-    let Some(stdout) = child.stdout.take() else { return 0 };
+    let Some(stdout) = child.stdout.take() else {
+        return 0;
+    };
 
     let state = Arc::new(Mutex::new(SessionState::default()));
     let reader_state = Arc::clone(&state);
@@ -82,7 +88,9 @@ pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
         let mut saw_output = false;
         for line in reader.lines() {
             let Ok(line) = line else { break };
-            let Some((delta, done)) = ollama::parse_stream_line(&line) else { continue };
+            let Some((delta, done)) = ollama::parse_stream_line(&line) else {
+                continue;
+            };
             saw_output = true;
             if !delta.is_empty() {
                 if let Ok(mut s) = reader_state.lock() {
@@ -103,7 +111,13 @@ pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
 
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     if let Ok(mut map) = sessions().lock() {
-        map.insert(id, Session { state, child: Arc::new(Mutex::new(Some(child))) });
+        map.insert(
+            id,
+            Session {
+                state,
+                child: Arc::new(Mutex::new(Some(child))),
+            },
+        );
     }
     id
 }

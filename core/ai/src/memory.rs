@@ -56,7 +56,10 @@ pub fn add(path: &Path, text: &str) -> Option<String> {
     if clean.is_empty() {
         return None;
     }
-    let fact = Fact { id: fact_id(clean), text: clean.to_string() };
+    let fact = Fact {
+        id: fact_id(clean),
+        text: clean.to_string(),
+    };
     let mut list = load(path);
     list.retain(|f| f.id != fact.id);
     list.insert(0, fact);
@@ -111,7 +114,9 @@ pub fn parse_command(input: &str) -> Option<Command> {
     let lower = trimmed.to_lowercase();
     for prefix in ["remember that ", "remember "] {
         if lower.starts_with(prefix) {
-            return Some(Command::Remember(trimmed[prefix.len()..].trim().to_string()));
+            return Some(Command::Remember(
+                trimmed[prefix.len()..].trim().to_string(),
+            ));
         }
     }
     for prefix in ["forget that ", "forget "] {
@@ -197,8 +202,15 @@ mod tests {
         );
         assert!(matches!(parse_command("what's the weather"), None));
         assert!(context_block(&path).contains("vegetarian"));
-        assert!(handle_command(&path, "memories").unwrap().contains("vegetarian"));
-        assert_eq!(handle_command(&path, "forget vegetarian").as_deref(), Some("Forgot 1 memory."));
+        assert!(
+            handle_command(&path, "memories")
+                .unwrap()
+                .contains("vegetarian")
+        );
+        assert_eq!(
+            handle_command(&path, "forget vegetarian").as_deref(),
+            Some("Forgot 1 memory.")
+        );
         let _ = fs::remove_file(&path);
     }
 

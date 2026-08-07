@@ -10,9 +10,30 @@
 use serde_json::{Value, json};
 
 const DAY_WORDS: [&str; 24] = [
-    "today", "tomorrow", "tonight", "tmr", "tmrw", "tmw", "2moro",
-    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
-    "mon", "tue", "tues", "wed", "thu", "thur", "thurs", "fri", "sat", "sun",
+    "today",
+    "tomorrow",
+    "tonight",
+    "tmr",
+    "tmrw",
+    "tmw",
+    "2moro",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+    "mon",
+    "tue",
+    "tues",
+    "wed",
+    "thu",
+    "thur",
+    "thurs",
+    "fri",
+    "sat",
+    "sun",
 ];
 
 pub fn contains_day_word(text: &str) -> bool {
@@ -38,7 +59,11 @@ pub fn parse(input: &str, model_available: bool) -> Option<Value> {
     if title.is_empty() {
         return None;
     }
-    let mut when = if when_text.is_empty() { None } else { Some(when_text.to_string()) };
+    let mut when = if when_text.is_empty() {
+        None
+    } else {
+        Some(when_text.to_string())
+    };
 
     if contains_day_word(title) {
         if model_available {
@@ -55,7 +80,9 @@ pub fn parse(input: &str, model_available: bool) -> Option<Value> {
             // when the tail is a real duration, so titles/times are untouched.
             let when = when.unwrap_or_default();
             let (when, duration) = match when.split_once(" for ") {
-                Some((head, tail)) if crate::resolve::parse_duration_minutes(tail.trim()).is_some() => {
+                Some((head, tail))
+                    if crate::resolve::parse_duration_minutes(tail.trim()).is_some() =>
+                {
                     (head.trim().to_string(), Some(tail.trim().to_string()))
                 }
                 _ => (when, None),

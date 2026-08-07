@@ -65,7 +65,8 @@ mod tests {
 
     #[test]
     fn stream_line_parses_delta_and_done() {
-        let (delta, done) = parse_stream_line(r#"{"message":{"content":"Hel"},"done":false}"#).unwrap();
+        let (delta, done) =
+            parse_stream_line(r#"{"message":{"content":"Hel"},"done":false}"#).unwrap();
         assert_eq!(delta, "Hel");
         assert!(!done);
         let (_, done) = parse_stream_line(r#"{"message":{"content":""},"done":true}"#).unwrap();

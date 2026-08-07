@@ -119,7 +119,11 @@ impl QueryEngine {
         finalize_top_k(top)
     }
 
-    pub(crate) fn search_files_indices(&self, filter: &crate::FileFilter, limit: usize) -> Vec<(u32, i64)> {
+    pub(crate) fn search_files_indices(
+        &self,
+        filter: &crate::FileFilter,
+        limit: usize,
+    ) -> Vec<(u32, i64)> {
         if limit == 0 {
             return vec![];
         }

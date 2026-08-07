@@ -11,7 +11,10 @@ pub struct TextOp {
 }
 
 fn op(label: &str, instruction: &str) -> TextOp {
-    TextOp { label: label.into(), instruction: instruction.into() }
+    TextOp {
+        label: label.into(),
+        instruction: instruction.into(),
+    }
 }
 
 /// Parse a bare text-op verb, or None for normal AI input (which falls through
@@ -26,7 +29,9 @@ pub fn parse(input: &str) -> Option<TextOp> {
             if !lang.is_empty() {
                 return Some(op(
                     &format!("Translate to {lang}"),
-                    &format!("Translate the text into {lang}. Output only the translation, no notes."),
+                    &format!(
+                        "Translate the text into {lang}. Output only the translation, no notes."
+                    ),
                 ));
             }
         }
@@ -69,10 +74,7 @@ pub fn parse(input: &str) -> Option<TextOp> {
             "Polish",
             "Improve the writing's clarity, flow, and word choice, keeping the meaning. Output only the improved text.",
         ),
-        "explain" | "eli5" => op(
-            "Explain",
-            "Explain the text simply and clearly.",
-        ),
+        "explain" | "eli5" => op("Explain", "Explain the text simply and clearly."),
         _ => return None,
     })
 }

@@ -31,7 +31,9 @@ pub fn query_window(query: &str, now_epoch: i64) -> Option<Window> {
         .filter(|w| !w.is_empty())
         .collect();
 
-    let month_guards = ["in", "this", "next", "coming", "for", "during", "of", "early", "late"];
+    let month_guards = [
+        "in", "this", "next", "coming", "for", "during", "of", "early", "late",
+    ];
 
     for (i, word) in words.iter().enumerate() {
         let previous = if i > 0 { words[i - 1] } else { "" };
@@ -52,15 +54,27 @@ pub fn query_window(query: &str, now_epoch: i64) -> Option<Window> {
             } else if previous == "last" || previous == "previous" || previous == "past" {
                 (-1, format!("last {word}"))
             } else if let Ok(n) = previous.parse::<i64>() {
-                if n > 0 { (n, format!("in {n} {word}")) } else { (0, format!("this {word}")) }
+                if n > 0 {
+                    (n, format!("in {n} {word}"))
+                } else {
+                    (0, format!("this {word}"))
+                }
             } else {
                 (0, format!("this {word}"))
             };
             let base = shift(today, unit, offset)?;
             let (start_date, end_date) = interval(base, unit)?;
             let start = midnight(start_date)?.timestamp();
-            let start = if offset == 0 { start.max(now_epoch) } else { start };
-            return Some(Window { start, end: midnight(end_date)?.timestamp(), label });
+            let start = if offset == 0 {
+                start.max(now_epoch)
+            } else {
+                start
+            };
+            return Some(Window {
+                start,
+                end: midnight(end_date)?.timestamp(),
+                label,
+            });
         }
 
         if let Some(weekday) = weekday_of(word) {
@@ -81,7 +95,11 @@ pub fn query_window(query: &str, now_epoch: i64) -> Option<Window> {
                     label: capitalize(word),
                 });
             }
-            let year = if month > today.month() { today.year() } else { today.year() + 1 };
+            let year = if month > today.month() {
+                today.year()
+            } else {
+                today.year() + 1
+            };
             let base = NaiveDate::from_ymd_opt(year, month, 1)?;
             let (start_date, end_date) = interval(base, Unit::Month)?;
             return Some(Window {
@@ -125,16 +143,54 @@ fn mentions_date(phrase: &str) -> bool {
     // Full names, common abbreviations, and relative-day words all count as an
     // explicit date reference.
     const DATE_WORDS: [&str; 44] = [
-        "today", "tonight", "tomorrow", "tmr", "tmrw", "tmw", "yesterday",
-        "next", "week", "month", "year",
-        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
-        "mon", "tue", "tues", "wed", "thu", "thur", "thurs", "fri", "sat", "sun",
-        "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
-        "january", "february", "march", "april",
+        "today",
+        "tonight",
+        "tomorrow",
+        "tmr",
+        "tmrw",
+        "tmw",
+        "yesterday",
+        "next",
+        "week",
+        "month",
+        "year",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+        "mon",
+        "tue",
+        "tues",
+        "wed",
+        "thu",
+        "thur",
+        "thurs",
+        "fri",
+        "sat",
+        "sun",
+        "jan",
+        "feb",
+        "mar",
+        "apr",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "sept",
+        "oct",
+        "nov",
+        "dec",
+        "january",
+        "february",
+        "march",
+        "april",
     ];
-    let day_month = words.iter().any(|w| {
-        weekday_of(w).is_some() || month_of(w).is_some() || DATE_WORDS.contains(w)
-    });
+    let day_month = words
+        .iter()
+        .any(|w| weekday_of(w).is_some() || month_of(w).is_some() || DATE_WORDS.contains(w));
     if day_month {
         return true;
     }
@@ -148,13 +204,19 @@ fn mentions_date(phrase: &str) -> bool {
 }
 
 fn midnight(date: NaiveDate) -> Option<DateTime<Local>> {
-    Local.from_local_datetime(&date.and_hms_opt(0, 0, 0)?).earliest()
+    Local
+        .from_local_datetime(&date.and_hms_opt(0, 0, 0)?)
+        .earliest()
 }
 
 fn single_day(date: NaiveDate, label: &str) -> Option<Window> {
     let start = midnight(date)?;
     let end = midnight(date.checked_add_days(Days::new(1))?)?;
-    Some(Window { start: start.timestamp(), end: end.timestamp(), label: label.into() })
+    Some(Window {
+        start: start.timestamp(),
+        end: end.timestamp(),
+        label: label.into(),
+    })
 }
 
 fn unit_of(word: &str) -> Option<Unit> {
@@ -258,13 +320,33 @@ fn weekend(today: NaiveDate, now_epoch: i64, previous: &str) -> Option<Window> {
     let (start_date, starts_now, label) = if mid_weekend && previous != "next" {
         (today, true, "this weekend")
     } else if previous == "next" && !mid_weekend {
-        (saturday.checked_add_days(Days::new(7))?, false, "next weekend")
+        (
+            saturday.checked_add_days(Days::new(7))?,
+            false,
+            "next weekend",
+        )
     } else {
-        (saturday, false, if previous == "next" { "next weekend" } else { "this weekend" })
+        (
+            saturday,
+            false,
+            if previous == "next" {
+                "next weekend"
+            } else {
+                "this weekend"
+            },
+        )
     };
     let monday = next_weekday_after(start_date, Weekday::Mon);
-    let start = if starts_now { now_epoch } else { midnight(start_date)?.timestamp() };
-    Some(Window { start, end: midnight(monday)?.timestamp(), label: label.into() })
+    let start = if starts_now {
+        now_epoch
+    } else {
+        midnight(start_date)?.timestamp()
+    };
+    Some(Window {
+        start,
+        end: midnight(monday)?.timestamp(),
+        label: label.into(),
+    })
 }
 
 fn capitalize(word: &str) -> String {
@@ -290,7 +372,9 @@ mod tests {
         let w = query_window("what's on my calendar next week?", NOW).unwrap();
         let this_week_start =
             today() - Duration::days(today().weekday().num_days_from_monday() as i64);
-        let expected = midnight(this_week_start + Duration::days(7)).unwrap().timestamp();
+        let expected = midnight(this_week_start + Duration::days(7))
+            .unwrap()
+            .timestamp();
         assert_eq!(w.start, expected);
         assert_eq!(w.label, "next week");
     }
@@ -298,7 +382,10 @@ mod tests {
     #[test]
     fn tomorrow_is_one_day() {
         let w = query_window("am I busy tomorrow", NOW).unwrap();
-        assert_eq!(w.start, midnight(today().succ_opt().unwrap()).unwrap().timestamp());
+        assert_eq!(
+            w.start,
+            midnight(today().succ_opt().unwrap()).unwrap().timestamp()
+        );
         assert_eq!(w.label, "tomorrow");
         let next = Local.timestamp_opt(w.end, 0).single().unwrap().date_naive();
         assert_eq!(next, today().succ_opt().unwrap().succ_opt().unwrap());
@@ -307,7 +394,11 @@ mod tests {
     #[test]
     fn weekday_name_is_next_occurrence() {
         let w = query_window("what's on friday?", NOW).unwrap();
-        let start = Local.timestamp_opt(w.start, 0).single().unwrap().date_naive();
+        let start = Local
+            .timestamp_opt(w.start, 0)
+            .single()
+            .unwrap()
+            .date_naive();
         assert_eq!(start.weekday(), Weekday::Fri);
         assert!(start > today());
         assert_eq!(w.label, "Friday");
@@ -341,7 +432,11 @@ mod tests {
     #[test]
     fn month_names_and_may_guard() {
         let august = query_window("what's happening in august", NOW).unwrap();
-        let start = Local.timestamp_opt(august.start, 0).single().unwrap().date_naive();
+        let start = Local
+            .timestamp_opt(august.start, 0)
+            .single()
+            .unwrap()
+            .date_naive();
         assert_eq!(start.month(), 8);
         assert_eq!(august.label, "August");
 

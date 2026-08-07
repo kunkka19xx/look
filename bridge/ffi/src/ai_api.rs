@@ -14,7 +14,8 @@ pub(crate) fn look_ai_query_window_impl(query: *const c_char, now_epoch: i64) ->
     let query = state::cstr_to_string(query);
     match look_ai::window::query_window_json(&query, now_epoch) {
         Some(json) => {
-            let cstring = CString::new(json).unwrap_or_else(|_| CString::new("null").expect("valid"));
+            let cstring =
+                CString::new(json).unwrap_or_else(|_| CString::new("null").expect("valid"));
             state::store_json_allocation(cstring)
         }
         None => std::ptr::null_mut(),
@@ -48,7 +49,8 @@ pub(crate) fn look_ai_plan_impl(
     match look_ai::planner::plan(&host, &model, &query) {
         Some(call) => {
             let json = call.to_string();
-            let cstring = CString::new(json).unwrap_or_else(|_| CString::new("null").expect("valid"));
+            let cstring =
+                CString::new(json).unwrap_or_else(|_| CString::new("null").expect("valid"));
             state::store_json_allocation(cstring)
         }
         None => std::ptr::null_mut(),
@@ -77,10 +79,7 @@ pub(crate) fn look_ai_conversation_upsert_impl(
     look_ai::conversations::upsert_json(std::path::Path::new(&path), &json)
 }
 
-pub(crate) fn look_ai_conversation_delete_impl(
-    path: *const c_char,
-    id: *const c_char,
-) -> bool {
+pub(crate) fn look_ai_conversation_delete_impl(path: *const c_char, id: *const c_char) -> bool {
     let path = state::cstr_to_string(path);
     let id = state::cstr_to_string(id);
     look_ai::conversations::delete(std::path::Path::new(&path), &id)
@@ -104,7 +103,8 @@ pub(crate) fn look_ai_resolve_impl(request_json: *const c_char) -> *mut c_char {
         }
         Err(_) => r#"{"outcome":"invalid","message":"Bad resolve request."}"#.to_string(),
     };
-    let cstring = CString::new(json).unwrap_or_else(|_| CString::new(ENCODE_FAILED).expect("valid"));
+    let cstring =
+        CString::new(json).unwrap_or_else(|_| CString::new(ENCODE_FAILED).expect("valid"));
     state::store_json_allocation(cstring)
 }
 
@@ -186,10 +186,7 @@ pub(crate) fn look_ai_memory_list_json_impl(path: *const c_char) -> *mut c_char 
 
 /// Load the AI mutate targets once (events + reminders as JSON arrays), so
 /// per-keystroke resolves can omit them. Parse failures leave the prior set.
-pub(crate) fn look_ai_load_targets_impl(
-    events_json: *const c_char,
-    reminders_json: *const c_char,
-) {
+pub(crate) fn look_ai_load_targets_impl(events_json: *const c_char, reminders_json: *const c_char) {
     let events_json = state::cstr_to_string(events_json);
     let reminders_json = state::cstr_to_string(reminders_json);
     let events = serde_json::from_str::<Vec<look_ai::resolve::EventCandidate>>(&events_json)
@@ -207,7 +204,8 @@ pub(crate) fn look_ai_parse_explicit_impl(
     let input = state::cstr_to_string(input);
     match look_ai::explicit::parse_json(&input, model_available) {
         Some(json) => {
-            let cstring = CString::new(json).unwrap_or_else(|_| CString::new("null").expect("valid"));
+            let cstring =
+                CString::new(json).unwrap_or_else(|_| CString::new("null").expect("valid"));
             state::store_json_allocation(cstring)
         }
         None => std::ptr::null_mut(),
@@ -228,7 +226,8 @@ pub(crate) fn look_ai_chat_start_impl(
 pub(crate) fn look_ai_chat_poll_impl(id: u64) -> *mut c_char {
     match look_ai::chat::poll(id) {
         Some(json) => {
-            let cstring = CString::new(json).unwrap_or_else(|_| CString::new("null").expect("valid"));
+            let cstring =
+                CString::new(json).unwrap_or_else(|_| CString::new("null").expect("valid"));
             state::store_json_allocation(cstring)
         }
         None => std::ptr::null_mut(),

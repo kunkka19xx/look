@@ -290,10 +290,7 @@ pub extern "C" fn look_ai_conversation_upsert(
 
 /// Delete one conversation by id. Returns whether it existed.
 #[unsafe(no_mangle)]
-pub extern "C" fn look_ai_conversation_delete(
-    path: *const c_char,
-    id: *const c_char,
-) -> bool {
+pub extern "C" fn look_ai_conversation_delete(path: *const c_char, id: *const c_char) -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         ai_api::look_ai_conversation_delete_impl(path, id)
     }))
@@ -314,10 +311,7 @@ pub extern "C" fn look_ai_resolve(request_json: *const c_char) -> *mut c_char {
 /// Load the AI mutate targets once (events + reminders JSON arrays) so
 /// subsequent `look_ai_resolve` calls can omit the lists. Nothing to free.
 #[unsafe(no_mangle)]
-pub extern "C" fn look_ai_load_targets(
-    events_json: *const c_char,
-    reminders_json: *const c_char,
-) {
+pub extern "C" fn look_ai_load_targets(events_json: *const c_char, reminders_json: *const c_char) {
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         ai_api::look_ai_load_targets_impl(events_json, reminders_json)
     }));
@@ -355,10 +349,7 @@ pub extern "C" fn look_ai_context_window(texts_json: *const c_char, budget: u32)
 /// Handle input as a memory command ("remember …"), returning feedback or null.
 /// Free with `look_free_cstring`.
 #[unsafe(no_mangle)]
-pub extern "C" fn look_ai_memory_command(
-    path: *const c_char,
-    input: *const c_char,
-) -> *mut c_char {
+pub extern "C" fn look_ai_memory_command(path: *const c_char, input: *const c_char) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         ai_api::look_ai_memory_command_impl(path, input)
     }))
@@ -754,10 +745,9 @@ mod tests {
         let lock = TEST_MUTEX.get_or_init(|| Mutex::new(()));
         let _guard = lock.lock().expect("test lock poisoned");
 
-        let events = CString::new(
-            r#"[{"id":"e1","title":"Dentist","start":0,"end":3600,"all_day":false}]"#,
-        )
-        .expect("events cstring");
+        let events =
+            CString::new(r#"[{"id":"e1","title":"Dentist","start":0,"end":3600,"all_day":false}]"#)
+                .expect("events cstring");
         let reminders = CString::new("[]").expect("reminders cstring");
         look_ai_load_targets(events.as_ptr(), reminders.as_ptr());
 
@@ -768,10 +758,15 @@ mod tests {
         .expect("request cstring");
         let ptr = look_ai_resolve(req.as_ptr());
         assert!(!ptr.is_null());
-        let raw = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
         look_free_cstring(ptr);
 
-        assert!(raw.contains(r#""outcome":"planned""#), "expected planned: {raw}");
+        assert!(
+            raw.contains(r#""outcome":"planned""#),
+            "expected planned: {raw}"
+        );
         assert!(raw.contains("e1"), "should target the loaded event: {raw}");
     }
 

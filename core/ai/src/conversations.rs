@@ -95,7 +95,11 @@ mod tests {
             title: format!("c{id}"),
             updated_at: updated_at.into(),
             items: (0..items)
-                .map(|i| StoredItem { kind: "user".into(), text: format!("m{i}"), source: None })
+                .map(|i| StoredItem {
+                    kind: "user".into(),
+                    text: format!("m{i}"),
+                    source: None,
+                })
                 .collect(),
         }
     }
@@ -106,7 +110,14 @@ mod tests {
         let _ = fs::remove_file(&path);
 
         for i in 0..25 {
-            assert!(upsert(&path, convo(&i.to_string(), &format!("2026-01-{:02}T00:00:00Z", i + 1), 2)));
+            assert!(upsert(
+                &path,
+                convo(
+                    &i.to_string(),
+                    &format!("2026-01-{:02}T00:00:00Z", i + 1),
+                    2
+                )
+            ));
         }
         let list = load(&path);
         assert_eq!(list.len(), CONVERSATION_LIMIT);
@@ -125,10 +136,16 @@ mod tests {
     fn items_are_capped_keeping_the_tail() {
         let path = temp_file("items");
         let _ = fs::remove_file(&path);
-        assert!(upsert(&path, convo("a", "2026-01-01T00:00:00Z", ITEM_LIMIT + 10)));
+        assert!(upsert(
+            &path,
+            convo("a", "2026-01-01T00:00:00Z", ITEM_LIMIT + 10)
+        ));
         let list = load(&path);
         assert_eq!(list[0].items.len(), ITEM_LIMIT);
-        assert_eq!(list[0].items.last().unwrap().text, format!("m{}", ITEM_LIMIT + 9));
+        assert_eq!(
+            list[0].items.last().unwrap().text,
+            format!("m{}", ITEM_LIMIT + 9)
+        );
         let _ = fs::remove_file(&path);
     }
 

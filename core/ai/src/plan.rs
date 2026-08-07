@@ -90,7 +90,10 @@ mod tests {
     fn schema_constrains_tool_and_params() {
         let schema = chat_format(&["cancel", "event"]);
         let step = &schema["properties"]["steps"]["items"];
-        assert_eq!(step["properties"]["tool"]["enum"], json!(["cancel", "event"]));
+        assert_eq!(
+            step["properties"]["tool"]["enum"],
+            json!(["cancel", "event"])
+        );
         let params = &step["properties"]["params"];
         assert_eq!(params["required"], json!([]));
         assert!(params["properties"].get("title").is_some());

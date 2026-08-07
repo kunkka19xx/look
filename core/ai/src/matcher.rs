@@ -42,8 +42,7 @@ fn score_prepared(query_lower: &str, query_words: &[&str], title_lower: &str) ->
     }
     // Graded, not flat: the real score orders weak hits (better Choice lists),
     // compressed into 100..=299 so the gate semantics are unchanged.
-    look_matching::fuzzy_score(query_lower, title_lower)
-        .map(|raw| 100 + (raw / 10).clamp(0, 199))
+    look_matching::fuzzy_score(query_lower, title_lower).map(|raw| 100 + (raw / 10).clamp(0, 199))
 }
 
 /// Single-pair scorer. `resolve` uses the prepared path; this stays for callers
@@ -93,7 +92,11 @@ impl<T> Indexed<T> {
 /// Precompute the match key for one candidate.
 pub fn index<T>(item: T, title: &str) -> Indexed<T> {
     let title_lower = title.to_lowercase();
-    Indexed { mask: char_mask(&title_lower), title_lower, item }
+    Indexed {
+        mask: char_mask(&title_lower),
+        title_lower,
+        item,
+    }
 }
 
 /// Shared ranking core: prefilter by mask, score survivors, keep a bounded
@@ -132,7 +135,11 @@ fn finish<T>(top: Vec<(i64, usize)>, match_count: usize, pick: impl Fn(usize) ->
     Outcome::Several(top.iter().take(5).map(|&(_, i)| pick(i)).collect())
 }
 
-pub fn resolve<T: Clone>(candidates: &[T], query: &str, title: impl Fn(&T) -> String) -> Outcome<T> {
+pub fn resolve<T: Clone>(
+    candidates: &[T],
+    query: &str,
+    title: impl Fn(&T) -> String,
+) -> Outcome<T> {
     let query_lower = query.trim().to_lowercase();
     if query_lower.is_empty() {
         return Outcome::None;
@@ -184,7 +191,10 @@ mod tests {
     fn fuzzy_tier_is_graded_but_stays_weak() {
         // Subsequence hit: below the auto-plan threshold, but graded (not flat).
         let s = score("tmsy", "Team Sync").unwrap();
-        assert!(s >= 100 && s < 300, "fuzzy score {s} must stay in the weak band");
+        assert!(
+            s >= 100 && s < 300,
+            "fuzzy score {s} must stay in the weak band"
+        );
     }
 
     #[test]
@@ -192,7 +202,10 @@ mod tests {
         // A candidate missing a query letter must be a non-match either way.
         assert_eq!(score("qq", "Team Sync"), None);
         let candidates = vec!["Team Sync".to_string()];
-        assert!(matches!(resolve(&candidates, "qq", |c| c.clone()), Outcome::None));
+        assert!(matches!(
+            resolve(&candidates, "qq", |c| c.clone()),
+            Outcome::None
+        ));
     }
 
     #[test]
