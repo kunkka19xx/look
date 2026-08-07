@@ -14,46 +14,37 @@ struct AIConversation: Codable, Identifiable {
     var items: [StoredItem]
 }
 
-/// Capped local store of AI conversations, one human-readable JSON file at
-/// `~/Library/Application Support/Look/ai-conversations.json`, newest first.
-/// Upserts happen incrementally as items complete, so quitting mid-session
-/// loses nothing that finished. Bounds keep it small: 20 conversations, the
-/// last 60 items each.
-nonisolated enum ConversationStore {
-    static let conversationLimit = 20
-    static let itemLimit = 60
-
-    private static var fileURL: URL? {
-        guard
-            let dir = FileManager.default.urls(
-                for: .applicationSupportDirectory, in: .userDomainMask
-            ).first?.appendingPathComponent("Look", isDirectory: true)
-        else { return nil }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("ai-conversations.json")
+/// Thin shell over the Rust-core conversation store (core/ai), which owns the
+/// caps (20 conversations x 60 items) and the file format. The shell supplies
+/// the platform path: `~/Library/Application Support/Look/ai-conversations.json`.
+@MainActor
+enum ConversationStore {
+    private static var filePath: String? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?
+            .appendingPathComponent("Look", isDirectory: true)
+            .appendingPathComponent("ai-conversations.json")
+            .path
     }
 
     static func load() -> [AIConversation] {
-        guard let url = fileURL, let data = try? Data(contentsOf: url) else { return [] }
+        guard
+            let path = filePath,
+            let data = EngineBridge.shared.aiConversationsJSON(path: path)
+        else { return [] }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return (try? decoder.decode([AIConversation].self, from: data)) ?? []
     }
 
     static func upsert(_ conversation: AIConversation) {
-        var convo = conversation
-        if convo.items.count > itemLimit {
-            convo.items = Array(convo.items.suffix(itemLimit))
-        }
-        var list = load().filter { $0.id != convo.id }
-        list.insert(convo, at: 0)
-        list.sort { $0.updatedAt > $1.updatedAt }
-        if list.count > conversationLimit {
-            list = Array(list.prefix(conversationLimit))
-        }
+        guard let path = filePath else { return }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        guard let url = fileURL, let data = try? encoder.encode(list) else { return }
-        try? data.write(to: url)
+        guard
+            let data = try? encoder.encode(conversation),
+            let json = String(data: data, encoding: .utf8)
+        else { return }
+        _ = EngineBridge.shared.aiConversationUpsert(path: path, json: json)
     }
 }

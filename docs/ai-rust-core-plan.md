@@ -103,6 +103,34 @@ look_ai_chat_start/poll/cancel(...)    -> streaming via polling or callback (pha
 linows: the same functions as Tauri commands; streaming as Tauri events
 (natural fit). Both shells consume identical JSON.
 
+## Status
+
+- **P0 SHIPPED**: `core/ai` crate; `markdown` + `referent` ported, Swift copies
+  deleted, consumed via `look_ai_markdown_segments_json` / `look_ai_is_referent`.
+- **P1 SHIPPED**: `window` (query-window grammar on `chrono`, canonical ISO
+  Monday weeks for all shells) consumed via `look_ai_query_window`; `plan`
+  (wire-format serde + chat_format schema) ready for P2. 18 cargo tests.
+- **P2 SHIPPED**: planner (prompt, aliases, mapping) in `core/ai/src/planner.rs`
+  on the curl transport; Swift `ActionPlanner` is a thin FFI shell + the
+  NSDataDetector date seam. Live-verified against Ollama.
+- **P3 SHIPPED**: conversation store in `core/ai/src/conversations.rs` (caps +
+  format), shells pass the platform path.
+- **P4 SHIPPED**: tool resolution in `core/ai/src/resolve.rs` (validation, the
+  ambiguity gate on `core/matching`, dates, previews, undo recipes) behind
+  `look_ai_resolve`; the explicit `@` parser in `explicit.rs`. Swift kept only
+  the executor (`ActionResolution.swift`), slim types, and the seams. `AIValue`,
+  the tool structs, registry, and matcher are deleted from Swift.
+- **P5 SHIPPED**: streamed chat sessions in `core/ai/src/chat.rs` (curl child +
+  reader thread) behind start/poll/cancel FFI; the macOS session chat polls
+  ~12x/sec. Non-Ollama providers keep their native streams. Live-verified.
+- **P1 rescope**: `TitleMatcher` and `normalizeShorthand`/`hasClockTime` are
+  called from inside the Swift package tools, which cannot reach FFI; they move
+  in P4 together with tool resolution rather than growing drift-prone copies.
+- **Build gotcha**: the Xcode run-script declares `RustBuild/liblook_ffi.a` as
+  its output, so Xcode SKIPS the cargo rebuild whenever the file exists. After
+  adding FFI symbols, `rm apps/macos/LauncherApp/RustBuild/liblook_ffi.a` (or
+  the link fails with undefined `_look_ai_*`, or silently uses a stale brain).
+
 ## Migration order
 
 - **P0** - `core/ai` crate + workspace member + one hello function through both

@@ -40,6 +40,46 @@ private func look_instant_answer_json(_ query: UnsafePointer<CChar>?) -> UnsafeM
 nonisolated
 private func look_ai_is_referent(_ phrase: UnsafePointer<CChar>?) -> Bool
 
+@_silgen_name("look_ai_query_window")
+nonisolated
+private func look_ai_query_window(_ query: UnsafePointer<CChar>?, _ nowEpoch: Int64) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_plan")
+nonisolated
+private func look_ai_plan(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_warm_planner")
+nonisolated
+private func look_ai_warm_planner(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?)
+
+@_silgen_name("look_ai_conversations_json")
+nonisolated
+private func look_ai_conversations_json(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_conversation_upsert")
+nonisolated
+private func look_ai_conversation_upsert(_ path: UnsafePointer<CChar>?, _ json: UnsafePointer<CChar>?) -> Bool
+
+@_silgen_name("look_ai_resolve")
+nonisolated
+private func look_ai_resolve(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_parse_explicit")
+nonisolated
+private func look_ai_parse_explicit(_ input: UnsafePointer<CChar>?, _ modelAvailable: Bool) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_chat_start")
+nonisolated
+private func look_ai_chat_start(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ messagesJSON: UnsafePointer<CChar>?) -> UInt64
+
+@_silgen_name("look_ai_chat_poll")
+nonisolated
+private func look_ai_chat_poll(_ id: UInt64) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_chat_cancel")
+nonisolated
+private func look_ai_chat_cancel(_ id: UInt64)
+
 @_silgen_name("look_ai_markdown_segments_json")
 nonisolated
 private func look_ai_markdown_segments_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -337,6 +377,131 @@ final class EngineBridge: @unchecked Sendable {
     /// "this event") rather than naming an item. Rust core (core/ai).
     nonisolated func aiIsReferent(_ phrase: String) -> Bool {
         phrase.withCString { look_ai_is_referent($0) }
+    }
+
+    /// Timeframe a schedule question names ("next week", "in august"), from the
+    /// Rust-core window grammar (core/ai). ISO Monday weeks, local midnights.
+    nonisolated func aiQueryWindow(_ query: String) -> (start: Date, end: Date, label: String)? {
+        struct RawWindow: Decodable {
+            let start: Int64
+            let end: Int64
+            let label: String
+        }
+        let now = Int64(Date().timeIntervalSince1970)
+        guard let ptr = query.withCString({ look_ai_query_window($0, now) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let window = try? JSONDecoder().decode(RawWindow.self, from: data)
+        else { return nil }
+        return (
+            Date(timeIntervalSince1970: TimeInterval(window.start)),
+            Date(timeIntervalSince1970: TimeInterval(window.end)),
+            window.label)
+    }
+
+    /// One planning call to the local model via the Rust-core planner
+    /// (core/ai): the prompt, aliases, and mapping live there. BLOCKING
+    /// network; callers dispatch off the main thread.
+    nonisolated func aiPlan(host: String, model: String, query: String) -> (toolID: String, params: [String: String])? {
+        struct RawCall: Decodable {
+            let tool: String
+            let params: [String: String]
+        }
+        let ptr = host.withCString { hostC in
+            model.withCString { modelC in
+                query.withCString { queryC in
+                    look_ai_plan(hostC, modelC, queryC)
+                }
+            }
+        }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let call = try? JSONDecoder().decode(RawCall.self, from: data)
+        else { return nil }
+        return (call.tool, call.params)
+    }
+
+    /// Primes the model + prompt cache (BLOCKING network; call off-thread).
+    nonisolated func aiWarmPlanner(host: String, model: String) {
+        host.withCString { hostC in
+            model.withCString { modelC in
+                look_ai_warm_planner(hostC, modelC)
+            }
+        }
+    }
+
+    /// Stored AI conversations (newest first) from the Rust-core store.
+    nonisolated func aiConversationsJSON(path: String) -> Data? {
+        guard let ptr = path.withCString({ look_ai_conversations_json($0) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        return String(cString: ptr).data(using: .utf8)
+    }
+
+    /// Insert-or-replace one conversation in the Rust-core store.
+    nonisolated func aiConversationUpsert(path: String, json: String) -> Bool {
+        path.withCString { pathC in
+            json.withCString { jsonC in
+                look_ai_conversation_upsert(pathC, jsonC)
+            }
+        }
+    }
+
+    /// Tool resolution via the Rust core (core/ai): candidates + params in,
+    /// a data-only planned/choice/invalid outcome out. Pure CPU.
+    nonisolated func aiResolve(requestJSON: String) -> Data? {
+        guard let ptr = requestJSON.withCString({ look_ai_resolve($0) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        return String(cString: ptr).data(using: .utf8)
+    }
+
+    /// The explicit `>verb title @ when` parser (Rust core). Nil = natural
+    /// language, deferred to the model.
+    nonisolated func aiParseExplicit(_ input: String, modelAvailable: Bool) -> (toolID: String, params: [String: String])? {
+        struct RawCall: Decodable {
+            let tool: String
+            let params: [String: String]
+        }
+        let ptr = input.withCString { look_ai_parse_explicit($0, modelAvailable) }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let call = try? JSONDecoder().decode(RawCall.self, from: data)
+        else { return nil }
+        return (call.tool, call.params)
+    }
+
+    nonisolated struct AIChatSnapshot: Decodable {
+        let text: String
+        let done: Bool
+        let error: String?
+    }
+
+    /// Start a streamed chat session in the Rust core (curl child). 0 = failed.
+    nonisolated func aiChatStart(host: String, model: String, messagesJSON: String) -> UInt64 {
+        host.withCString { hostC in
+            model.withCString { modelC in
+                messagesJSON.withCString { messagesC in
+                    look_ai_chat_start(hostC, modelC, messagesC)
+                }
+            }
+        }
+    }
+
+    /// Snapshot of a chat session's cumulative text; nil for unknown ids.
+    nonisolated func aiChatPoll(_ id: UInt64) -> AIChatSnapshot? {
+        guard let ptr = look_ai_chat_poll(id) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(AIChatSnapshot.self, from: data)
+    }
+
+    /// Abort a chat session (Ollama stops generating).
+    nonisolated func aiChatCancel(_ id: UInt64) {
+        look_ai_chat_cancel(id)
     }
 
     /// Markdown segmentation for AI chat answers. Rust core (core/ai).

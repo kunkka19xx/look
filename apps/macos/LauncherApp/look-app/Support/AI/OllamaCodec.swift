@@ -60,29 +60,6 @@ nonisolated enum OllamaCodec {
         return try? JSONSerialization.data(withJSONObject: body)
     }
 
-    /// Multi-message variant for the action planner (system + user + repair
-    /// turns). `messages` is a list of `["role":..., "content":...]`.
-    static func chatRequestBody(
-        model: String,
-        messages: [[String: String]],
-        stream: Bool,
-        format: [String: Any]?,
-        numPredict: Int?
-    ) -> Data? {
-        var options: [String: Any] = ["temperature": 0]
-        if let numPredict { options["num_predict"] = numPredict }
-        var body: [String: Any] = [
-            "model": model,
-            "messages": messages,
-            "stream": stream,
-            "options": options,
-            // Keep the model resident between planner calls so it stays warm.
-            "keep_alive": "30m",
-        ]
-        if let format { body["format"] = format }
-        return try? JSONSerialization.data(withJSONObject: body)
-    }
-
     /// Body for `/api/generate` that just loads (warms) the model without
     /// generating, holding it resident for `keep_alive`.
     static func warmRequestBody(model: String) -> Data? {

@@ -215,6 +215,120 @@ pub extern "C" fn look_ai_is_referent(phrase: *const c_char) -> bool {
     .unwrap_or(false)
 }
 
+/// Timeframe extraction for AI schedule questions ("next week", "tomorrow",
+/// "in august"): JSON `{start, end, label}` with local-midnight epoch bounds
+/// (ISO Monday weeks), or null when no frame is named. Free with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_query_window(query: *const c_char, now_epoch: i64) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_query_window_impl(query, now_epoch)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Full planning call to the local Ollama model (BLOCKING network; call
+/// off-thread): JSON `{tool, params}` or null when not an action / no model.
+/// Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_plan(
+    host: *const c_char,
+    model: *const c_char,
+    query: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_plan_impl(host, model, query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Primes the model and Ollama's prompt-prefix cache with the planner prompt
+/// (BLOCKING network; call off-thread).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_warm_planner(host: *const c_char, model: *const c_char) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_warm_planner_impl(host, model)
+    }));
+}
+
+/// All stored AI conversations as JSON (newest first). The shell supplies the
+/// file path. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_conversations_json(path: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_conversations_json_impl(path)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Insert-or-replace one conversation (capped store, incremental/quit-safe).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_conversation_upsert(
+    path: *const c_char,
+    conversation_json: *const c_char,
+) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_conversation_upsert_impl(path, conversation_json)
+    }))
+    .unwrap_or(false)
+}
+
+/// Tool resolution (P4 contract): candidates + params in, a data-only outcome
+/// out (planned/choice/invalid) that the shell executes and undoes. Pure CPU.
+/// Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_resolve(request_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_resolve_impl(request_json)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The explicit `>verb title @ when` parser: JSON `{tool, params}` or null for
+/// natural language (deferred to the model). Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_parse_explicit(
+    input: *const c_char,
+    model_available: bool,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_parse_explicit_impl(input, model_available)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Start a streamed AI chat session (curl child in core). Returns a session
+/// id, or 0 on failure. Poll for snapshots; cancel to abort generation.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_chat_start(
+    host: *const c_char,
+    model: *const c_char,
+    messages_json: *const c_char,
+) -> u64 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_chat_start_impl(host, model, messages_json)
+    }))
+    .unwrap_or(0)
+}
+
+/// Snapshot of a chat session: `{"text", "done", "error"?}`, or null for an
+/// unknown id. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_chat_poll(id: u64) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_chat_poll_impl(id)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Abort a chat session (kills the curl child; Ollama stops generating).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_chat_cancel(id: u64) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_chat_cancel_impl(id)
+    }));
+}
+
 /// Markdown segmentation for AI chat answers: JSON array of
 /// `{kind: "text"|"code", text, language?}`. Free with `look_free_cstring`.
 #[unsafe(no_mangle)]

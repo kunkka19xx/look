@@ -27,10 +27,26 @@ nonisolated enum CalendarAccess: Equatable {
     }
 }
 
-/// Concrete `EventStoring` backed by EventKit: the same system store Calendar.app
-/// and Reminders.app use. Look only touches the local store; any account sync is
-/// the OS's job. One reused `EKEventStore`.
-nonisolated final class EventKitService: EventStoring, @unchecked Sendable {
+/// A calendar event / reminder as passed to the Rust-core resolver and the
+/// session's referent targets.
+nonisolated struct EventCandidateData: Equatable {
+    let id: String
+    let title: String
+    let start: Date
+    let end: Date
+    let isAllDay: Bool
+}
+
+nonisolated struct ReminderCandidateData: Equatable {
+    let id: String
+    let title: String
+    let due: Date?
+}
+
+/// EventKit backend: the same system store Calendar.app and Reminders.app use.
+/// Look only touches the local store; any account sync is the OS's job. One
+/// reused `EKEventStore`. Resolution lives in the Rust core; this executes.
+nonisolated final class EventKitService: @unchecked Sendable {
     static let shared = EventKitService()
 
     private let store = EKEventStore()
@@ -93,7 +109,7 @@ nonisolated final class EventKitService: EventStoring, @unchecked Sendable {
         return (text, candidates)
     }
 
-    // MARK: EventStoring
+    // MARK: Write operations
 
     func addEvent(title: String, start: Date, end: Date, isAllDay: Bool) throws -> String {
         let event = EKEvent(eventStore: store)

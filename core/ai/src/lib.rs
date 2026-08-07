@@ -3,5 +3,14 @@
 //! Ported module by module from the macOS Swift package; the Swift tests are
 //! the parity spec and are deleted as their Rust replacements land.
 
+pub mod chat;
+pub mod conversations;
+pub mod explicit;
+pub mod matcher;
 pub mod markdown;
+pub mod ollama;
+pub mod plan;
+pub mod planner;
 pub mod referent;
+pub mod resolve;
+pub mod window;

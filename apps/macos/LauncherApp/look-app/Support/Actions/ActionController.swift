@@ -23,7 +23,7 @@ final class ActionController: ObservableObject {
     /// A disambiguation in progress: the tool call awaiting the user's pick.
     struct PendingChoice {
         let toolID: String
-        var params: [String: AIValue]
+        var params: [String: String]
         let candidates: [ActionCandidate]
     }
 
@@ -41,7 +41,6 @@ final class ActionController: ObservableObject {
     /// show a "thinking" indicator during the generation.
     @Published private(set) var isPlanning: Bool = false
 
-    private let registry: ActionRegistry
     private let planner: ActionPlanner
     private var planTask: Task<Void, Never>?
     private var idleTask: Task<Void, Never>?
@@ -55,15 +54,7 @@ final class ActionController: ObservableObject {
     private static let idleDelay: UInt64 = 300_000_000
 
     private init() {
-        let registry = ActionRegistry()
-        registry.register(CalendarAddEventTool(store: EventKitService.shared))
-        registry.register(ReminderAddTool(store: EventKitService.shared))
-        registry.register(CalendarCancelEventTool(store: EventKitService.shared))
-        registry.register(CalendarMoveEventTool(store: EventKitService.shared))
-        registry.register(ReminderCompleteTool(store: EventKitService.shared))
-        registry.register(ReminderRemoveTool(store: EventKitService.shared))
-        self.registry = registry
-        self.planner = ActionPlanner(registry: registry)
+        self.planner = ActionPlanner()
     }
 
     var isPresenting: Bool { pending != nil }
@@ -145,10 +136,10 @@ final class ActionController: ObservableObject {
         // parser runs lenient (whole-phrase date resolution), so `@` entries
         // stay fully functional on any provider.
         let modelAvailable = planner.isAvailable
-        if let call = ExplicitActionParser.parse(">" + query, modelAvailable: modelAvailable),
-           case .planned(let action) = registry.plan(call, now: Date()) {
+        if let raw = EngineBridge.shared.aiParseExplicit(">" + query, modelAvailable: modelAvailable),
+           case .planned(let plan) = resolveOutcome(toolID: raw.toolID, params: raw.params) {
             isPlanning = false
-            pending = action
+            pending = plannedAction(toolID: raw.toolID, plan: plan)
             feedback = ""
             return
         }
@@ -199,11 +190,11 @@ final class ActionController: ObservableObject {
         EventKitService.shared.refreshReminderCache()
 
         let modelAvailable = planner.isAvailable
-        if let call = ExplicitActionParser.parse(">" + query, modelAvailable: modelAvailable),
-           case .planned(let action) = registry.plan(call, now: Date()) {
+        if let raw = EngineBridge.shared.aiParseExplicit(">" + query, modelAvailable: modelAvailable),
+           case .planned(let plan) = resolveOutcome(toolID: raw.toolID, params: raw.params) {
             planTask?.cancel()
             isPlanning = false
-            pending = action
+            pending = plannedAction(toolID: raw.toolID, plan: plan)
             feedback = ""
             return
         }
@@ -294,11 +285,29 @@ final class ActionController: ObservableObject {
         let routed = scheduleContext.map { "\($0)\n\nUser question: \(query)" } ?? query
         let host = settings.ollamaHost
         let model = settings.ollamaModel
-        let makeStream: @MainActor () -> AsyncThrowingStream<String, Error>? = {
-            if provider == .ollama {
-                return OllamaProvider.chatStream(host: host, model: model, messages: messages)
+
+        // Ollama: streamed through the Rust core (curl child + polling), the
+        // same transport linows will use. Other providers keep their native
+        // single-turn stream via the router.
+        if provider == .ollama {
+            if let messagesData = try? JSONSerialization.data(withJSONObject: messages),
+               let messagesJSON = String(data: messagesData, encoding: .utf8) {
+                let session = EngineBridge.shared.aiChatStart(
+                    host: host, model: model, messagesJSON: messagesJSON)
+                if session != 0 {
+                    chatTask = Task { [weak self] in
+                        await self?.consumeChatSession(session, into: placeholderID)
+                    }
+                    return
+                }
             }
-            return AIQueryRouter.shared.answer(query: routed, using: provider)
+            updateItem(placeholderID, text: "Answer failed. Is the model available?")
+            saveConversation()
+            return
+        }
+
+        let makeStream: @MainActor () -> AsyncThrowingStream<String, Error>? = {
+            AIQueryRouter.shared.answer(query: routed, using: provider)
         }
 
         if let stream = makeStream() {
@@ -338,6 +347,29 @@ final class ActionController: ObservableObject {
         }
     }
 
+    /// Polls a Rust-core chat session (~12x/sec) into the answer item, then
+    /// saves. Cancellation aborts the curl child, stopping generation.
+    private func consumeChatSession(_ session: UInt64, into id: UUID) async {
+        defer {
+            if Task.isCancelled { EngineBridge.shared.aiChatCancel(session) }
+        }
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 85_000_000)
+            if Task.isCancelled { return }
+            guard let snapshot = EngineBridge.shared.aiChatPoll(session) else { return }
+            if !snapshot.text.isEmpty {
+                updateItem(id, text: snapshot.text)
+            }
+            if snapshot.error != nil, snapshot.text.isEmpty {
+                updateItem(id, text: "Answer failed. Is the model available?")
+            }
+            if snapshot.done {
+                saveConversation()
+                return
+            }
+        }
+    }
+
     /// Streams cumulative snapshots into the answer item, then archives it.
     private func consume(_ stream: AsyncThrowingStream<String, Error>, into id: UUID) async {
         do {
@@ -363,7 +395,7 @@ final class ActionController: ObservableObject {
     /// week", "tomorrow", "friday"), defaulting to the next 7 days. Returns the
     /// text plus a human label ("for next week").
     private func scheduleSummary(for query: String) -> (String, String)? {
-        if let window = DatePhrase.queryWindow(for: query, now: Date()) {
+        if let window = EngineBridge.shared.aiQueryWindow(query) {
             guard let (summary, events) = EventKitService.shared.eventsSummary(
                 from: window.start, to: window.end,
                 emptyText: "No events \(window.label).")
@@ -432,7 +464,7 @@ final class ActionController: ObservableObject {
         // what the conversation just touched or LISTED. One target -> direct;
         // several -> the listing becomes the choice list. A referent NEVER falls
         // through to title matching ("it" must not fuzzy-match "DentIsT").
-        if let match = params["match"]?.stringValue, EngineBridge.shared.aiIsReferent(match) {
+        if let match = params["match"], EngineBridge.shared.aiIsReferent(match) {
             let domain = toolID.hasPrefix("reminder") ? "reminder" : "calendar"
             var targets = recentTargets.filter { $0.domain == domain }
             if targets.isEmpty, let sibling = Self.domainSibling[toolID] {
@@ -443,7 +475,7 @@ final class ActionController: ObservableObject {
                 }
             }
             if targets.count == 1 {
-                params["chosen_id"] = .string(targets[0].id)
+                params["chosen_id"] = targets[0].id
             } else if targets.count > 1 {
                 guard allowChoice else { return }
                 pending = nil
@@ -458,27 +490,84 @@ final class ActionController: ObservableObject {
                 return
             }
         }
-        let call = ToolCall(toolID: toolID, params: params)
-        switch registry.plan(call, now: Date()) {
-        case .planned(let action):
-            pending = action
+        switch resolveOutcome(toolID: toolID, params: params) {
+        case .planned(let plan):
+            pending = plannedAction(toolID: toolID, plan: plan)
             feedback = ""
         case .invalid(let message):
             pending = nil
             feedback = message
-        case .needsChoice(let candidates):
+        case .choice(let candidates):
             pending = nil
             guard allowChoice else { return }  // live preview stays quiet
             pendingChoice = PendingChoice(
-                toolID: call.toolID, params: call.params, candidates: candidates)
+                toolID: toolID, params: params, candidates: candidates)
             feedback = ""
+        }
+    }
+
+    /// Builds the P4 resolve request (candidates + the NSDataDetector-resolved
+    /// date seam) and asks the Rust core for the outcome. Pure CPU + a local
+    /// EventKit fetch for mutate tools.
+    private func resolveOutcome(toolID: String, params: [String: String]) -> ActionResolveOutcome {
+        let now = Date()
+        var request: [String: Any] = [
+            "tool": toolID,
+            "params": params,
+            "now": Int64(now.timeIntervalSince1970),
+        ]
+        if toolID == "calendar.cancel_event" || toolID == "calendar.move_event" {
+            request["events"] = EventKitService.shared
+                .eventCandidates(from: now, to: now.addingTimeInterval(30 * 86_400))
+                .map { event -> [String: Any] in
+                    [
+                        "id": event.id, "title": event.title,
+                        "start": Int64(event.start.timeIntervalSince1970),
+                        "end": Int64(event.end.timeIntervalSince1970),
+                        "all_day": event.isAllDay,
+                    ]
+                }
+        }
+        if toolID == "reminder.complete" || toolID == "reminder.remove" {
+            request["reminders"] = EventKitService.shared.reminderCandidates()
+                .map { reminder -> [String: Any] in
+                    var entry: [String: Any] = ["id": reminder.id, "title": reminder.title]
+                    if let due = reminder.due {
+                        entry["due"] = Int64(due.timeIntervalSince1970)
+                    }
+                    return entry
+                }
+        }
+        if let when = params["when"], let resolved = DatePhrase.resolve(when, now: now) {
+            request["resolved_when"] = Int64(resolved.timeIntervalSince1970)
+        }
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: request),
+            let json = String(data: data, encoding: .utf8),
+            let outcome = EngineBridge.shared.aiResolve(requestJSON: json)
+        else { return .invalid("Resolution failed.") }
+        return ActionResolveOutcome.decode(outcome)
+    }
+
+    /// Wraps a Rust plan into the executable action the confirm flow runs.
+    private func plannedAction(toolID: String, plan: ActionResolvedPlan) -> PlannedAction {
+        PlannedAction(
+            toolID: toolID,
+            preview: ActionPreview(title: plan.previewTitle, detail: plan.previewDetail)
+        ) {
+            let newID = try ActionExecutor.perform(plan.execute)
+            let subjectID = plan.subject == "new" ? newID : plan.subject
+            return ActionReceipt(
+                summary: plan.summary,
+                subjectID: subjectID,
+                undo: ActionExecutor.undoClosure(for: plan.undo, newID: newID))
         }
     }
 
     /// The user picked from the disambiguation list: re-plan with the exact id.
     func choose(_ candidate: ActionCandidate) {
         guard var choice = pendingChoice else { return }
-        choice.params["chosen_id"] = .string(candidate.id)
+        choice.params["chosen_id"] = candidate.id
         pendingChoice = nil
         propose(ToolCall(toolID: choice.toolID, params: choice.params))
     }
