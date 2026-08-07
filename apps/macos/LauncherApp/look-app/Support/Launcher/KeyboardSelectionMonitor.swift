@@ -41,6 +41,8 @@ final class KeyboardSelectionMonitor {
         onDismissHelpIfVisible: @escaping @MainActor () -> Bool,
         onSelectCommandByIndex: @escaping @MainActor (Int) -> Void,
         onActivateRunningApp: @escaping @MainActor (Int) -> Bool = { _ in false },
+        onActivateSession: @escaping @MainActor (Int) -> Bool = { _ in false },
+        onEscapeHome: (@MainActor () -> Bool)? = nil,
         onConfirmKill: (@MainActor () -> Void)? = nil,
         onCancelKill: (@MainActor () -> Void)? = nil,
         killConfirmationActive: @escaping @MainActor () -> Bool = { false },
@@ -119,6 +121,17 @@ final class KeyboardSelectionMonitor {
                 let handler = onLaunchpadMnemonic,
                 let character = event.charactersIgnoringModifiers?.first,
                 handler(character)
+            {
+                return nil
+            }
+
+            // ⌘+home-row jumps to a listed conversation (keys under the fingers:
+            // a s d f g h j k l → rows 1-9). Gated on "browsing the sessions
+            // list", so ⌘S/⌘F/⌘H etc. keep their normal meaning everywhere else.
+            if flags == [.command],
+                let ch = event.charactersIgnoringModifiers?.lowercased().first,
+                let index = "asdfghjkl".firstIndex(of: ch).map({ "asdfghjkl".distance(from: "asdfghjkl".startIndex, to: $0) }),
+                onActivateSession(index)
             {
                 return nil
             }
@@ -272,6 +285,19 @@ final class KeyboardSelectionMonitor {
                         )
                     }
                 }
+            }
+
+            // Shift+Esc leaves AI mode straight to home (skips the list step).
+            // Only consume it when it actually acts, so Shift+Esc keeps its
+            // command-mode "hide" meaning elsewhere.
+            if event.keyCode == KeyCode.escape,
+                flags.contains(.shift),
+                !flags.contains(.command),
+                !flags.contains(.option),
+                !flags.contains(.control),
+                onEscapeHome?() == true
+            {
+                return nil
             }
 
             if event.modifierFlags.contains(.command)

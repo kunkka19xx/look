@@ -114,9 +114,10 @@ extension LauncherView {
                 actionController.choose(choice.candidates[number - 1])
                 query = ""
             } else if actionController.sessionItems.isEmpty,
-               let number = Int(submitTrimmed),
-               number >= 1, number <= filteredConversations.count {
-                actionController.continueConversation(filteredConversations[number - 1])
+                      selectedConversationIndex >= 0,
+                      selectedConversationIndex < filteredConversations.count {
+                // A highlighted session opens; otherwise Enter starts a new chat.
+                actionController.continueConversation(filteredConversations[selectedConversationIndex])
                 query = ""
             } else if !submitTrimmed.isEmpty {
                 actionController.submitExplicitAIQuery(submitTrimmed)

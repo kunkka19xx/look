@@ -25,6 +25,26 @@ extension LauncherView {
     ) {
         guard !appUIState.showsThemeSettings else { return }
 
+        // Sessions list: Tab/Shift-Tab and ↑/↓ move the highlight over
+        // [-1 = new chat, 0..<count = sessions]. Enter opens the highlighted
+        // session, or starts a new chat when nothing is highlighted (-1).
+        if isBrowsingConversations {
+            let hi = filteredConversations.count - 1
+            guard hi >= 0 else { return }
+            var idx = selectedConversationIndex
+            switch direction {
+            // Wrap: past the last row loops back to the first, and vice versa.
+            case .down: idx = (idx < 0 || idx >= hi) ? 0 : idx + 1
+            case .up: idx = (idx <= 0) ? hi : idx - 1
+            default: return
+            }
+            // Same curve as the results list, so the pill glides between rows.
+            withAnimation(Motion.Selection.glide) {
+                selectedConversationIndex = idx
+            }
+            return
+        }
+
         if isCommandMode
             && activeCommandID == AppConstants.Launcher.Command.kill
             && !preferCommandListInCommandMode
@@ -211,6 +231,12 @@ extension LauncherView {
             onActivateRunningApp: { [self] key in
                 activateRunningApp(forKey: key)
             },
+            onActivateSession: { [self] index in
+                openSessionAt(index)
+            },
+            onEscapeHome: { [self] in
+                exitAIToHome()
+            },
             onConfirmKill: { [self] in
                 if let pendingKillCandidate {
                     runKillCommand(candidate: pendingKillCandidate)
@@ -254,11 +280,16 @@ extension LauncherView {
                 pendingHideAppResult != nil
             },
             onCancelAction: { [self] in
-                // Two-step Esc: first cancels a pending confirm (keep composing);
-                // with nothing pending, it saves the conversation and leaves AI
-                // mode for home.
+                // Esc ladder: a pending confirm cancels first (keep composing);
+                // an open chat saves and drops to the sessions list (stay in AI
+                // mode); the sessions list leaves AI mode for home.
                 if actionController.isPresenting || actionController.awaitingChoice {
                     actionController.cancel()
+                } else if !actionController.sessionItems.isEmpty {
+                    actionController.endSession()
+                    conversationCache = ConversationStore.load()
+                    query = ""
+                    selectedConversationIndex = -1
                 } else {
                     actionController.endSession()
                     query = ""
