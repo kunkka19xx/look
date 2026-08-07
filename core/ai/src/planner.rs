@@ -23,7 +23,7 @@ pub const ALIASES: [(&str, &str); 8] = [
 ];
 
 pub const SYSTEM_PROMPT: &str = r#"Classify the request into ONE tool and extract its params:
-- "event": add a calendar event. params: title (clean short title; drop the leading verb, filler words, and all date/time words; capitalize the first word).
+- "event": add a calendar event. params: title (clean short title; drop the leading verb, filler words, and all date/time words; capitalize the first word), duration (only if the user states a length, e.g. "2 hours", "90 minutes"; omit otherwise).
 - "reminder": add a reminder. params: title (same rules).
 - "cancel": remove an EXISTING event. params: match (the words that identify which event, e.g. "dentist").
 - "move": reschedule an EXISTING event. params: match, when (the NEW time phrase copied verbatim, e.g. "4pm", "friday 9am").
@@ -75,7 +75,14 @@ pub fn resolve_step(step: &plan::PlanStep) -> Option<Value> {
     };
 
     let params = match tool {
-        "calendar.add_event" | "reminder.add" => json!({ "title": get("title")? }),
+        "calendar.add_event" => {
+            let mut p = json!({ "title": get("title")? });
+            if let Some(duration) = get("duration") {
+                p["duration"] = Value::String(duration);
+            }
+            p
+        }
+        "reminder.add" => json!({ "title": get("title")? }),
         "calendar.move_event" | "reminder.snooze" => {
             json!({ "match": get("match")?, "when": get("when")? })
         }
@@ -127,7 +134,15 @@ mod tests {
         let call = resolve_step(&step("event", json!({"title": "Dentist"}))).unwrap();
         assert_eq!(call["tool"], "calendar.add_event");
         assert_eq!(call["params"]["title"], "Dentist");
+        assert!(call["params"].get("duration").is_none());
         assert!(resolve_step(&step("event", json!({}))).is_none());
+    }
+
+    #[test]
+    fn add_passes_stated_duration() {
+        let call =
+            resolve_step(&step("event", json!({"title": "Lunch", "duration": "2 hours"}))).unwrap();
+        assert_eq!(call["params"]["duration"], "2 hours");
     }
 
     #[test]

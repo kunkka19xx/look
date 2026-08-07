@@ -163,8 +163,9 @@ fn add_event(request: &ResolveRequest) -> ResolveOutcome {
     if !has_clock_time(&when_phrase) {
         return all_day_event(&title, start);
     }
-    let minutes = param(request, "duration_minutes")
-        .and_then(|m| m.parse::<i64>().ok())
+    let minutes = param(request, "duration")
+        .and_then(|d| parse_duration_minutes(&d))
+        .or_else(|| param(request, "duration_minutes").and_then(|m| m.parse::<i64>().ok()))
         .unwrap_or(DEFAULT_EVENT_MINUTES);
     if minutes <= 0 {
         return invalid("Duration must be positive.");
@@ -485,7 +486,7 @@ fn round_up(value: i64, step: i64) -> i64 {
 }
 
 /// "2 hours" / "90 minutes" / "1.5h" / "45m" / "2" (bare number = minutes).
-fn parse_duration_minutes(phrase: &str) -> Option<i64> {
+pub(crate) fn parse_duration_minutes(phrase: &str) -> Option<i64> {
     let p = phrase.to_lowercase();
     let number: f64 = p
         .split(|c: char| !c.is_ascii_digit() && c != '.')
@@ -672,6 +673,21 @@ mod tests {
                 assert_eq!(end - start, 3600);
                 assert!(!all_day);
                 assert_eq!(subject.as_deref(), Some("new"));
+            }
+            other => panic!("expected planned, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn add_event_honors_stated_duration() {
+        let mut req = request(
+            "calendar.add_event",
+            &[("title", "Lunch"), ("when", "tomorrow 1pm"), ("duration", "2 hours")],
+        );
+        req.resolved_when = Some(NOW + 90_000);
+        match resolve(&req) {
+            ResolveOutcome::Planned { execute: Execute::AddEvent { start, end, .. }, .. } => {
+                assert_eq!(end - start, 2 * 3600);
             }
             other => panic!("expected planned, got {other:?}"),
         }

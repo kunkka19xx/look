@@ -50,10 +50,22 @@ pub fn parse(input: &str, model_available: bool) -> Option<Value> {
 
     let verb = verb.to_lowercase();
     match verb.as_str() {
-        "add" | "event" | "cal" => Some(json!({
-            "tool": "calendar.add_event",
-            "params": { "title": title, "when": when.unwrap_or_default() },
-        })),
+        "add" | "event" | "cal" => {
+            // "1pm for 2 hours" -> when "1pm", duration "2 hours". Only splits
+            // when the tail is a real duration, so titles/times are untouched.
+            let when = when.unwrap_or_default();
+            let (when, duration) = match when.split_once(" for ") {
+                Some((head, tail)) if crate::resolve::parse_duration_minutes(tail.trim()).is_some() => {
+                    (head.trim().to_string(), Some(tail.trim().to_string()))
+                }
+                _ => (when, None),
+            };
+            let mut params = json!({ "title": title, "when": when });
+            if let Some(duration) = duration {
+                params["duration"] = Value::String(duration);
+            }
+            Some(json!({ "tool": "calendar.add_event", "params": params }))
+        }
         "remind" | "reminder" => {
             let mut params = json!({ "title": title });
             if let Some(when) = when {
@@ -85,6 +97,21 @@ mod tests {
     fn parses_separator_without_trailing_space() {
         let call = parse(">add lunch @3pm", true).unwrap();
         assert_eq!(call["params"]["when"], "3pm");
+    }
+
+    #[test]
+    fn parses_trailing_duration() {
+        let call = parse(">add lunch @ 1pm for 2 hours", true).unwrap();
+        assert_eq!(call["params"]["when"], "1pm");
+        assert_eq!(call["params"]["duration"], "2 hours");
+    }
+
+    #[test]
+    fn non_duration_for_is_left_in_when() {
+        // "for review" is not a duration, so the phrase stays intact.
+        let call = parse(">add sync @ 3pm for review", true).unwrap();
+        assert_eq!(call["params"]["when"], "3pm for review");
+        assert!(call["params"].get("duration").is_none());
     }
 
     #[test]
