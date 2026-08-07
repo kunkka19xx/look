@@ -61,6 +61,12 @@ final class ActionController: ObservableObject {
     private var idleTask: Task<Void, Never>?
     private var chatTask: Task<Void, Never>?
     private var lastWarm = Date.distantPast
+    /// A submit clears the input, which fires the same "compose cleared" path as
+    /// deleting it by hand - but the submitted plan/chat must keep running. Set
+    /// on submit, consumed by the first `handleComposeCleared` so exactly that
+    /// one clear is spared. Without it the just-submitted plan is cancelled
+    /// mid-flight (flicker, no answer).
+    private var skipCancelOnNextClear = false
 
     /// How long the user must stop typing before the model runs. Short, because
     /// an in-flight call is cancelled cleanly on the next keystroke (Task cancel
@@ -143,14 +149,18 @@ final class ActionController: ObservableObject {
     /// each keystroke with no model, plus a background model refinement that fires
     /// only once the user stops typing (idle) and upgrades the preview in place.
     func previewExplicitAIQuery(_ rawQuery: String) {
-        idleTask?.cancel()
-        planTask?.cancel()
         let query = stripPrefix(rawQuery)
 
         guard !query.isEmpty else {
-            if isPresenting || isPlanning { cancel() }
+            handleComposeCleared()
             return
         }
+
+        // Composing new input: supersede any in-flight preview, and this is no
+        // longer the submit's clear, so drop the one-shot spare.
+        skipCancelOnNextClear = false
+        idleTask?.cancel()
+        planTask?.cancel()
 
         // Warm the reminder cache while the user composes, so reminder mutations
         // ("complete milk") resolve against a fresh list by the time they Enter.
@@ -254,6 +264,9 @@ final class ActionController: ObservableObject {
             return
         }
         planTask?.cancel()
+        // The submit is about to clear the input; spare that one clear so it
+        // doesn't cancel this plan/chat before it produces an answer.
+        skipCancelOnNextClear = true
         planTask = Task { [weak self] in
             guard let self else { return }
             self.isPlanning = true
@@ -758,6 +771,21 @@ final class ActionController: ObservableObject {
         pendingChoice = nil
         feedback = ""
         isPlanning = false
+    }
+
+    /// The compose input cleared. Cancel an in-flight preview/plan - unless this
+    /// clear was caused by a submit (the submitted plan/chat must keep running).
+    func handleComposeCleared() {
+        // A pending debounce always dies with the input (spared submit already
+        // cancelled it); only the submitted plan/chat is protected below.
+        idleTask?.cancel()
+        if skipCancelOnNextClear {
+            skipCancelOnNextClear = false
+            return
+        }
+        if isPresenting || isPlanning {
+            cancel()
+        }
     }
 
     func undoLast() {

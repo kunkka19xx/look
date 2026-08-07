@@ -132,6 +132,7 @@ extension LauncherView {
                 }
                 return
             } else if !submitTrimmed.isEmpty {
+                recordAIPrompt(submitTrimmed)
                 actionController.submitExplicitAIQuery(submitTrimmed)
                 query = ""
             }

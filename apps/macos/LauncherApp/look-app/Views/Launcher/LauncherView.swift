@@ -48,6 +48,14 @@ struct LauncherView: View {
     /// chat); `0..<count` = a session (Enter opens it). Tab/↑↓ move it; typing
     /// resets to -1 so a new chat stays one Enter away.
     @State var selectedConversationIndex = -1
+    /// Shell-style prompt history for the AI box: submitted prompts (oldest
+    /// first). ↑/↓ in an open chat recall them; `promptHistoryIndex` is the cursor
+    /// (nil = at the live, un-recalled input).
+    @State var aiPromptHistory: [String] = []
+    @State var promptHistoryIndex: Int?
+    /// True for the single query change caused by a recall, so it doesn't reset
+    /// the history cursor or fire a preview.
+    @State var isRecallingPrompt = false
 
     @State var query = ""
     @State var commandInput = ""
@@ -762,6 +770,14 @@ struct LauncherView: View {
                 return
             }
             if isAIMode {
+                // A recall just filled the input: don't reset the cursor or fire a
+                // preview - the user is browsing history, not typing.
+                if isRecallingPrompt {
+                    isRecallingPrompt = false
+                    return
+                }
+                // Any real edit moves the history cursor back to the live input.
+                promptHistoryIndex = nil
                 aiAnswer.cancel()
                 // A new keystroke dismisses a transient result (e.g. "Remembered
                 // …") so the sessions list returns.
@@ -775,9 +791,9 @@ struct LauncherView: View {
                 if browsing {
                     // Typing re-filters, so a new chat stays the default action.
                     selectedConversationIndex = -1
-                    if actionController.isPresenting || actionController.isPlanning {
-                        actionController.cancel()
-                    }
+                    // Clearing the input cancels an in-flight preview - but not the
+                    // plan/chat a submit just kicked off (that clear is spared).
+                    actionController.handleComposeCleared()
                 } else {
                     actionController.previewExplicitAIQuery(trimmedQuery)
                 }
@@ -1234,6 +1250,48 @@ struct LauncherView: View {
         withAnimation(Motion.Selection.glide) {
             selectedConversationIndex = count == 0 ? -1 : min(selectedConversationIndex, count - 1)
         }
+    }
+
+    /// Record a submitted AI prompt for ↑ recall (dedups the immediate repeat,
+    /// caps the list, and resets the cursor to the live input).
+    func recordAIPrompt(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if aiPromptHistory.last != trimmed {
+            aiPromptHistory.append(trimmed)
+            if aiPromptHistory.count > 50 { aiPromptHistory.removeFirst() }
+        }
+        promptHistoryIndex = nil
+    }
+
+    /// ↑/↓ in an open chat walk the prompt history like a shell: ↑ older, ↓
+    /// newer, ↓ past the end returns to the empty input.
+    func recallPrompt(_ direction: MoveCommandDirection) {
+        guard !aiPromptHistory.isEmpty else { return }
+        switch direction {
+        case .up:
+            let next = (promptHistoryIndex ?? aiPromptHistory.count) - 1
+            guard next >= 0 else { return }
+            promptHistoryIndex = next
+            setRecalledInput(aiPromptHistory[next])
+        case .down:
+            guard let idx = promptHistoryIndex else { return }
+            let next = idx + 1
+            if next >= aiPromptHistory.count {
+                promptHistoryIndex = nil
+                setRecalledInput("")
+            } else {
+                promptHistoryIndex = next
+                setRecalledInput(aiPromptHistory[next])
+            }
+        default:
+            break
+        }
+    }
+
+    private func setRecalledInput(_ text: String) {
+        isRecallingPrompt = true
+        query = text
     }
 
     /// ⌘⌫ deletes the highlighted session (no-op when nothing is highlighted).

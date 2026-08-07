@@ -179,6 +179,11 @@ extension LauncherView {
                     moveSelection(.up)
                 }
             },
+            onRecallPrompt: { [self] older in
+                guard isAIMode else { return false }
+                recallPrompt(older ? .up : .down)
+                return true
+            },
             onEnterCommandMode: {
                 if !isCommandMode {
                     enterCommandMode()

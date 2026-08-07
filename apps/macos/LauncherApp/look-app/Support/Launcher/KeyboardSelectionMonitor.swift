@@ -26,6 +26,7 @@ final class KeyboardSelectionMonitor {
         onPrevious: @escaping @MainActor () -> Void,
         onArrowDown: (@MainActor () -> Void)? = nil,
         onArrowUp: (@MainActor () -> Void)? = nil,
+        onRecallPrompt: (@MainActor (Bool) -> Bool)? = nil,
         onEnterCommandMode: @escaping @MainActor () -> Void,
         onExitCommandMode: @escaping @MainActor () -> Void,
         onHideLauncher: @escaping @MainActor () -> Void,
@@ -383,6 +384,18 @@ final class KeyboardSelectionMonitor {
                     onNext()
                 }
                 return nil
+            }
+
+            // Shift+↑/↓ recalls prompt history in AI mode. The handler returns
+            // false outside AI mode, so the event falls through to normal
+            // selection-extension there.
+            if event.keyCode == KeyCode.arrowUp, flags.contains(.shift) {
+                if onRecallPrompt?(true) == true { return nil }
+                return event
+            }
+            if event.keyCode == KeyCode.arrowDown, flags.contains(.shift) {
+                if onRecallPrompt?(false) == true { return nil }
+                return event
             }
 
             if event.keyCode == KeyCode.arrowUp {

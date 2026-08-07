@@ -43,6 +43,9 @@ struct SmoothCaretTextField: NSViewRepresentable {
 
         if field.stringValue != text {
             field.stringValue = text
+            // A programmatic set (recall, clear) otherwise drops the caret to the
+            // start; move it to the end so the recalled text is editable at once.
+            field.currentEditor()?.selectedRange = NSRange(location: (text as NSString).length, length: 0)
             field.refreshCaret(animated: true)
         }
         field.font = font
