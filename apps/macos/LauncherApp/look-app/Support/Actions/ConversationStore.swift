@@ -47,4 +47,10 @@ enum ConversationStore {
         else { return }
         _ = EngineBridge.shared.aiConversationUpsert(path: path, json: json)
     }
+
+    @discardableResult
+    static func delete(id: UUID) -> Bool {
+        guard let path = filePath else { return false }
+        return EngineBridge.shared.aiConversationDelete(path: path, id: id.uuidString)
+    }
 }

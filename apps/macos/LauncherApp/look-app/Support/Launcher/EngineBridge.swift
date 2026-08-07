@@ -60,6 +60,10 @@ private func look_ai_conversations_json(_ path: UnsafePointer<CChar>?) -> Unsafe
 nonisolated
 private func look_ai_conversation_upsert(_ path: UnsafePointer<CChar>?, _ json: UnsafePointer<CChar>?) -> Bool
 
+@_silgen_name("look_ai_conversation_delete")
+nonisolated
+private func look_ai_conversation_delete(_ path: UnsafePointer<CChar>?, _ id: UnsafePointer<CChar>?) -> Bool
+
 @_silgen_name("look_ai_resolve")
 nonisolated
 private func look_ai_resolve(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -67,6 +71,14 @@ private func look_ai_resolve(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMuta
 @_silgen_name("look_ai_load_targets")
 nonisolated
 private func look_ai_load_targets(_ eventsJSON: UnsafePointer<CChar>?, _ remindersJSON: UnsafePointer<CChar>?)
+
+@_silgen_name("look_ai_memory_command")
+nonisolated
+private func look_ai_memory_command(_ path: UnsafePointer<CChar>?, _ input: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_memory_context")
+nonisolated
+private func look_ai_memory_context(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_parse_explicit")
 nonisolated
@@ -457,6 +469,14 @@ final class EngineBridge: @unchecked Sendable {
         }
     }
 
+    nonisolated func aiConversationDelete(path: String, id: String) -> Bool {
+        path.withCString { pathC in
+            id.withCString { idC in
+                look_ai_conversation_delete(pathC, idC)
+            }
+        }
+    }
+
     /// Tool resolution via the Rust core (core/ai): candidates + params in,
     /// a data-only planned/choice/invalid outcome out. Pure CPU.
     nonisolated func aiResolve(requestJSON: String) -> Data? {
@@ -473,6 +493,22 @@ final class EngineBridge: @unchecked Sendable {
                 look_ai_load_targets(ev, rem)
             }
         }
+    }
+
+    /// Handle input as a memory command ("remember …"). Feedback to show, or nil
+    /// for normal AI input. Rust core (core/ai).
+    nonisolated func aiMemoryCommand(path: String, input: String) -> String? {
+        let ptr = path.withCString { p in input.withCString { i in look_ai_memory_command(p, i) } }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        return String(cString: ptr)
+    }
+
+    /// Stored facts as a model context block (empty when none). Rust core.
+    nonisolated func aiMemoryContext(path: String) -> String {
+        guard let ptr = path.withCString({ look_ai_memory_context($0) }) else { return "" }
+        defer { look_free_cstring(ptr) }
+        return String(cString: ptr)
     }
 
     /// The explicit `>verb title @ when` parser (Rust core). Nil = natural

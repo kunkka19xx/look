@@ -760,6 +760,9 @@ struct LauncherView: View {
             }
             if isAIMode {
                 aiAnswer.cancel()
+                // A new keystroke dismisses a transient result (e.g. "Remembered
+                // …") so the sessions list returns.
+                actionController.clearFeedback()
                 // While browsing/searching stored conversations (no active one),
                 // don't churn the model per keystroke; typing filters the list
                 // and Enter drives everything. Instant `@` forms still preview.
@@ -1168,6 +1171,7 @@ struct LauncherView: View {
             && actionController.sessionItems.isEmpty
             && !actionController.isPresenting
             && actionController.pendingChoice == nil
+            && actionController.feedback.isEmpty
     }
 
     /// One-line greyed preview of a conversation's most recent message.
@@ -1206,6 +1210,22 @@ struct LauncherView: View {
         return true
     }
 
+    /// Delete a stored conversation and keep the highlight in range.
+    func deleteConversation(_ convo: AIConversation) {
+        ConversationStore.delete(id: convo.id)
+        conversationCache = ConversationStore.load()
+        let count = filteredConversations.count
+        withAnimation(Motion.Selection.glide) {
+            selectedConversationIndex = count == 0 ? -1 : min(selectedConversationIndex, count - 1)
+        }
+    }
+
+    /// ⌘⌫ deletes the highlighted session (no-op when nothing is highlighted).
+    func deleteHighlightedSession() {
+        guard selectedConversationIndex >= 0, selectedConversationIndex < filteredConversations.count else { return }
+        deleteConversation(filteredConversations[selectedConversationIndex])
+    }
+
     /// The AI session screen: actions, questions, and streaming answers stack in
     /// one scrolling conversation; the pending confirm or progress sits below the
     /// stack, and a footer teaches the keys. Enter runs, Esc leaves, the session
@@ -1216,6 +1236,16 @@ struct LauncherView: View {
             // path (⌘+Esc is reserved by the system on some Macs).
             Button("") { exitAIToHome() }
                 .keyboardShortcut(.escape, modifiers: .shift)
+                .buttonStyle(.plain)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+
+            // ⌘⌫ deletes the highlighted session. Disabled (so it falls through
+            // to text editing) when nothing is highlighted.
+            Button("") { deleteHighlightedSession() }
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(selectedConversationIndex < 0 || filteredConversations.isEmpty)
                 .buttonStyle(.plain)
                 .frame(width: 0, height: 0)
                 .opacity(0)
@@ -1280,51 +1310,59 @@ struct LauncherView: View {
                             if !filteredConversations.isEmpty {
                                 VStack(alignment: .leading, spacing: 6) {
                                     ForEach(Array(filteredConversations.enumerated()), id: \.element.id) { index, convo in
-                                        Button {
-                                            actionController.continueConversation(convo)
-                                            query = ""
-                                        } label: {
-                                            HStack(alignment: .top, spacing: 8) {
-                                                Text(index < Self.sessionJumpKeys.count ? "⌘\(String(Self.sessionJumpKeys[index]).uppercased())" : "")
-                                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .semibold))
-                                                    .foregroundStyle(themeStore.accentColor())
-                                                    .frame(minWidth: 22, alignment: .leading)
-                                                VStack(alignment: .leading, spacing: 2) {
-                                                    HStack(spacing: 8) {
-                                                        Text(convo.title)
-                                                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
-                                                            .foregroundStyle(themeStore.fontColor())
-                                                            .lineLimit(1)
-                                                        Spacer()
-                                                        Text(convo.updatedAt.formatted(.relative(presentation: .named)))
-                                                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
-                                                            .foregroundStyle(themeStore.mutedTextColor())
-                                                    }
-                                                    let snippet = conversationSnippet(convo)
-                                                    if !snippet.isEmpty {
-                                                        Text(snippet)
-                                                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
-                                                            .foregroundStyle(themeStore.mutedTextColor().opacity(0.75))
-                                                            .lineLimit(2)
-                                                            .multilineTextAlignment(.leading)
-                                                    }
+                                        HStack(alignment: .top, spacing: 8) {
+                                            Text(index < Self.sessionJumpKeys.count ? "⌘\(String(Self.sessionJumpKeys[index]).uppercased())" : "")
+                                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .semibold))
+                                                .foregroundStyle(themeStore.accentColor())
+                                                .frame(minWidth: 22, alignment: .leading)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                HStack(spacing: 8) {
+                                                    Text(convo.title)
+                                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
+                                                        .foregroundStyle(themeStore.fontColor())
+                                                        .lineLimit(1)
+                                                    Spacer()
+                                                    Text(convo.updatedAt.formatted(.relative(presentation: .named)))
+                                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                                                        .foregroundStyle(themeStore.mutedTextColor())
+                                                }
+                                                let snippet = conversationSnippet(convo)
+                                                if !snippet.isEmpty {
+                                                    Text(snippet)
+                                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                                                        .foregroundStyle(themeStore.mutedTextColor().opacity(0.75))
+                                                        .lineLimit(2)
+                                                        .multilineTextAlignment(.leading)
                                                 }
                                             }
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 6)
-                                            .background {
+                                            Button {
+                                                deleteConversation(convo)
+                                            } label: {
+                                                Image(systemName: "trash")
+                                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                                                    .foregroundStyle(themeStore.mutedTextColor().opacity(selectedConversationIndex == index ? 0.9 : 0.35))
+                                            }
+                                            .buttonStyle(.plain)
+                                            .help("Delete conversation (⌘⌫)")
+                                        }
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background {
+                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                .fill(themeStore.controlFillColor().opacity(0.55))
+                                            if selectedConversationIndex == index {
+                                                // One pill glides between rows (matchedGeometryEffect),
+                                                // the same mechanism the results list uses.
                                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                    .fill(themeStore.controlFillColor().opacity(0.55))
-                                                if selectedConversationIndex == index {
-                                                    // One pill glides between rows (matchedGeometryEffect),
-                                                    // the same mechanism the results list uses.
-                                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                        .fill(themeStore.accentColor().opacity(0.2))
-                                                        .matchedGeometryEffect(id: "look.session.pill", in: conversationSelectionNamespace)
-                                                }
+                                                    .fill(themeStore.accentColor().opacity(0.2))
+                                                    .matchedGeometryEffect(id: "look.session.pill", in: conversationSelectionNamespace)
                                             }
                                         }
-                                        .buttonStyle(.plain)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            actionController.continueConversation(convo)
+                                            query = ""
+                                        }
                                         .id(convo.id)
                                     }
                                 }

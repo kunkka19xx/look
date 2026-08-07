@@ -8,6 +8,7 @@ pub mod conversations;
 pub mod explicit;
 pub mod matcher;
 pub mod markdown;
+pub mod memory;
 pub mod ollama;
 pub mod plan;
 pub mod planner;

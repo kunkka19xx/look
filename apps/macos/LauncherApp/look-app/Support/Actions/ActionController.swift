@@ -84,6 +84,11 @@ final class ActionController: ObservableObject {
         feedback = ""
     }
 
+    /// Dismiss a transient result line (e.g. "Remembered …") on the next input.
+    func clearFeedback() {
+        if !feedback.isEmpty { feedback = "" }
+    }
+
     /// Close the current conversation: save it, drop pending work, clear the
     /// stack, and mint a fresh conversation id. Fired by Esc with nothing
     /// pending (leaving AI mode).
@@ -207,6 +212,17 @@ final class ActionController: ObservableObject {
         idleTask?.cancel()
         let query = stripPrefix(rawQuery)
         guard !query.isEmpty else { return }
+
+        // Explicit memory command ("remember …", "forget …", "memories"):
+        // deterministic, never touches the model.
+        if let memoryFeedback = MemoryStore.command(query) {
+            planTask?.cancel()
+            isPlanning = false
+            pending = nil
+            feedback = memoryFeedback
+            return
+        }
+
         EventKitService.shared.refreshReminderCache()
         EventKitService.shared.refreshEventCache()
 
@@ -271,10 +287,17 @@ final class ActionController: ObservableObject {
                 + "The user's calendar \(label):\n\(summary)"
         }()
 
+        // Long-term memory (facts the user asked to remember), injected on every
+        // turn so the assistant "knows them" across conversations.
+        let memoryContext = MemoryStore.context()
+
         var messages: [[String: String]] = [
             ["role": "system", "content": Self.chatInstructions]
         ]
         // Injected after the static prompt so the prompt-cache prefix holds.
+        if !memoryContext.isEmpty {
+            messages.append(["role": "system", "content": memoryContext])
+        }
         if let scheduleContext {
             messages.append(["role": "system", "content": scheduleContext])
         }
@@ -303,7 +326,9 @@ final class ActionController: ObservableObject {
         // Apple Intelligence) answers single-turn through the router (with the
         // schedule context folded into the prompt), so `>` chat works on-device.
         let provider = settings.aiProvider
-        let routed = scheduleContext.map { "\($0)\n\nUser question: \(query)" } ?? query
+        let preamble = [memoryContext.isEmpty ? nil : memoryContext, scheduleContext]
+            .compactMap { $0 }.joined(separator: "\n\n")
+        let routed = preamble.isEmpty ? query : "\(preamble)\n\nUser question: \(query)"
         let host = settings.ollamaHost
         let model = settings.ollamaModel
 

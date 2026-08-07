@@ -121,6 +121,7 @@ extension LauncherView {
                 query = ""
             } else if !submitTrimmed.isEmpty {
                 actionController.submitExplicitAIQuery(submitTrimmed)
+                query = ""
             }
             DispatchQueue.main.async { isQueryFocused = true }
             return

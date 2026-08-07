@@ -273,6 +273,18 @@ pub extern "C" fn look_ai_conversation_upsert(
     .unwrap_or(false)
 }
 
+/// Delete one conversation by id. Returns whether it existed.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_conversation_delete(
+    path: *const c_char,
+    id: *const c_char,
+) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_conversation_delete_impl(path, id)
+    }))
+    .unwrap_or(false)
+}
+
 /// Tool resolution (P4 contract): candidates + params in, a data-only outcome
 /// out (planned/choice/invalid) that the shell executes and undoes. Pure CPU.
 /// Free with `look_free_cstring`.
@@ -294,6 +306,38 @@ pub extern "C" fn look_ai_load_targets(
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         ai_api::look_ai_load_targets_impl(events_json, reminders_json)
     }));
+}
+
+/// Handle input as a memory command ("remember …"), returning feedback or null.
+/// Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_memory_command(
+    path: *const c_char,
+    input: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_memory_command_impl(path, input)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The stored facts as a model context block (empty when none). Free with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_memory_context(path: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_memory_context_impl(path)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The stored facts as a JSON array. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_memory_list_json(path: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_memory_list_json_impl(path)
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 /// The explicit `>verb title @ when` parser: JSON `{tool, params}` or null for

@@ -67,6 +67,20 @@ pub fn upsert_json(path: &Path, conversation_json: &str) -> bool {
     }
 }
 
+/// Remove one conversation by id. Returns whether it existed and was written.
+pub fn delete(path: &Path, id: &str) -> bool {
+    let mut list = load(path);
+    let before = list.len();
+    list.retain(|c| c.id != id);
+    if list.len() == before {
+        return false;
+    }
+    match serde_json::to_vec(&list) {
+        Ok(data) => fs::write(path, data).is_ok(),
+        Err(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,6 +129,20 @@ mod tests {
         let list = load(&path);
         assert_eq!(list[0].items.len(), ITEM_LIMIT);
         assert_eq!(list[0].items.last().unwrap().text, format!("m{}", ITEM_LIMIT + 9));
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn delete_removes_by_id() {
+        let path = temp_file("delete");
+        let _ = fs::remove_file(&path);
+        upsert(&path, convo("a", "2026-01-01T00:00:00Z", 1));
+        upsert(&path, convo("b", "2026-01-02T00:00:00Z", 1));
+        assert!(delete(&path, "a"));
+        let list = load(&path);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "b");
+        assert!(!delete(&path, "missing"));
         let _ = fs::remove_file(&path);
     }
 

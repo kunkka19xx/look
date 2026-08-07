@@ -77,6 +77,15 @@ pub(crate) fn look_ai_conversation_upsert_impl(
     look_ai::conversations::upsert_json(std::path::Path::new(&path), &json)
 }
 
+pub(crate) fn look_ai_conversation_delete_impl(
+    path: *const c_char,
+    id: *const c_char,
+) -> bool {
+    let path = state::cstr_to_string(path);
+    let id = state::cstr_to_string(id);
+    look_ai::conversations::delete(std::path::Path::new(&path), &id)
+}
+
 const ENCODE_FAILED: &str = r#"{"outcome":"invalid","message":"encode failed"}"#;
 
 pub(crate) fn look_ai_resolve_impl(request_json: *const c_char) -> *mut c_char {
@@ -96,6 +105,41 @@ pub(crate) fn look_ai_resolve_impl(request_json: *const c_char) -> *mut c_char {
         Err(_) => r#"{"outcome":"invalid","message":"Bad resolve request."}"#.to_string(),
     };
     let cstring = CString::new(json).unwrap_or_else(|_| CString::new(ENCODE_FAILED).expect("valid"));
+    state::store_json_allocation(cstring)
+}
+
+/// Handle AI input as a possible memory command ("remember …", "forget …",
+/// "memories"). Returns feedback to show (skip the model), or null for normal
+/// input. Free with `look_free_cstring`.
+pub(crate) fn look_ai_memory_command_impl(
+    path: *const c_char,
+    input: *const c_char,
+) -> *mut c_char {
+    let path = state::cstr_to_string(path);
+    let input = state::cstr_to_string(input);
+    match look_ai::memory::handle_command(std::path::Path::new(&path), &input) {
+        Some(feedback) => match CString::new(feedback) {
+            Ok(cstring) => state::store_json_allocation(cstring),
+            Err(_) => std::ptr::null_mut(),
+        },
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// The stored facts as a model context block (empty string when none). Free with
+/// `look_free_cstring`.
+pub(crate) fn look_ai_memory_context_impl(path: *const c_char) -> *mut c_char {
+    let path = state::cstr_to_string(path);
+    let block = look_ai::memory::context_block(std::path::Path::new(&path));
+    let cstring = CString::new(block).unwrap_or_default();
+    state::store_json_allocation(cstring)
+}
+
+/// The stored facts as a JSON array. Free with `look_free_cstring`.
+pub(crate) fn look_ai_memory_list_json_impl(path: *const c_char) -> *mut c_char {
+    let path = state::cstr_to_string(path);
+    let json = look_ai::memory::load_json(std::path::Path::new(&path));
+    let cstring = CString::new(json).unwrap_or_else(|_| CString::new("[]").expect("valid"));
     state::store_json_allocation(cstring)
 }
 
