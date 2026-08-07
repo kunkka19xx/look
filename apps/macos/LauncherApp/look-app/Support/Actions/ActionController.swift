@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 
@@ -223,6 +224,16 @@ final class ActionController: ObservableObject {
             return
         }
 
+        // Clipboard text-op verb ("summarize", "fix grammar", "translate to …"):
+        // deterministic routing, transforms whatever text is on the clipboard.
+        if let op = EngineBridge.shared.aiTextOp(input: query) {
+            planTask?.cancel()
+            isPlanning = false
+            pending = nil
+            runTextOp(label: op.label, instruction: op.instruction)
+            return
+        }
+
         EventKitService.shared.refreshReminderCache()
         EventKitService.shared.refreshEventCache()
 
@@ -397,6 +408,59 @@ final class ActionController: ObservableObject {
                 text: "No model available.\(reason) Or use: >add <title> @ <time>")
             self.saveConversation()
         }
+    }
+
+    /// A clipboard text-op: transform whatever text is on the clipboard with the
+    /// given instruction, streaming the result into the panel (reusing chat).
+    func runTextOp(label: String, instruction: String) {
+        let clip = (NSPasteboard.general.string(forType: .string) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clip.isEmpty else {
+            pending = nil
+            feedback = "Copy some text first, then try \"\(label.lowercased())\"."
+            return
+        }
+        chatTask?.cancel()
+        sessionItems.append(ActionSessionItem(kind: .user, text: label))
+        saveConversation()
+
+        let settings = ThemeStore.shared.settings
+        let sourceLabel = settings.aiProvider == .ollama
+            ? settings.ollamaModel
+            : settings.aiProvider.title
+        let placeholder = ActionSessionItem(kind: .answer, text: "…", source: sourceLabel)
+        sessionItems.append(placeholder)
+        let placeholderID = placeholder.id
+
+        let messages: [[String: String]] = [
+            ["role": "system", "content": instruction],
+            ["role": "user", "content": clip],
+        ]
+
+        if settings.aiProvider == .ollama {
+            if let data = try? JSONSerialization.data(withJSONObject: messages),
+               let json = String(data: data, encoding: .utf8) {
+                let session = EngineBridge.shared.aiChatStart(
+                    host: settings.ollamaHost, model: settings.ollamaModel, messagesJSON: json)
+                if session != 0 {
+                    chatTask = Task { [weak self] in
+                        await self?.consumeChatSession(session, into: placeholderID)
+                    }
+                    return
+                }
+            }
+            updateItem(placeholderID, text: "Text op failed. Is the model available?")
+            saveConversation()
+            return
+        }
+
+        let routed = "\(instruction)\n\n\(clip)"
+        if let stream = AIQueryRouter.shared.answer(query: routed, using: settings.aiProvider) {
+            chatTask = Task { [weak self] in await self?.consume(stream, into: placeholderID) }
+            return
+        }
+        updateItem(placeholderID, text: "No model available.")
+        saveConversation()
     }
 
     /// Polls a Rust-core chat session (~12x/sec) into the answer item, then

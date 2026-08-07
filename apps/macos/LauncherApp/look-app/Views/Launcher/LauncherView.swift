@@ -53,6 +53,9 @@ struct LauncherView: View {
     @State var commandInput = ""
     @State var isCommandMode = false
     @State var backendResults: [LauncherResult] = []
+    /// Set when a detected file-recall query matched nothing, so the panel shows
+    /// an honest "no files" line instead of the knowledge-lookup AI card.
+    @State var fileRecallEmptyMessage: String?
     @State var webSuggestions: [String] = []
     @State var webSuggestionTask: Task<Void, Never>?
     @State var recentURLEntries: [URLHistoryEntry] = []
@@ -1075,6 +1078,19 @@ struct LauncherView: View {
                 }
             } else if isRecentQuery && displayedResults.isEmpty {
                 floatingPanel { RecentEmptyStateView(themeStore: themeStore) }
+            } else if let fileRecallEmptyMessage, displayedResults.isEmpty {
+                floatingPanel {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(fileRecallEmptyMessage)
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
+                            .foregroundStyle(themeStore.fontColor())
+                        Text("Try a type (\u{201C}pdfs\u{201D}), a time (\u{201C}last week\u{201D}), or a place (\u{201C}downloads\u{201D}).")
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                            .foregroundStyle(themeStore.mutedTextColor())
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             } else if hidesResultsForEmptyQuery {
                 // Empty query while floating: the launchpad control strip sits
                 // below the top bar; a spacer keeps them pinned to the top. When

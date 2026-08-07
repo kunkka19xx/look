@@ -108,6 +108,34 @@ pub(crate) fn look_ai_resolve_impl(request_json: *const c_char) -> *mut c_char {
     state::store_json_allocation(cstring)
 }
 
+/// Whether `query` is a natural-language file-recall query (cheap parse only).
+/// Lets the AI box route file queries to the results instead of the model.
+pub(crate) fn look_ai_is_file_query_impl(query: *const c_char, now_epoch: i64) -> bool {
+    let query = state::cstr_to_string(query);
+    look_ai::files::parse(&query, now_epoch).is_some()
+}
+
+/// Parse a bare text-op verb ("summarize", "translate to french") into
+/// `{label, instruction}` JSON, or null for normal input. Free with
+/// `look_free_cstring`.
+pub(crate) fn look_ai_textop_json_impl(input: *const c_char) -> *mut c_char {
+    let input = state::cstr_to_string(input);
+    match look_ai::textops::parse(&input) {
+        Some(op) => {
+            let json = serde_json::json!({
+                "label": op.label,
+                "instruction": op.instruction,
+            })
+            .to_string();
+            match CString::new(json) {
+                Ok(cstring) => state::store_json_allocation(cstring),
+                Err(_) => std::ptr::null_mut(),
+            }
+        }
+        None => std::ptr::null_mut(),
+    }
+}
+
 /// How many of the most-recent item texts (JSON string array) fit the token
 /// budget (0 = default). The shell keeps that many tail turns as chat history.
 pub(crate) fn look_ai_context_window_impl(texts_json: *const c_char, budget: u32) -> u32 {

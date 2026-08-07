@@ -119,6 +119,18 @@ extension LauncherView {
                 // A highlighted session opens; otherwise Enter starts a new chat.
                 actionController.continueConversation(filteredConversations[selectedConversationIndex])
                 query = ""
+            } else if !submitTrimmed.isEmpty, EngineBridge.shared.isFileQuery(submitTrimmed) {
+                // A file-recall query typed in the AI box ("files I downloaded
+                // yesterday") drops to the main results, which are keyboard-
+                // navigable and carry the open/reveal/quicklook actions.
+                actionController.endSession()
+                isAIMode = false
+                query = submitTrimmed
+                DispatchQueue.main.async {
+                    refreshSearchResults()
+                    isQueryFocused = true
+                }
+                return
             } else if !submitTrimmed.isEmpty {
                 actionController.submitExplicitAIQuery(submitTrimmed)
                 query = ""

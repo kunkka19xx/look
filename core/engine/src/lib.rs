@@ -24,6 +24,22 @@ const INDEX_UPSERT_CHUNK_SIZE: usize = 512;
 const USAGE_RETENTION_DAYS: i64 = 90;
 const MAX_USAGE_EVENT_ROWS: usize = 50_000;
 
+/// Structured natural-language file query (see `QueryEngine::search_files`).
+/// The shell parses free text into this via `core/ai/files`.
+#[derive(Debug, Default)]
+pub struct FileFilter {
+    /// Free text for name matching ("resume", "taxes"); empty = no name filter.
+    pub terms: String,
+    /// Categories to keep: pdf, image, screenshot, movie, audio, document,
+    /// spreadsheet, presentation, folder, archive. Empty = any file/folder.
+    pub categories: Vec<String>,
+    /// Modified-time range (unix seconds), inclusive; None = no time filter.
+    pub start: Option<i64>,
+    pub end: Option<i64>,
+    /// Folder hints to scope to: downloads, desktop, documents.
+    pub locations: Vec<String>,
+}
+
 struct IndexedCandidate {
     candidate: Candidate,
     // Search-normalized fields are precomputed once at load time so the query loop
@@ -59,6 +75,18 @@ impl QueryEngine {
         scored
             .into_iter()
             .map(|(candidate, score)| LaunchResult::from((&candidate, score)))
+            .collect()
+    }
+
+    /// Natural-language file recall: files/folders filtered by type, modified
+    /// time, and location, ranked most-recent-first. Runs against Look's own
+    /// index (fast, no Spotlight); the shell parses the query into a `FileFilter`.
+    pub fn search_files(&self, filter: &FileFilter, limit: usize) -> Vec<LaunchResult> {
+        self.search_files_indices(filter, limit)
+            .into_iter()
+            .map(|(idx, score)| {
+                LaunchResult::from((&self.candidates[idx as usize].candidate, score))
+            })
             .collect()
     }
 

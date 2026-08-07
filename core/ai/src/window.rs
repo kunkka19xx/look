@@ -38,6 +38,7 @@ pub fn query_window(query: &str, now_epoch: i64) -> Option<Window> {
 
         match *word {
             "today" | "tonight" => return single_day(today, "today"),
+            "yesterday" | "yday" => return single_day(today.pred_opt()?, "yesterday"),
             "tomorrow" | "tmr" | "tmrw" | "tmw" => {
                 return single_day(today.succ_opt()?, "tomorrow");
             }
@@ -48,6 +49,8 @@ pub fn query_window(query: &str, now_epoch: i64) -> Option<Window> {
         if let Some(unit) = unit_of(word) {
             let (offset, label) = if previous == "next" || previous == "coming" {
                 (1, format!("next {word}"))
+            } else if previous == "last" || previous == "previous" || previous == "past" {
+                (-1, format!("last {word}"))
             } else if let Ok(n) = previous.parse::<i64>() {
                 if n > 0 { (n, format!("in {n} {word}")) } else { (0, format!("this {word}")) }
             } else {
@@ -165,9 +168,19 @@ fn unit_of(word: &str) -> Option<Unit> {
 }
 
 fn shift(date: NaiveDate, unit: Unit, offset: i64) -> Option<NaiveDate> {
+    if offset < 0 {
+        let n = offset.unsigned_abs();
+        return match unit {
+            Unit::Day => date.checked_sub_days(Days::new(n)),
+            Unit::Week => date.checked_sub_days(Days::new(n * 7)),
+            Unit::Month => date.checked_sub_months(Months::new(n as u32)),
+            Unit::Year => date.checked_sub_months(Months::new((n * 12) as u32)),
+        };
+    }
+    let n = offset as u64;
     match unit {
-        Unit::Day => date.checked_add_days(Days::new(offset as u64)),
-        Unit::Week => date.checked_add_days(Days::new((offset * 7) as u64)),
+        Unit::Day => date.checked_add_days(Days::new(n)),
+        Unit::Week => date.checked_add_days(Days::new(n * 7)),
         Unit::Month => date.checked_add_months(Months::new(offset as u32)),
         Unit::Year => date.checked_add_months(Months::new((offset * 12) as u32)),
     }

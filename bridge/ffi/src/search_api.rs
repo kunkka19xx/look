@@ -96,6 +96,31 @@ pub(crate) fn look_search_json_impl(query: *const c_char, limit: u32) -> *mut c_
     store_json_allocation(cstring)
 }
 
+/// Natural-language file recall: parse the query (core/ai), run it against
+/// Look's own index (fast, no Spotlight), and return the same JSON shape as
+/// `look_search_json`. Null when the query is not a file-recall query, so the
+/// shell falls back to normal search.
+pub(crate) fn look_search_files_json_impl(
+    query: *const c_char,
+    now_epoch: i64,
+    limit: u32,
+) -> *mut c_char {
+    let query = cstr_to_string(query);
+    let max = normalized_limit(limit);
+    let Some(fq) = look_ai::files::parse(&query, now_epoch) else {
+        return std::ptr::null_mut();
+    };
+    let filter = look_engine::FileFilter {
+        terms: fq.terms,
+        categories: fq.types,
+        start: fq.start,
+        end: fq.end,
+        locations: fq.locations,
+    };
+    let results = with_engine(|engine| engine.search_files(&filter, max as usize));
+    store_json_allocation(serialize_full_payload(&query, results))
+}
+
 pub(crate) fn look_search_json_compact_impl(query: *const c_char, limit: u32) -> *mut c_char {
     let query = cstr_to_string(query);
     let max = normalized_limit(limit);

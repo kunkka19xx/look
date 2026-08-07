@@ -119,6 +119,79 @@ impl QueryEngine {
         finalize_top_k(top)
     }
 
+    pub(crate) fn search_files_indices(&self, filter: &crate::FileFilter, limit: usize) -> Vec<(u32, i64)> {
+        if limit == 0 {
+            return vec![];
+        }
+        let exts = extensions_for(&filter.categories);
+        let want_folder = filter.categories.iter().any(|c| c == "folder");
+        let only_folder = want_folder && filter.categories.iter().all(|c| c == "folder");
+        let want_screenshot = filter.categories.iter().any(|c| c == "screenshot");
+        let type_gated = !filter.categories.is_empty();
+        let terms = filter.terms.trim().to_lowercase();
+
+        let mut matches: Vec<(u32, i64)> = Vec::new();
+        for (idx, c) in self.candidates.iter().enumerate() {
+            let cand = &c.candidate;
+            let is_file = cand.kind == CandidateKind::File;
+            let is_folder = cand.kind == CandidateKind::Folder;
+            if !is_file && !is_folder {
+                continue; // apps and processes are never file-recall results
+            }
+            if only_folder && !is_folder {
+                continue;
+            }
+            // A type-named query ("pdfs", "screenshots") means files, not folders.
+            if type_gated && !want_folder && is_folder {
+                continue;
+            }
+            if is_file && !exts.is_empty() && !exts.contains(&ext_of(&cand.path).as_str()) {
+                continue;
+            }
+            if want_screenshot {
+                let p = cand.path.to_lowercase();
+                if !p.contains("screenshot") && !p.contains("screen shot") {
+                    continue;
+                }
+            }
+            let recency = cand.fs_modified_at_unix_s.unwrap_or(0);
+            if let (Some(start), Some(end)) = (filter.start, filter.end) {
+                if recency < start || recency > end {
+                    continue;
+                }
+            }
+            if !filter.locations.is_empty() {
+                let path = cand.path.to_lowercase();
+                let in_location = filter
+                    .locations
+                    .iter()
+                    .any(|loc| location_folder(loc).is_some_and(|f| path.contains(f)));
+                if !in_location {
+                    continue;
+                }
+            }
+            if !terms.is_empty()
+                && !c.title_search.contains(&terms)
+                && !cand.path.to_lowercase().contains(&terms)
+            {
+                continue;
+            }
+            matches.push((idx as u32, recency));
+        }
+
+        // Most-recent first; stable tie-break by title.
+        matches.sort_by(|a, b| {
+            b.1.cmp(&a.1).then_with(|| {
+                self.candidates[a.0 as usize]
+                    .candidate
+                    .title
+                    .cmp(&self.candidates[b.0 as usize].candidate.title)
+            })
+        });
+        matches.truncate(limit);
+        matches
+    }
+
     fn search_recent_query(&self, normalized_query: &str, limit: usize) -> Vec<(u32, i64)> {
         // Recent view: files/folders the user has actually opened (last_used_at
         // set), most-recently-opened first. Apps and never-opened items are
@@ -351,6 +424,45 @@ impl QueryEngine {
             .into_iter()
             .map(|(idx, score)| (self.candidates[idx as usize].candidate.clone(), score))
             .collect()
+    }
+}
+
+/// File extensions for each file-recall category (empty for `folder`).
+fn extensions_for(categories: &[String]) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    for c in categories {
+        let exts: &[&str] = match c.as_str() {
+            "pdf" => &["pdf"],
+            "image" | "screenshot" => &["png", "jpg", "jpeg", "heic", "gif", "tiff", "bmp", "webp"],
+            "movie" => &["mp4", "mov", "m4v", "avi", "mkv", "webm"],
+            "audio" => &["mp3", "m4a", "wav", "aac", "flac", "aiff"],
+            "document" => &["doc", "docx", "pages", "txt", "rtf", "md", "odt"],
+            "spreadsheet" => &["xls", "xlsx", "numbers", "csv", "ods"],
+            "presentation" => &["ppt", "pptx", "key", "odp"],
+            "archive" => &["zip", "tar", "gz", "rar", "7z", "dmg"],
+            _ => &[],
+        };
+        out.extend_from_slice(exts);
+    }
+    out
+}
+
+/// Lowercased extension of the filename in `path` (empty when none).
+fn ext_of(path: &str) -> String {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    match name.rsplit_once('.') {
+        Some((_, ext)) => ext.to_lowercase(),
+        None => String::new(),
+    }
+}
+
+/// Path fragment a location hint scopes to.
+fn location_folder(loc: &str) -> Option<&'static str> {
+    match loc {
+        "downloads" => Some("/downloads/"),
+        "desktop" => Some("/desktop/"),
+        "documents" => Some("/documents/"),
+        _ => None,
     }
 }
 

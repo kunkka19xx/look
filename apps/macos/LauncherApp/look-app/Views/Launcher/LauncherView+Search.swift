@@ -15,6 +15,7 @@ extension LauncherView {
 
     func refreshSearchResults() {
         guard !isCommandMode else { return }
+        fileRecallEmptyMessage = nil
         guard !isClipboardQuery else {
             invalidateSearchRequests()
             setInitialSelection()
@@ -38,6 +39,18 @@ extension LauncherView {
         searchTask = Task {
             try? await Task.sleep(nanoseconds: AppConstants.Launcher.searchDebounceNanoseconds)
             guard !Task.isCancelled else { return }
+
+            // File-recall auto-detect: "files I downloaded yesterday", "pdfs this
+            // week", "screenshots today". Runs against Look's own index; nil means
+            // it was not a file-recall query, so normal search proceeds below.
+            let fileResults = await Task.detached(priority: .userInitiated) {
+                bridge.searchFiles(query: currentQuery, limit: searchLimit)
+            }.value
+            if let fileResults {
+                guard !Task.isCancelled else { return }
+                publishSearchResults(fileResults, searchID: searchID, for: currentQuery, isFileRecall: true)
+                return
+            }
 
             // Fast path: search the raw query first and paint immediately. The
             // on-device model is never in front of results - it only refines.
@@ -73,12 +86,24 @@ extension LauncherView {
     private func publishSearchResults(
         _ results: [LauncherResult],
         searchID: UInt64,
-        for requestedQuery: String
+        for requestedQuery: String,
+        isFileRecall: Bool = false
     ) {
         guard searchID == latestSearchID else { return }
         guard !isCommandMode, query == requestedQuery else { return }
         backendResults = results
         setInitialSelection()
+
+        // A detected file-recall query owns the panel: on zero matches show an
+        // honest "no files" state instead of the knowledge-lookup AI card.
+        if isFileRecall {
+            fileRecallEmptyMessage = results.isEmpty
+                ? "No files match \u{201C}\(requestedQuery)\u{201D}."
+                : nil
+            aiAnswer.cancel()
+            return
+        }
+        fileRecallEmptyMessage = nil
 
         // Additive AI answer card. Driven from here so it knows the local result
         // count - a multi-word query with no local match is treated as a

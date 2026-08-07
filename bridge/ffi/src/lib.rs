@@ -44,6 +44,21 @@ pub extern "C" fn look_search_json_compact(query: *const c_char, limit: u32) -> 
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// Natural-language file recall over Look's own index. Returns the same JSON as
+/// `look_search_json`, or null when the query is not a file-recall query. Free
+/// with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_search_files_json(
+    query: *const c_char,
+    now_epoch: i64,
+    limit: u32,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        search_api::look_search_files_json_impl(query, now_epoch, limit)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn look_record_usage(candidate_id: *const c_char, action: *const c_char) -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -306,6 +321,25 @@ pub extern "C" fn look_ai_load_targets(
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         ai_api::look_ai_load_targets_impl(events_json, reminders_json)
     }));
+}
+
+/// Whether `query` is a natural-language file-recall query (cheap parse only).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_is_file_query(query: *const c_char, now_epoch: i64) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_is_file_query_impl(query, now_epoch)
+    }))
+    .unwrap_or(false)
+}
+
+/// Parse a bare text-op verb into `{label, instruction}` JSON, or null. Free
+/// with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_textop_json(input: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_textop_json_impl(input)
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 /// How many recent item texts (JSON string array) fit the token budget

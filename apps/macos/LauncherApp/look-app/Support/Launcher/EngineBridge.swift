@@ -8,6 +8,14 @@ private func look_search_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -
 nonisolated
 private func look_search_json_compact(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_search_files_json")
+nonisolated
+private func look_search_files_json(_ query: UnsafePointer<CChar>?, _ now: Int64, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_is_file_query")
+nonisolated
+private func look_ai_is_file_query(_ query: UnsafePointer<CChar>?, _ now: Int64) -> Bool
+
 @_silgen_name("look_record_usage_json")
 nonisolated
 private func look_record_usage_json(_ candidateID: UnsafePointer<CChar>?, _ action: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -83,6 +91,10 @@ private func look_ai_memory_context(_ path: UnsafePointer<CChar>?) -> UnsafeMuta
 @_silgen_name("look_ai_context_window")
 nonisolated
 private func look_ai_context_window(_ textsJSON: UnsafePointer<CChar>?, _ budget: UInt32) -> UInt32
+
+@_silgen_name("look_ai_textop_json")
+nonisolated
+private func look_ai_textop_json(_ input: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_parse_explicit")
 nonisolated
@@ -269,6 +281,37 @@ final class EngineBridge: @unchecked Sendable {
             LauncherResult(
                 id: item.id,
                 kind: LauncherResultKind(rawValue: item.kind) ?? .app,
+                title: item.title,
+                subtitle: item.subtitle,
+                path: item.path,
+                score: item.score
+            )
+        }
+    }
+
+    /// Whether `query` is a file-recall query, without running the search.
+    nonisolated func isFileQuery(_ query: String) -> Bool {
+        let now = Int64(Date().timeIntervalSince1970)
+        return query.withCString { look_ai_is_file_query($0, now) }
+    }
+
+    /// Natural-language file recall over Look's own index. Returns nil when the
+    /// query is not a file-recall query (so the caller does normal search).
+    nonisolated func searchFiles(query: String, limit: Int = 40) -> [LauncherResult]? {
+        let now = Int64(Date().timeIntervalSince1970)
+        guard let ptr = query.withCString({ look_search_files_json($0, now, UInt32(limit)) }) else {
+            return nil
+        }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let payload = try? JSONDecoder().decode(SearchPayload.self, from: data),
+            payload.error == nil
+        else { return nil }
+        return payload.results.map { item in
+            LauncherResult(
+                id: item.id,
+                kind: LauncherResultKind(rawValue: item.kind) ?? .file,
                 title: item.title,
                 subtitle: item.subtitle,
                 path: item.path,
@@ -524,6 +567,19 @@ final class EngineBridge: @unchecked Sendable {
         else { return texts.count }
         let count = json.withCString { look_ai_context_window($0, UInt32(max(0, budget))) }
         return Int(count)
+    }
+
+    /// Parse a bare clipboard text-op verb ("summarize", "translate to french")
+    /// into a label + model instruction, or nil for normal input. Rust core.
+    nonisolated func aiTextOp(input: String) -> (label: String, instruction: String)? {
+        struct Op: Decodable { let label: String; let instruction: String }
+        guard let ptr = input.withCString({ look_ai_textop_json($0) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let op = try? JSONDecoder().decode(Op.self, from: data)
+        else { return nil }
+        return (op.label, op.instruction)
     }
 
     /// The explicit `>verb title @ when` parser (Rust core). Nil = natural
