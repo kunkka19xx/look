@@ -9,7 +9,9 @@
 > uncompletes). "it"/"that" resolves via the last receipt's `subjectID`, skipping
 > matching. As-built deltas from this spec: the planner emits tool alias +
 > title/match (+ verbatim NEW time for move); other dates are extracted in code.
-> Still open: `find_free_slot`/`block_time`, reminder snooze, Windows/Linux.
+> Also SHIPPED: `reminder.snooze` and `calendar.block_time` (free-slot
+> search over working hours, resolved in `core/ai::resolve`). Still open:
+> recurring-event spans (cancel/move one occurrence vs the series), Windows/Linux.
 
 Scope: macOS. EventKit is an Apple system framework, so this connector lives
 entirely on the Swift side (`apps/macos`), not in the Rust core. Windows/Linux

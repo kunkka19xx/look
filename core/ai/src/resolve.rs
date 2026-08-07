@@ -6,7 +6,7 @@
 use chrono::{DateTime, Local, TimeZone, Timelike};
 use serde::{Deserialize, Serialize};
 
-use crate::matcher::{self, Outcome as Match};
+use crate::matcher::{self, Indexed, Outcome as Match};
 
 pub const DEFAULT_EVENT_MINUTES: i64 = 60;
 const SEARCH_DAYS: i64 = 30;
@@ -43,6 +43,12 @@ pub struct ResolveRequest {
     /// macOS). None when absent or unresolvable.
     #[serde(default)]
     pub resolved_when: Option<i64>,
+    /// For block_time: the day-range to search, resolved by the shell from the
+    /// `when` phrase via the window grammar.
+    #[serde(default)]
+    pub window_start: Option<i64>,
+    #[serde(default)]
+    pub window_end: Option<i64>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -54,6 +60,7 @@ pub enum Execute {
     MoveEvent { id: String, start: i64, end: i64 },
     CompleteReminder { id: String },
     RemoveReminder { id: String },
+    SetReminderDue { id: String, due: Option<i64> },
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -65,6 +72,7 @@ pub enum Undo {
     MoveEvent { id: String, start: i64, end: i64 },
     UncompleteReminder { id: String },
     RecreateReminder { title: String, due: Option<i64> },
+    SetReminderDue { id: String, due: Option<i64> },
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -90,14 +98,39 @@ pub enum ResolveOutcome {
     Invalid { message: String },
 }
 
+/// Precompute match keys for the request's own candidate lists. The shell can
+/// skip this per-keystroke cost by loading targets once (see the ffi store) and
+/// calling `resolve_indexed_request` directly.
+pub fn index_events(events: &[EventCandidate]) -> Vec<Indexed<EventCandidate>> {
+    events.iter().map(|e| matcher::index(e.clone(), &e.title)).collect()
+}
+
+pub fn index_reminders(reminders: &[ReminderCandidate]) -> Vec<Indexed<ReminderCandidate>> {
+    reminders.iter().map(|r| matcher::index(r.clone(), &r.title)).collect()
+}
+
 pub fn resolve(request: &ResolveRequest) -> ResolveOutcome {
+    let events = index_events(&request.events);
+    let reminders = index_reminders(&request.reminders);
+    resolve_indexed_request(request, &events, &reminders)
+}
+
+/// Resolution over candidate lists whose match keys were precomputed once. The
+/// matching tools read from these slices; add/date tools ignore them.
+pub fn resolve_indexed_request(
+    request: &ResolveRequest,
+    events: &[Indexed<EventCandidate>],
+    reminders: &[Indexed<ReminderCandidate>],
+) -> ResolveOutcome {
     match request.tool.as_str() {
         "calendar.add_event" => add_event(request),
         "reminder.add" => add_reminder(request),
-        "calendar.cancel_event" => cancel_event(request),
-        "calendar.move_event" => move_event(request),
-        "reminder.complete" => complete_reminder(request),
-        "reminder.remove" => remove_reminder(request),
+        "calendar.cancel_event" => cancel_event(request, events, reminders),
+        "calendar.move_event" => move_event(request, events),
+        "reminder.complete" => complete_reminder(request, reminders),
+        "reminder.remove" => remove_reminder(request, events, reminders),
+        "reminder.snooze" => snooze_reminder(request, reminders),
+        "calendar.block_time" => block_time(request, events),
         other => ResolveOutcome::Invalid { message: format!("Unknown action: {other}") },
     }
 }
@@ -192,33 +225,88 @@ fn add_reminder(request: &ResolveRequest) -> ResolveOutcome {
 
 // ── mutate tools ────────────────────────────────────────────────────────
 
-fn cancel_event(request: &ResolveRequest) -> ResolveOutcome {
-    match pick_event(request) {
-        Err(outcome) => outcome,
-        Ok(event) => ResolveOutcome::Planned {
-            preview_title: "Cancel event".into(),
-            preview_detail: event_detail(&event),
-            summary: format!("Cancelled \"{}\"", event.title),
-            subject: None,
-            execute: Execute::RemoveEvent { id: event.id.clone() },
-            undo: Undo::RecreateEvent {
-                title: event.title,
-                start: event.start,
-                end: event.end,
-                all_day: event.all_day,
-            },
+fn plan_cancel_event(event: EventCandidate) -> ResolveOutcome {
+    ResolveOutcome::Planned {
+        preview_title: "Cancel event".into(),
+        preview_detail: event_detail(&event),
+        summary: format!("Cancelled \"{}\"", event.title),
+        subject: None,
+        execute: Execute::RemoveEvent { id: event.id.clone() },
+        undo: Undo::RecreateEvent {
+            title: event.title,
+            start: event.start,
+            end: event.end,
+            all_day: event.all_day,
         },
     }
 }
 
-fn move_event(request: &ResolveRequest) -> ResolveOutcome {
+fn plan_remove_reminder(reminder: ReminderCandidate) -> ResolveOutcome {
+    ResolveOutcome::Planned {
+        preview_title: "Remove reminder".into(),
+        preview_detail: format!("\"{}\"", reminder.title),
+        summary: format!("Removed reminder \"{}\"", reminder.title),
+        subject: None,
+        execute: Execute::RemoveReminder { id: reminder.id.clone() },
+        undo: Undo::RecreateReminder { title: reminder.title, due: reminder.due },
+    }
+}
+
+fn event_choice(options: Vec<EventCandidate>) -> ResolveOutcome {
+    ResolveOutcome::Choice {
+        candidates: options
+            .into_iter()
+            .map(|e| Candidate { label: format!("{}  ·  {}", e.title, fmt_instant(e.start)), id: e.id })
+            .collect(),
+    }
+}
+
+fn reminder_choice(options: Vec<ReminderCandidate>) -> ResolveOutcome {
+    ResolveOutcome::Choice {
+        candidates: options
+            .into_iter()
+            .map(|r| Candidate { label: r.title.clone(), id: r.id })
+            .collect(),
+    }
+}
+
+/// A destructive "remove/cancel" that names an item: match the primary domain
+/// first, and if nothing matches there, try the sibling domain, so "remove walk
+/// dog" finds the reminder even when the model guessed the event tool.
+fn cancel_event(
+    request: &ResolveRequest,
+    events: &[Indexed<EventCandidate>],
+    reminders: &[Indexed<ReminderCandidate>],
+) -> ResolveOutcome {
+    // chosen_id (from a choice pick or referent) stays in-domain.
+    if param(request, "chosen_id").is_some() {
+        return match pick_event(request, events) {
+            Ok(event) => plan_cancel_event(event),
+            Err(outcome) => outcome,
+        };
+    }
+    let Some(query) = param(request, "match") else {
+        return invalid("Which event?");
+    };
+    match matcher::resolve_indexed(events, &query) {
+        Match::One(event) => plan_cancel_event(event),
+        Match::Several(options) => event_choice(options),
+        Match::None => match matcher::resolve_indexed(reminders, &query) {
+            Match::One(reminder) => plan_remove_reminder(reminder),
+            Match::Several(options) => reminder_choice(options),
+            Match::None => invalid(&format!("Nothing matching \"{query}\" to remove.")),
+        },
+    }
+}
+
+fn move_event(request: &ResolveRequest, events: &[Indexed<EventCandidate>]) -> ResolveOutcome {
     let Some(when_phrase) = param(request, "when") else {
         return invalid("When should it move to?");
     };
     let Some(resolved) = request.resolved_when else {
         return invalid(&format!("Could not understand the time \"{when_phrase}\"."));
     };
-    match pick_event(request) {
+    match pick_event(request, events) {
         Err(outcome) => outcome,
         Ok(event) => {
             // A day-only phrase ("friday") keeps the event's clock time.
@@ -245,8 +333,8 @@ fn move_event(request: &ResolveRequest) -> ResolveOutcome {
     }
 }
 
-fn complete_reminder(request: &ResolveRequest) -> ResolveOutcome {
-    match pick_reminder(request) {
+fn complete_reminder(request: &ResolveRequest, reminders: &[Indexed<ReminderCandidate>]) -> ResolveOutcome {
+    match pick_reminder(request, reminders) {
         Err(outcome) => outcome,
         Ok(reminder) => ResolveOutcome::Planned {
             preview_title: "Complete reminder".into(),
@@ -259,27 +347,169 @@ fn complete_reminder(request: &ResolveRequest) -> ResolveOutcome {
     }
 }
 
-fn remove_reminder(request: &ResolveRequest) -> ResolveOutcome {
-    match pick_reminder(request) {
-        Err(outcome) => outcome,
-        Ok(reminder) => ResolveOutcome::Planned {
-            preview_title: "Remove reminder".into(),
-            preview_detail: format!("\"{}\"", reminder.title),
-            summary: format!("Removed reminder \"{}\"", reminder.title),
-            subject: None,
-            execute: Execute::RemoveReminder { id: reminder.id.clone() },
-            undo: Undo::RecreateReminder { title: reminder.title, due: reminder.due },
+fn remove_reminder(
+    request: &ResolveRequest,
+    events: &[Indexed<EventCandidate>],
+    reminders: &[Indexed<ReminderCandidate>],
+) -> ResolveOutcome {
+    if param(request, "chosen_id").is_some() {
+        return match pick_reminder(request, reminders) {
+            Ok(reminder) => plan_remove_reminder(reminder),
+            Err(outcome) => outcome,
+        };
+    }
+    let Some(query) = param(request, "match") else {
+        return invalid("Which reminder?");
+    };
+    match matcher::resolve_indexed(reminders, &query) {
+        Match::One(reminder) => plan_remove_reminder(reminder),
+        Match::Several(options) => reminder_choice(options),
+        Match::None => match matcher::resolve_indexed(events, &query) {
+            Match::One(event) => plan_cancel_event(event),
+            Match::Several(options) => event_choice(options),
+            Match::None => invalid(&format!("Nothing matching \"{query}\" to remove.")),
         },
     }
 }
 
+fn snooze_reminder(request: &ResolveRequest, reminders: &[Indexed<ReminderCandidate>]) -> ResolveOutcome {
+    let when_phrase = param(request, "when");
+    match pick_reminder(request, reminders) {
+        Err(outcome) => outcome,
+        Ok(reminder) => {
+            let Some(phrase) = when_phrase else {
+                return invalid("Snooze until when?");
+            };
+            let Some(new_due) = request.resolved_when else {
+                return invalid(&format!("Could not understand the time \"{phrase}\"."));
+            };
+            ResolveOutcome::Planned {
+                preview_title: "Snooze reminder".into(),
+                preview_detail: format!("\"{}\"  -> {}", reminder.title, fmt_instant(new_due)),
+                summary: format!("Snoozed \"{}\" to {}", reminder.title, fmt_instant(new_due)),
+                subject: Some(reminder.id.clone()),
+                execute: Execute::SetReminderDue { id: reminder.id.clone(), due: Some(new_due) },
+                undo: Undo::SetReminderDue { id: reminder.id, due: reminder.due },
+            }
+        }
+    }
+}
+
+// Working hours for auto-scheduling, local time (24h).
+const WORK_START_HOUR: u32 = 9;
+const WORK_END_HOUR: u32 = 18;
+
+fn block_time(request: &ResolveRequest, events: &[Indexed<EventCandidate>]) -> ResolveOutcome {
+    let title = param(request, "title").unwrap_or_else(|| "Focus".into());
+    let Some(minutes) = param(request, "duration").and_then(|d| parse_duration_minutes(&d)) else {
+        return invalid("How long should the block be? e.g. \"block 2 hours friday\".");
+    };
+    // Search window: the shell-resolved range, else today onward through tomorrow.
+    let start_bound = request.window_start.unwrap_or(request.now).max(request.now);
+    let end_bound = request
+        .window_end
+        .unwrap_or_else(|| request.now + 2 * 86_400);
+
+    let duration = minutes * 60;
+    let busy: Vec<(i64, i64)> = events.iter().map(|e| (e.item().start, e.item().end)).collect();
+
+    match first_free_slot(start_bound, end_bound, duration, &busy) {
+        None => invalid(&format!(
+            "No free {}-minute slot in working hours ({WORK_START_HOUR}:00-{WORK_END_HOUR}:00).",
+            minutes
+        )),
+        Some(slot_start) => {
+            let slot_end = slot_start + duration;
+            ResolveOutcome::Planned {
+                preview_title: "Block time".into(),
+                preview_detail: format!("\"{title}\"  {}", fmt_range(slot_start, slot_end)),
+                summary: format!("Blocked \"{title}\""),
+                subject: Some("new".into()),
+                execute: Execute::AddEvent { title, start: slot_start, end: slot_end, all_day: false },
+                undo: Undo::RemoveEventByNewId,
+            }
+        }
+    }
+}
+
+/// First working-hours gap of at least `duration` seconds in `[from, to)` that
+/// no busy interval overlaps. Scans in 15-minute steps within each day.
+fn first_free_slot(from: i64, to: i64, duration: i64, busy: &[(i64, i64)]) -> Option<i64> {
+    let step = 15 * 60;
+    let mut cursor = round_up(from, step);
+    while cursor + duration <= to {
+        if let Some((work_start, work_end)) = work_bounds(cursor) {
+            if cursor < work_start {
+                cursor = work_start;
+                continue;
+            }
+            if cursor + duration > work_end {
+                // Jump to the next day's working start.
+                cursor = next_day_work_start(cursor).unwrap_or(to);
+                continue;
+            }
+            let slot = (cursor, cursor + duration);
+            let clashes = busy.iter().any(|&(b_start, b_end)| b_start < slot.1 && slot.0 < b_end);
+            if !clashes {
+                return Some(cursor);
+            }
+        }
+        cursor += step;
+    }
+    None
+}
+
+fn work_bounds(epoch: i64) -> Option<(i64, i64)> {
+    let date = local(epoch)?.date_naive();
+    let start = Local
+        .from_local_datetime(&date.and_hms_opt(WORK_START_HOUR, 0, 0)?)
+        .earliest()?
+        .timestamp();
+    let end = Local
+        .from_local_datetime(&date.and_hms_opt(WORK_END_HOUR, 0, 0)?)
+        .earliest()?
+        .timestamp();
+    Some((start, end))
+}
+
+fn next_day_work_start(epoch: i64) -> Option<i64> {
+    let next = local(epoch)?.date_naive().succ_opt()?;
+    Local
+        .from_local_datetime(&next.and_hms_opt(WORK_START_HOUR, 0, 0)?)
+        .earliest()
+        .map(|d| d.timestamp())
+}
+
+fn round_up(value: i64, step: i64) -> i64 {
+    ((value + step - 1) / step) * step
+}
+
+/// "2 hours" / "90 minutes" / "1.5h" / "45m" / "2" (bare number = minutes).
+fn parse_duration_minutes(phrase: &str) -> Option<i64> {
+    let p = phrase.to_lowercase();
+    let number: f64 = p
+        .split(|c: char| !c.is_ascii_digit() && c != '.')
+        .find(|s| !s.is_empty())?
+        .parse()
+        .ok()?;
+    if number <= 0.0 {
+        return None;
+    }
+    let is_hours = p.contains("hour") || p.contains("hr") || p.trim_end().ends_with('h');
+    let minutes = if is_hours { number * 60.0 } else { number };
+    Some(minutes.round() as i64)
+}
+
 // ── matching (chosen_id bypass, then the gate) ──────────────────────────
 
-fn pick_event(request: &ResolveRequest) -> Result<EventCandidate, ResolveOutcome> {
+fn pick_event(
+    request: &ResolveRequest,
+    events: &[Indexed<EventCandidate>],
+) -> Result<EventCandidate, ResolveOutcome> {
     if let Some(chosen) = param(request, "chosen_id") {
-        return request
-            .events
+        return events
             .iter()
+            .map(|e| e.item())
             .find(|e| e.id == chosen)
             .cloned()
             .ok_or_else(|| invalid("That event is gone."));
@@ -287,7 +517,7 @@ fn pick_event(request: &ResolveRequest) -> Result<EventCandidate, ResolveOutcome
     let Some(query) = param(request, "match") else {
         return Err(invalid("Which event?"));
     };
-    match matcher::resolve(&request.events, &query, |e| e.title.clone()) {
+    match matcher::resolve_indexed(events, &query) {
         Match::None => Err(invalid(&format!(
             "No event matching \"{query}\" in the next {SEARCH_DAYS} days."
         ))),
@@ -304,11 +534,14 @@ fn pick_event(request: &ResolveRequest) -> Result<EventCandidate, ResolveOutcome
     }
 }
 
-fn pick_reminder(request: &ResolveRequest) -> Result<ReminderCandidate, ResolveOutcome> {
+fn pick_reminder(
+    request: &ResolveRequest,
+    reminders: &[Indexed<ReminderCandidate>],
+) -> Result<ReminderCandidate, ResolveOutcome> {
     if let Some(chosen) = param(request, "chosen_id") {
-        return request
-            .reminders
+        return reminders
             .iter()
+            .map(|r| r.item())
             .find(|r| r.id == chosen)
             .cloned()
             .ok_or_else(|| invalid("That reminder is gone."));
@@ -316,7 +549,7 @@ fn pick_reminder(request: &ResolveRequest) -> Result<ReminderCandidate, ResolveO
     let Some(query) = param(request, "match") else {
         return Err(invalid("Which reminder?"));
     };
-    match matcher::resolve(&request.reminders, &query, |r| r.title.clone()) {
+    match matcher::resolve_indexed(reminders, &query) {
         Match::None => Err(invalid(&format!("No open reminder matching \"{query}\"."))),
         Match::Several(options) => Err(ResolveOutcome::Choice {
             candidates: options
@@ -343,15 +576,19 @@ fn invalid(message: &str) -> ResolveOutcome {
 }
 
 /// Whether a phrase names a clock time (vs just a day): "3pm", "15:00", "noon".
-/// Lexical, not a semantic guess.
+/// Lexical, not a semantic guess. Patterns compiled once (hot path).
 pub fn has_clock_time(phrase: &str) -> bool {
+    use std::sync::LazyLock;
+    static AM_PM: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\d{1,2}\s?(am|pm)").expect("valid"));
+    static HH_MM: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\d{1,2}:\d{2}").expect("valid"));
+
     let p = phrase.to_lowercase();
     if p.contains("noon") || p.contains("midnight") || p.contains("o'clock") {
         return true;
     }
-    let am_pm = regex::Regex::new(r"\d{1,2}\s?(am|pm)").expect("valid");
-    let hh_mm = regex::Regex::new(r"\d{1,2}:\d{2}").expect("valid");
-    am_pm.is_match(&p) || hh_mm.is_match(&p)
+    AM_PM.is_match(&p) || HH_MM.is_match(&p)
 }
 
 fn local(epoch: i64) -> Option<DateTime<Local>> {
@@ -421,6 +658,8 @@ mod tests {
             ],
             reminders: vec![ReminderCandidate { id: "r1".into(), title: "Walk Dog".into(), due: None }],
             resolved_when: None,
+            window_start: None,
+            window_end: None,
         }
     }
 
@@ -571,6 +810,64 @@ mod tests {
     }
 
     #[test]
+    fn snooze_sets_new_due_and_restores_on_undo() {
+        let mut req = request("reminder.snooze", &[("match", "walk dog"), ("when", "tomorrow 9am")]);
+        req.reminders[0].due = Some(NOW + 3600);
+        req.resolved_when = Some(NOW + 90_000);
+        match resolve(&req) {
+            ResolveOutcome::Planned {
+                execute: Execute::SetReminderDue { id, due },
+                undo: Undo::SetReminderDue { due: old_due, .. },
+                ..
+            } => {
+                assert_eq!(id, "r1");
+                assert_eq!(due, Some(NOW + 90_000));
+                assert_eq!(old_due, Some(NOW + 3600));
+            }
+            other => panic!("expected planned, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn block_time_finds_a_free_working_hours_slot() {
+        // Search a single day (Fri) with one busy interval; expect a slot that
+        // avoids it, is 120 min, and sits inside 09:00-18:00.
+        let day_start = {
+            // A Friday-ish midnight relative to NOW; use day bounds of NOW.
+            let (s, _) = day_bounds(NOW).unwrap();
+            s
+        };
+        let work_open = day_start + 9 * 3600;
+        let mut req = request("calendar.block_time", &[("duration", "2 hours")]);
+        req.window_start = Some(work_open);
+        req.window_end = Some(day_start + 18 * 3600);
+        // Busy 09:00-11:00, so the first free 2h slot is 11:00.
+        req.events = vec![EventCandidate {
+            id: "b".into(), title: "Meeting".into(),
+            start: work_open, end: work_open + 2 * 3600, all_day: false,
+        }];
+        match resolve(&req) {
+            ResolveOutcome::Planned { execute: Execute::AddEvent { start, end, all_day, title }, .. } => {
+                assert_eq!(title, "Focus");
+                assert_eq!(end - start, 2 * 3600);
+                assert!(!all_day);
+                assert_eq!(start, work_open + 2 * 3600); // 11:00
+            }
+            other => panic!("expected planned, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn duration_parsing() {
+        assert_eq!(parse_duration_minutes("2 hours"), Some(120));
+        assert_eq!(parse_duration_minutes("90 minutes"), Some(90));
+        assert_eq!(parse_duration_minutes("1.5h"), Some(90));
+        assert_eq!(parse_duration_minutes("45m"), Some(45));
+        assert_eq!(parse_duration_minutes("2"), Some(2));
+        assert_eq!(parse_duration_minutes("soon"), None);
+    }
+
+    #[test]
     fn no_match_and_unknown_tool_are_invalid() {
         assert!(matches!(
             resolve(&request("calendar.cancel_event", &[("match", "zebra")])),
@@ -580,6 +877,29 @@ mod tests {
             resolve(&request("nope", &[])),
             ResolveOutcome::Invalid { .. }
         ));
+    }
+
+    #[test]
+    fn cancel_falls_back_to_reminders_cross_domain() {
+        // "remove walk dog" -> model guessed cancel(event); no event matches,
+        // so it removes the reminder instead. Both domains passed.
+        let mut req = request("calendar.cancel_event", &[("match", "walk dog")]);
+        // events don't contain "walk dog"; reminders do (r1 = "Walk Dog").
+        match resolve(&req) {
+            ResolveOutcome::Planned { execute: Execute::RemoveReminder { id }, .. } => {
+                assert_eq!(id, "r1");
+            }
+            other => panic!("expected reminder removal, got {other:?}"),
+        }
+        // Symmetric: reminder.remove falls back to events.
+        req.tool = "reminder.remove".into();
+        req.params.insert("match".into(), "dentist".into());
+        match resolve(&req) {
+            ResolveOutcome::Planned { execute: Execute::RemoveEvent { id }, .. } => {
+                assert_eq!(id, "e1");
+            }
+            other => panic!("expected event cancel, got {other:?}"),
+        }
     }
 
     #[test]

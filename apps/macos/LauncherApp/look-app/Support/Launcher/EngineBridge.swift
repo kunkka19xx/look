@@ -64,6 +64,10 @@ private func look_ai_conversation_upsert(_ path: UnsafePointer<CChar>?, _ json: 
 nonisolated
 private func look_ai_resolve(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_ai_load_targets")
+nonisolated
+private func look_ai_load_targets(_ eventsJSON: UnsafePointer<CChar>?, _ remindersJSON: UnsafePointer<CChar>?)
+
 @_silgen_name("look_ai_parse_explicit")
 nonisolated
 private func look_ai_parse_explicit(_ input: UnsafePointer<CChar>?, _ modelAvailable: Bool) -> UnsafeMutablePointer<CChar>?
@@ -79,6 +83,10 @@ private func look_ai_chat_poll(_ id: UInt64) -> UnsafeMutablePointer<CChar>?
 @_silgen_name("look_ai_chat_cancel")
 nonisolated
 private func look_ai_chat_cancel(_ id: UInt64)
+
+@_silgen_name("look_ai_future_leaning")
+nonisolated
+private func look_ai_future_leaning(_ phrase: UnsafePointer<CChar>?, _ resolvedEpoch: Int64, _ nowEpoch: Int64) -> Int64
 
 @_silgen_name("look_ai_markdown_segments_json")
 nonisolated
@@ -196,9 +204,9 @@ nonisolated struct LunarDate: Decodable {
 }
 
 final class EngineBridge: @unchecked Sendable {
-    static let shared = EngineBridge()
+    nonisolated static let shared = EngineBridge()
 
-    private init() {}
+    nonisolated private init() {}
 
     nonisolated func search(query: String, limit: Int = 40) -> [LauncherResult] {
         let ptr = query.withCString { cstr in
@@ -457,6 +465,16 @@ final class EngineBridge: @unchecked Sendable {
         return String(cString: ptr).data(using: .utf8)
     }
 
+    /// Load the AI mutate targets once (events + reminders JSON arrays) so
+    /// per-keystroke `aiResolve` calls can omit the lists. Rust core.
+    nonisolated func aiLoadTargets(eventsJSON: String, remindersJSON: String) {
+        eventsJSON.withCString { ev in
+            remindersJSON.withCString { rem in
+                look_ai_load_targets(ev, rem)
+            }
+        }
+    }
+
     /// The explicit `>verb title @ when` parser (Rust core). Nil = natural
     /// language, deferred to the model.
     nonisolated func aiParseExplicit(_ input: String, modelAvailable: Bool) -> (toolID: String, params: [String: String])? {
@@ -502,6 +520,14 @@ final class EngineBridge: @unchecked Sendable {
     /// Abort a chat session (Ollama stops generating).
     nonisolated func aiChatCancel(_ id: UInt64) {
         look_ai_chat_cancel(id)
+    }
+
+    /// Rolls a time-only phrase forward when it already passed today (Rust core).
+    nonisolated func aiFutureLeaning(phrase: String, resolved: Date, now: Date) -> Date {
+        let adjusted = phrase.withCString {
+            look_ai_future_leaning($0, Int64(resolved.timeIntervalSince1970), Int64(now.timeIntervalSince1970))
+        }
+        return Date(timeIntervalSince1970: TimeInterval(adjusted))
     }
 
     /// Markdown segmentation for AI chat answers. Rust core (core/ai).

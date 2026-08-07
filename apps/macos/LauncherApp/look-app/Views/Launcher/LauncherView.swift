@@ -1367,7 +1367,7 @@ struct LauncherView: View {
 
     private func answerBody(_ item: ActionSessionItem) -> some View {
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(EngineBridge.shared.aiMarkdownSegments(item.text).enumerated()), id: \.offset) { _, segment in
+                ForEach(Array(item.segments.enumerated()), id: \.offset) { _, segment in
                     if segment.kind == "code" {
                         AICodeBlockView(code: segment.text, language: segment.language, themeStore: themeStore)
                     } else {

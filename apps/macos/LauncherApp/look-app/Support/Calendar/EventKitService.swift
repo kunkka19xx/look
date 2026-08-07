@@ -51,7 +51,17 @@ nonisolated final class EventKitService: @unchecked Sendable {
 
     private let store = EKEventStore()
 
-    private init() {}
+    private init() {
+        // Keep the reminder cache live: EventKit changes (adds in Reminders.app,
+        // completions, etc.) force a refresh so mutate tools never see a stale
+        // list. Fetching reminders is async-only, hence the cache.
+        NotificationCenter.default.addObserver(
+            forName: .EKEventStoreChanged, object: store, queue: nil
+        ) { [weak self] _ in
+            self?.refreshReminderCache(force: true)
+            DispatchQueue.main.async { self?.refreshEventCache(force: true) }
+        }
+    }
 
     var calendarAccess: CalendarAccess {
         Self.map(EKEventStore.authorizationStatus(for: .event))
@@ -157,6 +167,51 @@ nonisolated final class EventKitService: @unchecked Sendable {
         }
     }
 
+    /// Event cache mirroring the reminder cache, so the per-keystroke `@` mutate
+    /// preview resolves without a live EventKit fetch each stroke. Warmed while
+    /// composing (throttled) and forced on `.EKEventStoreChanged`. Main-thread
+    /// only: `store.events` is synchronous, so no async hop is needed.
+    private var cachedEvents: [EventCandidateData] = []
+    private var lastEventFetch = Date.distantPast
+    private let eventCacheTTL: TimeInterval = 2
+    private let eventCacheDays = 31
+
+    func refreshEventCache(force: Bool = false) {
+        guard calendarAccess == .authorized else { return }
+        if !force, Date().timeIntervalSince(lastEventFetch) < eventCacheTTL { return }
+        lastEventFetch = Date()
+        let from = Date()
+        guard let to = Calendar.current.date(byAdding: .day, value: eventCacheDays, to: from) else { return }
+        cachedEvents = eventCandidates(from: from, to: to)
+        syncAITargets()
+    }
+
+    /// Push the cached events + reminders into the Rust core once, so the mutate
+    /// resolve carries only `{tool, params}`. Called when a cache updates (mode
+    /// entry, throttled refresh, or an external change), never per keystroke.
+    func syncAITargets() {
+        let events = cachedEvents.map { e -> [String: Any] in
+            [
+                "id": e.id, "title": e.title,
+                "start": Int64(e.start.timeIntervalSince1970),
+                "end": Int64(e.end.timeIntervalSince1970),
+                "all_day": e.isAllDay,
+            ]
+        }
+        let reminders = cachedReminders.map { r -> [String: Any] in
+            var entry: [String: Any] = ["id": r.id, "title": r.title]
+            if let due = r.due { entry["due"] = Int64(due.timeIntervalSince1970) }
+            return entry
+        }
+        guard
+            let evData = try? JSONSerialization.data(withJSONObject: events),
+            let remData = try? JSONSerialization.data(withJSONObject: reminders),
+            let evStr = String(data: evData, encoding: .utf8),
+            let remStr = String(data: remData, encoding: .utf8)
+        else { return }
+        EngineBridge.shared.aiLoadTargets(eventsJSON: evStr, remindersJSON: remStr)
+    }
+
     func moveEvent(id: String, start: Date, end: Date) throws {
         guard let event = store.event(withIdentifier: id) else {
             throw EventKitServiceError("That event no longer exists.")
@@ -170,9 +225,16 @@ nonisolated final class EventKitService: @unchecked Sendable {
     /// synchronous, so tools read this cache; `refreshReminderCache()` is fired
     /// when AI input starts (mode entry / submit), keeping it fresh enough.
     private var cachedReminders: [ReminderCandidateData] = []
+    private var lastReminderFetch = Date.distantPast
+    private let reminderCacheTTL: TimeInterval = 2
 
-    func refreshReminderCache() {
+    /// Kicks an async reminder fetch into the cache. Throttled so the live
+    /// preview path can call it per-keystroke; `force` bypasses the throttle
+    /// (used by the change observer, where the store genuinely changed).
+    func refreshReminderCache(force: Bool = false) {
         guard reminderAccess == .authorized else { return }
+        if !force, Date().timeIntervalSince(lastReminderFetch) < reminderCacheTTL { return }
+        lastReminderFetch = Date()
         let predicate = store.predicateForReminders(in: nil)
         store.fetchReminders(matching: predicate) { [weak self] reminders in
             let items = (reminders ?? [])
@@ -183,17 +245,50 @@ nonisolated final class EventKitService: @unchecked Sendable {
                         title: reminder.title ?? "Untitled",
                         due: reminder.dueDateComponents.flatMap { Calendar.current.date(from: $0) })
                 }
-            DispatchQueue.main.async { self?.cachedReminders = items }
+            DispatchQueue.main.async {
+                self?.cachedReminders = items
+                self?.syncAITargets()
+            }
         }
     }
 
     func reminderCandidates() -> [ReminderCandidateData] { cachedReminders }
+
+    /// Compact listing of open reminders for chat context / a direct answer.
+    /// Nil without read access; empty text when there are none.
+    func remindersSummary() -> (text: String, reminders: [ReminderCandidateData])? {
+        guard reminderAccess == .authorized else { return nil }
+        let reminders = cachedReminders
+        guard !reminders.isEmpty else { return ("No open reminders.", []) }
+        let df = DateFormatter()
+        df.dateFormat = "EEE MMM d"
+        let text = reminders.prefix(30).map { reminder -> String in
+            if let due = reminder.due {
+                return "\(reminder.title)  (due \(df.string(from: due)))"
+            }
+            return reminder.title
+        }.joined(separator: "\n")
+        return (text, Array(reminders.prefix(30)))
+    }
 
     func completeReminder(id: String) throws {
         guard let reminder = store.calendarItem(withIdentifier: id) as? EKReminder else {
             throw EventKitServiceError("That reminder no longer exists.")
         }
         reminder.isCompleted = true
+        try store.save(reminder, commit: true)
+    }
+
+    func setReminderDue(id: String, due: Date?) throws {
+        guard let reminder = store.calendarItem(withIdentifier: id) as? EKReminder else {
+            throw EventKitServiceError("That reminder no longer exists.")
+        }
+        if let due {
+            reminder.dueDateComponents = Calendar.current.dateComponents(
+                [.year, .month, .day, .hour, .minute], from: due)
+        } else {
+            reminder.dueDateComponents = nil
+        }
         try store.save(reminder, commit: true)
     }
 

@@ -11,13 +11,15 @@ use serde_json::{Value, json};
 
 use crate::{ollama, plan};
 
-pub const ALIASES: [(&str, &str); 6] = [
+pub const ALIASES: [(&str, &str); 8] = [
     ("event", "calendar.add_event"),
     ("reminder", "reminder.add"),
     ("cancel", "calendar.cancel_event"),
     ("move", "calendar.move_event"),
     ("complete", "reminder.complete"),
     ("delete", "reminder.remove"),
+    ("snooze", "reminder.snooze"),
+    ("block", "calendar.block_time"),
 ];
 
 pub const SYSTEM_PROMPT: &str = r#"Classify the request into ONE tool and extract its params:
@@ -27,6 +29,8 @@ pub const SYSTEM_PROMPT: &str = r#"Classify the request into ONE tool and extrac
 - "move": reschedule an EXISTING event. params: match, when (the NEW time phrase copied verbatim, e.g. "4pm", "friday 9am").
 - "complete": mark an EXISTING reminder done. params: match.
 - "delete": remove an EXISTING reminder from the list. params: match.
+- "snooze": push an EXISTING reminder to a later time. params: match, when (the new time phrase verbatim).
+- "block": reserve free focus time. params: duration (e.g. "2 hours", "90 minutes"), when (the day/window phrase like "friday" or "this week").
 Pronouns and references are valid match values: "remove it" -> match "it"; "cancel this event" -> match "this event".
 Reply with JSON only: {"steps":[{"tool":"...","params":{...}}]}.
 If it is none of these, reply {"steps":[]}."#;
@@ -72,7 +76,19 @@ pub fn resolve_step(step: &plan::PlanStep) -> Option<Value> {
 
     let params = match tool {
         "calendar.add_event" | "reminder.add" => json!({ "title": get("title")? }),
-        "calendar.move_event" => json!({ "match": get("match")?, "when": get("when")? }),
+        "calendar.move_event" | "reminder.snooze" => {
+            json!({ "match": get("match")?, "when": get("when")? })
+        }
+        "calendar.block_time" => {
+            let mut p = json!({ "duration": get("duration")? });
+            if let Some(when) = get("when") {
+                p["when"] = Value::String(when);
+            }
+            if let Some(title) = get("title") {
+                p["title"] = Value::String(title);
+            }
+            p
+        }
         _ => json!({ "match": get("match").or_else(|| get("title"))? }),
     };
     Some(json!({ "tool": tool, "params": params }))
@@ -130,6 +146,22 @@ mod tests {
         assert_eq!(call["params"]["match"], "dentist");
         let del = resolve_step(&step("delete", json!({"match": "walk dog"}))).unwrap();
         assert_eq!(del["tool"], "reminder.remove");
+    }
+
+    #[test]
+    fn snooze_needs_match_and_when() {
+        let call = resolve_step(&step("snooze", json!({"match": "milk", "when": "8am"}))).unwrap();
+        assert_eq!(call["tool"], "reminder.snooze");
+        assert_eq!(call["params"]["when"], "8am");
+    }
+
+    #[test]
+    fn block_needs_duration() {
+        let call = resolve_step(&step("block", json!({"duration": "2 hours", "when": "friday"}))).unwrap();
+        assert_eq!(call["tool"], "calendar.block_time");
+        assert_eq!(call["params"]["duration"], "2 hours");
+        assert_eq!(call["params"]["when"], "friday");
+        assert!(resolve_step(&step("block", json!({"when": "friday"}))).is_none());
     }
 
     #[test]

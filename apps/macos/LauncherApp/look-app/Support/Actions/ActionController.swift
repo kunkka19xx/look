@@ -9,11 +9,25 @@ import Foundation
 struct ActionSessionItem: Identifiable, Equatable {
     enum Kind: String { case action, user, answer }
     let id = UUID()
-    var kind: Kind = .action
-    var text: String
+    var kind: Kind = .action { didSet { recomputeSegments() } }
+    var text: String { didSet { recomputeSegments() } }
     /// Who produced an answer (model tag, "Apple Intelligence", "Calendar"),
     /// captured at creation so the chat header stays truthful per message.
     var source: String? = nil
+    /// Parsed markdown, computed on text/kind change so the view renders without
+    /// re-parsing (FFI + full-text scan) on every frame. Empty for non-answers.
+    private(set) var segments: [EngineBridge.AIMarkdownSegment] = []
+
+    init(kind: Kind = .action, text: String, source: String? = nil) {
+        self.kind = kind
+        self.text = text
+        self.source = source
+        recomputeSegments()
+    }
+
+    private mutating func recomputeSegments() {
+        segments = kind == .answer ? EngineBridge.shared.aiMarkdownSegments(text) : []
+    }
 }
 
 @MainActor
@@ -132,6 +146,12 @@ final class ActionController: ObservableObject {
             return
         }
 
+        // Warm the reminder cache while the user composes, so reminder mutations
+        // ("complete milk") resolve against a fresh list by the time they Enter.
+        // Throttled inside the service.
+        EventKitService.shared.refreshReminderCache()
+        EventKitService.shared.refreshEventCache()
+
         // Explicit `@` form: instant, exact, no model. Without a planner the
         // parser runs lenient (whole-phrase date resolution), so `@` entries
         // stay fully functional on any provider.
@@ -188,6 +208,7 @@ final class ActionController: ObservableObject {
         let query = stripPrefix(rawQuery)
         guard !query.isEmpty else { return }
         EventKitService.shared.refreshReminderCache()
+        EventKitService.shared.refreshEventCache()
 
         let modelAvailable = planner.isAvailable
         if let raw = EngineBridge.shared.aiParseExplicit(">" + query, modelAvailable: modelAvailable),
@@ -391,10 +412,17 @@ final class ActionController: ObservableObject {
         if let source { sessionItems[idx].source = source }
     }
 
-    /// Calendar listing scoped to the timeframe the question names ("next
-    /// week", "tomorrow", "friday"), defaulting to the next 7 days. Returns the
+    /// Calendar/reminder listing scoped to what the question names. Returns the
     /// text plus a human label ("for next week").
     private func scheduleSummary(for query: String) -> (String, String)? {
+        // A reminder-specific question lists reminders, not events.
+        if Self.mentionsReminders(query), !Self.mentionsEvents(query) {
+            guard let (summary, reminders) = EventKitService.shared.remindersSummary() else {
+                return nil
+            }
+            rememberListedReminders(reminders)
+            return (summary, "reminders")
+        }
         if let window = EngineBridge.shared.aiQueryWindow(query) {
             guard let (summary, events) = EventKitService.shared.eventsSummary(
                 from: window.start, to: window.end,
@@ -417,6 +445,22 @@ final class ActionController: ObservableObject {
                 domain: "calendar", id: $0.id,
                 label: "\($0.title)  ·  \(DatePhrase.format($0.start))")
         }
+    }
+
+    private func rememberListedReminders(_ reminders: [ReminderCandidateData]) {
+        guard !reminders.isEmpty else { return }
+        recentTargets = reminders.map {
+            RecentTarget(domain: "reminder", id: $0.id, label: $0.title)
+        }
+    }
+
+    private static let reminderWords: Set<String> = ["reminder", "reminders", "todo", "todos", "tasks"]
+    private static let eventWords: Set<String> = ["event", "events", "meeting", "meetings", "calendar", "appointment", "appointments"]
+
+    private static func mentionsReminders(_ query: String) -> Bool { hasWord(query, reminderWords) }
+    private static func mentionsEvents(_ query: String) -> Bool { hasWord(query, eventWords) }
+    private static func hasWord(_ query: String, _ set: Set<String>) -> Bool {
+        query.lowercased().split(whereSeparator: { !$0.isLetter }).contains { set.contains(String($0)) }
     }
 
     /// Cheap word gate for injecting calendar context into a chat turn.
@@ -516,9 +560,24 @@ final class ActionController: ObservableObject {
             "params": params,
             "now": Int64(now.timeIntervalSince1970),
         ]
-        if toolID == "calendar.cancel_event" || toolID == "calendar.move_event" {
+        // The mutate tools (cancel/move/remove/complete/snooze) resolve against
+        // the targets loaded once via `syncAITargets`, so their lists are omitted
+        // here; the Rust store supplies them. block_time keeps its own events
+        // below (a window-specific, on-Enter fetch).
+        if let when = params["when"], let resolved = DatePhrase.resolve(when, now: now) {
+            let leaning = EngineBridge.shared.aiFutureLeaning(phrase: when, resolved: resolved, now: now)
+            request["resolved_when"] = Int64(leaning.timeIntervalSince1970)
+        }
+        // block_time searches a day-range for a free slot: resolve the window
+        // (grammar), pass its events plus the bounds.
+        if toolID == "calendar.block_time" {
+            let window = params["when"].flatMap { EngineBridge.shared.aiQueryWindow($0) }
+            let start = window?.start ?? now
+            let end = window?.end ?? now.addingTimeInterval(2 * 86_400)
+            request["window_start"] = Int64(start.timeIntervalSince1970)
+            request["window_end"] = Int64(end.timeIntervalSince1970)
             request["events"] = EventKitService.shared
-                .eventCandidates(from: now, to: now.addingTimeInterval(30 * 86_400))
+                .eventCandidates(from: start, to: end)
                 .map { event -> [String: Any] in
                     [
                         "id": event.id, "title": event.title,
@@ -527,19 +586,6 @@ final class ActionController: ObservableObject {
                         "all_day": event.isAllDay,
                     ]
                 }
-        }
-        if toolID == "reminder.complete" || toolID == "reminder.remove" {
-            request["reminders"] = EventKitService.shared.reminderCandidates()
-                .map { reminder -> [String: Any] in
-                    var entry: [String: Any] = ["id": reminder.id, "title": reminder.title]
-                    if let due = reminder.due {
-                        entry["due"] = Int64(due.timeIntervalSince1970)
-                    }
-                    return entry
-                }
-        }
-        if let when = params["when"], let resolved = DatePhrase.resolve(when, now: now) {
-            request["resolved_when"] = Int64(resolved.timeIntervalSince1970)
         }
         guard
             let data = try? JSONSerialization.data(withJSONObject: request),

@@ -95,6 +95,55 @@ pub fn query_window_json(query: &str, now_epoch: i64) -> Option<String> {
     query_window(query, now_epoch).and_then(|w| serde_json::to_string(&w).ok())
 }
 
+/// Nudges a shell-resolved time toward the future when the user gave only a
+/// clock time ("lunch at 1pm") that already passed today - they mean the next
+/// one. A phrase that names a day or month is respected as-is (even if past).
+pub fn future_leaning(phrase: &str, resolved_epoch: i64, now_epoch: i64) -> i64 {
+    if resolved_epoch >= now_epoch || mentions_date(phrase) {
+        return resolved_epoch;
+    }
+    // Time-only and in the past: same wall-clock, next day (DST-safe via chrono).
+    Local
+        .timestamp_opt(resolved_epoch, 0)
+        .single()
+        .and_then(|dt| dt.checked_add_days(Days::new(1)))
+        .map(|dt| dt.timestamp())
+        .unwrap_or(resolved_epoch)
+}
+
+/// Whether a phrase names a day/month/explicit date (so a past resolution is
+/// intentional), vs a bare clock time.
+fn mentions_date(phrase: &str) -> bool {
+    let lower = phrase.to_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    // Full names, common abbreviations, and relative-day words all count as an
+    // explicit date reference.
+    const DATE_WORDS: [&str; 44] = [
+        "today", "tonight", "tomorrow", "tmr", "tmrw", "tmw", "yesterday",
+        "next", "week", "month", "year",
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+        "mon", "tue", "tues", "wed", "thu", "thur", "thurs", "fri", "sat", "sun",
+        "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
+        "january", "february", "march", "april",
+    ];
+    let day_month = words.iter().any(|w| {
+        weekday_of(w).is_some() || month_of(w).is_some() || DATE_WORDS.contains(w)
+    });
+    if day_month {
+        return true;
+    }
+    // Numeric dates: "5/3", "5-3", "the 5th".
+    use std::sync::LazyLock;
+    static SLASH: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\d{1,2}[/-]\d{1,2}").expect("valid"));
+    static ORDINAL: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\b\d{1,2}(st|nd|rd|th)\b").expect("valid"));
+    SLASH.is_match(&lower) || ORDINAL.is_match(&lower)
+}
+
 fn midnight(date: NaiveDate) -> Option<DateTime<Local>> {
     Local.from_local_datetime(&date.and_hms_opt(0, 0, 0)?).earliest()
 }
@@ -286,6 +335,26 @@ mod tests {
         // "may" as a verb must not become the month May.
         let verb = query_window("what may be on tomorrow", NOW).unwrap();
         assert_eq!(verb.label, "tomorrow");
+    }
+
+    #[test]
+    fn future_leaning_rolls_past_time_only_forward() {
+        // now = midday-ish; "1pm" already passed today -> next day, same time.
+        let now = NOW;
+        let past = now - 3600; // an hour ago, no date words
+        let adjusted = future_leaning("1pm", past, now);
+        assert_eq!(adjusted, past + 86_400);
+    }
+
+    #[test]
+    fn future_leaning_respects_explicit_dates_and_future() {
+        let now = NOW;
+        // A future time is untouched.
+        assert_eq!(future_leaning("3pm", now + 3600, now), now + 3600);
+        // A past time WITH a day word is intentional (e.g. "yesterday").
+        assert_eq!(future_leaning("yesterday 1pm", now - 3600, now), now - 3600);
+        assert_eq!(future_leaning("monday 9am", now - 3600, now), now - 3600);
+        assert_eq!(future_leaning("aug 5 noon", now - 3600, now), now - 3600);
     }
 
     #[test]

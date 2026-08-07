@@ -21,6 +21,15 @@ pub(crate) fn look_ai_query_window_impl(query: *const c_char, now_epoch: i64) ->
     }
 }
 
+pub(crate) fn look_ai_future_leaning_impl(
+    phrase: *const c_char,
+    resolved_epoch: i64,
+    now_epoch: i64,
+) -> i64 {
+    let phrase = state::cstr_to_string(phrase);
+    look_ai::window::future_leaning(&phrase, resolved_epoch, now_epoch)
+}
+
 pub(crate) fn look_ai_markdown_segments_json_impl(text: *const c_char) -> *mut c_char {
     let text = state::cstr_to_string(text);
     let json = look_ai::markdown::segments_json(&text);
@@ -68,13 +77,42 @@ pub(crate) fn look_ai_conversation_upsert_impl(
     look_ai::conversations::upsert_json(std::path::Path::new(&path), &json)
 }
 
+const ENCODE_FAILED: &str = r#"{"outcome":"invalid","message":"encode failed"}"#;
+
 pub(crate) fn look_ai_resolve_impl(request_json: *const c_char) -> *mut c_char {
-    let request = state::cstr_to_string(request_json);
-    let json = look_ai::resolve::resolve_json(&request);
-    let cstring = CString::new(json).unwrap_or_else(|_| {
-        CString::new(r#"{"outcome":"invalid","message":"encode failed"}"#).expect("valid")
-    });
+    let request_str = state::cstr_to_string(request_json);
+    let json = match serde_json::from_str::<look_ai::resolve::ResolveRequest>(&request_str) {
+        Ok(request) => {
+            // Empty lists => resolve against the loaded targets (the hot path).
+            // A request that carries its own candidates (block_time) indexes them
+            // inline via `resolve`.
+            let outcome = if request.events.is_empty() && request.reminders.is_empty() {
+                state::resolve_ai_with_targets(&request)
+            } else {
+                look_ai::resolve::resolve(&request)
+            };
+            serde_json::to_string(&outcome).unwrap_or_else(|_| ENCODE_FAILED.to_string())
+        }
+        Err(_) => r#"{"outcome":"invalid","message":"Bad resolve request."}"#.to_string(),
+    };
+    let cstring = CString::new(json).unwrap_or_else(|_| CString::new(ENCODE_FAILED).expect("valid"));
     state::store_json_allocation(cstring)
+}
+
+/// Load the AI mutate targets once (events + reminders as JSON arrays), so
+/// per-keystroke resolves can omit them. Parse failures leave the prior set.
+pub(crate) fn look_ai_load_targets_impl(
+    events_json: *const c_char,
+    reminders_json: *const c_char,
+) {
+    let events_json = state::cstr_to_string(events_json);
+    let reminders_json = state::cstr_to_string(reminders_json);
+    let events = serde_json::from_str::<Vec<look_ai::resolve::EventCandidate>>(&events_json)
+        .unwrap_or_default();
+    let reminders =
+        serde_json::from_str::<Vec<look_ai::resolve::ReminderCandidate>>(&reminders_json)
+            .unwrap_or_default();
+    state::load_ai_targets(events, reminders);
 }
 
 pub(crate) fn look_ai_parse_explicit_impl(

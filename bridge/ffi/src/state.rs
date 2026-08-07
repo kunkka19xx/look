@@ -1,4 +1,6 @@
 use crate::runtime_config::{log_error, log_info};
+use look_ai::matcher::Indexed;
+use look_ai::resolve::{EventCandidate, ReminderCandidate, ResolveOutcome, ResolveRequest};
 use look_engine::QueryEngine;
 use look_engine::config::RuntimeConfig;
 use notify::event::{ModifyKind, RenameMode};
@@ -45,6 +47,35 @@ fn db_path_override() -> Option<PathBuf> {
 #[cfg(not(test))]
 fn db_path_override() -> Option<PathBuf> {
     None
+}
+
+/// AI mutate targets (events + reminders) indexed once when the shell loads
+/// them, so per-keystroke resolves carry only `{tool, params}` and skip the
+/// list marshaling + mask rebuild. Written on `look_ai_load_targets`, read on
+/// `look_ai_resolve` when the request omits its own lists.
+static AI_TARGETS: OnceLock<RwLock<AiTargets>> = OnceLock::new();
+
+#[derive(Default)]
+struct AiTargets {
+    events: Vec<Indexed<EventCandidate>>,
+    reminders: Vec<Indexed<ReminderCandidate>>,
+}
+
+fn ai_targets() -> &'static RwLock<AiTargets> {
+    AI_TARGETS.get_or_init(|| RwLock::new(AiTargets::default()))
+}
+
+/// Replace the loaded target set, precomputing each candidate's match key once.
+pub(crate) fn load_ai_targets(events: Vec<EventCandidate>, reminders: Vec<ReminderCandidate>) {
+    let mut store = ai_targets().write().unwrap_or_else(|e| e.into_inner());
+    store.events = look_ai::resolve::index_events(&events);
+    store.reminders = look_ai::resolve::index_reminders(&reminders);
+}
+
+/// Resolve against the loaded targets, reusing the precomputed match keys.
+pub(crate) fn resolve_ai_with_targets(request: &ResolveRequest) -> ResolveOutcome {
+    let store = ai_targets().read().unwrap_or_else(|e| e.into_inner());
+    look_ai::resolve::resolve_indexed_request(request, &store.events, &store.reminders)
 }
 
 pub(crate) fn default_db_path() -> PathBuf {

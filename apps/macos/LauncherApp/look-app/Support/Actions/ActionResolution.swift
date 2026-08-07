@@ -12,6 +12,7 @@ enum ActionExecuteSpec: Decodable {
     case moveEvent(id: String, start: Date, end: Date)
     case completeReminder(id: String)
     case removeReminder(id: String)
+    case setReminderDue(id: String, due: Date?)
 
     private enum Keys: String, CodingKey {
         case kind, title, start, end, due, id
@@ -24,7 +25,14 @@ enum ActionExecuteSpec: Decodable {
         func date(_ key: Keys) throws -> Date {
             Date(timeIntervalSince1970: TimeInterval(try container.decode(Int64.self, forKey: key)))
         }
+        func optDate(_ key: Keys) throws -> Date? {
+            try container.decodeIfPresent(Int64.self, forKey: key)
+                .map { Date(timeIntervalSince1970: TimeInterval($0)) }
+        }
         switch kind {
+        case "set_reminder_due":
+            self = .setReminderDue(
+                id: try container.decode(String.self, forKey: .id), due: try optDate(.due))
         case "add_event":
             self = .addEvent(
                 title: try container.decode(String.self, forKey: .title),
@@ -59,6 +67,7 @@ enum ActionUndoSpec: Decodable {
     case moveEvent(id: String, start: Date, end: Date)
     case uncompleteReminder(id: String)
     case recreateReminder(title: String, due: Date?)
+    case setReminderDue(id: String, due: Date?)
 
     private enum Keys: String, CodingKey {
         case kind, title, start, end, due, id
@@ -71,7 +80,14 @@ enum ActionUndoSpec: Decodable {
         func date(_ key: Keys) throws -> Date {
             Date(timeIntervalSince1970: TimeInterval(try container.decode(Int64.self, forKey: key)))
         }
+        func optDate(_ key: Keys) throws -> Date? {
+            try container.decodeIfPresent(Int64.self, forKey: key)
+                .map { Date(timeIntervalSince1970: TimeInterval($0)) }
+        }
         switch kind {
+        case "set_reminder_due":
+            self = .setReminderDue(
+                id: try container.decode(String.self, forKey: .id), due: try optDate(.due))
         case "remove_event_by_new_id":
             self = .removeEventByNewId
         case "remove_reminder_by_new_id":
@@ -181,6 +197,9 @@ enum ActionExecutor {
         case .removeReminder(let id):
             try service.removeReminder(id: id)
             return nil
+        case .setReminderDue(let id, let due):
+            try service.setReminderDue(id: id, due: due)
+            return nil
         }
     }
 
@@ -199,6 +218,8 @@ enum ActionExecutor {
             return { try service.uncompleteReminder(id: id) }
         case .recreateReminder(let title, let due):
             return { _ = try service.addReminder(title: title, due: due) }
+        case .setReminderDue(let id, let due):
+            return { try service.setReminderDue(id: id, due: due) }
         }
     }
 }

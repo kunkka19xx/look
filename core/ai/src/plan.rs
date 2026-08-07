@@ -47,6 +47,7 @@ pub fn chat_format(tool_aliases: &[&str]) -> Value {
                                 "title": { "type": "string" },
                                 "match": { "type": "string" },
                                 "when": { "type": "string" },
+                                "duration": { "type": "string" },
                             },
                             "required": [],
                         },
