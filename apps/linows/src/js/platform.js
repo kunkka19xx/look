@@ -77,6 +77,11 @@ export function prefersReducedMotion() {
     return reduceMotion.matches && !isWindows();
 }
 
+// For surfaces that have to act on the switch rather than read it per frame.
+export function onReducedMotionChange(callback) {
+    reduceMotion.addEventListener('change', callback);
+}
+
 // Ctrl+Shift+Enter target: exes and look-cmd:// applets. ms-settings: pages
 // have no elevated form, so neither gesture nor hint is offered for them.
 export function canRunElevated(item) {

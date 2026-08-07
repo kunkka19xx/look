@@ -1,6 +1,6 @@
 import { speedTest, localIpv4, copyToClipboard, onWindowShown, onWindowHidden } from '../../ipc.js';
 import { globe, eye, eyeOff } from '../../icons.js';
-import { prefersReducedMotion } from '../../platform.js';
+import { prefersReducedMotion, onReducedMotionChange } from '../../platform.js';
 
 // The /speed panel: two counter-rotating comets, download on the outer ring and
 // upload on the inner one, around a centre that beats once per round trip.
@@ -161,6 +161,14 @@ export function init() {
     onWindowHidden(() => stopMotion());
     onWindowShown(() => {
         if (!panel.hidden) startMotion();
+    });
+
+    // The OS setting can flip mid-session. startMotion() stands the loop down
+    // when it has just come on, which leaves the dial to be placed by hand.
+    onReducedMotionChange(() => {
+        if (panel.hidden) return;
+        startMotion();
+        if (prefersReducedMotion()) snapMotion();
     });
 }
 
