@@ -21,6 +21,8 @@ struct AppCommand: Identifiable {
             return "timer"
         case AppConstants.Launcher.Command.todo:
             return "checklist"
+        case AppConstants.Launcher.Command.speed:
+            return "speedometer"
         default:
             return "terminal"
         }
@@ -72,6 +74,7 @@ enum AppConstants {
             static let sys = "sys"
             static let pomo = "pomo"
             static let todo = "todo"
+            static let speed = "speed"
         }
 
         enum QueryPrefix {
@@ -448,6 +451,7 @@ enum AppConstants {
             AppCommand(id: Command.kill, title: "kill (⌘4)", detail: "Force kill app or process by name, PID, or port", placeholder: "Type a name, PID, or port"),
             AppCommand(id: Command.shell, title: "shell (⌘5)", detail: "Run a shell command", placeholder: "Type shell command"),
             AppCommand(id: Command.sys, title: "sys (⌘6)", detail: "Show system information", placeholder: "View system info"),
+            AppCommand(id: Command.speed, title: "speed (⌘7)", detail: "Measure internet download, upload, and latency", placeholder: "Measures on open"),
         ]
 
         /// Commands narrowed by `filter` - the text typed after a leading `:`.

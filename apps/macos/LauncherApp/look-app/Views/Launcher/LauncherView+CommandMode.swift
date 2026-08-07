@@ -312,6 +312,9 @@ extension LauncherView {
                         } else if activeCommandID == AppConstants.Launcher.Command.sys {
                             SystemInfoView(themeStore: themeStore)
                                 .padding(8)
+                        } else if activeCommandID == AppConstants.Launcher.Command.speed {
+                            SpeedTestView(controller: speedTest, themeStore: themeStore)
+                                .padding(8)
                         } else if activeCommandID == AppConstants.Launcher.Command.pomo {
                             PomoView(themeStore: themeStore)
                                 .padding(2)

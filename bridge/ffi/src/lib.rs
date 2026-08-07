@@ -4,6 +4,7 @@ mod answers_api;
 mod calc_api;
 mod lunar_api;
 mod matching_api;
+mod netspeed_api;
 mod qactions_api;
 mod runtime_config;
 mod search_api;
@@ -123,6 +124,17 @@ pub extern "C" fn look_lunar_date_json(year: i64, month: i64, day: i64, tz: f64)
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         lunar_api::look_lunar_date_json_impl(year, month, day, tz)
     }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// A full speed test as JSON (`{"ok":true,"reading":{...}}` or
+/// `{"ok":false,"error":"..."}`). Blocks for up to roughly 20 seconds, so call
+/// it off the UI thread. Free the result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_netspeed_run_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        netspeed_api::look_netspeed_run_json_impl,
+    ))
     .unwrap_or(std::ptr::null_mut())
 }
 

@@ -306,6 +306,7 @@ dependencies = [
  "look-indexing",
  "look-lunar",
  "look-matching",
+ "look-netspeed",
  "look-qactions",
  "look-ranking",
  "look-storage",
@@ -332,6 +333,14 @@ dependencies = [
 [[package]]
 name = "look-matching"
 version = "0.1.0"
+
+[[package]]
+name = "look-netspeed"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "look-qactions"

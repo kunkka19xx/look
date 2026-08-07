@@ -96,6 +96,48 @@ private func look_todo_save_json(_ json: UnsafePointer<CChar>?) -> Bool
 nonisolated
 private func look_lunar_date_json(_ year: Int64, _ month: Int64, _ day: Int64, _ tz: Double) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_netspeed_run_json")
+nonisolated
+private func look_netspeed_run_json() -> UnsafeMutablePointer<CChar>?
+
+/// One measurement from the shared `core/netspeed` crate. The display strings
+/// are formatted in core so every shell prints the same text.
+nonisolated struct SpeedReading: Codable, Sendable, Equatable {
+    let downloadBitsPerSecond: Double
+    let uploadBitsPerSecond: Double
+    let latencyMs: Double?
+    let downloadDisplay: String
+    let uploadDisplay: String
+    let latencyDisplay: String
+    let downloadVerdict: String
+    let latencyVerdict: String
+    let latencyLevel: String?
+    let downloadSource: String?
+    let publicIp: String?
+    let provider: String?
+    let location: String?
+    let measuredAtUnix: Int
+
+    var measuredAt: Date {
+        Date(timeIntervalSince1970: TimeInterval(measuredAtUnix))
+    }
+}
+
+/// Stands in when the bridge cannot make sense of the reply at all; every other
+/// message the panel shows comes from core's `SpeedError`.
+private nonisolated let speedTestUnknownFailure = "Speed test failed"
+
+nonisolated struct SpeedTestEnvelope: Decodable {
+    let ok: Bool
+    let reading: SpeedReading?
+    let error: String?
+}
+
+nonisolated enum SpeedTestOutcome: Sendable {
+    case reading(SpeedReading)
+    case failure(String)
+}
+
 /// A resolved lunar date from the shared `core/lunar` crate (East Asian
 /// lunisolar calendar). `leap` marks the intercalary month of a 13-month year.
 nonisolated struct LunarDate: Decodable {
@@ -224,6 +266,30 @@ final class EngineBridge: @unchecked Sendable {
         defer { look_free_cstring(ptr) }
         guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(LunarDate.self, from: data)
+    }
+
+    /// Runs the shared core speed test. Blocks for up to roughly 20 seconds, so
+    /// call it off the main thread. There is no cancel: core bounds each phase
+    /// with its own timeout.
+    nonisolated func speedTest() -> SpeedTestOutcome {
+        guard let ptr = look_netspeed_run_json() else {
+            return .failure(speedTestUnknownFailure)
+        }
+        defer { look_free_cstring(ptr) }
+
+        guard let data = String(cString: ptr).data(using: .utf8) else {
+            return .failure(speedTestUnknownFailure)
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let envelope = try? decoder.decode(SpeedTestEnvelope.self, from: data) else {
+            return .failure(speedTestUnknownFailure)
+        }
+        guard envelope.ok, let reading = envelope.reading else {
+            return .failure(envelope.error ?? speedTestUnknownFailure)
+        }
+        return .reading(reading)
     }
 
     nonisolated func translate(text: String, targetLang: String = "en") -> TranslationResult? {
