@@ -361,7 +361,7 @@ fn cancel_event(
     if param(request, "chosen_id").is_some() {
         return match pick_event(request, events) {
             Ok(event) => plan_cancel_event(event),
-            Err(outcome) => outcome,
+            Err(outcome) => *outcome,
         };
     }
     let Some(query) = param(request, "match") else {
@@ -386,7 +386,7 @@ fn move_event(request: &ResolveRequest, events: &[Indexed<EventCandidate>]) -> R
         return invalid(&format!("Could not understand the time \"{when_phrase}\"."));
     };
     match pick_event(request, events) {
-        Err(outcome) => outcome,
+        Err(outcome) => *outcome,
         Ok(event) => {
             // A day-only phrase ("friday") keeps the event's clock time.
             let new_start = if has_clock_time(&when_phrase) {
@@ -425,7 +425,7 @@ fn complete_reminder(
     reminders: &[Indexed<ReminderCandidate>],
 ) -> ResolveOutcome {
     match pick_reminder(request, reminders) {
-        Err(outcome) => outcome,
+        Err(outcome) => *outcome,
         Ok(reminder) => ResolveOutcome::Planned {
             preview_title: "Complete reminder".into(),
             preview_detail: format!("\"{}\"", reminder.title),
@@ -447,7 +447,7 @@ fn remove_reminder(
     if param(request, "chosen_id").is_some() {
         return match pick_reminder(request, reminders) {
             Ok(reminder) => plan_remove_reminder(reminder),
-            Err(outcome) => outcome,
+            Err(outcome) => *outcome,
         };
     }
     let Some(query) = param(request, "match") else {
@@ -470,7 +470,7 @@ fn snooze_reminder(
 ) -> ResolveOutcome {
     let when_phrase = param(request, "when");
     match pick_reminder(request, reminders) {
-        Err(outcome) => outcome,
+        Err(outcome) => *outcome,
         Ok(reminder) => {
             let Some(phrase) = when_phrase else {
                 return invalid("Snooze until when?");
@@ -616,23 +616,23 @@ pub(crate) fn parse_duration_minutes(phrase: &str) -> Option<i64> {
 fn pick_event(
     request: &ResolveRequest,
     events: &[Indexed<EventCandidate>],
-) -> Result<EventCandidate, ResolveOutcome> {
+) -> Result<EventCandidate, Box<ResolveOutcome>> {
     if let Some(chosen) = param(request, "chosen_id") {
         return events
             .iter()
             .map(|e| e.item())
             .find(|e| e.id == chosen)
             .cloned()
-            .ok_or_else(|| invalid("That event is gone."));
+            .ok_or_else(|| Box::new(invalid("That event is gone.")));
     }
     let Some(query) = param(request, "match") else {
-        return Err(invalid("Which event?"));
+        return Err(Box::new(invalid("Which event?")));
     };
     match matcher::resolve_indexed(events, &query) {
-        Match::None => Err(invalid(&format!(
+        Match::None => Err(Box::new(invalid(&format!(
             "No event matching \"{query}\" in the next {SEARCH_DAYS} days."
-        ))),
-        Match::Several(options) => Err(ResolveOutcome::Choice {
+        )))),
+        Match::Several(options) => Err(Box::new(ResolveOutcome::Choice {
             candidates: options
                 .into_iter()
                 .map(|e| Candidate {
@@ -640,7 +640,7 @@ fn pick_event(
                     id: e.id,
                 })
                 .collect(),
-        }),
+        })),
         Match::One(event) => Ok(event),
     }
 }
@@ -648,21 +648,23 @@ fn pick_event(
 fn pick_reminder(
     request: &ResolveRequest,
     reminders: &[Indexed<ReminderCandidate>],
-) -> Result<ReminderCandidate, ResolveOutcome> {
+) -> Result<ReminderCandidate, Box<ResolveOutcome>> {
     if let Some(chosen) = param(request, "chosen_id") {
         return reminders
             .iter()
             .map(|r| r.item())
             .find(|r| r.id == chosen)
             .cloned()
-            .ok_or_else(|| invalid("That reminder is gone."));
+            .ok_or_else(|| Box::new(invalid("That reminder is gone.")));
     }
     let Some(query) = param(request, "match") else {
-        return Err(invalid("Which reminder?"));
+        return Err(Box::new(invalid("Which reminder?")));
     };
     match matcher::resolve_indexed(reminders, &query) {
-        Match::None => Err(invalid(&format!("No open reminder matching \"{query}\"."))),
-        Match::Several(options) => Err(ResolveOutcome::Choice {
+        Match::None => Err(Box::new(invalid(&format!(
+            "No open reminder matching \"{query}\"."
+        )))),
+        Match::Several(options) => Err(Box::new(ResolveOutcome::Choice {
             candidates: options
                 .into_iter()
                 .map(|r| Candidate {
@@ -670,7 +672,7 @@ fn pick_reminder(
                     id: r.id,
                 })
                 .collect(),
-        }),
+        })),
         Match::One(reminder) => Ok(reminder),
     }
 }
@@ -1059,15 +1061,13 @@ mod tests {
     fn block_time_finds_a_free_working_hours_slot() {
         // Search a single day (Fri) with one busy interval; expect a slot that
         // avoids it, is 120 min, and sits inside 09:00-18:00.
-        let day_start = {
-            // A Friday-ish midnight relative to NOW; use day bounds of NOW.
-            let (s, _) = day_bounds(NOW).unwrap();
-            s
-        };
-        let work_open = day_start + 9 * 3600;
+        // The next day's midnight, so the whole window stays ahead of NOW in
+        // every local timezone (block_time clamps the search to now onward).
+        let day_start = day_bounds(NOW + 86_400).unwrap().0;
+        let work_open = day_start + WORK_START_HOUR as i64 * 3600;
         let mut req = request("calendar.block_time", &[("duration", "2 hours")]);
         req.window_start = Some(work_open);
-        req.window_end = Some(day_start + 18 * 3600);
+        req.window_end = Some(day_start + WORK_END_HOUR as i64 * 3600);
         // Busy 09:00-11:00, so the first free 2h slot is 11:00.
         req.events = vec![EventCandidate {
             id: "b".into(),

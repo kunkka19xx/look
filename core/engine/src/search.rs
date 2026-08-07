@@ -159,10 +159,10 @@ impl QueryEngine {
                 }
             }
             let recency = cand.fs_modified_at_unix_s.unwrap_or(0);
-            if let (Some(start), Some(end)) = (filter.start, filter.end) {
-                if recency < start || recency > end {
-                    continue;
-                }
+            if let (Some(start), Some(end)) = (filter.start, filter.end)
+                && (recency < start || recency > end)
+            {
+                continue;
             }
             if !filter.locations.is_empty() {
                 let path = cand.path.to_lowercase();

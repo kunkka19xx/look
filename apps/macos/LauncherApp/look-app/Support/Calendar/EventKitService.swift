@@ -245,10 +245,17 @@ nonisolated final class EventKitService: @unchecked Sendable {
                         title: reminder.title ?? "Untitled",
                         due: reminder.dueDateComponents.flatMap { Calendar.current.date(from: $0) })
                 }
-            DispatchQueue.main.async {
-                self?.cachedReminders = items
-                self?.syncAITargets()
-            }
+            self?.applyReminderCache(items)
+        }
+    }
+
+    /// Cache writes land on the main queue, where every reader (tool planning,
+    /// UI) runs. Kept out of the fetch callback so `self` is not carried across
+    /// isolation domains.
+    private func applyReminderCache(_ items: [ReminderCandidateData]) {
+        DispatchQueue.main.async {
+            self.cachedReminders = items
+            self.syncAITargets()
         }
     }
 

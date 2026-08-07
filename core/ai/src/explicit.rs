@@ -1,7 +1,11 @@
 //! The instant, no-model action path. Handles ONLY the explicit delimited form
 //! where the user separates title and time with `@`:
-//!   >add <title> @ <when>       ->  calendar.add_event
-//!   >remind <title> @ <when>    ->  reminder.add
+//!
+//! ```text
+//! >add <title> @ <when>       ->  calendar.add_event
+//! >remind <title> @ <when>    ->  reminder.add
+//! ```
+//!
 //! Anything without `@` is natural language and returns None so the model
 //! normalizes it. A day word in the title half defers to the model too (the
 //! date intent is split); without a model (lenient mode), the whole phrase

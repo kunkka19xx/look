@@ -200,10 +200,8 @@ pub fn parse(query: &str, now_epoch: i64) -> Option<FileQuery> {
             }
             "edited" | "modified" | "changed" | "updated" => date_field = "modified".to_string(),
             "created" | "made" => date_field = "created".to_string(),
-            "documents" => {
-                if !locations.contains(&"documents".to_string()) {
-                    locations.push("documents".to_string());
-                }
+            "documents" if !locations.contains(&"documents".to_string()) => {
+                locations.push("documents".to_string());
             }
             "desktop" => {}
             _ => {}

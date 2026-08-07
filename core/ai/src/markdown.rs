@@ -48,11 +48,7 @@ pub fn segments(raw: &str) -> Vec<Segment> {
             flush(&mut out, &mut buffer, in_code, &language);
             if !in_code {
                 // Opening fence may carry a language tag: ```swift
-                language = rest
-                    .trim()
-                    .split_whitespace()
-                    .next()
-                    .map(|tag| tag.to_lowercase());
+                language = rest.split_whitespace().next().map(|tag| tag.to_lowercase());
             } else {
                 language = None;
             }

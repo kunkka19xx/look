@@ -92,10 +92,10 @@ pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
                 continue;
             };
             saw_output = true;
-            if !delta.is_empty() {
-                if let Ok(mut s) = reader_state.lock() {
-                    s.text.push_str(&delta);
-                }
+            if !delta.is_empty()
+                && let Ok(mut s) = reader_state.lock()
+            {
+                s.text.push_str(&delta);
             }
             if done {
                 break;
@@ -145,15 +145,13 @@ pub fn poll(id: u64) -> Option<String> {
 
 /// Kills the child (aborting Ollama generation) and drops the session.
 pub fn cancel(id: u64) {
-    if let Ok(mut map) = sessions().lock() {
-        if let Some(session) = map.remove(&id) {
-            if let Ok(mut child) = session.child.lock() {
-                if let Some(mut c) = child.take() {
-                    let _ = c.kill();
-                    let _ = c.wait();
-                }
-            }
-        }
+    if let Ok(mut map) = sessions().lock()
+        && let Some(session) = map.remove(&id)
+        && let Ok(mut child) = session.child.lock()
+        && let Some(mut c) = child.take()
+    {
+        let _ = c.kill();
+        let _ = c.wait();
     }
 }
 
