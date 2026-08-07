@@ -4,6 +4,7 @@
 //! the parity spec and are deleted as their Rust replacements land.
 
 pub mod chat;
+pub mod context;
 pub mod conversations;
 pub mod explicit;
 pub mod matcher;

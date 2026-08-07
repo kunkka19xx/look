@@ -308,6 +308,16 @@ pub extern "C" fn look_ai_load_targets(
     }));
 }
 
+/// How many recent item texts (JSON string array) fit the token budget
+/// (0 = default). Returns the tail count to keep as chat history.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_context_window(texts_json: *const c_char, budget: u32) -> u32 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_context_window_impl(texts_json, budget)
+    }))
+    .unwrap_or(0)
+}
+
 /// Handle input as a memory command ("remember …"), returning feedback or null.
 /// Free with `look_free_cstring`.
 #[unsafe(no_mangle)]

@@ -80,6 +80,10 @@ private func look_ai_memory_command(_ path: UnsafePointer<CChar>?, _ input: Unsa
 nonisolated
 private func look_ai_memory_context(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_ai_context_window")
+nonisolated
+private func look_ai_context_window(_ textsJSON: UnsafePointer<CChar>?, _ budget: UInt32) -> UInt32
+
 @_silgen_name("look_ai_parse_explicit")
 nonisolated
 private func look_ai_parse_explicit(_ input: UnsafePointer<CChar>?, _ modelAvailable: Bool) -> UnsafeMutablePointer<CChar>?
@@ -509,6 +513,17 @@ final class EngineBridge: @unchecked Sendable {
         guard let ptr = path.withCString({ look_ai_memory_context($0) }) else { return "" }
         defer { look_free_cstring(ptr) }
         return String(cString: ptr)
+    }
+
+    /// How many recent item texts fit the token budget (0 = default). The shell
+    /// keeps that many tail turns as chat history. Rust core (core/ai/context).
+    nonisolated func aiContextWindow(texts: [String], budget: Int = 0) -> Int {
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: texts),
+            let json = String(data: data, encoding: .utf8)
+        else { return texts.count }
+        let count = json.withCString { look_ai_context_window($0, UInt32(max(0, budget))) }
+        return Int(count)
     }
 
     /// The explicit `>verb title @ when` parser (Rust core). Nil = natural

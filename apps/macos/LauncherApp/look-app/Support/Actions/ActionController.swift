@@ -301,7 +301,13 @@ final class ActionController: ObservableObject {
         if let scheduleContext {
             messages.append(["role": "system", "content": scheduleContext])
         }
-        for item in sessionItems.suffix(10) {
+        // Token-budget window (not a fixed count): keep the newest turns that fit
+        // ~2.5k tokens, so long chats stay coherent without a summarizer.
+        let itemTexts = sessionItems.map { item -> String in
+            item.kind == .action ? "[Done: \(item.text)]" : item.text
+        }
+        let keep = EngineBridge.shared.aiContextWindow(texts: itemTexts, budget: 0)
+        for item in sessionItems.suffix(keep) {
             switch item.kind {
             case .user:
                 messages.append(["role": "user", "content": item.text])

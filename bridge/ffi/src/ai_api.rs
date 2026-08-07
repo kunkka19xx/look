@@ -108,6 +108,19 @@ pub(crate) fn look_ai_resolve_impl(request_json: *const c_char) -> *mut c_char {
     state::store_json_allocation(cstring)
 }
 
+/// How many of the most-recent item texts (JSON string array) fit the token
+/// budget (0 = default). The shell keeps that many tail turns as chat history.
+pub(crate) fn look_ai_context_window_impl(texts_json: *const c_char, budget: u32) -> u32 {
+    let texts_json = state::cstr_to_string(texts_json);
+    let texts: Vec<String> = serde_json::from_str(&texts_json).unwrap_or_default();
+    let budget = if budget == 0 {
+        look_ai::context::DEFAULT_BUDGET_TOKENS
+    } else {
+        budget as usize
+    };
+    look_ai::context::window_count(&texts, budget) as u32
+}
+
 /// Handle AI input as a possible memory command ("remember …", "forget …",
 /// "memories"). Returns feedback to show (skip the model), or null for normal
 /// input. Free with `look_free_cstring`.
