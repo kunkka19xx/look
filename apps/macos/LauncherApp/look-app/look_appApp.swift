@@ -196,7 +196,7 @@ struct look_appApp: App {
 
     private func openThemeSettings() {
         DispatchQueue.main.async {
-            appUIState.showsThemeSettings = true
+            appUIState.showsThemeSettings.toggle()
             NotificationCenter.default.post(name: .lookActivateLauncherRequested, object: nil)
         }
     }

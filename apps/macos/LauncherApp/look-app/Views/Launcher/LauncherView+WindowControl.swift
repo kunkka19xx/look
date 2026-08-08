@@ -177,7 +177,9 @@ extension LauncherView {
     /// create a separate window of its own.
     func showThemeSettings() {
         appUIState.showsThemeSettings = true
-        captureFrontmostAppForRestoreIfNeeded()
+        if pidToRestoreOnHide == nil {
+            captureFrontmostAppForRestoreIfNeeded()
+        }
         NSApplication.shared.unhide(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
 
