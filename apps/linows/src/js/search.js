@@ -5,6 +5,7 @@ import {
     webSuggestions as ipcWebSuggestions,
     classifyUrl as ipcClassifyUrl,
     recentUrls as ipcRecentUrls,
+    calcInline as ipcCalcInline,
 } from './ipc.js';
 import {
     isPrefixSuggestionQuery,
@@ -14,9 +15,11 @@ import {
     commandSuggestionResults,
     webSuggestionResults,
     webUrlResult,
+    calcResult,
     WEB_URL_OPEN_SUBTITLE,
     WEB_URL_RECENT_SUBTITLE,
 } from './catalog.js';
+import * as layout from './layout.js';
 
 const DEBOUNCE_MS = 70;
 const MIN_QUICK_FOLDER_PREFIX = 2;
@@ -58,6 +61,9 @@ let webInFlight = false;
 // web suggestions need) and refilled by fetchUrlRows.
 let lastUrlMatch = null;
 let lastRecentUrls = [];
+// Calculator row for the current query, or null. Local and instant, so unlike
+// the other legs it runs undebounced and settles before the engine answers.
+let lastCalc = null;
 
 /** Resolved by the backend (Windows: SHGetKnownFolderPath; *nix: $HOME/<name>).
  *  Empty until setQuickFolders is called at boot. */
@@ -127,6 +133,7 @@ export function handleQueryInput(query) {
     lastEnginePayload = [];
     lastUrlMatch = null;
     lastRecentUrls = [];
+    lastCalc = null;
     if (query !== lastQueryString) {
         lastWebSuggestions = [];
     }
@@ -203,6 +210,12 @@ export function handleQueryInput(query) {
 
     const myVersion = queryVersion;
     if (query.trim() === '') {
+        // The rest screen shows no rows, and the engine answers an empty query
+        // by scoring the whole index. Clear instead of searching for nothing.
+        if (layout.isEmptyQuery(query) && layout.hidesResultsForEmptyQuery()) {
+            if (onResultsCallback) onResultsCallback([], query);
+            return;
+        }
         performSearch('', myVersion);
         return;
     }
@@ -215,16 +228,18 @@ export function handleQueryInput(query) {
     // empty list. Skip web suggestions entirely for prefixed queries
     // (a"chrome, f"doc, r"regex ...). The engine handles those as scoped
     // filters; Google-autocomplete rows would be noise.
+    const prefixed = isPrefixedQuery(query);
     const wantsWeb =
-        aiEnabled &&
-        !isPrefixedQuery(query) &&
-        query.trim().length >= MIN_WEB_SUGGESTION_QUERY_LENGTH;
+        aiEnabled && !prefixed && query.trim().length >= MIN_WEB_SUGGESTION_QUERY_LENGTH;
     webInFlight = wantsWeb;
     // URL rows share the engine debounce: both are local round-trips, and the
     // URL leg must not run per keystroke ahead of it (SQLite open per call).
     // Unlike web suggestions they ignore the AI gate - opening a typed address
     // is a launcher action, not a web answer.
-    const wantsUrlRows = !isPrefixedQuery(query);
+    const wantsUrlRows = !prefixed;
+    // No debounce: local arithmetic on a short string, and it settles before
+    // the engine, so the row never re-seats the selection.
+    if (!prefixed) fetchCalc(query, myVersion);
     debounceTimer = setTimeout(() => {
         performSearch(query, myVersion);
         if (wantsUrlRows) fetchUrlRows(query, myVersion);
@@ -257,11 +272,13 @@ async function performSearch(query, version) {
 }
 
 async function fetchWebSuggestions(query, version) {
-    const trimmed = query.trim();
-    if (!aiEnabled || trimmed.length < MIN_WEB_SUGGESTION_QUERY_LENGTH) {
+    // aiEnabled can flip during the debounce window, so re-check it. The
+    // length gate can't: `wantsWeb` already applied it to this same query.
+    if (!aiEnabled) {
         webInFlight = false;
         return;
     }
+    const trimmed = query.trim();
     try {
         const list = await ipcWebSuggestions(trimmed, WEB_SUGGESTIONS_LIMIT);
         if (isStale(version)) return;
@@ -282,6 +299,20 @@ async function fetchWebSuggestions(query, version) {
             publish(query, version);
         }
     }
+}
+
+// core/calc decides what counts, so `20-05-2026` stays a folder name.
+async function fetchCalc(query, version) {
+    try {
+        const result = await ipcCalcInline(query);
+        if (isStale(version)) return;
+        lastCalc = result || null;
+    } catch (err) {
+        console.warn('Calc failed:', err);
+        if (isStale(version)) return;
+        lastCalc = null;
+    }
+    if (lastCalc) publish(query, version);
 }
 
 // Classification + history lookup for the current query. Both run in one leg
@@ -354,6 +385,11 @@ function publish(query, version) {
                 ? [liveRow, ...ranked, ...suggestionRows]
                 : [...ranked, liveRow, ...suggestionRows];
     }
+    // Above everything and takes the selection: an expression is a question,
+    // and the answer outranks a file that fuzzy-matched some of its digits.
+    if (lastCalc) {
+        combined = [calcResult(query.trim(), lastCalc), ...combined];
+    }
     // Hold an empty render while web suggestions are still loading. The
     // engine returns instantly (~50 ms) but DDG /ac/ takes 500 ms-2 s; on a
     // fresh query we'd otherwise paint "No results" for a couple of seconds
@@ -416,6 +452,7 @@ async function performClipboardSearch(filter) {
                 path: 'clipboard://history',
                 score: 0,
                 clipText: e.text,
+                clipPayload: e.payload || null,
                 clipTimestamp: e.timestamp,
                 clipCharCount: e.char_count,
                 clipLineCount: e.line_count,
@@ -468,20 +505,36 @@ function prependQuickFolders(results, query) {
     const q = query.toLowerCase().trim();
     if (q.length < MIN_QUICK_FOLDER_PREFIX) return results;
 
-    const matched = [];
+    const merged = [...results];
+    let insertAt = 0;
+
     for (const folder of quickFolders) {
         if (!folder.title.toLowerCase().startsWith(q)) continue;
-        if (results.some((r) => r.path === folder.path)) continue;
+        if (merged.some((r) => r.path === folder.path)) continue;
+
         const isTrash = folder.title === 'Trash' || folder.title === 'Recycle Bin';
-        matched.push({
+        const quickFolderResult = {
             id: `quickfolder:${folder.title.toLowerCase()}`,
             kind: 'folder',
             title: folder.title,
             subtitle: isTrash ? 'Pinned · Ctrl+D to empty' : 'Pinned home folder',
             path: folder.path,
             score: 999999,
-        });
+        };
+
+        // A same-titled app already won the backend's type-priority ranking -
+        // don't let the pin bump it out of first place. Surface the folder
+        // right below it instead of dropping it, so it's still reachable.
+        const rivalAppIndex = merged.findIndex(
+            (r) => r.kind === 'app' && r.title.toLowerCase() === folder.title.toLowerCase()
+        );
+        if (rivalAppIndex === -1) {
+            merged.splice(insertAt, 0, quickFolderResult);
+            insertAt += 1;
+        } else {
+            merged.splice(rivalAppIndex + 1, 0, quickFolderResult);
+        }
     }
 
-    return [...matched, ...results];
+    return merged;
 }

@@ -2,7 +2,10 @@
 //! Windows peer of `battery.rs`; reads `GetSystemPowerStatus` (as
 //! `platform/windows/sysinfo.rs` does) and reports `Unavailable` with no battery.
 
-use crate::qactions::{ActionIntent, ActionOutcome, ActionState, SystemControl};
+use crate::qactions::{
+    ActionIntent, ActionOutcome, ActionState, BATTERY_CHARGING_INFO_KEY, InfoValue, SystemControl,
+};
+use std::collections::HashMap;
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 
 const NO_BATTERY: &str = "No battery";
@@ -22,6 +25,22 @@ impl SystemControl for BatteryControl {
         }
     }
 
+    fn info(&self, keys: &[String]) -> HashMap<String, InfoValue> {
+        if !keys.iter().any(|k| k == BATTERY_CHARGING_INFO_KEY) {
+            return HashMap::new();
+        }
+        HashMap::from([(
+            BATTERY_CHARGING_INFO_KEY.to_string(),
+            InfoValue::Text {
+                text: if charging_flag() {
+                    "charging".to_string()
+                } else {
+                    "idle".to_string()
+                },
+            },
+        )])
+    }
+
     fn apply(&self, _intent: ActionIntent) -> ActionOutcome {
         ActionOutcome::Failed {
             message: "Battery is read-only".to_string(),
@@ -36,4 +55,16 @@ fn read_percent() -> Option<u8> {
     let mut status = SYSTEM_POWER_STATUS::default();
     unsafe { GetSystemPowerStatus(&mut status) }.ok()?;
     (status.BatteryLifePercent != 255).then_some(status.BatteryLifePercent.min(100))
+}
+
+/// Whether the battery is charging: the `BatteryFlag` AC/charging bit (0x8).
+fn charging_flag() -> bool {
+    let mut status = SYSTEM_POWER_STATUS::default();
+    if unsafe { GetSystemPowerStatus(&mut status) }.is_err() {
+        return false;
+    }
+    if status.BatteryFlag == 255 || status.BatteryFlag & 128 == 128 {
+        return false;
+    }
+    status.BatteryFlag & 8 == 8
 }

@@ -77,11 +77,11 @@ struct ActionPanelView: View {
     private func pill(_ text: String, on: Bool) -> some View {
         Text(text)
             .font(themeStore.uiFont(size: CGFloat(max(11, themeStore.settings.fontSize - 2)), weight: .semibold))
-            .foregroundStyle(on ? Color.white : themeStore.fontColor())
+            .foregroundStyle(on ? themeStore.onSuccessColor() : themeStore.fontColor())
             .padding(.horizontal, 10)
             .padding(.vertical, 3)
             .background(
-                (on ? Color.green.opacity(0.75) : themeStore.dividerColor().opacity(0.6)),
+                (on ? themeStore.successColor() : themeStore.dividerColor().opacity(0.6)),
                 in: Capsule()
             )
     }

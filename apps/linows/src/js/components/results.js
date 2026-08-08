@@ -10,8 +10,9 @@ import {
     historyLg,
 } from '../icons.js';
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
-import { webSuggestionFromResultId } from '../catalog.js';
-import { isWindows } from '../platform.js';
+import { classifyResultId } from '../catalog.js';
+import { prefersReducedMotion } from '../platform.js';
+import * as layout from '../layout.js';
 
 // LRU-bounded icon cache (cacheKey -> data URL | null). A plain Map keeps
 // insertion order, so re-inserting on a hit marks it most-recently-used and the
@@ -45,11 +46,7 @@ let container = null;
 // scroll for free; wiped with the rows on every render, rebuilt lazily.
 let selectionPill = null;
 // Honor prefers-reduced-motion for the scroll too: the pill glide is killed in
-// CSS, but scrollIntoView's smooth behavior bypasses CSS, so gate it here. Read
-// live off the query list so an OS toggle mid-session takes effect. Windows is
-// excluded to match the CSS (its reduce-motion flag tracks the perf preset).
-const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const prefersReducedMotion = () => reduceMotion.matches && !isWindows();
+// CSS, but scrollIntoView's smooth behavior bypasses CSS, so gate it here.
 let onSelectionChange = null;
 let onPickChange = null;
 let emptyState = { mode: 'default' };
@@ -150,6 +147,14 @@ export function render(results, query = null) {
         const idx = results.findIndex((r) => r.id === prevSelectedId);
         if (idx >= 0) nextIndex = idx;
     }
+
+    if (layout.isEmptyQuery(query) && layout.hidesResultsForEmptyQuery()) {
+        // No rows on screen. A seeded selection here is one the user cannot
+        // see, and Enter / Ctrl+D / Ctrl+Shift+H would still act on it.
+        selectedIndex = -1;
+        return;
+    }
+
     select(nextIndex);
 }
 
@@ -311,7 +316,7 @@ function createRow(result, index) {
     // Web-suggestion rows live in a narrow 320 px column when the AI card is
     // active; let their title wrap to multiple lines instead of truncating
     // (matches macOS WebSuggestionPreviewView's 3-line title cap).
-    if (webSuggestionFromResultId(result.id) != null) {
+    if (classifyResultId(result.id)?.kind === 'webSuggestion') {
         row.classList.add('result-row-web-suggest');
     }
 

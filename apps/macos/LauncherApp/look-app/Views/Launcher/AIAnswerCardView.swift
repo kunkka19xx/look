@@ -42,7 +42,7 @@ struct AIAnswerCardView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                .strokeBorder(themeStore.liftColor(opacity: 0.08), lineWidth: 1)
         )
     }
 
@@ -158,19 +158,5 @@ struct AIAnswerCardView: View {
         guard !trimmed.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(trimmed, forType: .string)
-    }
-}
-
-extension View {
-    /// Shows the pointing-hand cursor on hover when `enabled`.
-    @ViewBuilder
-    fileprivate func pointingHandCursor(enabled: Bool) -> some View {
-        if enabled {
-            onHover { inside in
-                if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-            }
-        } else {
-            self
-        }
     }
 }

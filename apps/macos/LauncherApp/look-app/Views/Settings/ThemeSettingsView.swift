@@ -7,12 +7,22 @@ struct ThemeSettingsView: View {
         case fontName
     }
 
+    /// Outcome carried with the text so a failed save cannot be styled as a
+    /// success by a stale flag.
+    struct SaveMessage {
+        let text: String
+        let succeeded: Bool
+    }
+
+    static let activeTabFillOpacity = 0.16
+    static let inactiveTabFillOpacity = 0.06
+
     @EnvironmentObject var appUIState: AppUIState
     @EnvironmentObject var themeStore: ThemeStore
     @ObservedObject var updateChecker = UpdateChecker.shared
     @Binding var settings: ThemeSettings
     @State var selectedTab = 0
-    @State var saveMessage: String?
+    @State var saveMessage: SaveMessage?
     @State var fontSuggestions: [String] = []
     @State var showsFontSuggestions = false
     @State var isPickingFontSuggestion = false
@@ -34,19 +44,22 @@ struct ThemeSettingsView: View {
                 Spacer()
 
                 if let saveMessage {
-                    Text(saveMessage)
+                    Text(saveMessage.text)
                         .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(saveMessage.succeeded ? themeStore.onSuccessColor() : themeStore.onDangerColor())
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(.green.opacity(0.42), in: Capsule())
+                        .background(
+                            saveMessage.succeeded ? themeStore.successColor() : themeStore.dangerColor(),
+                            in: Capsule()
+                        )
                 }
 
                 Button("Save Config") {
                     applyFileScanDepthInput()
                     applyFileScanLimitInput()
                     let ok = themeStore.saveCurrentConfigToFile()
-                    saveMessage = ok ? "Saved" : "Save failed"
+                    saveMessage = SaveMessage(text: ok ? "Saved" : "Save failed", succeeded: ok)
                     if ok {
                         NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
                     }
@@ -148,7 +161,7 @@ struct ThemeSettingsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 7)
                 .background(
-                    (isActive ? .white.opacity(0.16) : .white.opacity(0.06)),
+                    themeStore.liftColor(opacity: isActive ? Self.activeTabFillOpacity : Self.inactiveTabFillOpacity),
                     in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                 )
         }

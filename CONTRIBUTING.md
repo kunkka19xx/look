@@ -2,6 +2,15 @@
 
 Thanks for contributing.
 
+## Contributor License Agreement
+
+Code contributions require a signed [Contributor License Agreement](CLA.md). It
+is a license grant, so you keep the copyright to your work and grant the project
+maintainer the right to relicense it, which keeps the option of a commercially
+licensed build open without having to track down every contributor later. On
+your first pull request the CLA assistant bot will post a comment; reply to it
+once and the signature covers everything you send afterwards.
+
 ## Before you open an issue
 
 - search existing issues first to avoid duplicates
@@ -112,7 +121,7 @@ CI runs for pushes to `main` and for pull requests targeting `main`.
 - Rust jobs (`lint`, `test`, `cargo-audit`, release `build`) run only when Rust-related paths change
 - secrets scanning (`gitleaks`) always runs
 - macOS app build runs only for PRs to `main` when Swift files change
-- linows (Tauri) build runs when `apps/linows/**` or `core/**` changes; the legacy WinUI3 app build is disabled, since that app is archived
+- linows (Tauri) build runs when `apps/linows/**` or `core/**` changes
 - release-style Rust build artifacts run only on push to `main`
 
 ## Pull request checklist

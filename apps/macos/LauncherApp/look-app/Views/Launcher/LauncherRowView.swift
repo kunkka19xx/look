@@ -18,36 +18,25 @@ struct LauncherRowView: View {
         static let borderWidth: CGFloat = 1
     }
 
-    private var isPrefixSuggestion: Bool {
-        result.id.hasPrefix(AppConstants.Launcher.PrefixSuggestion.resultIDPrefix)
-    }
-
-    private var isWebSuggestion: Bool {
-        result.id.hasPrefix(AppConstants.Launcher.WebSuggestion.resultIDPrefix)
-    }
-
-    private var isCommandSuggestion: Bool {
-        result.id.hasPrefix(AppConstants.Launcher.CommandSuggestion.resultIDPrefix)
-    }
-
-    private var isURLResult: Bool {
-        result.id.hasPrefix(AppConstants.Launcher.WebURL.resultIDPrefix)
+    private var syntheticRow: SyntheticRow? {
+        SyntheticRow.classify(resultID: result.id)
     }
 
     private var rowIcon: NSImage {
-        if isCommandSuggestion {
+        switch syntheticRow {
+        case .commandSuggestion:
             return NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
                 ?? NSWorkspace.shared.icon(for: .plainText)
-        }
-
-        if isURLResult {
+        case .calc:
+            return LauncherCalcFeature.icon()
+        case .webURL:
             return NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
                 ?? NSWorkspace.shared.icon(for: .plainText)
-        }
-
-        if isPrefixSuggestion || isWebSuggestion {
+        case .prefixSuggestion, .webSuggestion:
             return NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
                 ?? NSWorkspace.shared.icon(for: .plainText)
+        case nil:
+            break
         }
 
         if result.kind == .clipboard {
@@ -103,7 +92,7 @@ struct LauncherRowView: View {
     }
 
     private var metaLabel: String {
-        if isPrefixSuggestion || isWebSuggestion || isCommandSuggestion || isURLResult {
+        if syntheticRow != nil {
             return result.subtitle ?? ""
         }
         if result.kind == .clipboard {

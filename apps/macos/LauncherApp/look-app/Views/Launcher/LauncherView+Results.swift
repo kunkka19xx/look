@@ -12,34 +12,37 @@ extension LauncherView {
             let selected = displayedResults.first(where: { $0.id == selectedResultID })
         else { return }
 
-        // Prefix-discovery menu: choosing an entry fills its prefix into the
-        // field (cursor ready for the term) rather than opening anything.
-        if let prefix = AppConstants.Launcher.PrefixSuggestion.prefix(fromResultID: selected.id) {
+        switch SyntheticRow.classify(resultID: selected.id) {
+        case .prefixSuggestion(let prefix):
+            // Prefix-discovery menu: choosing an entry fills its prefix into
+            // the field (cursor ready for the term) rather than opening anything.
             query = prefix
             isQueryFocused = true
             return
-        }
-
-        // Google autocomplete row: run the web search for that suggestion.
-        if let suggestion = AppConstants.Launcher.WebSuggestion.text(fromResultID: selected.id) {
+        case .webSuggestion(let suggestion):
+            // Google autocomplete row: run the web search for that suggestion.
             performWebSearch(for: suggestion)
             hideLauncherWindow(restorePreviousApp: false)
             return
-        }
-
-        // URL-like query row (live or from history): open the resolved address
-        // in the default browser and remember it for faster re-open later.
-        if let urlString = AppConstants.Launcher.WebURL.url(fromResultID: selected.id) {
+        case .webURL(let urlString):
+            // URL-like query row (live or from history): open the resolved
+            // address in the default browser and remember it for faster re-open later.
             openURLScheme(urlString)
             bridge.recordURLHit(url: urlString)
             hideLauncherWindow(restorePreviousApp: false)
             return
-        }
-
-        // Command-discovery row: enter that command's panel (empty input).
-        if let commandID = AppConstants.Launcher.CommandSuggestion.commandID(fromResultID: selected.id) {
+        case .commandSuggestion(let commandID):
+            // Command-discovery row: enter that command's panel (empty input).
             enterCommandMode(commandID: commandID, prefilledInput: "")
             return
+        case .calc(let raw):
+            // Calculator row: copy the raw value, launcher out of the way.
+            // History keeps the labeled working (`2+2 = 4`); the paste is the number.
+            clipboardStore.recordLabeled(display: "\(selected.calcExpression ?? "") = \(selected.title)", payload: raw)
+            hideLauncherWindow(restorePreviousApp: false)
+            return
+        case nil:
+            break
         }
 
         switch selected.kind {
@@ -63,7 +66,9 @@ extension LauncherView {
             }
             hideLauncherWindow(restorePreviousApp: false)
         case .clipboard:
-            guard let content = selected.clipboardContent, !content.isEmpty else { return }
+            // Labeled entries (e.g. calculator results) paste their value, not
+            // the label shown in the list.
+            guard let content = selected.clipboardPayload ?? selected.clipboardContent, !content.isEmpty else { return }
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(content, forType: .string)
             showBanner(
@@ -178,11 +183,18 @@ extension LauncherView {
         return false
     }
 
-    func revealSelectedInFinder() {
+    /// The result eligible for a selection-scoped action (reveal, pick, copy)
+    /// right now, or nil when command mode or the prefix-discovery menu has
+    /// the field, or nothing (or an unmatched id) is selected.
+    func actionableSelectedResult() -> LauncherResult? {
         guard !isCommandMode, !isPrefixSuggestionQuery,
-              let selectedID = selectedResultID,
-              let selected = displayedResults.first(where: { $0.id == selectedID })
-        else { return }
+              let selectedID = selectedResultID
+        else { return nil }
+        return displayedResults.first(where: { $0.id == selectedID })
+    }
+
+    func revealSelectedInFinder() {
+        guard let selected = actionableSelectedResult() else { return }
 
         switch selected.kind {
         case .app, .file, .folder:
@@ -211,11 +223,8 @@ extension LauncherView {
     }
 
     func togglePickForSelectedResult() {
-        guard !isCommandMode, !isPrefixSuggestionQuery,
-              let selectedID = selectedResultID,
-              let selected = displayedResults.first(where: { $0.id == selectedID })
-        else { return }
-        guard selected.kind == .file || selected.kind == .folder else {
+        guard let selected = actionableSelectedResult() else { return }
+        guard selected.kind.isFileOrFolder else {
             showBanner("Only files or folders can be picked", style: .info, duration: 1.0)
             return
         }
@@ -241,7 +250,7 @@ extension LauncherView {
         let items = pickedKeys.compactMap { pickedResultsByKey[$0] }
         var openedCount = 0
         for item in items {
-            guard item.kind == .file || item.kind == .folder else { continue }
+            guard item.kind.isFileOrFolder else { continue }
             guard ensureTargetExists(item) else { continue }
             openTargetAsync(item.path)
             // Quick-folder entries are ephemeral suggestions, not indexed
@@ -279,7 +288,7 @@ extension LauncherView {
         guard !pickedKeys.isEmpty else { return }
         var objects: [NSPasteboardWriting] = []
         for key in pickedKeys {
-            guard let r = pickedResultsByKey[key], r.kind == .file || r.kind == .folder else { continue }
+            guard let r = pickedResultsByKey[key], r.kind.isFileOrFolder else { continue }
             objects.append(URL(fileURLWithPath: r.path) as NSURL)
             objects.append(r.path as NSString)
         }
@@ -293,10 +302,7 @@ extension LauncherView {
 
     @discardableResult
     func copySelectedResultToPasteboard() -> Bool {
-        guard !isCommandMode,
-              let selectedID = selectedResultID,
-              let selected = displayedResults.first(where: { $0.id == selectedID })
-        else { return false }
+        guard let selected = actionableSelectedResult() else { return false }
 
         // In `ps"` mode, Cmd+C copies the selected process's PID.
         if selected.kind == .process {
@@ -304,7 +310,7 @@ extension LauncherView {
             return true
         }
 
-        guard selected.kind == .file || selected.kind == .folder else { return false }
+        guard selected.kind.isFileOrFolder else { return false }
 
         let targetURL = URL(fileURLWithPath: selected.path)
         let pasteboard = NSPasteboard.general
@@ -390,7 +396,7 @@ extension LauncherView {
     /// the Trash quick folder, routes to Empty Trash, which DOES confirm because
     /// it's permanent.
     func requestDeleteSelection() {
-        guard !isCommandMode, !appUIState.showsThemeSettings, !showsHelpScreen else { return }
+        guard isLauncherIdle else { return }
         // In `ps"` mode, Cmd+D kills the selected process (SIGKILL) instead of
         // trashing a file.
         if isProcessQuery, selectedProcessPID != nil {

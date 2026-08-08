@@ -27,14 +27,21 @@ extension LauncherView {
         themeStore.settings.superActionsEnabled && hidesResultsForEmptyQuery && !launchpadTiles.isEmpty
     }
 
+    /// Re-reads adapter-backed tiles and weather. Called on every open: the
+    /// window is only ordered out, so `onAppear` fires once per process.
+    func refreshLaunchpadState() {
+        guard themeStore.settings.superActionsEnabled else { return }
+        Task { await launchpadController.refreshStates() }
+        Task { await launchpadController.refreshWeather() }
+    }
+
     /// Builds and refreshes the launchpad when the Super Actions setting is
     /// switched on after the view already appeared, so the strip shows without a
     /// relaunch.
     func launchpadSettingChanged(enabled: Bool) {
         guard enabled else { return }
         configureLaunchpadIfNeeded()
-        Task { await launchpadController.refreshStates() }
-        Task { await launchpadController.refreshWeather() }
+        refreshLaunchpadState()
     }
 
     /// Routes a Command-mnemonic character to the launchpad. Returns true when a

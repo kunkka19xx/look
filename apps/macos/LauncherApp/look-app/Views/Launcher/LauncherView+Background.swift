@@ -30,31 +30,9 @@ extension LauncherView {
                     .opacity(themeStore.settings.backgroundImageOpacity)
             }
 
-            VisualEffectBlur(material: themeStore.settings.blurMaterial.material)
-                .opacity(
-                    min(
-                        1,
-                        max(
-                            0,
-                            themeStore.settings.blurOpacity
-                                * themeStore.settings.blurMaterial.blurOpacityScale
-                                * (appUIState.showsThemeSettings ? appUIState.settingsBlurMultiplier : 1.0)
-                        )
-                    )
-                )
-
-            Color(
-                .sRGB,
-                red: themeStore.settings.tintRed,
-                green: themeStore.settings.tintGreen,
-                blue: themeStore.settings.tintBlue,
-                opacity: min(
-                    1,
-                    max(
-                        0,
-                        themeStore.settings.tintOpacity * themeStore.settings.blurMaterial.tintOpacityScale
-                    )
-                )
+            ThemedBackdrop(
+                themeStore: themeStore,
+                blurOpacityMultiplier: appUIState.showsThemeSettings ? appUIState.settingsBlurMultiplier : 1.0
             )
         }
     }

@@ -74,6 +74,7 @@ struct LauncherView: View {
     /// and the controller holding its interactive state.
     @State var launchpadTiles: [LaunchpadTileModel] = []
     @State var launchpadController = LaunchpadController()
+    @State var speedTest = SpeedTestController()
     @State var searchTask: Task<Void, Never>?
     @State var latestSearchID: UInt64 = 0
     @State var bannerMessage: String?
@@ -108,15 +109,24 @@ struct LauncherView: View {
     @State private var panelSize: CGSize = .zero
     static let panelCoordinateSpace = "launcherPanel"
 
+    static let floatingTileScrimOpacity = 0.30
+    static let attachedPanelScrimOpacity = 0.16
+
     var runningAppsPlacement: RunningAppsPlacement {
         themeStore.settings.runningAppsPlacement
     }
 
+    /// Not in command mode, not showing theme settings, not showing the help
+    /// screen - the coarse "nothing else has taken over the launcher" gate
+    /// shared by the running-apps strip, floating-card layout, home hint,
+    /// empty-query rest state, and delete confirmation.
+    var isLauncherIdle: Bool {
+        !isCommandMode && !appUIState.showsThemeSettings && !showsHelpScreen
+    }
+
     var shouldShowRunningAppsStrip: Bool {
         runningAppsPlacement != .none
-            && !isCommandMode
-            && !appUIState.showsThemeSettings
-            && !showsHelpScreen
+            && isLauncherIdle
             && !runningAppsService.items.isEmpty
     }
 
@@ -133,8 +143,8 @@ struct LauncherView: View {
         let log = RunningAppsLog.logger
         let total = runningAppsService.items.count
 
-        if runningAppsPlacement == .none || isCommandMode || appUIState.showsThemeSettings {
-            log.debug("⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public))")
+        if runningAppsPlacement == .none || !isLauncherIdle {
+            log.debug("⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public) help=\(self.showsHelpScreen, privacy: .public))")
             return false
         }
         guard let position = AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey: key, total: total) else {
@@ -264,9 +274,17 @@ struct LauncherView: View {
             let alreadyPresent = sourceResults.contains { item in
                 item.kind == .folder && item.path == quickFolder.path
             }
-            if !alreadyPresent {
-                sourceResults.insert(quickFolder, at: 0)
+            guard !alreadyPresent else { continue }
+
+            // A same-titled app (e.g. Apple Music.app vs the ~/Music quick folder)
+            // already won the backend's type-priority ranking - don't let the pin
+            // bump it out of first place. Surface the folder right below it instead
+            // of dropping it, so it's still reachable.
+            let rivalAppIndex = sourceResults.firstIndex { item in
+                item.kind == .app
+                    && item.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == quickFolder.title.lowercased()
             }
+            sourceResults.insert(quickFolder, at: rivalAppIndex.map { $0 + 1 } ?? 0)
         }
 
         if shouldInjectFinderResult {
@@ -404,18 +422,25 @@ struct LauncherView: View {
         // stay last.
         let ranked = mergeByScore(backendFilteredResults, recentURLResults)
         let tail = webSuggestionResults
-        guard let urlResult else {
-            return ranked + tail
+        let base: [LauncherResult]
+        if let urlResult {
+            // Structural matches can't be a file/search, so rank on top. A bare-host
+            // match must never take the default slot from a real local result, so it
+            // sits after the backend results (issue #232).
+            switch urlResult.tier {
+            case .structural:
+                base = [urlResult.result] + ranked + tail
+            case .bareHost:
+                base = ranked + [urlResult.result] + tail
+            }
+        } else {
+            base = ranked + tail
         }
-        // Structural matches can't be a file/search, so rank on top. A bare-host
-        // match must never take the default slot from a real local result, so it
-        // sits after the backend results (issue #232).
-        switch urlResult.tier {
-        case .structural:
-            return [urlResult.result] + ranked + tail
-        case .bareHost:
-            return ranked + [urlResult.result] + tail
-        }
+        // An arithmetic expression is a question, and the answer outranks a
+        // file that fuzzy-matched some of its digits - above everything,
+        // including the structural URL row.
+        guard let calcResult else { return base }
+        return [calcResult] + base
     }
 
     var isTranslationQuery: Bool {
@@ -469,18 +494,21 @@ struct LauncherView: View {
 
         if isCommandMode {
             if activeCommandID == AppConstants.Launcher.Command.kill {
-                return ["Y confirm", "N cancel", "Tab/Cmd+1-4 switch", "Esc back"]
+                return ["Y confirm", "N cancel", "Tab/\(commandSwitchHint)", "Esc back"]
             }
             if activeCommandID == AppConstants.Launcher.Command.sys {
-                return ["Esc back", "Tab/Cmd+1-6 switch", "Cmd+/ command mode", "Cmd+Shift+, settings"]
+                return ["Esc back", "Tab/\(commandSwitchHint)", "Cmd+/ command mode", "Cmd+Shift+, settings"]
+            }
+            if activeCommandID == AppConstants.Launcher.Command.speed {
+                return ["R rerun", "E show IP", "Esc back", "Tab/\(commandSwitchHint)"]
             }
             if activeCommandID == AppConstants.Launcher.Command.pomo {
-                return ["Space start/pause", "R reset", "P music", "Esc back", "Tab/Cmd+1-6 switch"]
+                return ["Space start/pause", "R reset", "P music", "Esc back", "Tab/\(commandSwitchHint)"]
             }
             if activeCommandID == AppConstants.Launcher.Command.todo {
-                return ["Cmd+N switch page", "Cmd+S save", "Cmd+1-6 switch", "Esc back"]
+                return ["Cmd+N switch page", "Cmd+S save", commandSwitchHint, "Esc back"]
             }
-            return ["Enter run", "Tab select", "Cmd+1-6 switch", "Esc back"]
+            return ["Enter run", "Tab select", commandSwitchHint, "Esc back"]
         }
 
         if let command = extractTranslationQuery(from: query.trimmingCharacters(in: .whitespacesAndNewlines)) {
@@ -524,7 +552,7 @@ struct LauncherView: View {
     /// whose hint falls through to the list above), where the /todo quick
     /// view is shown in place of the command-mode hint.
     var isHomeHintScreen: Bool {
-        guard !appUIState.showsThemeSettings, !isCommandMode, !showsHelpScreen else { return false }
+        guard isLauncherIdle else { return false }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if extractTranslationQuery(from: trimmed) != nil { return false }
         if isPrefixSuggestionQuery || isCommandSuggestionQuery || isClipboardQuery || isProcessQuery { return false }
@@ -561,6 +589,11 @@ struct LauncherView: View {
         return String(normalized[splitPoint...]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// "Cmd+1-7 switch", derived so a new command can't leave the hint stale.
+    var commandSwitchHint: String {
+        "Cmd+1-\(commandCatalog.count) switch"
+    }
+
     var activeCommand: AppCommand? {
         guard let activeCommandID else { return nil }
         return commandCatalog.first(where: { $0.id == activeCommandID })
@@ -569,6 +602,7 @@ struct LauncherView: View {
     var activeCommandAcceptsInput: Bool {
         guard let activeCommandID else { return false }
         if activeCommandID == AppConstants.Launcher.Command.sys { return false }
+        if activeCommandID == AppConstants.Launcher.Command.speed { return false }
         if activeCommandID == AppConstants.Launcher.Command.pomo { return false }
         // /todo owns its own top search bar, like /pomo owns its header.
         if activeCommandID == AppConstants.Launcher.Command.todo { return false }
@@ -598,18 +632,33 @@ struct LauncherView: View {
 
         if activeCommandID == AppConstants.Launcher.Command.calc {
             let expr = commandInput.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !expr.isEmpty else { return nil }
-            guard CalcCommand.isReadyForEvaluation(expr) else { return nil }
+            // Stay quiet on a half-typed expression (trailing operator, open
+            // paren) rather than flashing an error mid-keystroke; the shared
+            // engine itself decides everything else.
+            guard !expr.isEmpty, !Self.isLikelyIncompleteCalcExpression(expr) else { return nil }
 
-            switch CalcCommand.evaluate(expr) {
-            case .value(let value):
-                return "Result: \(value)"
-            case .error(let message):
-                return message
+            let result = bridge.calcEval(expr: expr)
+            if let calculation = result.calculation {
+                return "Result: \(calculation.display)"
             }
+            return result.error ?? "Invalid expression"
         }
 
         return nil
+    }
+
+    /// A trailing operator or an unclosed paren - not a parser, just enough to
+    /// tell "still typing" from "actually wrong" so the `/calc` live preview
+    /// doesn't flash an error on every keystroke. An unmatched *closing* paren
+    /// is never "still typing", so it falls through to the real error instead.
+    private static func isLikelyIncompleteCalcExpression(_ expr: String) -> Bool {
+        if let last = expr.last, "+-*/^.(".contains(last) { return true }
+        var balance = 0
+        for ch in expr {
+            if ch == "(" { balance += 1 }
+            if ch == ")" { balance -= 1 }
+        }
+        return balance > 0
     }
 
     var hasSudoWarning: Bool {
@@ -648,10 +697,7 @@ struct LauncherView: View {
         .onAppear {
             refreshSearchResults()
             configureLaunchpadIfNeeded()
-            if themeStore.settings.superActionsEnabled {
-                Task { await launchpadController.refreshStates() }
-                Task { await launchpadController.refreshWeather() }
-            }
+            refreshLaunchpadState()
             startKeyboardNavigationIfNeeded()
             focusActiveInput()
             refreshClipboardMonitoringMode()
@@ -668,6 +714,10 @@ struct LauncherView: View {
         }
         .onChange(of: themeStore.settings.superActionsEnabled) { _, enabled in
             launchpadSettingChanged(enabled: enabled)
+        }
+        // Bumped on every show, so it stands in for the missing re-onAppear.
+        .onChange(of: appearanceRevealToken) { _, _ in
+            refreshLaunchpadState()
         }
         .onChange(of: query) { _, _ in
             // Editing the query dismisses a pending Empty Trash confirmation,
@@ -838,6 +888,9 @@ struct LauncherView: View {
     @ViewBuilder
     private func borderedPanel(windowCornerRadius: CGFloat, contentSpacing: CGFloat, contentPadding: CGFloat) -> some View {
         ZStack {
+            WindowAppearancePin(appearance: themeStore.themeAppearance())
+                .frame(width: 0, height: 0)
+
             // When the content floats free (floating panes, or resting on an empty
             // query) the blur + tint backdrop box is dropped so the tiles sit on
             // the bare desktop. A background image, if set, is cropped into each
@@ -857,7 +910,10 @@ struct LauncherView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .font(themeStore.uiFont())
             .foregroundStyle(themeStore.fontColor())
-            .background(.black.opacity(barFloatsFree ? 0 : 0.16), in: RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous))
+            .background(
+                themeStore.scrimColor(opacity: barFloatsFree ? 0 : Self.attachedPanelScrimOpacity),
+                in: RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous)
+            )
             .contentShape(Rectangle())
             .onTapGesture { focusActiveInput() }
         }
@@ -1006,7 +1062,7 @@ struct LauncherView: View {
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(.white.opacity(0.18), in: Capsule())
+                .background(themeStore.controlFillColor(), in: Capsule())
             }
         }
         .padding(.horizontal, 10)
@@ -1238,10 +1294,7 @@ struct LauncherView: View {
     /// letting it flip per keystroke (e.g. as clipboard/translation results stream
     /// in) churned NSVisualEffectViews on the main thread and froze typing.
     private var showsFloatingCards: Bool {
-        usesPanes
-            && !isCommandMode
-            && !appUIState.showsThemeSettings
-            && !showsHelpScreen
+        usesPanes && isLauncherIdle
     }
 
     /// True when the floating content is the two-card grid (results or clipboard
@@ -1262,10 +1315,7 @@ struct LauncherView: View {
     /// the results columns and the hint bar below it. Applies in both modes (gap
     /// or no gap), so an empty launcher is always just the top bar.
     var hidesResultsForEmptyQuery: Bool {
-        isQueryEmpty
-            && !isCommandMode
-            && !appUIState.showsThemeSettings
-            && !showsHelpScreen
+        isQueryEmpty && isLauncherIdle
     }
 
     /// True whenever the panel has no backdrop box and its content floats freely
@@ -1298,18 +1348,20 @@ struct LauncherView: View {
     /// The frosted surface shared by every floating tile (top bar + columns). When
     /// a background image is set, each tile shows its own aligned slice of that
     /// image (cropped to the tile's window position) instead of a blurred desktop,
-    /// so the tiles read as separate windows onto one image. A dark scrim + tint
-    /// on top keeps the tile content legible.
+    /// so the tiles read as separate windows onto one image. Otherwise it takes the
+    /// themed backdrop, at the same blur and tint opacities as the window.
     @ViewBuilder
     private func tileBackground(cornerRadius: CGFloat, floats: Bool) -> some View {
         if floats {
             ZStack {
                 if let image = themeStore.backgroundImage {
                     croppedBackgroundImage(image)
+                    // Only the opaque image needs a scrim; the blur path is
+                    // covered by the tint.
+                    themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
                 } else {
-                    VisualEffectBlur(material: themeStore.settings.blurMaterial.material)
+                    ThemedBackdrop(themeStore: themeStore)
                 }
-                Color.black.opacity(0.30)
                 themeStore.controlFillColor()
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -1407,7 +1459,7 @@ struct LauncherView: View {
 
     private var resultsDivider: some View {
         Rectangle()
-            .fill(.white.opacity(0.08))
+            .fill(themeStore.dividerColor())
             .frame(width: 1)
             .padding(.vertical, 4)
     }

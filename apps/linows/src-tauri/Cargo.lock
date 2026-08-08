@@ -2450,6 +2450,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "look-calc"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "look-engine"
 version = "0.1.0"
 dependencies = [
@@ -2485,6 +2492,14 @@ dependencies = [
 [[package]]
 name = "look-matching"
 version = "0.1.0"
+
+[[package]]
+name = "look-netspeed"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "look-qactions"
@@ -2525,9 +2540,11 @@ dependencies = [
  "dirs",
  "futures-util",
  "look-answers",
+ "look-calc",
  "look-engine",
  "look-lunar",
  "look-matching",
+ "look-netspeed",
  "look-qactions",
  "look-storage",
  "look-todo",

@@ -146,6 +146,7 @@ struct EmptyStateLaunchpadView: View {
                 batteryValue: controller.displayValue(for: model.actionId),
                 showsUptime: model.actionId == LaunchpadActionID.battery
                     && controller.isUnavailable(model.actionId),
+                charging: controller.batteryCharging,
                 themeStore: themeStore
             )
         case .action:
@@ -276,12 +277,16 @@ private struct LaunchpadInfoTile: View {
     let batteryValue: String?
     /// True when there is no battery, so the tile shows uptime instead.
     let showsUptime: Bool
+    /// True while the battery is actively charging, so the tile shows the
+    /// bolt variant of the battery icon.
+    let charging: Bool
     var themeStore: ThemeStore
 
     private typealias Const = AppConstants.Launcher.Launchpad
 
     private var iconName: String {
-        showsUptime ? Const.uptimeIconName : Const.batteryIconName
+        if showsUptime { return Const.uptimeIconName }
+        return charging ? Const.batteryChargingIconName : Const.batteryIconName
     }
 
     private var label: String {
@@ -539,9 +544,6 @@ private struct LaunchpadMediaTile: View {
 
 // MARK: - Shared tile chrome
 
-/// Scrim opacity layered over the blur, matching `LauncherView.tileBackground`
-/// so launchpad tiles read with the same depth as the rest of the floating UI.
-private let launchpadTileScrimOpacity = 0.30
 private let launchpadOnTintOpacity = 0.22
 /// Backs both the red confirm state and the amber muted-mic state, so the tile
 /// takes its hue from `tint` rather than baking one in here.
@@ -555,16 +557,13 @@ private let launchpadStateBorderWidth: CGFloat = 1
 private let launchpadOnBorderOpacity = 0.35
 private let launchpadAlertBorderOpacity = 0.3
 
-/// The frosted surface every launchpad tile sits on: the same
-/// blur + dark-scrim + control-fill stack the app uses for its floating tiles
-/// (`LauncherView.tileBackground(floats:)`), so opacity and material stay
-/// unified. An optional tint (accent for on-state toggles, caution for a
-/// confirming/muted action) layers on top.
+/// The frosted surface every launchpad tile sits on: the same backdrop +
+/// control-fill stack as `LauncherView.tileBackground(floats:)`. An optional tint
+/// (accent for on-state toggles, caution for a confirming/muted action) layers on top.
 func frostedTile(themeStore: ThemeStore, tint: Color? = nil, tintOpacity: Double = 0) -> some View {
     let radius = AppConstants.Launcher.Launchpad.cornerRadius
     return ZStack {
-        VisualEffectBlur(material: themeStore.settings.blurMaterial.material)
-        Color.black.opacity(launchpadTileScrimOpacity)
+        ThemedBackdrop(themeStore: themeStore)
         themeStore.controlFillColor()
         if let tint {
             tint.opacity(tintOpacity)

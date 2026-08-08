@@ -3,7 +3,7 @@
 // `"` menu, the `:` menu, and the Help screen can't drift. linows omits
 // `tw"` (no dictionary lookup yet).
 
-import { calculator, timer, listChecks, xCircle, terminal, info, globe } from './icons.js';
+import { calculator, timer, listChecks, gauge, xCircle, terminal, info, globe } from './icons.js';
 
 // Synthetic-row id namespaces: the renderer and Enter/click handlers tell
 // synthetic rows apart from real candidates by id prefix.
@@ -11,6 +11,7 @@ const PREFIX_HINT_ID = 'prefixhint:';
 const COMMAND_HINT_ID = 'cmdhint:';
 const WEB_SUGGEST_ID = 'websuggest:';
 const WEB_URL_ID = 'weburl:';
+const CALC_ID = 'calc:';
 const DISCOVERY_CHAR = '"';
 
 // Google-autocomplete row glyph: Lucide `search` (mirrors macOS, which uses
@@ -37,21 +38,38 @@ const PREFIX_ENTRIES = [
     { prefix: 't"', argHint: 'word', description: 'Web translate (VI/EN/JA)' },
 ];
 
-// Shortcut numbers must match the Ctrl+1..6 bindings in
-// screens/commands/index.js, otherwise the title hint lies to the user.
-const COMMAND_ENTRIES = [
-    { id: 'calc', title: 'calc (Ctrl+1)', detail: 'Evaluate math expression', icon: calculator },
-    { id: 'pomo', title: 'pomo (Ctrl+2)', detail: 'Pomodoro focus timer', icon: timer },
-    { id: 'todo', title: 'todo (Ctrl+3)', detail: 'Daily tasks & progress', icon: listChecks },
+// Catalog order is the whole shortcut mapping: Ctrl+N selects the Nth entry
+// (see screens/commands/index.js, which builds its sidebar from this list), so
+// the number in each title is derived rather than written and reordering here
+// is enough. Mirrors the macOS `commandDefinitions`.
+const COMMAND_DEFINITIONS = [
+    { id: 'calc', detail: 'Evaluate math expression', icon: calculator },
+    { id: 'pomo', detail: 'Pomodoro focus timer', icon: timer },
+    { id: 'todo', detail: 'Daily tasks & progress', icon: listChecks },
+    {
+        id: 'speed',
+        detail: 'Measure internet download, upload, and latency',
+        icon: gauge,
+    },
     {
         id: 'kill',
-        title: 'kill (Ctrl+4)',
         detail: 'Force kill app or process by name, port, or PID',
         icon: xCircle,
     },
-    { id: 'shell', title: 'shell (Ctrl+5)', detail: 'Run a shell command', icon: terminal },
-    { id: 'sys', title: 'sys (Ctrl+6)', detail: 'Show system information', icon: info },
+    { id: 'shell', detail: 'Run a shell command', icon: terminal },
+    { id: 'sys', detail: 'Show system information', icon: info },
 ];
+
+export const COMMAND_ENTRIES = COMMAND_DEFINITIONS.map((entry, index) => ({
+    ...entry,
+    shortcut: index + 1,
+    title: `${entry.id} (Ctrl+${index + 1})`,
+}));
+
+// True when `id` names a built-in command, for the `:cmd <args>` live trigger.
+export function isCommandId(id) {
+    return COMMAND_ENTRIES.some((entry) => entry.id === id);
+}
 
 // True when `:cmd <ws>` should bypass the discovery menu and live-trigger
 // the command panel (matches macOS extractInlineCommand). Bare `:calc` keeps
@@ -60,8 +78,7 @@ function isInlineCommandWithArgs(query) {
     if (!query.startsWith(':')) return false;
     const spaceIdx = query.slice(1).search(/\s/);
     if (spaceIdx < 0) return false;
-    const id = query.slice(1, 1 + spaceIdx).toLowerCase();
-    return COMMAND_ENTRIES.some((c) => c.id === id);
+    return isCommandId(query.slice(1, 1 + spaceIdx).toLowerCase());
 }
 
 export function isPrefixSuggestionQuery(query) {
@@ -179,10 +196,50 @@ export function webUrlFromResultId(resultId) {
     return resultId?.startsWith(WEB_URL_ID) ? resultId.slice(WEB_URL_ID.length) : null;
 }
 
+// Pinned above the results whenever the query is arithmetic. Title is the
+// answer, subtitle the expression it was parsed from.
+export function calcResult(expr, calculation) {
+    return {
+        id: `${CALC_ID}${calculation.raw}`,
+        kind: 'app',
+        title: calculation.display,
+        subtitle: `${expr}  •  Enter to copy`,
+        // Doubles as the path: keeps the preview cache key distinct from
+        // other pathless rows, and makes Ctrl+C copy the result.
+        path: calculation.raw,
+        score: Number.MAX_SAFE_INTEGER,
+        iconSvg: calculator,
+        calcExpr: expr,
+    };
+}
+
+export function calcRawFromResultId(resultId) {
+    return resultId?.startsWith(CALC_ID) ? resultId.slice(CALC_ID.length) : null;
+}
+
+// Classifies a result id into its synthetic-row kind, or null for a real
+// candidate. The id prefixes are disjoint, so at most one arm can match.
+export function classifyResultId(resultId) {
+    const prefix = prefixFromResultId(resultId);
+    if (prefix != null) return { kind: 'prefixSuggestion', prefix };
+
+    const commandId = commandIdFromResultId(resultId);
+    if (commandId != null) return { kind: 'commandSuggestion', commandId };
+
+    const raw = calcRawFromResultId(resultId);
+    if (raw != null) return { kind: 'calc', raw };
+
+    const suggestion = webSuggestionFromResultId(resultId);
+    if (suggestion != null) return { kind: 'webSuggestion', text: suggestion };
+
+    const url = webUrlFromResultId(resultId);
+    if (url != null) return { kind: 'webUrl', url };
+
+    return null;
+}
+
 // True for the synthetic kind:'app' rows (prefix/command hints, Google
 // suggestions, URL rows), so callers can tell them from real launcher apps.
-const SYNTHETIC_RESULT_ID_PREFIXES = [PREFIX_HINT_ID, COMMAND_HINT_ID, WEB_SUGGEST_ID, WEB_URL_ID];
-
 export function isSyntheticResultId(resultId) {
-    return SYNTHETIC_RESULT_ID_PREFIXES.some((prefix) => resultId?.startsWith(prefix));
+    return classifyResultId(resultId) != null;
 }

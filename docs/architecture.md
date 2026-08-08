@@ -11,8 +11,6 @@ It intentionally merges architecture explanation and diagrams into one place, so
 - **macOS:** Swift / AppKit / SwiftUI under `apps/macos/LauncherApp/` (Xcode project), talking to the Rust core via the C ABI (`bridge/ffi`).
 - **Windows + Linux:** Tauri 2 shell with a vanilla HTML/CSS/JS frontend under `apps/linows/` (`lookapp`), talking to the Rust core via Tauri commands. The macOS SwiftUI app is the design source of truth.
 
-> **Note:** the legacy .NET 10 / WinUI 3 app under `apps/windows/LauncherApp/` is **archived** and being replaced by `linows` (bug fixes only - do not add features). See `apps/windows/README.md`.
-
 Every shell talks to the same Rust core, so search, indexing, ranking, and storage behave identically across platforms.
 
 Key design goals:
@@ -56,14 +54,15 @@ flowchart LR
   - `LauncherWindowCoordinator`: window/focus management
   - `EngineBridge`: search engine communication
   - `ClipboardHistoryStore`, `KeyboardSelectionMonitor`, `GlobalHotKeyManager`
-- `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa) and semantic color tokens
-- `bridge/ffi`: narrow C ABI surface for search, usage recording, config reload, translation, todo load/save, and error payloads.
+- `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle) and semantic color tokens
+- `bridge/ffi`: narrow C ABI surface for search, usage recording, config reload, translation, todo load/save, speed test, and error payloads.
 - `core/answers`: platform-agnostic, network-backed "web answer" lookups shared by every shell (macOS via `bridge/ffi`, Windows/Linux via Tauri commands). Instant answers (currency/weather/crypto), search suggestions, knowledge sources, and translation. Best-effort and panic-free: every entry point returns "no answer" on failure, with cheap network-free pattern-gating (`has_match`) so callers can fire speculatively while typing. No async runtime - HTTP is a blocking `curl` subprocess.
 - `core/indexing`: candidate model and indexing helpers used by engine/storage flows.
 - `core/matching`: exact/prefix/fuzzy matching primitives.
 - `core/ranking`: ranking helpers (usage/recency-aware adjustments and score composition).
 - `core/storage`: SQLite integration, schema/migrations, candidate/usage persistence.
 - `core/todo`: shared store for the `/todo` command. Owns the `todo_tasks` table inside the app's existing `look.db` (full-set load/save, one-year retention). macOS reaches it via `bridge/ffi`, linows via its Tauri command layer. `examples/seed.rs` fills a dev database with demo history, including near-today extension-window cases for `/todo` UI testing.
+- `core/netspeed`: the `/speed` measurement, shared by every shell. A latency probe (the best of several TCP handshakes against a pre-resolved address, rather than a subtraction of two of curl's cumulative timers, whose order is not portable across curl builds), download and upload phases (four parallel `curl` streams each), and the plain-language verdicts and display strings both shells print, so a reading reads identically everywhere. Cloudflare's keyless endpoints are the primary source; when they rate-limit a connection the download phase falls back to the nearest of several public test mirrors, ranked by a round-trip probe. No async runtime, and every phase is timeout-bounded. macOS reaches it via `bridge/ffi`, linows via its Tauri command layer.
 - `core/engine`: query parsing, indexing orchestration, scoring, top-k retrieval, in-memory cache management.
 
 ```mermaid
@@ -75,6 +74,7 @@ flowchart TB
       STG[look-storage]
       ENG[look-engine]
       ANS[look-answers\nweb answers + translation]
+      NET[look-netspeed\nspeed test]
     end
 
     IDX --> ENG
@@ -90,6 +90,7 @@ flowchart TB
     IDX --> FFI
     STG --> FFI
     ANS --> FFI
+    NET --> FFI
 ```
 
 ---
@@ -303,7 +304,8 @@ stateDiagram-v2
       [*] --> Calc
       Calc --> Pomo: select /pomo
       Pomo --> Todo: select /todo
-      Todo --> Kill: select /kill
+      Todo --> Speed: select /speed
+      Speed --> Kill: select /kill
       Kill --> Shell: select /shell
       Shell --> Sys: select /sys
     }
@@ -314,7 +316,7 @@ Behavioral notes:
 - global hotkey `Cmd+Space` toggles launcher visibility,
 - web search is explicit handoff (`Cmd+Enter`),
 - clipboard history mode is shell-side and in-memory for current session,
-- command mode supports `calc`, `pomo`, `todo`, `kill`, `shell`, `sys`,
+- command mode supports `calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys` (⌘1-7 / Ctrl+1-7 follow catalog order),
 - settings panel controls theme/index/runtime knobs and persists locally.
 
 ---
@@ -354,6 +356,7 @@ Available themes (selected via Settings > Appearance):
 | Gruvbox | Retro warm tones |
 | Dracula | Classic purple-accented dark |
 | Kanagawa | Japanese-inspired dark theme |
+| Kindle | Paper and ink, e-reader light theme (Charter serif) |
 | Custom | Auto-derived semantic colors from tint |
 
 Themes are defined in `Themes/` folder:
@@ -361,12 +364,34 @@ Themes are defined in `Themes/` folder:
 - `BuiltinThemePreset`: Dropdown selection enum
 - Individual theme files: `CatppuccinTheme.swift`, `TokyoNightTheme.swift`, etc.
 
+A preset declares its `ThemeAppearance` (`.dark` or `.light`). It pins the
+NSVisualEffectView appearance, so a preset frosts the same way whether macOS is
+in Light or Dark mode, and it picks how the opaque command-mode surfaces and the
+pane scrims are mixed: dark themes darken, light themes lighten. A preset may
+also declare a `fontName`; presets that do not reset the font to the app default
+when applied.
+
+On linows the same presets live in `apps/linows/src/css/theme.css`, one
+`:root[data-theme="…"]` block per preset, with `js/screens/settings.js`
+mirroring the raw slider values in `THEME_PRESETS` (tint, text and border are
+also written as inline custom properties, so both sides must agree). Appearance
+is not a flag there: a light preset flips the `--lift` / `--shadow` RGB
+triplets that stand chips off the backdrop and seat panes on it, and repaints
+the semantic tokens the dark presets inherit from `:root`. Opacities are the
+user's (`USER_CONTROLLED_KEYS`) except at one moment: picking a light preset
+from the theme dropdown snaps tint/text/border opacity back to the preset
+(`LIGHT_THEMES`), because paper at a dark theme's transparency doesn't read as
+paper. The switch persists those values, so restore paths stay dumb and the
+sliders are the user's again from the next drag. Its font stack stays in CSS
+and applies while the Font field is left at `system-ui`; an explicit font still
+wins.
+
 ### Config File Integration
 
 All settings are persisted to `.look.config`:
 
 **UI Theme:**
-- `ui_theme` - theme name (catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa)
+- `ui_theme` - theme name (catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle). Matched case-insensitively, and applied after the individual `ui_*` keys below, so a preset overrides them. Empty means Custom. Save Config writes a preset name only while the values still match that preset, so a theme you have tweaked is stored as its literal values.
 
 **Appearance:**
 - `ui_tint_red`, `ui_tint_green`, `ui_tint_blue`, `ui_tint_opacity` - background tint (0-1)

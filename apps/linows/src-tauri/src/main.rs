@@ -14,6 +14,7 @@ mod health;
 mod highlight;
 mod lunar;
 mod music;
+mod netspeed;
 mod nowplaying;
 mod platform;
 mod process;
@@ -352,7 +353,7 @@ fn setup_dev_env() {
 ///
 /// On first launch (no `launch_at_login` key yet) - enable autostart and persist.
 /// On subsequent launches - re-sync the registry/desktop-entry with the current
-/// exe path so it stays valid after updates or reinstalls (matches WinUI3 behavior).
+/// exe path so it stays valid after updates or reinstalls.
 fn sync_autostart() {
     // Debug builds live under target/debug and (when produced by `tauri dev`)
     // load the frontend from devUrl. If we wrote them into autostart, login
@@ -671,6 +672,7 @@ fn main() {
             platform::set_window_effect,
             // Commands
             calc::eval_calc,
+            calc::calc_inline,
             sysinfo::get_system_info,
             sysinfo::system_uptime,
             process::list_processes,
@@ -710,10 +712,13 @@ fn main() {
             nowplaying::now_playing_current,
             nowplaying::now_playing_command,
             lunar::lunar_date,
+            netspeed::speed_test,
+            netspeed::local_ipv4,
             // Clipboard
             clipboard::get_clipboard_history,
             clipboard::delete_clipboard_entry,
             clipboard::copy_to_clipboard,
+            clipboard::copy_to_clipboard_labeled,
             // Music
             music::music_play,
             music::music_pause,

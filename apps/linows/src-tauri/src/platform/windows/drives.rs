@@ -1,6 +1,5 @@
 //! Enumerate fixed drives on Windows so the settings UI can offer them as
-//! one-click scan-root targets. Mirrors `DriveDiscoveryService` from the
-//! WinUI3 reference (apps/windows/LauncherApp/Services/DriveDiscoveryService.cs).
+//! one-click scan-root targets.
 
 use serde::Serialize;
 use std::path::Path;

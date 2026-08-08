@@ -10,6 +10,7 @@ import {
     hideWindow,
     copyFilesToClipboard,
     copyToClipboard,
+    copyToClipboardLabeled,
     deleteClipboardEntry,
     killProcess,
     trashPaths,
@@ -28,13 +29,7 @@ import * as superactions from './components/superactions.js';
 import * as runningApps from './components/running-apps.js';
 import { canRunElevated } from './platform.js';
 import { trash as trashIcon } from './icons.js';
-import {
-    prefixFromResultId,
-    commandIdFromResultId,
-    webSuggestionFromResultId,
-    webUrlFromResultId,
-    isSyntheticResultId,
-} from './catalog.js';
+import { classifyResultId, isSyntheticResultId } from './catalog.js';
 import * as platform from './platform.js';
 import * as layout from './layout.js';
 
@@ -518,7 +513,7 @@ async function handleHideSelectApp() {
     const item = results.getSelected();
     // Only real launcher apps carry a path; synthetic rows must not be excluded.
     if (!item || item.kind !== 'app' || !item.path || isSyntheticResultId(item.id)) {
-        banner.show('Select an app first', 'warning', 1.2);
+        banner.show('Select an app to hide', 'warning', 1.2);
         return;
     }
 
@@ -571,39 +566,42 @@ async function openSelected(elevated = false) {
     const item = results.getSelected();
     if (!item) return;
 
-    // Discovery rows: `prefixhint:` fills the query with that prefix (cursor
-    // ready for the term); `cmdhint:` enters the command's panel with empty
-    // input. Mirrors macOS openSelectedApp.
-    const hintedPrefix = prefixFromResultId(item.id);
-    if (hintedPrefix != null) {
-        queryInput.value = hintedPrefix;
-        queryInput.focus();
-        queryInput.setSelectionRange(hintedPrefix.length, hintedPrefix.length);
-        queryInput.dispatchEvent(new Event('input'));
-        return;
-    }
-    const hintedCmd = commandIdFromResultId(item.id);
-    if (hintedCmd != null && commandMode && enterCommandModeFn) {
-        commandMode.enterById(hintedCmd);
-        enterCommandModeFn();
-        queryInput.value = '';
-        return;
-    }
-    // Google autocomplete row → open the search in the browser.
-    const suggestionText = webSuggestionFromResultId(item.id);
-    if (suggestionText != null) {
-        const url = `https://www.google.com/search?q=${encodeURIComponent(suggestionText)}`;
-        openPath(url, 'browser', '');
-        return;
-    }
-    // URL row (live or from history) → open the resolved address in the
-    // default browser and remember it for faster re-open later. Recording is
-    // fire-and-forget; a store failure never blocks the open.
-    const urlTarget = webUrlFromResultId(item.id);
-    if (urlTarget != null) {
-        openPath(urlTarget, 'browser', '');
-        recordUrlHit(urlTarget);
-        return;
+    // Discovery/synthetic rows: `prefixhint:` fills the query with that prefix
+    // (cursor ready for the term); `cmdhint:` enters the command's panel with
+    // empty input; a calc row's answer goes to the clipboard; a web-suggestion
+    // /URL row opens in the browser. Mirrors macOS openSelectedApp.
+    const classified = classifyResultId(item.id);
+    switch (classified?.kind) {
+        case 'prefixSuggestion':
+            queryInput.value = classified.prefix;
+            queryInput.focus();
+            queryInput.setSelectionRange(classified.prefix.length, classified.prefix.length);
+            queryInput.dispatchEvent(new Event('input'));
+            return;
+        case 'commandSuggestion':
+            if (commandMode && enterCommandModeFn) {
+                commandMode.enterById(classified.commandId);
+                enterCommandModeFn();
+                queryInput.value = '';
+                return;
+            }
+            break;
+        case 'calc':
+            // Ungrouped answer to the clipboard, launcher out of the way.
+            // History keeps the working (`2+2 = 4`); the paste is the number.
+            await copyToClipboardLabeled(classified.raw, `${item.calcExpr} = ${item.title}`);
+            hideWindow();
+            return;
+        case 'webSuggestion': {
+            const url = `https://www.google.com/search?q=${encodeURIComponent(classified.text)}`;
+            openPath(url, 'browser', '');
+            return;
+        }
+        case 'webUrl':
+            // Recording is fire-and-forget; a store failure never blocks the open.
+            openPath(classified.url, 'browser', '');
+            recordUrlHit(classified.url);
+            return;
     }
 
     try {
@@ -659,7 +657,8 @@ async function copyClipboardEntry() {
     const item = results.getSelected();
     if (!item || item.kind !== 'clipboard') return;
     try {
-        await copyToClipboard(item.clipText);
+        // Labelled entries (calculator results) paste their value, not their label.
+        await copyToClipboard(item.clipPayload || item.clipText);
         banner.show('Copied to clipboard', 'success', 1.0);
     } catch (err) {
         banner.show('Copy failed', 'error', 1.2);

@@ -40,6 +40,14 @@ private func look_instant_answer_json(_ query: UnsafePointer<CChar>?) -> UnsafeM
 nonisolated
 private func look_instant_has_match(_ query: UnsafePointer<CChar>?) -> Bool
 
+@_silgen_name("look_calc_eval_json")
+nonisolated
+private func look_calc_eval_json(_ expr: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_calc_inline_json")
+nonisolated
+private func look_calc_inline_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_web_suggestions_json")
 nonisolated
 private func look_web_suggestions_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
@@ -87,6 +95,48 @@ private func look_todo_save_json(_ json: UnsafePointer<CChar>?) -> Bool
 @_silgen_name("look_lunar_date_json")
 nonisolated
 private func look_lunar_date_json(_ year: Int64, _ month: Int64, _ day: Int64, _ tz: Double) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_netspeed_run_json")
+nonisolated
+private func look_netspeed_run_json() -> UnsafeMutablePointer<CChar>?
+
+/// One measurement from the shared `core/netspeed` crate. The display strings
+/// are formatted in core so every shell prints the same text.
+nonisolated struct SpeedReading: Codable, Sendable, Equatable {
+    let downloadBitsPerSecond: Double
+    let uploadBitsPerSecond: Double
+    let latencyMs: Double?
+    let downloadDisplay: String
+    let uploadDisplay: String
+    let latencyDisplay: String
+    let downloadVerdict: String
+    let latencyVerdict: String
+    let latencyLevel: String?
+    let downloadSource: String?
+    var publicIp: String?
+    let provider: String?
+    let location: String?
+    let measuredAtUnix: Int
+
+    var measuredAt: Date {
+        Date(timeIntervalSince1970: TimeInterval(measuredAtUnix))
+    }
+}
+
+/// Stands in when the bridge cannot make sense of the reply at all; every other
+/// message the panel shows comes from core's `SpeedError`.
+private nonisolated let speedTestUnknownFailure = "Speed test failed"
+
+nonisolated struct SpeedTestEnvelope: Decodable {
+    let ok: Bool
+    let reading: SpeedReading?
+    let error: String?
+}
+
+nonisolated enum SpeedTestOutcome: Sendable {
+    case reading(SpeedReading)
+    case failure(String)
+}
 
 /// A resolved lunar date from the shared `core/lunar` crate (East Asian
 /// lunisolar calendar). `leap` marks the intercalary month of a 13-month year.
@@ -218,6 +268,30 @@ final class EngineBridge: @unchecked Sendable {
         return try? JSONDecoder().decode(LunarDate.self, from: data)
     }
 
+    /// Runs the shared core speed test. Blocks for 15 seconds and up, so call it
+    /// off the main thread. There is no cancel: core bounds each phase with its
+    /// own timeout.
+    nonisolated func speedTest() -> SpeedTestOutcome {
+        guard let ptr = look_netspeed_run_json() else {
+            return .failure(speedTestUnknownFailure)
+        }
+        defer { look_free_cstring(ptr) }
+
+        guard let data = String(cString: ptr).data(using: .utf8) else {
+            return .failure(speedTestUnknownFailure)
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let envelope = try? decoder.decode(SpeedTestEnvelope.self, from: data) else {
+            return .failure(speedTestUnknownFailure)
+        }
+        guard envelope.ok, let reading = envelope.reading else {
+            return .failure(envelope.error ?? speedTestUnknownFailure)
+        }
+        return .reading(reading)
+    }
+
     nonisolated func translate(text: String, targetLang: String = "en") -> TranslationResult? {
         let result = text.withCString { textCstr in
             targetLang.withCString { langCstr in
@@ -257,6 +331,27 @@ final class EngineBridge: @unchecked Sendable {
     /// provider (currency/weather/crypto). Cheap - safe to call while typing.
     nonisolated func instantAnswerMatches(_ query: String) -> Bool {
         query.withCString { look_instant_has_match($0) }
+    }
+
+    /// Evaluates `expr` as arithmetic via the shared `core/calc` engine - the
+    /// dedicated `/calc` panel, where the user already declared this is a
+    /// calculation and a specific error is worth showing. Network-free; safe
+    /// to call while typing.
+    nonisolated func calcEval(expr: String) -> CalcEvalResult {
+        let fallback = CalcEvalResult(calculation: nil, error: "Invalid expression")
+        guard let ptr = expr.withCString({ look_calc_eval_json($0) }) else { return fallback }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8),
+            let result = try? JSONDecoder().decode(CalcEvalResult.self, from: data)
+        else { return fallback }
+        return result
+    }
+
+    /// The main search field: resolves `query` only when it was clearly meant
+    /// as arithmetic (dates/resolutions/ratios stay untouched). Network-free
+    /// and cheap enough to call on every keystroke.
+    nonisolated func calcInline(query: String) -> CalculationDTO? {
+        decodeCalculation(query.withCString { look_calc_inline_json($0) })
     }
 
     /// Resolves a shared instant answer (currency/weather/crypto) for `query`,
@@ -380,6 +475,17 @@ final class EngineBridge: @unchecked Sendable {
         )
     }
 
+    /// Decodes a `look_calc::Calculation` JSON C string (or `null`), freeing
+    /// the pointer.
+    nonisolated private func decodeCalculation(_ ptr: UnsafeMutablePointer<CChar>?) -> CalculationDTO? {
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+
+        let raw = String(cString: ptr)
+        guard raw != "null", let data = raw.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(CalculationDTO.self, from: data)
+    }
+
     nonisolated private func fallbackResults() -> [LauncherResult] {
         []
     }
@@ -392,6 +498,21 @@ private nonisolated struct AnswerDTO: Decodable {
     let source: String
     let url: String?
     let imageUrl: String?
+}
+
+/// Wire shape of a `look_calc::Calculation` JSON object: `display` is grouped
+/// for showing (`1,000,000`), `raw` is bare and re-parseable, for the clipboard
+/// (`1000000`).
+nonisolated struct CalculationDTO: Decodable {
+    let display: String
+    let raw: String
+    let value: Double
+}
+
+/// Wire shape of `look_calc_eval_json`: exactly one of the two is non-nil.
+nonisolated struct CalcEvalResult: Decodable {
+    let calculation: CalculationDTO?
+    let error: String?
 }
 
 nonisolated struct TranslationResult: Decodable {

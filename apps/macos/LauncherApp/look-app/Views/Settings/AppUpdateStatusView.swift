@@ -62,9 +62,9 @@ struct AppUpdateStatusView: View {
                 .foregroundStyle(themeStore.fontColor())
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
-                .background(.white.opacity(0.16), in: Capsule())
+                .background(themeStore.liftColor(opacity: 0.16), in: Capsule())
                 .overlay(
-                    Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                    Capsule().strokeBorder(themeStore.liftColor(opacity: 0.22), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)

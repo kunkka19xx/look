@@ -244,9 +244,13 @@ html[data-os="windows"] .launcher-window {
 .results-area.ai-mode-full .results-list {
     display: none;
 }
+/* On the list, not the rows, so the selection pill inherits it too. */
+#preview-col .results-list {
+    --row-inset-left: 2px;
+    --row-inset-right: 4px;
+}
+
 #preview-col .result-row-web-suggest {
-    margin-left: 2px;
-    margin-right: 4px;
     padding-left: 4px;
 }
 
@@ -433,7 +437,7 @@ html[data-os="windows"] .launcher-window {
     -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
     border: var(--border-thickness) solid var(--border-color);
     border-radius: var(--tile-radius);
-    box-shadow: 0 3px 7px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 3px 7px rgba(var(--shadow), 0.25);
 }
 
 /* This tile's slice of the panel background image: sized to the whole panel
@@ -501,7 +505,7 @@ html[data-os="windows"] .launcher-window {
     margin: 0 var(--content-padding) var(--inner-gap);
     border-radius: 10px;
     border-bottom: none;
-    box-shadow: 0 3px 7px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 3px 7px rgba(var(--shadow), 0.25);
 }
 
 /* Empty-query resting state: just the frosted top bar on the desktop -

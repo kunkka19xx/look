@@ -1,6 +1,5 @@
-// Per-page Lucide icon for ms-settings:* URIs. Mirrors the catalog in
-// apps/windows/LauncherApp/Services/SettingsIconCatalog.cs but maps to our
-// inline Lucide SVGs in icons.js instead of Segoe Fluent Icons codepoints.
+// Per-page Lucide icon for ms-settings:* URIs, mapped to our inline Lucide SVGs
+// in icons.js rather than Segoe Fluent Icons codepoints.
 //
 // Lucide chosen over Segoe because: cross-platform-safe (no Windows font
 // dependency to surprise us later), already part of our icon vocabulary,

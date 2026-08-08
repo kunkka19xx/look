@@ -130,7 +130,7 @@ html[data-transparent="false"] .control-strip-grid {
         linear-gradient(var(--bg-tint), var(--bg-tint));
     border: var(--border-thickness) solid var(--border-color);
     border-radius: 12px;
-    box-shadow: 0 3px 7px rgba(0, 0, 0, 0.22);
+    box-shadow: 0 3px 7px rgba(var(--shadow), 0.22);
     cursor: pointer;
     transition:
         border-color 0.12s ease,

@@ -1,0 +1,10 @@
+[package]
+name = "look-netspeed"
+edition = "2024"
+license.workspace = true
+authors.workspace = true
+version = "0.1.0"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

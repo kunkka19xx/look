@@ -12,7 +12,7 @@
 > | `Cmd+C`         | `Ctrl+C`         |
 > | `Cmd+/`         | `Ctrl+/`         |
 > | `Cmd+0`         | `Ctrl+0`         |
-> | `Cmd+1`…`Cmd+5` | `Ctrl+1`…`Ctrl+5`|
+> | `Cmd+1`…`Cmd+7` (command mode) | `Ctrl+1`…`Ctrl+7`|
 > | `Cmd+1`…`Cmd+9` (running-apps switcher) | `Alt+1`…`Alt+9` |
 > | `Cmd+P`         | `Ctrl+P`         |
 > | `Cmd+Shift+P`   | `Ctrl+Shift+P`   |
@@ -95,7 +95,7 @@ Turn the strip off in `Settings > Appearance > Super Actions`. Off hides it and 
 
 Look can answer questions and look things up without leaving the launcher. These features are **on by default** on macOS, Linux, and Windows. Toggle them in Settings or with `ai_enabled` in `~/.look.config`.
 
-- **Answer card.** A question, an entity that has no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather, currency, crypto) shows a Spotlight-style card above the results. Sources resolve independently and each appears as it lands - local **Calculator** first, then **DuckDuckGo** and **Wikipedia**. On macOS, when no web source has an answer it falls back to a streaming on-device **Apple Intelligence** answer. Click a source label to open it; the copy button copies that block.
+- **Answer card.** A question, an entity that has no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather, currency, crypto) shows a Spotlight-style card above the results. Sources resolve independently and each appears as it lands - **DuckDuckGo** and **Wikipedia**. Arithmetic doesn't answer here anymore - see the **Calculator row** under Query prefixes below. On macOS, when no web source has an answer it falls back to a streaming on-device **Apple Intelligence** answer. Click a source label to open it; the copy button copies that block.
 - **Search suggestions.** For plain text queries (2+ characters), Google autocomplete rows appear under the results. `Enter` on a suggestion (or `Cmd+Enter` on your query) runs a web search in your default browser.
 - **Query rewrite** *(macOS only)*. When a natural-language query finds nothing locally, the on-device model rewrites it into Look's prefix grammar and searches again. It never overrides results you can already see - it only runs when the raw query came up empty.
 
@@ -120,6 +120,8 @@ Path-like queries (for example `git/project/readme`) are also supported and bias
 
 URL-like queries are detected automatically (no prefix). Type a URL and Look offers an **Open in browser** row: a structural URL (with a scheme, port, path, or `localhost`/IP - e.g. `http://localhost:3000` or `example.com/docs`) ranks at the top, while a bare `host.tld` (e.g. `github.com`) ranks after your local results so it never displaces a real match. URLs you open this way come back as **Recently opened** rows, ranked by frecency and filtered as you type.
 
+Arithmetic is detected automatically too (no prefix). Type an expression like `2+2` or `sqrt(16)` and Look pins a **Calculator** row above every other result with the answer. `Enter` or a click copies the value and hides the launcher; clipboard history (`c"`) shows the worked expression (`2+2 = 4`) but still pastes just the value. Shape decides whether something counts as math, not spacing, so a date (`20-05-2026`), a resolution (`1920x1080`), or a ratio (`16:9`) is left alone. Aliases `x`, `:`, and a leading `v` (multiply, divide, square root) only count as operators when they stand alone (`3 x 4`, `10 : 2`, `v 16`) - inside the dedicated `/calc` panel below they're honored wherever they land, so `1920x1080` there evaluates as a product.
+
 ## Clipboard and translation
 
 Clipboard mode (`c"`):
@@ -139,18 +141,19 @@ Enter command mode with `Cmd+/`, or jump straight to a specific command from the
 
 - `:calc` then `Enter` - open `/calc` with empty input
 - `:calc 2+2` - opens `/calc` with `2+2` already typed (the space after the command id is the trigger; you can keep typing without pressing Enter)
-- Same pattern for `:shell`, `:kill`, `:sys`, `:pomo`, `:todo`
+- Same pattern for `:shell`, `:kill`, `:sys`, `:pomo`, `:todo`, `:speed`
 
-The `:` prefix only triggers when the word right after it is a known command id (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`); anything else (`:foo`, `:Users/me/...`) stays in normal search.
+The `:` prefix only triggers when the word right after it is a known command id (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`); anything else (`:foo`, `:Users/me/...`) stays in normal search.
 
 Built-in commands:
 
-- `calc`: evaluate expressions (supports `^`, `!`, constants `pi`/`e`, functions `sqrt`/`abs`/`round`/`floor`/`ceil`, plus `%` shorthand)
+- `calc`: evaluate expressions (supports `^`, `!`, constants `pi`/`e`, functions `sqrt`/`abs`/`round`/`floor`/`ceil`, `%` shorthand, implicit multiplication like `2pi`, comma-grouped/scientific-notation input like `1,500` or `1e6`, and aliases `x`/`:`/leading `v` honored wherever they land, e.g. `1920x1080`)
 - `shell`: run shell command text
 - `kill`: force-kill a running app/process (with confirmation), supports port queries like `:3000` or `port 3000`
 - `sys`: show system information
 - `pomo`: pomodoro focus timer with editable session list, three timer styles (Modern Ring / Vintage Dial / Minimal Text), background-music folder, menu-bar mini-timer, and a 5-second standby fade
 - `todo`: daily tasks and progress. Two pages - a task list grouped by day, and a Stats page (weekly/monthly completion, streak, 30-day trend, GitHub-style year heatmap)
+- `speed`: measure the connection (download, upload, latency) on a live dial, with your LAN and public addresses
 
 `calc` quick examples:
 
@@ -160,6 +163,18 @@ Built-in commands:
 - `2*pi` -> `6.2832`
 - `200*15%` -> `30`
 - `10%3` -> `1` (`%` remains modulo when used between operands)
+- `1920x1080` -> `2,073,600` (`x` as an alias for multiply, honored even glued to digits inside `/calc`)
+- `1,500 + 1` -> `1,501` (comma-grouped input round-trips)
+
+`speed` quick reference:
+
+- The test starts when the panel opens, unless the last reading is under a minute old. `R` runs a fresh one, `Escape` leaves
+- A run takes about 15 seconds and deliberately saturates the link while it does. It can take longer when the primary server is refusing and a fallback mirror has to be found
+- The dial reads as an instrument: download orbits the outer ring, upload counter-rotates on the inner one, and each comet's pace and tail length grow with its rate on a log scale (1 Mbps to 1 Gbps). The centre is latency, pulsing once per round trip
+- Under the numbers is a plain-language read of them, e.g. `FAST BROADBAND · LATENCY EXCELLENT`
+- `LAN` is this machine's address on your network; `WAN` is what the far end sees. WAN is masked by default - `E` or the eye button reveals it, and clicking either address copies it (the WAN copies in full even while masked)
+- The footer names your ISP, rough location, and which server answered. `via Cloudflare` is the primary; anything else is a fallback mirror and reads conservatively low
+- Latency is the round trip to the test server, timed as one TCP handshake against an already-resolved address, so it sits a little above what `ping` reports
 
 `pomo` quick reference:
 
@@ -183,8 +198,9 @@ Behavior:
 - `Escape`: leave command mode
 - `Shift+Escape`: hide launcher
 - `Tab` / `Shift+Tab`: switch commands while staying in command mode
-- `Cmd+1`..`Cmd+6`: jump to specific command (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`)
+- `Cmd+1`..`Cmd+7`: jump to specific command (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`)
 - `Cmd+N` / `Cmd+S` (inside `/todo`): switch Tasks/Stats page, save changes
+- `R` / `E` (inside `/speed`): run the test again, show or hide the public address
 - `Up` / `Down`: in `kill`, navigate process/app results
 - shell text containing `sudo` shows an orange warning cue
 
@@ -212,9 +228,17 @@ Built-in theme presets are available:
 | Gruvbox     | Retro warm tones                  |
 | Dracula     | Classic purple-accented dark      |
 | Kanagawa    | Japanese-inspired dark theme      |
+| Kindle      | Paper and ink e-reader look       |
 | Custom      | Your own colors derived from tint |
 
-Theme is saved as `ui_theme=<name>` in config.
+Theme is saved as `ui_theme=<name>` in config, and a name written there overrides
+the individual `ui_*` values. Save Config writes the preset name only while every
+value still matches that preset; once you tweak one, it writes `ui_theme=` and
+your literal `ui_*` values instead, so the edit survives a reload. Kindle is the
+one light preset: it also switches the frosted panels to a light material and the
+font to Charter, macOS' stand-in for Bookerly. Picking a preset overwrites your
+tint, text color, border and font; `Custom` keeps the current values and derives
+the rest from them.
 
 **Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. The launcher window stays the same size either way.
 
@@ -336,12 +360,13 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Tab` / `Shift+Tab`: next/previous result (app list) or command (command mode)
 - `Up` / `Down`: move selection (and in `kill`, move process selection)
 - `Cmd+/`: command mode
-- `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:todo`): jump to a command directly from the home screen
-- `Cmd+1`..`Cmd+6`: in command mode, direct command switch (`calc`, `pomo`, `todo`, `kill`, `shell`, `sys`)
+- `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:todo`, `:speed`): jump to a command directly from the home screen
+- `Cmd+1`..`Cmd+7`: in command mode, direct command switch (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`)
 - `Cmd+1`..`Cmd+9` (macOS) / `Alt+1`..`Alt+9` (Linux, Windows): on the home screen, activate the running-app whose badge shows that digit, when `Running Apps` is on. Badge labels are ergonomic, not strictly positional - see Settings → Appearance → Running Apps
 - `Cmd+<letter>` (macOS) / `Alt+<letter>` (Linux, Windows): on the empty home screen, fire the super action with that highlighted letter (`B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `P` play/pause, `R` Restart, `D` Shut Down), when `Super Actions` is on
 - `Space` / `R` / `P` (inside `/pomo`): start/pause session, reset, toggle music play/pause
 - `Cmd+N` / `Cmd+S` (inside `/todo`): switch Tasks/Stats page, save changes
+- `R` / `E` (inside `/speed`): run the test again, show or hide the public address
 - `Escape`: back/close (context dependent)
 - `Shift+Escape`: hide launcher
 - `Cmd+Enter`: web search

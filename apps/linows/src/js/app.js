@@ -41,10 +41,13 @@ import {
     getConfig,
 } from './ipc.js';
 import {
+    COMMAND_ENTRIES,
+    isCommandId,
     prefixFromResultId,
     commandIdFromResultId,
     webSuggestionFromResultId,
     webUrlFromResultId,
+    classifyResultId,
     isPrefixedQuery,
 } from './catalog.js';
 
@@ -67,15 +70,20 @@ const HINT_PREFIX_DISCOVERY =
 const HINT_COMMAND_DISCOVERY =
     'Enter: Run command \u2022 Up/Down: Move \u2022 Esc: Clear \u2022 Ctrl+H: Help';
 
+// "Ctrl+1-7: Switch", derived from the catalog so a new command can't leave the
+// hint stale (mirrors the macOS commandSwitchHint).
+const SWITCH_HINT = `Ctrl+1-${COMMAND_ENTRIES.length}: Switch`;
+
 // Per-command hint lines while command mode is active; `shell` doubles as
 // the fallback for commands without a dedicated line.
 const COMMAND_HINTS = {
-    pomo: 'Space: Start/pause \u2022 R: Reset \u2022 P: Music \u2022 Esc: Back \u2022 Tab/Ctrl+1-6: Switch',
-    todo: 'Ctrl+N: Switch page \u2022 Ctrl+S: Save \u2022 Tab/Ctrl+1-6: Switch \u2022 Esc: Back',
-    kill: 'Y: Confirm \u2022 N: Cancel \u2022 Tab/Ctrl+1-6: Switch \u2022 Esc: Back',
-    sys: 'Esc: Back \u2022 Tab/Ctrl+1-6: Switch \u2022 Ctrl+/: Command mode \u2022 Ctrl+Shift+,: Settings',
-    calc: 'Enter: Evaluate \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back',
-    shell: 'Enter: Run \u2022 Tab: Select \u2022 Ctrl+1-6: Switch \u2022 Esc: Back',
+    pomo: `Space: Start/pause \u2022 R: Reset \u2022 P: Music \u2022 Esc: Back \u2022 Tab/${SWITCH_HINT}`,
+    todo: `Ctrl+N: Switch page \u2022 Ctrl+S: Save \u2022 Tab/${SWITCH_HINT} \u2022 Esc: Back`,
+    speed: `R: Rerun \u2022 E: Show IP \u2022 Esc: Back \u2022 Tab/${SWITCH_HINT}`,
+    kill: `Y: Confirm \u2022 N: Cancel \u2022 Tab/${SWITCH_HINT} \u2022 Esc: Back`,
+    sys: `Esc: Back \u2022 Tab/${SWITCH_HINT} \u2022 Ctrl+/: Command mode \u2022 Ctrl+Shift+,: Settings`,
+    calc: `Enter: Evaluate \u2022 Tab: Select \u2022 ${SWITCH_HINT} \u2022 Esc: Back`,
+    shell: `Enter: Run \u2022 Tab: Select \u2022 ${SWITCH_HINT} \u2022 Esc: Back`,
 };
 
 // Hint constants are static, authored in code \u2014 safe to set as innerHTML so
@@ -108,6 +116,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     await load('html/screens/settings.html', app);
     await load('html/screens/help.html', app);
 
+    // The Ctrl+1..N rows in Help and Settings, filled from the same catalog the
+    // bindings come from, so neither list can go stale behind a new command.
+    for (const screen of ['help', 'settings']) {
+        document.getElementById(`${screen}-cmd-keys`).textContent =
+            `Ctrl+1..${COMMAND_ENTRIES.length}`;
+        document.getElementById(`${screen}-cmd-list`).textContent =
+            `Switch to ${COMMAND_ENTRIES.map((cmd) => `/${cmd.id}`).join(', ')}`;
+    }
+
     // About / version + update-status widget, shared between Settings and Help.
     // Settings gets an "About" header label; Help mounts the widget bare so the
     // screen title above already serves as its heading (mirrors macOS layout).
@@ -122,16 +139,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         `<div class="hint-bar" id="hint-bar"><span id="hint-message"></span><span class="hint-bar-copy">\u00A9 2026 by <a class="hint-bar-link" href="#">Kunkka</a></span></div>`,
     );
 
-    // Load command panels into cmd-main
+    // Load command panels into cmd-main. Each panel's template is named after
+    // its command id, so the catalog drives the list.
     const cmdMain = document.getElementById('cmd-main');
-    await Promise.all([
-        load('html/screens/commands/calc.html', cmdMain),
-        load('html/screens/commands/pomo.html', cmdMain),
-        load('html/screens/commands/todo.html', cmdMain),
-        load('html/screens/commands/kill.html', cmdMain),
-        load('html/screens/commands/shell.html', cmdMain),
-        load('html/screens/commands/sys.html', cmdMain),
-    ]);
+    await Promise.all(
+        COMMAND_ENTRIES.map((cmd) => load(`html/screens/commands/${cmd.id}.html`, cmdMain)),
+    );
 
     // DOM refs
     const queryInput = document.getElementById('query');
@@ -465,24 +478,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // `:calc` without a trailing space stays in the discovery menu (matches
     // macOS extractInlineCommand semantics); the user can press Enter on the
     // highlighted row to enter the command with empty input.
-    const CMD_PREFIX_MAP = {
-        calc: 'calc',
-        pomo: 'pomo',
-        todo: 'todo',
-        kill: 'kill',
-        shell: 'shell',
-        sys: 'sys',
-    };
-
     function tryCommandPrefix(value) {
         if (!value.startsWith(':')) return false;
         const rest = value.slice(1);
         const spaceIdx = rest.search(/\s/);
         // No whitespace → not a live trigger; let the discovery menu handle it.
         if (spaceIdx < 0) return false;
-        const cmdName = rest.slice(0, spaceIdx);
-        const cmdId = CMD_PREFIX_MAP[cmdName.toLowerCase()];
-        if (!cmdId) return false;
+        const cmdId = rest.slice(0, spaceIdx).toLowerCase();
+        if (!isCommandId(cmdId)) return false;
         const input = rest.slice(spaceIdx + 1);
         commands.enterById(cmdId);
         enterCommandMode();
@@ -504,7 +507,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         search.handleQueryInput(value);
         const translating = search.isTranslateMode();
-        layout.setQuery({ empty: value === '', translate: translating });
+        layout.setQuery({ empty: layout.isEmptyQuery(value), translate: translating });
         syncControlStrip();
         resultsList.hidden = translating;
         runningApps.setSuspended(translating);
@@ -550,37 +553,41 @@ document.addEventListener('DOMContentLoaded', async () => {
         const item = results.getSelected();
         if (!item) return;
 
-        // Discovery rows behave the same on click as on Enter: pick a prefix fills
-        // the query, pick a command enters that command's panel.
-        const hintedPrefix = prefixFromResultId(item.id);
-        if (hintedPrefix != null) {
-            queryInput.value = hintedPrefix;
-            queryInput.focus();
-            queryInput.setSelectionRange(hintedPrefix.length, hintedPrefix.length);
-            queryInput.dispatchEvent(new Event('input'));
-            return;
-        }
-        const hintedCmd = commandIdFromResultId(item.id);
-        if (hintedCmd != null) {
-            commands.enterById(hintedCmd);
-            enterCommandMode();
-            queryInput.value = '';
-            return;
-        }
-        const suggestionText = webSuggestionFromResultId(item.id);
-        if (suggestionText != null) {
-            const url = `https://www.google.com/search?q=${encodeURIComponent(suggestionText)}`;
-            import('./ipc.js').then(({ openPath }) => openPath(url, 'browser', ''));
-            return;
-        }
-        // URL row: same behavior on click as on Enter (keyboard.js openSelected).
-        const urlTarget = webUrlFromResultId(item.id);
-        if (urlTarget != null) {
-            import('./ipc.js').then(({ openPath, recordUrlHit }) => {
-                openPath(urlTarget, 'browser', '');
-                recordUrlHit(urlTarget);
-            });
-            return;
+        // Discovery/synthetic rows behave the same on click as on Enter
+        // (keyboard.js openSelected): pick a prefix fills the query, pick a
+        // command enters that command's panel, calc copies the answer, a
+        // web-suggestion/URL row opens in the browser.
+        const classified = classifyResultId(item.id);
+        switch (classified?.kind) {
+            case 'prefixSuggestion':
+                queryInput.value = classified.prefix;
+                queryInput.focus();
+                queryInput.setSelectionRange(classified.prefix.length, classified.prefix.length);
+                queryInput.dispatchEvent(new Event('input'));
+                return;
+            case 'commandSuggestion':
+                commands.enterById(classified.commandId);
+                enterCommandMode();
+                queryInput.value = '';
+                return;
+            case 'calc':
+                import('./ipc.js').then(({ copyToClipboardLabeled, hideWindow }) =>
+                    copyToClipboardLabeled(classified.raw, `${item.calcExpr} = ${item.title}`).then(
+                        hideWindow,
+                    ),
+                );
+                return;
+            case 'webSuggestion': {
+                const url = `https://www.google.com/search?q=${encodeURIComponent(classified.text)}`;
+                import('./ipc.js').then(({ openPath }) => openPath(url, 'browser', ''));
+                return;
+            }
+            case 'webUrl':
+                import('./ipc.js').then(({ openPath, recordUrlHit }) => {
+                    openPath(classified.url, 'browser', '');
+                    recordUrlHit(classified.url);
+                });
+                return;
         }
         // Process row has no path to open; a click measures CPU like Enter.
         if (item.kind === 'process') {

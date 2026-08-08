@@ -1,7 +1,6 @@
-//! Windows process listing / kill. Mirrors the WinUI3 reference at
-//! apps/windows/LauncherApp/Commands/KillCommand.cs - EnumWindows tags every
-//! visible top-level window with its owning PID, Toolhelp32 walks the full
-//! process list, GetExtendedTcpTable maps PIDs to listening ports. Filtering
+//! Windows process listing / kill. EnumWindows tags every visible top-level
+//! window with its owning PID, Toolhelp32 walks the full process list,
+//! GetExtendedTcpTable maps PIDs to listening ports. Filtering
 //! (system-noise names, \WindowsApps\, \SystemApps\, \ImmersiveControlPanel\)
 //! is bypassed for any process that owns a visible window, so UWP apps like
 //! Windows Terminal still show up.
@@ -91,8 +90,8 @@ pub(crate) fn list() -> Vec<RunningApp> {
         }
     }
 
-    // WinUI3 only falls back to windowless processes when nothing has a window
-    // - otherwise the list is dominated by background helpers no one wants.
+    // Fall back to windowless processes only when nothing has a window -
+    // otherwise the list is dominated by background helpers no one wants.
     let mut apps = if !windowed.is_empty() {
         windowed
     } else {
@@ -660,8 +659,8 @@ fn cached_file_description(exe_path: &str) -> Option<String> {
     resolved
 }
 
-// WinUI3 reject-list - these descriptions are too generic to be useful and
-// just shadow the process basename without adding information.
+// Reject-list - these descriptions are too generic to be useful and just
+// shadow the process basename without adding information.
 fn is_usable_description(desc: &str, stem: &str) -> bool {
     let trimmed = desc.trim();
     if trimmed.is_empty() {
@@ -785,9 +784,8 @@ fn collect_listening_into(af: u32, map: &mut HashMap<u32, Vec<u16>>) {
 
 fn parse_port(port_field: u32) -> u32 {
     // dwLocalPort is the network-byte-order port in the low 16 bits, padded
-    // with zeros in the high 16. WinUI3 reads BitConverter.GetBytes(field)
-    // and swaps the first two bytes; the equivalent here is a big-endian read
-    // of the low halfword.
+    // with zeros in the high 16, so the port is a big-endian read of the low
+    // halfword.
     let b = port_field.to_le_bytes();
     ((b[0] as u32) << 8) | b[1] as u32
 }

@@ -66,6 +66,12 @@ export async function evalCalc(expr) {
     return invoke('eval_calc', { expr });
 }
 
+// Main-field calculator: resolves to null unless the query was clearly meant
+// as arithmetic. See core/calc `is_math`.
+export async function calcInline(query) {
+    return invoke('calc_inline', { query });
+}
+
 export async function runShellCommand(cmd) {
     return invoke('run_shell_command', { cmd });
 }
@@ -136,6 +142,12 @@ export async function deleteClipboardEntry(timestamp, text) {
 
 export async function copyToClipboard(text) {
     return invoke('copy_to_clipboard', { text });
+}
+
+// Copies `text`, but files it in clipboard history under `label`. Pasting
+// still yields `text`; the history list just reads better.
+export async function copyToClipboardLabeled(text, label) {
+    return invoke('copy_to_clipboard_labeled', { text, label });
 }
 
 export async function resetConfig() {
@@ -227,6 +239,18 @@ export async function lunarDate(year, month, day, tz) {
 // Todo: full-set load/save against the shared look-todo store. Tasks are
 // `{ id, name, done, due_date, created_at_unix_s }` (same JSON contract as
 // the macOS FFI bridge).
+
+// Speed test: one full measurement from the shared look-netspeed crate. Blocks
+// for ~15s and up, so the panel drives it as a single in-flight run; rejects
+// with core's own message when no direction got through.
+export async function speedTest() {
+    return invoke('speed_test');
+}
+
+// This machine's IPv4 on the local network, or null when only loopback is up.
+export async function localIpv4() {
+    return invoke('local_ipv4');
+}
 
 export async function todoList() {
     return invoke('todo_list');

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 struct ThemeRGB {
@@ -6,14 +7,32 @@ struct ThemeRGB {
     let blue: Double
 }
 
+/// Surface a preset paints on. Drives the pinned window/blur appearance and the
+/// opaque command-mode colors, neither of which can be derived from the tokens.
+enum ThemeAppearance {
+    case dark
+    case light
+
+    var nsAppearanceName: NSAppearance.Name {
+        switch self {
+        case .dark: return .darkAqua
+        case .light: return .aqua
+        }
+    }
+}
+
 struct BuiltinThemeStyle {
     let themeName: String
+    let appearance: ThemeAppearance
     let tintRed: Double
     let tintGreen: Double
     let tintBlue: Double
     let tintOpacity: Double
     let blurMaterial: LauncherBlurMaterial
     let blurOpacity: Double
+    /// nil keeps the app default. An unavailable family falls back to the
+    /// system font via `ThemeStore.uiFont`.
+    let fontName: String?
     let fontRed: Double
     let fontGreen: Double
     let fontBlue: Double
@@ -23,17 +42,8 @@ struct BuiltinThemeStyle {
     let borderBlue: Double
     let borderOpacity: Double
 
-    // Semantic color adjustments (relative to main text color when theme applied)
-    // -1.0 = black, 0 = same, +1.0 = white
-    let textSecondaryAdjust: Double = -0.18
-    let textMutedAdjust: Double = -0.35
-    let panelFillAdjust: Double = -0.85
-    let controlFillAdjust: Double = -0.80
-    let dividerAdjust: Double = -0.70
-    let selectionFillAdjust: Double = -0.55
-    let accentAdjust: Double = 0.0  // will use actual accent color
-
-    // Absolute semantic colors (override adjustments when set)
+    // Semantic colors. Left nil, `ThemeStore` derives the token from the main
+    // text color instead.
     let textSecondary: ThemeRGB?
     let textMuted: ThemeRGB?
     let panelFill: ThemeRGB?
@@ -52,12 +62,14 @@ struct BuiltinThemeStyle {
 
 init(
         themeName: String = "",
+        appearance: ThemeAppearance = .dark,
         tintRed: Double = 0.08,
         tintGreen: Double = 0.10,
         tintBlue: Double = 0.12,
         tintOpacity: Double = 0.55,
         blurMaterial: LauncherBlurMaterial = .hudWindow,
         blurOpacity: Double = 0.95,
+        fontName: String? = nil,
         fontRed: Double = 0.96,
         fontGreen: Double = 0.96,
         fontBlue: Double = 0.98,
@@ -83,12 +95,14 @@ init(
         danger: ThemeRGB? = nil
     ) {
         self.themeName = themeName
+        self.appearance = appearance
         self.tintRed = tintRed
         self.tintGreen = tintGreen
         self.tintBlue = tintBlue
         self.tintOpacity = tintOpacity
         self.blurMaterial = blurMaterial
         self.blurOpacity = blurOpacity
+        self.fontName = fontName
         self.fontRed = fontRed
         self.fontGreen = fontGreen
         self.fontBlue = fontBlue
@@ -122,6 +136,7 @@ init(
         settings.tintOpacity = tintOpacity
         settings.blurMaterial = blurMaterial
         settings.blurOpacity = blurOpacity
+        settings.fontName = fontName ?? ThemeSettings.default.fontName
         settings.fontRed = fontRed
         settings.fontGreen = fontGreen
         settings.fontBlue = fontBlue
@@ -134,7 +149,8 @@ init(
     }
 
     func matches(_ settings: ThemeSettings, tolerance: Double = 0.01) -> Bool {
-        abs(settings.tintRed - tintRed) <= tolerance
+        settings.fontName == (fontName ?? ThemeSettings.default.fontName)
+            && abs(settings.tintRed - tintRed) <= tolerance
             && abs(settings.tintGreen - tintGreen) <= tolerance
             && abs(settings.tintBlue - tintBlue) <= tolerance
             && abs(settings.tintOpacity - tintOpacity) <= tolerance

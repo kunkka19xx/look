@@ -25,6 +25,7 @@ apps/linows/
       process.rs         Running apps list + kill
       sysinfo.rs         System info (OS, memory, CPU, battery, uptime, disk)
       todo.rs            Daily tasks (shared look-todo store in look.db)
+      netspeed.rs        Speed test (shared look-netspeed crate) + local IPv4 lookup
       translate.rs       Translation
       weburl.rs          URL-like query detection + opened-URL history (shared core)
       autostart.rs       Autostart management
@@ -46,19 +47,20 @@ apps/linows/
       icons.js           Icon resolution
       html-loader.js     Dynamic HTML template loader
       components/        results, preview, picked, banner, translate, ai-answer (web answer card)
-      screens/           settings, commands (calc, kill, pomo, shell, sys, todo)
+      screens/           settings, commands (calc, kill, pomo, shell, speed, sys, todo)
     html/screens/        HTML templates (search, settings, help, commands)
     assets/              Icons
 ```
 
 ## Why This Exists
 
-The previous Windows app (`apps/windows/`) was built with WinUI3/C#. It didn't match the
-macOS app's look and feel; the UI felt inconsistent across platforms. This Tauri app
-replaces it with a web-based frontend that can look identical on Windows and Linux, using
-the macOS SwiftUI app as the single design reference.
+The previous Windows app was built with WinUI3/C#. It didn't match the macOS app's look
+and feel; the UI felt inconsistent across platforms. This Tauri app replaces it with a
+web-based frontend that can look identical on Windows and Linux, using the macOS SwiftUI
+app as the single design reference.
 
-The WinUI3 app remains in `apps/windows/` (bug fixes only) until this migration is complete.
+The migration is complete and the WinUI3 app has been removed; it lives on in git history
+under `apps/windows/`.
 
 ## Key Decisions
 
@@ -91,6 +93,7 @@ is detected. On i3, sway, or minimal distros without GNOME, these entries are sk
 
 | Package        | Used for                          | Fallback                   |
 | -------------- | --------------------------------- | -------------------------- |
+| `curl`         | Web answers, translation, `/speed` | Answers stay empty; speed test reports "curl is not available on this system" |
 | `xclip`        | Copy files to clipboard (X11)     | Shows "Copy failed" banner |
 | `wl-clipboard` | Copy files to clipboard (Wayland) | Shows "Copy failed" banner |
 

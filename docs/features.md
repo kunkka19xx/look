@@ -18,6 +18,7 @@ This document tracks what `look` supports today and what is planned next.
 - scoped query prefixes: `a"`, `f"`, `d"`, `r"`, and `rc"` (recent files/folders, newest first - blends opened-through-Look with recently added/changed on disk; macOS for now)
 - path-fragment friendly matching (slash-biased queries)
 - URL-like queries (no prefix): typing a URL offers an **Open in browser** row (structural URLs rank first, a bare `host.tld` after local results); opened URLs return as frecency-ranked **Recently opened** rows
+- arithmetic queries (no prefix): typing an expression (`2+2`, `sqrt(16)`, `200*15%`) pins a **Calculator** row above every other result; shape decides whether something counts as math, not spacing, so a date, a resolution, or a ratio (`20-05-2026`, `1920x1080`, `16:9`) is left alone. `Enter` or a click copies the value and hides the launcher; clipboard history shows the worked expression (`2+2 = 4`) but still pastes just the value. Shared `core/calc` engine on macOS, Linux, and Windows
 - open with `Enter`, reveal in Finder with `Cmd+F`
 - copy selected file/folder path/content handle with `Cmd+C`
 - multi-pick files/folders with `Cmd+P` (toggle); picked set is mirrored to the system pasteboard for paste anywhere. `Cmd+Shift+P` clears the set
@@ -38,7 +39,7 @@ This document tracks what `look` supports today and what is planned next.
 ### AI answers and web suggestions (macOS, Linux, Windows)
 
 - optional, **on by default**; toggle with `ai_enabled` in `~/.look.config` or the Settings panel
-- **answer card**: a question, an entity with no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather/currency/crypto) shows a Spotlight-style card. Sources resolve concurrently and render as they arrive - local Calculator, then DuckDuckGo and Wikipedia. On macOS it falls back to a streaming on-device **Apple Intelligence** answer when no web source hits. In the knowledge-lookup view the card sits in a two-column layout with the suggestion list
+- **answer card**: a question, an entity with no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather/currency/crypto) shows a Spotlight-style card. Sources resolve concurrently and render as they arrive - DuckDuckGo, then Wikipedia (arithmetic no longer answers here; it has its own pinned row above the results - see Core search and launch). On macOS it falls back to a streaming on-device **Apple Intelligence** answer when no web source hits. In the knowledge-lookup view the card sits in a two-column layout with the suggestion list
 - **search suggestions**: Google autocomplete rows appear under the results for plain text queries (2+ chars); `Enter` on one runs a web search, as does `Cmd+Enter` on the query
 - **query rewrite** *(macOS)*: when a natural-language query finds nothing locally, the on-device model rewrites it into Look's prefix grammar and re-searches - never overriding results already on screen
 - **platform note**: the web answer card and Google suggestions run on macOS, Linux, and Windows (the latter two via the Tauri `apps/linows/` app), sharing the `look-answers` core engine. The on-device LLM (query rewrite + the Apple Intelligence answer fallback) is **macOS-only** - there is no on-device model on Linux/Windows. The `ai_enabled` key is shared so the same toggle gates web answers on Linux/Windows and both web + on-device features on macOS
@@ -47,10 +48,11 @@ This document tracks what `look` supports today and what is planned next.
 ### Command mode
 
 - `Cmd+/` command mode entry, or inline `:cmdid` shortcut from the home screen (e.g. `:calc 2+2`, `:kill chrome`, `:pomo`); space after a known command id triggers a live switch with args pre-filled
-- built-in commands: `calc`, `pomo`, `todo`, `kill`, `shell`, `sys`
+- built-in commands: `calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`
 - `pomo`: pomodoro focus timer with editable session list, three timer styles (Modern Ring / Vintage Dial / Minimal Text), shuffled background-music folder, menu-bar mini-timer, 5s standby fade, "ending soon" alert at 10s remaining
 - `todo`: daily tasks grouped by date (3 unfinished per day, 3 upcoming groups, past days stay non-editable, unfinished tasks 1-3 days late show an `EXTENDED` badge and can still be completed, tasks more than 3 days late show `OVERDUE`, fuzzy search over tasks and dates, manual save) plus a Stats page: weekly/monthly completion donuts, streak, 30-day trend, GitHub-style year heatmap. Today's done/total shows as a clickable stat in the home hint bar. Stored in the shared `look.db` (`core/todo`), one-year retention
-- calc parser supports exponent (`^`), factorial (`!`), constants (`pi`, `e`), math functions (`sqrt`, `abs`, `round`, `floor`, `ceil`), and `%` shorthand while keeping modulo
+- `speed`: internet speed test on a live dial - download and upload as counter-rotating comets on a log scale (1 Mbps to 1 Gbps), latency at the centre pulsing once per round trip, plus LAN/public addresses (public masked by default, both click-to-copy), ISP, location, and a plain-language read of the result. Measurement is shared (`core/netspeed`): a latency probe plus four parallel curl streams per direction against Cloudflare's keyless endpoints, falling back to the nearest of several public test mirrors when Cloudflare rate-limits the connection. Runs on open (reusing a reading under a minute old) and on `R`, never on a timer
+- calc parser (`core/calc`, shared by every shell) supports exponent (`^`), factorial (`!`), constants (`pi`, `e`), math functions (`sqrt`, `abs`, `round`, `floor`, `ceil`), `%` shorthand while keeping modulo, implicit multiplication (`2pi`, `3sqrt(9)`), comma-grouped and scientific-notation input (`1,500`, `1e6`), and aliases `x`/`:`/leading `v` (multiply, divide, `sqrt`) honored wherever they land inside `/calc` (`1920x1080`, `16:9`) - results are limited only by what an `f64` can represent, not an artificial ceiling
 - kill flow with explicit confirmation and process-by-port lookup (`:3000` / `port 3000`)
 - warning cue when shell input contains `sudo`
 
@@ -60,7 +62,7 @@ This document tracks what `look` supports today and what is planned next.
   - **macOS**: from `NSWorkspace.shared.runningApplications`, filtered to regular apps
   - **Linux**: from `/proc` scan, filtered by what GNOME Shell's `Shell.AppSystem.get_running()` considers a windowed app (via Look's GNOME extension on Wayland) or by `wlr-foreign-toplevel` / X11 client-list / desktop-hints on other compositors
   - **Windows**: from running-window enumeration via Win32
-- on the home screen, activation: `Cmd`+badge digit (macOS) / `Alt`+badge digit (Linux, Windows). In command mode, `Cmd+1`..`Cmd+5` / `Ctrl+1`..`Ctrl+5` keep their existing command-catalog semantics
+- on the home screen, activation: `Cmd`+badge digit (macOS) / `Alt`+badge digit (Linux, Windows). In command mode, `Cmd+1`..`Cmd+7` / `Ctrl+1`..`Ctrl+7` keep their existing command-catalog semantics
 - badge labels follow an ergonomic outer-first layout: with N running apps we consume the easiest-to-reach keys first (`1, 2, 3, 9, 8` before `4`, then `7`, then `6`, then `5`). 5 running apps → badges `1, 2, 3, 8, 9`; 9 running apps → all of `1`..`9`
 - focus paths: macOS = `NSRunningApplication.activate()` with Dock-style reopen for windowless apps; Linux = GNOME Shell extension D-Bus on GNOME Wayland, `wlr-foreign-toplevel-management` on sway/Hyprland, `i3-msg` on i3, `_NET_ACTIVE_WINDOW` (x11rb) on other X11 WMs; Windows = `SetForegroundWindow` via window handle
 - click on an icon also switches; hover shows app name + shortcut tooltip; active app has an accent ring
@@ -83,7 +85,7 @@ This document tracks what `look` supports today and what is planned next.
 - in-app settings panel (`Cmd+Shift+,`)
 - local config file `~/.look.config`
 - runtime reload (`Cmd+Shift+;`)
-- 7 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Custom)
+- 8 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Custom)
 - query alias presets in `~/.look.config` for app + System Settings intent expansion (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`)
 - in-app config reset (`Settings > Advanced > Create Fresh Config`) with confirmation popup
 - semantic color system with auto-derived text colors in Custom mode
