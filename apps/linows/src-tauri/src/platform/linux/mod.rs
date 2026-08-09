@@ -24,3 +24,37 @@ pub fn host_command(program: &str) -> std::process::Command {
     cmd.env_remove("LD_LIBRARY_PATH");
     cmd
 }
+
+/// Owner, group and other execute bits.
+const EXEC_BITS: u32 = 0o111;
+
+/// Where `program` resolves on the host `PATH`, if anywhere. Use to pick
+/// between interchangeable host tools before handing one to something else
+/// (a compositor keybinding) to run later.
+pub fn host_binary_path(program: &str) -> Option<std::path::PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(program))
+        .find(|candidate| {
+            std::fs::metadata(candidate)
+                .map(|m| m.is_file() && m.permissions().mode() & EXEC_BITS != 0)
+                .unwrap_or(false)
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finds_an_executable_on_path() {
+        assert!(host_binary_path("sh").is_some_and(|p| p.ends_with("sh")));
+    }
+
+    #[test]
+    fn missing_binary_resolves_to_none() {
+        assert!(host_binary_path("look-nonexistent-binary").is_none());
+    }
+}

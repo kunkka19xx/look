@@ -83,7 +83,10 @@ rustPlatform.buildRustPackage {
         fontconfig
         curl
         procps
+        # glib (gdbus) and dbus (dbus-send) both back the Wayland hotkey's
+        # D-Bus call; wayland_shortcut.rs picks whichever it finds.
         glib
+        dbus
       ]}
     )
   '';
