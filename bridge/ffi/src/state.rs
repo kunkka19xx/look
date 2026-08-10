@@ -25,7 +25,33 @@ static INDEX_CHANGE_VERSION: AtomicU64 = AtomicU64::new(0);
 static INDEX_CLEARED_VERSION: AtomicU64 = AtomicU64::new(0);
 static INDEX_WATCHER_CONTROL: OnceLock<Mutex<Option<mpsc::Sender<()>>>> = OnceLock::new();
 
+/// Scratch database the tests point at, in place of writing `LOOK_DB_PATH`.
+/// The suite shares one process and engine threads resolve the path while other
+/// tests are switching databases, so `set_var` there races those readers, which
+/// is the reason it is unsafe.
+#[cfg(test)]
+static DB_PATH_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+#[cfg(test)]
+pub(crate) fn set_db_path_for_test(path: &Path) {
+    *DB_PATH_OVERRIDE.lock().expect("db path override poisoned") = Some(path.to_path_buf());
+}
+
+#[cfg(test)]
+fn db_path_override() -> Option<PathBuf> {
+    DB_PATH_OVERRIDE.lock().ok()?.clone()
+}
+
+#[cfg(not(test))]
+fn db_path_override() -> Option<PathBuf> {
+    None
+}
+
 pub(crate) fn default_db_path() -> PathBuf {
+    if let Some(path) = db_path_override() {
+        return path;
+    }
+
     if let Ok(custom) = env::var("LOOK_DB_PATH")
         && !custom.trim().is_empty()
     {

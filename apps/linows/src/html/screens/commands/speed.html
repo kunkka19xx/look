@@ -1,0 +1,46 @@
+<div class="cmd-panel" id="cmd-panel-speed" hidden>
+    <div class="cmd-header-bar">
+        <span class="cmd-input-bar-icon" id="cmd-speed-header-icon"></span>
+        <span class="cmd-subtitle">Read-only command</span>
+        <span class="cmd-pill">/speed</span>
+    </div>
+    <div class="cmd-content cmd-speed-content">
+        <div class="cmd-speed-addresses" id="cmd-speed-addresses"></div>
+
+        <!-- Twin orbit: download on the outer ring, upload counter-rotating on
+             the inner one, latency pulsing at the centre. The scale layer is
+             drawn once; only #cmd-speed-motion changes per frame. -->
+        <svg class="cmd-speed-gauge" id="cmd-speed-gauge" aria-hidden="true">
+            <g id="cmd-speed-scale"></g>
+            <circle
+                class="cmd-speed-pulse"
+                id="cmd-speed-pulse"
+                fill="none"
+                stroke-width="1"
+                stroke-opacity="0"
+            />
+            <!-- Each comet is drawn once at the top of the dial and spun by a
+                 transform on its group, so a frame writes one attribute. -->
+            <g class="cmd-speed-down" id="cmd-speed-down-comet">
+                <path class="cmd-speed-tail" id="cmd-speed-down-tail" fill="none" />
+                <circle class="cmd-speed-head" id="cmd-speed-down-head" r="5.5" />
+            </g>
+            <g class="cmd-speed-up" id="cmd-speed-up-comet">
+                <path class="cmd-speed-tail" id="cmd-speed-up-tail" fill="none" />
+                <circle class="cmd-speed-head" id="cmd-speed-up-head" r="4.5" />
+            </g>
+            <text class="cmd-speed-latency" id="cmd-speed-latency" text-anchor="middle"></text>
+            <text class="cmd-speed-caption" id="cmd-speed-caption" text-anchor="middle"></text>
+        </svg>
+
+        <div class="cmd-speed-legend" id="cmd-speed-legend"></div>
+
+        <div class="cmd-speed-verdict">
+            <div class="cmd-speed-status" id="cmd-speed-status"></div>
+            <div class="cmd-speed-read" id="cmd-speed-read"></div>
+            <div class="cmd-speed-error" id="cmd-speed-error" hidden></div>
+        </div>
+
+        <div class="cmd-speed-carrier" id="cmd-speed-carrier"></div>
+    </div>
+</div>

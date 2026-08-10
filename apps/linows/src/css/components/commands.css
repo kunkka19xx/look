@@ -320,6 +320,246 @@
     font-family: var(--font-mono);
 }
 
+/* Speed: the dial keeps the middle, addresses above it, verdict below. */
+.cmd-speed-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    overflow: hidden;
+}
+
+/* The dial takes the height that is going, like the macOS gauge's
+   aspectRatio(1, .fit). speed.js sizes the viewBox to this box 1:1 and derives
+   the radii from min(width, height), so it stays round and its type stays put
+   at any diameter. 210px floor mirrors the macOS gaugeMinSize.
+
+   Its colours live here rather than being written onto the SVG from JS, so a
+   theme change repaints the gauge for free. Only the latency hue follows the
+   data: speed.js sets data-latency from core's latency_level. */
+.cmd-speed-gauge {
+    width: 100%;
+    flex: 1 1 210px;
+    min-height: 0;
+    --latency-color: var(--font-muted);
+}
+
+/* Dims the standing reading while a fresh one is being measured. */
+.cmd-speed-superseded {
+    opacity: 0.5;
+}
+
+.cmd-speed-gauge[data-latency="good"] {
+    --latency-color: var(--color-success);
+}
+
+.cmd-speed-gauge[data-latency="warn"] {
+    --latency-color: var(--color-warning);
+}
+
+.cmd-speed-gauge[data-latency="bad"] {
+    --latency-color: var(--color-danger);
+}
+
+.cmd-speed-ring,
+.cmd-speed-tick-minor {
+    fill: none;
+    stroke: var(--divider-color);
+    stroke-width: 1;
+}
+
+.cmd-speed-tick-major {
+    stroke: var(--font-secondary);
+    stroke-width: 1.5;
+}
+
+.cmd-speed-pulse {
+    stroke: var(--latency-color);
+}
+
+.cmd-speed-tail {
+    stroke-linecap: round;
+}
+
+.cmd-speed-down .cmd-speed-tail {
+    stroke: var(--color-success);
+}
+
+.cmd-speed-down .cmd-speed-head {
+    fill: var(--color-success);
+}
+
+.cmd-speed-up .cmd-speed-tail {
+    stroke: var(--accent-color);
+}
+
+.cmd-speed-up .cmd-speed-head {
+    fill: var(--accent-color);
+}
+
+.cmd-speed-tick {
+    font-family: var(--font-mono);
+    font-size: calc(var(--font-size) - 5px);
+    fill: var(--font-muted);
+}
+
+.cmd-speed-latency {
+    font-family: var(--font-mono);
+    font-size: calc(var(--font-size) * 2.2);
+    font-weight: 500;
+    dominant-baseline: middle;
+    fill: var(--latency-color);
+}
+
+.cmd-speed-caption {
+    font-family: var(--font-mono);
+    font-size: calc(var(--font-size) - 5px);
+    letter-spacing: 2px;
+    fill: var(--font-muted);
+}
+
+/* Addresses */
+.cmd-speed-addresses {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: calc(var(--font-size) - 2px);
+    color: var(--font-muted);
+    white-space: nowrap;
+}
+
+.cmd-speed-address-icon {
+    display: flex;
+    align-items: center;
+}
+
+.cmd-speed-address,
+.cmd-speed-reveal {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+}
+
+.cmd-speed-address {
+    position: relative;
+}
+
+.cmd-speed-address:hover,
+.cmd-speed-reveal:hover {
+    color: var(--font-color);
+}
+
+.cmd-speed-address-masked {
+    visibility: hidden;
+}
+
+.cmd-speed-copied {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-success);
+}
+
+.cmd-speed-reveal {
+    display: flex;
+    align-items: center;
+}
+
+.cmd-speed-addresses svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Legend */
+.cmd-speed-legend {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+}
+
+.cmd-speed-legend-entry {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.cmd-speed-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.cmd-speed-dot-down {
+    background: var(--color-success);
+}
+
+.cmd-speed-dot-up {
+    background: var(--accent-color);
+}
+
+.cmd-speed-dot-latency {
+    background: var(--color-warning);
+}
+
+.cmd-speed-legend-label {
+    font-family: var(--font-mono);
+    font-size: calc(var(--font-size) - 2px);
+    letter-spacing: 1.4px;
+    color: var(--font-muted);
+}
+
+.cmd-speed-legend-value {
+    font-family: var(--font-mono);
+    font-size: calc(var(--font-size) + 2px);
+    font-weight: 500;
+    color: var(--font-color);
+}
+
+/* Verdict */
+.cmd-speed-verdict {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    text-align: center;
+}
+
+.cmd-speed-status {
+    font-size: calc(var(--font-size) - 1px);
+    color: var(--font-secondary);
+}
+
+.cmd-speed-read {
+    font-family: var(--font-mono);
+    font-size: calc(var(--font-size) - 3px);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--font-muted);
+}
+
+.cmd-speed-error {
+    font-size: calc(var(--font-size) - 1px);
+    color: var(--color-danger);
+}
+
+.cmd-speed-carrier {
+    font-family: var(--font-mono);
+    font-size: calc(var(--font-size) - 3px);
+    color: var(--font-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
 /* Pomo */
 .cmd-pomo-card {
     display: flex;

@@ -14,6 +14,7 @@ mod health;
 mod highlight;
 mod lunar;
 mod music;
+mod netspeed;
 mod nowplaying;
 mod platform;
 mod process;
@@ -711,6 +712,8 @@ fn main() {
             nowplaying::now_playing_current,
             nowplaying::now_playing_command,
             lunar::lunar_date,
+            netspeed::speed_test,
+            netspeed::local_ipv4,
             // Clipboard
             clipboard::get_clipboard_history,
             clipboard::delete_clipboard_entry,

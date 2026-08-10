@@ -11,7 +11,7 @@ import {
 } from '../icons.js';
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
 import { classifyResultId } from '../catalog.js';
-import { isWindows } from '../platform.js';
+import { prefersReducedMotion } from '../platform.js';
 import * as layout from '../layout.js';
 
 // LRU-bounded icon cache (cacheKey -> data URL | null). A plain Map keeps
@@ -46,11 +46,7 @@ let container = null;
 // scroll for free; wiped with the rows on every render, rebuilt lazily.
 let selectionPill = null;
 // Honor prefers-reduced-motion for the scroll too: the pill glide is killed in
-// CSS, but scrollIntoView's smooth behavior bypasses CSS, so gate it here. Read
-// live off the query list so an OS toggle mid-session takes effect. Windows is
-// excluded to match the CSS (its reduce-motion flag tracks the perf preset).
-const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const prefersReducedMotion = () => reduceMotion.matches && !isWindows();
+// CSS, but scrollIntoView's smooth behavior bypasses CSS, so gate it here.
 let onSelectionChange = null;
 let onPickChange = null;
 let emptyState = { mode: 'default' };

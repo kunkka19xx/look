@@ -14,6 +14,7 @@ look-calc = { path = "../../../core/calc" }
 look-engine = { path = "../../../core/engine" }
 look-lunar = { path = "../../../core/lunar" }
 look-matching = { path = "../../../core/matching" }
+look-netspeed = { path = "../../../core/netspeed" }
 look-qactions = { path = "../../../core/qactions" }
 look-storage = { path = "../../../core/storage" }
 look-todo = { path = "../../../core/todo" }
