@@ -38,9 +38,12 @@ pub fn host_binary_path(program: &str) -> Option<std::path::PathBuf> {
     std::env::split_paths(&path)
         .map(|dir| dir.join(program))
         .find(|candidate| {
-            std::fs::metadata(candidate)
-                .map(|m| m.is_file() && m.permissions().mode() & EXEC_BITS != 0)
-                .unwrap_or(false)
+            // Empty PATH entries mean the working directory, which resolves
+            // to something else entirely from whatever runs the result later.
+            candidate.is_absolute()
+                && std::fs::metadata(candidate)
+                    .map(|m| m.is_file() && m.permissions().mode() & EXEC_BITS != 0)
+                    .unwrap_or(false)
         })
 }
 
