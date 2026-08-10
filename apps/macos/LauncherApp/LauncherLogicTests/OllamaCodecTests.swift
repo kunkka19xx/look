@@ -46,18 +46,31 @@ final class OllamaCodecTests: XCTestCase {
     // ── parseStreamLine ─────────────────────────────────────────────────
 
     func testParseStreamLineExtractsDeltaAndDone() {
-        let (delta, done) = OllamaCodec.parseStreamLine(#"{"message":{"content":"Hel"},"done":false}"#)!
+        let (delta, done, error) = OllamaCodec.parseStreamLine(#"{"message":{"content":"Hel"},"done":false}"#)!
         XCTAssertEqual(delta, "Hel")
         XCTAssertFalse(done)
+        XCTAssertNil(error)
     }
 
     func testParseStreamLineSeesDoneTrue() {
-        let (_, done) = OllamaCodec.parseStreamLine(#"{"message":{"content":""},"done":true}"#)!
+        let (_, done, _) = OllamaCodec.parseStreamLine(#"{"message":{"content":""},"done":true}"#)!
         XCTAssertTrue(done)
     }
 
     func testParseStreamLineIgnoresBlankLine() {
         XCTAssertNil(OllamaCodec.parseStreamLine("   "))
+    }
+
+    func testParseStreamLineSurfacesServerError() {
+        let (_, _, error) = OllamaCodec.parseStreamLine(#"{"error":"model 'x' not found"}"#)!
+        XCTAssertEqual(error, "model 'x' not found")
+    }
+
+    func testErrorMessageFromResponseBody() {
+        let body = Data(#"{"error":"model 'x' not found"}"#.utf8)
+        XCTAssertEqual(OllamaCodec.errorMessage(fromResponseBody: body), "model 'x' not found")
+        XCTAssertNil(OllamaCodec.errorMessage(fromResponseBody: Data("{}".utf8)))
+        XCTAssertNil(OllamaCodec.errorMessage(fromResponseBody: Data("not json".utf8)))
     }
 
     // ── cumulativeSnapshots (the delta-accumulation gotcha) ──────────────
@@ -80,6 +93,15 @@ final class OllamaCodecTests: XCTestCase {
             #"{"message":{"content":"A"},"done":false}"#,
             #"{"message":{"content":""},"done":true}"#,
             #"{"message":{"content":"ignored"},"done":false}"#,
+        ]
+        XCTAssertEqual(OllamaCodec.cumulativeSnapshots(fromStreamLines: lines), ["A"])
+    }
+
+    func testCumulativeSnapshotsStopAtServerError() {
+        let lines = [
+            #"{"message":{"content":"A"},"done":false}"#,
+            #"{"error":"boom"}"#,
+            #"{"message":{"content":"B"},"done":false}"#,
         ]
         XCTAssertEqual(OllamaCodec.cumulativeSnapshots(fromStreamLines: lines), ["A"])
     }

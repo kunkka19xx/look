@@ -61,14 +61,22 @@ struct OllamaProvider: AIQueryProvider {
                 do {
                     let (bytes, response) = try await URLSession.shared.bytes(for: Self.jsonPost(url, body))
                     guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-                        continuation.finish(throwing: OllamaError.badStatus)
+                        // The body is Ollama's own {"error":"..."} - keep it.
+                        var bodyText = ""
+                        for try await line in bytes.lines { bodyText += line }
+                        let message = OllamaCodec.errorMessage(fromResponseBody: Data(bodyText.utf8))
+                        continuation.finish(throwing: OllamaError.badStatus(message))
                         return
                     }
                     // Ollama streams deltas; the contract yields cumulative text.
                     var running = ""
                     for try await line in bytes.lines {
                         if Task.isCancelled { break }
-                        guard let (delta, done) = OllamaCodec.parseStreamLine(line) else { continue }
+                        guard let (delta, done, error) = OllamaCodec.parseStreamLine(line) else { continue }
+                        if let error {
+                            continuation.finish(throwing: OllamaError.server(error))
+                            return
+                        }
                         if !delta.isEmpty {
                             running += delta
                             continuation.yield(running)
@@ -173,8 +181,19 @@ struct OllamaProvider: AIQueryProvider {
         """
 }
 
-enum OllamaError: Error {
-    case badStatus
+enum OllamaError: LocalizedError {
+    /// The server rejected the request; carries its own message when the body
+    /// had one ("model 'x' not found").
+    case badStatus(String?)
+    /// An in-stream error ended the generation (e.g. the model ran out of memory).
+    case server(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .badStatus(let message): message
+        case .server(let message): message
+        }
+    }
 }
 
 /// Thread-safe cache of the last Ollama health probe, refreshed off the UI

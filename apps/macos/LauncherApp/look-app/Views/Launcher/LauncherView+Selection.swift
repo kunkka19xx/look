@@ -181,8 +181,7 @@ extension LauncherView {
             },
             onRecallPrompt: { [self] older in
                 guard isAIMode else { return false }
-                recallPrompt(older ? .up : .down)
-                return true
+                return recallPrompt(older ? .up : .down)
             },
             onEnterCommandMode: {
                 if !isCommandMode {

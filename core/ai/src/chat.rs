@@ -18,6 +18,8 @@ struct SessionState {
     text: String,
     done: bool,
     error: Option<String>,
+    /// The `num_predict` cap ended the answer mid-thought.
+    truncated: bool,
 }
 
 struct Session {
@@ -61,14 +63,21 @@ pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
     })
     .to_string();
     let url = format!("{}/api/chat", host.trim_end_matches('/'));
+    start_request(&url, &body, 300)
+}
 
+/// Spawns a curl session POSTing `body` to `url`; the reader thread accumulates
+/// `message.content` deltas (streamed NDJSON and single-response lines both
+/// parse). Returns a pollable session id, or 0 when the spawn/write fails.
+pub(crate) fn start_request(url: &str, body: &str, max_time_secs: u32) -> u64 {
+    // No `--fail`: a non-2xx body is Ollama's own `{"error":"..."}` JSON, which
+    // the reader surfaces instead of discarding.
     let mut command = Command::new("curl");
     command
         .arg("-sS")
-        .arg("--fail")
         .arg("--no-buffer")
         .arg("--max-time")
-        .arg("300")
+        .arg(max_time_secs.to_string())
         .arg("-H")
         .arg("Content-Type: application/json")
         .arg("-X")
@@ -100,18 +109,31 @@ pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
         let mut saw_output = false;
+        let mut saw_done = false;
         for line in reader.lines() {
             let Ok(line) = line else { break };
-            let Some((delta, done)) = ollama::parse_stream_line(&line) else {
+            let Some(parsed) = ollama::parse_stream_line(&line) else {
                 continue;
             };
+            if let Some(error) = parsed.error {
+                if let Ok(mut s) = reader_state.lock() {
+                    s.error = Some(error);
+                }
+                break;
+            }
             saw_output = true;
-            if !delta.is_empty()
+            if !parsed.delta.is_empty()
                 && let Ok(mut s) = reader_state.lock()
             {
-                s.text.push_str(&delta);
+                s.text.push_str(&parsed.delta);
             }
-            if done {
+            if parsed.done {
+                saw_done = true;
+                if parsed.truncated
+                    && let Ok(mut s) = reader_state.lock()
+                {
+                    s.truncated = true;
+                }
                 break;
             }
         }
@@ -119,8 +141,12 @@ pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
         // ever observes `done` (the map entry may linger; the process may not).
         reap(&reader_child);
         if let Ok(mut s) = reader_state.lock() {
-            if !saw_output && s.text.is_empty() {
+            if s.error.is_none() && !saw_output && s.text.is_empty() {
                 s.error = Some("no response".into());
+            } else if s.error.is_none() && !saw_done && !s.text.is_empty() {
+                // The stream died mid-answer (e.g. curl's --max-time): partial
+                // text must not read as a complete answer.
+                s.error = Some("connection ended before the answer finished".into());
             }
             s.done = true;
         }
@@ -137,7 +163,8 @@ pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
     id
 }
 
-/// Snapshot of a session: `{"text": <cumulative>, "done": bool, "error"?}`.
+/// Snapshot of a session: `{"text": <cumulative>, "done": bool, "error"?,
+/// "truncated"?}`. `truncated` marks an answer the `num_predict` cap cut off.
 /// A finished session is removed after the poll that observes `done`.
 pub fn poll(id: u64) -> Option<String> {
     let remove;
@@ -149,6 +176,9 @@ pub fn poll(id: u64) -> Option<String> {
         let mut out = json!({ "text": state.text, "done": state.done });
         if let Some(error) = &state.error {
             out["error"] = Value::String(error.clone());
+        }
+        if state.truncated {
+            out["truncated"] = Value::Bool(true);
         }
         out.to_string()
     };

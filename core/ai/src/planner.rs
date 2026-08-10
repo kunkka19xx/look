@@ -9,7 +9,7 @@
 
 use serde_json::{Value, json};
 
-use crate::{ollama, plan};
+use crate::{chat, ollama, plan};
 
 pub const ALIASES: [(&str, &str); 8] = [
     ("event", "calendar.add_event"),
@@ -94,14 +94,37 @@ pub fn resolve_step(step: &plan::PlanStep) -> Option<Value> {
     Some(json!({ "tool": tool, "params": params }))
 }
 
-/// Full planning call: POST, parse, map. None = no capable answer / not an
-/// action (empty steps) / transport failure. Blocking (call off-thread).
-pub fn plan(host: &str, model: &str, query: &str) -> Option<Value> {
+/// Starts a cancellable planning session on the chat transport (the response
+/// is one line; the session's accumulated text is the plan JSON). Returns a
+/// session id for `poll`/`cancel`, or 0 when the request could not be spawned.
+pub fn start(host: &str, model: &str, query: &str) -> u64 {
     let url = format!("{}/api/chat", host.trim_end_matches('/'));
-    let body = ollama::post_json(&url, &request_body(model, query), 30)?;
-    let parsed = plan::parse_chat_response(&body)?;
-    let step = parsed.steps.first()?;
-    resolve_step(step)
+    chat::start_request(&url, &request_body(model, query), 30)
+}
+
+/// Snapshot of a planning session: `{"done":false}` while in flight, then
+/// `{"done":true,"call":{tool,params}|null}` (null = not an action / failure).
+/// None for unknown ids. Like chat, the poll that observes done removes it.
+pub fn poll(id: u64) -> Option<String> {
+    chat::poll(id).map(|snapshot| map_snapshot(&snapshot))
+}
+
+/// Kills the request (Ollama aborts generation on disconnect).
+pub fn cancel(id: u64) {
+    chat::cancel(id);
+}
+
+fn map_snapshot(snapshot: &str) -> String {
+    let root: Value = serde_json::from_str(snapshot).unwrap_or(Value::Null);
+    if !root["done"].as_bool().unwrap_or(false) {
+        return r#"{"done":false}"#.into();
+    }
+    let call = root["text"]
+        .as_str()
+        .and_then(|content| serde_json::from_str::<plan::ActionPlan>(content).ok())
+        .and_then(|parsed| parsed.steps.into_iter().next())
+        .and_then(|step| resolve_step(&step));
+    json!({ "done": true, "call": call }).to_string()
 }
 
 /// Primes the model + Ollama's prompt-prefix cache with the exact planner
@@ -170,6 +193,57 @@ mod tests {
     #[test]
     fn unknown_alias_is_none() {
         assert!(resolve_step(&step("bogus", json!({"match": "x"}))).is_none());
+    }
+
+    #[test]
+    fn snapshot_maps_pending_plan_decline_and_error() {
+        assert_eq!(
+            map_snapshot(r#"{"text":"","done":false}"#),
+            r#"{"done":false}"#
+        );
+
+        let done = map_snapshot(
+            r#"{"text":"{\"steps\":[{\"tool\":\"event\",\"params\":{\"title\":\"Dentist\"}}]}","done":true}"#,
+        );
+        let root: Value = serde_json::from_str(&done).unwrap();
+        assert_eq!(root["done"], true);
+        assert_eq!(root["call"]["tool"], "calendar.add_event");
+        assert_eq!(root["call"]["params"]["title"], "Dentist");
+
+        // A decline (empty steps) and a transport error both map to call: null.
+        let decline = map_snapshot(r#"{"text":"{\"steps\":[]}","done":true}"#);
+        assert!(serde_json::from_str::<Value>(&decline).unwrap()["call"].is_null());
+        let error = map_snapshot(r#"{"text":"","done":true,"error":"no response"}"#);
+        assert!(serde_json::from_str::<Value>(&error).unwrap()["call"].is_null());
+    }
+
+    #[test]
+    fn failed_session_reaches_done_with_null_call() {
+        // Connection refused: the session finishes with done and no call.
+        let id = start("http://127.0.0.1:1", "m", "add lunch");
+        assert_ne!(id, 0);
+        let mut last = String::new();
+        for _ in 0..100 {
+            let Some(snapshot) = poll(id) else { break };
+            last = snapshot;
+            if last.contains("\"done\":true") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let root: Value = serde_json::from_str(&last).unwrap();
+        assert_eq!(root["done"], true);
+        assert!(root["call"].is_null());
+        // The poll that observed done removed the session.
+        assert!(poll(id).is_none());
+    }
+
+    #[test]
+    fn cancel_removes_the_session() {
+        let id = start("http://127.0.0.1:1", "m", "add lunch");
+        assert_ne!(id, 0);
+        cancel(id);
+        assert!(poll(id).is_none());
     }
 
     #[test]

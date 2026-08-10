@@ -52,9 +52,17 @@ private func look_ai_is_referent(_ phrase: UnsafePointer<CChar>?) -> Bool
 nonisolated
 private func look_ai_query_window(_ query: UnsafePointer<CChar>?, _ nowEpoch: Int64) -> UnsafeMutablePointer<CChar>?
 
-@_silgen_name("look_ai_plan")
+@_silgen_name("look_ai_plan_start")
 nonisolated
-private func look_ai_plan(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private func look_ai_plan_start(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?) -> UInt64
+
+@_silgen_name("look_ai_plan_poll")
+nonisolated
+private func look_ai_plan_poll(_ id: UInt64) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_plan_cancel")
+nonisolated
+private func look_ai_plan_cancel(_ id: UInt64)
 
 @_silgen_name("look_ai_warm_planner")
 nonisolated
@@ -467,28 +475,41 @@ final class EngineBridge: @unchecked Sendable {
             window.label)
     }
 
-    /// One planning call to the local model via the Rust-core planner
-    /// (core/ai): the prompt, aliases, and mapping live there. BLOCKING
-    /// network; callers dispatch off the main thread.
-    nonisolated func aiPlan(host: String, model: String, query: String) -> (toolID: String, params: [String: String])? {
+    /// One line of a planning session poll: pending until `done`, then the
+    /// resolved call (nil call = not an action / failure).
+    nonisolated struct AIPlanSnapshot: Decodable {
         struct RawCall: Decodable {
             let tool: String
             let params: [String: String]
         }
-        let ptr = host.withCString { hostC in
+        let done: Bool
+        let call: RawCall?
+    }
+
+    /// Starts a cancellable planning call via the Rust-core planner (core/ai):
+    /// the prompt, aliases, and mapping live there. Returns 0 on failure.
+    nonisolated func aiPlanStart(host: String, model: String, query: String) -> UInt64 {
+        host.withCString { hostC in
             model.withCString { modelC in
                 query.withCString { queryC in
-                    look_ai_plan(hostC, modelC, queryC)
+                    look_ai_plan_start(hostC, modelC, queryC)
                 }
             }
         }
-        guard let ptr else { return nil }
+    }
+
+    /// Snapshot of a planning session; nil for unknown ids. The poll that
+    /// observes `done` removes the session.
+    nonisolated func aiPlanPoll(_ id: UInt64) -> AIPlanSnapshot? {
+        guard let ptr = look_ai_plan_poll(id) else { return nil }
         defer { look_free_cstring(ptr) }
-        guard
-            let data = String(cString: ptr).data(using: .utf8),
-            let call = try? JSONDecoder().decode(RawCall.self, from: data)
-        else { return nil }
-        return (call.tool, call.params)
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(AIPlanSnapshot.self, from: data)
+    }
+
+    /// Kills the planning request (Ollama aborts generation on disconnect).
+    nonisolated func aiPlanCancel(_ id: UInt64) {
+        look_ai_plan_cancel(id)
     }
 
     /// Primes the model + prompt cache (BLOCKING network; call off-thread).
@@ -603,6 +624,8 @@ final class EngineBridge: @unchecked Sendable {
         let text: String
         let done: Bool
         let error: String?
+        /// The answer hit the generation length cap and was cut off.
+        let truncated: Bool?
     }
 
     /// Start a streamed chat session in the Rust core (curl child). 0 = failed.

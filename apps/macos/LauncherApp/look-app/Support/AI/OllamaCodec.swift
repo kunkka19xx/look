@@ -114,8 +114,9 @@ nonisolated enum OllamaCodec {
     }
 
     /// One NDJSON line of a streamed `/api/chat` response, reduced to the delta
-    /// text and the done flag. Returns nil for lines with no message content.
-    static func parseStreamLine(_ line: String) -> (delta: String, done: Bool)? {
+    /// text, the done flag, and the server's own error, if any (Ollama emits
+    /// `{"error":"..."}` in-stream, e.g. on model OOM). Nil for non-JSON lines.
+    static func parseStreamLine(_ line: String) -> (delta: String, done: Bool, error: String?)? {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard
             !trimmed.isEmpty,
@@ -126,7 +127,17 @@ nonisolated enum OllamaCodec {
         }
         let done = (root["done"] as? Bool) ?? false
         let delta = (root["message"] as? [String: Any])?["content"] as? String ?? ""
-        return (delta, done)
+        let error = (root["error"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return (delta, done, error)
+    }
+
+    /// The server's message from a non-2xx `/api/chat` body (`{"error":"..."}`),
+    /// e.g. "model 'x' not found". Nil when the body has no usable message.
+    static func errorMessage(fromResponseBody data: Data) -> String? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return (root["error"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// Ollama streams deltas, but the `answer` contract yields the cumulative
@@ -135,7 +146,8 @@ nonisolated enum OllamaCodec {
         var running = ""
         var snapshots: [String] = []
         for line in lines {
-            guard let (delta, done) = parseStreamLine(line) else { continue }
+            guard let (delta, done, error) = parseStreamLine(line) else { continue }
+            if error != nil { break }
             if !delta.isEmpty {
                 running += delta
                 snapshots.append(running)

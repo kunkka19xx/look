@@ -38,23 +38,30 @@ pub(crate) fn look_ai_markdown_segments_json_impl(text: *const c_char) -> *mut c
     state::store_json_allocation(cstring)
 }
 
-pub(crate) fn look_ai_plan_impl(
+pub(crate) fn look_ai_plan_start_impl(
     host: *const c_char,
     model: *const c_char,
     query: *const c_char,
-) -> *mut c_char {
+) -> u64 {
     let host = state::cstr_to_string(host);
     let model = state::cstr_to_string(model);
     let query = state::cstr_to_string(query);
-    match look_ai::planner::plan(&host, &model, &query) {
-        Some(call) => {
-            let json = call.to_string();
+    look_ai::planner::start(&host, &model, &query)
+}
+
+pub(crate) fn look_ai_plan_poll_impl(id: u64) -> *mut c_char {
+    match look_ai::planner::poll(id) {
+        Some(json) => {
             let cstring =
                 CString::new(json).unwrap_or_else(|_| CString::new("null").expect("valid"));
             state::store_json_allocation(cstring)
         }
         None => std::ptr::null_mut(),
     }
+}
+
+pub(crate) fn look_ai_plan_cancel_impl(id: u64) {
+    look_ai::planner::cancel(id);
 }
 
 pub(crate) fn look_ai_warm_planner_impl(host: *const c_char, model: *const c_char) {

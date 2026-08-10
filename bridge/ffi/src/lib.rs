@@ -242,19 +242,38 @@ pub extern "C" fn look_ai_query_window(query: *const c_char, now_epoch: i64) -> 
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// Full planning call to the local Ollama model (BLOCKING network; call
-/// off-thread): JSON `{tool, params}` or null when not an action / no model.
-/// Free with `look_free_cstring`.
+/// Starts a cancellable planning call to the local Ollama model. Returns a
+/// session id for `look_ai_plan_poll`/`look_ai_plan_cancel`, or 0 on failure.
 #[unsafe(no_mangle)]
-pub extern "C" fn look_ai_plan(
+pub extern "C" fn look_ai_plan_start(
     host: *const c_char,
     model: *const c_char,
     query: *const c_char,
-) -> *mut c_char {
+) -> u64 {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        ai_api::look_ai_plan_impl(host, model, query)
+        ai_api::look_ai_plan_start_impl(host, model, query)
+    }))
+    .unwrap_or(0)
+}
+
+/// Snapshot of a planning session: `{"done":false}` in flight, then
+/// `{"done":true,"call":{tool,params}|null}`; null pointer for unknown ids.
+/// The poll that observes done removes the session. Free with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_plan_poll(id: u64) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_plan_poll_impl(id)
     }))
     .unwrap_or(std::ptr::null_mut())
+}
+
+/// Kills the planning request (Ollama aborts generation on disconnect).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_plan_cancel(id: u64) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_plan_cancel_impl(id)
+    }));
 }
 
 /// Primes the model and Ollama's prompt-prefix cache with the planner prompt

@@ -91,6 +91,15 @@ extension LauncherView {
         focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
     }
 
+    /// Clears the input without triggering the AI side effects of the query
+    /// `onChange` (clearFeedback / handleComposeCleared): a submit's just-set
+    /// state - feedback, confirm bar, running plan/chat - must survive its own
+    /// clear.
+    func clearQuerySilently() {
+        querySilentlyCleared = true
+        query = ""
+    }
+
     func handleSubmit() {
         logUIEvent("submit isCommand=\(isCommandMode) active=\(activeCommandID ?? "nil") selectedKill=\(selectedKillSuggestionIndex.map(String.init) ?? "nil") pendingKill=\(pendingKillCandidate?.displayName ?? "nil") input='\(commandArgsPart)'")
 
@@ -98,7 +107,7 @@ extension LauncherView {
         // cleared input, ready for the next message; Esc leaves.
         if actionController.isPresenting {
             actionController.confirm()
-            query = ""
+            clearQuerySilently()
             DispatchQueue.main.async { isQueryFocused = true }
             return
         }
@@ -112,13 +121,13 @@ extension LauncherView {
                let number = Int(submitTrimmed),
                number >= 1, number <= choice.candidates.count {
                 actionController.choose(choice.candidates[number - 1])
-                query = ""
+                clearQuerySilently()
             } else if actionController.sessionItems.isEmpty,
                       selectedConversationIndex >= 0,
                       selectedConversationIndex < filteredConversations.count {
                 // A highlighted session opens; otherwise Enter starts a new chat.
                 actionController.continueConversation(filteredConversations[selectedConversationIndex])
-                query = ""
+                clearQuerySilently()
             } else if !submitTrimmed.isEmpty, EngineBridge.shared.isFileQuery(submitTrimmed) {
                 // A file-recall query typed in the AI box ("files I downloaded
                 // yesterday") drops to the main results, which are keyboard-
@@ -134,7 +143,7 @@ extension LauncherView {
             } else if !submitTrimmed.isEmpty {
                 recordAIPrompt(submitTrimmed)
                 actionController.submitExplicitAIQuery(submitTrimmed)
-                query = ""
+                clearQuerySilently()
             }
             DispatchQueue.main.async { isQueryFocused = true }
             return

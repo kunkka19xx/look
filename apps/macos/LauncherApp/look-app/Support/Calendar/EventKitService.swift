@@ -55,11 +55,13 @@ nonisolated final class EventKitService: @unchecked Sendable {
         // Keep the reminder cache live: EventKit changes (adds in Reminders.app,
         // completions, etc.) force a refresh so mutate tools never see a stale
         // list. Fetching reminders is async-only, hence the cache.
+        // On the main queue: both refreshes read/write cache timestamps that
+        // every other caller touches from main.
         NotificationCenter.default.addObserver(
-            forName: .EKEventStoreChanged, object: store, queue: nil
+            forName: .EKEventStoreChanged, object: store, queue: .main
         ) { [weak self] _ in
             self?.refreshReminderCache(force: true)
-            DispatchQueue.main.async { self?.refreshEventCache(force: true) }
+            self?.refreshEventCache(force: true)
         }
     }
 

@@ -512,8 +512,11 @@ fn block_time(request: &ResolveRequest, events: &[Indexed<EventCandidate>]) -> R
         .unwrap_or_else(|| request.now + 2 * 86_400);
 
     let duration = minutes * 60;
+    // All-day events (birthdays, holidays) span the whole day but don't occupy
+    // working hours; only timed events block a slot.
     let busy: Vec<(i64, i64)> = events
         .iter()
+        .filter(|e| !e.item().all_day)
         .map(|e| (e.item().start, e.item().end))
         .collect();
 
@@ -1092,6 +1095,31 @@ mod tests {
                 assert!(!all_day);
                 assert_eq!(start, work_open + 2 * 3600); // 11:00
             }
+            other => panic!("expected planned, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn block_time_ignores_all_day_events() {
+        // An all-day event (a birthday) covers the whole day; it must not make
+        // the day "busy". Expect the first working-hours slot.
+        let day_start = day_bounds(NOW + 86_400).unwrap().0;
+        let work_open = day_start + WORK_START_HOUR as i64 * 3600;
+        let mut req = request("calendar.block_time", &[("duration", "2 hours")]);
+        req.window_start = Some(work_open);
+        req.window_end = Some(day_start + WORK_END_HOUR as i64 * 3600);
+        req.events = vec![EventCandidate {
+            id: "b".into(),
+            title: "Birthday".into(),
+            start: day_start,
+            end: day_start + 86_400,
+            all_day: true,
+        }];
+        match resolve(&req) {
+            ResolveOutcome::Planned {
+                execute: Execute::AddEvent { start, .. },
+                ..
+            } => assert_eq!(start, work_open),
             other => panic!("expected planned, got {other:?}"),
         }
     }

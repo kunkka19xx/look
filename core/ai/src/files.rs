@@ -16,8 +16,8 @@ pub struct FileQuery {
     /// Category names the shell maps to UTIs: pdf, image, screenshot, movie,
     /// audio, document, spreadsheet, presentation, folder, archive.
     pub types: Vec<String>,
-    /// Which date to filter on: "added" (downloaded), "modified", or "created".
-    pub date_field: String,
+    /// The time range filters on modification time - the only timestamp the
+    /// engine indexes ("created"/"downloaded" phrasings map here too).
     pub start: Option<i64>,
     pub end: Option<i64>,
     /// Folder hints the shell scopes to: downloads, desktop, documents.
@@ -96,6 +96,10 @@ const NOISE: &[&str] = &[
     "made",
     "saved",
     "opened",
+    "added",
+    "put",
+    "placed",
+    "dropped",
     "search",
     "searches",
     "searching",
@@ -175,7 +179,6 @@ pub fn parse(query: &str, now_epoch: i64) -> Option<FileQuery> {
 
     let mut types: Vec<String> = Vec::new();
     let mut locations: Vec<String> = Vec::new();
-    let mut date_field = "modified".to_string();
     let mut has_file_noun = false;
     let mut has_download = false;
 
@@ -194,12 +197,7 @@ pub fn parse(query: &str, now_epoch: i64) -> Option<FileQuery> {
         }
         match w {
             "file" | "files" => has_file_noun = true,
-            "download" | "downloads" | "downloaded" => {
-                has_download = true;
-                date_field = "added".to_string();
-            }
-            "edited" | "modified" | "changed" | "updated" => date_field = "modified".to_string(),
-            "created" | "made" => date_field = "created".to_string(),
+            "download" | "downloads" | "downloaded" => has_download = true,
             "documents" if !locations.contains(&"documents".to_string()) => {
                 locations.push("documents".to_string());
             }
@@ -238,7 +236,6 @@ pub fn parse(query: &str, now_epoch: i64) -> Option<FileQuery> {
     Some(FileQuery {
         terms: terms.join(" "),
         types,
-        date_field,
         start,
         end,
         locations,
@@ -257,11 +254,17 @@ mod tests {
     const NOW: i64 = 1_768_000_000;
 
     #[test]
-    fn downloaded_yesterday_sets_location_field_and_time() {
+    fn downloaded_yesterday_sets_location_and_time() {
         let q = parse("files i downloaded yesterday", NOW).unwrap();
         assert!(q.locations.contains(&"downloads".to_string()));
-        assert_eq!(q.date_field, "added");
         assert!(q.start.is_some() && q.end.is_some());
+        assert!(q.terms.is_empty());
+    }
+
+    #[test]
+    fn added_to_desktop_is_glue_not_a_term() {
+        let q = parse("files added to desktop", NOW).unwrap();
+        assert!(q.locations.contains(&"desktop".to_string()));
         assert!(q.terms.is_empty());
     }
 

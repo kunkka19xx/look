@@ -61,12 +61,11 @@ final class ActionController: ObservableObject {
     private var idleTask: Task<Void, Never>?
     private var chatTask: Task<Void, Never>?
     private var lastWarm = Date.distantPast
-    /// A submit clears the input, which fires the same "compose cleared" path as
-    /// deleting it by hand - but the submitted plan/chat must keep running. Set
-    /// on submit, consumed by the first `handleComposeCleared` so exactly that
-    /// one clear is spared. Without it the just-submitted plan is cancelled
-    /// mid-flight (flicker, no answer).
-    private var skipCancelOnNextClear = false
+    /// Bumped whenever ownership of the planning state changes (new keystroke,
+    /// submit, cancel). A plan task compares its captured generation after the
+    /// await, so a superseded task can never clobber `isPlanning` or propose a
+    /// stale action - regardless of when its network call actually returns.
+    private var planGeneration = 0
 
     /// How long the user must stop typing before the model runs. Short, because
     /// an in-flight call is cancelled cleanly on the next keystroke (Task cancel
@@ -156,11 +155,10 @@ final class ActionController: ObservableObject {
             return
         }
 
-        // Composing new input: supersede any in-flight preview, and this is no
-        // longer the submit's clear, so drop the one-shot spare.
-        skipCancelOnNextClear = false
+        // Composing new input: supersede any in-flight preview.
         idleTask?.cancel()
         planTask?.cancel()
+        planGeneration += 1
 
         // Warm the reminder cache while the user composes, so reminder mutations
         // ("complete milk") resolve against a fresh list by the time they Enter.
@@ -202,11 +200,12 @@ final class ActionController: ObservableObject {
             lastWarm = Date()
             Task { [planner] in await planner.warmUp() }
         }
+        let generation = planGeneration
         idleTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.idleDelay)
             guard let self, !Task.isCancelled else { return }
             let call = await self.planner.plan(query: query)
-            guard !Task.isCancelled else { return }  // superseded: newer task owns state
+            guard generation == self.planGeneration else { return }  // superseded
             self.isPlanning = false
             if let call {
                 // Live preview never pops a choice list mid-typing; Enter does.
@@ -220,14 +219,17 @@ final class ActionController: ObservableObject {
     /// then model). When a preview is already showing, handleSubmit confirms it
     /// instead of calling this.
     func submitExplicitAIQuery(_ rawQuery: String) {
+        // A submit owns the planning state from here: supersede any in-flight
+        // preview so its late return can't touch what this submit sets up.
         idleTask?.cancel()
+        planTask?.cancel()
+        planGeneration += 1
         let query = stripPrefix(rawQuery)
         guard !query.isEmpty else { return }
 
         // Explicit memory command ("remember …", "forget …", "memories"):
         // deterministic, never touches the model.
         if let memoryFeedback = MemoryStore.command(query) {
-            planTask?.cancel()
             isPlanning = false
             pending = nil
             feedback = memoryFeedback
@@ -237,7 +239,6 @@ final class ActionController: ObservableObject {
         // Clipboard text-op verb ("summarize", "fix grammar", "translate to …"):
         // deterministic routing, transforms whatever text is on the clipboard.
         if let op = EngineBridge.shared.aiTextOp(input: query) {
-            planTask?.cancel()
             isPlanning = false
             pending = nil
             runTextOp(label: op.label, instruction: op.instruction)
@@ -250,7 +251,6 @@ final class ActionController: ObservableObject {
         let modelAvailable = planner.isAvailable
         if let raw = EngineBridge.shared.aiParseExplicit(">" + query, modelAvailable: modelAvailable),
            case .planned(let plan) = resolveOutcome(toolID: raw.toolID, params: raw.params) {
-            planTask?.cancel()
             isPlanning = false
             pending = plannedAction(toolID: raw.toolID, plan: plan)
             feedback = ""
@@ -263,24 +263,23 @@ final class ActionController: ObservableObject {
             askChat(query)
             return
         }
-        planTask?.cancel()
-        // The submit is about to clear the input; spare that one clear so it
-        // doesn't cancel this plan/chat before it produces an answer.
-        skipCancelOnNextClear = true
+        // The message joins the transcript NOW; the planner round-trip ("is
+        // this an action?") happens under the Thinking indicator, not before
+        // the user sees their own message.
+        isPlanning = true
+        sessionItems.append(ActionSessionItem(kind: .user, text: query))
+        saveConversation()
+        let generation = planGeneration
         planTask = Task { [weak self] in
             guard let self else { return }
-            self.isPlanning = true
             let call = await self.planner.plan(query: query)
-            guard !Task.isCancelled else {
-                self.isPlanning = false
-                return
-            }
+            guard generation == self.planGeneration else { return }  // superseded
             self.isPlanning = false
             if let call {
                 self.propose(call)
             } else {
                 // Not an add-action: treat it as a chat turn in the session.
-                self.askChat(query)
+                self.askChat(query, userItemAppended: true)
             }
         }
     }
@@ -288,11 +287,18 @@ final class ActionController: ObservableObject {
     /// A chat turn in the session: the question and a streaming answer stack as
     /// items, with the session (including performed actions) as conversation
     /// context. This is what a non-action `>` query becomes on Enter.
-    func askChat(_ query: String) {
+    /// `userItemAppended` = the submit already put the message in the transcript
+    /// (it shows instantly while the planner thinks); don't add it twice.
+    func askChat(_ query: String, userItemAppended: Bool = false) {
         chatTask?.cancel()
-        let userItem = ActionSessionItem(kind: .user, text: query)
-        sessionItems.append(userItem)
-        saveConversation()
+        // A leftover disambiguation list must not survive into an unrelated
+        // turn: a later bare number would still fire the old (possibly
+        // destructive) choice.
+        pendingChoice = nil
+        if !userItemAppended {
+            sessionItems.append(ActionSessionItem(kind: .user, text: query))
+            saveConversation()
+        }
 
         // Schedule-sounding questions get the calendar as context, so "what's my
         // next meeting" / "am I free friday" just answer. The data only ever
@@ -377,7 +383,7 @@ final class ActionController: ObservableObject {
                     return
                 }
             }
-            updateItem(placeholderID, text: "Answer failed. Is the model available?")
+            updateItem(placeholderID, text: chatFailureMessage())
             saveConversation()
             return
         }
@@ -462,7 +468,7 @@ final class ActionController: ObservableObject {
                     return
                 }
             }
-            updateItem(placeholderID, text: "Text op failed. Is the model available?")
+            updateItem(placeholderID, text: chatFailureMessage())
             saveConversation()
             return
         }
@@ -472,7 +478,7 @@ final class ActionController: ObservableObject {
             chatTask = Task { [weak self] in await self?.consume(stream, into: placeholderID) }
             return
         }
-        updateItem(placeholderID, text: "No model available.")
+        updateItem(placeholderID, text: chatFailureMessage())
         saveConversation()
     }
 
@@ -489,8 +495,14 @@ final class ActionController: ObservableObject {
             if !snapshot.text.isEmpty {
                 updateItem(id, text: snapshot.text)
             }
-            if snapshot.error != nil, snapshot.text.isEmpty {
-                updateItem(id, text: "Answer failed. Is the model available?")
+            if let error = snapshot.error {
+                // Mid-stream failures keep the partial answer, with the reason.
+                let message = chatFailureMessage(detail: error)
+                updateItem(
+                    id,
+                    text: snapshot.text.isEmpty ? message : snapshot.text + "\n\n" + message)
+            } else if snapshot.truncated == true, !snapshot.text.isEmpty {
+                updateItem(id, text: snapshot.text + "\n\n(Answer cut off at the length limit.)")
             }
             if snapshot.done {
                 saveConversation()
@@ -508,10 +520,26 @@ final class ActionController: ObservableObject {
             }
         } catch {
             if !Task.isCancelled {
-                updateItem(id, text: "Answer failed. Is the model available?")
+                let detail = (error as? OllamaError)?.errorDescription
+                updateItem(id, text: chatFailureMessage(detail: detail))
             }
         }
         if !Task.isCancelled { saveConversation() }
+    }
+
+    /// The most specific failure text available: the server's own message when
+    /// the stream carried one ("model 'x' not found"), else the health probe's
+    /// actionable diagnosis ("Ollama is not running. Start it with: ollama
+    /// serve"), else the generic fallback.
+    private func chatFailureMessage(detail: String? = nil) -> String {
+        if let detail, !detail.isEmpty, detail != "no response" {
+            return "Answer failed: \(detail)"
+        }
+        let provider = ThemeStore.shared.settings.aiProvider
+        if case .unavailable(let reason) = AIQueryRouter.shared.availability(of: provider) {
+            return reason.userFacingMessage
+        }
+        return "Answer failed. Is the model available?"
     }
 
     private func updateItem(_ id: UUID, text: String, source: String? = nil) {
@@ -767,22 +795,18 @@ final class ActionController: ObservableObject {
         planTask?.cancel()
         idleTask?.cancel()
         chatTask?.cancel()
+        planGeneration += 1
         pending = nil
         pendingChoice = nil
         feedback = ""
         isPlanning = false
     }
 
-    /// The compose input cleared. Cancel an in-flight preview/plan - unless this
-    /// clear was caused by a submit (the submitted plan/chat must keep running).
+    /// The user emptied the compose input by hand: cancel an in-flight
+    /// preview/plan. A submit's own input-clear never reaches this - the view
+    /// clears through `clearQuerySilently`, which skips these side effects.
     func handleComposeCleared() {
-        // A pending debounce always dies with the input (spared submit already
-        // cancelled it); only the submitted plan/chat is protected below.
         idleTask?.cancel()
-        if skipCancelOnNextClear {
-            skipCancelOnNextClear = false
-            return
-        }
         if isPresenting || isPlanning {
             cancel()
         }

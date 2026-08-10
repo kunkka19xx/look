@@ -51,22 +51,46 @@ pub fn post_json(url: &str, body: &str, timeout_secs: u32) -> Option<String> {
     String::from_utf8(output.stdout).ok()
 }
 
+/// One parsed NDJSON line of a `/api/chat` response.
+pub struct StreamLine {
+    pub delta: String,
+    pub done: bool,
+    /// The server's own error message: Ollama emits `{"error":"..."}` both
+    /// in-stream (e.g. model OOM mid-generation) and as the body of a non-2xx
+    /// response ("model 'x' not found").
+    pub error: Option<String>,
+    /// Done because the `num_predict` cap was hit (`done_reason: "length"`),
+    /// so the answer is cut off, not complete.
+    pub truncated: bool,
+}
+
 /// One NDJSON line of a streamed `/api/chat` response, reduced to the delta
-/// text and the done flag. None for lines with no message payload.
-pub fn parse_stream_line(line: &str) -> Option<(String, bool)> {
+/// text, the done flag, and any server error. None for non-JSON lines.
+pub fn parse_stream_line(line: &str) -> Option<StreamLine> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return None;
     }
     let root: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+    let error = root
+        .get("error")
+        .and_then(|e| e.as_str())
+        .filter(|e| !e.is_empty())
+        .map(String::from);
     let done = root.get("done").and_then(|d| d.as_bool()).unwrap_or(false);
+    let truncated = root.get("done_reason").and_then(|d| d.as_str()) == Some("length");
     let delta = root
         .get("message")
         .and_then(|m| m.get("content"))
         .and_then(|c| c.as_str())
         .unwrap_or("")
         .to_string();
-    Some((delta, done))
+    Some(StreamLine {
+        delta,
+        done,
+        error,
+        truncated,
+    })
 }
 
 #[cfg(test)]
@@ -75,12 +99,32 @@ mod tests {
 
     #[test]
     fn stream_line_parses_delta_and_done() {
-        let (delta, done) =
-            parse_stream_line(r#"{"message":{"content":"Hel"},"done":false}"#).unwrap();
-        assert_eq!(delta, "Hel");
-        assert!(!done);
-        let (_, done) = parse_stream_line(r#"{"message":{"content":""},"done":true}"#).unwrap();
-        assert!(done);
+        let line = parse_stream_line(r#"{"message":{"content":"Hel"},"done":false}"#).unwrap();
+        assert_eq!(line.delta, "Hel");
+        assert!(!line.done);
+        assert!(line.error.is_none());
+        let line = parse_stream_line(r#"{"message":{"content":""},"done":true}"#).unwrap();
+        assert!(line.done);
         assert!(parse_stream_line("   ").is_none());
+    }
+
+    #[test]
+    fn stream_line_surfaces_server_errors() {
+        let line = parse_stream_line(r#"{"error":"model 'x' not found"}"#).unwrap();
+        assert_eq!(line.error.as_deref(), Some("model 'x' not found"));
+        assert!(!line.done);
+    }
+
+    #[test]
+    fn stream_line_flags_length_truncation() {
+        let line =
+            parse_stream_line(r#"{"message":{"content":""},"done":true,"done_reason":"length"}"#)
+                .unwrap();
+        assert!(line.done);
+        assert!(line.truncated);
+        let line =
+            parse_stream_line(r#"{"message":{"content":""},"done":true,"done_reason":"stop"}"#)
+                .unwrap();
+        assert!(!line.truncated);
     }
 }

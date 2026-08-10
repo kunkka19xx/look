@@ -29,26 +29,44 @@ final class ActionPlanner {
     }
 
     /// Returns a `ToolCall`, or nil when there is no capable provider, the
-    /// request is not an action, or the response is unusable.
+    /// request is not an action, or the response is unusable. Cancellation is
+    /// real: it kills the request, so a superseded plan never queues in Ollama
+    /// behind the one the user is waiting for.
     func plan(query: String) async -> ToolCall? {
         guard isAvailable else { return nil }
         let settings = ThemeStore.shared.settings
-        let host = settings.ollamaHost
-        let model = settings.ollamaModel
         let bridge = EngineBridge.shared
+        let session = bridge.aiPlanStart(
+            host: settings.ollamaHost, model: settings.ollamaModel, query: query)
+        guard session != 0 else { return nil }
 
-        let raw = await Task.detached(priority: .userInitiated) {
-            bridge.aiPlan(host: host, model: model, query: query)
-        }.value
+        var raw: EngineBridge.AIPlanSnapshot.RawCall?
+        while true {
+            if Task.isCancelled {
+                bridge.aiPlanCancel(session)
+                return nil
+            }
+            guard let snapshot = bridge.aiPlanPoll(session) else { return nil }
+            if snapshot.done {
+                raw = snapshot.call
+                break
+            }
+            do {
+                try await Task.sleep(nanoseconds: 60_000_000)
+            } catch {
+                bridge.aiPlanCancel(session)
+                return nil
+            }
+        }
         guard let raw else { return nil }
 
         var params = raw.params
         // Date seam: add tools get `when` = the raw query when a date resolves
         // in it (NSDataDetector, macOS-quality). No date -> all-day / undated.
-        if raw.toolID == "calendar.add_event" || raw.toolID == "reminder.add",
+        if raw.tool == "calendar.add_event" || raw.tool == "reminder.add",
            DatePhrase.resolve(query, now: Date()) != nil {
             params["when"] = query
         }
-        return ToolCall(toolID: raw.toolID, params: params)
+        return ToolCall(toolID: raw.tool, params: params)
     }
 }

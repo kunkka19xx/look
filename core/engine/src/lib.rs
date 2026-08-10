@@ -81,13 +81,59 @@ impl QueryEngine {
     /// Natural-language file recall: files/folders filtered by type, modified
     /// time, and location, ranked most-recent-first. Runs against Look's own
     /// index (fast, no Spotlight); the shell parses the query into a `FileFilter`.
+    /// An empty result relaxes the query progressively (see `relaxations`) so
+    /// near-misses beat an empty panel.
     pub fn search_files(&self, filter: &FileFilter, limit: usize) -> Vec<LaunchResult> {
-        self.search_files_indices(filter, limit)
+        let mut indices = self.search_files_indices(filter, limit);
+        if indices.is_empty() {
+            for relaxed in Self::relaxations(filter) {
+                indices = self.search_files_indices(&relaxed, limit);
+                if !indices.is_empty() {
+                    break;
+                }
+            }
+        }
+        indices
             .into_iter()
             .map(|(idx, score)| {
                 LaunchResult::from((&self.candidates[idx as usize].candidate, score))
             })
             .collect()
+    }
+
+    /// Fallbacks for an empty file-recall result, ordered so the least user
+    /// intent is lost first. Human time memory is fuzzy ("downloaded last
+    /// week" often means "a week or so ago"), so the window doubles backward
+    /// while the terms - the strongest signal of WHAT - are kept. Terms drop
+    /// only after that: an unrecognized glue word the parser didn't strip
+    /// ("files added to ...") lands in terms and would otherwise filter
+    /// everything out. Type and location filters are never relaxed.
+    fn relaxations(filter: &FileFilter) -> Vec<FileFilter> {
+        let widened_window = match (filter.start, filter.end) {
+            (Some(start), Some(end)) if end > start => Some((start - (end - start), end)),
+            _ => None,
+        };
+        let has_terms = !filter.terms.trim().is_empty();
+
+        let build = |terms: &str, window: Option<(i64, i64)>| FileFilter {
+            terms: terms.into(),
+            categories: filter.categories.clone(),
+            start: window.map(|w| w.0).or(filter.start),
+            end: window.map(|w| w.1).or(filter.end),
+            locations: filter.locations.clone(),
+        };
+
+        let mut steps = Vec::new();
+        if let Some(window) = widened_window {
+            steps.push(build(&filter.terms, Some(window)));
+        }
+        if has_terms {
+            steps.push(build("", None));
+            if let Some(window) = widened_window {
+                steps.push(build("", Some(window)));
+            }
+        }
+        steps
     }
 
     pub fn record_usage_in_memory(&mut self, candidate_id: &str, used_at_unix_s: i64) -> bool {
@@ -312,6 +358,129 @@ impl BootstrapScope {
 mod tests {
     use super::*;
     use crate::scoring::default_browse_score;
+
+    fn file_candidate(id: &str, name: &str, path: &str, modified: i64) -> Candidate {
+        let mut c = Candidate::new(id, CandidateKind::File, name, path);
+        c.fs_modified_at_unix_s = Some(modified);
+        c
+    }
+
+    #[test]
+    fn file_search_filters_by_window_and_location() {
+        let now = 1_754_000_000;
+        let engine = QueryEngine::new(vec![
+            file_candidate(
+                "file:a",
+                "in-window.pdf",
+                "/Users/u/Downloads/in-window.pdf",
+                now - 86_400,
+            ),
+            file_candidate(
+                "file:b",
+                "old.pdf",
+                "/Users/u/Downloads/old.pdf",
+                now - 40 * 86_400,
+            ),
+            file_candidate(
+                "file:c",
+                "elsewhere.pdf",
+                "/Users/u/Desktop/elsewhere.pdf",
+                now - 86_400,
+            ),
+        ]);
+        let filter = FileFilter {
+            start: Some(now - 7 * 86_400),
+            end: Some(now),
+            locations: vec!["downloads".into()],
+            ..Default::default()
+        };
+        let results = engine.search_files(&filter, 10);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, "in-window.pdf");
+    }
+
+    #[test]
+    fn empty_windowed_file_search_widens_backward_once() {
+        // Newest download is 10 days old; a strict 7-day "last week" window
+        // misses it. The retry doubles the window backward (14 days) and finds
+        // it; a far older file stays excluded.
+        let now = 1_754_000_000;
+        let engine = QueryEngine::new(vec![
+            file_candidate(
+                "file:a",
+                "recent-ish.dmg",
+                "/Users/u/Downloads/recent-ish.dmg",
+                now - 10 * 86_400,
+            ),
+            file_candidate(
+                "file:b",
+                "ancient.dmg",
+                "/Users/u/Downloads/ancient.dmg",
+                now - 60 * 86_400,
+            ),
+        ]);
+        let filter = FileFilter {
+            start: Some(now - 7 * 86_400),
+            end: Some(now),
+            ..Default::default()
+        };
+        let results = engine.search_files(&filter, 10);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, "recent-ish.dmg");
+    }
+
+    #[test]
+    fn unmatched_terms_drop_before_giving_up() {
+        // An unrecognized glue word ("files added to desktop" with "added"
+        // surviving as a term) must degrade to the location listing, not to an
+        // empty panel.
+        let now = 1_754_000_000;
+        let engine = QueryEngine::new(vec![file_candidate(
+            "file:a",
+            "notes.md",
+            "/Users/u/Desktop/notes.md",
+            now - 86_400,
+        )]);
+        let filter = FileFilter {
+            terms: "added".into(),
+            locations: vec!["desktop".into()],
+            ..Default::default()
+        };
+        let results = engine.search_files(&filter, 10);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, "notes.md");
+    }
+
+    #[test]
+    fn window_widens_before_terms_drop() {
+        // "resume pdf last week" where the resume is 10 days old: widening the
+        // window (keeping the term) must win over dropping the term and
+        // returning every recent pdf.
+        let now = 1_754_000_000;
+        let engine = QueryEngine::new(vec![
+            file_candidate(
+                "file:a",
+                "resume.pdf",
+                "/Users/u/Documents/resume.pdf",
+                now - 10 * 86_400,
+            ),
+            file_candidate(
+                "file:b",
+                "other.pdf",
+                "/Users/u/Documents/other.pdf",
+                now - 2 * 86_400,
+            ),
+        ]);
+        let filter = FileFilter {
+            terms: "resume".into(),
+            start: Some(now - 7 * 86_400),
+            end: Some(now),
+            ..Default::default()
+        };
+        let results = engine.search_files(&filter, 10);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, "resume.pdf");
+    }
 
     #[test]
     fn bootstrap_scope_all_includes_every_source() {

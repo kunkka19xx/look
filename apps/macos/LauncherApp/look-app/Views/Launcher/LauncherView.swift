@@ -56,6 +56,10 @@ struct LauncherView: View {
     /// True for the single query change caused by a recall, so it doesn't reset
     /// the history cursor or fire a preview.
     @State var isRecallingPrompt = false
+    /// True for the single query change caused by a submit's own input-clear
+    /// (`clearQuerySilently`), so it skips the AI side effects in `onChange` -
+    /// the submit just set feedback/pending/plan state that must survive it.
+    @State var querySilentlyCleared = false
 
     @State var query = ""
     @State var commandInput = ""
@@ -752,6 +756,8 @@ struct LauncherView: View {
             refreshLaunchpadState()
         }
         .onChange(of: query) { _, _ in
+            let clearedBySubmit = querySilentlyCleared
+            querySilentlyCleared = false
             // Editing the query dismisses a pending Empty Trash confirmation,
             // mirroring how the kill command clears its pending candidate.
             if pendingEmptyTrashCount != nil {
@@ -770,6 +776,11 @@ struct LauncherView: View {
                 return
             }
             if isAIMode {
+                // A submit's own input-clear: the submit just set the state this
+                // branch would wipe (feedback, confirm bar, running plan/chat).
+                if clearedBySubmit, trimmedQuery.isEmpty {
+                    return
+                }
                 // A recall just filled the input: don't reset the cursor or fire a
                 // preview - the user is browsing history, not typing.
                 if isRecallingPrompt {
@@ -1265,17 +1276,21 @@ struct LauncherView: View {
     }
 
     /// ↑/↓ in an open chat walk the prompt history like a shell: ↑ older, ↓
-    /// newer, ↓ past the end returns to the empty input.
-    func recallPrompt(_ direction: MoveCommandDirection) {
-        guard !aiPromptHistory.isEmpty else { return }
+    /// newer, ↓ past the end returns to the empty input. Returns whether it
+    /// acted, so a no-op (empty history, past a boundary) lets the key fall
+    /// through to normal text-selection extension.
+    @discardableResult
+    func recallPrompt(_ direction: MoveCommandDirection) -> Bool {
+        guard !aiPromptHistory.isEmpty else { return false }
         switch direction {
         case .up:
             let next = (promptHistoryIndex ?? aiPromptHistory.count) - 1
-            guard next >= 0 else { return }
+            guard next >= 0 else { return false }
             promptHistoryIndex = next
             setRecalledInput(aiPromptHistory[next])
+            return true
         case .down:
-            guard let idx = promptHistoryIndex else { return }
+            guard let idx = promptHistoryIndex else { return false }
             let next = idx + 1
             if next >= aiPromptHistory.count {
                 promptHistoryIndex = nil
@@ -1284,8 +1299,9 @@ struct LauncherView: View {
                 promptHistoryIndex = next
                 setRecalledInput(aiPromptHistory[next])
             }
+            return true
         default:
-            break
+            return false
         }
     }
 
@@ -1367,7 +1383,7 @@ struct LauncherView: View {
                                 },
                                 onCancel: { actionController.cancel() }
                             )
-                        } else if actionController.isPlanning {
+                        } else if actionController.isPlanning, thinkingTurnID == nil {
                             actionThinkingBar
                         } else if !actionController.feedback.isEmpty {
                             ActionResultBar(
@@ -1459,6 +1475,12 @@ struct LauncherView: View {
                                 ForEach(turn.items) { item in
                                     sessionItemView(item)
                                 }
+                                // Thinking sits under the just-submitted message,
+                                // where the answer will land - nothing rearranges
+                                // when the stream replaces it.
+                                if turn.id == thinkingTurnID {
+                                    actionThinkingBar
+                                }
                             }
                         }
                     }
@@ -1493,6 +1515,16 @@ struct LauncherView: View {
     private struct SessionTurn: Identifiable {
         let id: UUID
         let items: [ActionSessionItem]
+    }
+
+    /// The turn the Thinking indicator belongs to: the newest turn, when it is
+    /// an unanswered user message (a submit planning beneath it). Nil while
+    /// composing (live preview), when the indicator shows in the activity slot.
+    private var thinkingTurnID: UUID? {
+        guard actionController.isPlanning,
+              let turn = sessionTurns.last,
+              turn.items.last?.kind == .user else { return nil }
+        return turn.id
     }
 
     private var sessionTurns: [SessionTurn] {
