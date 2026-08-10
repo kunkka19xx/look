@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 
 use crate::{chat, ollama, plan};
 
-pub const ALIASES: [(&str, &str); 8] = [
+pub const ALIASES: [(&str, &str); 10] = [
     ("event", "calendar.add_event"),
     ("reminder", "reminder.add"),
     ("cancel", "calendar.cancel_event"),
@@ -20,6 +20,8 @@ pub const ALIASES: [(&str, &str); 8] = [
     ("delete", "reminder.remove"),
     ("snooze", "reminder.snooze"),
     ("block", "calendar.block_time"),
+    ("recall", "files.recall"),
+    ("textop", "clipboard.textop"),
 ];
 
 pub const SYSTEM_PROMPT: &str = r#"Classify the request into ONE tool and extract its params:
@@ -31,6 +33,8 @@ pub const SYSTEM_PROMPT: &str = r#"Classify the request into ONE tool and extrac
 - "delete": remove an EXISTING reminder from the list. params: match.
 - "snooze": push an EXISTING reminder to a later time. params: match, when (the new time phrase verbatim).
 - "block": reserve free focus time. params: duration (e.g. "2 hours", "90 minutes"), when (the day/window phrase like "friday" or "this week").
+- "recall": find the user's OWN files on this machine ("the pdf i downloaded", "find my screenshots from friday"). params (all optional, include what the request names): terms (file name/content words), types (kind words like "pdf", "screenshot", "image"), when (the time phrase verbatim), location ("downloads", "desktop" or "documents").
+- "textop": transform the text on the clipboard ("make this shorter", "translate my copied text to german"). params: instruction (a one-sentence imperative, e.g. "Translate the text to German.").
 Pronouns and references are valid match values: "remove it" -> match "it"; "cancel this event" -> match "this event".
 Reply with JSON only: {"steps":[{"tool":"...","params":{...}}]}.
 If it is none of these, reply {"steps":[]}."#;
@@ -79,6 +83,21 @@ pub fn resolve_step(step: &plan::PlanStep) -> Option<Value> {
         "calendar.move_event" | "reminder.snooze" => {
             json!({ "match": get("match")?, "when": get("when")? })
         }
+        "files.recall" => {
+            // At least one facet, or it is not a usable recall.
+            let mut p = json!({});
+            for key in ["terms", "types", "when", "location"] {
+                if let Some(value) = get(key) {
+                    p[key] = Value::String(value);
+                }
+            }
+            let empty = p.as_object().is_some_and(|o| o.is_empty());
+            if empty {
+                return None;
+            }
+            p
+        }
+        "clipboard.textop" => json!({ "instruction": get("instruction")? }),
         "calendar.block_time" => {
             let mut p = json!({ "duration": get("duration")? });
             if let Some(when) = get("when") {
@@ -193,6 +212,31 @@ mod tests {
     #[test]
     fn unknown_alias_is_none() {
         assert!(resolve_step(&step("bogus", json!({"match": "x"}))).is_none());
+    }
+
+    #[test]
+    fn recall_needs_at_least_one_facet() {
+        let call = resolve_step(&step(
+            "recall",
+            json!({"types": "pdf", "when": "last week", "location": "downloads"}),
+        ))
+        .unwrap();
+        assert_eq!(call["tool"], "files.recall");
+        assert_eq!(call["params"]["types"], "pdf");
+        assert_eq!(call["params"]["when"], "last week");
+        assert!(call["params"].get("terms").is_none());
+        assert!(resolve_step(&step("recall", json!({}))).is_none());
+    }
+
+    #[test]
+    fn textop_needs_instruction() {
+        let call = resolve_step(&step(
+            "textop",
+            json!({"instruction": "Translate the text to German."}),
+        ))
+        .unwrap();
+        assert_eq!(call["tool"], "clipboard.textop");
+        assert!(resolve_step(&step("textop", json!({}))).is_none());
     }
 
     #[test]

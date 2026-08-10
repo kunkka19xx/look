@@ -68,6 +68,10 @@ struct LauncherView: View {
     /// Set when a detected file-recall query matched nothing, so the panel shows
     /// an honest "no files" line instead of the knowledge-lookup AI card.
     @State var fileRecallEmptyMessage: String?
+    /// Set when file-recall results came from a relaxed retry (widened time
+    /// window / dropped terms), so the panel says so instead of silently
+    /// showing something broader than what was asked.
+    @State var fileRecallNote: String?
     @State var webSuggestions: [String] = []
     @State var webSuggestionTask: Task<Void, Never>?
     @State var recentURLEntries: [URLHistoryEntry] = []
@@ -755,97 +759,13 @@ struct LauncherView: View {
         .onChange(of: appearanceRevealToken) { _, _ in
             refreshLaunchpadState()
         }
+        // A model-interpreted file recall (planner `recall` step): the AI panel
+        // hands it to the main results panel, which owns file rows.
+        .onChange(of: actionController.recallRequest) { _, request in
+            handleRecallRequestChange(request)
+        }
         .onChange(of: query) { _, _ in
-            let clearedBySubmit = querySilentlyCleared
-            querySilentlyCleared = false
-            // Editing the query dismisses a pending Empty Trash confirmation,
-            // mirroring how the kill command clears its pending candidate.
-            if pendingEmptyTrashCount != nil {
-                pendingEmptyTrashCount = nil
-            }
-            if pendingHideAppResult != nil {
-                pendingHideAppResult = nil
-            }
-            let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            // `>` jumps into AI mode: the prefix is consumed once, and everything
-            // typed after is AI input until Esc leaves the mode.
-            if !isCommandMode, !isAIMode, trimmedQuery.hasPrefix(">") {
-                isAIMode = true
-                conversationCache = ConversationStore.load()
-                query = String(trimmedQuery.dropFirst())
-                return
-            }
-            if isAIMode {
-                // A submit's own input-clear: the submit just set the state this
-                // branch would wipe (feedback, confirm bar, running plan/chat).
-                if clearedBySubmit, trimmedQuery.isEmpty {
-                    return
-                }
-                // A recall just filled the input: don't reset the cursor or fire a
-                // preview - the user is browsing history, not typing.
-                if isRecallingPrompt {
-                    isRecallingPrompt = false
-                    return
-                }
-                // Any real edit moves the history cursor back to the live input.
-                promptHistoryIndex = nil
-                aiAnswer.cancel()
-                // A new keystroke dismisses a transient result (e.g. "Remembered
-                // …") so the sessions list returns.
-                actionController.clearFeedback()
-                // While browsing/searching stored conversations (no active one),
-                // don't churn the model per keystroke; typing filters the list
-                // and Enter drives everything. Instant `@` forms still preview.
-                let browsing = actionController.sessionItems.isEmpty
-                    && !conversationCache.isEmpty
-                    && !trimmedQuery.contains("@")
-                if browsing {
-                    // Typing re-filters, so a new chat stays the default action.
-                    selectedConversationIndex = -1
-                    // Clearing the input cancels an in-flight preview - but not the
-                    // plan/chat a submit just kicked off (that clear is spared).
-                    actionController.handleComposeCleared()
-                } else {
-                    actionController.previewExplicitAIQuery(trimmedQuery)
-                }
-                return
-            }
-            // Editing away from `>` drops any pending or in-flight action.
-            if actionController.isPresenting || actionController.isPlanning {
-                actionController.cancel()
-            }
-            if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
-                aiAnswer.cancel()
-                enterCommandMode(commandID: cmd.id, prefilledInput: cmd.args)
-                return
-            }
-            previewLookupDefinition(for: query)
-            if !isCommandMode {
-                if showsHelpScreen {
-                    showsHelpScreen = false
-                }
-                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery || isTranslationQuery || isProcessQuery {
-                    // These render their own panels (clip history / prefix menu /
-                    // command menu / translation / process finder), not backend
-                    // results. Skip the search + AI answer entirely - otherwise a
-                    // background AI activation flips the floating layout and
-                    // flashes the old backdrop while typing. Translation only
-                    // fires on Enter.
-                    aiAnswer.cancel()
-                    setInitialSelection()
-                } else {
-                    // Search drives the AI answer card from its completion handler
-                    // (it needs the local result count to decide whether to fire).
-                    refreshSearchResults()
-                }
-            } else {
-                aiAnswer.cancel()
-            }
-            // Google autocomplete rows (appended after engine results). Self-gates
-            // by mode and the online-features flag; never blocks search.
-            refreshWebSuggestions()
-            // Previously-opened URLs matching the query (url-history spec).
-            refreshRecentURLs()
+            handleQueryChange()
         }
         .onChange(of: selectedResultID) { _, _ in
             // Load Quick Actions + read their live state for the new selection.
@@ -868,6 +788,14 @@ struct LauncherView: View {
         .onChange(of: processModel.candidates) { _, _ in
             repairProcessSelection()
         }
+        .background(notificationHandlers)
+    }
+
+    /// Second half of the root modifier chain (store subscriptions and
+    /// notification handlers), attached to a zero-size background view so
+    /// the type checker sees two short chains instead of one long one.
+    private var notificationHandlers: some View {
+        Color.clear
         .onReceive(clipboardStore.$entries) { _ in
             refreshClipboardSelectionIfNeeded()
         }
@@ -969,6 +897,123 @@ struct LauncherView: View {
                 }
             }
         }
+    }
+
+
+    private func handleRecallRequestChange(_ request: ActionController.RecallRequest?) {
+        guard let request else { return }
+        actionController.clearRecallRequest()
+        runModelRecall(request)
+    }
+
+    private func fileRecallNoteLine(_ note: String) -> some View {
+        Text(note)
+            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+            .foregroundStyle(themeStore.mutedTextColor())
+            .padding(.horizontal, 12)
+            .padding(.top, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Body of `.onChange(of: query)`, extracted so the view body stays within
+    /// the type checker's budget.
+    private func handleQueryChange() {
+            let clearedBySubmit = querySilentlyCleared
+            querySilentlyCleared = false
+            // A programmatic set outside AI mode (model recall filling the
+            // input): results were published directly; don't re-search over
+            // them.
+            if clearedBySubmit, !isAIMode {
+                return
+            }
+            // Editing the query dismisses a pending Empty Trash confirmation,
+            // mirroring how the kill command clears its pending candidate.
+            if pendingEmptyTrashCount != nil {
+                pendingEmptyTrashCount = nil
+            }
+            if pendingHideAppResult != nil {
+                pendingHideAppResult = nil
+            }
+            let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            // `>` jumps into AI mode: the prefix is consumed once, and everything
+            // typed after is AI input until Esc leaves the mode.
+            if !isCommandMode, !isAIMode, trimmedQuery.hasPrefix(">") {
+                isAIMode = true
+                conversationCache = ConversationStore.load()
+                query = String(trimmedQuery.dropFirst())
+                return
+            }
+            if isAIMode {
+                // A submit's own input-clear: the submit just set the state this
+                // branch would wipe (feedback, confirm bar, running plan/chat).
+                if clearedBySubmit, trimmedQuery.isEmpty {
+                    return
+                }
+                // A recall just filled the input: don't reset the cursor or fire a
+                // preview - the user is browsing history, not typing.
+                if isRecallingPrompt {
+                    isRecallingPrompt = false
+                    return
+                }
+                // Any real edit moves the history cursor back to the live input.
+                promptHistoryIndex = nil
+                aiAnswer.cancel()
+                // A new keystroke dismisses a transient result (e.g. "Remembered
+                // …") so the sessions list returns.
+                actionController.clearFeedback()
+                // While browsing/searching stored conversations (no active one),
+                // don't churn the model per keystroke; typing filters the list
+                // and Enter drives everything. Instant `@` forms still preview.
+                let browsing = actionController.sessionItems.isEmpty
+                    && !conversationCache.isEmpty
+                    && !trimmedQuery.contains("@")
+                if browsing {
+                    // Typing re-filters, so a new chat stays the default action.
+                    selectedConversationIndex = -1
+                    // Clearing the input cancels an in-flight preview - but not the
+                    // plan/chat a submit just kicked off (that clear is spared).
+                    actionController.handleComposeCleared()
+                } else {
+                    actionController.previewExplicitAIQuery(trimmedQuery)
+                }
+                return
+            }
+            // Editing away from `>` drops any pending or in-flight action.
+            if actionController.isPresenting || actionController.isPlanning {
+                actionController.cancel()
+            }
+            if !isCommandMode, let cmd = extractInlineCommand(from: query), cmd.hasSpace {
+                aiAnswer.cancel()
+                enterCommandMode(commandID: cmd.id, prefilledInput: cmd.args)
+                return
+            }
+            previewLookupDefinition(for: query)
+            if !isCommandMode {
+                if showsHelpScreen {
+                    showsHelpScreen = false
+                }
+                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery || isTranslationQuery || isProcessQuery {
+                    // These render their own panels (clip history / prefix menu /
+                    // command menu / translation / process finder), not backend
+                    // results. Skip the search + AI answer entirely - otherwise a
+                    // background AI activation flips the floating layout and
+                    // flashes the old backdrop while typing. Translation only
+                    // fires on Enter.
+                    aiAnswer.cancel()
+                    setInitialSelection()
+                } else {
+                    // Search drives the AI answer card from its completion handler
+                    // (it needs the local result count to decide whether to fire).
+                    refreshSearchResults()
+                }
+            } else {
+                aiAnswer.cancel()
+            }
+            // Google autocomplete rows (appended after engine results). Self-gates
+            // by mode and the online-features flag; never blocks search.
+            refreshWebSuggestions()
+            // Previously-opened URLs matching the query (url-history spec).
+            refreshRecentURLs()
     }
 
     @ViewBuilder
@@ -1132,6 +1177,9 @@ struct LauncherView: View {
                 }
                 Spacer(minLength: 0)
             } else {
+                if let fileRecallNote {
+                    fileRecallNoteLine(fileRecallNote)
+                }
                 resultsRow
             }
 

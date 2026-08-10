@@ -183,14 +183,6 @@ pub(crate) fn look_ai_memory_context_impl(path: *const c_char) -> *mut c_char {
     state::store_json_allocation(cstring)
 }
 
-/// The stored facts as a JSON array. Free with `look_free_cstring`.
-pub(crate) fn look_ai_memory_list_json_impl(path: *const c_char) -> *mut c_char {
-    let path = state::cstr_to_string(path);
-    let json = look_ai::memory::load_json(std::path::Path::new(&path));
-    let cstring = CString::new(json).unwrap_or_else(|_| CString::new("[]").expect("valid"));
-    state::store_json_allocation(cstring)
-}
-
 /// Load the AI mutate targets once (events + reminders as JSON arrays), so
 /// per-keystroke resolves can omit them. Parse failures leave the prior set.
 pub(crate) fn look_ai_load_targets_impl(events_json: *const c_char, reminders_json: *const c_char) {

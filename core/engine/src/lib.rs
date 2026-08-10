@@ -40,6 +40,20 @@ pub struct FileFilter {
     pub locations: Vec<String>,
 }
 
+/// Which fallback produced a non-empty file-recall result (see
+/// `QueryEngine::relaxations`); None = the strict query matched.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FileSearchRelaxation {
+    WidenedWindow,
+    DroppedTerms,
+    DroppedTermsWidenedWindow,
+}
+
+pub struct FileSearchOutcome {
+    pub results: Vec<LaunchResult>,
+    pub relaxation: Option<FileSearchRelaxation>,
+}
+
 struct IndexedCandidate {
     candidate: Candidate,
     // Search-normalized fields are precomputed once at load time so the query loop
@@ -82,23 +96,31 @@ impl QueryEngine {
     /// time, and location, ranked most-recent-first. Runs against Look's own
     /// index (fast, no Spotlight); the shell parses the query into a `FileFilter`.
     /// An empty result relaxes the query progressively (see `relaxations`) so
-    /// near-misses beat an empty panel.
-    pub fn search_files(&self, filter: &FileFilter, limit: usize) -> Vec<LaunchResult> {
+    /// near-misses beat an empty panel; `relaxation` reports which fallback
+    /// produced the results so the shell can say so instead of silently showing
+    /// something other than what was asked.
+    pub fn search_files(&self, filter: &FileFilter, limit: usize) -> FileSearchOutcome {
         let mut indices = self.search_files_indices(filter, limit);
+        let mut relaxation = None;
         if indices.is_empty() {
-            for relaxed in Self::relaxations(filter) {
+            for (relaxed, kind) in Self::relaxations(filter) {
                 indices = self.search_files_indices(&relaxed, limit);
                 if !indices.is_empty() {
+                    relaxation = Some(kind);
                     break;
                 }
             }
         }
-        indices
+        let results = indices
             .into_iter()
             .map(|(idx, score)| {
                 LaunchResult::from((&self.candidates[idx as usize].candidate, score))
             })
-            .collect()
+            .collect();
+        FileSearchOutcome {
+            results,
+            relaxation,
+        }
     }
 
     /// Fallbacks for an empty file-recall result, ordered so the least user
@@ -108,7 +130,7 @@ impl QueryEngine {
     /// only after that: an unrecognized glue word the parser didn't strip
     /// ("files added to ...") lands in terms and would otherwise filter
     /// everything out. Type and location filters are never relaxed.
-    fn relaxations(filter: &FileFilter) -> Vec<FileFilter> {
+    fn relaxations(filter: &FileFilter) -> Vec<(FileFilter, FileSearchRelaxation)> {
         let widened_window = match (filter.start, filter.end) {
             (Some(start), Some(end)) if end > start => Some((start - (end - start), end)),
             _ => None,
@@ -125,12 +147,18 @@ impl QueryEngine {
 
         let mut steps = Vec::new();
         if let Some(window) = widened_window {
-            steps.push(build(&filter.terms, Some(window)));
+            steps.push((
+                build(&filter.terms, Some(window)),
+                FileSearchRelaxation::WidenedWindow,
+            ));
         }
         if has_terms {
-            steps.push(build("", None));
+            steps.push((build("", None), FileSearchRelaxation::DroppedTerms));
             if let Some(window) = widened_window {
-                steps.push(build("", Some(window)));
+                steps.push((
+                    build("", Some(window)),
+                    FileSearchRelaxation::DroppedTermsWidenedWindow,
+                ));
             }
         }
         steps
@@ -394,9 +422,10 @@ mod tests {
             locations: vec!["downloads".into()],
             ..Default::default()
         };
-        let results = engine.search_files(&filter, 10);
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].title, "in-window.pdf");
+        let outcome = engine.search_files(&filter, 10);
+        assert_eq!(outcome.results.len(), 1);
+        assert_eq!(outcome.results[0].title, "in-window.pdf");
+        assert!(outcome.relaxation.is_none());
     }
 
     #[test]
@@ -424,9 +453,10 @@ mod tests {
             end: Some(now),
             ..Default::default()
         };
-        let results = engine.search_files(&filter, 10);
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].title, "recent-ish.dmg");
+        let outcome = engine.search_files(&filter, 10);
+        assert_eq!(outcome.results.len(), 1);
+        assert_eq!(outcome.results[0].title, "recent-ish.dmg");
+        assert_eq!(outcome.relaxation, Some(FileSearchRelaxation::WidenedWindow));
     }
 
     #[test]
@@ -446,9 +476,10 @@ mod tests {
             locations: vec!["desktop".into()],
             ..Default::default()
         };
-        let results = engine.search_files(&filter, 10);
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].title, "notes.md");
+        let outcome = engine.search_files(&filter, 10);
+        assert_eq!(outcome.results.len(), 1);
+        assert_eq!(outcome.results[0].title, "notes.md");
+        assert_eq!(outcome.relaxation, Some(FileSearchRelaxation::DroppedTerms));
     }
 
     #[test]
@@ -477,9 +508,10 @@ mod tests {
             end: Some(now),
             ..Default::default()
         };
-        let results = engine.search_files(&filter, 10);
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].title, "resume.pdf");
+        let outcome = engine.search_files(&filter, 10);
+        assert_eq!(outcome.results.len(), 1);
+        assert_eq!(outcome.results[0].title, "resume.pdf");
+        assert_eq!(outcome.relaxation, Some(FileSearchRelaxation::WidenedWindow));
     }
 
     #[test]

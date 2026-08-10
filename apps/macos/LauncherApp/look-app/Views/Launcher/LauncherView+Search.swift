@@ -16,6 +16,7 @@ extension LauncherView {
     func refreshSearchResults() {
         guard !isCommandMode else { return }
         fileRecallEmptyMessage = nil
+        fileRecallNote = nil
         guard !isClipboardQuery else {
             invalidateSearchRequests()
             setInitialSelection()
@@ -43,12 +44,14 @@ extension LauncherView {
             // File-recall auto-detect: "files I downloaded yesterday", "pdfs this
             // week", "screenshots today". Runs against Look's own index; nil means
             // it was not a file-recall query, so normal search proceeds below.
-            let fileResults = await Task.detached(priority: .userInitiated) {
+            let fileOutcome = await Task.detached(priority: .userInitiated) {
                 bridge.searchFiles(query: currentQuery, limit: searchLimit)
             }.value
-            if let fileResults {
+            if let fileOutcome {
                 guard !Task.isCancelled else { return }
-                publishSearchResults(fileResults, searchID: searchID, for: currentQuery, isFileRecall: true)
+                publishSearchResults(
+                    fileOutcome.results, searchID: searchID, for: currentQuery,
+                    isFileRecall: true, relaxed: fileOutcome.relaxed)
                 return
             }
 
@@ -87,7 +90,8 @@ extension LauncherView {
         _ results: [LauncherResult],
         searchID: UInt64,
         for requestedQuery: String,
-        isFileRecall: Bool = false
+        isFileRecall: Bool = false,
+        relaxed: String? = nil
     ) {
         guard searchID == latestSearchID else { return }
         guard !isCommandMode, query == requestedQuery else { return }
@@ -95,15 +99,18 @@ extension LauncherView {
         setInitialSelection()
 
         // A detected file-recall query owns the panel: on zero matches show an
-        // honest "no files" state instead of the knowledge-lookup AI card.
+        // honest "no files" state instead of the knowledge-lookup AI card, and
+        // results from a relaxed retry say so.
         if isFileRecall {
             fileRecallEmptyMessage = results.isEmpty
                 ? "No files match \u{201C}\(requestedQuery)\u{201D}."
                 : nil
+            fileRecallNote = results.isEmpty ? nil : Self.relaxationNote(relaxed)
             aiAnswer.cancel()
             return
         }
         fileRecallEmptyMessage = nil
+        fileRecallNote = nil
 
         // Additive AI answer card. Driven from here so it knows the local result
         // count - a multi-word query with no local match is treated as a
@@ -114,6 +121,55 @@ extension LauncherView {
             aiEnabled: themeStore.settings.aiEnabled,
             provider: themeStore.settings.aiProvider
         )
+    }
+
+    /// A model-interpreted file recall (the planner's `recall` step): leave AI
+    /// mode and show the results in the main panel, labeled as interpreted so
+    /// the user sees the model read their phrasing, not a literal match.
+    func runModelRecall(_ request: ActionController.RecallRequest) {
+        actionController.endSession()
+        isAIMode = false
+        invalidateSearchRequests()
+        querySilentlyCleared = true
+        query = request.query
+
+        let outcome = EngineBridge.shared.searchFiles(
+            params: request.params, limit: AppConstants.Launcher.defaultSearchLimit)
+        backendResults = outcome?.results ?? []
+        setInitialSelection()
+        aiAnswer.cancel()
+        if let outcome, !outcome.results.isEmpty {
+            fileRecallEmptyMessage = nil
+            fileRecallNote = ["Interpreted: \(Self.recallSummary(request.params))",
+                              Self.relaxationNote(outcome.relaxed)]
+                .compactMap { $0 }
+                .joined(separator: "  ·  ")
+        } else {
+            fileRecallEmptyMessage = "No files match \u{201C}\(request.query)\u{201D}."
+            fileRecallNote = nil
+        }
+        DispatchQueue.main.async { isQueryFocused = true }
+    }
+
+    /// Compact "what the model understood" summary: "pdf · downloads · last week".
+    private static func recallSummary(_ params: [String: String]) -> String {
+        ["terms", "types", "location", "when"]
+            .compactMap { key in params[key].flatMap { $0.isEmpty ? nil : $0 } }
+            .joined(separator: " ")
+    }
+
+    /// Human text for the engine's file-recall relaxation codes.
+    private static func relaxationNote(_ relaxed: String?) -> String? {
+        switch relaxed {
+        case "window":
+            return "Nothing in that exact timeframe - showing slightly older matches."
+        case "terms":
+            return "Some words didn't match anything - showing everything else that fits."
+        case "window_terms":
+            return "No exact matches - showing the closest recent files."
+        default:
+            return nil
+        }
     }
 
     func performWebSearchFromQuery() {

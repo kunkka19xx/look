@@ -59,6 +59,21 @@ pub extern "C" fn look_search_files_json(
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// File recall from structured params JSON `{terms?, types?, when?, location?}`
+/// (the model's `recall` step). Same payload shape as `look_search_files_json`;
+/// null when the params are unusable. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_search_files_params_json(
+    params_json: *const c_char,
+    now_epoch: i64,
+    limit: u32,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        search_api::look_search_files_params_json_impl(params_json, now_epoch, limit)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn look_record_usage(candidate_id: *const c_char, action: *const c_char) -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -219,7 +234,6 @@ pub extern "C" fn look_fuzzy_score(query: *const c_char, title: *const c_char) -
     .unwrap_or(matching_api::NO_MATCH)
 }
 
-/// Network-free check of whether `query` matches an instant-answer provider.
 /// Whether a mutate-tool `match` phrase refers to something from the AI
 /// session ("it", "this event") rather than naming it. Pure, no allocation.
 #[unsafe(no_mangle)]
@@ -385,15 +399,6 @@ pub extern "C" fn look_ai_memory_context(path: *const c_char) -> *mut c_char {
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// The stored facts as a JSON array. Free with `look_free_cstring`.
-#[unsafe(no_mangle)]
-pub extern "C" fn look_ai_memory_list_json(path: *const c_char) -> *mut c_char {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        ai_api::look_ai_memory_list_json_impl(path)
-    }))
-    .unwrap_or(std::ptr::null_mut())
-}
-
 /// The explicit `>verb title @ when` parser: JSON `{tool, params}` or null for
 /// natural language (deferred to the model). Free with `look_free_cstring`.
 #[unsafe(no_mangle)]
@@ -463,6 +468,7 @@ pub extern "C" fn look_ai_markdown_segments_json(text: *const c_char) -> *mut c_
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// Network-free check of whether `query` matches an instant-answer provider.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_instant_has_match(query: *const c_char) -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

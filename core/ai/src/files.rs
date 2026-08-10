@@ -24,7 +24,10 @@ pub struct FileQuery {
     pub locations: Vec<String>,
 }
 
-fn type_of(word: &str) -> Option<&'static str> {
+/// Canonical file category for a kind word ("pdfs" -> "pdf"). Public so the
+/// model's structured `recall` params normalize through the same lexicon as
+/// the deterministic parser.
+pub fn type_of(word: &str) -> Option<&'static str> {
     Some(match word {
         "pdf" | "pdfs" => "pdf",
         "image" | "images" | "photo" | "photos" | "picture" | "pictures" | "png" | "jpg"
@@ -44,7 +47,8 @@ fn type_of(word: &str) -> Option<&'static str> {
     })
 }
 
-fn location_of(word: &str) -> Option<&'static str> {
+/// Canonical location hint for a place word ("downloaded" -> "downloads").
+pub fn location_of(word: &str) -> Option<&'static str> {
     Some(match word {
         "download" | "downloads" | "downloaded" => "downloads",
         "desktop" => "desktop",

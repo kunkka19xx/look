@@ -48,6 +48,10 @@ private func look_instant_answer_json(_ query: UnsafePointer<CChar>?) -> UnsafeM
 nonisolated
 private func look_ai_is_referent(_ phrase: UnsafePointer<CChar>?) -> Bool
 
+@_silgen_name("look_search_files_params_json")
+nonisolated
+private func look_search_files_params_json(_ paramsJSON: UnsafePointer<CChar>?, _ now: Int64, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_ai_query_window")
 nonisolated
 private func look_ai_query_window(_ query: UnsafePointer<CChar>?, _ nowEpoch: Int64) -> UnsafeMutablePointer<CChar>?
@@ -303,9 +307,16 @@ final class EngineBridge: @unchecked Sendable {
         return query.withCString { look_ai_is_file_query($0, now) }
     }
 
+    /// File-recall results plus which fallback produced them, when the strict
+    /// query matched nothing ("window" | "terms" | "window_terms", nil = exact).
+    nonisolated struct FileRecallOutcome {
+        let results: [LauncherResult]
+        let relaxed: String?
+    }
+
     /// Natural-language file recall over Look's own index. Returns nil when the
     /// query is not a file-recall query (so the caller does normal search).
-    nonisolated func searchFiles(query: String, limit: Int = 40) -> [LauncherResult]? {
+    nonisolated func searchFiles(query: String, limit: Int = 40) -> FileRecallOutcome? {
         let now = Int64(Date().timeIntervalSince1970)
         guard let ptr = query.withCString({ look_search_files_json($0, now, UInt32(limit)) }) else {
             return nil
@@ -316,7 +327,31 @@ final class EngineBridge: @unchecked Sendable {
             let payload = try? JSONDecoder().decode(SearchPayload.self, from: data),
             payload.error == nil
         else { return nil }
-        return payload.results.map { item in
+        return Self.fileRecallOutcome(from: payload)
+    }
+
+    /// File recall from the model's structured `recall` params (terms, types,
+    /// when, location). Nil when the params are unusable.
+    nonisolated func searchFiles(params: [String: String], limit: Int = 40) -> FileRecallOutcome? {
+        guard
+            let paramsData = try? JSONSerialization.data(withJSONObject: params),
+            let paramsJSON = String(data: paramsData, encoding: .utf8)
+        else { return nil }
+        let now = Int64(Date().timeIntervalSince1970)
+        guard let ptr = paramsJSON.withCString({ look_search_files_params_json($0, now, UInt32(limit)) }) else {
+            return nil
+        }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let payload = try? JSONDecoder().decode(SearchPayload.self, from: data),
+            payload.error == nil
+        else { return nil }
+        return Self.fileRecallOutcome(from: payload)
+    }
+
+    private nonisolated static func fileRecallOutcome(from payload: SearchPayload) -> FileRecallOutcome {
+        let results = payload.results.map { item in
             LauncherResult(
                 id: item.id,
                 kind: LauncherResultKind(rawValue: item.kind) ?? .file,
@@ -326,6 +361,7 @@ final class EngineBridge: @unchecked Sendable {
                 score: item.score
             )
         }
+        return FileRecallOutcome(results: results, relaxed: payload.relaxed)
     }
 
     nonisolated func recordUsage(candidateID: String, action: String) -> BridgeError? {
@@ -903,6 +939,9 @@ private nonisolated struct SearchPayload: Decodable {
     let query: String
     let count: Int
     let results: [SearchItem]
+    /// File recall only: which fallback produced the results (see
+    /// EngineBridge.FileRecallOutcome).
+    let relaxed: String?
     let error: BridgeError?
 }
 

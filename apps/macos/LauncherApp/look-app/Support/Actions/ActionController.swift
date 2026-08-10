@@ -55,6 +55,16 @@ final class ActionController: ObservableObject {
     /// True while the model is turning a `>` query into an action, so the UI can
     /// show a "thinking" indicator during the generation.
     @Published private(set) var isPlanning: Bool = false
+    /// A model-interpreted file-recall request. The shell owns file results
+    /// (open/reveal/quicklook live in the main panel), so it consumes this and
+    /// runs the structured search there.
+    struct RecallRequest: Equatable {
+        let query: String
+        let params: [String: String]
+    }
+    @Published private(set) var recallRequest: RecallRequest?
+
+    func clearRecallRequest() { recallRequest = nil }
 
     private let planner: ActionPlanner
     private var planTask: Task<Void, Never>?
@@ -207,8 +217,9 @@ final class ActionController: ObservableObject {
             let call = await self.planner.plan(query: query)
             guard generation == self.planGeneration else { return }  // superseded
             self.isPlanning = false
-            if let call {
+            if let call, !Self.isUtilityCall(call) {
                 // Live preview never pops a choice list mid-typing; Enter does.
+                // Utility calls (recall/textop) only ever run on Enter.
                 self.propose(call, allowChoice: false)
             }
             // Not an action: stay quiet. Enter routes the text to chat instead.
@@ -276,11 +287,33 @@ final class ActionController: ObservableObject {
             guard generation == self.planGeneration else { return }  // superseded
             self.isPlanning = false
             if let call {
-                self.propose(call)
+                self.handlePlannedCall(call, rawQuery: query)
             } else {
                 // Not an add-action: treat it as a chat turn in the session.
                 self.askChat(query, userItemAppended: true)
             }
+        }
+    }
+
+    private static func isUtilityCall(_ call: ToolCall) -> Bool {
+        call.toolID == "files.recall" || call.toolID == "clipboard.textop"
+    }
+
+    /// Routes a planner call: utility intents execute directly (file recall in
+    /// the main panel, clipboard op in the session); calendar/reminder actions
+    /// go through the propose/confirm flow.
+    private func handlePlannedCall(_ call: ToolCall, rawQuery: String) {
+        switch call.toolID {
+        case "files.recall":
+            recallRequest = RecallRequest(query: rawQuery, params: call.params)
+        case "clipboard.textop":
+            guard let instruction = call.params["instruction"], !instruction.isEmpty else {
+                askChat(rawQuery, userItemAppended: true)
+                return
+            }
+            runTextOp(label: String(instruction.prefix(48)), instruction: instruction)
+        default:
+            propose(call)
         }
     }
 
