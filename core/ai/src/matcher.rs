@@ -192,7 +192,7 @@ mod tests {
         // Subsequence hit: below the auto-plan threshold, but graded (not flat).
         let s = score("tmsy", "Team Sync").unwrap();
         assert!(
-            s >= 100 && s < 300,
+            (100..300).contains(&s),
             "fuzzy score {s} must stay in the weak band"
         );
     }

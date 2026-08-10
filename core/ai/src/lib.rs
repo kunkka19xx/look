@@ -16,5 +16,6 @@ pub mod plan;
 pub mod planner;
 pub mod referent;
 pub mod resolve;
+mod store;
 pub mod textops;
 pub mod window;

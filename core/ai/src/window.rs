@@ -54,6 +54,16 @@ pub fn query_window(query: &str, now_epoch: i64) -> Option<Window> {
             } else if previous == "last" || previous == "previous" || previous == "past" {
                 (-1, format!("last {word}"))
             } else if let Ok(n) = previous.parse::<i64>() {
+                let before = if i > 1 { words[i - 2] } else { "" };
+                if n > 0 && matches!(before, "last" | "previous" | "past") {
+                    // Rolling backward window: "past 2 weeks" = from 2 weeks
+                    // ago through the end of today.
+                    return Some(Window {
+                        start: midnight(shift(today, unit, -n)?)?.timestamp(),
+                        end: midnight(today.succ_opt()?)?.timestamp(),
+                        label: format!("last {n} {word}"),
+                    });
+                }
                 if n > 0 {
                     (n, format!("in {n} {word}"))
                 } else {
@@ -78,6 +88,12 @@ pub fn query_window(query: &str, now_epoch: i64) -> Option<Window> {
         }
 
         if let Some(weekday) = weekday_of(word) {
+            if matches!(previous, "last" | "previous" | "past") {
+                return single_day(
+                    prev_weekday_before(today, weekday),
+                    &format!("last {}", capitalize(word)),
+                );
+            }
             return single_day(next_weekday_after(today, weekday), &capitalize(word));
         }
 
@@ -85,7 +101,7 @@ pub fn query_window(query: &str, now_epoch: i64) -> Option<Window> {
             if *word == "may" && !month_guards.contains(&previous) {
                 continue; // "may" is usually a verb
             }
-            if today.month() == month {
+            if today.month() == month && previous != "next" {
                 // Inside that month: list the rest of it.
                 let (start_date, end_date) = interval(today, Unit::Month)?;
                 let start = midnight(start_date)?.timestamp().max(now_epoch);
@@ -312,9 +328,41 @@ fn next_weekday_after(date: NaiveDate, weekday: Weekday) -> NaiveDate {
     }
 }
 
+/// The most recent occurrence strictly before `date` (never `date` itself).
+fn prev_weekday_before(date: NaiveDate, weekday: Weekday) -> NaiveDate {
+    let mut candidate = date;
+    loop {
+        candidate = match candidate.pred_opt() {
+            Some(prev) => prev,
+            None => return date,
+        };
+        if candidate.weekday() == weekday {
+            return candidate;
+        }
+    }
+}
+
 fn weekend(today: NaiveDate, now_epoch: i64, previous: &str) -> Option<Window> {
     let current = today.weekday();
     let mid_weekend = current == Weekday::Sat || current == Weekday::Sun;
+    if matches!(previous, "last" | "previous" | "past") {
+        let anchor = if current == Weekday::Sat {
+            today
+        } else {
+            prev_weekday_before(today, Weekday::Sat)
+        };
+        // Mid-weekend, "last weekend" means the one before this one.
+        let start_date = if mid_weekend {
+            anchor.checked_sub_days(Days::new(7))?
+        } else {
+            anchor
+        };
+        return Some(Window {
+            start: midnight(start_date)?.timestamp(),
+            end: midnight(next_weekday_after(start_date, Weekday::Mon))?.timestamp(),
+            label: "last weekend".into(),
+        });
+    }
     let saturday = next_weekday_after(today, Weekday::Sat);
 
     let (start_date, starts_now, label) = if mid_weekend && previous != "next" {
@@ -402,6 +450,90 @@ mod tests {
         assert_eq!(start.weekday(), Weekday::Fri);
         assert!(start > today());
         assert_eq!(w.label, "Friday");
+    }
+
+    #[test]
+    fn last_weekday_is_previous_occurrence() {
+        let w = query_window("screenshots from last friday", NOW).unwrap();
+        let start = Local
+            .timestamp_opt(w.start, 0)
+            .single()
+            .unwrap()
+            .date_naive();
+        assert_eq!(start.weekday(), Weekday::Fri);
+        assert!(start < today());
+        assert!(today().signed_duration_since(start).num_days() <= 7);
+        assert_eq!(w.label, "last Friday");
+    }
+
+    #[test]
+    fn past_n_units_is_a_backward_window() {
+        let w = query_window("pdfs from the last 2 weeks", NOW).unwrap();
+        let start = Local
+            .timestamp_opt(w.start, 0)
+            .single()
+            .unwrap()
+            .date_naive();
+        assert_eq!(start, today() - Duration::days(14));
+        let end = Local.timestamp_opt(w.end, 0).single().unwrap().date_naive();
+        assert_eq!(end, today().succ_opt().unwrap()); // through end of today
+        assert_eq!(w.label, "last 2 weeks");
+
+        let d = query_window("files from the past 3 days", NOW).unwrap();
+        let start = Local
+            .timestamp_opt(d.start, 0)
+            .single()
+            .unwrap()
+            .date_naive();
+        assert_eq!(start, today() - Duration::days(3));
+    }
+
+    #[test]
+    fn last_week_is_previous_iso_week() {
+        let w = query_window("meetings last week", NOW).unwrap();
+        let this_week_start =
+            today() - Duration::days(today().weekday().num_days_from_monday() as i64);
+        assert_eq!(
+            w.start,
+            midnight(this_week_start - Duration::days(7))
+                .unwrap()
+                .timestamp()
+        );
+        assert_eq!(w.end, midnight(this_week_start).unwrap().timestamp());
+        assert_eq!(w.label, "last week");
+    }
+
+    #[test]
+    fn last_weekend_is_behind_us() {
+        let w = query_window("photos from last weekend", NOW).unwrap();
+        let start = Local
+            .timestamp_opt(w.start, 0)
+            .single()
+            .unwrap()
+            .date_naive();
+        assert_eq!(start.weekday(), Weekday::Sat);
+        assert!(start < today());
+        let end = Local.timestamp_opt(w.end, 0).single().unwrap().date_naive();
+        assert_eq!(end.weekday(), Weekday::Mon);
+        assert_eq!(w.label, "last weekend");
+    }
+
+    #[test]
+    fn next_month_name_skips_current_month() {
+        let w = query_window("plans for next august", NOW).unwrap();
+        let start = Local
+            .timestamp_opt(w.start, 0)
+            .single()
+            .unwrap()
+            .date_naive();
+        assert_eq!(start.month(), 8);
+        assert_eq!(start.day(), 1);
+        let expected_year = if today().month() >= 8 {
+            today().year() + 1
+        } else {
+            today().year()
+        };
+        assert_eq!(start.year(), expected_year);
     }
 
     #[test]

@@ -3,10 +3,11 @@
 //! platform-specific). Upserts are incremental (quit-safe). `updated_at` is an
 //! ISO-8601 UTC string, which sorts lexicographically.
 
-use std::fs;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+
+use crate::store;
 
 pub const CONVERSATION_LIMIT: usize = 20;
 pub const ITEM_LIMIT: usize = 60;
@@ -29,10 +30,7 @@ pub struct Conversation {
 }
 
 pub fn load(path: &Path) -> Vec<Conversation> {
-    let Ok(data) = fs::read_to_string(path) else {
-        return Vec::new();
-    };
-    serde_json::from_str(&data).unwrap_or_default()
+    store::load_list(path)
 }
 
 pub fn load_json(path: &Path) -> String {
@@ -51,11 +49,8 @@ pub fn upsert(path: &Path, mut conversation: Conversation) -> bool {
     list.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     list.truncate(CONVERSATION_LIMIT);
 
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
     match serde_json::to_vec(&list) {
-        Ok(data) => fs::write(path, data).is_ok(),
+        Ok(data) => store::write_atomic(path, &data),
         Err(_) => false,
     }
 }
@@ -76,7 +71,7 @@ pub fn delete(path: &Path, id: &str) -> bool {
         return false;
     }
     match serde_json::to_vec(&list) {
-        Ok(data) => fs::write(path, data).is_ok(),
+        Ok(data) => store::write_atomic(path, &data),
         Err(_) => false,
     }
 }
@@ -84,6 +79,7 @@ pub fn delete(path: &Path, id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn temp_file(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!("look-ai-test-{name}-{}.json", std::process::id()))
@@ -170,5 +166,25 @@ mod tests {
         fs::write(&path, "not json").unwrap();
         assert!(load(&path).is_empty());
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn corrupt_file_is_sidelined_not_overwritten() {
+        let path = temp_file("corrupt");
+        let corrupt = path.with_file_name(format!(
+            "{}.corrupt",
+            path.file_name().unwrap().to_string_lossy()
+        ));
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(&corrupt);
+
+        fs::write(&path, "{truncated garbag").unwrap();
+        assert!(upsert(&path, convo("a", "2026-01-01T00:00:00Z", 1)));
+        // The unreadable original is kept for recovery, not clobbered.
+        assert_eq!(fs::read_to_string(&corrupt).unwrap(), "{truncated garbag");
+        assert_eq!(load(&path).len(), 1);
+
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(&corrupt);
     }
 }

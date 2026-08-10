@@ -4,10 +4,11 @@
 //! nothing is stored without a `remember` command, and the model never writes
 //! here (so a weak planner can't pollute it).
 
-use std::fs;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+
+use crate::store;
 
 pub const MEMORY_LIMIT: usize = 50;
 
@@ -29,10 +30,7 @@ fn fact_id(text: &str) -> String {
 }
 
 pub fn load(path: &Path) -> Vec<Fact> {
-    let Ok(data) = fs::read_to_string(path) else {
-        return Vec::new();
-    };
-    serde_json::from_str(&data).unwrap_or_default()
+    store::load_list(path)
 }
 
 pub fn load_json(path: &Path) -> String {
@@ -40,11 +38,8 @@ pub fn load_json(path: &Path) -> String {
 }
 
 fn save(path: &Path, list: &[Fact]) -> bool {
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
     match serde_json::to_vec(list) {
-        Ok(data) => fs::write(path, data).is_ok(),
+        Ok(data) => store::write_atomic(path, &data),
         Err(_) => false,
     }
 }
@@ -161,6 +156,7 @@ pub fn handle_command(path: &Path, input: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn temp_file(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!("look-mem-test-{name}-{}.json", std::process::id()))
@@ -200,7 +196,7 @@ mod tests {
             handle_command(&path, "remember that I am vegetarian").as_deref(),
             Some("Remembered: I am vegetarian")
         );
-        assert!(matches!(parse_command("what's the weather"), None));
+        assert!(parse_command("what's the weather").is_none());
         assert!(context_block(&path).contains("vegetarian"));
         assert!(
             handle_command(&path, "memories")
