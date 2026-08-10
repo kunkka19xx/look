@@ -33,7 +33,17 @@ pub fn post_json(url: &str, body: &str, timeout_secs: u32) -> Option<String> {
     command.creation_flags(CREATE_NO_WINDOW);
 
     let mut child = command.spawn().ok()?;
-    child.stdin.take()?.write_all(body.as_bytes()).ok()?;
+    let write_ok = child
+        .stdin
+        .take()
+        .map(|mut stdin| stdin.write_all(body.as_bytes()).is_ok())
+        .unwrap_or(false);
+    if !write_ok {
+        // Kill + wait so a failed request never leaves a zombie curl.
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
+    }
     let output = child.wait_with_output().ok()?;
     if !output.status.success() {
         return None;

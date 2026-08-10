@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use serde_json::{Value, json};
 
@@ -28,8 +28,21 @@ struct Session {
 static SESSIONS: OnceLock<Mutex<HashMap<u64, Session>>> = OnceLock::new();
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
-fn sessions() -> &'static Mutex<HashMap<u64, Session>> {
-    SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
+fn sessions() -> MutexGuard<'static, HashMap<u64, Session>> {
+    SESSIONS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// Kill + wait so a child never outlives its session as a zombie. Both are
+/// needed: kill alone leaves the exited process unreaped.
+fn reap(slot: &Mutex<Option<Child>>) {
+    let mut slot = slot.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(mut child) = slot.take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 }
 
 /// Starts a streamed chat; `messages_json` is the full message array
@@ -70,19 +83,20 @@ pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
     let Ok(mut child) = command.spawn() else {
         return 0;
     };
-    let Some(mut stdin) = child.stdin.take() else {
-        return 0;
-    };
-    if stdin.write_all(body.as_bytes()).is_err() {
-        return 0;
-    }
-    drop(stdin);
-    let Some(stdout) = child.stdout.take() else {
+    let stdin = child.stdin.take();
+    let stdout = child.stdout.take();
+    let child_slot = Arc::new(Mutex::new(Some(child)));
+    let write_ok = stdin
+        .map(|mut stdin| stdin.write_all(body.as_bytes()).is_ok())
+        .unwrap_or(false);
+    let Some(stdout) = stdout.filter(|_| write_ok) else {
+        reap(&child_slot);
         return 0;
     };
 
     let state = Arc::new(Mutex::new(SessionState::default()));
     let reader_state = Arc::clone(&state);
+    let reader_child = Arc::clone(&child_slot);
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
         let mut saw_output = false;
@@ -101,6 +115,9 @@ pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
                 break;
             }
         }
+        // Reap here so the child never outlives the stream, even when no poll
+        // ever observes `done` (the map entry may linger; the process may not).
+        reap(&reader_child);
         if let Ok(mut s) = reader_state.lock() {
             if !saw_output && s.text.is_empty() {
                 s.error = Some("no response".into());
@@ -110,15 +127,13 @@ pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
     });
 
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-    if let Ok(mut map) = sessions().lock() {
-        map.insert(
-            id,
-            Session {
-                state,
-                child: Arc::new(Mutex::new(Some(child))),
-            },
-        );
-    }
+    sessions().insert(
+        id,
+        Session {
+            state,
+            child: child_slot,
+        },
+    );
     id
 }
 
@@ -127,9 +142,9 @@ pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
 pub fn poll(id: u64) -> Option<String> {
     let remove;
     let snapshot = {
-        let map = sessions().lock().ok()?;
+        let map = sessions();
         let session = map.get(&id)?;
-        let state = session.state.lock().ok()?;
+        let state = session.state.lock().unwrap_or_else(|e| e.into_inner());
         remove = state.done;
         let mut out = json!({ "text": state.text, "done": state.done });
         if let Some(error) = &state.error {
@@ -145,13 +160,9 @@ pub fn poll(id: u64) -> Option<String> {
 
 /// Kills the child (aborting Ollama generation) and drops the session.
 pub fn cancel(id: u64) {
-    if let Ok(mut map) = sessions().lock()
-        && let Some(session) = map.remove(&id)
-        && let Ok(mut child) = session.child.lock()
-        && let Some(mut c) = child.take()
-    {
-        let _ = c.kill();
-        let _ = c.wait();
+    let session = sessions().remove(&id);
+    if let Some(session) = session {
+        reap(&session.child);
     }
 }
 
@@ -164,5 +175,26 @@ mod tests {
         assert_eq!(start("http://localhost:1", "m", "not json"), 0);
         assert!(poll(999_999).is_none());
         cancel(999_999); // must not panic
+    }
+
+    #[test]
+    fn failed_request_reaches_done_and_is_removed() {
+        // Connection refused: curl exits fast, the reader thread reaps it and
+        // marks the session done with an error.
+        let id = start("http://127.0.0.1:1", "m", "[]");
+        assert_ne!(id, 0);
+        let mut last = String::new();
+        for _ in 0..100 {
+            let Some(snapshot) = poll(id) else { break };
+            last = snapshot;
+            if last.contains("\"done\":true") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(last.contains("\"done\":true"), "never finished: {last}");
+        assert!(last.contains("error"));
+        // The poll that observed done removed the session.
+        assert!(poll(id).is_none());
     }
 }
