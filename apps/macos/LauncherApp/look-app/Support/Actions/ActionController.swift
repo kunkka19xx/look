@@ -238,45 +238,56 @@ final class ActionController: ObservableObject {
         let query = stripPrefix(rawQuery)
         guard !query.isEmpty else { return }
 
-        // Explicit memory command ("remember …", "forget …", "memories"):
-        // deterministic, never touches the model.
-        if let memoryFeedback = MemoryStore.command(query) {
-            isPlanning = false
-            pending = nil
-            feedback = memoryFeedback
-            return
-        }
-
-        // Clipboard text-op verb ("summarize", "fix grammar", "translate to …"):
-        // deterministic routing, transforms whatever text is on the clipboard.
-        if let op = EngineBridge.shared.aiTextOp(input: query) {
-            isPlanning = false
-            pending = nil
-            runTextOp(label: op.label, instruction: op.instruction)
-            return
-        }
-
         EventKitService.shared.refreshReminderCache()
         EventKitService.shared.refreshEventCache()
 
+        // The dispatch ladder lives in the Rust core (core/ai/src/route.rs),
+        // shared with every shell: memory -> textop -> files -> explicit ->
+        // plan -> chat. The memory tier has already executed when it answers.
         let modelAvailable = planner.isAvailable
-        if let raw = EngineBridge.shared.aiParseExplicit(">" + query, modelAvailable: modelAvailable),
-           case .planned(let plan) = resolveOutcome(toolID: raw.toolID, params: raw.params) {
+        let route = EngineBridge.shared.aiRoute(
+            input: query,
+            memoryPath: MemoryStore.filePath ?? "",
+            modelAvailable: modelAvailable)
+        switch route {
+        case .memory(let memoryFeedback):
             isPlanning = false
-            pending = plannedAction(toolID: raw.toolID, plan: plan)
-            feedback = ""
-            return
-        }
-
-        guard modelAvailable else {
-            // No planner: hand the text to the provider's answer path instead of
-            // dead-ending (askChat itself reports if no provider is usable).
+            pending = nil
+            feedback = memoryFeedback
+        case .textOp(let label, let instruction):
+            isPlanning = false
+            pending = nil
+            runTextOp(label: label, instruction: instruction)
+        case .files:
+            isPlanning = false
+            pending = nil
+            // Empty params = "parse the raw query"; the shell owns file results.
+            recallRequest = RecallRequest(query: query, params: [:])
+        case .explicit(let toolID, let params):
+            if case .planned(let plan) = resolveOutcome(toolID: toolID, params: params) {
+                isPlanning = false
+                pending = plannedAction(toolID: toolID, plan: plan)
+                feedback = ""
+            } else if modelAvailable {
+                // Deterministic parse resolved to nothing usable: let the
+                // model read the same text before giving up to chat.
+                startPlanTask(query)
+            } else {
+                askChat(query)
+            }
+        case .plan:
+            startPlanTask(query)
+        case .chat:
+            // No planner: hand the text to the provider's answer path instead
+            // of dead-ending (askChat itself reports if no provider is usable).
             askChat(query)
-            return
         }
-        // The message joins the transcript NOW; the planner round-trip ("is
-        // this an action?") happens under the Thinking indicator, not before
-        // the user sees their own message.
+    }
+
+    /// The model turn of the ladder. The message joins the transcript NOW; the
+    /// planner round-trip ("is this an action?") happens under the Thinking
+    /// indicator, not before the user sees their own message.
+    private func startPlanTask(_ query: String) {
         isPlanning = true
         sessionItems.append(ActionSessionItem(kind: .user, text: query))
         saveConversation()
@@ -640,10 +651,26 @@ final class ActionController: ObservableObject {
         "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
     ]
 
-    private static func mentionsSchedule(_ query: String) -> Bool {
+    static func mentionsSchedule(_ query: String) -> Bool {
         query.lowercased()
             .split(whereSeparator: { !$0.isLetter })
             .contains { scheduleWords.contains(String($0)) }
+    }
+
+    /// Calendar/reminders answer for a schedule question, for surfaces outside
+    /// the chat session (the main-bar answer card). Deterministic - the listing
+    /// IS the answer - and never touches the web or a model. nil when the
+    /// question isn't schedule-shaped.
+    func scheduleCardAnswer(for query: String) -> (text: String, source: String)? {
+        guard Self.mentionsSchedule(query) else { return nil }
+        guard let (summary, label) = scheduleSummary(for: query) else {
+            return (
+                "Connect Calendar via the Permissions row in Look's Settings "
+                    + "to answer schedule questions.",
+                "Calendar"
+            )
+        }
+        return ("Your calendar \(label):\n\(summary)", "Calendar")
     }
 
     private static let chatInstructions = """
@@ -733,7 +760,7 @@ final class ActionController: ObservableObject {
         // the targets loaded once via `syncAITargets`, so their lists are omitted
         // here; the Rust store supplies them. block_time keeps its own events
         // below (a window-specific, on-Enter fetch).
-        if let when = params["when"], let resolved = DatePhrase.resolve(when, now: now) {
+        if let when = params["when"], let resolved = resolveWhen(when, now: now) {
             let leaning = EngineBridge.shared.aiFutureLeaning(phrase: when, resolved: resolved, now: now)
             request["resolved_when"] = Int64(leaning.timeIntervalSince1970)
         }
@@ -762,6 +789,45 @@ final class ActionController: ObservableObject {
             let outcome = EngineBridge.shared.aiResolve(requestJSON: json)
         else { return .invalid("Resolution failed.") }
         return ActionResolveOutcome.decode(outcome)
+    }
+
+    /// Resolves a planner call into a directly runnable action for the main
+    /// bar's action row - the visible row IS the confirmation surface, so no
+    /// second confirm follows. nil when resolution needs the session
+    /// (disambiguation, referents) or fails; those fall back to the AI surface.
+    func quickAction(for call: ToolCall) -> PlannedAction? {
+        EventKitService.shared.refreshReminderCache()
+        EventKitService.shared.refreshEventCache()
+        guard case .planned(let plan) = resolveOutcome(toolID: call.toolID, params: call.params)
+        else { return nil }
+        return plannedAction(toolID: call.toolID, plan: plan)
+    }
+
+    /// One-Enter execution of a quickAction: performs, records the receipt so
+    /// ⌘Z undoes, returns the summary for the caller's banner.
+    func performQuickAction(_ action: PlannedAction) async throws -> String {
+        await ensureAccess(for: action.toolID)
+        let receipt = try action.perform()
+        lastReceipt = receipt
+        return receipt.summary
+    }
+
+    /// The date seam: NSDataDetector resolves the phrase, the shared-lexicon
+    /// day-phrase (Rust core) cross-checks WHICH day. A named day wins - "tue
+    /// 9am" typed on a Monday must be Tuesday, not the detector's "today" -
+    /// while the detector keeps the time of day. Bare day words the detector
+    /// can't read at all ("this week wed") resolve to the named day's midnight
+    /// (all-day downstream).
+    private func resolveWhen(_ when: String, now: Date) -> Date? {
+        let detected = DatePhrase.resolve(when, now: now)
+        guard let named = EngineBridge.shared.aiDayPhrase(when) else { return detected }
+        guard let detected else { return named }
+        let calendar = Calendar.current
+        if calendar.isDate(detected, inSameDayAs: named) { return detected }
+        let time = calendar.dateComponents([.hour, .minute], from: detected)
+        return calendar.date(
+            bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: 0, of: named)
+            ?? named
     }
 
     /// Wraps a Rust plan into the executable action the confirm flow runs.

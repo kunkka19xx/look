@@ -399,6 +399,34 @@ pub extern "C" fn look_ai_memory_context(path: *const c_char) -> *mut c_char {
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// The specific DAY a phrase names (weekday incl. abbreviations, relative-day
+/// words), as local-midnight epoch seconds; 0 when it names none. The
+/// shared-lexicon fallback behind the shell's natural-date parser.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_day_phrase(phrase: *const c_char, now_epoch: i64) -> i64 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_day_phrase_impl(phrase, now_epoch)
+    }))
+    .unwrap_or(0)
+}
+
+/// ONE routing ladder for submitted AI-mode input (memory -> textop -> files
+/// -> explicit -> plan -> chat), shared by every shell so precedence can never
+/// drift. Returns the decision JSON (see core/ai/src/route.rs); the memory
+/// tier executes the command. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_route(
+    memory_path: *const c_char,
+    input: *const c_char,
+    model_available: bool,
+    now_epoch: i64,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_route_impl(memory_path, input, model_available, now_epoch)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// The explicit `>verb title @ when` parser: JSON `{tool, params}` or null for
 /// natural language (deferred to the model). Free with `look_free_cstring`.
 #[unsafe(no_mangle)]

@@ -81,6 +81,11 @@ struct LauncherRowView: View {
                 NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
                     ?? NSWorkspace.shared.icon(for: .plainText)
             }
+        case .aiAction(let toolID):
+            // Keyed per tool: each one has its own symbol.
+            return RowIconCache.image(key: "aiaction:\(toolID)") {
+                AIActionAppearance.icon(forToolID: toolID)
+            }
         case nil:
             break
         }

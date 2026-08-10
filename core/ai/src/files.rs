@@ -123,57 +123,6 @@ const NOISE: &[&str] = &[
     "please",
 ];
 
-/// Time words the `window` grammar consumes; stripped so they don't leak into
-/// the free-text terms.
-const TIME_NOISE: &[&str] = &[
-    "today",
-    "tonight",
-    "yesterday",
-    "tomorrow",
-    "week",
-    "month",
-    "year",
-    "day",
-    "days",
-    "last",
-    "this",
-    "next",
-    "past",
-    "recent",
-    "ago",
-    "morning",
-    "afternoon",
-    "evening",
-    "night",
-    "weekend",
-    "mon",
-    "tue",
-    "wed",
-    "thu",
-    "fri",
-    "sat",
-    "sun",
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-    "sunday",
-    "jan",
-    "feb",
-    "mar",
-    "apr",
-    "may",
-    "jun",
-    "jul",
-    "aug",
-    "sep",
-    "oct",
-    "nov",
-    "dec",
-];
-
 pub fn parse(query: &str, now_epoch: i64) -> Option<FileQuery> {
     let lower = query.trim().to_lowercase();
     if lower.is_empty() {
@@ -232,7 +181,8 @@ pub fn parse(query: &str, now_epoch: i64) -> Option<FileQuery> {
             type_of(w).is_none()
                 && location_of(w).is_none()
                 && !NOISE.contains(w)
-                && !TIME_NOISE.contains(w)
+                // Time words the `window` grammar consumes (shared lexicon).
+                && !crate::lexicon::is_date_word(w)
                 && w.len() > 1
         })
         .collect();
@@ -277,6 +227,16 @@ mod tests {
         let q = parse("pdfs from last week", NOW).unwrap();
         assert_eq!(q.types, vec!["pdf"]);
         assert!(q.start.is_some());
+    }
+
+    #[test]
+    fn plural_units_and_abbreviations_stay_out_of_terms() {
+        // Shared-lexicon fix: "weeks" and "tmr" weren't in the old TIME_NOISE
+        // list, so they leaked into terms and filtered everything out.
+        let weeks = parse("pdfs from the last 2 weeks", NOW).unwrap();
+        assert!(weeks.terms.is_empty(), "terms: {:?}", weeks.terms);
+        let tmr = parse("screenshots tmr", NOW).unwrap();
+        assert!(tmr.terms.is_empty(), "terms: {:?}", tmr.terms);
     }
 
     #[test]

@@ -12,29 +12,6 @@ nonisolated enum OllamaCodec {
         case modelMissing
     }
 
-    /// Query-understanding plan the model returns as JSON (mirrors the Apple
-    /// provider's `EngineQueryPlan`).
-    struct Plan: Equatable {
-        let kind: String
-        let searchText: String
-    }
-
-    /// JSON schema handed to `/api/chat` as `format`, so the model is forced to
-    /// return exactly `{ kind, searchText }`.
-    static func intentJSONSchema() -> [String: Any] {
-        [
-            "type": "object",
-            "properties": [
-                "kind": [
-                    "type": "string",
-                    "enum": ["app", "file", "folder", "recent", "any"],
-                ],
-                "searchText": ["type": "string"],
-            ],
-            "required": ["kind", "searchText"],
-        ]
-    }
-
     /// Body for a `/api/chat` call. `format` is set for structured (understand)
     /// calls and nil for free-form (answer) calls. Returns serialized JSON.
     static func chatRequestBody(
@@ -94,23 +71,6 @@ nonisolated enum OllamaCodec {
             return []
         }
         return models.compactMap { $0["name"] as? String }.sorted()
-    }
-
-    /// Decodes the `message.content` JSON string of a non-streamed understand
-    /// call into a `Plan`. Returns nil on any shape mismatch.
-    static func decodePlan(fromChatResponse data: Data) -> Plan? {
-        guard
-            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let message = root["message"] as? [String: Any],
-            let content = message["content"] as? String,
-            let inner = content.data(using: .utf8),
-            let plan = try? JSONSerialization.jsonObject(with: inner) as? [String: Any],
-            let kind = plan["kind"] as? String,
-            let searchText = plan["searchText"] as? String
-        else {
-            return nil
-        }
-        return Plan(kind: kind, searchText: searchText)
     }
 
     /// One NDJSON line of a streamed `/api/chat` response, reduced to the delta

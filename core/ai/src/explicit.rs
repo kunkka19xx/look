@@ -13,37 +13,10 @@
 
 use serde_json::{Value, json};
 
-const DAY_WORDS: [&str; 24] = [
-    "today",
-    "tomorrow",
-    "tonight",
-    "tmr",
-    "tmrw",
-    "tmw",
-    "2moro",
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-    "sunday",
-    "mon",
-    "tue",
-    "tues",
-    "wed",
-    "thu",
-    "thur",
-    "thurs",
-    "fri",
-    "sat",
-    "sun",
-];
-
 pub fn contains_day_word(text: &str) -> bool {
     text.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
-        .any(|w| DAY_WORDS.contains(&w))
+        .any(crate::lexicon::is_day_word)
 }
 
 pub fn parse(input: &str, model_available: bool) -> Option<Value> {

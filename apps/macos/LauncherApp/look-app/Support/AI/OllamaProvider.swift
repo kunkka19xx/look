@@ -22,28 +22,6 @@ struct OllamaProvider: AIQueryProvider {
         return OllamaHealthCache.shared.current(host: host, model: model)
     }
 
-    func understand(query: String) async -> AISearchIntent? {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let (host, model) = config
-        guard
-            let url = URL(string: host + "/api/chat"),
-            let body = OllamaCodec.chatRequestBody(
-                model: model, system: Self.understandInstructions, user: trimmed,
-                stream: false, format: OllamaCodec.intentJSONSchema(), numPredict: 200
-            )
-        else { return nil }
-
-        guard
-            let (data, response) = try? await URLSession.shared.data(for: Self.jsonPost(url, body)),
-            (response as? HTTPURLResponse)?.statusCode == 200,
-            let plan = OllamaCodec.decodePlan(fromChatResponse: data)
-        else { return nil }
-
-        let kind = AISearchKind(rawValue: plan.kind) ?? .any
-        return AISearchIntent(kind: kind, searchText: plan.searchText)
-    }
-
     func answer(query: String) -> AsyncThrowingStream<String, Error>? {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -163,22 +141,6 @@ struct OllamaProvider: AIQueryProvider {
         sentence rather than guessing.
         """
 
-    private static let understandInstructions = """
-        You translate a macOS launcher search into a structured plan. The user \
-        types natural language; map it to what they want to find. Reply with only \
-        the JSON object.
-
-        Pick `kind`:
-        - app: launching an application ("open spotify", "launch terminal")
-        - file: a document/file ("my budget spreadsheet", "the resume pdf")
-        - folder: a directory ("downloads folder", "where my projects live")
-        - recent: emphasises recently used items ("the doc I opened yesterday")
-        - any: unclear, or a mix - let the launcher decide
-
-        Set `searchText` to just the keywords to match, stripped of filler words \
-        like "open", "find", "my", "the". Keep it short. Do not invent terms that \
-        are not implied by the query.
-        """
 }
 
 enum OllamaError: LocalizedError {

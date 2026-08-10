@@ -601,6 +601,12 @@ fn round_up(value: i64, step: i64) -> i64 {
 /// "2 hours" / "90 minutes" / "1.5h" / "45m" / "2" (bare number = minutes).
 pub(crate) fn parse_duration_minutes(phrase: &str) -> Option<i64> {
     let p = phrase.to_lowercase();
+    // Day/week "durations" don't fit the working-hours slot model - a weak
+    // planner emits them when it misreads an event as a block ("1 day" would
+    // otherwise parse as 1 MINUTE). Better to ask than to plan nonsense.
+    if p.contains("day") || p.contains("week") {
+        return None;
+    }
     let number: f64 = p
         .split(|c: char| !c.is_ascii_digit() && c != '.')
         .find(|s| !s.is_empty())?
@@ -1132,6 +1138,10 @@ mod tests {
         assert_eq!(parse_duration_minutes("45m"), Some(45));
         assert_eq!(parse_duration_minutes("2"), Some(2));
         assert_eq!(parse_duration_minutes("soon"), None);
+        // Day/week units are rejected, not read as minutes ("1 day" != 1 min).
+        assert_eq!(parse_duration_minutes("1 day"), None);
+        assert_eq!(parse_duration_minutes("all day"), None);
+        assert_eq!(parse_duration_minutes("2 weeks"), None);
     }
 
     #[test]

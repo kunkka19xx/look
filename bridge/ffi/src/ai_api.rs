@@ -22,6 +22,11 @@ pub(crate) fn look_ai_query_window_impl(query: *const c_char, now_epoch: i64) ->
     }
 }
 
+pub(crate) fn look_ai_day_phrase_impl(phrase: *const c_char, now_epoch: i64) -> i64 {
+    let phrase = state::cstr_to_string(phrase);
+    look_ai::window::day_phrase(&phrase, now_epoch).unwrap_or(0)
+}
+
 pub(crate) fn look_ai_future_leaning_impl(
     phrase: *const c_char,
     resolved_epoch: i64,
@@ -209,6 +214,25 @@ pub(crate) fn look_ai_parse_explicit_impl(
         }
         None => std::ptr::null_mut(),
     }
+}
+
+pub(crate) fn look_ai_route_impl(
+    memory_path: *const c_char,
+    input: *const c_char,
+    model_available: bool,
+    now_epoch: i64,
+) -> *mut c_char {
+    let path = state::cstr_to_string(memory_path);
+    let input = state::cstr_to_string(input);
+    let json = look_ai::route::route_json(
+        std::path::Path::new(&path),
+        &input,
+        model_available,
+        now_epoch,
+    );
+    let cstring =
+        CString::new(json).unwrap_or_else(|_| CString::new(r#"{"route":"chat"}"#).expect("valid"));
+    state::store_json_allocation(cstring)
 }
 
 pub(crate) fn look_ai_chat_start_impl(

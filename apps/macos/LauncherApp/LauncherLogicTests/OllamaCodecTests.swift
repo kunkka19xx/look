@@ -27,22 +27,6 @@ final class OllamaCodecTests: XCTestCase {
         XCTAssertEqual(OllamaCodec.evaluateTags(data: Data("not json".utf8), model: "x"), .modelMissing)
     }
 
-    // ── decodePlan ──────────────────────────────────────────────────────
-
-    func testDecodesPlanFromChatContent() {
-        let data = Data(#"{"message":{"role":"assistant","content":"{\"kind\":\"app\",\"searchText\":\"spotify\"}"}}"#.utf8)
-        XCTAssertEqual(OllamaCodec.decodePlan(fromChatResponse: data), OllamaCodec.Plan(kind: "app", searchText: "spotify"))
-    }
-
-    func testDecodePlanReturnsNilWhenContentNotJSON() {
-        let data = Data(#"{"message":{"content":"sorry, I cannot help"}}"#.utf8)
-        XCTAssertNil(OllamaCodec.decodePlan(fromChatResponse: data))
-    }
-
-    func testDecodePlanReturnsNilWhenMessageMissing() {
-        XCTAssertNil(OllamaCodec.decodePlan(fromChatResponse: Data("{}".utf8)))
-    }
-
     // ── parseStreamLine ─────────────────────────────────────────────────
 
     func testParseStreamLineExtractsDeltaAndDone() {
@@ -111,7 +95,7 @@ final class OllamaCodecTests: XCTestCase {
     func testRequestBodyIncludesFormatAndZeroTempForStructured() throws {
         let body = OllamaCodec.chatRequestBody(
             model: "llama3.1", system: "sys", user: "hi",
-            stream: false, format: OllamaCodec.intentJSONSchema(), numPredict: 200
+            stream: false, format: ["type": "object"], numPredict: 200
         )!
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         XCTAssertEqual(json["model"] as? String, "llama3.1")

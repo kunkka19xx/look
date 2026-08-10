@@ -25,14 +25,14 @@ pub const ALIASES: [(&str, &str); 10] = [
 ];
 
 pub const SYSTEM_PROMPT: &str = r#"Classify the request into ONE tool and extract its params:
-- "event": add a calendar event. params: title (clean short title; drop the leading verb, filler words, and all date/time words; capitalize the first word).
+- "event": add a calendar event - ANY named activity or errand counts ("go to the office", "lunch with Sarah"). params: title (clean short title; drop the leading verb, filler words, and all date/time words; capitalize the first word).
 - "reminder": add a reminder. params: title (same rules).
 - "cancel": remove an EXISTING event. params: match (the words that identify which event, e.g. "dentist").
 - "move": reschedule an EXISTING event. params: match, when (the NEW time phrase copied verbatim, e.g. "4pm", "friday 9am").
 - "complete": mark an EXISTING reminder done. params: match.
 - "delete": remove an EXISTING reminder from the list. params: match.
 - "snooze": push an EXISTING reminder to a later time. params: match, when (the new time phrase verbatim).
-- "block": reserve free focus time. params: duration (e.g. "2 hours", "90 minutes"), when (the day/window phrase like "friday" or "this week").
+- "block": reserve UNNAMED free/focus time, only when the request names a duration and no activity ("block 2 hours friday"). A named activity is "event", never "block". params: duration (e.g. "2 hours", "90 minutes"), when (the day/window phrase like "friday" or "this week").
 - "recall": find the user's OWN files on this machine ("the pdf i downloaded", "find my screenshots from friday"). params (all optional, include what the request names): terms (file name/content words), types (kind words like "pdf", "screenshot", "image"), when (the time phrase verbatim), location ("downloads", "desktop" or "documents").
 - "textop": transform the text on the clipboard ("make this shorter", "translate my copied text to german"). params: instruction (a one-sentence imperative, e.g. "Translate the text to German.").
 Pronouns and references are valid match values: "remove it" -> match "it"; "cancel this event" -> match "this event".

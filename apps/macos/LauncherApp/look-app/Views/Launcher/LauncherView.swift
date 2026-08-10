@@ -72,6 +72,10 @@ struct LauncherView: View {
     /// window / dropped terms), so the panel says so instead of silently
     /// showing something broader than what was asked.
     @State var fileRecallNote: String?
+    /// The planner-proposed action for the current main-bar phrase, shown as
+    /// the first, selected result row. The visible row IS the confirmation:
+    /// one Enter performs it, ⌘Z undoes. Cleared on every query change.
+    @State var mainBarAction: PlannedAction?
     @State var webSuggestions: [String] = []
     @State var webSuggestionTask: Task<Void, Never>?
     @State var recentURLEntries: [URLHistoryEntry] = []
@@ -478,8 +482,24 @@ struct LauncherView: View {
         // An arithmetic expression is a question, and the answer outranks a
         // file that fuzzy-matched some of its digits - above everything,
         // including the structural URL row.
-        guard let calcResult else { return base }
-        return [calcResult] + base
+        let withCalc = calcResult.map { [$0] + base } ?? base
+        // The planner-proposed action row outranks everything: the user typed
+        // an instruction, not a search.
+        guard let actionRow = mainBarActionRow else { return withCalc }
+        return [actionRow] + withCalc
+    }
+
+    var mainBarActionRow: LauncherResult? {
+        guard let mainBarAction else { return nil }
+        let look = AIActionAppearance.look(forToolID: mainBarAction.toolID)
+        return LauncherResult(
+            id: AppConstants.Launcher.AIAction.resultID(toolID: mainBarAction.toolID),
+            kind: .app,
+            title: mainBarAction.preview.detail,
+            subtitle: "\(look.verb)  ·  Enter runs it  ·  ⌘Z undoes",
+            path: "",
+            score: 1_000_000
+        )
     }
 
     var isTranslationQuery: Bool {
@@ -906,12 +926,17 @@ struct LauncherView: View {
         runModelRecall(request)
     }
 
+    /// Pill-backed so it stays readable in the floating layout, where bare
+    /// text would sit on the naked desktop.
     private func fileRecallNoteLine(_ note: String) -> some View {
         Text(note)
-            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
-            .foregroundStyle(themeStore.mutedTextColor())
-            .padding(.horizontal, 12)
-            .padding(.top, 4)
+            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
+            .foregroundStyle(themeStore.fontColor())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(themeStore.controlFillColor().opacity(0.9), in: Capsule())
+            .padding(.horizontal, 8)
+            .padding(.top, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 

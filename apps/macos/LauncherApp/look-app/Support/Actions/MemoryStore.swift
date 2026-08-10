@@ -5,18 +5,14 @@ import Foundation
 /// platform path: `~/Library/Application Support/Look/ai-memory.json`.
 @MainActor
 enum MemoryStore {
-    private static var filePath: String? {
+    /// The store path, also handed to the Rust-core router (whose memory tier
+    /// executes commands against this file).
+    static var filePath: String? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first?
             .appendingPathComponent("Look", isDirectory: true)
             .appendingPathComponent("ai-memory.json")
             .path
-    }
-
-    /// Feedback to show when `input` is a memory command, else nil (normal input).
-    static func command(_ input: String) -> String? {
-        guard let path = filePath else { return nil }
-        return EngineBridge.shared.aiMemoryCommand(path: path, input: input)
     }
 
     /// The stored facts as a model context block, empty when there are none.

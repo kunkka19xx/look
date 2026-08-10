@@ -6,6 +6,8 @@
 
 use chrono::{DateTime, Datelike, Days, Duration, Local, Months, NaiveDate, TimeZone, Weekday};
 
+use crate::lexicon::{self, RelativeDay};
+
 #[derive(Debug, PartialEq, serde::Serialize)]
 pub struct Window {
     /// Unix epoch seconds, local-time boundaries.
@@ -38,14 +40,15 @@ pub fn query_window(query: &str, now_epoch: i64) -> Option<Window> {
     for (i, word) in words.iter().enumerate() {
         let previous = if i > 0 { words[i - 1] } else { "" };
 
-        match *word {
-            "today" | "tonight" => return single_day(today, "today"),
-            "yesterday" | "yday" => return single_day(today.pred_opt()?, "yesterday"),
-            "tomorrow" | "tmr" | "tmrw" | "tmw" => {
-                return single_day(today.succ_opt()?, "tomorrow");
-            }
-            "weekend" => return weekend(today, now_epoch, previous),
-            _ => {}
+        if let Some(day) = lexicon::relative_day(word) {
+            return match day {
+                RelativeDay::Today => single_day(today, "today"),
+                RelativeDay::Yesterday => single_day(today.pred_opt()?, "yesterday"),
+                RelativeDay::Tomorrow => single_day(today.succ_opt()?, "tomorrow"),
+            };
+        }
+        if *word == "weekend" {
+            return weekend(today, now_epoch, previous);
         }
 
         if let Some(unit) = unit_of(word) {
@@ -87,7 +90,7 @@ pub fn query_window(query: &str, now_epoch: i64) -> Option<Window> {
             });
         }
 
-        if let Some(weekday) = weekday_of(word) {
+        if let Some(weekday) = lexicon::weekday_of(word) {
             if matches!(previous, "last" | "previous" | "past") {
                 return single_day(
                     prev_weekday_before(today, weekday),
@@ -97,7 +100,7 @@ pub fn query_window(query: &str, now_epoch: i64) -> Option<Window> {
             return single_day(next_weekday_after(today, weekday), &capitalize(word));
         }
 
-        if let Some(month) = month_of(word) {
+        if let Some(month) = lexicon::month_of(word) {
             if *word == "may" && !month_guards.contains(&previous) {
                 continue; // "may" is usually a verb
             }
@@ -132,6 +135,43 @@ pub fn query_window_json(query: &str, now_epoch: i64) -> Option<String> {
     query_window(query, now_epoch).and_then(|w| serde_json::to_string(&w).ok())
 }
 
+/// Resolve a phrase to the specific DAY it names (weekday incl. abbreviations,
+/// or a relative-day word), as local-midnight epoch seconds. The shell's
+/// natural-date parser (NSDataDetector on macOS) runs first; this is the
+/// shared-lexicon fallback so "wed" means Wednesday on every shell. Unlike
+/// `query_window`, range words ("this week") are skipped, not answered - the
+/// question here is "which day", not "which span".
+pub fn day_phrase(phrase: &str, now_epoch: i64) -> Option<i64> {
+    let now = Local.timestamp_opt(now_epoch, 0).single()?;
+    let today = now.date_naive();
+    let lower = phrase.to_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+
+    for (i, word) in words.iter().enumerate() {
+        let previous = if i > 0 { words[i - 1] } else { "" };
+        if let Some(day) = lexicon::relative_day(word) {
+            let date = match day {
+                RelativeDay::Yesterday => today.pred_opt()?,
+                RelativeDay::Today => today,
+                RelativeDay::Tomorrow => today.succ_opt()?,
+            };
+            return Some(midnight(date)?.timestamp());
+        }
+        if let Some(weekday) = lexicon::weekday_of(word) {
+            let date = if matches!(previous, "last" | "previous" | "past") {
+                prev_weekday_before(today, weekday)
+            } else {
+                next_weekday_after(today, weekday)
+            };
+            return Some(midnight(date)?.timestamp());
+        }
+    }
+    None
+}
+
 /// Nudges a shell-resolved time toward the future when the user gave only a
 /// clock time ("lunch at 1pm") that already passed today - they mean the next
 /// one. A phrase that names a day or month is respected as-is (even if past).
@@ -156,57 +196,15 @@ fn mentions_date(phrase: &str) -> bool {
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty())
         .collect();
-    // Full names, common abbreviations, and relative-day words all count as an
-    // explicit date reference.
-    const DATE_WORDS: [&str; 44] = [
-        "today",
-        "tonight",
-        "tomorrow",
-        "tmr",
-        "tmrw",
-        "tmw",
-        "yesterday",
-        "next",
-        "week",
-        "month",
-        "year",
-        "monday",
-        "tuesday",
-        "wednesday",
-        "thursday",
-        "friday",
-        "saturday",
-        "sunday",
-        "mon",
-        "tue",
-        "tues",
-        "wed",
-        "thu",
-        "thur",
-        "thurs",
-        "fri",
-        "sat",
-        "sun",
-        "jan",
-        "feb",
-        "mar",
-        "apr",
-        "jun",
-        "jul",
-        "aug",
-        "sep",
-        "sept",
-        "oct",
-        "nov",
-        "dec",
-        "january",
-        "february",
-        "march",
-        "april",
-    ];
-    let day_month = words
-        .iter()
-        .any(|w| weekday_of(w).is_some() || month_of(w).is_some() || DATE_WORDS.contains(w));
+    // Day words (incl. abbreviations), month names, and forward calendar
+    // units all count as an explicit date reference. Deliberately narrower
+    // than `lexicon::is_date_word`: times of day ("morning") are NOT a date -
+    // "8am in the morning" that already passed still means the next one.
+    let day_month = words.iter().any(|w| {
+        lexicon::is_day_word(w)
+            || lexicon::month_of(w).is_some()
+            || matches!(*w, "next" | "week" | "month" | "year")
+    });
     if day_month {
         return true;
     }
@@ -280,37 +278,6 @@ fn interval(date: NaiveDate, unit: Unit) -> Option<(NaiveDate, NaiveDate)> {
             let start = NaiveDate::from_ymd_opt(date.year(), 1, 1)?;
             Some((start, start.checked_add_months(Months::new(12))?))
         }
-    }
-}
-
-fn weekday_of(word: &str) -> Option<Weekday> {
-    match word {
-        "monday" => Some(Weekday::Mon),
-        "tuesday" => Some(Weekday::Tue),
-        "wednesday" => Some(Weekday::Wed),
-        "thursday" => Some(Weekday::Thu),
-        "friday" => Some(Weekday::Fri),
-        "saturday" => Some(Weekday::Sat),
-        "sunday" => Some(Weekday::Sun),
-        _ => None,
-    }
-}
-
-fn month_of(word: &str) -> Option<u32> {
-    match word {
-        "january" => Some(1),
-        "february" => Some(2),
-        "march" => Some(3),
-        "april" => Some(4),
-        "may" => Some(5),
-        "june" => Some(6),
-        "july" => Some(7),
-        "august" => Some(8),
-        "september" => Some(9),
-        "october" => Some(10),
-        "november" => Some(11),
-        "december" => Some(12),
-        _ => None,
     }
 }
 
@@ -534,6 +501,45 @@ mod tests {
             today().year()
         };
         assert_eq!(start.year(), expected_year);
+    }
+
+    #[test]
+    fn day_phrase_finds_the_named_day_not_the_range() {
+        // "this week wed" names Wednesday; the range words must be skipped.
+        let epoch = day_phrase("go to the office this week wed", NOW).unwrap();
+        let date = Local.timestamp_opt(epoch, 0).single().unwrap().date_naive();
+        assert_eq!(date.weekday(), Weekday::Wed);
+        assert!(date > today());
+
+        let tmr = day_phrase("tmr", NOW).unwrap();
+        let tmr_date = Local.timestamp_opt(tmr, 0).single().unwrap().date_naive();
+        assert_eq!(tmr_date, today().succ_opt().unwrap());
+
+        let last_fri = day_phrase("last fri", NOW).unwrap();
+        let fri_date = Local
+            .timestamp_opt(last_fri, 0)
+            .single()
+            .unwrap()
+            .date_naive();
+        assert_eq!(fri_date.weekday(), Weekday::Fri);
+        assert!(fri_date < today());
+
+        assert!(day_phrase("go to the office", NOW).is_none());
+        assert!(day_phrase("this week", NOW).is_none());
+    }
+
+    #[test]
+    fn weekday_abbreviations_resolve() {
+        // Shared-lexicon fix: "fri" must mean the same Friday as "friday"
+        // (previously files stripped "fri" from terms but no window resolved).
+        let w = query_window("screenshots fri", NOW).unwrap();
+        let start = Local
+            .timestamp_opt(w.start, 0)
+            .single()
+            .unwrap()
+            .date_naive();
+        assert_eq!(start.weekday(), Weekday::Fri);
+        assert_eq!(w.label, "Fri");
     }
 
     #[test]

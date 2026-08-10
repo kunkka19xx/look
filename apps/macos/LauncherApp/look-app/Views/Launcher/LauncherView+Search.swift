@@ -17,6 +17,7 @@ extension LauncherView {
         guard !isCommandMode else { return }
         fileRecallEmptyMessage = nil
         fileRecallNote = nil
+        mainBarAction = nil
         guard !isClipboardQuery else {
             invalidateSearchRequests()
             setInitialSelection()
@@ -64,22 +65,38 @@ extension LauncherView {
             publishSearchResults(rawResults, searchID: searchID, for: currentQuery)
 
             // Rescue pass: only when AI is on AND the raw query found nothing,
-            // let the model rewrite the natural-language query into the engine's
-            // prefix grammar and re-search. We never run this when raw results
-            // exist - a rewrite that narrows "firefox" to apps-only would wrongly
-            // drop the matching folder/files the user can already see.
+            // the planner interprets the phrasing into a STRUCTURED file query
+            // (never a string rewrite), executed through the same engine path
+            // as the deterministic parser and labeled as interpreted. We never
+            // run this when raw results exist - an interpretation that narrows
+            // "firefox" would wrongly drop matches the user can already see.
             guard aiEnabled, rawResults.isEmpty else { return }
-            guard let rewritten = await AIQueryRouter.shared.rewrite(
-                query: currentQuery,
-                using: aiProvider
-            ), rewritten != currentQuery else { return }
+            _ = aiProvider
+            guard let call = await ActionPlanner().plan(query: currentQuery) else { return }
             guard !Task.isCancelled else { return }
-
-            let refined = await Task.detached(priority: .userInitiated) {
-                bridge.search(query: rewritten, limit: searchLimit)
+            if call.toolID != "files.recall" {
+                // Action-shaped phrasing: the Q&A answer card must not "refuse"
+                // on our behalf. The resolved action becomes the FIRST, selected
+                // result row - the visible row is the confirmation, one Enter
+                // performs it. Unresolvable calls keep the Enter-escalation
+                // fallback to the AI surface.
+                guard searchID == latestSearchID, query == currentQuery else { return }
+                aiAnswer.cancel()
+                if let planned = actionController.quickAction(for: call) {
+                    mainBarAction = planned
+                    selectedResultID = AppConstants.Launcher.AIAction.resultID(
+                        toolID: planned.toolID)
+                }
+                return
+            }
+            let interpreted = await Task.detached(priority: .userInitiated) {
+                bridge.searchFiles(params: call.params, limit: searchLimit)
             }.value
-            guard !Task.isCancelled, !refined.isEmpty else { return }
-            publishSearchResults(refined, searchID: searchID, for: currentQuery)
+            guard !Task.isCancelled, let interpreted, !interpreted.results.isEmpty else { return }
+            publishSearchResults(
+                interpreted.results, searchID: searchID, for: currentQuery,
+                isFileRecall: true, relaxed: interpreted.relaxed,
+                interpreted: Self.recallSummary(call.params))
         }
     }
 
@@ -91,7 +108,8 @@ extension LauncherView {
         searchID: UInt64,
         for requestedQuery: String,
         isFileRecall: Bool = false,
-        relaxed: String? = nil
+        relaxed: String? = nil,
+        interpreted: String? = nil
     ) {
         guard searchID == latestSearchID else { return }
         guard !isCommandMode, query == requestedQuery else { return }
@@ -99,13 +117,17 @@ extension LauncherView {
         setInitialSelection()
 
         // A detected file-recall query owns the panel: on zero matches show an
-        // honest "no files" state instead of the knowledge-lookup AI card, and
-        // results from a relaxed retry say so.
+        // honest "no files" state instead of the knowledge-lookup AI card;
+        // results from a relaxed retry or a model interpretation say so.
         if isFileRecall {
             fileRecallEmptyMessage = results.isEmpty
                 ? "No files match \u{201C}\(requestedQuery)\u{201D}."
                 : nil
-            fileRecallNote = results.isEmpty ? nil : Self.relaxationNote(relaxed)
+            let note = [
+                interpreted.map { "Interpreted: \($0)" },
+                Self.relaxationNote(relaxed),
+            ].compactMap { $0 }.joined(separator: "  ·  ")
+            fileRecallNote = (results.isEmpty || note.isEmpty) ? nil : note
             aiAnswer.cancel()
             return
         }
@@ -123,12 +145,24 @@ extension LauncherView {
         )
     }
 
-    /// A model-interpreted file recall (the planner's `recall` step): leave AI
-    /// mode and show the results in the main panel, labeled as interpreted so
-    /// the user sees the model read their phrasing, not a literal match.
+    /// A file recall handed over from the AI panel: leave AI mode and show the
+    /// results in the main panel, which owns file rows (open/reveal/quicklook).
+    /// Empty params = the router's deterministic `files` decision (re-parse the
+    /// raw query); non-empty = the model's structured `recall` step, labeled as
+    /// interpreted so the user sees the model read their phrasing.
     func runModelRecall(_ request: ActionController.RecallRequest) {
         actionController.endSession()
         isAIMode = false
+
+        if request.params.isEmpty {
+            query = request.query
+            DispatchQueue.main.async {
+                refreshSearchResults()
+                isQueryFocused = true
+            }
+            return
+        }
+
         invalidateSearchRequests()
         querySilentlyCleared = true
         query = request.query
@@ -149,6 +183,21 @@ extension LauncherView {
             fileRecallNote = nil
         }
         DispatchQueue.main.async { isQueryFocused = true }
+    }
+
+    /// One-Enter action from the main-bar row: perform, banner with undo, back
+    /// to a clean bar. No AI-mode detour - the row already showed the plan.
+    func runQuickAction(_ planned: PlannedAction) {
+        mainBarAction = nil
+        clearQuerySilently()
+        Task {
+            do {
+                let summary = try await actionController.performQuickAction(planned)
+                showBanner("\(summary)  ·  ⌘Z undo", duration: 3.0)
+            } catch {
+                showBanner("Failed: \(error.localizedDescription)", style: .error, duration: 4.0)
+            }
+        }
     }
 
     /// Compact "what the model understood" summary: "pdf · downloads · last week".
@@ -231,8 +280,10 @@ extension LauncherView {
                 // These rows arrive after publishSearchResults() already seeded
                 // selection. For a query with no local results selection is nil,
                 // so re-seed it onto the first suggestion, otherwise Enter on a
-                // suggestion-only list does nothing.
-                if selectedResultID == nil {
+                // suggestion-only list does nothing. NOT while the answer card
+                // is answering: a highlighted Google row would misread as what
+                // Enter does; arrow keys still reach the rows deliberately.
+                if selectedResultID == nil, !aiAnswer.isActive {
                     setInitialSelection()
                 }
             }

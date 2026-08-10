@@ -12,10 +12,6 @@ private func look_search_json_compact(_ query: UnsafePointer<CChar>?, _ limit: U
 nonisolated
 private func look_search_files_json(_ query: UnsafePointer<CChar>?, _ now: Int64, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
 
-@_silgen_name("look_ai_is_file_query")
-nonisolated
-private func look_ai_is_file_query(_ query: UnsafePointer<CChar>?, _ now: Int64) -> Bool
-
 @_silgen_name("look_record_usage_json")
 nonisolated
 private func look_record_usage_json(_ candidateID: UnsafePointer<CChar>?, _ action: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -56,6 +52,10 @@ private func look_search_files_params_json(_ paramsJSON: UnsafePointer<CChar>?, 
 nonisolated
 private func look_ai_query_window(_ query: UnsafePointer<CChar>?, _ nowEpoch: Int64) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_ai_day_phrase")
+nonisolated
+private func look_ai_day_phrase(_ phrase: UnsafePointer<CChar>?, _ nowEpoch: Int64) -> Int64
+
 @_silgen_name("look_ai_plan_start")
 nonisolated
 private func look_ai_plan_start(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?) -> UInt64
@@ -92,10 +92,6 @@ private func look_ai_resolve(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMuta
 nonisolated
 private func look_ai_load_targets(_ eventsJSON: UnsafePointer<CChar>?, _ remindersJSON: UnsafePointer<CChar>?)
 
-@_silgen_name("look_ai_memory_command")
-nonisolated
-private func look_ai_memory_command(_ path: UnsafePointer<CChar>?, _ input: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
-
 @_silgen_name("look_ai_memory_context")
 nonisolated
 private func look_ai_memory_context(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -104,13 +100,13 @@ private func look_ai_memory_context(_ path: UnsafePointer<CChar>?) -> UnsafeMuta
 nonisolated
 private func look_ai_context_window(_ textsJSON: UnsafePointer<CChar>?, _ budget: UInt32) -> UInt32
 
-@_silgen_name("look_ai_textop_json")
-nonisolated
-private func look_ai_textop_json(_ input: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
-
 @_silgen_name("look_ai_parse_explicit")
 nonisolated
 private func look_ai_parse_explicit(_ input: UnsafePointer<CChar>?, _ modelAvailable: Bool) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_route")
+nonisolated
+private func look_ai_route(_ memoryPath: UnsafePointer<CChar>?, _ input: UnsafePointer<CChar>?, _ modelAvailable: Bool, _ now: Int64) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_chat_start")
 nonisolated
@@ -301,10 +297,58 @@ final class EngineBridge: @unchecked Sendable {
         }
     }
 
-    /// Whether `query` is a file-recall query, without running the search.
-    nonisolated func isFileQuery(_ query: String) -> Bool {
+    /// The Rust-core routing decision for submitted AI-mode input (see
+    /// core/ai/src/route.rs: memory -> textop -> files -> explicit -> plan ->
+    /// chat). The memory tier has already executed by the time this returns.
+    enum AIRoute {
+        case memory(feedback: String)
+        case textOp(label: String, instruction: String)
+        case files
+        case explicit(toolID: String, params: [String: String])
+        case plan
+        case chat
+    }
+
+    nonisolated func aiRoute(input: String, memoryPath: String, modelAvailable: Bool) -> AIRoute {
+        struct Payload: Decodable {
+            struct Call: Decodable {
+                let tool: String
+                let params: [String: String]
+            }
+            let route: String
+            let feedback: String?
+            let label: String?
+            let instruction: String?
+            let call: Call?
+        }
         let now = Int64(Date().timeIntervalSince1970)
-        return query.withCString { look_ai_is_file_query($0, now) }
+        let ptr = memoryPath.withCString { pathC in
+            input.withCString { inputC in
+                look_ai_route(pathC, inputC, modelAvailable, now)
+            }
+        }
+        guard let ptr else { return .chat }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let payload = try? JSONDecoder().decode(Payload.self, from: data)
+        else { return .chat }
+        switch payload.route {
+        case "memory":
+            return .memory(feedback: payload.feedback ?? "")
+        case "textop":
+            guard let instruction = payload.instruction, !instruction.isEmpty else { return .chat }
+            return .textOp(label: payload.label ?? instruction, instruction: instruction)
+        case "files":
+            return .files
+        case "explicit":
+            guard let call = payload.call else { return .chat }
+            return .explicit(toolID: call.tool, params: call.params)
+        case "plan":
+            return .plan
+        default:
+            return .chat
+        }
     }
 
     /// File-recall results plus which fallback produced them, when the strict
@@ -490,6 +534,16 @@ final class EngineBridge: @unchecked Sendable {
         phrase.withCString { look_ai_is_referent($0) }
     }
 
+    /// The specific day a phrase names ("wed", "tmr", "last fri"), from the
+    /// shared lexicon - the fallback behind NSDataDetector so abbreviations
+    /// resolve the same on every shell. Local midnight; nil when none named.
+    nonisolated func aiDayPhrase(_ phrase: String) -> Date? {
+        let now = Int64(Date().timeIntervalSince1970)
+        let epoch = phrase.withCString { look_ai_day_phrase($0, now) }
+        guard epoch > 0 else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(epoch))
+    }
+
     /// Timeframe a schedule question names ("next week", "in august"), from the
     /// Rust-core window grammar (core/ai). ISO Monday weeks, local midnights.
     nonisolated func aiQueryWindow(_ query: String) -> (start: Date, end: Date, label: String)? {
@@ -599,15 +653,6 @@ final class EngineBridge: @unchecked Sendable {
         }
     }
 
-    /// Handle input as a memory command ("remember …"). Feedback to show, or nil
-    /// for normal AI input. Rust core (core/ai).
-    nonisolated func aiMemoryCommand(path: String, input: String) -> String? {
-        let ptr = path.withCString { p in input.withCString { i in look_ai_memory_command(p, i) } }
-        guard let ptr else { return nil }
-        defer { look_free_cstring(ptr) }
-        return String(cString: ptr)
-    }
-
     /// Stored facts as a model context block (empty when none). Rust core.
     nonisolated func aiMemoryContext(path: String) -> String {
         guard let ptr = path.withCString({ look_ai_memory_context($0) }) else { return "" }
@@ -624,19 +669,6 @@ final class EngineBridge: @unchecked Sendable {
         else { return texts.count }
         let count = json.withCString { look_ai_context_window($0, UInt32(max(0, budget))) }
         return Int(count)
-    }
-
-    /// Parse a bare clipboard text-op verb ("summarize", "translate to french")
-    /// into a label + model instruction, or nil for normal input. Rust core.
-    nonisolated func aiTextOp(input: String) -> (label: String, instruction: String)? {
-        struct Op: Decodable { let label: String; let instruction: String }
-        guard let ptr = input.withCString({ look_ai_textop_json($0) }) else { return nil }
-        defer { look_free_cstring(ptr) }
-        guard
-            let data = String(cString: ptr).data(using: .utf8),
-            let op = try? JSONDecoder().decode(Op.self, from: data)
-        else { return nil }
-        return (op.label, op.instruction)
     }
 
     /// The explicit `>verb title @ when` parser (Rust core). Nil = natural

@@ -102,6 +102,16 @@ final class AIAnswerController: ObservableObject {
             try? await Task.sleep(nanoseconds: Self.debounceNanoseconds)
             guard let self, !Task.isCancelled else { return }
 
+            // Personal schedule questions answer from the calendar itself:
+            // deterministic, instant, and never sent to web sources or a model
+            // ("what's on my calendar?" must not shrug "I don't have access").
+            if let schedule = ActionController.shared.scheduleCardAnswer(for: trimmed) {
+                self.items = [Item(
+                    text: schedule.text, source: schedule.source, url: nil, imageURL: nil)]
+                self.state = .done
+                return
+            }
+
             // Web sources run concurrently and each renders the moment it lands -
             // first available first, the slower one slots in below it.
             await self.collectWebAnswers(for: trimmed, questionLike: questionLike)
@@ -220,7 +230,7 @@ final class AIAnswerController: ObservableObject {
         guard words.count >= 3 else { return false }
 
         let starters: Set<String> = [
-            "how", "what", "why", "who", "when", "where", "which", "whose",
+            "how", "what", "what's", "whats", "why", "who", "when", "where", "which", "whose",
             "can", "could", "should", "would", "is", "are", "am", "do", "does",
             "did", "will", "explain", "tell", "give", "write", "summarize",
             "summarise", "define", "translate", "convert", "calculate",

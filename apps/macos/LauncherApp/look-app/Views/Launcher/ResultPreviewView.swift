@@ -78,6 +78,65 @@ struct ResultPreviewView: View {
 
     private var calcIcon: NSImage { LauncherCalcFeature.icon() }
 
+    /// The planner-proposed action row: no file behind it, so it gets its own
+    /// hero panel - icon, the plan (the point of the row), a type badge, and
+    /// the key hints - all styled from `AIActionAppearance` so new tools reuse
+    /// this panel unchanged.
+    private var aiActionToolID: String? {
+        if case .aiAction(let toolID) = SyntheticRow.classify(resultID: result.id) {
+            return toolID
+        }
+        return nil
+    }
+
+    private func aiActionPreview(_ toolID: String) -> some View {
+        let look = AIActionAppearance.look(forToolID: toolID)
+        return VStack(spacing: 14) {
+            Spacer(minLength: 0)
+
+            Image(nsImage: AIActionAppearance.icon(forToolID: toolID))
+                .resizable()
+                .scaledToFit()
+                .frame(width: 52, height: 52)
+                .foregroundStyle(themeStore.accentColor())
+
+            Text(result.title)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 5), weight: .bold))
+                .foregroundStyle(themeStore.fontColor())
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .minimumScaleFactor(0.6)
+
+            KindBadge(kind: look.typeName.lowercased())
+
+            VStack(alignment: .leading, spacing: 8) {
+                aiActionHintRow(key: "↵", text: look.verb)
+                aiActionHintRow(key: "⌘Z", text: "Undo after it runs")
+                aiActionHintRow(key: "Esc", text: "Dismiss")
+            }
+            .padding(.top, 6)
+
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func aiActionHintRow(key: String, text: String) -> some View {
+        HStack(spacing: 10) {
+            Text(key)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
+                .foregroundStyle(themeStore.accentColor())
+                .frame(minWidth: 36)
+                .padding(.vertical, 4)
+                .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            Text(text)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
+                .foregroundStyle(themeStore.secondaryTextColor())
+        }
+        .frame(width: 230, alignment: .leading)
+    }
+
     /// No file/bundle behind this row, so - like a web-search suggestion -
     /// it gets a centered hero layout instead of the header+detail one above:
     /// icon, the answer (the point of the row), the expression it came from,
@@ -174,6 +233,8 @@ struct ResultPreviewView: View {
             clipboardPreview
         } else if isCalcResult {
             calcPreview
+        } else if let toolID = aiActionToolID {
+            aiActionPreview(toolID)
         } else {
         let info = bundleInfo
 

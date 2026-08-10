@@ -91,6 +91,31 @@ extension LauncherView {
         focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
     }
 
+    /// Whether Enter should escalate over the current selection: yes when
+    /// nothing is selected or the selection is just the auto-seeded Google
+    /// suggestion row; a URL, calc, prefix, or real result row keeps Enter.
+    private var escalationBeatsSelection: Bool {
+        guard let selectedResultID,
+              let selected = displayedResults.first(where: { $0.id == selectedResultID })
+        else { return true }
+        if case .webSuggestion = SyntheticRow.classify(resultID: selected.id) {
+            return true
+        }
+        return false
+    }
+
+    /// Dead-end Enter in the main bar: hand the phrasing to the AI surface so
+    /// the routing ladder (actions, recall, chat) reads it, with its confirm
+    /// gates. Mirrors the `>` entry path, then submits immediately.
+    func escalateToAIMode(with text: String) {
+        isAIMode = true
+        conversationCache = ConversationStore.load()
+        recordAIPrompt(text)
+        actionController.submitExplicitAIQuery(text)
+        clearQuerySilently()
+        DispatchQueue.main.async { isQueryFocused = true }
+    }
+
     /// Clears the input without triggering the AI side effects of the query
     /// `onChange` (clearFeedback / handleComposeCleared): a submit's just-set
     /// state - feedback, confirm bar, running plan/chat - must survive its own
@@ -128,19 +153,9 @@ extension LauncherView {
                 // A highlighted session opens; otherwise Enter starts a new chat.
                 actionController.continueConversation(filteredConversations[selectedConversationIndex])
                 clearQuerySilently()
-            } else if !submitTrimmed.isEmpty, EngineBridge.shared.isFileQuery(submitTrimmed) {
-                // A file-recall query typed in the AI box ("files I downloaded
-                // yesterday") drops to the main results, which are keyboard-
-                // navigable and carry the open/reveal/quicklook actions.
-                actionController.endSession()
-                isAIMode = false
-                query = submitTrimmed
-                DispatchQueue.main.async {
-                    refreshSearchResults()
-                    isQueryFocused = true
-                }
-                return
             } else if !submitTrimmed.isEmpty {
+                // Routing (incl. file-recall detection) lives in the Rust-core
+                // ladder; a files decision comes back via recallRequest.
                 recordAIPrompt(submitTrimmed)
                 actionController.submitExplicitAIQuery(submitTrimmed)
                 clearQuerySilently()
@@ -169,6 +184,19 @@ extension LauncherView {
             } else if let translationCommand = extractTranslationQuery(from: trimmed) {
                 handleTranslation(command: translationCommand)
                 isQueryFocused = true
+            } else if themeStore.settings.aiEnabled, !trimmed.isEmpty, escalationBeatsSelection,
+                      !aiAnswer.isActive {
+                // Never while the answer card is answering: re-asking an
+                // answered question in chat is noise, not help.
+                // Dead-end Enter (nothing real to open): escalate to the AI
+                // surface - the same routing ladder with its confirm gates - so
+                // the `>` prefix stays optional knowledge. Auto-seeded Google
+                // rows don't count as "found something" (Cmd+Enter still
+                // web-searches); a URL/calc/prefix/result row keeps Enter.
+                // Deliberately NOT gated on backendResults: those lag a
+                // debounce behind the input, and an Enter with no selection
+                // would otherwise do nothing at all.
+                escalateToAIMode(with: trimmed)
             } else {
                 openSelectedApp()
             }

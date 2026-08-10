@@ -62,9 +62,12 @@ final class ActionPlanner {
 
         var params = raw.params
         // Date seam: add tools get `when` = the raw query when a date resolves
-        // in it (NSDataDetector, macOS-quality). No date -> all-day / undated.
+        // in it (NSDataDetector, macOS-quality; the shared-lexicon day-phrase
+        // fallback catches abbreviations like "wed" the detector misses).
+        // No date -> all-day / undated.
         if raw.tool == "calendar.add_event" || raw.tool == "reminder.add",
-           DatePhrase.resolve(query, now: Date()) != nil {
+           DatePhrase.resolve(query, now: Date()) != nil
+               || bridge.aiDayPhrase(query) != nil {
             params["when"] = query
         }
         return ToolCall(toolID: raw.tool, params: params)

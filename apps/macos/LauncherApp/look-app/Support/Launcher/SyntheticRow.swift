@@ -9,8 +9,13 @@ enum SyntheticRow {
     case commandSuggestion(commandID: String)
     case webURL(url: String)
     case calc(raw: String)
+    /// The planner-proposed action row in the main bar (Enter performs it).
+    case aiAction(toolID: String)
 
     static func classify(resultID: String) -> SyntheticRow? {
+        if let toolID = AppConstants.Launcher.AIAction.toolID(fromResultID: resultID) {
+            return .aiAction(toolID: toolID)
+        }
         if let prefix = AppConstants.Launcher.PrefixSuggestion.prefix(fromResultID: resultID) {
             return .prefixSuggestion(prefix: prefix)
         }
