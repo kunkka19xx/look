@@ -10,9 +10,9 @@
 //!    - Sway: `swaymsg bindsym ...`
 //!    - Hyprland: `hyprctl keyword bind ...`
 
-use super::host_command;
+use super::{host_binary_path, host_command};
 use crate::health;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 /// Saved original value of activate-window-menu before Look disabled it.
 static SAVED_WM_BINDING: Mutex<Option<String>> = Mutex::new(None);
@@ -24,10 +24,81 @@ const KEYBINDING_PATH: &str =
 const KEYBINDING_SCHEMA: &str = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding";
 const MEDIA_KEYS_SCHEMA: &str = "org.gnome.settings-daemon.plugins.media-keys";
 
-const TOGGLE_CMD: &str = concat!(
-    "dbus-send --session --type=method_call",
-    " --dest=com.look.Desktop /com/look/Desktop com.look.Desktop.Toggle"
-);
+const TOGGLE_METHOD: &str = "Toggle";
+
+/// Command-line D-Bus callers able to invoke our Toggle method, most widely
+/// installed first. `dbus-send` belongs to the D-Bus reference implementation,
+/// not to the protocol: distros moving to dbus-broker split it into a
+/// utilities package nothing depends on, so it is absent on Fedora and its
+/// derivatives. `gdbus` comes from glib2, the same package as `gsettings`;
+/// `busctl` comes from systemd.
+const CALLER_GDBUS: &str = "gdbus";
+const CALLER_DBUS_SEND: &str = "dbus-send";
+const CALLER_BUSCTL: &str = "busctl";
+const DBUS_CALLERS: &[&str] = &[CALLER_GDBUS, CALLER_DBUS_SEND, CALLER_BUSCTL];
+
+/// Binaries here are spelled absolutely in the keybinding: on NixOS the
+/// compositor that runs it does not share our `PATH`, but a store path
+/// resolves identically from every process.
+const NIX_STORE_PREFIX: &str = "/nix/store/";
+
+/// A D-Bus caller found on this system.
+struct DbusCaller {
+    /// Which of `DBUS_CALLERS` it is, deciding the argument syntax.
+    name: &'static str,
+    /// How to spell it in a keybinding another process will run.
+    invocation: String,
+}
+
+fn dbus_caller() -> Option<&'static DbusCaller> {
+    static CALLER: OnceLock<Option<DbusCaller>> = OnceLock::new();
+    CALLER
+        .get_or_init(|| {
+            DBUS_CALLERS.iter().find_map(|&name| {
+                let path = host_binary_path(name)?;
+                Some(DbusCaller {
+                    name,
+                    invocation: caller_invocation(name, &path),
+                })
+            })
+        })
+        .as_ref()
+}
+
+fn caller_invocation(name: &str, path: &std::path::Path) -> String {
+    let path = path.to_string_lossy();
+    if path.starts_with(NIX_STORE_PREFIX) {
+        path.into_owned()
+    } else {
+        name.to_string()
+    }
+}
+
+/// The command a compositor keybinding runs to toggle Look. Resolved once:
+/// it gets written into compositor config that outlives this call.
+fn toggle_cmd() -> &'static str {
+    static CMD: OnceLock<String> = OnceLock::new();
+    CMD.get_or_init(|| match dbus_caller() {
+        Some(caller) => toggle_command(caller.name, &caller.invocation),
+        None => toggle_command(CALLER_GDBUS, CALLER_GDBUS),
+    })
+}
+
+fn toggle_command(name: &str, invocation: &str) -> String {
+    match name {
+        CALLER_DBUS_SEND => format!(
+            "{invocation} --session --type=method_call --dest={DBUS_NAME} \
+             {DBUS_PATH} {DBUS_NAME}.{TOGGLE_METHOD}"
+        ),
+        CALLER_BUSCTL => {
+            format!("{invocation} --user call {DBUS_NAME} {DBUS_PATH} {DBUS_NAME} {TOGGLE_METHOD}")
+        }
+        _ => format!(
+            "{invocation} call --session --dest {DBUS_NAME} --object-path {DBUS_PATH} \
+             --method {DBUS_NAME}.{TOGGLE_METHOD}"
+        ),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Compositor {
@@ -70,6 +141,21 @@ where
     let compositor = detect_compositor();
 
     std::thread::spawn(move || {
+        // Reported before registration: health::report keeps the first message
+        // per issue id, and a missing caller explains the dead key better than
+        // the per-compositor failures that follow.
+        if compositor != Compositor::Kde && dbus_caller().is_none() {
+            health::report(
+                health::ISSUE_HOTKEY,
+                format!(
+                    "Alt+Space cannot reach Look: none of these D-Bus \
+                     command-line tools are installed ({}). Install one of \
+                     them (gdbus comes with glib2) and restart Look.",
+                    DBUS_CALLERS.join(", ")
+                ),
+            );
+        }
+
         // Registration runs off the main thread: it shells out to
         // gsettings/swaymsg/hyprctl and the GNOME path sleeps between writes.
         match compositor {
@@ -79,11 +165,12 @@ where
             // KDE registers via async D-Bus alongside the Toggle service below.
             Compositor::Kde => {}
             Compositor::Other => {
+                let cmd = toggle_cmd();
                 health::report(
                     health::ISSUE_HOTKEY,
                     format!(
                         "This compositor has no supported hotkey API, so Alt+Space \
-                         is not set up. Bind a key manually to run: {TOGGLE_CMD}"
+                         is not set up. Bind a key manually to run: {cmd}"
                     ),
                 );
             }
@@ -101,11 +188,12 @@ where
                 let toggle = on_toggle.clone();
                 tokio::task::spawn(async move {
                     if let Err(e) = run_kde_keybinding(move || toggle()).await {
+                        let cmd = toggle_cmd();
                         health::report(
                             health::ISSUE_HOTKEY,
                             format!(
                                 "KDE hotkey registration failed ({e}). Bind a key \
-                                 manually to run: {TOGGLE_CMD}"
+                                 manually to run: {cmd}"
                             ),
                         );
                     }
@@ -153,8 +241,9 @@ fn ensure_sway_keybinding() {
         .output();
 
     // Bind Alt+Space to toggle Look via D-Bus
+    let cmd = toggle_cmd();
     let bound = host_command("swaymsg")
-        .arg(format!("bindsym Alt+space exec {TOGGLE_CMD}"))
+        .arg(format!("bindsym Alt+space exec {cmd}"))
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
@@ -166,7 +255,7 @@ fn ensure_sway_keybinding() {
             health::ISSUE_HOTKEY,
             format!(
                 "Failed to register Alt+Space via swaymsg. Bind a key manually \
-                 to run: {TOGGLE_CMD}"
+                 to run: {cmd}"
             ),
         );
     }
@@ -188,11 +277,12 @@ fn ensure_hyprland_keybinding() {
     // hl.bind stacks duplicates on every call (hot-reloads in dev, or
     // sequential launches in prod), so unbind first via pcall - pcall keeps
     // the eval succeeding even when the binding doesn't exist yet (first run).
+    let cmd = toggle_cmd();
     let lua = format!(
         r#"pcall(hl.unbind, "ALT + space")
 hl.window_rule({{ name = "look-float", match = {{ class = "lookapp" }}, float = true }})
 hl.window_rule({{ name = "look-noborder", match = {{ class = "lookapp" }}, border_size = 0, rounding = 0, no_shadow = true }})
-hl.bind("ALT + space", hl.dsp.exec_cmd("{TOGGLE_CMD}"))"#
+hl.bind("ALT + space", hl.dsp.exec_cmd("{cmd}"))"#
     );
 
     let used_lua = hyprctl_ok(host_command("hyprctl").args(["eval", &lua]).output());
@@ -207,7 +297,7 @@ hl.bind("ALT + space", hl.dsp.exec_cmd("{TOGGLE_CMD}"))"#
             .output();
         hyprctl_ok(
             host_command("hyprctl")
-                .args(["keyword", "bind", &format!("ALT,space,exec,{TOGGLE_CMD}")])
+                .args(["keyword", "bind", &format!("ALT,space,exec,{cmd}")])
                 .output(),
         )
     };
@@ -219,7 +309,7 @@ hl.bind("ALT + space", hl.dsp.exec_cmd("{TOGGLE_CMD}"))"#
             health::ISSUE_HOTKEY,
             format!(
                 "Failed to register Alt+Space via hyprctl. Bind a key manually \
-                 to run: {TOGGLE_CMD}"
+                 to run: {cmd}"
             ),
         );
     }
@@ -254,7 +344,7 @@ fn cleanup_hyprland_keybinding() {
 // GNOME
 // ---------------------------------------------------------------------------
 
-/// Register a GNOME custom keybinding for Alt+Space → dbus-send to our service.
+/// Register a GNOME custom keybinding for Alt+Space → D-Bus call to our service.
 ///
 /// Order matters: mutter refuses gsd's grab while activate-window-menu holds
 /// Alt+Space and gsd never retries a failed grab, so the key must be freed
@@ -266,9 +356,13 @@ fn ensure_gnome_keybinding() {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
 
+    let cmd = toggle_cmd();
     let existing = gsettings_get(MEDIA_KEYS_SCHEMA, "custom-keybindings");
+    // The stored command counts as part of "bound": an older build wrote a
+    // caller this system may no longer have, and only a rewrite fixes it.
     let already_bound = existing.contains(KEYBINDING_PATH)
-        && gsettings_get_at(KEYBINDING_SCHEMA, "binding", KEYBINDING_PATH).contains("<Alt>space");
+        && gsettings_get_at(KEYBINDING_SCHEMA, "binding", KEYBINDING_PATH).contains("<Alt>space")
+        && gsettings_get_at(KEYBINDING_SCHEMA, "command", KEYBINDING_PATH).contains(cmd);
 
     // Registered by a previous run and nothing shadowed it: the grab is live.
     if already_bound && !had_conflict {
@@ -279,7 +373,7 @@ fn ensure_gnome_keybinding() {
     ok &= gsettings_set_at(
         KEYBINDING_SCHEMA,
         "command",
-        &format!("'{TOGGLE_CMD}'"),
+        &format!("'{cmd}'"),
         KEYBINDING_PATH,
     );
 
@@ -317,7 +411,7 @@ fn ensure_gnome_keybinding() {
             health::ISSUE_HOTKEY,
             format!(
                 "Failed to register Alt+Space via gsettings. Bind a key manually \
-                 to run: {TOGGLE_CMD}"
+                 to run: {cmd}"
             ),
         );
     }
@@ -480,12 +574,13 @@ where
     if granted.contains(&QT_ALT_SPACE) {
         eprintln!("[look] Registered KDE keybinding: Alt+Space → Look toggle");
     } else {
+        let cmd = toggle_cmd();
         health::report(
             health::ISSUE_HOTKEY,
             format!(
                 "KDE assigned a different key than Alt+Space (it may be taken). \
                  Rebind it in System Settings → Shortcuts → Look, or bind a key \
-                 to run: {TOGGLE_CMD}"
+                 to run: {cmd}"
             ),
         );
     }
@@ -632,4 +727,53 @@ fn parse_gsettings_array(s: &str) -> Vec<String> {
         .map(|p| p.trim().trim_matches('\'').trim_matches('"').to_string())
         .filter(|p| !p.is_empty())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn gdbus_command_targets_our_service() {
+        assert_eq!(
+            toggle_command(CALLER_GDBUS, CALLER_GDBUS),
+            "gdbus call --session --dest com.look.Desktop \
+             --object-path /com/look/Desktop --method com.look.Desktop.Toggle"
+        );
+    }
+
+    #[test]
+    fn dbus_send_command_targets_our_service() {
+        assert_eq!(
+            toggle_command(CALLER_DBUS_SEND, CALLER_DBUS_SEND),
+            "dbus-send --session --type=method_call --dest=com.look.Desktop \
+             /com/look/Desktop com.look.Desktop.Toggle"
+        );
+    }
+
+    #[test]
+    fn busctl_command_targets_our_service() {
+        assert_eq!(
+            toggle_command(CALLER_BUSCTL, CALLER_BUSCTL),
+            "busctl --user call com.look.Desktop /com/look/Desktop com.look.Desktop Toggle"
+        );
+    }
+
+    #[test]
+    fn nix_store_binaries_are_invoked_by_absolute_path() {
+        let path = Path::new("/nix/store/abc123-glib-2.84.0/bin/gdbus");
+        assert_eq!(
+            caller_invocation(CALLER_GDBUS, path),
+            "/nix/store/abc123-glib-2.84.0/bin/gdbus"
+        );
+    }
+
+    #[test]
+    fn fhs_binaries_are_invoked_by_bare_name() {
+        assert_eq!(
+            caller_invocation(CALLER_GDBUS, Path::new("/usr/bin/gdbus")),
+            CALLER_GDBUS
+        );
+    }
 }
