@@ -77,10 +77,28 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Offered in Settings on this machine. A value persisted on a newer one
-    /// still decodes and degrades at render time.
-    static var selectable: [LauncherBlurMaterial] {
-        allCases.filter(\.isSupported)
+    /// True when this renders as glass, which has no blur to thin.
+    var rendersGlass: Bool {
+        self == .liquidGlass && isSupported
+    }
+
+    /// Title in Settings. An unsupported value can still be the current
+    /// selection, so it says why it is inert rather than looking broken.
+    var pickerTitle: String {
+        isSupported ? title : "\(title) \(AppConstants.ThemeUI.unsupportedSuffix)"
+    }
+
+    /// Offered in Settings on this machine, plus `current` when that is a value
+    /// this OS cannot render (a config written on a newer machine). Keeping it
+    /// in the list is deliberate: a `Picker` whose selection matches no tag
+    /// renders blank, and rewriting the value here would destroy the user's
+    /// setting the next time they open the same config on a newer machine.
+    static func options(including current: LauncherBlurMaterial) -> [LauncherBlurMaterial] {
+        var options = allCases.filter(\.isSupported)
+        if !options.contains(current) {
+            options.append(current)
+        }
+        return options
     }
 }
 

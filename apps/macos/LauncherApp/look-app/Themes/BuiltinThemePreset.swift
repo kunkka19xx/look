@@ -13,10 +13,20 @@ enum BuiltinThemePreset: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    /// Offered in Settings on this machine: Liquid needs the macOS 26 glass
-    /// effect, so it is omitted where that does not exist.
-    static var selectable: [BuiltinThemePreset] {
-        allCases.filter { $0 != .liquid || LauncherBlurMaterial.liquidGlass.isSupported }
+    /// Liquid needs the macOS 26 glass effect.
+    var isSupported: Bool {
+        self != .liquid || LauncherBlurMaterial.liquidGlass.isSupported
+    }
+
+    /// Offered in Settings on this machine, plus `current` when that is a preset
+    /// this OS cannot render. See `LauncherBlurMaterial.options(including:)` for
+    /// why the unsupported value stays in the list rather than being rewritten.
+    static func options(including current: BuiltinThemePreset) -> [BuiltinThemePreset] {
+        var options = allCases.filter(\.isSupported)
+        if !options.contains(current) {
+            options.append(current)
+        }
+        return options
     }
 
     var title: String {
@@ -31,5 +41,10 @@ enum BuiltinThemePreset: String, CaseIterable, Identifiable, Codable {
         case .kindle: return "Kindle"
         case .liquid: return "Liquid"
         }
+    }
+
+    /// Title in Settings, flagging a preset this OS cannot render.
+    var pickerTitle: String {
+        isSupported ? title : "\(title) \(AppConstants.ThemeUI.unsupportedSuffix)"
     }
 }

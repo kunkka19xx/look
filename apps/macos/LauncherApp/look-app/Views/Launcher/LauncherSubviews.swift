@@ -44,6 +44,9 @@ struct SearchInputBar: View {
                 themeStore: themeStore,
                 onSubmit: onSubmit
             )
+                // The field's own placeholder is empty, so it would otherwise
+                // reach VoiceOver unnamed.
+                .accessibilityLabel(placeholderText)
                 .frame(maxWidth: .infinity)
                 .overlay(alignment: .leading) {
                     if text.isEmpty {
@@ -53,6 +56,10 @@ struct SearchInputBar: View {
                             .lineLimit(1)
                             .padding(.leading, Layout.placeholderLeadingInset)
                             .allowsHitTesting(false)
+                            // Decorative: the field above carries the name.
+                            // `allowsHitTesting` does not remove it from the
+                            // accessibility tree.
+                            .accessibilityHidden(true)
                             .placeholderReveal(token: revealToken)
                     }
                 }

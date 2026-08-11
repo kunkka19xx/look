@@ -29,14 +29,21 @@ struct LauncherRowView: View {
 
     /// Drives the one-shot zoom as this row takes the selection.
     @State private var zoomed = false
+    /// Bumped on every zoom and on deselect, so a pending reset that belongs to
+    /// an earlier zoom cannot cut short a newer one. Reachable by arrowing away
+    /// and back inside `zoomInSeconds`.
+    @State private var zoomGeneration = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private func zoom() {
         guard !reduceMotion else { return }
+        zoomGeneration &+= 1
+        let generation = zoomGeneration
         withAnimation(Motion.Selection.zoomIn) {
             zoomed = true
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + Motion.Selection.zoomInSeconds) {
+            guard zoomGeneration == generation else { return }
             withAnimation(Motion.Selection.zoomOut) {
                 zoomed = false
             }
@@ -204,6 +211,7 @@ struct LauncherRowView: View {
             // where a view can arrive holding a previous row's `zoomed`.
             .onChange(of: isSelected) { _, selected in
                 guard selected else {
+                    zoomGeneration &+= 1
                     zoomed = false
                     return
                 }
