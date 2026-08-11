@@ -454,7 +454,13 @@ private struct LaunchpadActionTile: View {
     /// tiles, and disappears with them when the border is turned off.
     @ViewBuilder
     private var border: some View {
-        let shape = RoundedRectangle(cornerRadius: Const.cornerRadius, style: .continuous)
+        // Must use the same scaled radius as `frostedTile`, or the outline is cut
+        // to a tighter corner than the fill behind it and reads as a stray line
+        // across each corner.
+        let shape = RoundedRectangle(
+            cornerRadius: themeStore.surfaceCornerRadius(Const.cornerRadius),
+            style: .continuous
+        )
         if confirming || micMuted {
             shape.strokeBorder(tint.opacity(launchpadAlertBorderOpacity), lineWidth: launchpadStateBorderWidth)
         } else if themeStore.borderLineWidth() > 0 {
