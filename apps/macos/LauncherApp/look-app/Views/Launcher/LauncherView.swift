@@ -110,6 +110,13 @@ struct LauncherView: View {
     static let panelCoordinateSpace = "launcherPanel"
 
     static let floatingTileScrimOpacity = 0.30
+    /// Resting corner for a tile that floats free of its neighbours, and for the
+    /// seated variant that reads as part of one box. Both are scaled by the
+    /// active theme surface (Liquid rounds harder) at each use.
+    /// First position in the spawn cascade, ahead of the launchpad grid.
+    static let searchBarRevealIndex = 0
+    static let floatingTileCornerRadius: CGFloat = 12
+    static let seatedTileCornerRadius: CGFloat = 10
     static let attachedPanelScrimOpacity = 0.16
 
     var runningAppsPlacement: RunningAppsPlacement {
@@ -693,6 +700,7 @@ struct LauncherView: View {
         // floating strip that grows the window. The launcher is always a single
         // fixed-size panel regardless of the running-apps toggle.
         borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
+        .rootReveal(token: appearanceRevealToken)
         .ignoresSafeArea()
         .onAppear {
             refreshSearchResults()
@@ -945,6 +953,7 @@ struct LauncherView: View {
             activeCommand: activeCommand,
             themeStore: themeStore,
             showsBackground: showsBackground,
+            revealToken: appearanceRevealToken,
             onSubmit: handleSubmit,
             onExitCommandMode: exitCommandMode
         )
@@ -968,7 +977,8 @@ struct LauncherView: View {
                             RunningAppsStripView(
                                 service: runningAppsService,
                                 themeStore: themeStore,
-                                onActivate: { key in _ = activateRunningApp(forKey: key) }
+                                onActivate: { key in _ = activateRunningApp(forKey: key) },
+                                revealToken: appearanceRevealToken
                             )
                             .frame(maxWidth: .infinity)
                         }
@@ -1202,6 +1212,14 @@ struct LauncherView: View {
                     processCPU: processCPU(for: selectedResult),
                     isMeasuringProcessCPU: isMeasuringCPU(for: selectedResult)
                 )
+                // Arrow-key nav assigns `selectedResultID` inside a global
+                // `withAnimation` so the pill can glide (see LauncherView+
+                // Selection). The preview swaps its whole contents on that same
+                // change and would inherit the transaction, animating icon and
+                // text on every keypress. Opted out for that value only, so the
+                // pill stays the one thing moving while the quick-action reveal
+                // inside this pane still animates on open.
+                .animation(nil, value: selectedResult.id)
             }
         }
     }
@@ -1335,8 +1353,15 @@ struct LauncherView: View {
         if barFloatsFree {
             content()
                 .padding(padding)
-                .background { tileBackground(cornerRadius: 12, floats: true) }
-                .overlay { tileBorder(cornerRadius: 12) }
+                .background {
+                    tileBackground(
+                        cornerRadius: themeStore.surfaceCornerRadius(Self.floatingTileCornerRadius),
+                        floats: true
+                    )
+                }
+                .overlay {
+                    tileBorder(cornerRadius: themeStore.surfaceCornerRadius(Self.floatingTileCornerRadius))
+                }
                 // Lift each pane off the backdrop so the three parts read as
                 // separate floating tiles rather than sections of one box.
                 .shadow(color: .black.opacity(0.25), radius: 7, x: 0, y: 3)
@@ -1360,7 +1385,7 @@ struct LauncherView: View {
                     // covered by the tint.
                     themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
                 } else {
-                    ThemedBackdrop(themeStore: themeStore)
+                    ThemedBackdrop(themeStore: themeStore, cornerRadius: cornerRadius)
                 }
                 themeStore.controlFillColor()
             }
@@ -1410,14 +1435,24 @@ struct LauncherView: View {
         // (e.g. typing the first character out of the empty-rest state at gap 0).
         let floats = barFloatsFree
         return content()
-            .background { tileBackground(cornerRadius: floats ? 12 : 10, floats: floats) }
+            .background {
+                tileBackground(
+                    cornerRadius: themeStore.surfaceCornerRadius(
+                        floats ? Self.floatingTileCornerRadius : Self.seatedTileCornerRadius
+                    ),
+                    floats: floats
+                )
+            }
             .overlay {
                 if floats {
-                    tileBorder(cornerRadius: 12)
+                    tileBorder(cornerRadius: themeStore.surfaceCornerRadius(Self.floatingTileCornerRadius))
                 }
             }
             .shadow(color: floats ? .black.opacity(0.25) : .clear,
                     radius: floats ? 7 : 0, x: 0, y: floats ? 3 : 0)
+            // Leads the cascade: the bar lands first, then the launchpad tiles.
+            // No scale, so the search field's text stays crisp (see spawnReveal).
+            .spawnReveal(index: Self.searchBarRevealIndex, token: appearanceRevealToken, scales: false)
     }
 
     /// Wraps a single-panel home state (translation, clipboard/recent empty) in a

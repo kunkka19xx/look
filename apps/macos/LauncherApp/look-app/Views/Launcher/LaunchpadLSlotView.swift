@@ -122,6 +122,8 @@ private struct LaunchpadPomoTile: View {
                     .font(themeStore.uiFont(size: 30, weight: .bold))
                     .foregroundColor(themeStore.fontColor())
                     .monospacedDigit()
+                    .contentTransition(.numericText(countsDown: true))
+                    .animation(Motion.Value.rollDigits, value: state.secondsLeft)
                 Text(phaseLabel)
                     .font(themeStore.uiFont(size: Const.captionFontSize + 1))
                     .foregroundColor(themeStore.secondaryTextColor())
@@ -281,6 +283,10 @@ private struct LaunchpadHeaderClock: View {
 /// readout in the top-right, and the slot's content pinned to the bottom. When
 /// `showsClock` is set, a compact time + date sits in the header so it stays
 /// visible even while the Todo or Pomo slot occupies the tile.
+/// The L slot's outline sits lighter than the theme divider it derives from, so
+/// the largest tile does not read as the most heavily framed.
+private let slotBorderOpacity = 0.4
+
 private struct LaunchpadSlotCard<Content: View>: View {
     var themeStore: ThemeStore
     let iconName: String
@@ -318,8 +324,12 @@ private struct LaunchpadSlotCard<Content: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(frostedTile(themeStore: themeStore))
         .overlay(
-            RoundedRectangle(cornerRadius: Const.cornerRadius, style: .continuous)
-                .strokeBorder(themeStore.dividerColor().opacity(0.4), lineWidth: 1)
+            // Same scaled radius as `frostedTile`, or the outline cuts the corners.
+            RoundedRectangle(
+                cornerRadius: themeStore.surfaceCornerRadius(Const.cornerRadius),
+                style: .continuous
+            )
+            .strokeBorder(themeStore.dividerColor().opacity(slotBorderOpacity), lineWidth: 1)
         )
     }
 }

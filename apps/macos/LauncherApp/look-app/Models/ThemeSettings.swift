@@ -6,6 +6,7 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
     case sidebar
     case menu
     case underWindowBackground
+    case liquidGlass
 
     var id: String { rawValue }
 
@@ -15,6 +16,7 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         case .sidebar: return "Soft"
         case .menu: return "Balanced"
         case .underWindowBackground: return "Subtle"
+        case .liquidGlass: return "Liquid Glass"
         }
     }
 
@@ -24,15 +26,19 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         case .sidebar: return "Light and gentle blur"
         case .menu: return "Neutral default look"
         case .underWindowBackground: return "Most transparent feel"
+        case .liquidGlass: return "Refracts the desktop behind the window"
         }
     }
 
+    /// Liquid Glass does not render through one; it names what it degrades to
+    /// on macOS 15. See `ThemedBackdrop`.
     var material: NSVisualEffectView.Material {
         switch self {
         case .hudWindow: return .hudWindow
         case .sidebar: return .sidebar
         case .menu: return .menu
         case .underWindowBackground: return .underWindowBackground
+        case .liquidGlass: return .hudWindow
         }
     }
 
@@ -42,16 +48,57 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         case .sidebar: return 0.86
         case .menu: return 1.0
         case .underWindowBackground: return 0.72
+        case .liquidGlass: return 1.0
         }
     }
 
+    /// Glass carries its own depth, so the tint sits lighter on it: anything
+    /// near the other materials' weight cancels the refraction.
     var tintOpacityScale: Double {
         switch self {
         case .hudWindow: return 1.16
         case .sidebar: return 0.84
         case .menu: return 1.0
         case .underWindowBackground: return 0.68
+        case .liquidGlass: return 0.42
         }
+    }
+
+    /// False where the material needs an OS newer than the one running.
+    var isSupported: Bool {
+        switch self {
+        case .liquidGlass:
+            if #available(macOS 26.0, *) {
+                return true
+            }
+            return false
+        case .hudWindow, .sidebar, .menu, .underWindowBackground:
+            return true
+        }
+    }
+
+    /// True when this renders as glass, which has no blur to thin.
+    var rendersGlass: Bool {
+        self == .liquidGlass && isSupported
+    }
+
+    /// Title in Settings. An unsupported value can still be the current
+    /// selection, so it says why it is inert rather than looking broken.
+    var pickerTitle: String {
+        isSupported ? title : "\(title) \(AppConstants.ThemeUI.unsupportedSuffix)"
+    }
+
+    /// Offered in Settings on this machine, plus `current` when that is a value
+    /// this OS cannot render (a config written on a newer machine). Keeping it
+    /// in the list is deliberate: a `Picker` whose selection matches no tag
+    /// renders blank, and rewriting the value here would destroy the user's
+    /// setting the next time they open the same config on a newer machine.
+    static func options(including current: LauncherBlurMaterial) -> [LauncherBlurMaterial] {
+        var options = allCases.filter(\.isSupported)
+        if !options.contains(current) {
+            options.append(current)
+        }
+        return options
     }
 }
 

@@ -11,23 +11,58 @@ struct SearchInputBar: View {
     /// inside a shared top-row pane that already supplies one, so the search
     /// input and running-apps icons read as a single unified bar.
     var showsBackground: Bool = true
+    /// Changes each time the launcher opens, replaying the spawn cascade.
+    var revealToken: UInt64 = 0
     let onSubmit: () -> Void
     let onExitCommandMode: () -> Void
+
+    private enum Layout {
+        /// Matches where `NSTextField` starts drawing its own text, so the
+        /// placeholder does not shift sideways as soon as you type.
+        static let placeholderLeadingInset: CGFloat = 2
+    }
+
+    private var placeholderText: String {
+        if isCommandMode {
+            return activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder
+        }
+        return AppConstants.Launcher.searchPlaceholder
+    }
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: isCommandMode ? "terminal" : "magnifyingglass")
                 .foregroundStyle(isCommandMode ? themeStore.accentColor() : themeStore.secondaryTextColor())
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: revealToken)
             SmoothCaretTextField(
                 text: $text,
-                placeholder: isCommandMode
-                    ? (activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder)
-                    : AppConstants.Launcher.searchPlaceholder,
+                // Empty: the placeholder is drawn as the overlay below instead,
+                // since an NSTextField's own placeholder cannot be animated.
+                placeholder: "",
                 isFocused: isQueryFocused,
                 themeStore: themeStore,
                 onSubmit: onSubmit
             )
+                // The field's own placeholder is empty, so it would otherwise
+                // reach VoiceOver unnamed.
+                .accessibilityLabel(placeholderText)
                 .frame(maxWidth: .infinity)
+                .overlay(alignment: .leading) {
+                    if text.isEmpty {
+                        Text(placeholderText)
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize)))
+                            .foregroundStyle(themeStore.mutedTextColor())
+                            .lineLimit(1)
+                            .padding(.leading, Layout.placeholderLeadingInset)
+                            .allowsHitTesting(false)
+                            // Decorative: the field above carries the name.
+                            // `allowsHitTesting` does not remove it from the
+                            // accessibility tree.
+                            .accessibilityHidden(true)
+                            .placeholderReveal(token: revealToken)
+                    }
+                }
 
             if isCommandMode {
                 if let command = activeCommand {
@@ -198,6 +233,7 @@ struct ResultsListView: View {
                             result: result,
                             isSelected: selectedID == result.id,
                             isPicked: pickedKeys.contains("\(result.kind.rawValue)|\(result.path)"),
+                            isLast: result.id == results.last?.id,
                             selectionNamespace: selectionNamespace,
                             onOpen: {
                                 onSelect(result.id)
@@ -211,10 +247,16 @@ struct ResultsListView: View {
             }
             .onChange(of: selectedID) { _, newID in
                 guard let newID else { return }
-                // Same curve as the selection pill, so the pill can't trail the
-                // list when rows differ in height.
+                // No anchor, so this scrolls the minimum needed to bring the row
+                // into view and does nothing at all while the selection is
+                // already visible. `.center` re-centred on every keypress, which
+                // slid the whole list under a stationary pill and made the one
+                // thing that actually moved the hardest thing to follow.
+                //
+                // Same curve as the pill, so the two stay together on the scrolls
+                // that do happen.
                 withAnimation(Motion.Selection.glide) {
-                    proxy.scrollTo(newID, anchor: .center)
+                    proxy.scrollTo(newID)
                 }
             }
         }
