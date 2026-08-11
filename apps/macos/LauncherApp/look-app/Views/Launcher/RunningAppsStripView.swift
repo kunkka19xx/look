@@ -7,6 +7,8 @@ struct RunningAppsStripView: View {
     @ObservedObject var service: RunningAppsService
     let themeStore: ThemeStore
     let onActivate: (Int) -> Void
+    /// Changes each time the launcher opens, replaying the spawn cascade.
+    var revealToken: UInt64 = 0
 
     @State private var hoveredIndex: Int?
 
@@ -42,6 +44,8 @@ struct RunningAppsStripView: View {
                     hoveredIndex = hovering ? index : (hoveredIndex == index ? nil : hoveredIndex)
                 }
             )
+            // Slides in from the left, leftmost first.
+            .stripReveal(index: index, token: revealToken)
         }
     }
 }

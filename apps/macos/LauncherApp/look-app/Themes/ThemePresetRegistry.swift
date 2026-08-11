@@ -19,6 +19,8 @@ extension BuiltinThemePreset {
             return KanagawaTheme.style
         case .kindle:
             return KindleTheme.style
+        case .liquid:
+            return LiquidTheme.style
         }
     }
 }

@@ -502,6 +502,12 @@ enum AppConstants {
     enum ThemeUI {
         static let labelWidth: CGFloat = 150
         static let pickerWidth: CGFloat = 140
+        /// Dimming for a control the active theme has taken over, so the value
+        /// stays readable while reading as not-yours-to-set.
+        static let disabledControlOpacity: Double = 0.4
+        /// Appended to a picker entry this OS cannot render, so a value carried
+        /// over from a newer machine reads as inert rather than broken.
+        static let unsupportedSuffix = "(needs macOS 26)"
     }
 
     enum FileScan {

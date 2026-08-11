@@ -825,7 +825,8 @@ launch_at_login=true
 skip_dir_names=node_modules,target,build,dist,library,applications,old firefox data,deriveddata,pods,vendor,out,coverage,tmp,cache,venv
 
 # UI theme
-# Preset: catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle.
+# Preset: catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle,
+# liquid (liquid needs macOS 26; it falls back to the classic surface below that).
 # A preset overrides every ui_* value below. Leave it empty to use them as written.
 ui_theme=
 ui_tint_red=0.08
