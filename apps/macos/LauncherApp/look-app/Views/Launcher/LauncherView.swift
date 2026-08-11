@@ -110,6 +110,11 @@ struct LauncherView: View {
     static let panelCoordinateSpace = "launcherPanel"
 
     static let floatingTileScrimOpacity = 0.30
+    /// Resting corner for a tile that floats free of its neighbours, and for the
+    /// seated variant that reads as part of one box. Both are scaled by the
+    /// active theme surface (Liquid rounds harder) at each use.
+    static let floatingTileCornerRadius: CGFloat = 12
+    static let seatedTileCornerRadius: CGFloat = 10
     static let attachedPanelScrimOpacity = 0.16
 
     var runningAppsPlacement: RunningAppsPlacement {
@@ -693,6 +698,12 @@ struct LauncherView: View {
         // floating strip that grows the window. The launcher is always a single
         // fixed-size panel regardless of the running-apps toggle.
         borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
+        .rootReveal(token: appearanceRevealToken)
+        // The launchpad and the results list used to hard-cut on the first
+        // keystroke, which is the most visible moment in the app. Keyed on that
+        // one value, so no other state change in the panel picks up a
+        // transaction (see the halo note in LauncherView+Background).
+        .animation(Motion.Surface.swap, value: hidesResultsForEmptyQuery)
         .ignoresSafeArea()
         .onAppear {
             refreshSearchResults()
@@ -1022,10 +1033,12 @@ struct LauncherView: View {
                         themeStore: themeStore,
                         revealToken: appearanceRevealToken
                     )
+                    .transition(Motion.Surface.swapTransition)
                 }
                 Spacer(minLength: 0)
             } else {
                 resultsRow
+                    .transition(Motion.Surface.swapTransition)
             }
 
             if isCommandMode {
@@ -1335,8 +1348,15 @@ struct LauncherView: View {
         if barFloatsFree {
             content()
                 .padding(padding)
-                .background { tileBackground(cornerRadius: 12, floats: true) }
-                .overlay { tileBorder(cornerRadius: 12) }
+                .background {
+                    tileBackground(
+                        cornerRadius: themeStore.surfaceCornerRadius(Self.floatingTileCornerRadius),
+                        floats: true
+                    )
+                }
+                .overlay {
+                    tileBorder(cornerRadius: themeStore.surfaceCornerRadius(Self.floatingTileCornerRadius))
+                }
                 // Lift each pane off the backdrop so the three parts read as
                 // separate floating tiles rather than sections of one box.
                 .shadow(color: .black.opacity(0.25), radius: 7, x: 0, y: 3)
@@ -1360,7 +1380,7 @@ struct LauncherView: View {
                     // covered by the tint.
                     themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
                 } else {
-                    ThemedBackdrop(themeStore: themeStore)
+                    ThemedBackdrop(themeStore: themeStore, cornerRadius: cornerRadius)
                 }
                 themeStore.controlFillColor()
             }
@@ -1410,10 +1430,17 @@ struct LauncherView: View {
         // (e.g. typing the first character out of the empty-rest state at gap 0).
         let floats = barFloatsFree
         return content()
-            .background { tileBackground(cornerRadius: floats ? 12 : 10, floats: floats) }
+            .background {
+                tileBackground(
+                    cornerRadius: themeStore.surfaceCornerRadius(
+                        floats ? Self.floatingTileCornerRadius : Self.seatedTileCornerRadius
+                    ),
+                    floats: floats
+                )
+            }
             .overlay {
                 if floats {
-                    tileBorder(cornerRadius: 12)
+                    tileBorder(cornerRadius: themeStore.surfaceCornerRadius(Self.floatingTileCornerRadius))
                 }
             }
             .shadow(color: floats ? .black.opacity(0.25) : .clear,

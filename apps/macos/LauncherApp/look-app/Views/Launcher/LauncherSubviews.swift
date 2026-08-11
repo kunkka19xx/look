@@ -198,6 +198,7 @@ struct ResultsListView: View {
                             result: result,
                             isSelected: selectedID == result.id,
                             isPicked: pickedKeys.contains("\(result.kind.rawValue)|\(result.path)"),
+                            isLast: result.id == results.last?.id,
                             selectionNamespace: selectionNamespace,
                             onOpen: {
                                 onSelect(result.id)

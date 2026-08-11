@@ -175,6 +175,33 @@ extension ThemeStore {
         activeAppearanceStyle()?.appearance ?? .dark
     }
 
+    /// The active rendering surface.
+    ///
+    /// Keyed off the blur material first, not the preset alone. `savedThemeName`
+    /// stops recording `ui_theme` the moment any value diverges from the preset,
+    /// because the load path applies the theme *over* the individual keys and a
+    /// stale name would throw the user's tweaks away. `ui_blur_material` has no
+    /// such problem: it persists on its own. Reading it here means a customised
+    /// Liquid theme keeps its glass instead of silently reverting to the classic
+    /// geometry after a relaunch.
+    func themeSurface() -> ThemeSurface {
+        // Without the glass effect there is no liquid surface to have. A config
+        // carrying `ui_theme=liquid` from a newer machine renders fully classic
+        // rather than as classic blur wearing liquid geometry.
+        guard LauncherBlurMaterial.liquidGlass.isSupported else {
+            return .classic
+        }
+        if settings.blurMaterial == .liquidGlass {
+            return .liquid
+        }
+        return activeAppearanceStyle()?.surface ?? .classic
+    }
+
+    /// Scales a surface's resting corner radius for the active theme.
+    func surfaceCornerRadius(_ base: CGFloat) -> CGFloat {
+        base * themeSurface().cornerRadiusScale
+    }
+
     func borderColor() -> Color {
         Color(
             red: settings.borderRed,

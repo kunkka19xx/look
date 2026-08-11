@@ -122,6 +122,8 @@ private struct LaunchpadPomoTile: View {
                     .font(themeStore.uiFont(size: 30, weight: .bold))
                     .foregroundColor(themeStore.fontColor())
                     .monospacedDigit()
+                    .contentTransition(.numericText(countsDown: true))
+                    .animation(Motion.Value.rollDigits, value: state.secondsLeft)
                 Text(phaseLabel)
                     .font(themeStore.uiFont(size: Const.captionFontSize + 1))
                     .foregroundColor(themeStore.secondaryTextColor())

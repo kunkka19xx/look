@@ -6,6 +6,7 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
     case sidebar
     case menu
     case underWindowBackground
+    case liquidGlass
 
     var id: String { rawValue }
 
@@ -15,6 +16,7 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         case .sidebar: return "Soft"
         case .menu: return "Balanced"
         case .underWindowBackground: return "Subtle"
+        case .liquidGlass: return "Liquid Glass"
         }
     }
 
@@ -24,15 +26,20 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         case .sidebar: return "Light and gentle blur"
         case .menu: return "Neutral default look"
         case .underWindowBackground: return "Most transparent feel"
+        case .liquidGlass: return "Refracts the desktop behind the window"
         }
     }
 
+    /// The `NSVisualEffectView` material this renders through. Liquid Glass does
+    /// not use one (see `ThemedBackdrop`); it names the material it degrades to
+    /// on macOS 15, where the glass effect does not exist.
     var material: NSVisualEffectView.Material {
         switch self {
         case .hudWindow: return .hudWindow
         case .sidebar: return .sidebar
         case .menu: return .menu
         case .underWindowBackground: return .underWindowBackground
+        case .liquidGlass: return .hudWindow
         }
     }
 
@@ -42,16 +49,41 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         case .sidebar: return 0.86
         case .menu: return 1.0
         case .underWindowBackground: return 0.72
+        case .liquidGlass: return 1.0
         }
     }
 
+    /// Glass carries its own depth, so the theme tint sits lighter on it than on
+    /// a flat blur. Anything near the other materials' weight reads as muddy and
+    /// cancels the refraction.
     var tintOpacityScale: Double {
         switch self {
         case .hudWindow: return 1.16
         case .sidebar: return 0.84
         case .menu: return 1.0
         case .underWindowBackground: return 0.68
+        case .liquidGlass: return 0.55
         }
+    }
+
+    /// False where the material needs an OS newer than the one running, so the
+    /// settings picker can omit it rather than offer a silent fallback.
+    var isSupported: Bool {
+        switch self {
+        case .liquidGlass:
+            if #available(macOS 26.0, *) {
+                return true
+            }
+            return false
+        case .hudWindow, .sidebar, .menu, .underWindowBackground:
+            return true
+        }
+    }
+
+    /// Materials offered in Settings on this machine. A value persisted on a
+    /// newer machine still decodes and degrades at render time.
+    static var selectable: [LauncherBlurMaterial] {
+        allCases.filter(\.isSupported)
     }
 }
 
