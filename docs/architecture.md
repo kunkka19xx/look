@@ -54,7 +54,7 @@ flowchart LR
   - `LauncherWindowCoordinator`: window/focus management
   - `EngineBridge`: search engine communication
   - `ClipboardHistoryStore`, `KeyboardSelectionMonitor`, `GlobalHotKeyManager`
-- `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle) and semantic color tokens
+- `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid) and semantic color tokens
 - `bridge/ffi`: narrow C ABI surface for search, usage recording, config reload, translation, todo load/save, speed test, and error payloads.
 - `core/answers`: platform-agnostic, network-backed "web answer" lookups shared by every shell (macOS via `bridge/ffi`, Windows/Linux via Tauri commands). Instant answers (currency/weather/crypto), search suggestions, knowledge sources, and translation. Best-effort and panic-free: every entry point returns "no answer" on failure, with cheap network-free pattern-gating (`has_match`) so callers can fire speculatively while typing. No async runtime - HTTP is a blocking `curl` subprocess.
 - `core/indexing`: candidate model and indexing helpers used by engine/storage flows.
@@ -357,6 +357,7 @@ Available themes (selected via Settings > Appearance):
 | Dracula | Classic purple-accented dark |
 | Kanagawa | Japanese-inspired dark theme |
 | Kindle | Paper and ink, e-reader light theme (Charter serif) |
+| Liquid | Liquid Glass surface, translucent fills (macOS 26+) |
 | Custom | Auto-derived semantic colors from tint |
 
 Themes are defined in `Themes/` folder:
@@ -370,6 +371,27 @@ in Light or Dark mode, and it picks how the opaque command-mode surfaces and the
 pane scrims are mixed: dark themes darken, light themes lighten. A preset may
 also declare a `fontName`; presets that do not reset the font to the app default
 when applied.
+
+A preset also declares a `ThemeSurface` (`.classic` or `.liquid`), the second
+non-token axis alongside `ThemeAppearance`: it selects how surfaces are drawn
+rather than what colour they are, and scales every themed corner radius through
+`ThemeStore.surfaceCornerRadius(_:)`. Any new border or `clipShape` on a themed
+surface must go through that helper, or it desyncs from the fill behind it and
+draws a stray line across the corners.
+
+`ThemeStore.themeSurface()` resolves the axis from `blurMaterial` first and the
+preset second. That is deliberate: `savedThemeName()` stops recording `ui_theme`
+as soon as any value diverges from its preset (the load path applies the theme
+*over* the individual `ui_*` keys, so a stale name would discard the user's
+tweaks), while `ui_blur_material` persists on its own. Keying off the material
+means a customised Liquid theme keeps its glass across a relaunch.
+
+Liquid Glass itself is `Components/GlassEffectBackdrop.swift`, an
+`NSGlassEffectView` wrapper. Not SwiftUI's `glassEffect`, which refracts only
+what sits behind it inside its own view tree: the launcher window is
+transparent, so that renders as nearly nothing. The view also draws nothing
+without a `contentView`, and the theme tint is passed into its `tintColor`
+rather than layered over it, since a colour wash on top cancels the refraction.
 
 On linows the same presets live in `apps/linows/src/css/theme.css`, one
 `:root[data-theme="…"]` block per preset, with `js/screens/settings.js`
@@ -391,11 +413,11 @@ wins.
 All settings are persisted to `.look.config`:
 
 **UI Theme:**
-- `ui_theme` - theme name (catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle). Matched case-insensitively, and applied after the individual `ui_*` keys below, so a preset overrides them. Empty means Custom. Save Config writes a preset name only while the values still match that preset, so a theme you have tweaked is stored as its literal values.
+- `ui_theme` - theme name (catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle, liquid). Matched case-insensitively, and applied after the individual `ui_*` keys below, so a preset overrides them. Empty means Custom. Save Config writes a preset name only while the values still match that preset, so a theme you have tweaked is stored as its literal values.
 
 **Appearance:**
 - `ui_tint_red`, `ui_tint_green`, `ui_tint_blue`, `ui_tint_opacity` - background tint (0-1)
-- `ui_blur_material` - blur style (hudWindow, sidebar, menu, underWindowBackground)
+- `ui_blur_material` - blur style (hudWindow, sidebar, menu, underWindowBackground, liquidGlass). `liquidGlass` renders through `NSGlassEffectView` and needs macOS 26; below that it falls back to `hudWindow`, and neither it nor the Liquid theme is offered in Settings.
 - `ui_blur_opacity` - blur opacity (0-1)
 - `ui_font_name`, `ui_font_size` - font settings
 - `ui_font_red`, `ui_font_green`, `ui_font_blue`, `ui_font_opacity` - text color (0-1)

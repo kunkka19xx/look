@@ -242,7 +242,7 @@ Full reference: [docs/user-guide.md](docs/user-guide.md).
 
 ## Themes
 
-Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, plus Custom. Kindle is the one light preset - paper, ink, and a serif face. Switch in `Settings > Appearance`.
+Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, plus Custom. Kindle is the one light preset - paper, ink, and a serif face. Liquid renders on macOS 26's Liquid Glass and is hidden on older releases. Switch in `Settings > Appearance`.
 
 <p align="center">
   <img src="assets/look-ui/1.png" width="45%" />

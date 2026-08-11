@@ -229,6 +229,7 @@ Built-in theme presets are available:
 | Dracula     | Classic purple-accented dark      |
 | Kanagawa    | Japanese-inspired dark theme      |
 | Kindle      | Paper and ink e-reader look       |
+| Liquid      | Liquid Glass surface (macOS 26+)  |
 | Custom      | Your own colors derived from tint |
 
 Theme is saved as `ui_theme=<name>` in config, and a name written there overrides
@@ -239,6 +240,19 @@ one light preset: it also switches the frosted panels to a light material and th
 font to Charter, macOS' stand-in for Bookerly. Picking a preset overwrites your
 tint, text color, border and font; `Custom` keeps the current values and derives
 the rest from them.
+
+Liquid is the one preset that changes how surfaces are drawn rather than only
+what colour they are. It renders the window and every tile on macOS 26's Liquid
+Glass, rounds corners further, and uses far more transparent fills so the glass
+reads as a lens rather than a panel. It needs macOS 26 and is hidden from the
+picker on older releases. Two consequences worth knowing:
+
+- `Blur Opacity` is disabled while Liquid Glass is the blur style, because glass
+  has no blur to thin. Your value is kept and returns when you switch back.
+- The glass follows `Blur Style`, not the theme name, so you can pick
+  `Settings > Appearance > Blur Style > Liquid Glass` on any theme to get the
+  glass surface with that theme's palette. Equally, selecting Liquid and then
+  choosing a different blur style gives you its palette on the classic surface.
 
 **Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. The launcher window stays the same size either way.
 
