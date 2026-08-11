@@ -68,6 +68,38 @@ For i3/X11 without compositor:
 WEBKIT_DISABLE_COMPOSITING_MODE=1 cargo tauri dev
 ```
 
+### Home Manager
+
+The flake exports a Home Manager module for declarative user configuration:
+
+```nix
+{ inputs, ... }: {
+  imports = [ inputs.look.homeModules.default ];
+
+  programs.lookapp = {
+    enable = true;
+    theme = "kindle";
+    settings = {
+      running_apps_placement = "right";
+      file_scan_extra_roots = [ "~/Projects" "/mnt/data" ];
+      ai_enabled = false;
+    };
+    aliases = {
+      note = [ "Obsidian" "Logseq" ];
+      term = [ "Alacritty" "Kitty" ];
+    };
+  };
+}
+```
+
+`theme` writes Look's `ui_theme` preset; for Kindle it also writes the matching
+light-theme opacity values. `settings` keys map directly to `~/.look.config`
+keys and override values derived from `theme`. List values in `settings` are
+written as comma-separated values; `aliases` are written in Look's
+`alias_<name>=Term1|Term2` format. In this mode Home Manager owns
+`~/.look.config`, so change settings in Nix and rebuild rather than using
+Look's in-app Save Config button as the source of truth.
+
 ### Windows
 
 **Prerequisites:**

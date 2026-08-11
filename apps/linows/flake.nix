@@ -11,7 +11,7 @@
   };
 
   outputs =
-    { nixpkgs, rust-overlay, ... }:
+    { self, nixpkgs, rust-overlay, ... }:
     let
       systems = [
         "x86_64-linux"
@@ -48,6 +48,7 @@
       );
 
       nixosModules.default = import ./nix/module.nix;
+      homeModules.default = import ./nix/home-manager.nix self;
 
       overlays.default = final: _prev: {
         lookapp = final.callPackage ./nix/package.nix { };

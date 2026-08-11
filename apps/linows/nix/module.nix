@@ -26,7 +26,7 @@ in
 
     nix.settings = lib.mkIf cfg.cachix {
       substituters = [ "https://look.cachix.org" ];
-      trusted-public-keys = [ "look.cachix.org-1:8eIPCeSVBzIDZXqIRKBK9GyLIK/Hoe1xiWZF0ir7uX4=" ];
+      trusted-public-keys = [ "look.cachix.org-1:8elPCeSVBzlDZXqIRKBK9GyLIK/Hoe1xiWZF0ir7uX4=" ];
     };
   };
 }

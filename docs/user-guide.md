@@ -287,6 +287,24 @@ Runtime config file:
 - reload after manual edits: `Cmd+Shift+;`
 - reset to fresh defaults from UI: `Settings -> Advanced -> Create Fresh Config` (confirmation popup)
 
+NixOS / Home Manager users can manage the same file declaratively through the
+flake's Home Manager module:
+
+```nix
+{ inputs, ... }: {
+  imports = [ inputs.look.homeModules.default ];
+
+  programs.lookapp = {
+    enable = true;
+    theme = "kindle";
+    settings.ai_enabled = false;
+  };
+}
+```
+
+In this mode Home Manager owns `~/.look.config`; edit the Nix config and
+rebuild instead of using Look's in-app Save Config button as the source of truth.
+
 Backend-related keys:
 
 - `app_scan_roots`, `app_scan_depth`, `app_exclude_paths`, `app_exclude_names`
