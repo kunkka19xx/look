@@ -13,9 +13,8 @@ enum BuiltinThemePreset: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    /// Presets offered in Settings on this machine. Liquid renders through the
-    /// macOS 26 glass effect, so it is omitted where that does not exist rather
-    /// than shipping a preset that silently looks like something else.
+    /// Offered in Settings on this machine: Liquid needs the macOS 26 glass
+    /// effect, so it is omitted where that does not exist.
     static var selectable: [BuiltinThemePreset] {
         allCases.filter { $0 != .liquid || LauncherBlurMaterial.liquidGlass.isSupported }
     }

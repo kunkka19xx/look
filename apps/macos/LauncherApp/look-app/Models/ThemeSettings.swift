@@ -30,9 +30,8 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// The `NSVisualEffectView` material this renders through. Liquid Glass does
-    /// not use one (see `ThemedBackdrop`); it names the material it degrades to
-    /// on macOS 15, where the glass effect does not exist.
+    /// Liquid Glass does not render through one; it names what it degrades to
+    /// on macOS 15. See `ThemedBackdrop`.
     var material: NSVisualEffectView.Material {
         switch self {
         case .hudWindow: return .hudWindow
@@ -53,9 +52,8 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Glass carries its own depth, so the theme tint sits lighter on it than on
-    /// a flat blur. Anything near the other materials' weight reads as muddy and
-    /// cancels the refraction.
+    /// Glass carries its own depth, so the tint sits lighter on it: anything
+    /// near the other materials' weight cancels the refraction.
     var tintOpacityScale: Double {
         switch self {
         case .hudWindow: return 1.16
@@ -66,8 +64,7 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// False where the material needs an OS newer than the one running, so the
-    /// settings picker can omit it rather than offer a silent fallback.
+    /// False where the material needs an OS newer than the one running.
     var isSupported: Bool {
         switch self {
         case .liquidGlass:
@@ -80,8 +77,8 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Materials offered in Settings on this machine. A value persisted on a
-    /// newer machine still decodes and degrades at render time.
+    /// Offered in Settings on this machine. A value persisted on a newer one
+    /// still decodes and degrades at render time.
     static var selectable: [LauncherBlurMaterial] {
         allCases.filter(\.isSupported)
     }

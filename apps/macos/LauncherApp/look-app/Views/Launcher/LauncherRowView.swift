@@ -27,9 +27,7 @@ struct LauncherRowView: View {
         themeStore.surfaceCornerRadius(Layout.cornerRadius)
     }
 
-    /// Drives the one-shot zoom the pill and icon do as this row takes the
-    /// selection. Local to the row, so a row that is not gaining selection has
-    /// nothing to animate.
+    /// Drives the one-shot zoom as this row takes the selection.
     @State private var zoomed = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -45,10 +43,8 @@ struct LauncherRowView: View {
         }
     }
 
-    /// The trailing hairline is suppressed under the selection pill (a rule
-    /// running through a filled pill reads as an artifact) and after the final
-    /// row (nothing follows it to separate). The row keeps the divider's height
-    /// either way and only fades it, so selection never reflows the list.
+    /// Hidden under the selection pill and after the final row. The row keeps
+    /// the divider's height either way, so selection never reflows the list.
     private var showsDivider: Bool {
         !isLast && !isSelected
     }
@@ -57,9 +53,8 @@ struct LauncherRowView: View {
         SyntheticRow.classify(resultID: result.id)
     }
 
-    /// Resolved through `RowIconCache`: this runs inside `body`, so every redraw
-    /// of the list would otherwise mint a fresh `NSImage` for every visible row
-    /// and make all of them flicker. See the note on the cache.
+    /// Cached: this runs inside `body`, and a fresh `NSImage` per redraw makes
+    /// every icon in the list flicker. See `RowIconCache`.
     private var rowIcon: NSImage {
         switch syntheticRow {
         case .commandSuggestion:
@@ -177,10 +172,8 @@ struct LauncherRowView: View {
                             .foregroundStyle(themeStore.mutedTextColor())
                             .lineLimit(1)
                     }
-                    // Driven by `isSelected` rather than the one-shot state, so it
-                    // rides the glide transaction nav already wraps the selection
-                    // in and slides rather than snapping. Offset only, so the text
-                    // never reflows and neighbouring rows stay put.
+                    // Keyed on `isSelected` so it rides nav's glide transaction.
+                    // Offset, not padding: the text must not reflow.
                     .offset(x: isSelected ? Motion.Selection.titleShift : 0)
                     Spacer(minLength: 0)
                 }
@@ -205,15 +198,11 @@ struct LauncherRowView: View {
                         .scaleEffect(isSelected && zoomed ? Motion.Selection.pillZoomScale : 1)
                 }
             }
-            // Only the row that just became selected runs this, so exactly one
-            // row moves per keypress. No `.animation(_:value:)` anywhere in the
-            // row: applied per-row it fires on every neighbour as the selection
-            // passes, which is what made the whole list look like it flickered.
+            // Deliberately no `.animation(_:value:)` in this row: per-row it
+            // fires on every neighbour as the selection passes, flickering the
+            // whole list. Clearing on deselect covers LazyVStack recycling,
+            // where a view can arrive holding a previous row's `zoomed`.
             .onChange(of: isSelected) { _, selected in
-                // Rows are recycled by the LazyVStack, so a view can arrive
-                // carrying a stale `zoomed` from whichever row it was before.
-                // Clearing on deselect, and gating the scale on `isSelected`
-                // above, means an unselected row can never show a transform.
                 guard selected else {
                     zoomed = false
                     return

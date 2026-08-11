@@ -44,11 +44,9 @@ struct RunningAppsStripView: View {
                     hoveredIndex = hovering ? index : (hoveredIndex == index ? nil : hoveredIndex)
                 }
             )
-            // Right-aligned strip, so the cascade runs right to left: the icons
-            // nearest the search caret settle first.
+            // Right-aligned, so the cascade runs right to left.
             .spawnReveal(index: total - 1 - index, token: revealToken)
-            // App icons are NSImage, so they get the scale pop rather than the
-            // symbol bounce the launchpad glyphs use.
+            // NSImage, so a scale pop rather than the symbol bounce.
             .iconPop(token: revealToken)
         }
     }

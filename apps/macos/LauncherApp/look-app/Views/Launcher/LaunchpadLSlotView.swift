@@ -324,8 +324,7 @@ private struct LaunchpadSlotCard<Content: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(frostedTile(themeStore: themeStore))
         .overlay(
-            // Same scaled radius as the `frostedTile` behind it, so the outline
-            // follows the tile edge instead of cutting across its corners.
+            // Same scaled radius as `frostedTile`, or the outline cuts the corners.
             RoundedRectangle(
                 cornerRadius: themeStore.surfaceCornerRadius(Const.cornerRadius),
                 style: .continuous

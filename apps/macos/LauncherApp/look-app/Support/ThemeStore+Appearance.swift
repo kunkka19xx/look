@@ -177,17 +177,11 @@ extension ThemeStore {
 
     /// The active rendering surface.
     ///
-    /// Keyed off the blur material first, not the preset alone. `savedThemeName`
-    /// stops recording `ui_theme` the moment any value diverges from the preset,
-    /// because the load path applies the theme *over* the individual keys and a
-    /// stale name would throw the user's tweaks away. `ui_blur_material` has no
-    /// such problem: it persists on its own. Reading it here means a customised
-    /// Liquid theme keeps its glass instead of silently reverting to the classic
-    /// geometry after a relaunch.
+    /// Keyed off the blur material first, not the preset alone: `savedThemeName`
+    /// drops `ui_theme` as soon as any value diverges from the preset, while
+    /// `ui_blur_material` persists on its own. So a customised Liquid theme
+    /// keeps its glass across a relaunch instead of reverting to classic.
     func themeSurface() -> ThemeSurface {
-        // Without the glass effect there is no liquid surface to have. A config
-        // carrying `ui_theme=liquid` from a newer machine renders fully classic
-        // rather than as classic blur wearing liquid geometry.
         guard LauncherBlurMaterial.liquidGlass.isSupported else {
             return .classic
         }

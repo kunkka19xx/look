@@ -59,10 +59,8 @@ extension ThemeSettingsView {
 
                 sectionHeader("Blur")
 
-                // Glass has no blur to thin: `ThemedBackdrop` ignores this on the
-                // Liquid surface, because dimming glass makes it ghostly rather
-                // than lighter. Shown disabled so the value the user set is still
-                // visible, and comes back when they switch material.
+                // Glass has no blur to thin, so `ThemedBackdrop` ignores this.
+                // Disabled rather than hidden, to keep the value visible.
                 LabeledSlider(title: "Blur Opacity", value: $settings.blurOpacity, range: 0...1)
                     .disabled(settings.blurMaterial == .liquidGlass)
                     .opacity(settings.blurMaterial == .liquidGlass ? AppConstants.ThemeUI.disabledControlOpacity : 1)

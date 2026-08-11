@@ -128,9 +128,7 @@ struct EmptyStateLaunchpadView: View {
             let h = height(rows: model.rowSpanCount)
             tileContent(model)
                 .frame(width: w, height: h)
-                // The same bounce the Bluetooth glyph does on toggle, fired for
-                // every symbol in the tile when the launcher opens. Applied to
-                // the container: symbol effects reach the symbol images inside.
+                // On the container: symbol effects reach the images inside.
                 .symbolEffect(.bounce, value: revealToken)
                 .spawnReveal(index: reveal, token: revealToken)
         }
@@ -228,8 +226,7 @@ private struct LaunchpadToggleTile: View {
                 Image(systemName: iconName)
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(isOn ? themeStore.accentColor() : themeStore.mutedTextColor())
-                    // Theme and Keep Awake swap glyph on flip, so the icon
-                    // crossfades; the others keep one glyph and just react.
+                    // Theme and Keep Awake swap glyph on flip.
                     .contentTransition(.symbolEffect(.replace))
                     .symbolEffect(.bounce, value: isOn)
                 VStack(alignment: .leading, spacing: 1) {
@@ -311,8 +308,7 @@ private struct LaunchpadInfoTile: View {
             Image(systemName: iconName)
                 .font(.system(size: 18, weight: .medium))
                 .foregroundColor(themeStore.accentColor())
-                // The battery glyph gains and loses its bolt as charging starts
-                // and stops, and fills as the level changes.
+                // The glyph gains and loses its bolt as charging changes.
                 .contentTransition(.symbolEffect(.replace))
             VStack(alignment: .leading, spacing: 1) {
                 Text(label)
@@ -356,7 +352,6 @@ private struct LaunchpadWeatherTile: View {
             Image(systemName: weather?.symbolName ?? "cloud.sun.fill")
                 .font(.system(size: 20, weight: .medium))
                 .foregroundColor(themeStore.accentColor())
-                // The condition glyph changes as the forecast refreshes.
                 .contentTransition(.symbolEffect(.replace))
             Text(weather?.temperature ?? Const.weatherPlaceholderValue)
                 .font(themeStore.uiFont(size: Const.valueFontSize - 4, weight: .bold))
@@ -454,9 +449,7 @@ private struct LaunchpadActionTile: View {
     /// tiles, and disappears with them when the border is turned off.
     @ViewBuilder
     private var border: some View {
-        // Must use the same scaled radius as `frostedTile`, or the outline is cut
-        // to a tighter corner than the fill behind it and reads as a stray line
-        // across each corner.
+        // Same scaled radius as `frostedTile`, or the outline cuts the corners.
         let shape = RoundedRectangle(
             cornerRadius: themeStore.surfaceCornerRadius(Const.cornerRadius),
             style: .continuous
@@ -602,8 +595,7 @@ func frostedTile(themeStore: ThemeStore, tint: Color? = nil, tintOpacity: Double
 /// with it when the border is turned off.
 @ViewBuilder
 private func tileBorder(isOn: Bool, themeStore: ThemeStore) -> some View {
-    // Must track `frostedTile`'s radius exactly, or the outline and the fill
-    // disagree at the corners under Liquid.
+    // Must track `frostedTile`'s radius, or the two disagree at the corners.
     let shape = RoundedRectangle(
         cornerRadius: themeStore.surfaceCornerRadius(AppConstants.Launcher.Launchpad.cornerRadius),
         style: .continuous

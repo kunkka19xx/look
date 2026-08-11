@@ -22,16 +22,13 @@ enum ThemeAppearance {
 }
 
 /// How a preset renders its surfaces, as opposed to what colour they are. The
-/// second non-token axis a style carries, alongside `appearance`: both drive
-/// behaviour that cannot be derived from the palette.
+/// second non-token axis a style carries, alongside `appearance`.
 enum ThemeSurface {
-    /// Blur plus tint, the look every preset had before Liquid.
+    /// Blur plus tint.
     case classic
-    /// Liquid Glass, with the softer geometry glass reads best against.
     case liquid
 
-    /// Liquid rounds harder than the classic surface. Glass reads as a lens,
-    /// and a tight corner makes it look like a clipped rectangle instead.
+    /// Glass reads as a lens; a tight corner makes it a clipped rectangle.
     static let liquidRadiusScale: CGFloat = 1.5
 
     var cornerRadiusScale: CGFloat {
@@ -45,8 +42,8 @@ enum ThemeSurface {
 struct BuiltinThemeStyle {
     let themeName: String
     let appearance: ThemeAppearance
-    /// Rendering mode. Not written into `ThemeSettings`: like `appearance`, it
-    /// is read back off the resolved style rather than stored per-key.
+    /// Not written into `ThemeSettings`: like `appearance`, read back off the
+    /// resolved style rather than stored per-key.
     let surface: ThemeSurface
     let tintRed: Double
     let tintGreen: Double

@@ -2,16 +2,10 @@ import Foundation
 
 /// Liquid: the glass surface as a theme of its own.
 ///
-/// The palette is built around the material rather than over it. Every fill is
-/// far more transparent than the classic presets use, because glass is a lens
-/// and an opaque panel sitting on it reads as a sticker rather than depth. The
-/// tint is deliberately light too: `LauncherBlurMaterial.liquidGlass` hands it
-/// to `NSGlassEffectView.tintColor`, where a heavy value would cancel the
-/// refraction it is supposed to colour.
-///
-/// Text stays near-white at full opacity. Glass runs lower contrast than
-/// `hudWindow`, and the results list is dense monospaced content, so the
-/// palette spends its contrast budget on type rather than on chrome.
+/// Fills are far more transparent than the classic presets use: glass is a lens,
+/// and an opaque panel on it reads as a sticker rather than depth. Text keeps
+/// full contrast, since glass is dimmer than `hudWindow` and the results list is
+/// dense monospaced content.
 enum LiquidTheme {
     static let style = BuiltinThemeStyle(
         themeName: "liquid",
@@ -28,8 +22,7 @@ enum LiquidTheme {
         fontGreen: 0.98,
         fontBlue: 1.0,
         fontOpacity: 1.0,
-        // A hairline, not a frame: glass already separates itself from the
-        // desktop by refracting it, so a strong border double-states the edge.
+        // A hairline: refraction already states the edge.
         borderRed: 1.0,
         borderGreen: 1.0,
         borderBlue: 1.0,
@@ -42,11 +35,8 @@ enum LiquidTheme {
         controlFillOpacity: 0.12,
         divider: ThemeRGB(red: 1.0, green: 1.0, blue: 1.0),
         dividerOpacity: 0.18,
-        // The selection pill is the one place that earns real weight, and it has
-        // to earn more of it here than on a flat theme: it sits over refracting
-        // glass with the desktop moving behind it, so a light wash disappears.
-        // This is the only thing that moves during keyboard nav and it has to be
-        // unmistakable.
+        // Heavier than a flat theme would need: it sits over refracting glass
+        // with the desktop moving behind it, where a light wash disappears.
         selectionFill: ThemeRGB(red: 0.40, green: 0.60, blue: 1.0),
         selectionFillOpacity: 0.58,
         accent: ThemeRGB(red: 0.44, green: 0.72, blue: 1.0),
