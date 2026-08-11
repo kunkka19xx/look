@@ -91,7 +91,6 @@ in
           lib.types.int
           lib.types.float
           lib.types.str
-          lib.types.path
           (lib.types.listOf lib.types.str)
         ]
       );
