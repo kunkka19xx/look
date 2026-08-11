@@ -55,6 +55,7 @@ flowchart LR
   - `EngineBridge`: search engine communication
   - `ClipboardHistoryStore`, `KeyboardSelectionMonitor`, `GlobalHotKeyManager`
 - `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid) and semantic color tokens
+- `Support/UI/`: shared UI primitives - `Motion` (all animation constants and the reveal modifiers), `ToggleSwitch`, `HoverTooltip`, `HoverBubble`
 - `bridge/ffi`: narrow C ABI surface for search, usage recording, config reload, translation, todo load/save, speed test, and error payloads.
 - `core/answers`: platform-agnostic, network-backed "web answer" lookups shared by every shell (macOS via `bridge/ffi`, Windows/Linux via Tauri commands). Instant answers (currency/weather/crypto), search suggestions, knowledge sources, and translation. Best-effort and panic-free: every entry point returns "no answer" on failure, with cheap network-free pattern-gating (`has_match`) so callers can fire speculatively while typing. No async runtime - HTTP is a blocking `curl` subprocess.
 - `core/indexing`: candidate model and indexing helpers used by engine/storage flows.
@@ -407,6 +408,40 @@ paper. The switch persists those values, so restore paths stay dumb and the
 sliders are the user's again from the next drag. Its font stack stays in CSS
 and applies while the Font field is left at `system-ui`; an explicit font still
 wins.
+
+### Motion
+
+Every animated surface reads its physics from `Support/UI/Motion.swift`, so the
+feel is tuned in one place: `Spawn` (the launchpad cascade), `Selection` (the
+gliding pill and the one-shot zoom), `Slide` (horizontal entrances), `Surface`
+(the panel arriving), `Press`, `Value` (digit rolls) and `Caret`.
+
+Entrances key off `appearanceRevealToken`, a counter `LauncherView` bumps on
+every show. The window is only ordered out and back in, so `onAppear` fires once
+per process and cannot drive them. The modifiers are `rootReveal` (whole panel),
+`spawnReveal` (launchpad tiles, quick actions, the search bar), `slideReveal`
+via `placeholderReveal` / `stripReveal`, plus `symbolEffect(.bounce, value:)` on
+SF Symbols.
+
+Three constraints that are easy to break:
+
+- **Scope animations tightly.** An `.animation(_:value:)` high in the tree
+  attaches to its whole subtree, so when it fires every result row animates at
+  once. Per-row it is just as bad: it fires on each neighbour as the selection
+  passes. Row-local one-shot state driven by `onChange(of: isSelected)` is what
+  keeps a single row moving.
+- **`ThemedBackdrop` opts out of ambient transactions.** Nav wraps its selection
+  assignment in a global `withAnimation`, and re-compositing an
+  `NSVisualEffectView` or `NSGlassEffectView` inside that transaction flickers
+  the whole window on every keypress.
+- **Do not resolve icons inside `body` uncached.** `NSWorkspace.icon(forFile:)`
+  returns a fresh `NSImage` per call, which SwiftUI redraws; every icon in the
+  list then flickers on each keypress. `Support/RowIconCache.swift` returns one
+  instance per path. Process icons stay uncached, since pids are reused.
+
+Panel arrival is a content-layer effect, not a window one: animating the window
+would mean touching the `makeKeyAndOrderFront` path that the Cmd+Space
+cold-login bug lives in. Reduce Motion is honoured by every modifier.
 
 ### Config File Integration
 
