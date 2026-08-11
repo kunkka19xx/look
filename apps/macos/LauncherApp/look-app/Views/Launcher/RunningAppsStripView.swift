@@ -7,6 +7,8 @@ struct RunningAppsStripView: View {
     @ObservedObject var service: RunningAppsService
     let themeStore: ThemeStore
     let onActivate: (Int) -> Void
+    /// Changes each time the launcher opens, replaying the spawn cascade.
+    var revealToken: UInt64 = 0
 
     @State private var hoveredIndex: Int?
 
@@ -42,6 +44,12 @@ struct RunningAppsStripView: View {
                     hoveredIndex = hovering ? index : (hoveredIndex == index ? nil : hoveredIndex)
                 }
             )
+            // Right-aligned strip, so the cascade runs right to left: the icons
+            // nearest the search caret settle first.
+            .spawnReveal(index: total - 1 - index, token: revealToken)
+            // App icons are NSImage, so they get the scale pop rather than the
+            // symbol bounce the launchpad glyphs use.
+            .iconPop(token: revealToken)
         }
     }
 }

@@ -85,6 +85,7 @@ struct EmptyStateLaunchpadView: View {
             HStack(alignment: .top, spacing: Const.gap) {
                 slot(cell: cell)
                     .frame(width: width(columns: 2, cell: cell), height: height(rows: 2))
+                    .symbolEffect(.bounce, value: revealToken)
                     .spawnReveal(index: RevealIndex.slot, token: revealToken)
 
                 VStack(spacing: Const.gap) {
@@ -127,6 +128,10 @@ struct EmptyStateLaunchpadView: View {
             let h = height(rows: model.rowSpanCount)
             tileContent(model)
                 .frame(width: w, height: h)
+                // The same bounce the Bluetooth glyph does on toggle, fired for
+                // every symbol in the tile when the launcher opens. Applied to
+                // the container: symbol effects reach the symbol images inside.
+                .symbolEffect(.bounce, value: revealToken)
                 .spawnReveal(index: reveal, token: revealToken)
         }
     }

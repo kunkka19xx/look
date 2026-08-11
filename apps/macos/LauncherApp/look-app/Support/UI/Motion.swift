@@ -6,12 +6,19 @@ enum Motion {
     /// The "materialize on open" reveal: tiles start slightly enlarged and
     /// transparent, then spring to rest, staggered so the grid settles in.
     enum Spawn {
-        static let startScale: CGFloat = 1.05
-        static let staggerSeconds: Double = 0.02
+        /// Tiles grow into place rather than shrinking into it: arriving reads as
+        /// coming toward the viewer, and the old 1.05 start was too near 1 to see.
+        static let startScale: CGFloat = 0.88
+        /// Each tile also rises the last few points into its slot, which is what
+        /// makes the grid look like it assembles rather than simply appearing.
+        static let startOffsetY: CGFloat = 14
+        static let staggerSeconds: Double = 0.035
         /// Ceiling on the cascade so a large grid never trails on too long.
-        static let maxStaggerSeconds: Double = 0.22
-        static let response: Double = 0.42
-        static let dampingFraction: Double = 0.82
+        static let maxStaggerSeconds: Double = 0.34
+        static let response: Double = 0.46
+        /// Under 1 by enough to overshoot slightly and settle back. That small
+        /// bounce is most of what reads as "alive" rather than "faded in".
+        static let dampingFraction: Double = 0.68
 
         static func animation(index: Int) -> Animation {
             let delay = min(Double(max(0, index)) * staggerSeconds, maxStaggerSeconds)
@@ -25,8 +32,36 @@ enum Motion {
         static let response: Double = 0.3
         static let dampingFraction: Double = 0.85
 
+        /// After the pill glides into place it zooms once and settles. The glide
+        /// alone is hard to follow when the travel is a single row, and this is
+        /// the only thing on screen that should move during keyboard nav.
+        ///
+        /// The icon and the pill need very different numbers: the icon is 22pt,
+        /// so a few percent is a change of one point and reads as nothing, while
+        /// the pill spans the whole row and the same percentage would look like
+        /// the layout breathing.
+        static let iconZoomScale: CGFloat = 1.24
+        static let pillZoomScale: CGFloat = 1.02
+        static let zoomInSeconds: Double = 0.11
+        static let zoomOutResponse: Double = 0.3
+        /// Loose enough to overshoot slightly coming back to rest.
+        static let zoomOutDamping: Double = 0.6
+
+        /// How far the selected row's text slides in from. Held while the row is
+        /// selected rather than sprung back, so the offset also reads as part of
+        /// the selection rather than only as a twitch on arrival.
+        static let titleShift: CGFloat = 4
+
         static var glide: Animation {
             .spring(response: response, dampingFraction: dampingFraction)
+        }
+
+        static var zoomIn: Animation {
+            .easeOut(duration: zoomInSeconds)
+        }
+
+        static var zoomOut: Animation {
+            .spring(response: zoomOutResponse, dampingFraction: zoomOutDamping)
         }
     }
 
@@ -44,16 +79,10 @@ enum Motion {
 
     /// Icon and value changes: a toggle flipping, a counter ticking.
     enum Value {
-        /// Fade applied to a divider that yields to the selection pill.
-        static let dividerFadeSeconds: Double = 0.18
         /// Digit roll for a readout that ticks (battery, temperature, timers).
         /// Kept under the one-second tick of the fastest caller (the pomo
         /// countdown) so a roll always settles before the next value lands.
         static let rollSeconds: Double = 0.28
-
-        static var dividerFade: Animation {
-            .easeOut(duration: dividerFadeSeconds)
-        }
 
         static var rollDigits: Animation {
             .easeInOut(duration: rollSeconds)
@@ -70,21 +99,28 @@ enum Motion {
         static let arriveScale: CGFloat = 0.965
         static let arriveResponse: Double = 0.34
         static let arriveDamping: Double = 0.86
-        /// Launchpad to results and back. Faster than the arrival, since it fires
-        /// on the first keystroke and must not feel like lag.
-        static let swapSeconds: Double = 0.2
 
         static var arrive: Animation {
             .spring(response: arriveResponse, dampingFraction: arriveDamping)
         }
+    }
 
-        static var swap: Animation {
-            .easeOut(duration: swapSeconds)
+    /// The bounce `symbolEffect(.bounce)` gives an SF Symbol, rebuilt as a plain
+    /// scale pop so bitmap icons (app icons are `NSImage`, not symbols) can join
+    /// the same moment.
+    enum Pop {
+        static let peakScale: CGFloat = 1.16
+        static let riseSeconds: Double = 0.13
+        static let settleResponse: Double = 0.34
+        /// Loose enough to overshoot on the way back, matching the symbol bounce.
+        static let settleDamping: Double = 0.55
+
+        static var rise: Animation {
+            .easeOut(duration: riseSeconds)
         }
 
-        /// Surfaces cross-dissolve with a touch of scale rather than cutting.
-        static var swapTransition: AnyTransition {
-            .opacity.combined(with: .scale(scale: 0.99))
+        static var settle: Animation {
+            .spring(response: settleResponse, dampingFraction: settleDamping)
         }
     }
 
@@ -118,6 +154,7 @@ private struct SpawnReveal: ViewModifier {
         content
             .opacity(shown ? 1 : 0)
             .scaleEffect(shown ? 1 : Motion.Spawn.startScale)
+            .offset(y: shown ? 0 : Motion.Spawn.startOffsetY)
             .onAppear { rearm() }
             .onChange(of: token) { _, _ in rearm() }
     }
@@ -172,6 +209,32 @@ private struct RootReveal: ViewModifier {
     }
 }
 
+/// Pops a non-symbol icon on every launcher open, so bitmap icons bounce
+/// alongside the SF Symbols that `symbolEffect(.bounce)` handles.
+private struct IconPop: ViewModifier {
+    let token: UInt64
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var popped = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(popped ? Motion.Pop.peakScale : 1)
+            .onChange(of: token) { _, _ in fire() }
+    }
+
+    private func fire() {
+        guard !reduceMotion else { return }
+        withAnimation(Motion.Pop.rise) {
+            popped = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Motion.Pop.riseSeconds) {
+            withAnimation(Motion.Pop.settle) {
+                popped = false
+            }
+        }
+    }
+}
+
 /// Scales a surface down while it is held, so clicks read as physical. Under
 /// Reduce Motion the surface holds its resting size and only the hit behaviour
 /// remains.
@@ -196,5 +259,11 @@ extension View {
     /// counter that replays the tile cascade.
     func rootReveal(token: UInt64) -> some View {
         modifier(RootReveal(token: token))
+    }
+
+    /// Bounces a bitmap icon when `token` changes, matching what
+    /// `symbolEffect(.bounce)` does for SF Symbols.
+    func iconPop(token: UInt64) -> some View {
+        modifier(IconPop(token: token))
     }
 }

@@ -212,10 +212,16 @@ struct ResultsListView: View {
             }
             .onChange(of: selectedID) { _, newID in
                 guard let newID else { return }
-                // Same curve as the selection pill, so the pill can't trail the
-                // list when rows differ in height.
+                // No anchor, so this scrolls the minimum needed to bring the row
+                // into view and does nothing at all while the selection is
+                // already visible. `.center` re-centred on every keypress, which
+                // slid the whole list under a stationary pill and made the one
+                // thing that actually moved the hardest thing to follow.
+                //
+                // Same curve as the pill, so the two stay together on the scrolls
+                // that do happen.
                 withAnimation(Motion.Selection.glide) {
-                    proxy.scrollTo(newID, anchor: .center)
+                    proxy.scrollTo(newID)
                 }
             }
         }

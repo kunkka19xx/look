@@ -21,10 +21,23 @@ struct ThemedBackdrop: View {
     }
 
     var body: some View {
+        backdrop
+            // The backdrop never animates. It is nested inside the panel, so it
+            // inherits any ambient transaction: arrow-key nav wraps its selection
+            // assignment in a global `withAnimation` (LauncherView+Selection), and
+            // re-compositing an NSVisualEffectView or NSGlassEffectView inside that
+            // transaction flickers the entire window on every keypress.
+            .transaction { $0.animation = nil }
+    }
+
+    @ViewBuilder
+    private var backdrop: some View {
         ZStack {
             if themeStore.settings.blurMaterial == .liquidGlass, #available(macOS 26.0, *) {
-                // No blur-opacity term: dimming glass makes it ghostly rather
-                // than lighter. Only the settings-overlay multiplier applies.
+                // Glass on its own, no blur substrate. A blur underneath was
+                // tried and read as *less* liquid: the opaque frost plus a tint
+                // wash sits in front of the refraction and flattens it. The
+                // glass carries the tint itself instead.
                 GlassEffectBackdrop(cornerRadius: cornerRadius, tint: tintColor)
                     .opacity(clamped(blurOpacityMultiplier))
             } else {

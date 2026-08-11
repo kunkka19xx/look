@@ -41,11 +41,14 @@ enum LiquidTheme {
         controlFill: ThemeRGB(red: 0.66, green: 0.76, blue: 0.94),
         controlFillOpacity: 0.12,
         divider: ThemeRGB(red: 1.0, green: 1.0, blue: 1.0),
-        dividerOpacity: 0.12,
-        // The selection pill is the one place that earns real weight: it has to
-        // stay findable against a moving desktop showing through the glass.
-        selectionFill: ThemeRGB(red: 0.42, green: 0.62, blue: 1.0),
-        selectionFillOpacity: 0.34,
+        dividerOpacity: 0.18,
+        // The selection pill is the one place that earns real weight, and it has
+        // to earn more of it here than on a flat theme: it sits over refracting
+        // glass with the desktop moving behind it, so a light wash disappears.
+        // This is the only thing that moves during keyboard nav and it has to be
+        // unmistakable.
+        selectionFill: ThemeRGB(red: 0.40, green: 0.60, blue: 1.0),
+        selectionFillOpacity: 0.58,
         accent: ThemeRGB(red: 0.44, green: 0.72, blue: 1.0),
         onAccent: ThemeRGB(red: 0.04, green: 0.07, blue: 0.13),
         success: ThemeRGB(red: 0.40, green: 0.86, blue: 0.66),

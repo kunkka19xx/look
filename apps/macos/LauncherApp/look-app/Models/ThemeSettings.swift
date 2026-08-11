@@ -62,7 +62,7 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         case .sidebar: return 0.84
         case .menu: return 1.0
         case .underWindowBackground: return 0.68
-        case .liquidGlass: return 0.55
+        case .liquidGlass: return 0.42
         }
     }
 

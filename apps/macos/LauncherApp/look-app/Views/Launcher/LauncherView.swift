@@ -699,11 +699,6 @@ struct LauncherView: View {
         // fixed-size panel regardless of the running-apps toggle.
         borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
         .rootReveal(token: appearanceRevealToken)
-        // The launchpad and the results list used to hard-cut on the first
-        // keystroke, which is the most visible moment in the app. Keyed on that
-        // one value, so no other state change in the panel picks up a
-        // transaction (see the halo note in LauncherView+Background).
-        .animation(Motion.Surface.swap, value: hidesResultsForEmptyQuery)
         .ignoresSafeArea()
         .onAppear {
             refreshSearchResults()
@@ -979,7 +974,8 @@ struct LauncherView: View {
                             RunningAppsStripView(
                                 service: runningAppsService,
                                 themeStore: themeStore,
-                                onActivate: { key in _ = activateRunningApp(forKey: key) }
+                                onActivate: { key in _ = activateRunningApp(forKey: key) },
+                                revealToken: appearanceRevealToken
                             )
                             .frame(maxWidth: .infinity)
                         }
@@ -1033,12 +1029,10 @@ struct LauncherView: View {
                         themeStore: themeStore,
                         revealToken: appearanceRevealToken
                     )
-                    .transition(Motion.Surface.swapTransition)
                 }
                 Spacer(minLength: 0)
             } else {
                 resultsRow
-                    .transition(Motion.Surface.swapTransition)
             }
 
             if isCommandMode {
@@ -1215,6 +1209,14 @@ struct LauncherView: View {
                     processCPU: processCPU(for: selectedResult),
                     isMeasuringProcessCPU: isMeasuringCPU(for: selectedResult)
                 )
+                // Arrow-key nav assigns `selectedResultID` inside a global
+                // `withAnimation` so the pill can glide (see LauncherView+
+                // Selection). The preview swaps its whole contents on that same
+                // change and would inherit the transaction, animating icon and
+                // text on every keypress. Opted out for that value only, so the
+                // pill stays the one thing moving while the quick-action reveal
+                // inside this pane still animates on open.
+                .animation(nil, value: selectedResult.id)
             }
         }
     }
