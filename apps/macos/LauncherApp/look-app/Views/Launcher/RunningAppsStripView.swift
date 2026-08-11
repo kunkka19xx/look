@@ -44,10 +44,8 @@ struct RunningAppsStripView: View {
                     hoveredIndex = hovering ? index : (hoveredIndex == index ? nil : hoveredIndex)
                 }
             )
-            // Right-aligned, so the cascade runs right to left.
-            .spawnReveal(index: total - 1 - index, token: revealToken)
-            // NSImage, so a scale pop rather than the symbol bounce.
-            .iconPop(token: revealToken)
+            // Slides in from the left, leftmost first.
+            .stripReveal(index: index, token: revealToken)
         }
     }
 }

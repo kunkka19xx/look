@@ -11,23 +11,51 @@ struct SearchInputBar: View {
     /// inside a shared top-row pane that already supplies one, so the search
     /// input and running-apps icons read as a single unified bar.
     var showsBackground: Bool = true
+    /// Changes each time the launcher opens, replaying the spawn cascade.
+    var revealToken: UInt64 = 0
     let onSubmit: () -> Void
     let onExitCommandMode: () -> Void
+
+    private enum Layout {
+        /// Matches where `NSTextField` starts drawing its own text, so the
+        /// placeholder does not shift sideways as soon as you type.
+        static let placeholderLeadingInset: CGFloat = 2
+    }
+
+    private var placeholderText: String {
+        if isCommandMode {
+            return activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder
+        }
+        return AppConstants.Launcher.searchPlaceholder
+    }
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: isCommandMode ? "terminal" : "magnifyingglass")
                 .foregroundStyle(isCommandMode ? themeStore.accentColor() : themeStore.secondaryTextColor())
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: revealToken)
             SmoothCaretTextField(
                 text: $text,
-                placeholder: isCommandMode
-                    ? (activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder)
-                    : AppConstants.Launcher.searchPlaceholder,
+                // Empty: the placeholder is drawn as the overlay below instead,
+                // since an NSTextField's own placeholder cannot be animated.
+                placeholder: "",
                 isFocused: isQueryFocused,
                 themeStore: themeStore,
                 onSubmit: onSubmit
             )
                 .frame(maxWidth: .infinity)
+                .overlay(alignment: .leading) {
+                    if text.isEmpty {
+                        Text(placeholderText)
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize)))
+                            .foregroundStyle(themeStore.mutedTextColor())
+                            .lineLimit(1)
+                            .padding(.leading, Layout.placeholderLeadingInset)
+                            .allowsHitTesting(false)
+                            .placeholderReveal(token: revealToken)
+                    }
+                }
 
             if isCommandMode {
                 if let command = activeCommand {

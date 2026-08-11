@@ -113,6 +113,8 @@ struct LauncherView: View {
     /// Resting corner for a tile that floats free of its neighbours, and for the
     /// seated variant that reads as part of one box. Both are scaled by the
     /// active theme surface (Liquid rounds harder) at each use.
+    /// First position in the spawn cascade, ahead of the launchpad grid.
+    static let searchBarRevealIndex = 0
     static let floatingTileCornerRadius: CGFloat = 12
     static let seatedTileCornerRadius: CGFloat = 10
     static let attachedPanelScrimOpacity = 0.16
@@ -951,6 +953,7 @@ struct LauncherView: View {
             activeCommand: activeCommand,
             themeStore: themeStore,
             showsBackground: showsBackground,
+            revealToken: appearanceRevealToken,
             onSubmit: handleSubmit,
             onExitCommandMode: exitCommandMode
         )
@@ -1447,6 +1450,9 @@ struct LauncherView: View {
             }
             .shadow(color: floats ? .black.opacity(0.25) : .clear,
                     radius: floats ? 7 : 0, x: 0, y: floats ? 3 : 0)
+            // Leads the cascade: the bar lands first, then the launchpad tiles.
+            // No scale, so the search field's text stays crisp (see spawnReveal).
+            .spawnReveal(index: Self.searchBarRevealIndex, token: appearanceRevealToken, scales: false)
     }
 
     /// Wraps a single-panel home state (translation, clipboard/recent empty) in a
