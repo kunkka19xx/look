@@ -1,5 +1,6 @@
 #![allow(unsafe_code)]
 
+mod ai_api;
 mod answers_api;
 mod calc_api;
 mod lunar_api;
@@ -39,6 +40,36 @@ pub extern "C" fn look_search_json(query: *const c_char, limit: u32) -> *mut c_c
 pub extern "C" fn look_search_json_compact(query: *const c_char, limit: u32) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         search_api::look_search_json_compact_impl(query, limit)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Natural-language file recall over Look's own index. Returns the same JSON as
+/// `look_search_json`, or null when the query is not a file-recall query. Free
+/// with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_search_files_json(
+    query: *const c_char,
+    now_epoch: i64,
+    limit: u32,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        search_api::look_search_files_json_impl(query, now_epoch, limit)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// File recall from structured params JSON `{terms?, types?, when?, location?}`
+/// (the model's `recall` step). Same payload shape as `look_search_files_json`;
+/// null when the params are unusable. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_search_files_params_json(
+    params_json: *const c_char,
+    now_epoch: i64,
+    limit: u32,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        search_api::look_search_files_params_json_impl(params_json, now_epoch, limit)
     }))
     .unwrap_or(std::ptr::null_mut())
 }
@@ -203,6 +234,269 @@ pub extern "C" fn look_fuzzy_score(query: *const c_char, title: *const c_char) -
     .unwrap_or(matching_api::NO_MATCH)
 }
 
+/// Whether a mutate-tool `match` phrase refers to something from the AI
+/// session ("it", "this event") rather than naming it. Pure, no allocation.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_is_referent(phrase: *const c_char) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_is_referent_impl(phrase)
+    }))
+    .unwrap_or(false)
+}
+
+/// Timeframe extraction for AI schedule questions ("next week", "tomorrow",
+/// "in august"): JSON `{start, end, label}` with local-midnight epoch bounds
+/// (ISO Monday weeks), or null when no frame is named. Free with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_query_window(query: *const c_char, now_epoch: i64) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_query_window_impl(query, now_epoch)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Starts a cancellable planning call to the local Ollama model. Returns a
+/// session id for `look_ai_plan_poll`/`look_ai_plan_cancel`, or 0 on failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_plan_start(
+    host: *const c_char,
+    model: *const c_char,
+    query: *const c_char,
+) -> u64 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_plan_start_impl(host, model, query)
+    }))
+    .unwrap_or(0)
+}
+
+/// Snapshot of a planning session: `{"done":false}` in flight, then
+/// `{"done":true,"call":{tool,params}|null}`; null pointer for unknown ids.
+/// The poll that observes done removes the session. Free with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_plan_poll(id: u64) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_plan_poll_impl(id)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Kills the planning request (Ollama aborts generation on disconnect).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_plan_cancel(id: u64) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_plan_cancel_impl(id)
+    }));
+}
+
+/// Primes the model and Ollama's prompt-prefix cache with the planner prompt
+/// (BLOCKING network; call off-thread).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_warm_planner(host: *const c_char, model: *const c_char) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_warm_planner_impl(host, model)
+    }));
+}
+
+/// All stored AI conversations as JSON (newest first). The shell supplies the
+/// file path. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_conversations_json(path: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_conversations_json_impl(path)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Insert-or-replace one conversation (capped store, incremental/quit-safe).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_conversation_upsert(
+    path: *const c_char,
+    conversation_json: *const c_char,
+) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_conversation_upsert_impl(path, conversation_json)
+    }))
+    .unwrap_or(false)
+}
+
+/// Delete one conversation by id. Returns whether it existed.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_conversation_delete(path: *const c_char, id: *const c_char) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_conversation_delete_impl(path, id)
+    }))
+    .unwrap_or(false)
+}
+
+/// Tool resolution (P4 contract): candidates + params in, a data-only outcome
+/// out (planned/choice/invalid) that the shell executes and undoes. Pure CPU.
+/// Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_resolve(request_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_resolve_impl(request_json)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Load the AI mutate targets once (events + reminders JSON arrays) so
+/// subsequent `look_ai_resolve` calls can omit the lists. Nothing to free.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_load_targets(events_json: *const c_char, reminders_json: *const c_char) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_load_targets_impl(events_json, reminders_json)
+    }));
+}
+
+/// Whether `query` is a natural-language file-recall query (cheap parse only).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_is_file_query(query: *const c_char, now_epoch: i64) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_is_file_query_impl(query, now_epoch)
+    }))
+    .unwrap_or(false)
+}
+
+/// Parse a bare text-op verb into `{label, instruction}` JSON, or null. Free
+/// with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_textop_json(input: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_textop_json_impl(input)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// How many recent item texts (JSON string array) fit the token budget
+/// (0 = default). Returns the tail count to keep as chat history.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_context_window(texts_json: *const c_char, budget: u32) -> u32 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_context_window_impl(texts_json, budget)
+    }))
+    .unwrap_or(0)
+}
+
+/// Handle input as a memory command ("remember …"), returning feedback or null.
+/// Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_memory_command(path: *const c_char, input: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_memory_command_impl(path, input)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The stored facts as a model context block (empty when none). Free with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_memory_context(path: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_memory_context_impl(path)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The specific DAY a phrase names (weekday incl. abbreviations, relative-day
+/// words), as local-midnight epoch seconds; 0 when it names none. The
+/// shared-lexicon fallback behind the shell's natural-date parser.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_day_phrase(phrase: *const c_char, now_epoch: i64) -> i64 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_day_phrase_impl(phrase, now_epoch)
+    }))
+    .unwrap_or(0)
+}
+
+/// ONE routing ladder for submitted AI-mode input (memory -> textop -> files
+/// -> explicit -> plan -> chat), shared by every shell so precedence can never
+/// drift. Returns the decision JSON (see core/ai/src/route.rs); the memory
+/// tier executes the command. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_route(
+    memory_path: *const c_char,
+    input: *const c_char,
+    model_available: bool,
+    now_epoch: i64,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_route_impl(memory_path, input, model_available, now_epoch)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The explicit `>verb title @ when` parser: JSON `{tool, params}` or null for
+/// natural language (deferred to the model). Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_parse_explicit(
+    input: *const c_char,
+    model_available: bool,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_parse_explicit_impl(input, model_available)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Start a streamed AI chat session (curl child in core). Returns a session
+/// id, or 0 on failure. Poll for snapshots; cancel to abort generation.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_chat_start(
+    host: *const c_char,
+    model: *const c_char,
+    messages_json: *const c_char,
+    options_json: *const c_char,
+) -> u64 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_chat_start_impl(host, model, messages_json, options_json)
+    }))
+    .unwrap_or(0)
+}
+
+/// Snapshot of a chat session: `{"text", "done", "error"?}`, or null for an
+/// unknown id. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_chat_poll(id: u64) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_chat_poll_impl(id)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Abort a chat session (kills the curl child; Ollama stops generating).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_chat_cancel(id: u64) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_chat_cancel_impl(id)
+    }));
+}
+
+/// Nudges a shell-resolved time to the future when only a clock time was given
+/// and it already passed today. Respects phrases that name a day/month.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_future_leaning(
+    phrase: *const c_char,
+    resolved_epoch: i64,
+    now_epoch: i64,
+) -> i64 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_future_leaning_impl(phrase, resolved_epoch, now_epoch)
+    }))
+    .unwrap_or(resolved_epoch)
+}
+
+/// Markdown segmentation for AI chat answers: JSON array of
+/// `{kind: "text"|"code", text, language?}`. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_ai_markdown_segments_json(text: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ai_api::look_ai_markdown_segments_json_impl(text)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// Network-free check of whether `query` matches an instant-answer provider.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_instant_has_match(query: *const c_char) -> bool {
@@ -323,6 +617,10 @@ mod tests {
     /// lands before any engine thread exists to read it concurrently. The
     /// database path needs to differ per test and goes through
     /// `state::set_db_path_for_test` instead, which touches no environment.
+    /// Callers take this with `unwrap_or_else(|p| p.into_inner())`, never
+    /// `expect`: a panicking test poisons the mutex, and panicking again on
+    /// the poison turns one real failure into a cascade of "test lock
+    /// poisoned" reports that bury the actual cause.
     fn test_lock() -> &'static Mutex<()> {
         TEST_MUTEX.get_or_init(|| {
             let path = test_config_path();
@@ -342,7 +640,9 @@ mod tests {
 
     #[test]
     fn ffi_search_and_record_usage_smoke() {
-        let _guard = test_lock().lock().expect("test lock poisoned");
+        let _guard = test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);
@@ -501,8 +801,41 @@ mod tests {
     }
 
     #[test]
+    fn ai_load_targets_then_resolve_from_store() {
+        let _guard = test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let events =
+            CString::new(r#"[{"id":"e1","title":"Dentist","start":0,"end":3600,"all_day":false}]"#)
+                .expect("events cstring");
+        let reminders = CString::new("[]").expect("reminders cstring");
+        look_ai_load_targets(events.as_ptr(), reminders.as_ptr());
+
+        // Request omits its lists -> the resolver reads the loaded store.
+        let req = CString::new(
+            r#"{"tool":"calendar.cancel_event","params":{"match":"dentist"},"now":0}"#,
+        )
+        .expect("request cstring");
+        let ptr = look_ai_resolve(req.as_ptr());
+        assert!(!ptr.is_null());
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        look_free_cstring(ptr);
+
+        assert!(
+            raw.contains(r#""outcome":"planned""#),
+            "expected planned: {raw}"
+        );
+        assert!(raw.contains("e1"), "should target the loaded event: {raw}");
+    }
+
+    #[test]
     fn ffi_reload_refresh_and_translate_error_smoke() {
-        let _guard = test_lock().lock().expect("test lock poisoned");
+        let _guard = test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);
@@ -576,7 +909,9 @@ mod tests {
 
     #[test]
     fn ffi_todo_save_and_list_round_trip() {
-        let _guard = test_lock().lock().expect("test lock poisoned");
+        let _guard = test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         // The todo store resolves LOOK_DB_PATH on every call, so pointing
         // it at a scratch database keeps the test off the real look.db.
@@ -589,7 +924,11 @@ mod tests {
             r#"[{"id":"t1","name":"Ship the todo backend","done":true,"due_date":"2999-01-01","created_at_unix_s":1000}]"#,
         )
         .expect("tasks cstring");
-        assert!(look_todo_save_json(tasks.as_ptr()), "save should succeed");
+        assert!(
+            look_todo_save_json(tasks.as_ptr()),
+            "save should succeed (db: {})",
+            db_path.display()
+        );
 
         let ptr = look_todo_list_json();
         assert!(!ptr.is_null());
@@ -623,7 +962,9 @@ mod tests {
 
     #[test]
     fn ffi_seed_uwp_apps_json_inserts_and_search_finds() {
-        let _guard = test_lock().lock().expect("test lock poisoned");
+        let _guard = test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);

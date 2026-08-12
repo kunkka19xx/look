@@ -15,6 +15,9 @@ extension LauncherView {
 
     func refreshSearchResults() {
         guard !isCommandMode else { return }
+        fileRecallEmptyMessage = nil
+        fileRecallNote = nil
+        mainBarAction = nil
         guard !isClipboardQuery else {
             invalidateSearchRequests()
             setInitialSelection()
@@ -39,6 +42,20 @@ extension LauncherView {
             try? await Task.sleep(nanoseconds: AppConstants.Launcher.searchDebounceNanoseconds)
             guard !Task.isCancelled else { return }
 
+            // File-recall auto-detect: "files I downloaded yesterday", "pdfs this
+            // week", "screenshots today". Runs against Look's own index; nil means
+            // it was not a file-recall query, so normal search proceeds below.
+            let fileOutcome = await Task.detached(priority: .userInitiated) {
+                bridge.searchFiles(query: currentQuery, limit: searchLimit)
+            }.value
+            if let fileOutcome {
+                guard !Task.isCancelled else { return }
+                publishSearchResults(
+                    fileOutcome.results, searchID: searchID, for: currentQuery,
+                    isFileRecall: true, relaxed: fileOutcome.relaxed)
+                return
+            }
+
             // Fast path: search the raw query first and paint immediately. The
             // on-device model is never in front of results - it only refines.
             let rawResults = await Task.detached(priority: .userInitiated) {
@@ -48,22 +65,38 @@ extension LauncherView {
             publishSearchResults(rawResults, searchID: searchID, for: currentQuery)
 
             // Rescue pass: only when AI is on AND the raw query found nothing,
-            // let the model rewrite the natural-language query into the engine's
-            // prefix grammar and re-search. We never run this when raw results
-            // exist - a rewrite that narrows "firefox" to apps-only would wrongly
-            // drop the matching folder/files the user can already see.
+            // the planner interprets the phrasing into a STRUCTURED file query
+            // (never a string rewrite), executed through the same engine path
+            // as the deterministic parser and labeled as interpreted. We never
+            // run this when raw results exist - an interpretation that narrows
+            // "firefox" would wrongly drop matches the user can already see.
             guard aiEnabled, rawResults.isEmpty else { return }
-            guard let rewritten = await AIQueryRouter.shared.rewrite(
-                query: currentQuery,
-                using: aiProvider
-            ), rewritten != currentQuery else { return }
+            _ = aiProvider
+            guard let call = await ActionPlanner().plan(query: currentQuery) else { return }
             guard !Task.isCancelled else { return }
-
-            let refined = await Task.detached(priority: .userInitiated) {
-                bridge.search(query: rewritten, limit: searchLimit)
+            if call.toolID != "files.recall" {
+                // Action-shaped phrasing: the Q&A answer card must not "refuse"
+                // on our behalf. The resolved action becomes the FIRST, selected
+                // result row - the visible row is the confirmation, one Enter
+                // performs it. Unresolvable calls keep the Enter-escalation
+                // fallback to the AI surface.
+                guard searchID == latestSearchID, query == currentQuery else { return }
+                aiAnswer.cancel()
+                if let planned = actionController.quickAction(for: call) {
+                    mainBarAction = planned
+                    selectedResultID = AppConstants.Launcher.AIAction.resultID(
+                        toolID: planned.toolID)
+                }
+                return
+            }
+            let interpreted = await Task.detached(priority: .userInitiated) {
+                bridge.searchFiles(params: call.params, limit: searchLimit)
             }.value
-            guard !Task.isCancelled, !refined.isEmpty else { return }
-            publishSearchResults(refined, searchID: searchID, for: currentQuery)
+            guard !Task.isCancelled, let interpreted, !interpreted.results.isEmpty else { return }
+            publishSearchResults(
+                interpreted.results, searchID: searchID, for: currentQuery,
+                isFileRecall: true, relaxed: interpreted.relaxed,
+                interpreted: Self.recallSummary(call.params))
         }
     }
 
@@ -73,12 +106,33 @@ extension LauncherView {
     private func publishSearchResults(
         _ results: [LauncherResult],
         searchID: UInt64,
-        for requestedQuery: String
+        for requestedQuery: String,
+        isFileRecall: Bool = false,
+        relaxed: String? = nil,
+        interpreted: String? = nil
     ) {
         guard searchID == latestSearchID else { return }
         guard !isCommandMode, query == requestedQuery else { return }
         backendResults = results
         setInitialSelection()
+
+        // A detected file-recall query owns the panel: on zero matches show an
+        // honest "no files" state instead of the knowledge-lookup AI card;
+        // results from a relaxed retry or a model interpretation say so.
+        if isFileRecall {
+            fileRecallEmptyMessage = results.isEmpty
+                ? "No files match \u{201C}\(requestedQuery)\u{201D}."
+                : nil
+            let note = [
+                interpreted.map { "Interpreted: \($0)" },
+                Self.relaxationNote(relaxed),
+            ].compactMap { $0 }.joined(separator: "  ·  ")
+            fileRecallNote = (results.isEmpty || note.isEmpty) ? nil : note
+            aiAnswer.cancel()
+            return
+        }
+        fileRecallEmptyMessage = nil
+        fileRecallNote = nil
 
         // Additive AI answer card. Driven from here so it knows the local result
         // count - a multi-word query with no local match is treated as a
@@ -89,6 +143,89 @@ extension LauncherView {
             aiEnabled: themeStore.settings.aiEnabled,
             provider: themeStore.settings.aiProvider
         )
+    }
+
+    /// A file recall handed over from the AI panel: leave AI mode and show the
+    /// results in the main panel, which owns file rows (open/reveal/quicklook).
+    /// Empty params = the router's deterministic `files` decision (re-parse the
+    /// raw query); non-empty = the model's structured `recall` step, labeled as
+    /// interpreted so the user sees the model read their phrasing.
+    func runModelRecall(_ request: ActionController.RecallRequest) {
+        chat.endSession()
+        isAIMode = false
+
+        if request.params.isEmpty {
+            query = request.query
+            DispatchQueue.main.async {
+                refreshSearchResults()
+                isQueryFocused = true
+            }
+            return
+        }
+
+        // Supersede any in-flight search, then run this one exactly like the
+        // others: off the main thread (the FFI call scans the index and would
+        // otherwise freeze the window), and published through the shared path
+        // so it gets the same searchID + query-identity guard.
+        let searchID = beginSearchRequest()
+        searchTask?.cancel()
+        querySilentlyCleared = true
+        query = request.query
+        aiAnswer.cancel()
+
+        // Focus first: the field must be usable while the index is queried,
+        // not only once results land.
+        DispatchQueue.main.async { isQueryFocused = true }
+
+        let params = request.params
+        let requested = request.query
+        let limit = AppConstants.Launcher.defaultSearchLimit
+        searchTask = Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.searchFiles(params: params, limit: limit)
+            }.value
+            guard !Task.isCancelled else { return }
+            publishSearchResults(
+                outcome?.results ?? [], searchID: searchID, for: requested,
+                isFileRecall: true, relaxed: outcome?.relaxed,
+                interpreted: Self.recallSummary(params))
+        }
+    }
+
+    /// One-Enter action from the main-bar row: perform, banner with undo, back
+    /// to a clean bar. No AI-mode detour - the row already showed the plan.
+    func runQuickAction(_ planned: PlannedAction) {
+        mainBarAction = nil
+        clearQuerySilently()
+        Task {
+            do {
+                let summary = try await actionController.performQuickAction(planned)
+                showBanner("\(summary)  ·  ⌘Z undo", duration: 3.0)
+            } catch {
+                showBanner("Failed: \(error.localizedDescription)", style: .error, duration: 4.0)
+            }
+        }
+    }
+
+    /// Compact "what the model understood" summary: "pdf · downloads · last week".
+    private static func recallSummary(_ params: [String: String]) -> String {
+        ["terms", "types", "location", "when"]
+            .compactMap { key in params[key].flatMap { $0.isEmpty ? nil : $0 } }
+            .joined(separator: " ")
+    }
+
+    /// Human text for the engine's file-recall relaxation codes.
+    private static func relaxationNote(_ relaxed: String?) -> String? {
+        switch relaxed {
+        case "window":
+            return "Nothing in that exact timeframe - showing slightly older matches."
+        case "terms":
+            return "Some words didn't match anything - showing everything else that fits."
+        case "window_terms":
+            return "No exact matches - showing the closest recent files."
+        default:
+            return nil
+        }
     }
 
     func performWebSearchFromQuery() {
@@ -150,8 +287,10 @@ extension LauncherView {
                 // These rows arrive after publishSearchResults() already seeded
                 // selection. For a query with no local results selection is nil,
                 // so re-seed it onto the first suggestion, otherwise Enter on a
-                // suggestion-only list does nothing.
-                if selectedResultID == nil {
+                // suggestion-only list does nothing. NOT while the answer card
+                // is answering: a highlighted Google row would misread as what
+                // Enter does; arrow keys still reach the rows deliberately.
+                if selectedResultID == nil, !aiAnswer.isActive {
                     setInitialSelection()
                 }
             }
@@ -256,6 +395,9 @@ extension LauncherView {
                     bannerMessage = nil
                     bannerCopyText = nil
                 }
+                // The banner was the only offer of undo; once it's gone the
+                // delete is final (and the buffer shouldn't leak the payload).
+                deletedConversation = nil
             }
         }
     }

@@ -77,6 +77,23 @@ enum AppConstants {
             static let speed = "speed"
         }
 
+        enum AIAction {
+            /// Synthetic id prefix of the main-bar action row (planner-
+            /// proposed; Enter performs it directly, the visible row is the
+            /// confirm). The suffix is the tool id, so the row and preview
+            /// can style per tool.
+            static let resultIDPrefix = "aiaction:"
+
+            static func resultID(toolID: String) -> String {
+                resultIDPrefix + toolID
+            }
+
+            static func toolID(fromResultID id: String) -> String? {
+                guard id.hasPrefix(resultIDPrefix) else { return nil }
+                return String(id.dropFirst(resultIDPrefix.count))
+            }
+        }
+
         enum QueryPrefix {
             static let apps = "a\""
             static let files = "f\""

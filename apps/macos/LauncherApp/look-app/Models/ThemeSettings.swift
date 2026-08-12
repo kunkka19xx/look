@@ -64,6 +64,18 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Plates drawn INSIDE an already-materialized panel (chat bubbles, the
+    /// thinking/stop bars, pills, key caps). Same reasoning as `tintOpacityScale`
+    /// one level down: on glass a stack of full-weight fills cancels the
+    /// refraction the panel is there to show, so they thin out. Deliberately not
+    /// `glassEffect` per plate - Liquid Glass is not meant to stack on itself.
+    var surfaceOpacityScale: Double {
+        switch self {
+        case .hudWindow, .sidebar, .menu, .underWindowBackground: return 1.0
+        case .liquidGlass: return 0.55
+        }
+    }
+
     /// False where the material needs an OS newer than the one running.
     var isSupported: Bool {
         switch self {
@@ -148,12 +160,14 @@ enum RunningAppsPlacement: String, CaseIterable, Codable, Identifiable {
 /// touching the rest of the app. Persisted in `~/.look.config` as `ai_provider`.
 enum AIProviderKind: String, CaseIterable, Codable, Identifiable {
     case appleIntelligence
+    case ollama
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .appleIntelligence: return "Apple Intelligence (on-device)"
+        case .ollama: return "Ollama (local)"
         }
     }
 }
@@ -231,6 +245,22 @@ struct ThemeSettings: Codable, Equatable {
 
     /// Which AI backend powers query understanding when `aiEnabled` is on.
     var aiProvider: AIProviderKind = .appleIntelligence
+
+    /// Ollama daemon endpoint, used when `aiProvider` is `.ollama`. Persisted in
+    /// `~/.look.config` under `ollama_host`.
+    var ollamaHost: String = "http://localhost:11434"
+
+    /// Ollama model tag, used when `aiProvider` is `.ollama`. Persisted in
+    /// `~/.look.config` under `ollama_model`.
+    var ollamaModel: String = "llama3.1"
+
+    /// Whether private context (calendar, clipboard, remembered facts) may be
+    /// sent to a provider that is NOT on this machine - a remote Ollama host
+    /// today, a cloud provider later. Off by default: the answer is simply
+    /// computed without that context and says so, rather than quietly shipping
+    /// personal data off-device. Persisted in `~/.look.config` under
+    /// `ai_allow_remote_context`.
+    var aiAllowRemoteContext: Bool = false
 
     /// Whether the empty-state super actions launchpad is shown. Off hides the
     /// strip and makes its ⌘-mnemonics inert. Persisted in `~/.look.config`

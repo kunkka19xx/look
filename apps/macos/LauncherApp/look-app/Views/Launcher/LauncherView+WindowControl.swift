@@ -24,8 +24,13 @@ extension LauncherView {
     }
 
     func activateLauncherModeAndFocus() {
+        // Preserve the Settings screen across hide/recall. Leaving Settings is an
+        // explicit action (Escape / close button -> closeSettingsPanel); recalling
+        // Look should not silently drop the user back to home. Just restore focus
+        // to the settings input (focusActiveInput routes there when in Settings).
         if appUIState.showsThemeSettings {
-            appUIState.showsThemeSettings = false
+            focusActiveInput()
+            return
         }
 
         if isCommandMode {
@@ -194,6 +199,8 @@ extension LauncherView {
         // Don't leave a stale Empty Trash confirmation to reappear on next show.
         pendingEmptyTrashCount = nil
         pendingHideAppResult = nil
+        // The AI session intentionally survives hide/recall (Cmd+Space away and
+        // back must not lose the conversation). Only Esc ends and archives it.
         let wasVisible = window.isVisible
         window.orderOut(nil)
         hotkeyLog.notice("hide: orderOut wasVisible=\(wasVisible) restore=\(restorePreviousApp)")

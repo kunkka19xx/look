@@ -3,66 +3,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension ThemeSettingsView {
-    var aiAvailability: AIProviderAvailability {
-        AIQueryRouter.shared.availability(of: settings.aiProvider)
-    }
-
-    @ViewBuilder
-    var aiInfoIndicator: some View {
-        Image(systemName: aiAvailability.isAvailable ? "checkmark.circle.fill" : "info.circle")
-            .font(.system(size: CGFloat(settings.fontSize)))
-            .foregroundStyle(
-                aiAvailability.isAvailable
-                    ? Color.green.opacity(0.85)
-                    : themeStore.secondaryTextColor()
-            )
-            .contentShape(Rectangle())
-            .accessibilityLabel(Text("AI availability"))
-            .hoverTooltip(aiAvailabilityTooltip)
-    }
-
-    var aiAvailabilityTooltip: String {
-        let base = "Shows instant answers (facts, definitions, weather, currency, "
-            + "crypto, calculations) and web search suggestions for your queries. "
-            + "Powered by free web sources (Wikipedia, DuckDuckGo) plus on-device "
-            + "Apple Intelligence where available. Queries are sent to the web "
-            + "while this is on."
-        switch aiAvailability {
-        case .available:
-            return base + "\n\nApple Intelligence: Ready on this Mac."
-        case .unavailable(let reason):
-            return base + "\n\nApple Intelligence: \(reason.userFacingMessage) "
-                + "(Web answers and suggestions still work without it.)"
-        }
-    }
-
     var backgroundTab: some View {
         VStack(alignment: .leading, spacing: 10) {
             ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("AI")
-                        .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
-                        .foregroundStyle(themeStore.secondaryTextColor())
-
-                    HStack(spacing: 10) {
-                        Text("AI & web answers")
-                            .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
-                            .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
-                            .foregroundStyle(themeStore.secondaryTextColor())
-
-                        // Not gated on Apple Intelligence availability - the web
-                        // answer card and search suggestions work without it; the
-                        // on-device tier just self-skips when unavailable.
-                        Toggle("Enable AI & web answers", isOn: $settings.aiEnabled)
-                            .toggleStyle(.switch)
-                            .labelsHidden()
-                            .help("Show instant answers and web search suggestions (sends queries to the web; opt-out anytime)")
-
-                        aiInfoIndicator
-
-                        Spacer(minLength: 0)
-                    }
+                    AISettingsSection(settings: $settings)
 
                     Divider()
                         .overlay(themeStore.dividerColor())

@@ -25,6 +25,26 @@ extension LauncherView {
     ) {
         guard !appUIState.showsThemeSettings else { return }
 
+        // Sessions list: Tab/Shift-Tab and ↑/↓ move the highlight over
+        // [-1 = new chat, 0..<count = sessions]. Enter opens the highlighted
+        // session, or starts a new chat when nothing is highlighted (-1).
+        if isBrowsingConversations {
+            let hi = filteredConversations.count - 1
+            guard hi >= 0 else { return }
+            var idx = selectedConversationIndex
+            switch direction {
+            // Wrap: past the last row loops back to the first, and vice versa.
+            case .down: idx = (idx < 0 || idx >= hi) ? 0 : idx + 1
+            case .up: idx = (idx <= 0) ? hi : idx - 1
+            default: return
+            }
+            // Same curve as the results list, so the pill glides between rows.
+            withAnimation(Motion.Selection.glide) {
+                selectedConversationIndex = idx
+            }
+            return
+        }
+
         if isCommandMode
             && activeCommandID == AppConstants.Launcher.Command.kill
             && !preferCommandListInCommandMode
@@ -159,6 +179,10 @@ extension LauncherView {
                     moveSelection(.up)
                 }
             },
+            onRecallPrompt: { [self] older in
+                guard isAIMode else { return false }
+                return recallPrompt(older ? .up : .down)
+            },
             onEnterCommandMode: {
                 if !isCommandMode {
                     enterCommandMode()
@@ -211,6 +235,12 @@ extension LauncherView {
             onActivateRunningApp: { [self] key in
                 activateRunningApp(forKey: key)
             },
+            onActivateSession: { [self] index in
+                openSessionAt(index)
+            },
+            onEscapeHome: { [self] in
+                exitAIToHome()
+            },
             onConfirmKill: { [self] in
                 if let pendingKillCandidate {
                     runKillCommand(candidate: pendingKillCandidate)
@@ -252,6 +282,38 @@ extension LauncherView {
             },
             hideAppConfirmationActive: { [self] in
                 pendingHideAppResult != nil
+            },
+            onCancelAction: { [self] in
+                // Esc ladder: a pending confirm cancels first (keep composing);
+                // an open chat saves and drops to the sessions list (stay in AI
+                // mode); the sessions list leaves AI mode for home.
+                if actionController.isPresenting || actionController.awaitingChoice {
+                    actionController.cancel()
+                } else if !chat.sessionItems.isEmpty {
+                    chat.endSession()
+                    conversationCache = ConversationStore.load()
+                    query = ""
+                    selectedConversationIndex = -1
+                } else {
+                    chat.endSession()
+                    query = ""
+                    isAIMode = false
+                }
+            },
+            actionConfirmationActive: { [self] in
+                isActionSessionUI
+            },
+            onUndoAction: { [self] in
+                // A just-deleted conversation is the most recent undoable thing.
+                if undoConversationDelete() { return true }
+                guard actionController.lastReceipt != nil else { return false }
+                actionController.undoLast()
+                return true
+            },
+            onStopGeneration: { [self] in
+                guard chat.isStreamingAnswer else { return false }
+                chat.stopGeneration()
+                return true
             },
             onToggleQuickAction: { [self] in
                 togglePrimaryQuickAction()

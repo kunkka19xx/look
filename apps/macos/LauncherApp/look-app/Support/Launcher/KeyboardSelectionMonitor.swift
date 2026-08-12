@@ -26,6 +26,7 @@ final class KeyboardSelectionMonitor {
         onPrevious: @escaping @MainActor () -> Void,
         onArrowDown: (@MainActor () -> Void)? = nil,
         onArrowUp: (@MainActor () -> Void)? = nil,
+        onRecallPrompt: (@MainActor (Bool) -> Bool)? = nil,
         onEnterCommandMode: @escaping @MainActor () -> Void,
         onExitCommandMode: @escaping @MainActor () -> Void,
         onHideLauncher: @escaping @MainActor () -> Void,
@@ -41,6 +42,8 @@ final class KeyboardSelectionMonitor {
         onDismissHelpIfVisible: @escaping @MainActor () -> Bool,
         onSelectCommandByIndex: @escaping @MainActor (Int) -> Void,
         onActivateRunningApp: @escaping @MainActor (Int) -> Bool = { _ in false },
+        onActivateSession: @escaping @MainActor (Int) -> Bool = { _ in false },
+        onEscapeHome: (@MainActor () -> Bool)? = nil,
         onConfirmKill: (@MainActor () -> Void)? = nil,
         onCancelKill: (@MainActor () -> Void)? = nil,
         killConfirmationActive: @escaping @MainActor () -> Bool = { false },
@@ -51,6 +54,10 @@ final class KeyboardSelectionMonitor {
         onConfirmHideApp: (@MainActor () -> Void)? = nil,
         onCancelHideApp: (@MainActor () -> Void)? = nil,
         hideAppConfirmationActive: @escaping @MainActor () -> Bool = { false },
+        onCancelAction: (@MainActor () -> Void)? = nil,
+        actionConfirmationActive: @escaping @MainActor () -> Bool = { false },
+        onUndoAction: (@MainActor () -> Bool)? = nil,
+        onStopGeneration: (@MainActor () -> Bool)? = nil,
         onToggleQuickAction: (@MainActor () -> Void)? = nil,
         hasToggleQuickAction: @escaping @MainActor () -> Bool = { false },
         isLaunchpadActive: @escaping @MainActor () -> Bool = { false },
@@ -120,6 +127,17 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
+            // ⌘+home-row jumps to a listed conversation (keys under the fingers:
+            // a s d f g h j k l → rows 1-9). Gated on "browsing the sessions
+            // list", so ⌘S/⌘F/⌘H etc. keep their normal meaning everywhere else.
+            if flags == [.command],
+                let ch = event.charactersIgnoringModifiers?.lowercased().first,
+                let index = "asdfghjkl".firstIndex(of: ch).map({ "asdfghjkl".distance(from: "asdfghjkl".startIndex, to: $0) }),
+                onActivateSession(index)
+            {
+                return nil
+            }
+
             if (event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter) && flags == [.command] {
                 onWebSearch()
                 return nil
@@ -136,6 +154,24 @@ final class KeyboardSelectionMonitor {
                 && flags == [.command]
             {
                 if onCopySelection() {
+                    return nil
+                }
+                return event
+            }
+
+            // ⌘. stops a running generation (the macOS-standard cancel chord).
+            // The handler gates itself, so it only fires while streaming.
+            if event.charactersIgnoringModifiers == "." && flags == [.command] {
+                if onStopGeneration?() == true {
+                    return nil
+                }
+                return event
+            }
+
+            // Undo the last action (its result row is showing). The handler gates
+            // itself, so Cmd+Z passes through to text-field undo otherwise.
+            if event.charactersIgnoringModifiers?.lowercased() == "z" && flags == [.command] {
+                if onUndoAction?() == true {
                     return nil
                 }
                 return event
@@ -262,6 +298,19 @@ final class KeyboardSelectionMonitor {
                 }
             }
 
+            // Shift+Esc leaves AI mode straight to home (skips the list step).
+            // Only consume it when it actually acts, so Shift+Esc keeps its
+            // command-mode "hide" meaning elsewhere.
+            if event.keyCode == KeyCode.escape,
+                flags.contains(.shift),
+                !flags.contains(.command),
+                !flags.contains(.option),
+                !flags.contains(.control),
+                onEscapeHome?() == true
+            {
+                return nil
+            }
+
             if event.modifierFlags.contains(.command)
                 || event.modifierFlags.contains(.option)
                 || event.modifierFlags.contains(.control)
@@ -288,6 +337,11 @@ final class KeyboardSelectionMonitor {
 
                 if deleteConfirmationActive() {
                     onCancelDelete?()
+                    return nil
+                }
+
+                if actionConfirmationActive() {
+                    onCancelAction?()
                     return nil
                 }
 
@@ -340,6 +394,18 @@ final class KeyboardSelectionMonitor {
                     onNext()
                 }
                 return nil
+            }
+
+            // Shift+↑/↓ recalls prompt history in AI mode. The handler returns
+            // false outside AI mode, so the event falls through to normal
+            // selection-extension there.
+            if event.keyCode == KeyCode.arrowUp, flags.contains(.shift) {
+                if onRecallPrompt?(true) == true { return nil }
+                return event
+            }
+            if event.keyCode == KeyCode.arrowDown, flags.contains(.shift) {
+                if onRecallPrompt?(false) == true { return nil }
+                return event
             }
 
             if event.keyCode == KeyCode.arrowUp {

@@ -7,6 +7,8 @@ struct SearchInputBar: View {
     let isQueryFocused: FocusState<Bool>.Binding
     let activeCommand: AppCommand?
     let themeStore: ThemeStore
+    /// AI mode (`>`): sparkles icon + its own placeholder, no prefix needed.
+    var isAIMode: Bool = false
     /// When false the field draws no background of its own - used when it lives
     /// inside a shared top-row pane that already supplies one, so the search
     /// input and running-apps icons read as a single unified bar.
@@ -26,13 +28,18 @@ struct SearchInputBar: View {
         if isCommandMode {
             return activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder
         }
+        if isAIMode {
+            return "Ask, act, or search conversations"
+        }
         return AppConstants.Launcher.searchPlaceholder
     }
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: isCommandMode ? "terminal" : "magnifyingglass")
-                .foregroundStyle(isCommandMode ? themeStore.accentColor() : themeStore.secondaryTextColor())
+            Image(systemName: isCommandMode ? "terminal" : (isAIMode ? "sparkles" : "magnifyingglass"))
+                .foregroundStyle(
+                    isCommandMode || isAIMode
+                        ? themeStore.accentColor() : themeStore.secondaryTextColor())
                 .contentTransition(.symbolEffect(.replace))
                 .symbolEffect(.bounce, value: revealToken)
             SmoothCaretTextField(
@@ -52,7 +59,7 @@ struct SearchInputBar: View {
                     if text.isEmpty {
                         Text(placeholderText)
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize)))
-                            .foregroundStyle(themeStore.mutedTextColor())
+                            .foregroundStyle(themeStore.placeholderTextColor())
                             .lineLimit(1)
                             .padding(.leading, Layout.placeholderLeadingInset)
                             .allowsHitTesting(false)
