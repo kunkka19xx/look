@@ -110,7 +110,7 @@ private func look_ai_route(_ memoryPath: UnsafePointer<CChar>?, _ input: UnsafeP
 
 @_silgen_name("look_ai_chat_start")
 nonisolated
-private func look_ai_chat_start(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ messagesJSON: UnsafePointer<CChar>?) -> UInt64
+private func look_ai_chat_start(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ messagesJSON: UnsafePointer<CChar>?, _ optionsJSON: UnsafePointer<CChar>?) -> UInt64
 
 @_silgen_name("look_ai_chat_poll")
 nonisolated
@@ -697,13 +697,56 @@ final class EngineBridge: @unchecked Sendable {
     }
 
     /// Start a streamed chat session in the Rust core (curl child). 0 = failed.
-    nonisolated func aiChatStart(host: String, model: String, messagesJSON: String) -> UInt64 {
+    /// `optionsJSON` tunes the generation for this surface
+    /// (`{num_predict, temperature, timeout_secs}`); empty for core defaults.
+    nonisolated func aiChatStart(
+        host: String, model: String, messagesJSON: String, optionsJSON: String = ""
+    ) -> UInt64 {
         host.withCString { hostC in
             model.withCString { modelC in
                 messagesJSON.withCString { messagesC in
-                    look_ai_chat_start(hostC, modelC, messagesC)
+                    optionsJSON.withCString { optionsC in
+                        look_ai_chat_start(hostC, modelC, messagesC, optionsC)
+                    }
                 }
             }
+        }
+    }
+
+    /// Streams an Ollama answer over the shared Rust chat transport, yielding
+    /// cumulative text (the `AIQueryProvider.answer` contract). One transport
+    /// for every Ollama caller: same cancellation, timeout, and error handling
+    /// as session chat. Cancelling the consuming task kills the request.
+    nonisolated func aiChatStream(
+        host: String, model: String, messagesJSON: String, optionsJSON: String
+    ) -> AsyncThrowingStream<String, Error>? {
+        let session = aiChatStart(
+            host: host, model: model, messagesJSON: messagesJSON, optionsJSON: optionsJSON)
+        guard session != 0 else { return nil }
+        return AsyncThrowingStream { continuation in
+            let task = Task.detached(priority: .userInitiated) {
+                defer { if Task.isCancelled { EngineBridge.shared.aiChatCancel(session) } }
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 85_000_000)
+                    if Task.isCancelled { return }
+                    guard let snapshot = EngineBridge.shared.aiChatPoll(session) else {
+                        continuation.finish()
+                        return
+                    }
+                    if !snapshot.text.isEmpty {
+                        continuation.yield(snapshot.text)
+                    }
+                    if let error = snapshot.error {
+                        continuation.finish(throwing: OllamaError.server(error))
+                        return
+                    }
+                    if snapshot.done {
+                        continuation.finish()
+                        return
+                    }
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 

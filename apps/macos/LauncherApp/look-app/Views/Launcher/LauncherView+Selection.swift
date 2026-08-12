@@ -289,13 +289,13 @@ extension LauncherView {
                 // mode); the sessions list leaves AI mode for home.
                 if actionController.isPresenting || actionController.awaitingChoice {
                     actionController.cancel()
-                } else if !actionController.sessionItems.isEmpty {
-                    actionController.endSession()
+                } else if !chat.sessionItems.isEmpty {
+                    chat.endSession()
                     conversationCache = ConversationStore.load()
                     query = ""
                     selectedConversationIndex = -1
                 } else {
-                    actionController.endSession()
+                    chat.endSession()
                     query = ""
                     isAIMode = false
                 }
@@ -304,8 +304,15 @@ extension LauncherView {
                 isActionSessionUI
             },
             onUndoAction: { [self] in
+                // A just-deleted conversation is the most recent undoable thing.
+                if undoConversationDelete() { return true }
                 guard actionController.lastReceipt != nil else { return false }
                 actionController.undoLast()
+                return true
+            },
+            onStopGeneration: { [self] in
+                guard chat.isStreamingAnswer else { return false }
+                chat.stopGeneration()
                 return true
             },
             onToggleQuickAction: { [self] in

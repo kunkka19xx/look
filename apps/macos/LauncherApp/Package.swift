@@ -25,6 +25,7 @@ let package = Package(
                 "Support/AI/OllamaCodec.swift",
                 "Support/Actions/ActionTypes.swift",
                 "Support/Actions/DatePhrase.swift",
+                "Support/Actions/ScheduleWords.swift",
                 "Support/SingleInstanceLock.swift",
                 "Models/LauncherResult.swift",
             ]

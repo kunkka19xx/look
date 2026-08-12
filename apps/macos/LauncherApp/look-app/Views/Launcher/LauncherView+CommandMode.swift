@@ -147,11 +147,11 @@ extension LauncherView {
                number >= 1, number <= choice.candidates.count {
                 actionController.choose(choice.candidates[number - 1])
                 clearQuerySilently()
-            } else if actionController.sessionItems.isEmpty,
+            } else if chat.sessionItems.isEmpty,
                       selectedConversationIndex >= 0,
                       selectedConversationIndex < filteredConversations.count {
                 // A highlighted session opens; otherwise Enter starts a new chat.
-                actionController.continueConversation(filteredConversations[selectedConversationIndex])
+                chat.continueConversation(filteredConversations[selectedConversationIndex])
                 clearQuerySilently()
             } else if !submitTrimmed.isEmpty {
                 // Routing (incl. file-recall detection) lives in the Rust-core

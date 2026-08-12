@@ -171,7 +171,7 @@ pub fn resolve_indexed_request(
     reminders: &[Indexed<ReminderCandidate>],
 ) -> ResolveOutcome {
     match request.tool.as_str() {
-        "calendar.add_event" => add_event(request),
+        "calendar.add_event" => add_event(request, events),
         "reminder.add" => add_reminder(request),
         "calendar.cancel_event" => cancel_event(request, events, reminders),
         "calendar.move_event" => move_event(request, events),
@@ -198,7 +198,27 @@ pub fn resolve_json(request_json: &str) -> String {
 
 // ── add tools ───────────────────────────────────────────────────────────
 
-fn add_event(request: &ResolveRequest) -> ResolveOutcome {
+/// Whether an event with the same title already sits on that day. Warn, never
+/// block: the user may genuinely want two, but a silent duplicate (the model
+/// re-planning the same phrase) is the common case.
+fn duplicate_note(title: &str, start: i64, events: &[Indexed<EventCandidate>]) -> &'static str {
+    let Some((day_start, day_end)) = day_bounds(start) else {
+        return "";
+    };
+    let wanted = title.trim().to_lowercase();
+    let clash = events.iter().map(|e| e.item()).any(|event| {
+        event.title.trim().to_lowercase() == wanted
+            && event.start < day_end
+            && event.end > day_start
+    });
+    if clash {
+        "  ·  already on your calendar"
+    } else {
+        ""
+    }
+}
+
+fn add_event(request: &ResolveRequest, events: &[Indexed<EventCandidate>]) -> ResolveOutcome {
     let Some(title) = param(request, "title") else {
         return invalid("Need a title for the event.");
     };
@@ -207,13 +227,13 @@ fn add_event(request: &ResolveRequest) -> ResolveOutcome {
     // No date at all -> all-day today. A day with no clock time -> all-day on
     // that day. A day with a clock time -> timed. Never invents a time.
     if when_phrase.is_empty() {
-        return all_day_event(&title, request.now);
+        return all_day_event(&title, request.now, events);
     }
     let Some(start) = request.resolved_when else {
         return invalid(&format!("Could not understand the time \"{when_phrase}\"."));
     };
     if !has_clock_time(&when_phrase) {
-        return all_day_event(&title, start);
+        return all_day_event(&title, start, events);
     }
     let minutes = param(request, "duration")
         .and_then(|d| parse_duration_minutes(&d))
@@ -223,9 +243,10 @@ fn add_event(request: &ResolveRequest) -> ResolveOutcome {
         return invalid("Duration must be positive.");
     }
     let end = start + minutes * 60;
+    let note = duplicate_note(&title, start, events);
     ResolveOutcome::Planned {
         preview_title: "Add event".into(),
-        preview_detail: format!("\"{title}\"  {}", fmt_range(start, end)),
+        preview_detail: format!("\"{title}\"  {}{note}", fmt_range(start, end)),
         summary: format!("Added \"{title}\""),
         subject: Some("new".into()),
         execute: Execute::AddEvent {
@@ -238,13 +259,18 @@ fn add_event(request: &ResolveRequest) -> ResolveOutcome {
     }
 }
 
-fn all_day_event(title: &str, day_epoch: i64) -> ResolveOutcome {
+fn all_day_event(
+    title: &str,
+    day_epoch: i64,
+    events: &[Indexed<EventCandidate>],
+) -> ResolveOutcome {
     let Some((start, end)) = day_bounds(day_epoch) else {
         return invalid("Could not compute that day.");
     };
+    let note = duplicate_note(title, start, events);
     ResolveOutcome::Planned {
         preview_title: "Add event".into(),
-        preview_detail: format!("\"{title}\"  {} (all day)", fmt_day(start)),
+        preview_detail: format!("\"{title}\"  {} (all day){note}", fmt_day(start)),
         summary: format!("Added \"{title}\""),
         subject: Some("new".into()),
         execute: Execute::AddEvent {
@@ -1126,6 +1152,45 @@ mod tests {
                 execute: Execute::AddEvent { start, .. },
                 ..
             } => assert_eq!(start, work_open),
+            other => panic!("expected planned, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn duplicate_event_warns_but_still_plans() {
+        // Same title already on that day: the preview says so (warn, never
+        // block - Enter still adds, informed).
+        let mut req = request("calendar.add_event", &[("title", "Go to the office")]);
+        req.resolved_when = Some(NOW);
+        let (day_start, _) = day_bounds(NOW).unwrap();
+        req.events = vec![EventCandidate {
+            id: "e1".into(),
+            title: "Go to the office".into(),
+            start: day_start,
+            end: day_start + 86_400,
+            all_day: true,
+        }];
+        match resolve(&req) {
+            ResolveOutcome::Planned { preview_detail, .. } => {
+                assert!(
+                    preview_detail.contains("already on your calendar"),
+                    "detail: {preview_detail}"
+                );
+            }
+            other => panic!("expected planned, got {other:?}"),
+        }
+
+        // A different title on the same day is not a duplicate.
+        let mut fresh = request("calendar.add_event", &[("title", "Dentist")]);
+        fresh.resolved_when = Some(NOW);
+        fresh.events = req.events.clone();
+        match resolve(&fresh) {
+            ResolveOutcome::Planned { preview_detail, .. } => {
+                assert!(
+                    !preview_detail.contains("already"),
+                    "detail: {preview_detail}"
+                );
+            }
             other => panic!("expected planned, got {other:?}"),
         }
     }

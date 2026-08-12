@@ -48,22 +48,38 @@ fn reap(slot: &Mutex<Option<Child>>) {
 }
 
 /// Starts a streamed chat; `messages_json` is the full message array
-/// (system/context/history assembled by the shell). Returns a session id, or
-/// 0 when the request could not even be spawned.
-pub fn start(host: &str, model: &str, messages_json: &str) -> u64 {
+/// (system/context/history assembled by the shell). `options_json` tunes the
+/// generation per surface (`{num_predict, temperature, timeout_secs}`, any
+/// subset; empty for defaults) so every Ollama caller shares this one
+/// transport instead of hand-rolling its own HTTP. Returns a session id, or 0
+/// when the request could not even be spawned.
+pub fn start(host: &str, model: &str, messages_json: &str, options_json: &str) -> u64 {
     let Ok(messages) = serde_json::from_str::<Value>(messages_json) else {
         return 0;
     };
+    let opts: Value = serde_json::from_str(options_json).unwrap_or(Value::Null);
+    let num_predict = opts
+        .get("num_predict")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(512);
+    let temperature = opts
+        .get("temperature")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let timeout_secs = opts
+        .get("timeout_secs")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(300) as u32;
     let body = json!({
         "model": model,
         "messages": messages,
         "stream": true,
-        "options": { "temperature": 0, "num_predict": 512 },
+        "options": { "temperature": temperature, "num_predict": num_predict },
         "keep_alive": "30m",
     })
     .to_string();
     let url = format!("{}/api/chat", host.trim_end_matches('/'));
-    start_request(&url, &body, 300)
+    start_request(&url, &body, timeout_secs)
 }
 
 /// Spawns a curl session POSTing `body` to `url`; the reader thread accumulates
@@ -202,7 +218,7 @@ mod tests {
 
     #[test]
     fn bad_input_and_unknown_ids() {
-        assert_eq!(start("http://localhost:1", "m", "not json"), 0);
+        assert_eq!(start("http://localhost:1", "m", "not json", ""), 0);
         assert!(poll(999_999).is_none());
         cancel(999_999); // must not panic
     }
@@ -211,7 +227,7 @@ mod tests {
     fn failed_request_reaches_done_and_is_removed() {
         // Connection refused: curl exits fast, the reader thread reaps it and
         // marks the session done with an error.
-        let id = start("http://127.0.0.1:1", "m", "[]");
+        let id = start("http://127.0.0.1:1", "m", "[]", "");
         assert_ne!(id, 0);
         let mut last = String::new();
         for _ in 0..100 {

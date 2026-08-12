@@ -447,9 +447,10 @@ pub extern "C" fn look_ai_chat_start(
     host: *const c_char,
     model: *const c_char,
     messages_json: *const c_char,
+    options_json: *const c_char,
 ) -> u64 {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        ai_api::look_ai_chat_start_impl(host, model, messages_json)
+        ai_api::look_ai_chat_start_impl(host, model, messages_json, options_json)
     }))
     .unwrap_or(0)
 }

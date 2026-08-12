@@ -57,6 +57,7 @@ final class KeyboardSelectionMonitor {
         onCancelAction: (@MainActor () -> Void)? = nil,
         actionConfirmationActive: @escaping @MainActor () -> Bool = { false },
         onUndoAction: (@MainActor () -> Bool)? = nil,
+        onStopGeneration: (@MainActor () -> Bool)? = nil,
         onToggleQuickAction: (@MainActor () -> Void)? = nil,
         hasToggleQuickAction: @escaping @MainActor () -> Bool = { false },
         isLaunchpadActive: @escaping @MainActor () -> Bool = { false },
@@ -153,6 +154,15 @@ final class KeyboardSelectionMonitor {
                 && flags == [.command]
             {
                 if onCopySelection() {
+                    return nil
+                }
+                return event
+            }
+
+            // ⌘. stops a running generation (the macOS-standard cancel chord).
+            // The handler gates itself, so it only fires while streaming.
+            if event.charactersIgnoringModifiers == "." && flags == [.command] {
+                if onStopGeneration?() == true {
                     return nil
                 }
                 return event

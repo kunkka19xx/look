@@ -22,52 +22,26 @@ struct OllamaProvider: AIQueryProvider {
         return OllamaHealthCache.shared.current(host: host, model: model)
     }
 
+    /// Answers over the shared Rust chat transport (core/ai), the same one
+    /// session chat uses - one client for the daemon, so cancellation,
+    /// timeouts, and error surfacing behave identically everywhere.
     func answer(query: String) -> AsyncThrowingStream<String, Error>? {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let (host, model) = config
+        let messages: [[String: String]] = [
+            ["role": "system", "content": Self.answerInstructions],
+            ["role": "user", "content": trimmed],
+        ]
         guard
-            let url = URL(string: host + "/api/chat"),
-            let body = OllamaCodec.chatRequestBody(
-                model: model, system: Self.answerInstructions, user: trimmed,
-                stream: true, format: nil, numPredict: 220
-            )
+            let messagesData = try? JSONSerialization.data(withJSONObject: messages),
+            let messagesJSON = String(data: messagesData, encoding: .utf8)
         else { return nil }
-
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let (bytes, response) = try await URLSession.shared.bytes(for: Self.jsonPost(url, body))
-                    guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-                        // The body is Ollama's own {"error":"..."} - keep it.
-                        var bodyText = ""
-                        for try await line in bytes.lines { bodyText += line }
-                        let message = OllamaCodec.errorMessage(fromResponseBody: Data(bodyText.utf8))
-                        continuation.finish(throwing: OllamaError.badStatus(message))
-                        return
-                    }
-                    // Ollama streams deltas; the contract yields cumulative text.
-                    var running = ""
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        guard let (delta, done, error) = OllamaCodec.parseStreamLine(line) else { continue }
-                        if let error {
-                            continuation.finish(throwing: OllamaError.server(error))
-                            return
-                        }
-                        if !delta.isEmpty {
-                            running += delta
-                            continuation.yield(running)
-                        }
-                        if done { break }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        // A launcher card answers in a few sentences and must give up fast;
+        // session chat gets the core's longer defaults.
+        let options = #"{"num_predict":220,"temperature":0.4,"timeout_secs":45}"#
+        return EngineBridge.shared.aiChatStream(
+            host: host, model: model, messagesJSON: messagesJSON, optionsJSON: options)
     }
 
     func prewarm() {
@@ -144,15 +118,13 @@ struct OllamaProvider: AIQueryProvider {
 }
 
 enum OllamaError: LocalizedError {
-    /// The server rejected the request; carries its own message when the body
-    /// had one ("model 'x' not found").
-    case badStatus(String?)
-    /// An in-stream error ended the generation (e.g. the model ran out of memory).
+    /// The daemon's own message, surfaced by the Rust transport: a rejected
+    /// request ("model 'x' not found"), an in-stream failure (model OOM), or a
+    /// dropped connection.
     case server(String)
 
     var errorDescription: String? {
         switch self {
-        case .badStatus(let message): message
         case .server(let message): message
         }
     }

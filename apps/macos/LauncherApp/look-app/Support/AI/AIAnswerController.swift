@@ -105,7 +105,7 @@ final class AIAnswerController: ObservableObject {
             // Personal schedule questions answer from the calendar itself:
             // deterministic, instant, and never sent to web sources or a model
             // ("what's on my calendar?" must not shrug "I don't have access").
-            if let schedule = ActionController.shared.scheduleCardAnswer(for: trimmed) {
+            if let schedule = ScheduleContextProvider.cardAnswer(for: trimmed) {
                 self.items = [Item(
                     text: schedule.text, source: schedule.source, url: nil, imageURL: nil)]
                 self.state = .done

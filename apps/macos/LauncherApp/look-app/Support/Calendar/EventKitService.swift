@@ -73,10 +73,21 @@ nonisolated final class EventKitService: @unchecked Sendable {
         Self.map(EKEventStore.authorizationStatus(for: .reminder))
     }
 
-    /// Requests full access to both. Triggers the system prompt only when status
-    /// is notDetermined; callers gate on that.
+    /// Requests full access to both - for the explicit Settings "connect"
+    /// button, where asking for both IS the user's intent. An action running on
+    /// one store must use the granular calls below instead: a TCC prompt is
+    /// one-shot per store, so an unasked-for prompt the user denies can never
+    /// be retried from the app.
     func requestAccess() async {
+        await requestCalendarAccess()
+        await requestReminderAccess()
+    }
+
+    func requestCalendarAccess() async {
         _ = try? await store.requestFullAccessToEvents()
+    }
+
+    func requestReminderAccess() async {
         _ = try? await store.requestFullAccessToReminders()
     }
 

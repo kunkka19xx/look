@@ -36,6 +36,9 @@ struct LauncherView: View {
     @StateObject var clipboardStore = ClipboardHistoryStore()
     @StateObject var aiAnswer = AIAnswerController()
     @ObservedObject var actionController = ActionController.shared
+    /// The conversation half (transcript, streaming). Observed directly so its
+    /// updates drive the panel without republishing through ActionController.
+    @ObservedObject var chat = ChatSessionController.shared
     /// AI mode: entered by typing `>`, left with Esc. While on, everything typed
     /// is AI input (no per-message prefix) and the session panel owns the area.
     @State var isAIMode = false
@@ -76,6 +79,9 @@ struct LauncherView: View {
     /// the first, selected result row. The visible row IS the confirmation:
     /// one Enter performs it, ⌘Z undoes. Cleared on every query change.
     @State var mainBarAction: PlannedAction?
+    /// The last deleted conversation, restorable with ⌘Z while its banner is
+    /// up (cleared when the banner times out).
+    @State var deletedConversation: AIConversation?
     @State var webSuggestions: [String] = []
     @State var webSuggestionTask: Task<Void, Never>?
     @State var recentURLEntries: [URLHistoryEntry] = []
@@ -601,6 +607,17 @@ struct LauncherView: View {
             return ["Cmd+D kill", "Cmd+C copy PID"]
         }
 
+        // A proposed action owns Enter: say what it will do, not "open".
+        if mainBarAction != nil {
+            return ["Enter run action", "Cmd+Z undo after", "Esc dismiss"]
+        }
+
+        // The answer card is the answer: nothing is auto-selected, so Enter has
+        // no target. Point at what actually works instead of claiming "open".
+        if aiAnswer.isActive {
+            return ["Down pick a row", "Cmd+Enter web search", "Esc dismiss"]
+        }
+
         // The home screen replaces the "Cmd+/ command mode" hint with a
         // clickable today done/total quick view (see todoQuickView), so it
         // is intentionally omitted here.
@@ -989,7 +1006,7 @@ struct LauncherView: View {
                 // While browsing/searching stored conversations (no active one),
                 // don't churn the model per keystroke; typing filters the list
                 // and Enter drives everything. Instant `@` forms still preview.
-                let browsing = actionController.sessionItems.isEmpty
+                let browsing = chat.sessionItems.isEmpty
                     && !conversationCache.isEmpty
                     && !trimmedQuery.contains("@")
                 if browsing {
@@ -1284,7 +1301,7 @@ struct LauncherView: View {
     /// pending confirm/choice. Tab/↑↓ + ⌘-key jumps drive the list here.
     var isBrowsingConversations: Bool {
         isAIMode && !isCommandMode
-            && actionController.sessionItems.isEmpty
+            && chat.sessionItems.isEmpty
             && !actionController.isPresenting
             && actionController.pendingChoice == nil
             && actionController.feedback.isEmpty
@@ -1310,7 +1327,7 @@ struct LauncherView: View {
         guard isBrowsingConversations, index >= 0, index < filteredConversations.count else {
             return false
         }
-        actionController.continueConversation(filteredConversations[index])
+        chat.continueConversation(filteredConversations[index])
         query = ""
         return true
     }
@@ -1320,13 +1337,16 @@ struct LauncherView: View {
     @discardableResult
     func exitAIToHome() -> Bool {
         guard isAIMode else { return false }
-        actionController.endSession()
+        chat.endSession()
         query = ""
         isAIMode = false
         return true
     }
 
     /// Delete a stored conversation and keep the highlight in range.
+    /// Delete now, undo for a few seconds: a confirm on every delete taxes the
+    /// common case, while losing a conversation with no recourse is the real
+    /// harm. The banner holds the only copy until it times out.
     func deleteConversation(_ convo: AIConversation) {
         ConversationStore.delete(id: convo.id)
         conversationCache = ConversationStore.load()
@@ -1334,6 +1354,21 @@ struct LauncherView: View {
         withAnimation(Motion.Selection.glide) {
             selectedConversationIndex = count == 0 ? -1 : min(selectedConversationIndex, count - 1)
         }
+        deletedConversation = convo
+        showBanner(
+            "Deleted \u{201C}\(convo.title.prefix(32))\u{201D}  ·  ⌘Z undo",
+            duration: 6.0)
+    }
+
+    /// Put back the just-deleted conversation (⌘Z while the banner is up).
+    @discardableResult
+    func undoConversationDelete() -> Bool {
+        guard let convo = deletedConversation else { return false }
+        deletedConversation = nil
+        ConversationStore.upsert(convo)
+        conversationCache = ConversationStore.load()
+        showBanner("Restored \u{201C}\(convo.title.prefix(32))\u{201D}")
+        return true
     }
 
     /// Record a submitted AI prompt for ↑ recall (dedups the immediate repeat,
@@ -1456,6 +1491,8 @@ struct LauncherView: View {
                                 },
                                 onCancel: { actionController.cancel() }
                             )
+                        } else if chat.isStreamingAnswer {
+                            stopGenerationBar
                         } else if actionController.isPlanning, thinkingTurnID == nil {
                             actionThinkingBar
                         } else if !actionController.feedback.isEmpty {
@@ -1465,7 +1502,7 @@ struct LauncherView: View {
                                 themeStore: themeStore,
                                 onUndo: {}
                             )
-                        } else if actionController.sessionItems.isEmpty {
+                        } else if chat.sessionItems.isEmpty {
                             if !filteredConversations.isEmpty {
                                 VStack(alignment: .leading, spacing: 6) {
                                     ForEach(Array(filteredConversations.enumerated()), id: \.element.id) { index, convo in
@@ -1519,7 +1556,7 @@ struct LauncherView: View {
                                         }
                                         .contentShape(Rectangle())
                                         .onTapGesture {
-                                            actionController.continueConversation(convo)
+                                            chat.continueConversation(convo)
                                             query = ""
                                         }
                                         .id(convo.id)
@@ -1560,7 +1597,7 @@ struct LauncherView: View {
                 }
                 // Scroll only when a NEW item lands, not on every streamed token,
                 // so the user can scroll freely while an answer generates.
-                .onChange(of: actionController.sessionItems.count) { _, _ in
+                .onChange(of: chat.sessionItems.count) { _, _ in
                     proxy.scrollTo("session-top", anchor: .top)
                 }
                 // Keep the highlighted session in view as Tab/↑↓ move it.
@@ -1573,7 +1610,9 @@ struct LauncherView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            Text("Esc leave  ·  ⌘Z undo  ·  @ sets exact time")
+            Text(chat.isStreamingAnswer
+                ? "⌘. stop  ·  Esc leave  ·  ⌘Z undo"
+                : "Esc leave  ·  ⌘Z undo  ·  @ sets exact time")
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
                 .foregroundStyle(themeStore.mutedTextColor())
                 .padding(.horizontal, 4)
@@ -1602,7 +1641,7 @@ struct LauncherView: View {
 
     private var sessionTurns: [SessionTurn] {
         var groups: [[ActionSessionItem]] = []
-        for item in actionController.sessionItems {
+        for item in chat.sessionItems {
             if item.kind == .answer, groups.last?.last?.kind == .user {
                 groups[groups.count - 1].append(item)
             } else {
@@ -1676,6 +1715,15 @@ struct LauncherView: View {
 
     private func answerBody(_ item: ActionSessionItem) -> some View {
             VStack(alignment: .leading, spacing: 6) {
+                // Mid-stream the text renders raw (markdown is parsed once the
+                // answer settles - see ActionSessionItem.isStreaming).
+                if item.segments.isEmpty {
+                    Text(item.text)
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                        .foregroundStyle(themeStore.fontColor())
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 ForEach(Array(item.segments.enumerated()), id: \.offset) { _, segment in
                     if segment.kind == "code" {
                         AICodeBlockView(code: segment.text, language: segment.language, themeStore: themeStore)
@@ -1709,6 +1757,35 @@ struct LauncherView: View {
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
                 .foregroundStyle(themeStore.mutedTextColor())
             Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(themeStore.controlFillColor().opacity(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    /// Stop the running generation without leaving the chat (Esc ends the whole
+    /// session). Shown only while tokens are arriving.
+    private var stopGenerationBar: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text("Generating...")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
+                .foregroundStyle(themeStore.mutedTextColor())
+            Spacer(minLength: 0)
+            Button {
+                chat.stopGeneration()
+            } label: {
+                Label("Stop", systemImage: "stop.fill")
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
+                    .foregroundStyle(themeStore.fontColor())
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(themeStore.controlFillColor(), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("Stop generating (⌘.)")
+            Text("⌘.")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                .foregroundStyle(themeStore.mutedTextColor())
         }
         .padding(10)
         .background(themeStore.controlFillColor().opacity(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))

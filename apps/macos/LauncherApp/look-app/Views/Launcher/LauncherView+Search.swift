@@ -151,7 +151,7 @@ extension LauncherView {
     /// raw query); non-empty = the model's structured `recall` step, labeled as
     /// interpreted so the user sees the model read their phrasing.
     func runModelRecall(_ request: ActionController.RecallRequest) {
-        actionController.endSession()
+        chat.endSession()
         isAIMode = false
 
         if request.params.isEmpty {
@@ -388,6 +388,9 @@ extension LauncherView {
                     bannerMessage = nil
                     bannerCopyText = nil
                 }
+                // The banner was the only offer of undo; once it's gone the
+                // delete is final (and the buffer shouldn't leak the payload).
+                deletedConversation = nil
             }
         }
     }

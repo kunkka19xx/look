@@ -239,11 +239,13 @@ pub(crate) fn look_ai_chat_start_impl(
     host: *const c_char,
     model: *const c_char,
     messages_json: *const c_char,
+    options_json: *const c_char,
 ) -> u64 {
     let host = state::cstr_to_string(host);
     let model = state::cstr_to_string(model);
     let messages = state::cstr_to_string(messages_json);
-    look_ai::chat::start(&host, &model, &messages)
+    let options = state::cstr_to_string(options_json);
+    look_ai::chat::start(&host, &model, &messages, &options)
 }
 
 pub(crate) fn look_ai_chat_poll_impl(id: u64) -> *mut c_char {
