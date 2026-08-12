@@ -796,8 +796,7 @@ mod tests {
 
     #[test]
     fn ai_load_targets_then_resolve_from_store() {
-        let lock = TEST_MUTEX.get_or_init(|| Mutex::new(()));
-        let _guard = lock.lock().expect("test lock poisoned");
+        let _guard = test_lock().lock().expect("test lock poisoned");
 
         let events =
             CString::new(r#"[{"id":"e1","title":"Dentist","start":0,"end":3600,"all_day":false}]"#)

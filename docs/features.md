@@ -55,8 +55,8 @@ This document tracks what `look` supports today and what is planned next.
 - **file recall**: "pdfs from last week", "files added to desktop" search your index by type, time, and place
 - **clipboard text-ops**: "summarize", "translate to german" transform whatever you copied
 - **remembered facts**: "remember I prefer metric" stores a durable fact the assistant sees on every turn. Only you can write these - the model never can
-- **requires a capable local model** for the natural-language paths: Ollama with a pulled model (Settings > AI). Apple Intelligence handles answers but is too small to plan actions; the `@` forms keep working regardless
-- **privacy**: your calendar, clipboard, and remembered facts are only attached to prompts when the model runs on your machine. A remote host or a future cloud provider gets them only if you turn that on in Settings
+- **requires a capable provider** for the natural-language paths: Ollama with a pulled model (Settings > AI), local by default but usable against a remote host. Apple Intelligence handles answers but is too small to plan actions; the `@` forms keep working regardless
+- **privacy**: prompts go to whichever provider you select, so a remote host or cloud-routed model receives them over the network. Your calendar, clipboard, and remembered facts are held to a stricter rule: attached only when inference is on this machine, unless you explicitly allow remote context in Settings
 
 ### Command mode
 

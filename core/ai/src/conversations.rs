@@ -38,6 +38,7 @@ pub fn load_json(path: &Path) -> String {
 }
 
 pub fn upsert(path: &Path, mut conversation: Conversation) -> bool {
+    let _guard = store::write_guard();
     let items_len = conversation.items.len();
     if items_len > ITEM_LIMIT {
         conversation.items.drain(0..items_len - ITEM_LIMIT);
@@ -64,6 +65,7 @@ pub fn upsert_json(path: &Path, conversation_json: &str) -> bool {
 
 /// Remove one conversation by id. Returns whether it existed and was written.
 pub fn delete(path: &Path, id: &str) -> bool {
+    let _guard = store::write_guard();
     let mut list = load(path);
     let before = list.len();
     list.retain(|c| c.id != id);

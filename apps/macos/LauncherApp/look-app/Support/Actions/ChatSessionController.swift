@@ -364,10 +364,15 @@ final class ChatSessionController: ObservableObject {
             }
             if let error = snapshot.error {
                 // Mid-stream failures keep the partial answer, with the reason.
+                // Returning here (rather than waiting for `done`) matches the
+                // other consumers and guarantees the Stop affordance clears
+                // even if the core reported an error without a final done.
                 let message = chatFailureMessage(detail: error)
                 updateItem(
                     id,
                     text: snapshot.text.isEmpty ? message : snapshot.text + "\n\n" + message)
+                saveConversation()
+                return
             } else if snapshot.truncated == true, !snapshot.text.isEmpty {
                 updateItem(id, text: snapshot.text + "\n\n(Answer cut off at the length limit.)")
             }

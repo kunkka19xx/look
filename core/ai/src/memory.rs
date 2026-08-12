@@ -47,6 +47,7 @@ fn save(path: &Path, list: &[Fact]) -> bool {
 /// Store a fact (deduped by content, newest first). Returns the cleaned text, or
 /// None when it is empty.
 pub fn add(path: &Path, text: &str) -> Option<String> {
+    let _guard = store::write_guard();
     let clean = text.trim();
     if clean.is_empty() {
         return None;
@@ -66,6 +67,7 @@ pub fn add(path: &Path, text: &str) -> Option<String> {
 /// Remove facts matching `query` (a stored id, or a case-insensitive substring
 /// of the text). Returns how many were removed.
 pub fn forget(path: &Path, query: &str) -> usize {
+    let _guard = store::write_guard();
     let q = query.trim().to_lowercase();
     if q.is_empty() {
         return 0;

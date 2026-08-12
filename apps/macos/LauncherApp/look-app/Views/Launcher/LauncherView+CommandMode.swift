@@ -121,6 +121,10 @@ extension LauncherView {
     /// state - feedback, confirm bar, running plan/chat - must survive its own
     /// clear.
     func clearQuerySilently() {
+        // Only arm the flag when the assignment will actually fire `onChange`.
+        // An already-empty query publishes nothing, and a stale flag would then
+        // swallow the AI side effects of the user's NEXT keystroke.
+        guard !query.isEmpty else { return }
         querySilentlyCleared = true
         query = ""
     }

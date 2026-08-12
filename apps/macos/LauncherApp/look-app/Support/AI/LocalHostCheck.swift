@@ -12,6 +12,21 @@ nonisolated enum LocalHostCheck {
         "localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]",
     ]
 
+    /// Ollama can proxy a "cloud" model (`gpt-oss:120b-cloud`) through the
+    /// LOCAL daemon to its hosted service, so a loopback host proves nothing
+    /// about where inference happens. Treat those as remote.
+    static func isCloudModel(_ model: String) -> Bool {
+        let name = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let tag = name.split(separator: ":").last else { return false }
+        return tag == "cloud" || tag.hasSuffix("-cloud")
+    }
+
+    /// Whether inference for this host+model stays on the machine. Both must
+    /// hold: a loopback endpoint AND a model that is not cloud-routed.
+    static func isLocalInference(host: String, model: String) -> Bool {
+        isLocal(host: host) && !isCloudModel(model)
+    }
+
     /// True only for loopback endpoints. A hostname is matched whole, never by
     /// suffix or prefix.
     static func isLocal(host: String) -> Bool {

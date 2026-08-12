@@ -27,7 +27,10 @@ nonisolated enum DatePhrase {
             .joined(separator: " ")
     }
 
-    static func resolve(_ phrase: String, now: Date) -> Date? {
+    /// Resolves against the SYSTEM clock: `NSDataDetector` offers no way to
+    /// inject a reference date, so this deliberately takes none rather than
+    /// accepting one it would silently ignore.
+    static func resolve(_ phrase: String) -> Date? {
         let trimmed = normalizeShorthand(phrase.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !trimmed.isEmpty else { return nil }
         guard let detector = try? NSDataDetector(

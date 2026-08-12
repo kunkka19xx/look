@@ -14,10 +14,14 @@ struct OllamaProvider: AIQueryProvider {
         return (settings.ollamaHost, settings.ollamaModel)
     }
 
-    /// The daemon is usually on this machine, but the host is user-editable:
-    /// pointing it at a LAN box or a tunnel makes it remote, and private
-    /// context must not ride along silently.
-    var isLocal: Bool { LocalHostCheck.isLocal(host: config.host) }
+    /// The daemon is usually on this machine, but two things can move inference
+    /// off it: a user-edited host (a LAN box or tunnel), and a cloud-routed
+    /// model, which the LOCAL daemon proxies to Ollama's service. Private
+    /// context must not ride along silently in either case.
+    var isLocal: Bool {
+        let (host, model) = config
+        return LocalHostCheck.isLocalInference(host: host, model: model)
+    }
 
     /// Cached health, refreshed by a throttled background probe. The protocol's
     /// `availability` is synchronous, so we cannot block on the network here.

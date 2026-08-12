@@ -66,8 +66,7 @@ final class ActionPlanner {
         // fallback catches abbreviations like "wed" the detector misses).
         // No date -> all-day / undated.
         if raw.tool == "calendar.add_event" || raw.tool == "reminder.add",
-           DatePhrase.resolve(query, now: Date()) != nil
-               || bridge.aiDayPhrase(query) != nil {
+           DatePhrase.resolve(query) != nil || bridge.aiDayPhrase(query) != nil {
             params["when"] = query
         }
         return ToolCall(toolID: raw.tool, params: params)

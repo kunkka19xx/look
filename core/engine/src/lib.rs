@@ -521,6 +521,61 @@ mod tests {
     }
 
     #[test]
+    fn screenshot_category_does_not_filter_its_siblings() {
+        // "screenshots and pdfs": the screenshot PATH heuristic must gate only
+        // its own category, or every pdf without the word is dropped.
+        let now = 1_754_000_000;
+        let engine = QueryEngine::new(vec![
+            file_candidate(
+                "file:a",
+                "Screenshot 1.png",
+                "/Users/u/Desktop/Screenshot 1.png",
+                now,
+            ),
+            file_candidate("file:b", "invoice.pdf", "/Users/u/Desktop/invoice.pdf", now),
+            file_candidate("file:c", "holiday.png", "/Users/u/Desktop/holiday.png", now),
+        ]);
+        let filter = FileFilter {
+            categories: vec!["screenshot".into(), "pdf".into()],
+            ..Default::default()
+        };
+        let titles: Vec<String> = engine
+            .search_files(&filter, 10)
+            .results
+            .into_iter()
+            .map(|r| r.title)
+            .collect();
+        assert!(titles.contains(&"invoice.pdf".to_string()), "{titles:?}");
+        assert!(
+            titles.contains(&"Screenshot 1.png".to_string()),
+            "{titles:?}"
+        );
+        // A plain image is neither a screenshot nor a pdf.
+        assert!(!titles.contains(&"holiday.png".to_string()), "{titles:?}");
+    }
+
+    #[test]
+    fn screenshot_alone_still_requires_the_path() {
+        let now = 1_754_000_000;
+        let engine = QueryEngine::new(vec![
+            file_candidate(
+                "file:a",
+                "Screenshot 1.png",
+                "/Users/u/Desktop/Screenshot 1.png",
+                now,
+            ),
+            file_candidate("file:c", "holiday.png", "/Users/u/Desktop/holiday.png", now),
+        ]);
+        let filter = FileFilter {
+            categories: vec!["screenshot".into()],
+            ..Default::default()
+        };
+        let outcome = engine.search_files(&filter, 10);
+        assert_eq!(outcome.results.len(), 1);
+        assert_eq!(outcome.results[0].title, "Screenshot 1.png");
+    }
+
+    #[test]
     fn bootstrap_scope_all_includes_every_source() {
         let s = BootstrapScope::ALL;
         assert!(s.is_all());

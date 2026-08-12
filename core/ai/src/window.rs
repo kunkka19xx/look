@@ -243,22 +243,23 @@ fn unit_of(word: &str) -> Option<Unit> {
     }
 }
 
+/// The offset comes from user text ("in 999999999 weeks"), so every multiply
+/// and narrowing cast is checked: an overflow here would wrap to a nonsense
+/// date instead of declining the phrase.
 fn shift(date: NaiveDate, unit: Unit, offset: i64) -> Option<NaiveDate> {
-    if offset < 0 {
-        let n = offset.unsigned_abs();
-        return match unit {
-            Unit::Day => date.checked_sub_days(Days::new(n)),
-            Unit::Week => date.checked_sub_days(Days::new(n * 7)),
-            Unit::Month => date.checked_sub_months(Months::new(n as u32)),
-            Unit::Year => date.checked_sub_months(Months::new((n * 12) as u32)),
-        };
-    }
-    let n = offset as u64;
-    match unit {
-        Unit::Day => date.checked_add_days(Days::new(n)),
-        Unit::Week => date.checked_add_days(Days::new(n * 7)),
-        Unit::Month => date.checked_add_months(Months::new(offset as u32)),
-        Unit::Year => date.checked_add_months(Months::new((offset * 12) as u32)),
+    let magnitude = offset.unsigned_abs();
+    let (days, months) = match unit {
+        Unit::Day => (Some(magnitude), None),
+        Unit::Week => (Some(magnitude.checked_mul(7)?), None),
+        Unit::Month => (None, Some(u32::try_from(magnitude).ok()?)),
+        Unit::Year => (None, Some(u32::try_from(magnitude.checked_mul(12)?).ok()?)),
+    };
+    match (days, months, offset < 0) {
+        (Some(d), _, true) => date.checked_sub_days(Days::new(d)),
+        (Some(d), _, false) => date.checked_add_days(Days::new(d)),
+        (_, Some(m), true) => date.checked_sub_months(Months::new(m)),
+        (_, Some(m), false) => date.checked_add_months(Months::new(m)),
+        _ => None,
     }
 }
 
@@ -540,6 +541,21 @@ mod tests {
             .date_naive();
         assert_eq!(start.weekday(), Weekday::Fri);
         assert_eq!(w.label, "Fri");
+    }
+
+    #[test]
+    fn absurd_offsets_decline_instead_of_wrapping() {
+        // The number comes from user text; an overflow must yield no window
+        // rather than a wrapped, nonsense date.
+        for query in [
+            "in 999999999999 weeks",
+            "in 99999999999999999 months",
+            "in 9999999999 years",
+        ] {
+            let _ = query_window(query, NOW); // must not panic
+        }
+        assert!(shift(today(), Unit::Week, i64::MAX).is_none());
+        assert!(shift(today(), Unit::Year, i64::MIN).is_none());
     }
 
     #[test]

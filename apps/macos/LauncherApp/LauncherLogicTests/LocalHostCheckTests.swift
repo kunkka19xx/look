@@ -34,6 +34,26 @@ final class LocalHostCheckTests: XCTestCase {
         }
     }
 
+    func testCloudRoutedModelsAreRemoteEvenOnLocalhost() {
+        // Ollama proxies these through the local daemon to its hosted service,
+        // so the loopback host proves nothing about where inference happens.
+        for model in ["gpt-oss:120b-cloud", "qwen3-coder:480b-cloud", "some-model:cloud"] {
+            XCTAssertTrue(LocalHostCheck.isCloudModel(model), model)
+            XCTAssertFalse(
+                LocalHostCheck.isLocalInference(host: "http://localhost:11434", model: model),
+                model)
+        }
+    }
+
+    func testOrdinaryModelsOnLocalhostStayLocal() {
+        for model in ["llama3.1", "qwen2.5-coder:7b", "mistral:latest", ""] {
+            XCTAssertFalse(LocalHostCheck.isCloudModel(model), model)
+            XCTAssertTrue(
+                LocalHostCheck.isLocalInference(host: "http://localhost:11434", model: model),
+                model)
+        }
+    }
+
     func testRemoteHostsAreNotLocal() {
         for host in [
             "http://192.168.1.50:11434",

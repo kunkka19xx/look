@@ -4,8 +4,25 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use serde::de::DeserializeOwned;
+
+/// Serializes the load-modify-write of one store file. The macOS shell only
+/// touches these from the main actor today, but the FFI is callable from any
+/// thread and a second shell (linows) shares the format, so an interleaved
+/// read-modify-write would silently drop conversations.
+///
+/// One global lock rather than per-path: there are two small stores, both
+/// written rarely (on turn completion), so contention is irrelevant and a
+/// path-keyed map would be more machinery than the problem deserves.
+pub(crate) fn write_guard() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// Load a JSON list. A file that exists but does not parse is moved aside to
 /// `<name>.corrupt` so a later save cannot destroy it.
@@ -28,7 +45,17 @@ pub(crate) fn write_atomic(path: &Path, data: &[u8]) -> bool {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    let tmp = suffixed(path, &format!(".{}.tmp", std::process::id()));
+    // Unique per writer, not just per process: two threads writing the same
+    // store would otherwise share one temp path and clobber each other.
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let tmp = suffixed(
+        path,
+        &format!(
+            ".{}.{}.tmp",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        ),
+    );
     if fs::write(&tmp, data).is_err() {
         let _ = fs::remove_file(&tmp);
         return false;

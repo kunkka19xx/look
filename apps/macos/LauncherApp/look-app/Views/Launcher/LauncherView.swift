@@ -1491,7 +1491,9 @@ struct LauncherView: View {
                                 },
                                 onCancel: { actionController.cancel() }
                             )
-                        } else if chat.isStreamingAnswer {
+                        } else if chat.isStreamingAnswer, streamingTurnID == nil {
+                            // Only when the streaming item can't be located in a
+                            // turn; normally Stop renders with its own answer.
                             stopGenerationBar
                         } else if actionController.isPlanning, thinkingTurnID == nil {
                             actionThinkingBar
@@ -1552,6 +1554,9 @@ struct LauncherView: View {
                                 if turn.id == thinkingTurnID {
                                     actionThinkingBar
                                 }
+                                if turn.id == streamingTurnID {
+                                    stopGenerationBar
+                                }
                             }
                         }
                     }
@@ -1598,6 +1603,16 @@ struct LauncherView: View {
               let turn = sessionTurns.last,
               turn.items.last?.kind == .user else { return nil }
         return turn.id
+    }
+
+    /// The turn currently receiving tokens, so Stop sits with the answer it
+    /// stops instead of floating in the activity slot at the top of the panel,
+    /// visually detached from the reply it belongs to.
+    private var streamingTurnID: UUID? {
+        guard chat.isStreamingAnswer else { return nil }
+        return sessionTurns.last(where: { turn in
+            turn.items.contains(where: \.isStreaming)
+        })?.id
     }
 
     private var sessionTurns: [SessionTurn] {

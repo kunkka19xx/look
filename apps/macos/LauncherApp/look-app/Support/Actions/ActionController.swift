@@ -456,7 +456,7 @@ final class ActionController: ObservableObject {
     /// can't read at all ("this week wed") resolve to the named day's midnight
     /// (all-day downstream).
     private func resolveWhen(_ when: String, now: Date) -> Date? {
-        let detected = DatePhrase.resolve(when, now: now)
+        let detected = DatePhrase.resolve(when)
         guard let named = EngineBridge.shared.aiDayPhrase(when) else { return detected }
         guard let detected else { return named }
         let calendar = Calendar.current

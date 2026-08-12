@@ -131,6 +131,19 @@ impl QueryEngine {
         let want_folder = filter.categories.iter().any(|c| c == "folder");
         let only_folder = want_folder && filter.categories.iter().all(|c| c == "folder");
         let want_screenshot = filter.categories.iter().any(|c| c == "screenshot");
+        // Extensions of every OTHER requested category, so a candidate that
+        // satisfies one of them is not also forced through the screenshot gate.
+        let other_exts: Vec<&'static str> = if want_screenshot {
+            let others: Vec<String> = filter
+                .categories
+                .iter()
+                .filter(|c| *c != "screenshot")
+                .cloned()
+                .collect();
+            extensions_for(&others)
+        } else {
+            Vec::new()
+        };
         let type_gated = !filter.categories.is_empty();
         let terms = filter.terms.trim().to_lowercase();
 
@@ -152,9 +165,15 @@ impl QueryEngine {
             if is_file && !exts.is_empty() && !exts.contains(&ext_of(&cand.path).as_str()) {
                 continue;
             }
-            if want_screenshot {
+            // "screenshots" is a PATH heuristic, not an extension, so it must
+            // gate only its own category: asking for "screenshots and pdfs"
+            // must not drop every pdf whose path lacks the word.
+            if want_screenshot && is_file {
                 let p = cand.path.to_lowercase();
-                if !p.contains("screenshot") && !p.contains("screen shot") {
+                let looks_like_screenshot = p.contains("screenshot") || p.contains("screen shot");
+                let matches_other_category =
+                    !other_exts.is_empty() && other_exts.contains(&ext_of(&cand.path).as_str());
+                if !looks_like_screenshot && !matches_other_category {
                     continue;
                 }
             }
