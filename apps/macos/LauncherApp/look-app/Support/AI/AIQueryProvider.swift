@@ -46,6 +46,11 @@ protocol AIQueryProvider: Sendable {
     /// Whether this provider can serve a request right now.
     var availability: AIProviderAvailability { get }
 
+    /// Whether prompts stay on this machine. Gates private context (calendar,
+    /// clipboard, remembered facts): a provider must DECLARE it is local, so
+    /// adding a cloud provider can't silently inherit the data by default.
+    var isLocal: Bool { get }
+
     /// Stream a short, free-form answer to a natural-language question. Each
     /// yielded value is the *cumulative* answer text so far (so the UI can show
     /// it typing itself out). Returns `nil` when the provider can't answer at
@@ -64,4 +69,8 @@ extension AIQueryProvider {
     func answer(query: String) -> AsyncThrowingStream<String, Error>? { nil }
 
     func prewarm() {}
+
+    /// Fail closed: a provider that hasn't declared itself local is treated as
+    /// remote, so private context is withheld until someone says otherwise.
+    var isLocal: Bool { false }
 }

@@ -242,6 +242,14 @@ struct ThemeSettings: Codable, Equatable {
     /// `~/.look.config` under `ollama_model`.
     var ollamaModel: String = "llama3.1"
 
+    /// Whether private context (calendar, clipboard, remembered facts) may be
+    /// sent to a provider that is NOT on this machine - a remote Ollama host
+    /// today, a cloud provider later. Off by default: the answer is simply
+    /// computed without that context and says so, rather than quietly shipping
+    /// personal data off-device. Persisted in `~/.look.config` under
+    /// `ai_allow_remote_context`.
+    var aiAllowRemoteContext: Bool = false
+
     /// Whether the empty-state super actions launchpad is shown. Off hides the
     /// strip and makes its ⌘-mnemonics inert. Persisted in `~/.look.config`
     /// under `super_actions_enabled`.

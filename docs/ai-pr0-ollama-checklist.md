@@ -1,9 +1,14 @@
 # PR 0: Ollama provider (macOS) - checklist
 
 > **Status: SHIPPED.** Also grown since: the Settings model field is a dropdown
-> of installed models (`GET /api/tags`), host+model share one row, the AI toggle
-> sits on the section header, and the provider gained `chatJSON` (planner) and
-> `chatStream` (session chat) plus a prompt-cache warm-up.
+> of installed models (`GET /api/tags`, debounced and order-safe), host+model
+> share one row, and the AI toggle sits on the section header.
+>
+> Since superseded in one respect: the provider's own URLSession chat code is
+> gone. Planning, session chat, and the answer card all ride the Rust core's
+> curl transport (`core/ai/src/chat.rs`), so there is ONE Ollama client with one
+> set of timeout/cancel/error semantics. What stays Swift-side here is health
+> probing (`GET /api/tags`), the model list, and the warm-up.
 
 Goal: add Ollama as a second `AIQueryProvider` so every existing AI feature
 (query understanding, the answer card) can run on a capable local model. This is

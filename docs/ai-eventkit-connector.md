@@ -112,39 +112,15 @@ Rules:
 steps; look validates and previews all of them, executes as one confirmable
 plan.
 
-JSON schema (Ollama/cloud) and `@Generable` (Apple Intelligence) express the same
-shape. Dates are ISO 8601 with an explicit offset; the model is given the current
-date/time and timezone in its instructions so it can resolve "tuesday 10am". look
-re-validates every date (never trusts the model blindly).
-
-```jsonc
-{
-  "steps": [
-    // add an event. Times are verbatim phrases, resolved by code, not the model.
-    { "op": "add_event", "title": "Dentist",
-      "start_phrase": "tuesday 10am", "duration_minutes": 60,
-      "calendar": null },                      // null = default calendar
-
-    // move an existing event
-    { "op": "move_event", "match": "3pm sync", "new_start_phrase": "4pm today" },
-
-    // cancel an existing event
-    { "op": "cancel_event", "match": "standup tomorrow" },
-
-    // block focus time (find-then-block; add_event over a found slot)
-    { "op": "block_time", "title": "Deep work",
-      "duration_minutes": 120, "window_phrase": "friday" },
-
-    // read-only: find a free slot (no confirm)
-    { "op": "find_free_slot", "duration_minutes": 60, "window_phrase": "this week" },
-
-    // reminders
-    { "op": "add_reminder", "title": "Call plumber", "due_phrase": "tomorrow 9am" },
-    { "op": "complete_reminder", "match": "call plumber" },
-    { "op": "snooze_reminder", "match": "call plumber", "new_due_phrase": "thursday 9am" }
-  ]
-}
-```
+> **As built:** the shape below was the design sketch. What ships is smaller -
+> see `ai-action-contracts.md` for the authoritative wire format. The
+> differences: tool ids are 1-token aliases (`event`, `move`, `block`, ...) not
+> `op` verbs; params are a flat `[String: String]` limited to
+> `title`/`match`/`when`/`duration`/`terms`/`types`/`location`/`instruction`;
+> durations are phrases ("2 hours") rather than `duration_minutes`; and only
+> `steps[0]` executes today. `find_free_slot` never shipped as a separate op -
+> `block` does find-then-block in one step. The rest of this section documents
+> the intent, which held.
 
 Design choice (see Section 5): the model returns time **phrases as written**, not
 ISO datetimes. Date math is where weak models fail, so `NSDataDetector` resolves

@@ -20,6 +20,13 @@ struct AISettingsSection: View {
                 ollamaRow
             }
 
+            // Only worth a row when the configured provider is off-machine;
+            // with a local model there is nothing to decide.
+            if settings.aiEnabled, !AIQueryRouter.shared.allowsPrivateContext(settings.aiProvider)
+                || settings.aiAllowRemoteContext {
+                remoteContextRow
+            }
+
             PermissionsRow(themeStore: themeStore)
         }
     }
@@ -76,6 +83,24 @@ struct AISettingsSection: View {
                 model: $settings.ollamaModel,
                 themeStore: themeStore)
                 .frame(maxWidth: 160)
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// The provider isn't on this machine, so personal context is withheld
+    /// unless the user says otherwise. Never a per-query prompt: disclosure is
+    /// a policy, and re-asking it would just train people to click through.
+    private var remoteContextRow: some View {
+        HStack(spacing: 10) {
+            Text("Personal context")
+                .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
+                .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+                .foregroundStyle(themeStore.secondaryTextColor())
+            Toggle("Send to remote model", isOn: $settings.aiAllowRemoteContext)
+                .toggleStyle(.switch)
+                .help(
+                    "This provider is not on your Mac. Off keeps your calendar, "
+                        + "clipboard, and remembered facts out of its prompts.")
             Spacer(minLength: 0)
         }
     }

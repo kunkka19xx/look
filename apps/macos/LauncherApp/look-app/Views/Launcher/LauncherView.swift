@@ -1741,7 +1741,7 @@ struct LauncherView: View {
     }
 
     /// Inline markdown (bold, italic, `code`, links) for chat prose. Block
-    /// structure is handled by `ChatMarkdown.segments`; this styles within a
+    /// structure is handled by the Rust core's markdown segmenter; this styles within a
     /// prose segment, falling back to plain text on any parse failure.
     private func inlineMarkdown(_ text: String) -> AttributedString {
         (try? AttributedString(

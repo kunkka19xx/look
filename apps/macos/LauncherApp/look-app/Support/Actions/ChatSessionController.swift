@@ -151,20 +151,34 @@ final class ChatSessionController: ObservableObject {
             saveConversation()
         }
 
+        // Private context rides along only when the provider is on this machine
+        // (or the user allowed remote context). Enforced, not assumed: see
+        // AIQueryRouter.allowsPrivateContext.
+        let settings = ThemeStore.shared.settings
+        let allowsPrivate = AIQueryRouter.shared.allowsPrivateContext(settings.aiProvider)
+
         // Schedule-sounding questions get the calendar as context, so "what's my
-        // next meeting" / "am I free friday" just answer. The data only ever
-        // goes to the on-machine model.
-        let listing = ScheduleContextProvider.mentionsSchedule(query)
-            ? ScheduleContextProvider.listing(for: query)
-            : nil
+        // next meeting" / "am I free friday" just answer.
+        let asksSchedule = ScheduleContextProvider.mentionsSchedule(query)
+        let listing = asksSchedule ? ScheduleContextProvider.listing(for: query) : nil
         if let listing { ActionController.shared.rememberListed(listing) }
-        let scheduleContext: String? = ScheduleContextProvider.mentionsSchedule(query)
-            ? ScheduleContextProvider.chatContext(for: query, listing: listing)
-            : nil
+        let scheduleContext: String? = {
+            guard asksSchedule else { return nil }
+            guard allowsPrivate else { return nil }
+            return ScheduleContextProvider.chatContext(for: query, listing: listing)
+        }()
+        // A schedule question answered without the calendar would just look
+        // uninformed; say why the context is missing.
+        if asksSchedule, !allowsPrivate {
+            append(ActionSessionItem(
+                kind: .answer,
+                text: Self.remoteContextBlockedNote("Your calendar"),
+                source: "Look"))
+        }
 
         // Long-term memory (facts the user asked to remember), injected on every
         // turn so the assistant "knows them" across conversations.
-        let memoryContext = MemoryStore.context()
+        let memoryContext = allowsPrivate ? MemoryStore.context() : ""
 
         var messages: [[String: String]] = [
             ["role": "system", "content": Self.chatInstructions]
@@ -195,7 +209,6 @@ final class ChatSessionController: ObservableObject {
             }
         }
 
-        let settings = ThemeStore.shared.settings
         let placeholderID = appendPlaceholder(settings: settings)
 
         // Ollama gets the full session as context; any other provider (e.g.
@@ -261,6 +274,17 @@ final class ChatSessionController: ObservableObject {
         let clip = (NSPasteboard.general.string(forType: .string) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clip.isEmpty else { return false }
+        // The clipboard is the most sensitive context of all: never hand it to
+        // an off-machine provider without explicit permission.
+        guard AIQueryRouter.shared.allowsPrivateContext(ThemeStore.shared.settings.aiProvider)
+        else {
+            append(ActionSessionItem(
+                kind: .answer,
+                text: Self.remoteContextBlockedNote("Clipboard text"),
+                source: "Look"))
+            saveConversation()
+            return true
+        }
         chatTask?.cancel()
         sessionItems.append(ActionSessionItem(kind: .user, text: label))
         saveConversation()
@@ -393,14 +417,23 @@ final class ChatSessionController: ObservableObject {
         if let source { sessionItems[idx].source = source }
     }
 
+    /// Said once, in place, when personal data was withheld from a remote
+    /// provider - so the gap is visible rather than a mysteriously worse answer.
+    static func remoteContextBlockedNote(_ what: String) -> String {
+        "\(what) isn't sent to a model outside this machine. Point the AI "
+            + "provider at a local model, or allow it in Settings."
+    }
+
     /// Session chat: room for a real answer, deterministic, long ceiling.
     private static let chatOptions = #"{"num_predict":512,"temperature":0,"timeout_secs":300}"#
 
     private static let chatInstructions = """
         You are Look's built-in assistant on macOS. Be concise and helpful. \
-        Plain text; short code snippets are fine when asked. You cannot modify \
-        or delete calendar items; adding events and reminders happens outside \
-        this chat, so if asked to change or remove one, say it isn't supported \
-        yet.
+        Plain text; short code snippets are fine when asked. Calendar and \
+        reminder changes (adding, moving, cancelling, completing) happen \
+        outside this chat: the user types the request and confirms it on a \
+        preview bar. If asked to make one, tell them to type it as an \
+        instruction (e.g. "move my dentist to friday") and confirm it - do not \
+        claim you cannot do it.
         """
 }

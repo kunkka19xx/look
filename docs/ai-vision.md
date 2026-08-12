@@ -1,8 +1,26 @@
 # AI Vision
 
-Status: draft / direction. Not a commitment to specific packages or timelines.
-This doc sets the north star for AI in `look` and specifies the first pillar
-(Recall) in enough detail to build against.
+Status: direction, not a commitment to specific packages or timelines. This doc
+sets the north star for AI in `look` and specifies the Recall pillar in enough
+detail to build against.
+
+**What of this has shipped** (see `ai-session.md` and `ai-action-contracts.md`
+for the as-built detail):
+
+| Verb | State |
+| --- | --- |
+| Find | Shipped. Deterministic file recall plus a model fallback that emits a structured query, never a rewritten string. |
+| Answer | Shipped. Instant answers, web sources, and a streamed local-model answer; personal schedule questions answer from the calendar itself. |
+| Act | Shipped for calendar + reminders (add/move/cancel/complete/remove/snooze/block), confirm-gated with undo, reachable from both `>` and the main bar. |
+| Recall | **Not built.** No embeddings, no clipboard corpus. Today's "recall" is deterministic keyword+time file search, which is useful but not semantic. |
+
+Two structural notes on the sections below: the **tool registry** described in
+Architecture was built and then deleted - resolution lives in Rust
+(`core/ai/src/resolve.rs`) so both shells share it, and adding a tool is a table
+entry rather than a registered object. And the **context provider** (frontmost
+app, selection) has not been built; the context that exists today is the
+calendar, the clipboard, and explicitly remembered facts, each gated on the
+provider running locally.
 
 ## The wedge
 
@@ -131,6 +149,12 @@ The three tiers:
 - **Cloud (bring-your-own key, e.g. Claude Haiku).** Strongest and zero local
   setup. Cost: queries leave the device (opt-in, disclosed, keychain-stored key)
   and the user pays per token. The zero-friction power tier.
+
+Enforced, not just intended: private context (calendar, clipboard, remembered
+facts) is withheld from any provider that is not on this machine unless the user
+turns it on in Settings. Providers must declare themselves local, and the
+default is remote, so a cloud provider added later cannot silently inherit
+personal data.
 
 The honest tradeoff: **look's best AI features require the user to bring a
 capable model.** The zero-setup, fully-private option (Apple Intelligence) is

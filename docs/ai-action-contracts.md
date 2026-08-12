@@ -1,198 +1,144 @@
-# Action contracts and models
+# AI contracts - as built
 
-The stable core the whole Act pillar is built on. Get these right and adding the
-Nth tool is a one-file change. Everything else (EventKit, Ollama, SwiftUI)
-depends on these types; these types depend on nothing but Foundation.
+The stable core the AI surface is built on: how input is routed, how an intent
+becomes an executable plan, and where each piece lives. Get these right and
+adding the Nth capability is a small change in one place.
 
-Placement: the currency types, the `ActionTool` protocol, the registry, and the
-`EventStoring` seam are Foundation-only and live in the `LauncherLogic` package
-(unit-tested, no app/UI/EventKit imports). Concrete tools that only talk to
-`EventStoring` also live in the package. Only the concrete backends
-(`EventKitService`), the `ActionController` (ObservableObject), and the confirm
-UI are app-target.
+> Supersedes the original Swift `ActionTool`/`ActionRegistry`/`AIValue` design,
+> which was deleted when resolution moved to Rust (see `ai-rust-core-plan.md`).
+> This document describes what actually ships.
 
-## 1. The currency types
+## The doctrine: three tiers, one typed output
 
-Tiny and stable on purpose. Producers emit these; the pipeline moves them.
+Every AI surface follows the same ladder, and the important rule is that all
+three tiers produce the *same* typed intent, so the model is just another
+parser and can never reach an execution path the deterministic parser can't.
 
-```swift
-// Model-agnostic value shaped like JSON. Params and JSON Schema both speak this,
-// so model output maps 1:1 to what tools consume. Needs a custom Codable impl
-// (single-value container that branches on the JSON type); that codec is itself
-// unit-tested.
-enum AIValue: Equatable {
-    case string(String)
-    case number(Double)
-    case bool(Bool)
-    case array([AIValue])
-    case object([String: AIValue])
-    case null
-}
+1. **Deterministic grammar** - instant, runs per keystroke, works with AI off.
+   The `@` form, file recall, text-op verbs, memory commands, the window
+   grammar, calc, instant answers.
+2. **Graceful relaxation** - when tier 1 triggered but found nothing, loosen
+   deterministically instead of showing an empty panel (file search widens the
+   time window, then drops unmatched terms; schedule questions fall back to a
+   7-day window).
+3. **Model interpretation, on Enter only** - schema-forced, cancellable, and
+   emitting the same typed intent as tier 1. Never free-form text that gets
+   re-parsed.
 
-// What every producer emits (the `>` parser and the model planner both).
-struct ToolCall: Equatable {
-    let toolID: String
-    let params: [String: AIValue]
-}
+Two deliberate exceptions:
 
-// The model's wire format. `steps` is present from day one: Step A executes only
-// length 1, but chaining later is a controller change, never a wire change.
-struct ActionPlan: Codable { let steps: [PlanStep] }
-struct PlanStep: Codable { let tool: String; let params: [String: AIValue] }
+- **Memory is tier-1 only.** The model never writes durable facts, so a weak
+  planner cannot pollute them. A "remember ..." phrasing the parser misses
+  becomes chat, not a memory write.
+- **Mutations keep the confirm gate.** Widening tier 3 is safe precisely
+  because everything destructive still lands on a preview the user confirms,
+  with undo after.
+
+## 1. Routing (`core/ai/src/route.rs`)
+
+ONE ladder, shared by every shell so precedence cannot drift:
+
+```text
+memory -> textop -> files -> explicit -> plan -> chat
 ```
 
-## 2. The tool contract
+Deterministic tiers run first, most precise first. `plan` appears only when a
+capable model is configured; otherwise the ladder ends at `chat`. The shell
+calls `look_ai_route(memory_path, input, model_available, now)` and switches on
+the returned decision. The memory tier has already executed when it answers
+(it is the handler, not a preview).
 
-A tool describes itself and knows how to plan. The registry is just a map.
+## 2. The planner wire format (`core/ai/src/plan.rs`, `planner.rs`)
 
-```swift
-protocol ActionTool {
-    var id: String { get }                 // "calendar.add_event"
-    var title: String { get }              // "Add event"
-    var paramsSchema: AIValue { get }      // JSON Schema (AIValue.object)
-    func plan(_ params: [String: AIValue], now: Date) -> PlanResult
-}
+The model emits JSON forced by a schema in Ollama's `format` field, so an
+invalid shape is impossible rather than merely unlikely:
 
-// Wider than Optional so the model can grow with no signature change.
-enum PlanResult {
-    case planned(PlannedAction)
-    case invalid(String)                   // missing/bad params, unresolvable date
-    case needsChoice([ActionCandidate])    // reserved for the move/cancel gate
-}
-
-struct PlannedAction {
-    let toolID: String
-    let preview: ActionPreview
-    let perform: () throws -> ActionReceipt   // closes over the tool's typed data
-}
-
-// Structured, not a raw String, so the confirm UI can grow (icons, multi-line,
-// diffs) without touching every tool.
-struct ActionPreview: Equatable {
-    let title: String                      // "Add event"
-    let detail: String                     // "\"Dentist\"  Tue Aug 5, 10:00-11:00"
-}
-
-struct ActionReceipt {
-    let summary: String                    // "Added \"Dentist\""
-    let undo: () throws -> Void
-}
-
-struct ActionCandidate: Equatable {        // for a future disambiguation list
-    let id: String
-    let label: String
-}
+```json
+{"steps": [{"tool": "<alias>", "params": {...}}]}
 ```
 
-Why closures on `PlannedAction`: each tool captures its own typed resolved data
-inside `perform`/`undo`, so the registry handles only `PlannedAction` and never
-needs generics or type erasure. New tools never widen a shared type.
+`steps` is an array from day one, so multi-step plans are a consumer change,
+never a wire change (today only `steps[0]` executes). Tool ids are 1-token
+aliases mapped to real ids in the planner, which keeps generation short:
 
-## 3. The registry
+| alias | tool id | params |
+| --- | --- | --- |
+| `event` | `calendar.add_event` | `title` |
+| `reminder` | `reminder.add` | `title` |
+| `cancel` | `calendar.cancel_event` | `match` |
+| `move` | `calendar.move_event` | `match`, `when` |
+| `complete` | `reminder.complete` | `match` |
+| `delete` | `reminder.remove` | `match` |
+| `snooze` | `reminder.snooze` | `match`, `when` |
+| `block` | `calendar.block_time` | `duration`, `when?`, `title?` |
+| `recall` | `files.recall` | `terms?`, `types?`, `when?`, `location?` |
+| `textop` | `clipboard.textop` | `instruction` |
 
-```swift
-final class ActionRegistry {
-    func register(_ tool: ActionTool)
-    func tool(id: String) -> ActionTool?
-    var all: [ActionTool] { get }
+`resolve_step` validates the per-tool requirements and returns `{tool, params}`
+with real ids, or nothing when the step is unusable.
 
-    // Look up the tool, validate + resolve via its plan(). Unknown id -> invalid.
-    func plan(_ call: ToolCall, now: Date) -> PlanResult
-}
+Planning runs as a **cancellable session** (`look_ai_plan_start` / `_poll` /
+`_cancel`) on the same curl transport as chat, so a superseded request is
+actually killed rather than left to queue inside Ollama.
+
+## 3. Resolution (`core/ai/src/resolve.rs`)
+
+The shell passes platform data in; the core validates, matches through the
+ambiguity gate, computes dates and previews, and returns a data-only outcome.
+No closures cross the boundary.
+
+```text
+ResolveRequest { tool, params, now, events[], reminders[], resolved_when?, window_* }
+   -> ResolveOutcome::Planned { preview_title, preview_detail, summary, subject, execute, undo }
+                    | ::Choice { candidates[] }     // ambiguous match
+                    | ::Invalid { message }         // missing/unusable input
 ```
 
-## 4. The pipeline (stable, testable seams)
+`Execute` and `Undo` are data (`AddEvent`, `MoveEvent`, `SetReminderDue`, ...),
+so the shell can perform and reverse an action without the core knowing
+anything about EventKit.
 
+Notable rules encoded here: never invent a clock time (a day with no time is an
+all-day event), all-day events don't block `block_time` slots, and adding an
+event whose title already sits on that day appends "already on your calendar"
+to the preview (warn, never block).
+
+## 4. The date seam
+
+The core never does date math on natural phrases. The shell resolves them
+(macOS: `NSDataDetector`, which is excellent at day+time combinations) and
+passes `resolved_when` back in. Two refinements:
+
+- `window::day_phrase` is the shared-lexicon fallback for phrases the detector
+  can't read ("this week wed", "last fri"), so abbreviations mean the same day
+  on every shell.
+- When both resolve, the **named day wins and the detector supplies the clock
+  time**: "tue 9am" typed on a Monday is Tuesday 09:00, not today.
+
+`window::future_leaning` nudges a bare clock time that already passed to the
+next day; a phrase naming a day or month is respected as-is.
+
+## 5. The execution spine
+
+Every producer converges on the same path:
+
+```text
+ToolCall -> resolve (Rust) -> preview -> confirm -> receipt -> undo
 ```
-Producer -> ToolCall -> registry.plan -> PlanResult -> PlannedAction
-         -> confirm -> perform -> ActionReceipt -> undo
-```
 
-Each arrow is an independent boundary. Swap a producer (add the cloud planner),
-a backend (EventKit -> CalDAV), or the confirm UI without touching the others.
+Two confirm surfaces, one spine:
 
-`ActionController` (app, `@MainActor ObservableObject`) owns the runtime state:
+- **AI panel**: a pending bar; Enter confirms, Esc cancels.
+- **Main bar**: the plan renders as the first, selected result row, and the
+  visible row *is* the confirmation - one Enter runs it, ⌘Z undoes. Styling for
+  each tool (icon, type badge, verb) comes from `AIActionAppearance`, so a new
+  tool is one table entry, not new row code.
 
-```swift
-@Published var pending: PlannedAction?
-@Published var lastReceipt: ActionReceipt?
-@Published var feedback: String
+## 6. Placement
 
-func propose(_ call: ToolCall)   // registry.plan; .planned -> pending, else feedback
-func confirm()                   // perform -> lastReceipt; clear pending
-func cancel()
-func undoLast()                  // lastReceipt.undo
-```
-
-As built it also owns the AI session (item stack, chat turns, incremental
-archive); see `ai-session.md` for that layer.
-
-## 5. Producers, one currency
-
-- **Explicit `@` form** (deterministic, no model): a pure parser turns
-  `>add <title> @ <when>` into a `ToolCall`. It handles ONLY this delimited
-  form; anything without `@` is natural language and defers to the planner.
-  Tested in the package.
-- **Model planner**: asks Ollama for an `ActionPlan` (via `format` JSON Schema)
-  and maps each `PlanStep` to a `ToolCall`. Latency-driven contract (see
-  `ai-session.md`): the model emits only a 1-token tool alias
-  ("event"/"reminder", mapped to real ids in the planner) plus a clean `title`;
-  the planner injects `when` from the raw query in code (NSDataDetector's date
-  value is robust). Single-shot, static cached prompt, temperature 0. There is
-  no repair retry: the fields a repair round could fix no longer come from the
-  model.
-- Queries the planner declines become chat turns in the AI session
-  (`ai-session.md`), not `ToolCall`s.
-
-All action producers converge on `ActionController.propose`. The rest of the
-system cannot tell which produced the call.
-
-## 6. Schema is the single source of truth (and where validation lives)
-
-Each tool's `paramsSchema` drives param validation and help/docs; the planner's
-wire schema is deliberately narrower (alias enum + title-only params) for
-latency, so what the model emits stays minimal.
-
-Division of validation:
-
-- The planner's wire format constrains `tool` to an enum of aliases, so the
-  model cannot invent one, and `params` to `{ title }`. Everything else (dates,
-  durations, all-day) is computed in code.
-- Authoritative per-tool validation happens in `tool.plan()`: required fields,
-  types, date resolvability, invariants (`end > start`). Bad input -> `.invalid`.
-
-So the model's job stays tiny (classify + title) and the strict checks live in
-deterministic, testable code.
-
-## 7. Evolution rules
-
-- **Add a tool:** new file + `register`, plus one alias entry and one prompt
-  line in `ActionPlanner` (its wire schema is deliberately narrow for latency).
-  No switch statements or UI changes, ever; a new OS surface additionally needs
-  a service seam + a permission chip.
-- **Add a param:** add an optional field to the schema. Old calls stay valid; the
-  model fills it when relevant. Additive only, no renames.
-- **Change a backend:** reimplement that tool's `plan`/`perform`. Its `id` and
-  schema are unchanged, so nothing upstream notices.
-- **Tolerate the unknown:** unknown tool id -> `.invalid`, never a crash. Extra
-  params the model invented -> ignored. Keeps updated/weaker models from breaking
-  execution.
-- **Add composition:** the wire format already carries `steps`. The controller
-  moves from executing `steps[0]` to looping. No contract change.
-- **Swap provider/prompt:** only the planner changes; it depends solely on the
-  registry schemas and returns `ToolCall`s.
-
-## 8. What is testable without EventKit or a model
-
-Because tools talk to `EventStoring` and produce `PlannedAction`, almost
-everything is unit-tested against a `FakeStore` with a fixed `now`:
-
-- `AIValue` JSON round-trip (encode/decode).
-- Registry register/lookup and unknown-id handling.
-- Each tool's `plan()`: valid -> preview + working perform/undo against
-  `FakeStore`; invalid params/date -> `.invalid`.
-- The `>` parser: text -> `ToolCall`.
-- (Step B) `ActionPlan` decode; planner schema assembled from a fake registry.
-
-Only the concrete `EventKitService` and the SwiftUI confirm bar need manual
-smoke testing.
+| Layer | Home | Why |
+| --- | --- | --- |
+| Routing, planning, resolution, matching, window grammar, lexicon, markdown, chat transport | `core/ai` (Rust) | Shared by every shell; unit-tested without a UI |
+| C boundary | `bridge/ffi` | JSON in, JSON out; every export panic-caught |
+| Pure Swift helpers (`DatePhrase`, `ScheduleWords`, `LocalHostCheck`, `OllamaCodec`) | `LauncherLogic` package | Foundation-only, unit-tested |
+| EventKit, providers, controllers, SwiftUI | app target | Platform-bound |

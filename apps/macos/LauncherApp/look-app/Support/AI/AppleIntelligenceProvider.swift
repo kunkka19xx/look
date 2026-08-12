@@ -12,6 +12,9 @@ struct AppleIntelligenceProvider: AIQueryProvider {
     let id = AIProviderKind.appleIntelligence.rawValue
     let displayName = "Apple Intelligence (on-device)"
 
+    /// Runs on the Neural Engine; nothing leaves the machine.
+    let isLocal = true
+
     var availability: AIProviderAvailability {
         #if canImport(FoundationModels)
         guard #available(macOS 26, *) else {

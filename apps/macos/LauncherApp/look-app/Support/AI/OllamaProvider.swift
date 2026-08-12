@@ -14,6 +14,11 @@ struct OllamaProvider: AIQueryProvider {
         return (settings.ollamaHost, settings.ollamaModel)
     }
 
+    /// The daemon is usually on this machine, but the host is user-editable:
+    /// pointing it at a LAN box or a tunnel makes it remote, and private
+    /// context must not ride along silently.
+    var isLocal: Bool { LocalHostCheck.isLocal(host: config.host) }
+
     /// Cached health, refreshed by a throttled background probe. The protocol's
     /// `availability` is synchronous, so we cannot block on the network here.
     var availability: AIProviderAvailability {

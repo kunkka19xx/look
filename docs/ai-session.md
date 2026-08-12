@@ -13,7 +13,8 @@ powered by the user's Ollama model (see `ai-vision.md` for provider strategy).
 - Session items stack chronologically and auto-scroll: completed actions
   ("Added \"Lunch\"" with Undo), user questions ("› ..."), and streaming
   answers (markdown-rendered).
-- Footer: `Enter run · Esc leave · Cmd+Z undo · @ sets exact time`.
+- Footer adapts: `Esc leave · Cmd+Z undo · @ sets exact time`, and while an
+  answer streams, `Cmd+. stop · Esc leave · Cmd+Z undo`.
 
 ## Input paths (three producers, one spine)
 
@@ -32,12 +33,15 @@ the selected provider's single-turn answer stream. `>` never dead-ends.
 3. **Chat** - anything the planner declines becomes a chat turn on Enter: the
    question and a streamed answer join the session. Context is the last ~10
    session items, including performed actions (as `[Done: ...]`), so follow-ups
-   like "what did I just add?" work. The chat prompt states that modifying or
-   deleting calendar items is not supported yet.
+   like "what did I just add?" work. Mutations (move/cancel/complete/snooze/
+   block) DO ship: they are typed as instructions and confirmed on the preview
+   bar, and the chat prompt says so rather than refusing.
 
 All actions flow through the same spine regardless of producer:
-`ToolCall -> registry.plan -> preview -> confirm (Enter) -> receipt -> undo`
-(see `ai-action-contracts.md`).
+`ToolCall -> resolve (Rust core) -> preview -> confirm (Enter) -> receipt ->
+undo` (see `ai-action-contracts.md`). Routing between the producers is itself
+shared code (`core/ai/src/route.rs`), so precedence cannot drift between
+shells.
 
 ## AI mode and lifecycle
 
@@ -56,7 +60,9 @@ message after is AI input until Esc leaves.
 
 Stored in one human-readable JSON file,
 `~/Library/Application Support/Look/ai-conversations.json`, upserted
-incrementally as items complete (quit-safe). Bounds: 20 conversations, last 60
+incrementally as items complete. Crash-safe for real: writes go to a temp file
+and rename, and a file that fails to parse is moved aside as `.corrupt` rather
+than being silently overwritten with an empty list. Bounds: 20 conversations, last 60
 items each; the model context per turn stays capped at the last 10 items, so
 continuing an old conversation carries reasonable, bounded weight.
 
@@ -68,11 +74,16 @@ everything (instant `@` forms still preview live).
 
 ## Markdown in answers
 
-`ChatMarkdown.segments` (package, tested) splits fenced code blocks from prose;
-code renders monospaced in a darker card (works mid-stream: an unclosed fence
-renders as code), prose gets inline markdown (bold/italic/`code`/links) via
-Apple's `AttributedString(markdown:)`. Deliberately not a full markdown engine;
-no third-party dependency.
+The Rust core's markdown segmenter (`core/ai/src/markdown.rs`, tested) splits
+fenced code blocks from prose; code renders monospaced in a darker card, prose
+gets inline markdown (bold/italic/`code`/links) via Apple's
+`AttributedString(markdown:)`. Deliberately not a full markdown engine; no
+third-party dependency.
+
+Parsed ONCE, when the answer settles: the parse is an FFI call plus a full-text
+scan, so running it per streamed token was quadratic work on the main thread.
+Mid-stream the answer renders as plain text, which also avoids styling
+half-written code fences.
 
 ## Speed design (the latency contract)
 
@@ -87,8 +98,10 @@ Speed is priority one. The levers, measured on qwen2.5-coder:7b:
 - **Warm-up primes model + prompt cache** when a `>` query starts, throttled.
 - **Single-shot planning** (no repair loop): the fields a repair round could fix
   no longer come from the model.
-- **300ms idle before planning**; an in-flight call cancels cleanly on the next
-  keystroke (client disconnect aborts Ollama generation).
+- **300ms idle before planning**; an in-flight call is genuinely killed on the
+   next keystroke (a cancellable plan session, not a blocking call whose
+   cancellation is only noticed after it returns), so superseded requests never
+   queue ahead of the one the user is waiting for.
 - `keep_alive: 30m` holds the model resident; `num_predict` caps runaway output.
 
 Measured: plan ~0.9-1.0s warm, non-action decline ~0.4s, `@` form 0ms.
@@ -99,9 +112,17 @@ Measured: plan ~0.9-1.0s warm, non-action decline ~0.4s, `@` form 0ms.
 - No date at all -> all-day today (events) / undated (reminders).
 - Clock-time detection is lexical (`DatePhrase.hasClockTime`), not a guess.
 
-## Future (rides this design)
+## Beyond the session panel
 
-- Move/cancel/complete tools: session context makes "remove it" unambiguous,
-  shrinking the ambiguity-gate problem (see `ai-eventkit-connector.md`).
-- Recall hits and read-queries render as session item kinds in the same panel.
+The same ladder now backs the **main search bar**: a dead-end Enter escalates to
+the AI surface, and an action-shaped phrase renders as the first selected result
+row (one Enter runs it, ⌘Z undoes) instead of forcing the `>` prefix on people
+who never learned it. File recall shows its results in the main panel, labeled
+when the model interpreted the phrasing or the query had to be relaxed.
+
+Still ahead:
+
 - Per-verb models (small fast planner model, larger chat model) if wanted.
+- Semantic recall over clipboard history (the vision doc's Recall pillar).
+- linows parity: the transport and router were built poll-based for exactly
+  this, but the Tauri shell has no AI yet.

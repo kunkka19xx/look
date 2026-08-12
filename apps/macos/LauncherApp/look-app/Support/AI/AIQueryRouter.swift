@@ -34,6 +34,16 @@ final class AIQueryRouter: @unchecked Sendable {
         }
     }
 
+    /// Whether private context (calendar, clipboard, remembered facts) may be
+    /// attached to a prompt for `kind`. True when the provider runs on this
+    /// machine, or when the user has explicitly allowed remote context. The
+    /// invariant lives here rather than in a comment, so a provider added
+    /// later cannot inherit personal data by default.
+    func allowsPrivateContext(_ kind: AIProviderKind) -> Bool {
+        if ThemeStore.shared.settings.aiAllowRemoteContext { return true }
+        return provider(for: kind).isLocal
+    }
+
     /// Streams a short free-form answer for `query` using `kind`, or returns
     /// `nil` when the provider is unavailable or can't answer. Never throws at
     /// the call site - failures surface as the stream finishing with an error.

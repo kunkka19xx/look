@@ -90,15 +90,29 @@ This is the one real contract change. Everything else translates 1:1.
 
 FFI (macOS), following the `look_*_json` conventions in `bridge/ffi`:
 
+As shipped (names are the source of truth; see `bridge/ffi/src/lib.rs`):
+
 ```
-look_ai_plan(query, context_json)      -> outcome JSON (context: candidates, referents, resolved dates, now)
+look_ai_route(memory_path, input, model_available, now) -> routing decision JSON
+look_ai_plan_start/poll/cancel(...)    -> cancellable planning session
+look_ai_resolve(request_json)          -> ResolveOutcome JSON
+look_ai_chat_start/poll/cancel(...)    -> streamed chat (curl child + polling)
 look_ai_query_window(query, now_epoch) -> window JSON or null
-look_ai_markdown_segments(text)        -> segments JSON
-look_ai_conversations_list()           -> conversations JSON
-look_ai_conversation_upsert(json)      -> bool
-look_ai_ollama_health(host, model)     -> health JSON
-look_ai_chat_start/poll/cancel(...)    -> streaming via polling or callback (phase 5; confirm approach)
+look_ai_day_phrase(phrase, now_epoch)  -> local-midnight epoch, or 0
+look_ai_future_leaning(phrase, resolved, now) -> epoch
+look_ai_markdown_segments_json(text)   -> segments JSON
+look_ai_conversations_json/upsert/delete(path, ...)
+look_ai_memory_command/context(path, ...)
+look_ai_parse_explicit(input, model_available) -> {tool, params} or null
+look_ai_is_referent(phrase)            -> bool
+look_ai_is_file_query(query, now)      -> bool
+look_search_files_json / look_search_files_params_json -> results JSON
 ```
+
+Health probing stayed Swift-side (`OllamaProvider.probe` + `OllamaHealthCache`)
+rather than becoming `look_ai_ollama_health`: it is a plain `GET /api/tags` plus
+a cache, and the shell already needs the availability type for its UI. linows
+will want its own equivalent, not this FFI.
 
 linows: the same functions as Tauri commands; streaming as Tauri events
 (natural fit). Both shells consume identical JSON.
@@ -123,6 +137,15 @@ linows: the same functions as Tauri commands; streaming as Tauri events
 - **P5 SHIPPED**: streamed chat sessions in `core/ai/src/chat.rs` (curl child +
   reader thread) behind start/poll/cancel FFI; the macOS session chat polls
   ~12x/sec. Non-Ollama providers keep their native streams. Live-verified.
+- **P5.1 SHIPPED**: ONE Ollama client. `chat::start` takes a per-surface options
+  JSON (`num_predict`, `temperature`, `timeout_secs`), and the answer card moved
+  off its own URLSession implementation onto the same transport, so cancellation,
+  timeouts, and error surfacing behave identically everywhere.
+- **P5.2 SHIPPED**: the routing ladder itself (`core/ai/src/route.rs`) and one
+  shared date/word lexicon (`core/ai/src/lexicon.rs`), replacing four drifting
+  word lists. The planner gained `recall` and `textop` aliases, so arbitrary
+  phrasing reaches file search and clipboard ops through the same schema-forced
+  output as actions.
 - **P1 rescope**: `TitleMatcher` and `normalizeShorthand`/`hasClockTime` are
   called from inside the Swift package tools, which cannot reach FFI; they move
   in P4 together with tool resolution rather than growing drift-prone copies.
