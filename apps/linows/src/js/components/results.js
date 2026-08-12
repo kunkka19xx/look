@@ -125,10 +125,9 @@ export function render(results, query = null) {
     // seconds after the user picks another row. Auto-selected rows are exempt
     // (see userNavigated above) so the cursor lands on row 0 once the full
     // result order settles.
-    const prevSelectedId =
-        userNavigated && selectedIndex >= 0 && selectedIndex < currentResults.length
-            ? currentResults[selectedIndex].id
-            : null;
+    const preserving = userNavigated && selectedIndex >= 0 && selectedIndex < currentResults.length;
+    const prevSelectedId = preserving ? currentResults[selectedIndex].id : null;
+    const prevIndex = selectedIndex;
 
     currentResults = results;
     container.innerHTML = '';
@@ -147,7 +146,7 @@ export function render(results, query = null) {
     let nextIndex = 0;
     if (prevSelectedId != null) {
         const idx = results.findIndex((r) => r.id === prevSelectedId);
-        if (idx >= 0) nextIndex = idx;
+        nextIndex = idx >= 0 ? idx : Math.min(prevIndex, results.length - 1);
     }
 
     if (layout.isEmptyQuery(query) && layout.hidesResultsForEmptyQuery()) {

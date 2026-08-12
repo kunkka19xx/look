@@ -1221,6 +1221,15 @@ function getSliderVal(key) {
     return parseFloat(row.querySelector('.settings-slider')?.value || 0);
 }
 
+// Stacks where WebKitGTK ghost-renders backdrop-filter, so the CSS drops it.
+function isGhostingStack() {
+    return platform.compositor() === 'hyprland';
+}
+
+function hasDisableBlur() {
+    return document.documentElement.hasAttribute('data-disable-blur');
+}
+
 function hasBgImage() {
     return document.documentElement.style.getPropertyValue('--bg-image') !== '';
 }
@@ -1248,10 +1257,9 @@ function applytint() {
     // Hyprland (auto) and Arch toggle (manual): backdrop-filter is disabled
     // (CSS) due to WebKitGTK ghosting. Force a near-opaque alpha so themes
     // still pick the color while the window stays readable without blur.
-    if (
-        platform.compositor() === 'hyprland' ||
-        document.documentElement.hasAttribute('data-disable-blur')
-    ) {
+    // Unless the compositor blurs behind the window - then readability is not
+    // ours to defend, and the floor would hide the frost we just asked for.
+    if (!platform.compositorBlur() && (isGhostingStack() || hasDisableBlur())) {
         document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, 0.97)`);
         return;
     }
@@ -1314,10 +1322,7 @@ function applyTintFromMap(map) {
         document.documentElement.style.setProperty('--bg-tint', `rgb(${r}, ${g}, ${b})`);
         return;
     }
-    if (
-        platform.compositor() === 'hyprland' ||
-        document.documentElement.hasAttribute('data-disable-blur')
-    ) {
+    if (!platform.compositorBlur() && (isGhostingStack() || hasDisableBlur())) {
         document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, 0.97)`);
         return;
     }
