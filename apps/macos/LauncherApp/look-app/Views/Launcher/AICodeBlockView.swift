@@ -34,7 +34,11 @@ struct AICodeBlockView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
                 .padding(.trailing, 22)  // room for the copy button
-                .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                // Scaled with the panel material: a flat darkening plate at full
+                // weight muddies Liquid Glass (see ThemeStore.surfaceFill).
+                .background(
+                    Color.black.opacity(themeStore.surfaceOpacity(0.18)),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             Button {
                 NSPasteboard.general.clearContents()

@@ -64,6 +64,18 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Plates drawn INSIDE an already-materialized panel (chat bubbles, the
+    /// thinking/stop bars, pills, key caps). Same reasoning as `tintOpacityScale`
+    /// one level down: on glass a stack of full-weight fills cancels the
+    /// refraction the panel is there to show, so they thin out. Deliberately not
+    /// `glassEffect` per plate - Liquid Glass is not meant to stack on itself.
+    var surfaceOpacityScale: Double {
+        switch self {
+        case .hudWindow, .sidebar, .menu, .underWindowBackground: return 1.0
+        case .liquidGlass: return 0.55
+        }
+    }
+
     /// False where the material needs an OS newer than the one running.
     var isSupported: Bool {
         switch self {

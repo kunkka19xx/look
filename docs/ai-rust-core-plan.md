@@ -94,15 +94,23 @@ As shipped (names are the source of truth; see `bridge/ffi/src/lib.rs`):
 
 ```
 look_ai_route(memory_path, input, model_available, now) -> routing decision JSON
-look_ai_plan_start/poll/cancel(...)    -> cancellable planning session
+look_ai_plan_start(host, model, query) / look_ai_plan_poll(id) / look_ai_plan_cancel(id)
+                                       -> cancellable planning session
 look_ai_resolve(request_json)          -> ResolveOutcome JSON
-look_ai_chat_start/poll/cancel(...)    -> streamed chat (curl child + polling)
+look_ai_chat_start(host, model, messages_json, options_json)
+look_ai_chat_poll(id) / look_ai_chat_cancel(id)
+                                       -> streamed chat (curl child + polling)
 look_ai_query_window(query, now_epoch) -> window JSON or null
 look_ai_day_phrase(phrase, now_epoch)  -> local-midnight epoch, or 0
 look_ai_future_leaning(phrase, resolved, now) -> epoch
 look_ai_markdown_segments_json(text)   -> segments JSON
-look_ai_conversations_json/upsert/delete(path, ...)
-look_ai_memory_command/context(path, ...)
+look_ai_conversations_json(path)       -> all stored conversations
+look_ai_conversation_upsert(path, json) / look_ai_conversation_delete(path, id)
+look_ai_memory_command(path, input) / look_ai_memory_context(path)
+look_ai_load_targets(events_json, reminders_json) -> load mutate targets once
+look_ai_warm_planner(host, model)      -> prime model + prompt cache
+look_ai_textop_json(input)             -> {label, instruction} or null
+look_ai_context_window(texts_json, budget) -> how many tail turns fit
 look_ai_parse_explicit(input, model_available) -> {tool, params} or null
 look_ai_is_referent(phrase)            -> bool
 look_ai_is_file_query(query, now)      -> bool

@@ -10,17 +10,19 @@ powered by the user's Ollama model (see `ai-vision.md` for provider strategy).
 - Typing `>` switches the panel to the session screen (search and the web answer
   card are suppressed). The empty state teaches the three uses: add an event,
   add a reminder, ask a question.
-- Session items stack chronologically and auto-scroll: completed actions
-  ("Added \"Lunch\"" with Undo), user questions ("› ..."), and streaming
-  answers (markdown-rendered).
-- Footer adapts: `Esc leave · Cmd+Z undo · @ sets exact time`, and while an
-  answer streams, `Cmd+. stop · Esc leave · Cmd+Z undo`.
+- Turns stack newest-first (the latest exchange is always on top without
+   scrolling), while a question stays glued above its own answer inside a turn.
+   Items are completed actions ("Added \"Lunch\"" with Undo), user questions,
+   and streaming answers.
+- Footer adapts: `Esc leave · ⌘Z undo · @ sets exact time`, and while an
+   answer streams, `⌘. stop · Esc leave · ⌘Z undo`.
 
 ## Input paths (three producers, one spine)
 
 1. **Explicit `@` form** - `>add lunch @ 1pm`, `>remind call mom @3pm`.
-   Deterministic parser (`ExplicitActionParser`), instant, no model. The parser
-   handles ONLY this delimited form; it never guesses at natural language.
+   Deterministic parser (`core/ai/src/explicit.rs`, reached via
+   `look_ai_parse_explicit`), instant, no model. It handles ONLY this delimited
+   form; it never guesses at natural language.
 2. **Natural-language action** - `>add walk my dog on sat 9am`. The model
    planner classifies + normalizes the title; dates are extracted in code (see
    Speed below). While typing, a plan runs on a 300ms idle so the confirm bar
@@ -31,9 +33,9 @@ resolved from the whole phrase so the day stays correct) and chat falls back to
 the selected provider's single-turn answer stream. `>` never dead-ends.
 
 3. **Chat** - anything the planner declines becomes a chat turn on Enter: the
-   question and a streamed answer join the session. Context is the last ~10
-   session items, including performed actions (as `[Done: ...]`), so follow-ups
-   like "what did I just add?" work. Mutations (move/cancel/complete/snooze/
+   question and a streamed answer join the session. Context is the newest turns
+   that fit the token budget, including performed actions (as `[Done: ...]`), so
+   follow-ups like "what did I just add?" work. Mutations (move/cancel/complete/snooze/
    block) DO ship: they are typed as instructions and confirmed on the preview
    bar, and the chat prompt says so rather than refusing.
 
@@ -50,8 +52,10 @@ enters AI mode (sparkles icon + its own placeholder in the input bar); every
 message after is AI input until Esc leaves.
 
 - **Enter** on a pending bar confirms; the input clears and the mode continues.
-- **Esc** is two-step: with a pending confirm it cancels just that; otherwise it
-  saves the conversation and leaves the mode for home.
+- **Esc** is a three-step ladder: a pending confirm (or disambiguation) cancels
+  first; an open chat saves and drops to the sessions list, staying in AI mode;
+  from the list it leaves AI mode for home. **Shift+Esc** skips the ladder and
+  goes straight home from anywhere in AI mode.
 - **Cmd+Space (hide/recall)** suspends: mode and conversation survive.
 - **Cmd+Z** undoes the last action while its session item is undoable; otherwise
   it passes through to normal text-field undo.
@@ -63,13 +67,17 @@ Stored in one human-readable JSON file,
 incrementally as items complete. Crash-safe for real: writes go to a temp file
 and rename, and a file that fails to parse is moved aside as `.corrupt` rather
 than being silently overwritten with an empty list. Bounds: 20 conversations, last 60
-items each; the model context per turn stays capped at the last 10 items, so
-continuing an old conversation carries reasonable, bounded weight.
+items each. The model context per turn is a TOKEN budget, not a fixed count:
+the newest turns that fit ~2500 tokens (`core/ai/src/context.rs`), so a long
+chat stays coherent without a summarizer and an old conversation resumes with
+bounded weight.
 
 Empty AI mode shows the recent conversations: typing searches them (title +
-content), **number + Enter** (or click) continues one - the full transcript
-restores and the chat picks up with context - and typing a real prompt starts a
-fresh conversation. While browsing the list, no model calls fire; Enter drives
+content), and **⌘ + a home-row key** (⌘A, ⌘S, ⌘D ... matching the chip on each
+row) opens one - as does highlighting it with Tab/↑↓ and pressing Enter, or
+clicking. The full transcript restores and the chat picks up with context;
+typing a real prompt starts a fresh conversation instead. A bare number is NOT a
+shortcut here - numbers answer the disambiguation list only. While browsing the list, no model calls fire; Enter drives
 everything (instant `@` forms still preview live).
 
 ## Markdown in answers
@@ -110,7 +118,8 @@ Measured: plan ~0.9-1.0s warm, non-action decline ~0.4s, `@` form 0ms.
 
 - Day but no clock time ("sarah's birthday march 5") -> all-day event that day.
 - No date at all -> all-day today (events) / undated (reminders).
-- Clock-time detection is lexical (`DatePhrase.hasClockTime`), not a guess.
+- Clock-time detection is lexical (`has_clock_time` in `core/ai/src/resolve.rs`),
+  not a guess.
 
 ## Beyond the session panel
 

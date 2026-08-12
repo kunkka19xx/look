@@ -951,7 +951,7 @@ struct LauncherView: View {
             .foregroundStyle(themeStore.fontColor())
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(themeStore.controlFillColor().opacity(0.9), in: Capsule())
+            .background(themeStore.surfaceFill(0.9), in: Capsule())
             .padding(.horizontal, 8)
             .padding(.top, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1259,7 +1259,7 @@ struct LauncherView: View {
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(themeStore.controlFillColor(), in: Capsule())
+                .background(themeStore.surfaceFill(), in: Capsule())
             }
         }
         .padding(.horizontal, 10)
@@ -1475,7 +1475,7 @@ struct LauncherView: View {
                                         }
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 6)
-                                        .background(themeStore.controlFillColor().opacity(0.55), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                        .background(themeStore.surfaceFill(0.55), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -1506,59 +1506,20 @@ struct LauncherView: View {
                             if !filteredConversations.isEmpty {
                                 VStack(alignment: .leading, spacing: 6) {
                                     ForEach(Array(filteredConversations.enumerated()), id: \.element.id) { index, convo in
-                                        HStack(alignment: .top, spacing: 8) {
-                                            Text(index < Self.sessionJumpKeys.count ? "⌘\(String(Self.sessionJumpKeys[index]).uppercased())" : "")
-                                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .semibold))
-                                                .foregroundStyle(themeStore.accentColor())
-                                                .frame(minWidth: 22, alignment: .leading)
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                HStack(spacing: 8) {
-                                                    Text(convo.title)
-                                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
-                                                        .foregroundStyle(themeStore.fontColor())
-                                                        .lineLimit(1)
-                                                    Spacer()
-                                                    Text(convo.updatedAt.formatted(.relative(presentation: .named)))
-                                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
-                                                        .foregroundStyle(themeStore.mutedTextColor())
-                                                }
-                                                let snippet = conversationSnippet(convo)
-                                                if !snippet.isEmpty {
-                                                    Text(snippet)
-                                                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
-                                                        .foregroundStyle(themeStore.mutedTextColor().opacity(0.75))
-                                                        .lineLimit(2)
-                                                        .multilineTextAlignment(.leading)
-                                                }
-                                            }
-                                            Button {
-                                                deleteConversation(convo)
-                                            } label: {
-                                                Image(systemName: "trash")
-                                                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
-                                                    .foregroundStyle(themeStore.mutedTextColor().opacity(selectedConversationIndex == index ? 0.9 : 0.35))
-                                            }
-                                            .buttonStyle(.plain)
-                                            .help("Delete conversation (⌘⌫)")
-                                        }
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background {
-                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                .fill(themeStore.controlFillColor().opacity(0.55))
-                                            if selectedConversationIndex == index {
-                                                // One pill glides between rows (matchedGeometryEffect),
-                                                // the same mechanism the results list uses.
-                                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                    .fill(themeStore.accentColor().opacity(0.2))
-                                                    .matchedGeometryEffect(id: "look.session.pill", in: conversationSelectionNamespace)
-                                            }
-                                        }
-                                        .contentShape(Rectangle())
-                                        .onTapGesture {
-                                            chat.continueConversation(convo)
-                                            query = ""
-                                        }
+                                        ConversationRowView(
+                                            conversation: convo,
+                                            snippet: conversationSnippet(convo),
+                                            jumpKey: index < Self.sessionJumpKeys.count
+                                                ? "⌘\(String(Self.sessionJumpKeys[index]).uppercased())"
+                                                : "",
+                                            isSelected: selectedConversationIndex == index,
+                                            themeStore: themeStore,
+                                            namespace: conversationSelectionNamespace,
+                                            onOpen: {
+                                                chat.continueConversation(convo)
+                                                query = ""
+                                            },
+                                            onDelete: { deleteConversation(convo) })
                                         .id(convo.id)
                                     }
                                 }
@@ -1737,7 +1698,7 @@ struct LauncherView: View {
                 }
             }
             .padding(10)
-            .background(themeStore.controlFillColor().opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(themeStore.surfaceFill(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     /// Inline markdown (bold, italic, `code`, links) for chat prose. Block
@@ -1759,7 +1720,7 @@ struct LauncherView: View {
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(themeStore.controlFillColor().opacity(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(themeStore.surfaceFill(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     /// Stop the running generation without leaving the chat (Esc ends the whole
@@ -1779,7 +1740,7 @@ struct LauncherView: View {
                     .foregroundStyle(themeStore.fontColor())
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(themeStore.controlFillColor(), in: Capsule())
+                    .background(themeStore.surfaceFill(), in: Capsule())
             }
             .buttonStyle(.plain)
             .help("Stop generating (⌘.)")
@@ -1788,7 +1749,7 @@ struct LauncherView: View {
                 .foregroundStyle(themeStore.mutedTextColor())
         }
         .padding(10)
-        .background(themeStore.controlFillColor().opacity(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(themeStore.surfaceFill(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     @ViewBuilder

@@ -49,6 +49,19 @@ extension ThemeStore {
         return Color(red: 0.18, green: 0.18, blue: 0.20, opacity: 0.30)
     }
 
+    /// A plate drawn inside an already-materialized panel: chat bubbles, the
+    /// thinking/stop bars, note pills, key caps. Scaled per material so Liquid
+    /// Glass keeps refracting instead of being covered by stacked fills.
+    func surfaceFill(_ opacity: Double = 1) -> Color {
+        controlFillColor().opacity(surfaceOpacity(opacity))
+    }
+
+    /// The scaled opacity itself, for surfaces that need their own colour (the
+    /// code block's darkening plate) rather than the control fill.
+    func surfaceOpacity(_ opacity: Double) -> Double {
+        min(1, max(0, opacity * settings.blurMaterial.surfaceOpacityScale))
+    }
+
     func dividerColor() -> Color {
         if let style = activeAppearanceStyle(), let token = style.divider {
             return color(from: token, opacity: style.dividerOpacity)

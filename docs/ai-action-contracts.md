@@ -21,9 +21,12 @@ parser and can never reach an execution path the deterministic parser can't.
    deterministically instead of showing an empty panel (file search widens the
    time window, then drops unmatched terms; schedule questions fall back to a
    7-day window).
-3. **Model interpretation, on Enter only** - schema-forced, cancellable, and
-   emitting the same typed intent as tier 1. Never free-form text that gets
-   re-parsed.
+3. **Model interpretation** - schema-forced, cancellable, and emitting the same
+   typed intent as tier 1. Never free-form text that gets re-parsed. Action
+   planning runs while typing (on a 300ms idle) so the preview appears without
+   pressing Enter; the *utility* intents (`recall`, `textop`) and the
+   disambiguation list are Enter-only, because jumping the panel to file results
+   or transforming the clipboard mid-keystroke would be hostile.
 
 Two deliberate exceptions:
 
@@ -75,7 +78,11 @@ aliases mapped to real ids in the planner, which keeps generation short:
 | `textop` | `clipboard.textop` | `instruction` |
 
 `resolve_step` validates the per-tool requirements and returns `{tool, params}`
-with real ids, or nothing when the step is unusable.
+with real ids, or nothing when the step is unusable. Two tolerances worth
+knowing: the mutate tools (`cancel`, `complete`, `delete`) accept `title` as a
+stand-in when the model puts the subject there instead of `match`, and `recall`
+is rejected unless at least one of its four facets is present (all four are
+individually optional, but an empty recall is not a query).
 
 Planning runs as a **cancellable session** (`look_ai_plan_start` / `_poll` /
 `_cancel`) on the same curl transport as chat, so a superseded request is
