@@ -32,7 +32,10 @@ struct ThemedBackdrop: View {
         ZStack {
             if themeStore.settings.blurMaterial == .liquidGlass, #available(macOS 26.0, *) {
                 // No blur substrate: frost in front of the refraction flattens it.
-                GlassEffectBackdrop(cornerRadius: cornerRadius, tint: tintColor)
+                GlassEffectBackdrop(
+                    cornerRadius: cornerRadius,
+                    tint: tintColor,
+                    appearance: themeStore.themeAppearance())
                     .opacity(clamped(blurOpacityMultiplier))
             } else {
                 VisualEffectBlur(

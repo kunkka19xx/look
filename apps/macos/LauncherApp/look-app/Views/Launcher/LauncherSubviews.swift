@@ -59,7 +59,7 @@ struct SearchInputBar: View {
                     if text.isEmpty {
                         Text(placeholderText)
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize)))
-                            .foregroundStyle(themeStore.mutedTextColor())
+                            .foregroundStyle(themeStore.placeholderTextColor())
                             .lineLimit(1)
                             .padding(.leading, Layout.placeholderLeadingInset)
                             .allowsHitTesting(false)

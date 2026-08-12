@@ -35,6 +35,13 @@ extension ThemeStore {
         return dimmableColor(baseColor: fontColor(), factor: 0.64)
     }
 
+    /// Muted everywhere except on glass. Glass keeps whatever is on the desktop
+    /// visible through it, so the dimmest text in the app loses against a white
+    /// document. Steps up to secondary there.
+    func placeholderTextColor() -> Color {
+        settings.blurMaterial.rendersGlass ? secondaryTextColor() : mutedTextColor()
+    }
+
     func panelFillColor() -> Color {
         if let style = activeAppearanceStyle(), let token = style.panelFill {
             return color(from: token, opacity: style.panelFillOpacity)

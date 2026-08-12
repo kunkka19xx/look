@@ -152,6 +152,10 @@ struct LauncherView: View {
     static let panelCoordinateSpace = "launcherPanel"
 
     static let floatingTileScrimOpacity = 0.30
+    /// Legibility floor for surfaces that float on the bare desktop while the
+    /// material is Liquid Glass. Tune here: too low and light theme text
+    /// disappears over a white window, too high and the refraction is lost.
+    static let glassLegibilityScrimOpacity = 0.22
     /// Resting corner for a tile that floats free of its neighbours, and for the
     /// seated variant that reads as part of one box. Both are scaled by the
     /// active theme surface (Liquid rounds harder) at each use.
@@ -2072,6 +2076,16 @@ struct LauncherView: View {
                     themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
                 } else {
                     ThemedBackdrop(themeStore: themeStore, cornerRadius: cornerRadius)
+                    // Liquid Glass is transparent to the desktop, and a floating
+                    // surface sits over content we do not control. The launchpad
+                    // tiles get away with it because the panel backs them; this
+                    // bar does not, so over a white window the theme's own light
+                    // text lands on near-white. A scrim guarantees the substrate
+                    // the glass cannot: enough to read against, well under the
+                    // weight that would cancel the refraction.
+                    if themeStore.settings.blurMaterial.rendersGlass {
+                        themeStore.scrimColor(opacity: Self.glassLegibilityScrimOpacity)
+                    }
                 }
                 themeStore.controlFillColor()
             }
