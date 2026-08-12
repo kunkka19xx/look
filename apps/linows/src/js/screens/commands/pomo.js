@@ -191,7 +191,31 @@ export function exit() {
     clearIdleFade();
 }
 
+function activeSessionField() {
+    const ae = document.activeElement;
+    if (!ae || !panel?.contains(ae)) return null;
+    if (
+        ae.classList.contains('cmd-pomo-session-name-input') ||
+        ae.classList.contains('cmd-pomo-session-dur')
+    ) {
+        return ae;
+    }
+    return null;
+}
+
 export function handleKey(e) {
+    const field = activeSessionField();
+    if (field) {
+        // While editing a session, keep timer/music shortcuts from hijacking
+        // text input. Esc just leaves the field instead of exiting /pomo.
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            field.blur();
+            return true;
+        }
+        return false;
+    }
+
     if (e.key === ' ' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         toggle();
