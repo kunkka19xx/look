@@ -56,8 +56,7 @@ export async function perform(text) {
     panel = document.createElement('div');
     panel.className = 'translate-panel pane-tile';
     container.appendChild(panel);
-    layout.refresh();
-
+    
     // Source header: bold text + WEB badge
     const sourceHeader = document.createElement('div');
     sourceHeader.className = 'translate-source';
@@ -125,6 +124,7 @@ export async function perform(text) {
         externalLink +
         '</span>';
     panel.appendChild(footer);
+    layout.refresh();
 
     // Translate all 3 in parallel
     const results = await Promise.allSettled(LANGUAGES.map((lang) => translate(text, lang.code)));
