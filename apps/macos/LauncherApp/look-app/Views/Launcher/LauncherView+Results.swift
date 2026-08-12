@@ -41,6 +41,12 @@ extension LauncherView {
             clipboardStore.recordLabeled(display: "\(selected.calcExpression ?? "") = \(selected.title)", payload: raw)
             hideLauncherWindow(restorePreviousApp: false)
             return
+        case .aiAction:
+            // Planner-proposed action row: the row the user just read IS the
+            // confirmation - one Enter performs it, the banner offers ⌘Z.
+            guard let planned = mainBarAction else { return }
+            runQuickAction(planned)
+            return
         case nil:
             break
         }

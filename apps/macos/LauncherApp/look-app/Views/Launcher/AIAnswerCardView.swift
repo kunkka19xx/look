@@ -26,7 +26,7 @@ struct AIAnswerCardView: View {
                     }
                     if hasLLM {
                         answerBlock(
-                            text: controller.llmAnswer, source: "Apple Intelligence", url: nil,
+                            text: controller.llmAnswer, source: controller.llmSourceLabel, url: nil,
                             imageURL: nil)
                     }
                     statusLine

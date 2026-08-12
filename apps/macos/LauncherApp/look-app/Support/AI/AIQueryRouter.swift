@@ -29,22 +29,19 @@ final class AIQueryRouter: @unchecked Sendable {
         switch kind {
         case .appleIntelligence:
             return AppleIntelligenceProvider()
-        // Future providers slot in here, e.g.:
-        // case .claude: return ClaudeProvider()
+        case .ollama:
+            return OllamaProvider()
         }
     }
 
-    /// Rewrites `query` using `kind` into the engine's prefix grammar, or returns
-    /// `nil` to signal "use the raw query unchanged". Never throws - AI is
-    /// best-effort and must not block search.
-    func rewrite(query: String, using kind: AIProviderKind) async -> String? {
-        let provider = provider(for: kind)
-        guard provider.availability.isAvailable else { return nil }
-        guard let intent = await provider.understand(query: query) else { return nil }
-        let rewritten = intent.engineQuery()
-        // Don't bother round-tripping if the model gave us nothing useful.
-        guard !rewritten.isEmpty else { return nil }
-        return rewritten
+    /// Whether private context (calendar, clipboard, remembered facts) may be
+    /// attached to a prompt for `kind`. True when the provider runs on this
+    /// machine, or when the user has explicitly allowed remote context. The
+    /// invariant lives here rather than in a comment, so a provider added
+    /// later cannot inherit personal data by default.
+    func allowsPrivateContext(_ kind: AIProviderKind) -> Bool {
+        if ThemeStore.shared.settings.aiAllowRemoteContext { return true }
+        return provider(for: kind).isLocal
     }
 
     /// Streams a short free-form answer for `query` using `kind`, or returns
@@ -57,10 +54,10 @@ final class AIQueryRouter: @unchecked Sendable {
     }
 
     /// Warm up the provider so the next answer is faster. Safe to call often.
+    /// Not gated on availability: providers self-guard, and touching a provider
+    /// that reports transiently-unavailable is exactly what wakes it up.
     func prewarm(_ kind: AIProviderKind) {
-        let provider = provider(for: kind)
-        guard provider.availability.isAvailable else { return }
-        provider.prewarm()
+        provider(for: kind).prewarm()
     }
 
     /// Current availability of `kind`, for surfacing status in Settings.

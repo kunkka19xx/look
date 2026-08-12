@@ -23,10 +23,6 @@ struct LauncherRowView: View {
         static let dividerOpacity: Double = 0.8
     }
 
-    private var pillCornerRadius: CGFloat {
-        themeStore.surfaceCornerRadius(Layout.cornerRadius)
-    }
-
     /// Drives the one-shot zoom as this row takes the selection.
     @State private var zoomed = false
     /// Bumped on every zoom and on deselect, so a pending reset that belongs to
@@ -80,6 +76,11 @@ struct LauncherRowView: View {
             return RowIconCache.image(key: "symbol:magnifyingglass") {
                 NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
                     ?? NSWorkspace.shared.icon(for: .plainText)
+            }
+        case .aiAction(let toolID):
+            // Keyed per tool: each one has its own symbol.
+            return RowIconCache.image(key: "aiaction:\(toolID)") {
+                AIActionAppearance.icon(forToolID: toolID)
             }
         case nil:
             break
@@ -195,14 +196,10 @@ struct LauncherRowView: View {
                 // `Motion.Selection.glide` (keyboard nav) and snaps otherwise
                 // (click, results refresh).
                 if isSelected {
-                    RoundedRectangle(cornerRadius: pillCornerRadius, style: .continuous)
-                        .fill(themeStore.selectionFillColor())
-                        .overlay {
-                            RoundedRectangle(cornerRadius: pillCornerRadius, style: .continuous)
-                                .stroke(themeStore.dividerColor(), lineWidth: Layout.borderWidth)
-                        }
-                        .matchedGeometryEffect(id: Motion.Selection.geometryID, in: selectionNamespace)
-                        .scaleEffect(isSelected && zoomed ? Motion.Selection.pillZoomScale : 1)
+                    SelectionPill(
+                        themeStore: themeStore,
+                        namespace: selectionNamespace,
+                        zoomed: zoomed)
                 }
             }
             // Deliberately no `.animation(_:value:)` in this row: per-row it

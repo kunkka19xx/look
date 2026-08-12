@@ -238,6 +238,11 @@ final class ThemeStore: ObservableObject {
         // Apple Intelligence / AI features
         ConfigFileLines.upsert(&lines, key: "ai_enabled", value: settings.aiEnabled ? "true" : "false")
         ConfigFileLines.upsert(&lines, key: "ai_provider", value: settings.aiProvider.rawValue)
+        ConfigFileLines.upsert(&lines, key: "ollama_host", value: settings.ollamaHost)
+        ConfigFileLines.upsert(&lines, key: "ollama_model", value: settings.ollamaModel)
+        ConfigFileLines.upsert(
+            &lines, key: "ai_allow_remote_context",
+            value: settings.aiAllowRemoteContext ? "true" : "false")
 
         // Empty-state super actions launchpad
         ConfigFileLines.upsert(&lines, key: "super_actions_enabled", value: settings.superActionsEnabled ? "true" : "false")
@@ -551,6 +556,18 @@ final class ThemeStore: ObservableObject {
                 if let parsed = AIProviderKind(rawValue: value) {
                     settings.aiProvider = parsed
                 }
+            case "ollama_host":
+                if !value.isEmpty {
+                    settings.ollamaHost = value
+                }
+            case "ollama_model":
+                if !value.isEmpty {
+                    settings.ollamaModel = value
+                }
+            case "ai_allow_remote_context":
+                if let parsed = parseBool(value) {
+                    settings.aiAllowRemoteContext = parsed
+                }
             case "super_actions_enabled":
                 if let parsed = parseBool(value) {
                     settings.superActionsEnabled = parsed
@@ -853,9 +870,18 @@ running_apps_placement=right
 # Inner gap (points, 0-24) between the three home panes; 0 = classic flat layout
 inner_gap=0
 
-# Apple Intelligence / AI features. ai_provider: appleIntelligence
+# Apple Intelligence / AI features. ai_provider: appleIntelligence | ollama
 ai_enabled=true
 ai_provider=appleIntelligence
+# Ollama (local) settings, used when ai_provider=ollama.
+ollama_host=http://localhost:11434
+ollama_model=llama3.1
+
+# Whether the calendar, clipboard, and remembered facts may be attached to
+# prompts when the AI provider is NOT on this machine (a remote ollama_host, or
+# a future cloud provider). Off means those answers are computed without that
+# context and say so.
+ai_allow_remote_context=false
 
 # Super actions: empty-state launchpad of quick toggles / actions.
 # false hides the strip and disables its keyboard accelerators.
@@ -900,6 +926,12 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
         }
         if object["aiProvider"] == nil {
             object["aiProvider"] = ThemeSettings.default.aiProvider.rawValue
+        }
+        if object["ollamaHost"] == nil {
+            object["ollamaHost"] = ThemeSettings.default.ollamaHost
+        }
+        if object["ollamaModel"] == nil {
+            object["ollamaModel"] = ThemeSettings.default.ollamaModel
         }
         if object["superActionsEnabled"] == nil {
             object["superActionsEnabled"] = ThemeSettings.default.superActionsEnabled
