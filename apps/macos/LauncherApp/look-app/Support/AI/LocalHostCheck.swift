@@ -8,8 +8,12 @@ import Foundation
 /// the failure mode of a sloppy check ("localhost.evil.com" reading as local)
 /// is silently shipping the user's calendar off-device.
 nonisolated enum LocalHostCheck {
+    /// Loopback only. `0.0.0.0` is deliberately absent: it is the unspecified
+    /// address a daemon binds to in order to listen on EVERY interface, so
+    /// treating it as proof of local inference would let a network-exposed
+    /// endpoint collect private context.
     private static let localNames: Set<String> = [
-        "localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]",
+        "localhost", "127.0.0.1", "::1", "[::1]",
     ]
 
     /// Ollama can proxy a "cloud" model (`gpt-oss:120b-cloud`) through the

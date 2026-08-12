@@ -56,6 +56,10 @@ final class LocalHostCheckTests: XCTestCase {
 
     func testRemoteHostsAreNotLocal() {
         for host in [
+            // The unspecified address means "listen on every interface", which
+            // is the opposite of proof that inference stays on this machine.
+            "http://0.0.0.0:11434",
+            "0.0.0.0",
             "http://192.168.1.50:11434",
             "http://ollama.internal:11434",
             "https://api.openai.com",

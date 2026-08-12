@@ -74,6 +74,12 @@ pub fn start(host: &str, model: &str, messages_json: &str, options_json: &str) -
         "model": model,
         "messages": messages,
         "stream": true,
+        // Reasoning models (qwen3, deepseek-r1, ...) emit hidden `thinking`
+        // tokens by default. In a launcher that is pure cost: the budget is
+        // spent before any answer text appears, so a planner capped at 80
+        // tokens returns NOTHING and a chat answer arrives truncated. Ollama
+        // ignores this field for models without a thinking mode.
+        "think": false,
         "options": { "temperature": temperature, "num_predict": num_predict },
         "keep_alive": "30m",
     })
@@ -124,7 +130,6 @@ pub(crate) fn start_request(url: &str, body: &str, max_time_secs: u32) -> u64 {
     let reader_child = Arc::clone(&child_slot);
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
-        let mut saw_output = false;
         let mut saw_done = false;
         for line in reader.lines() {
             let Ok(line) = line else { break };
@@ -137,7 +142,6 @@ pub(crate) fn start_request(url: &str, body: &str, max_time_secs: u32) -> u64 {
                 }
                 break;
             }
-            saw_output = true;
             if !parsed.delta.is_empty()
                 && let Ok(mut s) = reader_state.lock()
             {
@@ -157,8 +161,11 @@ pub(crate) fn start_request(url: &str, body: &str, max_time_secs: u32) -> u64 {
         // ever observes `done` (the map entry may linger; the process may not).
         reap(&reader_child);
         if let Ok(mut s) = reader_state.lock() {
-            if s.error.is_none() && !saw_output && s.text.is_empty() {
-                s.error = Some("no response".into());
+            // Empty text IS no response, even when lines parsed fine: a
+            // reasoning model with thinking left on emits only hidden tokens,
+            // which would otherwise leave the placeholder spinning forever.
+            if s.error.is_none() && s.text.is_empty() {
+                s.error = Some("the model returned no answer".into());
             } else if s.error.is_none() && !saw_done && !s.text.is_empty() {
                 // The stream died mid-answer (e.g. curl's --max-time): partial
                 // text must not read as a complete answer.

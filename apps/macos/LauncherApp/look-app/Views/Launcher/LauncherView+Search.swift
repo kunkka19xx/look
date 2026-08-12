@@ -163,26 +163,33 @@ extension LauncherView {
             return
         }
 
-        invalidateSearchRequests()
+        // Supersede any in-flight search, then run this one exactly like the
+        // others: off the main thread (the FFI call scans the index and would
+        // otherwise freeze the window), and published through the shared path
+        // so it gets the same searchID + query-identity guard.
+        let searchID = beginSearchRequest()
+        searchTask?.cancel()
         querySilentlyCleared = true
         query = request.query
-
-        let outcome = EngineBridge.shared.searchFiles(
-            params: request.params, limit: AppConstants.Launcher.defaultSearchLimit)
-        backendResults = outcome?.results ?? []
-        setInitialSelection()
         aiAnswer.cancel()
-        if let outcome, !outcome.results.isEmpty {
-            fileRecallEmptyMessage = nil
-            fileRecallNote = ["Interpreted: \(Self.recallSummary(request.params))",
-                              Self.relaxationNote(outcome.relaxed)]
-                .compactMap { $0 }
-                .joined(separator: "  ·  ")
-        } else {
-            fileRecallEmptyMessage = "No files match \u{201C}\(request.query)\u{201D}."
-            fileRecallNote = nil
-        }
+
+        // Focus first: the field must be usable while the index is queried,
+        // not only once results land.
         DispatchQueue.main.async { isQueryFocused = true }
+
+        let params = request.params
+        let requested = request.query
+        let limit = AppConstants.Launcher.defaultSearchLimit
+        searchTask = Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.searchFiles(params: params, limit: limit)
+            }.value
+            guard !Task.isCancelled else { return }
+            publishSearchResults(
+                outcome?.results ?? [], searchID: searchID, for: requested,
+                isFileRecall: true, relaxed: outcome?.relaxed,
+                interpreted: Self.recallSummary(params))
+        }
     }
 
     /// One-Enter action from the main-bar row: perform, banner with undo, back

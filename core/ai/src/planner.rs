@@ -58,6 +58,9 @@ pub fn request_body(model: &str, user: &str) -> String {
             { "role": "user", "content": user },
         ],
         "stream": false,
+        // A reasoning model would spend the whole 80-token budget on hidden
+        // thinking and return no JSON at all. Ignored by non-thinking models.
+        "think": false,
         "options": { "temperature": 0, "num_predict": 80 },
         "keep_alive": "30m",
         "format": plan::chat_format(&sorted_aliases()),

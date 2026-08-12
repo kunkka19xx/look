@@ -60,7 +60,46 @@ pub(crate) fn write_atomic(path: &Path, data: &[u8]) -> bool {
         let _ = fs::remove_file(&tmp);
         return false;
     }
-    fs::rename(&tmp, path).is_ok()
+    if fs::rename(&tmp, path).is_ok() {
+        return true;
+    }
+    // Every write mints a fresh temp name, so a failing rename (permissions, a
+    // full disk, a path that vanished) would otherwise litter one file per
+    // attempt next to the store.
+    let _ = fs::remove_file(&tmp);
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_rename_leaves_no_temp_file() {
+        // Renaming onto a directory fails, so this exercises the cleanup path.
+        let dir = std::env::temp_dir().join(format!("look-store-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("make dir");
+
+        assert!(
+            !write_atomic(&dir, b"payload"),
+            "rename onto a dir must fail"
+        );
+
+        let leftovers: Vec<_> = fs::read_dir(dir.parent().expect("parent"))
+            .expect("read temp dir")
+            .filter_map(Result::ok)
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(&format!("look-store-test-{}", std::process::id()))
+                    && e.file_name().to_string_lossy().ends_with(".tmp")
+            })
+            .collect();
+        assert!(leftovers.is_empty(), "temp files left: {leftovers:?}");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
 
 fn suffixed(path: &Path, suffix: &str) -> PathBuf {

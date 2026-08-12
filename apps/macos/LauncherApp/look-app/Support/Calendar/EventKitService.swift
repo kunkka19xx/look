@@ -142,7 +142,13 @@ nonisolated final class EventKitService: @unchecked Sendable {
         event.isAllDay = isAllDay
         event.calendar = store.defaultCalendarForNewEvents
         try store.save(event, span: .thisEvent, commit: true)
-        return event.eventIdentifier
+        // `eventIdentifier` is implicitly unwrapped, so a nil would trap here.
+        // It is also the id undo needs, so a missing one must surface as an
+        // error rather than a crash or an event that cannot be taken back.
+        guard let identifier = event.eventIdentifier as String? else {
+            throw EventKitServiceError("The calendar did not return an id for that event.")
+        }
+        return identifier
     }
 
     func removeEvent(id: String) throws {

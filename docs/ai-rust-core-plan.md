@@ -157,10 +157,24 @@ linows: the same functions as Tauri commands; streaming as Tauri events
 - **P1 rescope**: `TitleMatcher` and `normalizeShorthand`/`hasClockTime` are
   called from inside the Swift package tools, which cannot reach FFI; they move
   in P4 together with tool resolution rather than growing drift-prone copies.
-- **Build gotcha**: the Xcode run-script declares `RustBuild/liblook_ffi.a` as
-  its output, so Xcode SKIPS the cargo rebuild whenever the file exists. After
-  adding FFI symbols, `rm apps/macos/LauncherApp/RustBuild/liblook_ffi.a` (or
-  the link fails with undefined `_look_ai_*`, or silently uses a stale brain).
+- **Build gotcha (two failure modes, one cause)**: the static library reaches
+  the link step through `-Wl,-force_load,.../RustBuild/liblook_ffi.a` in
+  `OTHER_LDFLAGS`, and Xcode does not treat a path inside a linker flag as a
+  tracked build input. Nothing downstream knows the `.a` changed.
+  - **Adding an FFI symbol** fails loudly: undefined `_look_ai_*` at link time.
+  - **Changing existing Rust behaviour fails SILENTLY**: cargo rebuilds the
+    `.a`, but with no Swift source touched there is nothing to trigger a
+    relink, so the app keeps running the previous brain and looks like the fix
+    did not work. (Verify with
+    `strings <DerivedData>/Build/Products/Debug/Look.app/Contents/MacOS/Look.debug.dylib | grep <a-string-you-added>`
+    - note it is the **dylib**, not the `Look` launcher shim, that holds the code
+    in Debug builds.)
+  - Workaround either way: `touch` any Swift file, or delete
+    `apps/macos/LauncherApp/RustBuild/liblook_ffi.a`, before rebuilding.
+  - Real fix (not done): make the `.a` a tracked input, e.g. add it to the
+    target's Link Binary With Libraries phase, or have the script emit a
+    generated Swift stamp file the target compiles. Both change link behaviour
+    for everyone, so decide deliberately rather than mid-feature.
 
 ## Migration order
 

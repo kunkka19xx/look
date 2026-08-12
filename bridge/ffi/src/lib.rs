@@ -617,6 +617,10 @@ mod tests {
     /// lands before any engine thread exists to read it concurrently. The
     /// database path needs to differ per test and goes through
     /// `state::set_db_path_for_test` instead, which touches no environment.
+    /// Callers take this with `unwrap_or_else(|p| p.into_inner())`, never
+    /// `expect`: a panicking test poisons the mutex, and panicking again on
+    /// the poison turns one real failure into a cascade of "test lock
+    /// poisoned" reports that bury the actual cause.
     fn test_lock() -> &'static Mutex<()> {
         TEST_MUTEX.get_or_init(|| {
             let path = test_config_path();
@@ -636,7 +640,9 @@ mod tests {
 
     #[test]
     fn ffi_search_and_record_usage_smoke() {
-        let _guard = test_lock().lock().expect("test lock poisoned");
+        let _guard = test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);
@@ -796,7 +802,9 @@ mod tests {
 
     #[test]
     fn ai_load_targets_then_resolve_from_store() {
-        let _guard = test_lock().lock().expect("test lock poisoned");
+        let _guard = test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let events =
             CString::new(r#"[{"id":"e1","title":"Dentist","start":0,"end":3600,"all_day":false}]"#)
@@ -825,7 +833,9 @@ mod tests {
 
     #[test]
     fn ffi_reload_refresh_and_translate_error_smoke() {
-        let _guard = test_lock().lock().expect("test lock poisoned");
+        let _guard = test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);
@@ -899,7 +909,9 @@ mod tests {
 
     #[test]
     fn ffi_todo_save_and_list_round_trip() {
-        let _guard = test_lock().lock().expect("test lock poisoned");
+        let _guard = test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         // The todo store resolves LOOK_DB_PATH on every call, so pointing
         // it at a scratch database keeps the test off the real look.db.
@@ -912,7 +924,11 @@ mod tests {
             r#"[{"id":"t1","name":"Ship the todo backend","done":true,"due_date":"2999-01-01","created_at_unix_s":1000}]"#,
         )
         .expect("tasks cstring");
-        assert!(look_todo_save_json(tasks.as_ptr()), "save should succeed");
+        assert!(
+            look_todo_save_json(tasks.as_ptr()),
+            "save should succeed (db: {})",
+            db_path.display()
+        );
 
         let ptr = look_todo_list_json();
         assert!(!ptr.is_null());
@@ -946,7 +962,9 @@ mod tests {
 
     #[test]
     fn ffi_seed_uwp_apps_json_inserts_and_search_finds() {
-        let _guard = test_lock().lock().expect("test lock poisoned");
+        let _guard = test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);
