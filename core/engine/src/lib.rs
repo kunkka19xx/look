@@ -456,7 +456,10 @@ mod tests {
         let outcome = engine.search_files(&filter, 10);
         assert_eq!(outcome.results.len(), 1);
         assert_eq!(outcome.results[0].title, "recent-ish.dmg");
-        assert_eq!(outcome.relaxation, Some(FileSearchRelaxation::WidenedWindow));
+        assert_eq!(
+            outcome.relaxation,
+            Some(FileSearchRelaxation::WidenedWindow)
+        );
     }
 
     #[test]
@@ -511,7 +514,10 @@ mod tests {
         let outcome = engine.search_files(&filter, 10);
         assert_eq!(outcome.results.len(), 1);
         assert_eq!(outcome.results[0].title, "resume.pdf");
-        assert_eq!(outcome.relaxation, Some(FileSearchRelaxation::WidenedWindow));
+        assert_eq!(
+            outcome.relaxation,
+            Some(FileSearchRelaxation::WidenedWindow)
+        );
     }
 
     #[test]

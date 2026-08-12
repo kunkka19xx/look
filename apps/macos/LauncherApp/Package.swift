@@ -26,6 +26,7 @@ let package = Package(
                 "Support/AI/LocalHostCheck.swift",
                 "Support/Actions/ActionTypes.swift",
                 "Support/Actions/DatePhrase.swift",
+                "Support/Actions/ActionResolution.swift",
                 "Support/Actions/ScheduleWords.swift",
                 "Support/SingleInstanceLock.swift",
                 "Models/LauncherResult.swift",
