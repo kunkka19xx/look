@@ -56,7 +56,6 @@ export async function perform(text) {
     panel = document.createElement('div');
     panel.className = 'translate-panel pane-tile';
     container.appendChild(panel);
-    
     // Source header: bold text + WEB badge
     const sourceHeader = document.createElement('div');
     sourceHeader.className = 'translate-source';
@@ -144,6 +143,4 @@ export async function perform(text) {
             body.classList.add('translate-error');
         }
     });
-
-    layout.refresh();
 }
