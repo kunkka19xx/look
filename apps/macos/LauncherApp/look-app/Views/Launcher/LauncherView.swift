@@ -102,6 +102,14 @@ struct LauncherView: View {
     @State var pendingQuickActions: Set<String> = []
     @State var quickActionTask: Task<Void, Never>?
     @State var selectedResultID: String?
+    /// `@`-mention state for the AI input. `mentionHighlight` starts at -1 so
+    /// Enter still SENDS: the popup is passive until Tab reaches into it (same
+    /// shape as the conversation list's -1).
+    @State var mentionMatches: [LauncherResult] = []
+    @State var mentionHighlight = -1
+    @State var mentionSearchTask: Task<Void, Never>?
+    @State var attachments = MentionAttachments()
+
     @State var pickedKeys: [String] = []
     @State var pickedResultsByKey: [String: LauncherResult] = [:]
 
@@ -790,6 +798,17 @@ struct LauncherView: View {
         .onChange(of: pickedKeys) { _, _ in
             actionController.pickedFilePaths = pickedFilePathsForTextOp()
         }
+        // `@token` in the AI input offers files. Separate from the main query
+        // handler so the mention search cannot disturb the search results.
+        .onChange(of: query) { _, _ in
+            refreshMentionMatches()
+        }
+        .onChange(of: isAIMode) { _, stillAI in
+            if !stillAI {
+                dismissMentionPopup()
+                clearAttachments()
+            }
+        }
         .onDisappear {
             invalidateSearchRequests()
             bannerTask?.cancel()
@@ -1455,6 +1474,11 @@ struct LauncherView: View {
 
     private var aiSessionPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Inside the panel rather than in the gap above it: floating in the
+            // margin, these read as chrome belonging to nothing.
+            mentionAttachmentBar
+            mentionPopup
+
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -1686,6 +1710,11 @@ struct LauncherView: View {
                         .background(
                             themeStore.accentColor().opacity(0.14),
                             in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    // What this question was asked ABOUT, kept with the turn so
+                    // the transcript still says it after the bar is cleared.
+                    ForEach(item.attachedPaths, id: \.self) { path in
+                        AttachedFileCapsule(path: path, themeStore: themeStore)
+                    }
                 }
             }
         case .answer:

@@ -24,12 +24,22 @@ struct ActionSessionItem: Identifiable, Equatable {
     /// Parsed markdown, computed once the answer settles so the view renders
     /// without re-parsing on every frame. Empty for non-answers and mid-stream.
     private(set) var segments: [EngineBridge.AIMarkdownSegment] = []
+    /// Files `@`-attached to this turn, kept on the item so the transcript
+    /// still shows what a question was asked ABOUT after the input is cleared.
+    var attachedPaths: [String] = []
 
-    init(kind: Kind = .action, text: String, source: String? = nil, isStreaming: Bool = false) {
+    init(
+        kind: Kind = .action,
+        text: String,
+        source: String? = nil,
+        isStreaming: Bool = false,
+        attachedPaths: [String] = []
+    ) {
         self.kind = kind
         self.text = text
         self.source = source
         self.isStreaming = isStreaming
+        self.attachedPaths = attachedPaths
         recomputeSegments()
     }
 
@@ -57,8 +67,13 @@ final class ActionController: ObservableObject {
     /// they are what a text op can actually aim at.
     var pickedFilePaths: [String] = []
 
+    /// Files `@`-mentioned in the message being submitted. Pushed by
+    /// `LauncherView` on submit and cleared with the input, so they belong to
+    /// one turn rather than lingering like picks.
+    var attachments = MentionAttachments()
+
     private func textOpSource() -> TextOpSource {
-        TextOpSource.resolve(pickedFilePaths: pickedFilePaths)
+        TextOpSource.resolve(mentioned: attachments.paths, pickedFilePaths: pickedFilePaths)
     }
 
     @Published private(set) var pending: PlannedAction?
@@ -254,8 +269,18 @@ final class ActionController: ObservableObject {
         case .files:
             isPlanning = false
             pending = nil
-            // Empty params = "parse the raw query"; the shell owns file results.
-            recallRequest = RecallRequest(query: query, params: [:])
+            // An attached file settles it: "summary this file please?" contains
+            // the word "file", so the deterministic recall parser claims it and
+            // the shell would leave AI mode to show a file LIST - throwing away
+            // the question. With something attached, the user is asking ABOUT
+            // it, not searching for it. The parser cannot know that; only this
+            // layer holds the attachments.
+            if attachments.isEmpty {
+                // Empty params = "parse the raw query"; the shell owns results.
+                recallRequest = RecallRequest(query: query, params: [:])
+            } else {
+                chat.askChat(query, attachments: attachments)
+            }
         case .explicit(let toolID, let params):
             if case .planned(let plan) = resolveOutcome(toolID: toolID, params: params) {
                 isPlanning = false
@@ -266,14 +291,14 @@ final class ActionController: ObservableObject {
                 // model read the same text before giving up to chat.
                 startPlanTask(query)
             } else {
-                chat.askChat(query)
+                chat.askChat(query, attachments: attachments)
             }
         case .plan:
             startPlanTask(query)
         case .chat:
             // No planner: hand the text to the provider's answer path instead
             // of dead-ending (askChat itself reports if no provider is usable).
-            chat.askChat(query)
+            chat.askChat(query, attachments: attachments)
         }
     }
 
@@ -282,7 +307,7 @@ final class ActionController: ObservableObject {
     /// indicator, not before the user sees their own message.
     private func startPlanTask(_ query: String) {
         isPlanning = true
-        chat.append(ActionSessionItem(kind: .user, text: query))
+        chat.append(ActionSessionItem(kind: .user, text: query, attachedPaths: attachments.paths))
         chat.saveConversation()
         let generation = planGeneration
         planTask = Task { [weak self] in
@@ -294,7 +319,7 @@ final class ActionController: ObservableObject {
                 self.handlePlannedCall(call, rawQuery: query)
             } else {
                 // Not an add-action: treat it as a chat turn in the session.
-                self.chat.askChat(query, userItemAppended: true)
+                self.chat.askChat(query, userItemAppended: true, attachments: self.attachments)
             }
         }
     }
@@ -309,15 +334,26 @@ final class ActionController: ObservableObject {
     private func handlePlannedCall(_ call: ToolCall, rawQuery: String) {
         switch call.toolID {
         case "files.recall":
-            recallRequest = RecallRequest(query: rawQuery, params: call.params)
+            // Same rule as the deterministic files route: with a file attached,
+            // the question is about that file, not a search for others.
+            if attachments.isEmpty {
+                recallRequest = RecallRequest(query: rawQuery, params: call.params)
+            } else {
+                // `startPlanTask` already put the message in the transcript, so
+                // this must NOT add it again.
+                chat.askChat(rawQuery, userItemAppended: true, attachments: attachments)
+            }
         case "clipboard.textop":
             guard let instruction = call.params["instruction"], !instruction.isEmpty else {
-                chat.askChat(rawQuery, userItemAppended: true)
+                chat.askChat(rawQuery, userItemAppended: true, attachments: attachments)
                 return
             }
             let label = String(instruction.prefix(48))
+            // Same here: the raw message is already the turn, so the op adds
+            // its answer to it rather than a second, differently-worded turn.
             if let note = chat.runTextOp(
-                label: label, instruction: instruction, source: textOpSource()) {
+                label: label, instruction: instruction, source: textOpSource(),
+                userItemAppended: true) {
                 feedback = note
             }
         default:

@@ -18,11 +18,17 @@ nonisolated enum TextOpSource: Equatable {
     /// Picking a file writes its PATH to the pasteboard (see
     /// `writePickedToPasteboard`), so without this, a text op after a pick
     /// would transform the path string rather than the file.
-    static func resolve(pickedFilePaths: [String]) -> TextOpSource {
-        switch pickedFilePaths.count {
-        case 0: .clipboard
-        case 1: .file(path: pickedFilePaths[0])
-        default: .ambiguous(count: pickedFilePaths.count)
+    ///
+    /// `@`-mentions win over picks: a mention is aimed at this turn, while a
+    /// pick may be left over from whatever the user was doing in the main bar.
+    static func resolve(mentioned: [String] = [], pickedFilePaths: [String] = [])
+        -> TextOpSource
+    {
+        let chosen = mentioned.isEmpty ? pickedFilePaths : mentioned
+        switch chosen.count {
+        case 0: return .clipboard
+        case 1: return .file(path: chosen[0])
+        default: return .ambiguous(count: chosen.count)
         }
     }
 }

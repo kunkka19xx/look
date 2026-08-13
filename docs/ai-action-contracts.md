@@ -182,7 +182,40 @@ Two confirm surfaces, one spine:
 | Pure Swift helpers (`DatePhrase`, `ScheduleWords`, `LocalHostCheck`, `OllamaCodec`) | `LauncherLogic` package | Foundation-only, unit-tested |
 | EventKit, providers, controllers, SwiftUI | app target | Platform-bound |
 
-## 7. Measuring it (`core/ai/examples/plan_eval.rs`)
+## 7. The provider seam (`AIQueryProvider`, `AIRequest.swift`)
+
+Adding a provider (cloud or otherwise) means conforming to two members and
+nothing else:
+
+```swift
+func respond(messages: [AIMessage], options: AIGenerationOptions) -> AsyncThrowingStream<String, Error>?
+var contextTokens: Int { get }
+```
+
+`AIMessage` keeps roles; `AIGenerationOptions` states needs in terms every
+provider can answer in its own vocabulary (`maxOutputTokens`,
+`expectedPromptTokens` as a HINT, temperature, timeout) with three profiles:
+`.answerCard`, `.chat`, `.document(promptCharacters:)`. Ollama's dialect lives
+in exactly one tested function, `ollamaJSON(contextCeiling:)`, which omits
+`num_ctx` when the request fits the daemon's 4096 default, doubles once when it
+does not, and clamps to the provider's declared ceiling. A new provider writes
+its own translation; it never edits shared code.
+
+`respond` has a default that flattens to `answer(query:)`, so a provider that
+has not been taught roles still behaves as it does today. `contextTokens`
+defaults to a conservative 4096, so an undeclared provider under-promises and
+the attachment budget warns early rather than letting a prompt be truncated.
+
+**Known caveat, deliberate:** the Ollama path does NOT call
+`provider.respond`. `ChatSessionController` talks to the Rust transport
+directly because cancellation lives there (session id + `aiChatCancel`), which
+an `AsyncThrowingStream` alone does not express. It uses the same
+`ollamaJSON` translation, so there is no second dialect, but Ollama does have
+two entry points. Collapse them when the streaming interfaces converge - until
+then, a change to generation options must be made in `AIGenerationOptions`
+(both paths read it) and never inline at a call site.
+
+## 8. Measuring it (`core/ai/examples/plan_eval.rs`)
 
 Prompt and lexicon changes are only safe if they are measured: adding a
 `duration` param once destabilized classification badly enough that adds fell

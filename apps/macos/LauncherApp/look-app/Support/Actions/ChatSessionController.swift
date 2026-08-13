@@ -69,7 +69,8 @@ final class ChatSessionController: ObservableObject {
             ActionSessionItem(
                 kind: ActionSessionItem.Kind(rawValue: stored.kind) ?? .answer,
                 text: stored.text,
-                source: stored.source)
+                source: stored.source,
+                attachedPaths: stored.attachedPaths ?? [])
         }
     }
 
@@ -88,7 +89,9 @@ final class ChatSessionController: ObservableObject {
             title: String((items.first?.text ?? "Conversation").prefix(48)),
             updatedAt: Date(),
             items: items.map {
-                AIConversation.StoredItem(kind: $0.kind.rawValue, text: $0.text, source: $0.source)
+                AIConversation.StoredItem(
+                    kind: $0.kind.rawValue, text: $0.text, source: $0.source,
+                    attachedPaths: $0.attachedPaths.isEmpty ? nil : $0.attachedPaths)
             }))
     }
 
@@ -140,14 +143,19 @@ final class ChatSessionController: ObservableObject {
     /// session (including performed actions) as conversation context.
     /// `userItemAppended` = the submit already put the message in the transcript
     /// (it shows instantly while the planner thinks); don't add it twice.
-    func askChat(_ query: String, userItemAppended: Bool = false) {
+    func askChat(
+        _ query: String,
+        userItemAppended: Bool = false,
+        attachments: MentionAttachments = MentionAttachments()
+    ) {
         chatTask?.cancel()
         // A leftover disambiguation list must not survive into an unrelated
         // turn: a later bare number would still fire the old (possibly
         // destructive) choice.
         ActionController.shared.clearPendingChoice()
         if !userItemAppended {
-            sessionItems.append(ActionSessionItem(kind: .user, text: query))
+            sessionItems.append(
+                ActionSessionItem(kind: .user, text: query, attachedPaths: attachments.paths))
             saveConversation()
         }
 
@@ -190,6 +198,22 @@ final class ChatSessionController: ObservableObject {
         if let scheduleContext {
             messages.append(["role": "system", "content": scheduleContext])
         }
+        // `@`-mentioned files. Same rule as the calendar: contents are private
+        // context, so an off-machine provider is told why they are missing
+        // rather than quietly answering about files it never saw.
+        let fileContext = allowsPrivate ? attachments.contextBlock() : ""
+        if !fileContext.isEmpty {
+            messages.append([
+                "role": "system",
+                "content": "Files the user attached to this question:\n\(fileContext)",
+            ])
+        }
+        if !attachments.isEmpty, !allowsPrivate {
+            append(ActionSessionItem(
+                kind: .answer,
+                text: Self.remoteContextBlockedNote("Attached files"),
+                source: "Look"))
+        }
         // Token-budget window (not a fixed count): keep the newest turns that fit
         // ~2.5k tokens, so long chats stay coherent without a summarizer.
         let itemTexts = sessionItems.map { item -> String in
@@ -211,21 +235,34 @@ final class ChatSessionController: ObservableObject {
 
         let placeholderID = appendPlaceholder(settings: settings)
 
-        // Ollama gets the full session as context; any other provider (e.g.
-        // Apple Intelligence) answers single-turn through the router (with the
-        // schedule context folded into the prompt), so `>` chat works on-device.
+        // Both paths now send the SAME messages: memory and schedule context
+        // are system messages built above, so no provider needs them folded
+        // into the user's question any more.
         let provider = settings.aiProvider
-        let preamble = [memoryContext.isEmpty ? nil : memoryContext, scheduleContext]
-            .compactMap { $0 }.joined(separator: "\n\n")
-        let routed = preamble.isEmpty ? query : "\(preamble)\n\nUser question: \(query)"
 
         if provider == .ollama {
-            startOllamaStream(messages: messages, settings: settings, into: placeholderID)
+            // Attached files make this a document read, not a chat reply.
+            startOllamaStream(
+                messages: messages, settings: settings, into: placeholderID,
+                options: attachments.isEmpty
+                    ? nil
+                    : Self.ollamaOptions(
+                        .document(promptCharacters: attachments.totalCharacters)))
             return
         }
 
+        // Structured: the system prompt and the context blocks stay SYSTEM
+        // messages instead of being pasted into the user's question, which is
+        // what a provider outside the Ollama path used to receive.
+        let structured = messages.map {
+            AIMessage(AIMessage.Role(rawValue: $0["role"] ?? "user") ?? .user, $0["content"] ?? "")
+        }
+        let requested: AIGenerationOptions = attachments.isEmpty
+            ? .chat
+            : .document(promptCharacters: attachments.totalCharacters)
         let makeStream: @MainActor () -> AsyncThrowingStream<String, Error>? = {
-            AIQueryRouter.shared.answer(query: routed, using: provider)
+            AIQueryRouter.shared.respond(
+                messages: structured, options: requested, using: provider)
         }
         if let stream = makeStream() {
             chatTask = Task { [weak self] in await self?.consume(stream, into: placeholderID) }
@@ -270,7 +307,14 @@ final class ChatSessionController: ObservableObject {
     /// streaming the result into the panel (reusing chat). Returns the feedback
     /// the caller should show, or nil once the op is running.
     @discardableResult
-    func runTextOp(label: String, instruction: String, source: TextOpSource) -> String? {
+    /// `userItemAppended` = the submit already put the message in the
+    /// transcript (the planner shows it before thinking); don't add it twice.
+    func runTextOp(
+        label: String,
+        instruction: String,
+        source: TextOpSource,
+        userItemAppended: Bool = false
+    ) -> String? {
         let input: String
         let subject: String
         var truncatedFrom: String?
@@ -314,8 +358,16 @@ final class ChatSessionController: ObservableObject {
             return nil
         }
         chatTask?.cancel()
-        sessionItems.append(
-            ActionSessionItem(kind: .user, text: Self.turnLabel(label, source, input: input)))
+        if !userItemAppended {
+            sessionItems.append(
+                ActionSessionItem(
+                    kind: .user,
+                    text: Self.turnLabel(label, source, input: input),
+                    attachedPaths: {
+                        if case .file(let path) = source { return [path] }
+                        return []
+                    }()))
+        }
         // A capped read is a partial answer, so say so instead of passing the
         // head of the file off as the whole of it.
         if let name = truncatedFrom {
@@ -335,12 +387,20 @@ final class ChatSessionController: ObservableObject {
         ]
 
         if settings.aiProvider == .ollama {
-            startOllamaStream(messages: messages, settings: settings, into: placeholderID)
+            // The input IS a document here, so it gets the wider ceilings.
+            startOllamaStream(
+                messages: messages, settings: settings, into: placeholderID,
+                options: Self.ollamaOptions(.document(promptCharacters: input.count)))
             return nil
         }
 
-        let routed = "\(instruction)\n\n\(input)"
-        if let stream = AIQueryRouter.shared.answer(query: routed, using: settings.aiProvider) {
+        // The instruction is an instruction, not part of the text being
+        // transformed: a provider that understands roles now gets it as one.
+        if let stream = AIQueryRouter.shared.respond(
+            messages: [AIMessage(.system, instruction), AIMessage(.user, input)],
+            options: .document(promptCharacters: input.count),
+            using: settings.aiProvider)
+        {
             chatTask = Task { [weak self] in await self?.consume(stream, into: placeholderID) }
             return nil
         }
@@ -358,7 +418,9 @@ final class ChatSessionController: ObservableObject {
         -> String
     {
         switch source {
-        case .file(let path): "\(label)\n\(path)"
+        // The file rides along as a capsule under the turn, so repeating its
+        // path here would just say the same thing twice.
+        case .file: label
         case .clipboard: input.isEmpty ? label : "\(label)\n\(input)"
         case .ambiguous: label
         }
@@ -378,13 +440,14 @@ final class ChatSessionController: ObservableObject {
     /// Streamed through the Rust core (curl child + polling), the same transport
     /// linows will use and the same one the answer card rides.
     private func startOllamaStream(
-        messages: [[String: String]], settings: ThemeSettings, into id: UUID
+        messages: [[String: String]], settings: ThemeSettings, into id: UUID,
+        options: String? = nil
     ) {
         if let data = try? JSONSerialization.data(withJSONObject: messages),
            let json = String(data: data, encoding: .utf8) {
             let session = EngineBridge.shared.aiChatStart(
                 host: settings.ollamaEndpoint, model: settings.ollamaModel, messagesJSON: json,
-                optionsJSON: Self.chatOptions)
+                optionsJSON: options ?? Self.ollamaOptions(.chat))
             if session != 0 {
                 chatTask = Task { [weak self] in
                     await self?.consumeChatSession(session, into: id)
@@ -482,8 +545,12 @@ final class ChatSessionController: ObservableObject {
             + "provider at a local model, or allow it in Settings."
     }
 
-    /// Session chat: room for a real answer, deterministic, long ceiling.
-    private static let chatOptions = #"{"num_predict":512,"temperature":0,"timeout_secs":300}"#
+    /// Ollama's dialect for a neutral request. The Ollama path talks to the
+    /// Rust transport directly (for cancellation), so it translates here rather
+    /// than through the provider - but through the SAME translation.
+    private static func ollamaOptions(_ options: AIGenerationOptions) -> String {
+        options.ollamaJSON(contextCeiling: AIQueryRouter.shared.contextTokens(of: .ollama))
+    }
 
     private static let chatInstructions = """
         You are Look's built-in assistant on macOS. Be concise and helpful. \

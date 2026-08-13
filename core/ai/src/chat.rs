@@ -96,6 +96,15 @@ pub fn start(host: &str, model: &str, messages_json: &str, options_json: &str) -
         .get("timeout_secs")
         .and_then(|v| v.as_u64())
         .unwrap_or(300) as u32;
+    // Ollama defaults the context to 4096 and SILENTLY truncates a prompt past
+    // it, so a surface that attaches a file has to ask for the room it needs.
+    // Omitted unless the caller sets it: a needlessly large KV cache costs
+    // memory on every request.
+    let num_ctx = opts.get("num_ctx").and_then(|v| v.as_i64());
+    let mut options = json!({ "temperature": temperature, "num_predict": num_predict });
+    if let Some(num_ctx) = num_ctx {
+        options["num_ctx"] = json!(num_ctx);
+    }
     let body = json!({
         "model": model,
         "messages": messages,
@@ -106,7 +115,7 @@ pub fn start(host: &str, model: &str, messages_json: &str, options_json: &str) -
         // tokens returns NOTHING and a chat answer arrives truncated. Ollama
         // ignores this field for models without a thinking mode.
         "think": false,
-        "options": { "temperature": temperature, "num_predict": num_predict },
+        "options": options,
         "keep_alive": "30m",
     })
     .to_string();

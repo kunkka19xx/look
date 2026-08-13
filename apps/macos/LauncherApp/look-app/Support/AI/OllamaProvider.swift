@@ -48,9 +48,27 @@ struct OllamaProvider: AIQueryProvider {
         else { return nil }
         // A launcher card answers in a few sentences and must give up fast;
         // session chat gets the core's longer defaults.
-        let options = #"{"num_predict":220,"temperature":0.4,"timeout_secs":45}"#
         return EngineBridge.shared.aiChatStream(
-            host: host, model: model, messagesJSON: messagesJSON, optionsJSON: options)
+            host: host, model: model, messagesJSON: messagesJSON,
+            optionsJSON: AIGenerationOptions.answerCard.ollamaJSON(contextCeiling: contextTokens))
+    }
+
+    /// The largest window look will ask the daemon to reserve. Past this a
+    /// local model is slow enough that a truncation warning beats the wait.
+    var contextTokens: Int { 16384 }
+
+    func respond(messages: [AIMessage], options: AIGenerationOptions)
+        -> AsyncThrowingStream<String, Error>?
+    {
+        let (host, model) = config
+        let payload = messages.map { ["role": $0.role.rawValue, "content": $0.content] }
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: payload),
+            let messagesJSON = String(data: data, encoding: .utf8)
+        else { return nil }
+        return EngineBridge.shared.aiChatStream(
+            host: host, model: model, messagesJSON: messagesJSON,
+            optionsJSON: options.ollamaJSON(contextCeiling: contextTokens))
     }
 
     func prewarm() {
