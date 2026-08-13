@@ -11,7 +11,7 @@ struct OllamaProvider: AIQueryProvider {
 
     private var config: (host: String, model: String) {
         let settings = ThemeStore.shared.settings
-        return (settings.ollamaHost, settings.ollamaModel)
+        return (settings.ollamaEndpoint, settings.ollamaModel)
     }
 
     /// The daemon is usually on this machine, but two things can move inference

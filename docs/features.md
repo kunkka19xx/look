@@ -53,7 +53,7 @@ This document tracks what `look` supports today and what is planned next.
 - **`@` for exact times**: `>add lunch @ 1pm` skips the model entirely - instant, deterministic, and works with no capable model configured
 - **no prefix needed**: typing an instruction in the main bar works too. The plan appears as the first result row and one `Enter` runs it
 - **file recall**: "pdfs from last week", "files added to desktop" search your index by type, time, and place
-- **clipboard text-ops**: "summarize", "translate to german" transform whatever you copied
+- **text-ops**: "summarize", "translate to german", "make this shorter" transform whatever you copied. Pick a file first (`Cmd+P`) and they transform that file's contents instead, so `>summarize` over a document reads the document. Text-ish files only, and an oversized file says how much of it was read rather than quietly summarizing the first part
 - **remembered facts**: "remember I prefer metric" stores a durable fact the assistant sees on every turn. Only you can write these - the model never can
 - **requires a capable provider** for the natural-language paths: Ollama with a pulled model (Settings > AI), local by default but usable against a remote host. Apple Intelligence handles answers but is too small to plan actions; the `@` forms keep working regardless
 - **privacy**: prompts go to whichever provider you select, so a remote host or cloud-routed model receives them over the network. Your calendar, clipboard, and remembered facts are held to a stricter rule: attached only when inference is on this machine, unless you explicitly allow remote context in Settings

@@ -20,7 +20,7 @@ final class ActionPlanner {
     func warmUp() async {
         guard isAvailable else { return }
         let settings = ThemeStore.shared.settings
-        let host = settings.ollamaHost
+        let host = settings.ollamaEndpoint
         let model = settings.ollamaModel
         let bridge = EngineBridge.shared
         await Task.detached(priority: .utility) {
@@ -37,7 +37,7 @@ final class ActionPlanner {
         let settings = ThemeStore.shared.settings
         let bridge = EngineBridge.shared
         let session = bridge.aiPlanStart(
-            host: settings.ollamaHost, model: settings.ollamaModel, query: query)
+            host: settings.ollamaEndpoint, model: settings.ollamaModel, query: query)
         guard session != 0 else { return nil }
 
         var raw: EngineBridge.AIPlanSnapshot.RawCall?

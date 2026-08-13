@@ -247,8 +247,19 @@ struct ThemeSettings: Codable, Equatable {
     var aiProvider: AIProviderKind = .appleIntelligence
 
     /// Ollama daemon endpoint, used when `aiProvider` is `.ollama`. Persisted in
-    /// `~/.look.config` under `ollama_host`.
+    /// `~/.look.config` under `ollama_host`. Kept exactly as typed so the
+    /// settings field can show an empty box; call `ollamaEndpoint` to USE it.
     var ollamaHost: String = "http://localhost:11434"
+
+    /// The endpoint to actually call. Blank means the local daemon, which is
+    /// what the field's placeholder promises, so an emptied box degrades to
+    /// "local Ollama" instead of building the unresolvable URL "/api/chat" and
+    /// surfacing as a model failure. Only ever consulted on the Ollama paths,
+    /// so this never invents a host for some other provider.
+    var ollamaEndpoint: String {
+        let trimmed = ollamaHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "http://localhost:11434" : trimmed
+    }
 
     /// Ollama model tag, used when `aiProvider` is `.ollama`. Persisted in
     /// `~/.look.config` under `ollama_model`. The default is the best scorer in

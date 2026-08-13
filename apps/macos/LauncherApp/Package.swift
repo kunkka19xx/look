@@ -28,6 +28,7 @@ let package = Package(
                 "Support/Actions/DatePhrase.swift",
                 "Support/Actions/ActionResolution.swift",
                 "Support/Actions/ScheduleWords.swift",
+                "Support/Actions/TextOpSource.swift",
                 "Support/SingleInstanceLock.swift",
                 "Models/LauncherResult.swift",
             ]

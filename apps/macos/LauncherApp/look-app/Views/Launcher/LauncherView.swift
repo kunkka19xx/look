@@ -783,6 +783,12 @@ struct LauncherView: View {
             focusActiveInput()
             refreshClipboardMonitoringMode()
             runningAppsService.refresh()
+            actionController.pickedFilePaths = pickedFilePathsForTextOp()
+        }
+        // A text op reads the picked file rather than the clipboard, so the
+        // controller needs the picks as they change.
+        .onChange(of: pickedKeys) { _, _ in
+            actionController.pickedFilePaths = pickedFilePathsForTextOp()
         }
         .onDisappear {
             invalidateSearchRequests()
@@ -1718,6 +1724,17 @@ struct LauncherView: View {
             }
             .padding(10)
             .background(themeStore.surfaceFill(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            // Floated into the bubble's own corner padding rather than added as
+            // a row: a row reserves its full height on EVERY answer just to
+            // hold one icon. Hidden mid-stream, when there is nothing whole to
+            // take yet.
+            .overlay(alignment: .bottomTrailing) {
+                if !item.isStreaming, !item.text.isEmpty {
+                    AnswerCopyButton(text: item.text, themeStore: themeStore)
+                        .padding(.trailing, 6)
+                        .padding(.bottom, 4)
+                }
+            }
     }
 
     /// Inline markdown (bold, italic, `code`, links) for chat prose. Block

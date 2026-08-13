@@ -51,6 +51,16 @@ final class ActionController: ObservableObject {
         let candidates: [ActionCandidate]
     }
 
+    /// The file paths picked in the launcher, pushed by `LauncherView` as the
+    /// picks change (this is a singleton with no view context). Picks survive
+    /// the query changing to `>summarize`, which the row selection does not, so
+    /// they are what a text op can actually aim at.
+    var pickedFilePaths: [String] = []
+
+    private func textOpSource() -> TextOpSource {
+        TextOpSource.resolve(pickedFilePaths: pickedFilePaths)
+    }
+
     @Published private(set) var pending: PlannedAction?
     @Published private(set) var pendingChoice: PendingChoice?
     @Published private(set) var lastReceipt: ActionReceipt?
@@ -237,8 +247,9 @@ final class ActionController: ObservableObject {
         case .textOp(let label, let instruction):
             isPlanning = false
             pending = nil
-            if !chat.runTextOp(label: label, instruction: instruction) {
-                feedback = "Copy some text first, then try \"\(label.lowercased())\"."
+            if let note = chat.runTextOp(
+                label: label, instruction: instruction, source: textOpSource()) {
+                feedback = note
             }
         case .files:
             isPlanning = false
@@ -305,8 +316,9 @@ final class ActionController: ObservableObject {
                 return
             }
             let label = String(instruction.prefix(48))
-            if !chat.runTextOp(label: label, instruction: instruction) {
-                feedback = "Copy some text first, then try \"\(label.lowercased())\"."
+            if let note = chat.runTextOp(
+                label: label, instruction: instruction, source: textOpSource()) {
+                feedback = note
             }
         default:
             propose(call)

@@ -266,49 +266,102 @@ final class ChatSessionController: ObservableObject {
         }
     }
 
-    /// A clipboard text-op: transform whatever text is on the clipboard with the
-    /// given instruction, streaming the result into the panel (reusing chat).
-    /// Returns false when the clipboard is empty (the caller reports it).
+    /// A text op: transform the text from `source` with the given instruction,
+    /// streaming the result into the panel (reusing chat). Returns the feedback
+    /// the caller should show, or nil once the op is running.
     @discardableResult
-    func runTextOp(label: String, instruction: String) -> Bool {
-        let clip = (NSPasteboard.general.string(forType: .string) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clip.isEmpty else { return false }
-        // The clipboard is the most sensitive context of all: never hand it to
-        // an off-machine provider without explicit permission.
+    func runTextOp(label: String, instruction: String, source: TextOpSource) -> String? {
+        let input: String
+        let subject: String
+        var truncatedFrom: String?
+
+        switch source {
+        case .ambiguous(let count):
+            return "\(count) items picked. Pick one file, then try \"\(label.lowercased())\"."
+        case .clipboard:
+            let clip = (NSPasteboard.general.string(forType: .string) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !clip.isEmpty else {
+                return "Copy some text first, then try \"\(label.lowercased())\"."
+            }
+            input = clip
+            subject = "Clipboard text"
+        case .file(let path):
+            let name = (path as NSString).lastPathComponent
+            switch TextExtraction.extract(path: path) {
+            case .success(let extracted):
+                input = extracted.text
+                subject = "File contents"
+                if extracted.truncated { truncatedFrom = name }
+            case .failure(.notText):
+                return "\"\(name)\" is not a text file."
+            case .failure(.empty):
+                return "\"\(name)\" is empty."
+            case .failure(.unreadable):
+                return "Could not read \"\(name)\"."
+            }
+        }
+
+        // Clipboard and file contents are the most sensitive context of all:
+        // never hand either to an off-machine provider without permission.
         guard AIQueryRouter.shared.allowsPrivateContext(ThemeStore.shared.settings.aiProvider)
         else {
             append(ActionSessionItem(
                 kind: .answer,
-                text: Self.remoteContextBlockedNote("Clipboard text"),
+                text: Self.remoteContextBlockedNote(subject),
                 source: "Look"))
             saveConversation()
-            return true
+            return nil
         }
         chatTask?.cancel()
-        sessionItems.append(ActionSessionItem(kind: .user, text: label))
+        sessionItems.append(
+            ActionSessionItem(kind: .user, text: Self.turnLabel(label, source, input: input)))
+        // A capped read is a partial answer, so say so instead of passing the
+        // head of the file off as the whole of it.
+        if let name = truncatedFrom {
+            append(ActionSessionItem(
+                kind: .answer,
+                text: "\"\(name)\" is large, so this covers only its first "
+                    + "\(TextExtraction.defaultCap / 1024)KB.",
+                source: "Look"))
+        }
         saveConversation()
 
         let settings = ThemeStore.shared.settings
         let placeholderID = appendPlaceholder(settings: settings)
         let messages: [[String: String]] = [
             ["role": "system", "content": instruction],
-            ["role": "user", "content": clip],
+            ["role": "user", "content": input],
         ]
 
         if settings.aiProvider == .ollama {
             startOllamaStream(messages: messages, settings: settings, into: placeholderID)
-            return true
+            return nil
         }
 
-        let routed = "\(instruction)\n\n\(clip)"
+        let routed = "\(instruction)\n\n\(input)"
         if let stream = AIQueryRouter.shared.answer(query: routed, using: settings.aiProvider) {
             chatTask = Task { [weak self] in await self?.consume(stream, into: placeholderID) }
-            return true
+            return nil
         }
         updateItem(placeholderID, text: chatFailureMessage())
         saveConversation()
-        return true
+        return nil
+    }
+
+    /// The user turn shows WHAT was transformed, not just the verb: a file
+    /// contributes its path (its contents are the answer's subject, not the
+    /// request), the clipboard contributes the text itself, since otherwise
+    /// "Translate to vietnamese" gives a transcript with no way to tell which
+    /// of five copies it acted on.
+    private static func turnLabel(_ label: String, _ source: TextOpSource, input: String)
+        -> String
+    {
+        switch source {
+        case .file(let path): "\(label)\n\(path)"
+        case .clipboard: input.isEmpty ? label : "\(label)\n\(input)"
+        case .ambiguous: label
+        }
     }
 
     /// The answer placeholder, labeled with whoever is about to produce it.
@@ -330,7 +383,7 @@ final class ChatSessionController: ObservableObject {
         if let data = try? JSONSerialization.data(withJSONObject: messages),
            let json = String(data: data, encoding: .utf8) {
             let session = EngineBridge.shared.aiChatStart(
-                host: settings.ollamaHost, model: settings.ollamaModel, messagesJSON: json,
+                host: settings.ollamaEndpoint, model: settings.ollamaModel, messagesJSON: json,
                 optionsJSON: Self.chatOptions)
             if session != 0 {
                 chatTask = Task { [weak self] in
