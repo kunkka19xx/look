@@ -30,6 +30,7 @@ let package = Package(
                 "Support/Actions/ActionResolution.swift",
                 "Support/Actions/ScheduleWords.swift",
                 "Support/Actions/TextOpSource.swift",
+                "Support/Actions/TurnLedger.swift",
                 "Support/Actions/MentionQuery.swift",
                 "Support/Actions/MentionAttachments.swift",
                 "Support/SingleInstanceLock.swift",

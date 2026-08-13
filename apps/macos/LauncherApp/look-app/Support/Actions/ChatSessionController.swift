@@ -20,6 +20,9 @@ final class ChatSessionController: ObservableObject {
     @Published private(set) var isStreamingAnswer: Bool = false
 
     private var chatTask: Task<Void, Never>?
+    /// Whether this submit's message is already in the transcript. Replaces a
+    /// `userItemAppended` flag that every call path had to pass correctly.
+    private var turns = TurnLedger()
     /// The answer item currently receiving tokens (settled when it ends).
     private var streamingItemID: UUID?
     private var conversationID = UUID()
@@ -32,6 +35,24 @@ final class ChatSessionController: ObservableObject {
 
     func append(_ item: ActionSessionItem) {
         sessionItems.append(item)
+    }
+
+    /// A new user message is being handled. Called once per submit, before any
+    /// routing, so whichever path ends up handling it can ask for the turn
+    /// without knowing whether another path got there first.
+    func startTurn() {
+        turns.startTurn()
+    }
+
+    /// The user's message in the transcript, appended at most ONCE per submit.
+    /// Later callers get the existing turn instead of a duplicate.
+    @discardableResult
+    func beginTurn(text: String, attachedPaths: [String] = []) -> UUID? {
+        let item = ActionSessionItem(kind: .user, text: text, attachedPaths: attachedPaths)
+        guard turns.shouldAppend(id: item.id) else { return turns.currentID }
+        sessionItems.append(item)
+        saveConversation()
+        return item.id
     }
 
     func appendAction(_ summary: String) -> UUID {
@@ -57,6 +78,7 @@ final class ChatSessionController: ObservableObject {
         finishStreaming()
         sessionItems.removeAll()
         conversationID = UUID()
+        turns.reset()
     }
 
     /// Restore a stored conversation to continue it. The full transcript shows;
@@ -72,6 +94,7 @@ final class ChatSessionController: ObservableObject {
                 source: stored.source,
                 attachedPaths: stored.attachedPaths ?? [])
         }
+        turns.reset()
     }
 
     /// Upserts the live conversation into the capped store. Called whenever an
@@ -140,24 +163,16 @@ final class ChatSessionController: ObservableObject {
     // MARK: - Turns
 
     /// A chat turn: the question and a streaming answer stack as items, with the
-    /// session (including performed actions) as conversation context.
-    /// `userItemAppended` = the submit already put the message in the transcript
-    /// (it shows instantly while the planner thinks); don't add it twice.
-    func askChat(
-        _ query: String,
-        userItemAppended: Bool = false,
-        attachments: MentionAttachments = MentionAttachments()
-    ) {
+    /// session (including performed actions) as conversation context. The turn
+    /// itself is claimed through `beginTurn`, so calling this after the planner
+    /// already showed the message adds an answer, not a second question.
+    func askChat(_ query: String, attachments: MentionAttachments = MentionAttachments()) {
         chatTask?.cancel()
         // A leftover disambiguation list must not survive into an unrelated
         // turn: a later bare number would still fire the old (possibly
         // destructive) choice.
         ActionController.shared.clearPendingChoice()
-        if !userItemAppended {
-            sessionItems.append(
-                ActionSessionItem(kind: .user, text: query, attachedPaths: attachments.paths))
-            saveConversation()
-        }
+        beginTurn(text: query, attachedPaths: attachments.paths)
 
         // Private context rides along only when the provider is on this machine
         // (or the user allowed remote context). Enforced, not assumed: see
@@ -307,14 +322,7 @@ final class ChatSessionController: ObservableObject {
     /// streaming the result into the panel (reusing chat). Returns the feedback
     /// the caller should show, or nil once the op is running.
     @discardableResult
-    /// `userItemAppended` = the submit already put the message in the
-    /// transcript (the planner shows it before thinking); don't add it twice.
-    func runTextOp(
-        label: String,
-        instruction: String,
-        source: TextOpSource,
-        userItemAppended: Bool = false
-    ) -> String? {
+    func runTextOp(label: String, instruction: String, source: TextOpSource) -> String? {
         let input: String
         let subject: String
         var truncatedFrom: String?
@@ -358,16 +366,12 @@ final class ChatSessionController: ObservableObject {
             return nil
         }
         chatTask?.cancel()
-        if !userItemAppended {
-            sessionItems.append(
-                ActionSessionItem(
-                    kind: .user,
-                    text: Self.turnLabel(label, source, input: input),
-                    attachedPaths: {
-                        if case .file(let path) = source { return [path] }
-                        return []
-                    }()))
-        }
+        beginTurn(
+            text: Self.turnLabel(label, source, input: input),
+            attachedPaths: {
+                if case .file(let path) = source { return [path] }
+                return []
+            }())
         // A capped read is a partial answer, so say so instead of passing the
         // head of the file off as the whole of it.
         if let name = truncatedFrom {

@@ -242,6 +242,9 @@ final class ActionController: ObservableObject {
         planGeneration += 1
         let query = stripPrefix(rawQuery)
         guard !query.isEmpty else { return }
+        // One message, one turn: whichever route handles it claims the same
+        // transcript entry instead of each path deciding for itself.
+        chat.startTurn()
 
         EventKitService.shared.refreshReminderCache()
         EventKitService.shared.refreshEventCache()
@@ -307,8 +310,7 @@ final class ActionController: ObservableObject {
     /// indicator, not before the user sees their own message.
     private func startPlanTask(_ query: String) {
         isPlanning = true
-        chat.append(ActionSessionItem(kind: .user, text: query, attachedPaths: attachments.paths))
-        chat.saveConversation()
+        chat.beginTurn(text: query, attachedPaths: attachments.paths)
         let generation = planGeneration
         planTask = Task { [weak self] in
             guard let self else { return }
@@ -319,7 +321,7 @@ final class ActionController: ObservableObject {
                 self.handlePlannedCall(call, rawQuery: query)
             } else {
                 // Not an add-action: treat it as a chat turn in the session.
-                self.chat.askChat(query, userItemAppended: true, attachments: self.attachments)
+                self.chat.askChat(query, attachments: self.attachments)
             }
         }
     }
@@ -339,21 +341,16 @@ final class ActionController: ObservableObject {
             if attachments.isEmpty {
                 recallRequest = RecallRequest(query: rawQuery, params: call.params)
             } else {
-                // `startPlanTask` already put the message in the transcript, so
-                // this must NOT add it again.
-                chat.askChat(rawQuery, userItemAppended: true, attachments: attachments)
+                chat.askChat(rawQuery, attachments: attachments)
             }
         case "clipboard.textop":
             guard let instruction = call.params["instruction"], !instruction.isEmpty else {
-                chat.askChat(rawQuery, userItemAppended: true, attachments: attachments)
+                chat.askChat(rawQuery, attachments: attachments)
                 return
             }
             let label = String(instruction.prefix(48))
-            // Same here: the raw message is already the turn, so the op adds
-            // its answer to it rather than a second, differently-worded turn.
             if let note = chat.runTextOp(
-                label: label, instruction: instruction, source: textOpSource(),
-                userItemAppended: true) {
+                label: label, instruction: instruction, source: textOpSource()) {
                 feedback = note
             }
         default:
@@ -364,8 +361,6 @@ final class ActionController: ObservableObject {
     /// A chat turn in the session: the question and a streaming answer stack as
     /// items, with the session (including performed actions) as conversation
     /// context. This is what a non-action `>` query becomes on Enter.
-    /// `userItemAppended` = the submit already put the message in the transcript
-    /// (it shows instantly while the planner thinks); don't add it twice.
     private func stripPrefix(_ raw: String) -> String {
         let text = raw.hasPrefix(">") ? String(raw.dropFirst()) : raw
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
