@@ -30,20 +30,21 @@ apps/linows/
       weburl.rs          URL-like query detection + opened-URL history (shared core)
       autostart.rs       Autostart management
       platform/          Platform-specific code
-        linux/           Icons, WM detection, Wayland shortcuts, GNOME ext, …
+        linux/           Icons, WM detection, Wayland shortcuts, GNOME ext, compositor blur, …
         windows/         Icons, effects, drives, known folders, …
         shared.rs        Shared platform helpers
     capabilities/
       default.json       Tauri v2 permissions (events, dialog)
   src/                   Vanilla frontend (served by Tauri webview)
     index.html
-    css/                 reset.css, layout.css, theme.css
+    css/                 reset.css, layout.css, theme.css, motion.css, liquid.css
     js/
       app.js             Main controller, mode switching
       keyboard.js        Keyboard handling
       search.js          Query input, search modes (clipboard, translate)
       ipc.js             All Tauri invoke wrappers
       platform.js        Platform detection
+      blur.js            Compositor blur region (painted surfaces)
       icons.js           Icon resolution
       html-loader.js     Dynamic HTML template loader
       components/        results, preview, picked, banner, translate, ai-answer (web answer card)

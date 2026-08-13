@@ -25,7 +25,7 @@
     opacity: 0;
     pointer-events: none;
     /* Glide horizontally; transform stays on the compositor. */
-    transition: transform 105ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: transform 105ms var(--motion-curve);
 }
 
 /* Visible only while the input is focused; blinks when idle. A soft fade (not a

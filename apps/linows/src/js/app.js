@@ -16,6 +16,7 @@ import * as runningApps from './components/running-apps.js';
 import * as superactions from './components/superactions.js';
 import * as smoothcaret from './components/smoothcaret.js';
 import * as platform from './platform.js';
+import * as motion from './motion.js';
 import * as aiAnswer from './components/ai-answer.js';
 import { State as AiState } from './components/ai-answer.js';
 import * as aiCard from './components/ai-answer-card.js';
@@ -161,6 +162,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Floating "inner-gap" layout state (classes on .launcher-window)
     layout.init();
+
+    // Entrance motion; replays on every summon (see the window-shown handler).
+    motion.init(app);
+    motion.playReveal();
     layout.initHints({
         hintBar,
         hintMessage,
@@ -620,6 +625,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         // entrance so it animates in each time Look is summoned.
         syncControlStrip();
         superactions.replayEnter();
+        // Last: the reveal is the frame the rest of the cascade lands in.
+        motion.playReveal();
     });
 
     // Hold the launchpad at its entrance-start pose before hiding, so the stale
@@ -627,9 +634,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // of flashing the full strip then rewinding. Rust's `window-hidden` is the
     // primary trigger (WebView2 doesn't reliably fire visibilitychange on a
     // native hide); visibilitychange stays as a WebKitGTK fallback.
-    onWindowHidden(() => superactions.armEntrance());
+    onWindowHidden(() => {
+        superactions.armEntrance();
+        motion.armReveal();
+    });
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden) superactions.armEntrance();
+        if (document.hidden) {
+            superactions.armEntrance();
+            motion.armReveal();
+        } else {
+            // A show that never reaches window-shown must still un-arm.
+            motion.playReveal();
+        }
     });
 
     onIndexReady(() => {
