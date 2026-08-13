@@ -62,6 +62,27 @@ pub fn set_region(wid: u32, rects: &[BlurRect], scale: f64) {
     if !is_supported() {
         return;
     }
+
+    // Clipped at the origin rather than dropped: a surface can sit a pixel
+    // outside the window mid-resize, and the wrap-around would blur a stripe
+    // across the screen. Both edges convert, so clipping the near one takes the
+    // width with it instead of sliding the far one outwards.
+    let px = |v: i32| (v as f64 * scale).round().max(0.0) as u32;
+    let axis = |start: i32, extent: u32| {
+        let near = px(start);
+        (near, px(start.saturating_add(extent as i32)) - near)
+    };
+    let mut data: Vec<u32> = Vec::with_capacity(rects.len() * 4);
+    for rect in rects {
+        let (x, width) = axis(rect.x, rect.width);
+        let (y, height) = axis(rect.y, rect.height);
+        // Wholly off-window, or thinner than a device pixel: nothing to ask for.
+        if width == 0 || height == 0 {
+            continue;
+        }
+        data.extend([x, y, width, height]);
+    }
+
     let Ok((conn, _)) = x11rb::connect(None) else {
         return;
     };
@@ -74,21 +95,10 @@ pub fn set_region(wid: u32, rects: &[BlurRect], scale: f64) {
 
     // An empty property is KWin's "blur the whole window", the opposite of the
     // ask, so nothing to blur means the property goes away.
-    if rects.is_empty() {
+    if data.is_empty() {
         let _ = conn.delete_property(wid, atom.atom);
         let _ = conn.flush();
         return;
-    }
-
-    // Clamped, not dropped: a surface can sit a pixel outside the window
-    // mid-resize, and the wrap-around would blur a stripe across the screen.
-    let px = |v: f64| (v * scale).round().max(0.0) as u32;
-    let mut data: Vec<u32> = Vec::with_capacity(rects.len() * 4);
-    for rect in rects {
-        data.push(px(rect.x as f64));
-        data.push(px(rect.y as f64));
-        data.push(px(rect.width as f64));
-        data.push(px(rect.height as f64));
     }
 
     let _ = conn.change_property32(PropMode::REPLACE, wid, atom.atom, AtomEnum::CARDINAL, &data);
