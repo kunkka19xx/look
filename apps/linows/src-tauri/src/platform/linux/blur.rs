@@ -3,8 +3,9 @@
 //! behind a transparent window is composited outside the webview.
 //!
 //! X11 (KWin): `_KDE_NET_WM_BLUR_BEHIND_REGION`, CARDINAL/32 quadruples of
-//! `x, y, width, height` in window-local pixels; empty means the whole window.
-//! Wayland asks over one of two protocols (`blur_wayland`).
+//! `x, y, width, height` in window-local device pixels; empty means the whole
+//! window, so clearing is a delete, not an empty write. Wayland asks over one
+//! of two protocols (`blur_wayland`), whose regions are surface-local.
 
 use super::blur_wayland;
 use super::transparency::window_is_x11;
@@ -49,10 +50,12 @@ fn is_kde() -> bool {
         .unwrap_or(false)
 }
 
-/// Ask for `rects` to be blurred; an empty slice clears the request. Silent on
-/// failure: a session without the effect is the clear-glass path, not an error.
-pub fn set_region(wid: u32, rects: &[BlurRect]) {
+/// Ask for `rects`, in window-local logical pixels, to be blurred; an empty
+/// slice clears the request. Silent on failure: a session without the effect is
+/// the clear-glass path, not an error.
+pub fn set_region(wid: u32, rects: &[BlurRect], scale: f64) {
     if !window_is_x11() {
+        // Surface-local coordinates are logical already, so they pass through.
         blur_wayland::set_region(rects);
         return;
     }
@@ -69,14 +72,23 @@ pub fn set_region(wid: u32, rects: &[BlurRect]) {
         return;
     };
 
+    // An empty property is KWin's "blur the whole window", the opposite of the
+    // ask, so nothing to blur means the property goes away.
+    if rects.is_empty() {
+        let _ = conn.delete_property(wid, atom.atom);
+        let _ = conn.flush();
+        return;
+    }
+
+    // Clamped, not dropped: a surface can sit a pixel outside the window
+    // mid-resize, and the wrap-around would blur a stripe across the screen.
+    let px = |v: f64| (v * scale).round().max(0.0) as u32;
     let mut data: Vec<u32> = Vec::with_capacity(rects.len() * 4);
     for rect in rects {
-        // Clamped, not dropped: a surface can sit a pixel outside the window
-        // mid-resize, and the wrap-around would blur a stripe across the screen.
-        data.push(rect.x.max(0) as u32);
-        data.push(rect.y.max(0) as u32);
-        data.push(rect.width);
-        data.push(rect.height);
+        data.push(px(rect.x as f64));
+        data.push(px(rect.y as f64));
+        data.push(px(rect.width as f64));
+        data.push(px(rect.height as f64));
     }
 
     let _ = conn.change_property32(PropMode::REPLACE, wid, atom.atom, AtomEnum::CARDINAL, &data);

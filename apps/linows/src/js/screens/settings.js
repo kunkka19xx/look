@@ -645,6 +645,7 @@ export async function reloadFromFile() {
         }
 
         // Theme
+        hydrateUserSliders(map);
         const theme = map.ui_theme || '';
         applyThemePreset(theme);
         restoreSurface(map, theme);
@@ -743,18 +744,7 @@ export async function restoreOnStartup() {
             if (map.ui_bg_blur) CSS_MAP.ui_bg_blur(map.ui_bg_blur);
         }
 
-        // Pre-populate user-controlled sliders from config so the preset's
-        // applytint/applyBorderColor read the user's saved opacity/thickness
-        // instead of the HTML default values. Without this, first-launch
-        // appearance ignores any user opacity / border-thickness overrides
-        // until they actually open Settings.
-        for (const key of USER_CONTROLLED_KEYS) {
-            if (map[key] === undefined) continue;
-            const slider = screen?.querySelector(
-                `.settings-row[data-key="${key}"] .settings-slider`,
-            );
-            if (slider) slider.value = map[key];
-        }
+        hydrateUserSliders(map);
 
         // Restore theme preset - preset values drive tint/font/border
         const theme = map.ui_theme || '';
@@ -1100,12 +1090,12 @@ const THEME_PRESETS = {
         ui_border_opacity: 0.26,
         ui_border_thickness: 1.0,
     },
-    // macOS Themes/LiquidTheme. A lens, not a panel, hence the 0.35.
+    // macOS Themes/LiquidTheme.
     liquid: {
         ui_tint_red: 0.1,
         ui_tint_green: 0.13,
         ui_tint_blue: 0.2,
-        ui_tint_opacity: 0.35,
+        ui_tint_opacity: 0.78,
         ui_font_red: 0.98,
         ui_font_green: 0.98,
         ui_font_blue: 1.0,
@@ -1154,6 +1144,18 @@ const USER_CONTROLLED_KEYS = new Set([
     'ui_border_opacity',
     'ui_border_thickness',
 ]);
+
+// applyThemePreset skips these keys and then reads them back off the sliders,
+// so the saved values have to be in the DOM before it runs. Without this a
+// restore or reload computes the tint from whatever the last theme left there,
+// not from config.
+function hydrateUserSliders(map) {
+    for (const key of USER_CONTROLLED_KEYS) {
+        if (map[key] === undefined) continue;
+        const slider = screen?.querySelector(`.settings-row[data-key="${key}"] .settings-slider`);
+        if (slider) slider.value = map[key];
+    }
+}
 
 // Presets whose surface *is* their transparency: paper at a dark theme's
 // opacity isn't paper, glass at a near-opaque one is a panel. Switching to one

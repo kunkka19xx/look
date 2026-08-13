@@ -19,10 +19,13 @@ export function init(rootEl) {
 
 // Both backends take rectangles, so a rounded surface is the cross of its two
 // inset rects; the missed sliver hugs the outer curve.
-function rectsFor(el, dpr) {
+//
+// Logical pixels, the coordinate space Wayland's surface-local regions already
+// speak; blur.rs scales them for X11, which has no per-window scale.
+function rectsFor(el) {
     const r = el.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return [];
-    const px = (v) => Math.round(v * dpr);
+    const px = Math.round;
     const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
     const inset = Math.min(radius, r.width / 2, r.height / 2);
     if (inset <= 0) {
@@ -59,8 +62,7 @@ export function sync() {
     pending = true;
     requestAnimationFrame(() => {
         pending = false;
-        const dpr = window.devicePixelRatio || 1;
-        const rects = surfaces().flatMap((el) => rectsFor(el, dpr));
+        const rects = surfaces().flatMap((el) => rectsFor(el));
         const key = JSON.stringify(rects);
         if (key === lastKey) return;
         lastKey = key;

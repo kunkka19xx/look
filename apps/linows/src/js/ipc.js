@@ -158,7 +158,7 @@ export async function getPlatform() {
     return invoke('get_platform');
 }
 
-// Blur region in window-local physical pixels (see platform/linux/blur.rs).
+// Blur region in window-local logical pixels (see platform/linux/blur.rs).
 export async function setBlurRegion(rects) {
     return invoke('set_blur_region', { rects });
 }

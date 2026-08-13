@@ -79,11 +79,12 @@ fn resolve_icon(_kind: &str, _path: &str, _id: Option<&str>) -> Option<String> {
     None
 }
 
-/// One blurred rectangle in window-local physical pixels. The frontend sends
+/// One blurred rectangle in window-local logical pixels. The frontend sends
 /// these: only it knows which surfaces are painted (the window at inner-gap 0,
 /// each tile once the panes float). Lives here, not in the Linux backend,
 /// because it is a command parameter.
 #[derive(serde::Deserialize, Clone, Copy)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub struct BlurRect {
     pub x: i32,
     pub y: i32,
