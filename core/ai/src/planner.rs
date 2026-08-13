@@ -111,7 +111,11 @@ pub const TOOLS: [Tool; 10] = [
     },
 ];
 
-const PREAMBLE: &str = "Classify the request into ONE tool and extract its params:";
+const PREAMBLE: &str = concat!(
+    "Classify the request into tools and extract their params. ",
+    "One step per action: a request naming two actions gets two steps.\n",
+    "Tools:"
+);
 
 const FOOTER: &str = r#"Pronouns and references are valid match values: "remove it" -> match "it"; "cancel this event" -> match "this event".
 Reply with JSON only: {"steps":[{"tool":"...","params":{...}}]}.
@@ -259,17 +263,27 @@ pub fn cancel(id: u64) {
     chat::cancel(id);
 }
 
+/// Every usable step of a plan, in order. A step the resolver rejects is
+/// DROPPED rather than failing the plan: half a compound request done, with the
+/// preview showing exactly which half, beats refusing the whole thing.
+pub fn resolve_steps(parsed: plan::ActionPlan) -> Vec<Value> {
+    parsed.steps.iter().filter_map(resolve_step).collect()
+}
+
 fn map_snapshot(snapshot: &str) -> String {
     let root: Value = serde_json::from_str(snapshot).unwrap_or(Value::Null);
     if !root["done"].as_bool().unwrap_or(false) {
         return r#"{"done":false}"#.into();
     }
-    let call = root["text"]
+    let calls = root["text"]
         .as_str()
-        .and_then(|content| serde_json::from_str::<plan::ActionPlan>(content).ok())
-        .and_then(|parsed| parsed.steps.into_iter().next())
-        .and_then(|step| resolve_step(&step));
-    json!({ "done": true, "call": call }).to_string()
+        .and_then(plan::parse_plan)
+        .map(resolve_steps)
+        .unwrap_or_default();
+    // `call` is the first step, kept while the shells still read one action;
+    // `calls` is the whole plan. Remove `call` once both shells consume the
+    // array (see docs/ai-action-contracts.md §2).
+    json!({ "done": true, "call": calls.first(), "calls": calls }).to_string()
 }
 
 /// Primes the model + Ollama's prompt-prefix cache. The warm query is chosen

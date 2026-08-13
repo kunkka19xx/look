@@ -338,7 +338,7 @@ fn plan_cancel_event(event: EventCandidate) -> ResolveOutcome {
 fn plan_remove_reminder(reminder: ReminderCandidate) -> ResolveOutcome {
     ResolveOutcome::Planned {
         preview_title: "Remove reminder".into(),
-        preview_detail: format!("\"{}\"", reminder.title),
+        preview_detail: reminder_detail(&reminder),
         summary: format!("Removed reminder \"{}\"", reminder.title),
         subject: None,
         execute: Execute::RemoveReminder {
@@ -393,10 +393,10 @@ fn cancel_event(
     let Some(query) = param(request, "match") else {
         return invalid("Which event?");
     };
-    match matcher::resolve_indexed(events, &query) {
+    match match_target(events, &query) {
         Match::One(event) => plan_cancel_event(event),
         Match::Several(options) => event_choice(options),
-        Match::None => match matcher::resolve_indexed(reminders, &query) {
+        Match::None => match match_target(reminders, &query) {
             Match::One(reminder) => plan_remove_reminder(reminder),
             Match::Several(options) => reminder_choice(options),
             Match::None => invalid(&format!("Nothing matching \"{query}\" to remove.")),
@@ -454,7 +454,7 @@ fn complete_reminder(
         Err(outcome) => *outcome,
         Ok(reminder) => ResolveOutcome::Planned {
             preview_title: "Complete reminder".into(),
-            preview_detail: format!("\"{}\"", reminder.title),
+            preview_detail: reminder_detail(&reminder),
             summary: format!("Completed \"{}\"", reminder.title),
             subject: Some(reminder.id.clone()),
             execute: Execute::CompleteReminder {
@@ -479,10 +479,10 @@ fn remove_reminder(
     let Some(query) = param(request, "match") else {
         return invalid("Which reminder?");
     };
-    match matcher::resolve_indexed(reminders, &query) {
+    match match_target(reminders, &query) {
         Match::One(reminder) => plan_remove_reminder(reminder),
         Match::Several(options) => reminder_choice(options),
-        Match::None => match matcher::resolve_indexed(events, &query) {
+        Match::None => match match_target(events, &query) {
             Match::One(event) => plan_cancel_event(event),
             Match::Several(options) => event_choice(options),
             Match::None => invalid(&format!("Nothing matching \"{query}\" to remove.")),
@@ -648,6 +648,42 @@ pub(crate) fn parse_duration_minutes(phrase: &str) -> Option<i64> {
 
 // ── matching (chosen_id bypass, then the gate) ──────────────────────────
 
+/// A match phrase with date/time words removed ("standup tmr" -> "standup").
+/// The model is told to put the time in `when`, but it often leaves it in
+/// `match` too, and the extra token then fails to match the event's real
+/// title. Used only as a RETRY: the raw phrase is tried first, so an event
+/// genuinely called "Friday retro" still matches on its own name. None when
+/// stripping changes nothing or leaves nothing behind.
+fn without_date_words(query: &str) -> Option<String> {
+    let kept: Vec<&str> = query
+        .split_whitespace()
+        .filter(|word| {
+            let bare = word
+                .trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase();
+            !bare.is_empty() && !crate::lexicon::is_date_word(&bare)
+        })
+        .collect();
+    if kept.is_empty() || kept.len() == query.split_whitespace().count() {
+        return None;
+    }
+    Some(kept.join(" "))
+}
+
+/// Matches `query`, retrying without date words when nothing matched. Every
+/// match site goes through this, so the retry cannot be forgotten at one of
+/// them (`cancel_event` matches BOTH domains itself, which is exactly where it
+/// was first missed).
+fn match_target<T: Clone>(candidates: &[Indexed<T>], query: &str) -> Match<T> {
+    match matcher::resolve_indexed(candidates, query) {
+        Match::None => match without_date_words(query) {
+            Some(retry) => matcher::resolve_indexed(candidates, &retry),
+            None => Match::None,
+        },
+        found => found,
+    }
+}
+
 fn pick_event(
     request: &ResolveRequest,
     events: &[Indexed<EventCandidate>],
@@ -663,7 +699,7 @@ fn pick_event(
     let Some(query) = param(request, "match") else {
         return Err(Box::new(invalid("Which event?")));
     };
-    match matcher::resolve_indexed(events, &query) {
+    match match_target(events, &query) {
         Match::None => Err(Box::new(invalid(&format!(
             "No event matching \"{query}\" in the next {SEARCH_DAYS} days."
         )))),
@@ -695,7 +731,7 @@ fn pick_reminder(
     let Some(query) = param(request, "match") else {
         return Err(Box::new(invalid("Which reminder?")));
     };
-    match matcher::resolve_indexed(reminders, &query) {
+    match match_target(reminders, &query) {
         Match::None => Err(Box::new(invalid(&format!(
             "No open reminder matching \"{query}\"."
         )))),
@@ -807,6 +843,16 @@ fn fmt_day(epoch: i64) -> String {
     local(epoch)
         .map(|d| d.format("%a %b %-d").to_string())
         .unwrap_or_default()
+}
+
+/// A reminder's title plus its due date when it has one. Events always show
+/// their time, so a reminder showing only a title read as "this one has no
+/// time" when it did - the preview must say what it is about to act on.
+fn reminder_detail(reminder: &ReminderCandidate) -> String {
+    match reminder.due {
+        Some(due) => format!("\"{}\"  ·  {}", reminder.title, fmt_instant(due)),
+        None => format!("\"{}\"", reminder.title),
+    }
 }
 
 fn event_detail(event: &EventCandidate) -> String {
@@ -1250,6 +1296,67 @@ mod tests {
         ] {
             assert!(!has_duration_phrase(text), "{text}");
         }
+    }
+
+    /// The planner is told to put the time in `when`, but often leaves it in
+    /// `match` as well ("cancel the standup tmr"), and the extra token then
+    /// matches nothing. The raw phrase is tried first, so a title that really
+    /// contains a day word still wins on its own name.
+    #[test]
+    fn a_date_word_left_in_match_does_not_lose_the_target() {
+        let outcome = resolve(&request(
+            "calendar.cancel_event",
+            &[("match", "dentist tmr")],
+        ));
+        assert!(
+            matches!(outcome, ResolveOutcome::Planned { .. }),
+            "{outcome:?}"
+        );
+        let reminder = resolve(&request("reminder.complete", &[("match", "walk dog tmr")]));
+        assert!(
+            matches!(reminder, ResolveOutcome::Planned { .. }),
+            "{reminder:?}"
+        );
+        // Stripping never empties the phrase into a match-anything query.
+        assert!(matches!(
+            resolve(&request("calendar.cancel_event", &[("match", "tomorrow")])),
+            ResolveOutcome::Invalid { .. }
+        ));
+    }
+
+    #[test]
+    fn strip_only_reports_a_real_change() {
+        assert_eq!(
+            without_date_words("standup tmr").as_deref(),
+            Some("standup")
+        );
+        // Nothing to strip, so no retry is attempted.
+        assert_eq!(without_date_words("standup"), None);
+        // Everything is a date word: no usable retry.
+        assert_eq!(without_date_words("tomorrow"), None);
+    }
+
+    /// A reminder preview that showed only a title read as "this one has no
+    /// time" next to an event line that always shows one.
+    #[test]
+    fn reminder_previews_show_the_due_date_when_there_is_one() {
+        let mut req = request("reminder.remove", &[("match", "walk dog")]);
+        req.reminders[0].due = Some(NOW + 3600);
+        let ResolveOutcome::Planned { preview_detail, .. } = resolve(&req) else {
+            panic!("expected a plan");
+        };
+        assert!(preview_detail.contains("Walk Dog"), "{preview_detail}");
+        assert!(
+            preview_detail.contains(&fmt_instant(NOW + 3600)),
+            "{preview_detail}"
+        );
+
+        // An undated reminder still reads cleanly, with no dangling separator.
+        let undated = request("reminder.remove", &[("match", "walk dog")]);
+        let ResolveOutcome::Planned { preview_detail, .. } = resolve(&undated) else {
+            panic!("expected a plan");
+        };
+        assert_eq!(preview_detail, "\"Walk Dog\"");
     }
 
     #[test]

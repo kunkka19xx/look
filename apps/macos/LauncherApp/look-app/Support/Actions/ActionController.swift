@@ -76,13 +76,28 @@ final class ActionController: ObservableObject {
         TextOpSource.resolve(mentioned: attachments.paths, pickedFilePaths: pickedFilePaths)
     }
 
-    @Published private(set) var pending: PlannedAction?
+    /// The plan awaiting confirm: one step for most requests, several for a
+    /// compound one ("cancel the dentist and move lunch to 1pm"). Confirmed
+    /// with a single Enter and undone as a unit, so a compound request cannot
+    /// leave half of itself behind with no way back.
+    @Published private(set) var pendingSteps: [PlannedAction] = []
+    /// The first step, for surfaces that only ever showed one action.
+    var pending: PlannedAction? { pendingSteps.first }
     @Published private(set) var pendingChoice: PendingChoice?
-    @Published private(set) var lastReceipt: ActionReceipt?
+    /// Receipts from the last confirmed plan, in the order they ran. Undo
+    /// reverses them back to front.
+    @Published private(set) var lastReceipts: [ActionReceipt] = []
+    var lastReceipt: ActionReceipt? { lastReceipts.last }
     @Published private(set) var feedback: String = ""
     /// The action item the current `lastReceipt` can undo (answers may stack
     /// after it, so "last item" is not reliable).
-    @Published private(set) var undoableItemID: UUID?
+    @Published private(set) var undoableItemIDs: [UUID] = []
+    var undoableItemID: UUID? { undoableItemIDs.last }
+
+    /// Whether this transcript item is part of the plan undo would reverse.
+    func canUndo(_ itemID: UUID) -> Bool {
+        !lastReceipts.isEmpty && undoableItemIDs.contains(itemID)
+    }
     /// True while the model is turning a `>` query into an action, so the UI can
     /// show a "thinking" indicator during the generation.
     @Published private(set) var isPlanning: Bool = false
@@ -140,16 +155,16 @@ final class ActionController: ObservableObject {
         self.planner = ActionPlanner()
     }
 
-    var isPresenting: Bool { pending != nil }
+    var isPresenting: Bool { !pendingSteps.isEmpty }
 
     /// A post-action result (success summary + undo, or an error message) is
     /// showing. Dismissed when the user types something new or hides the window.
-    var hasResult: Bool { lastReceipt != nil || !feedback.isEmpty }
+    var hasResult: Bool { !lastReceipts.isEmpty || !feedback.isEmpty }
 
     var sessionActive: Bool { chat.isActive }
 
     func dismissResult() {
-        lastReceipt = nil
+        lastReceipts = []
         feedback = ""
     }
 
@@ -188,7 +203,7 @@ final class ActionController: ObservableObject {
         if let raw = EngineBridge.shared.aiParseExplicit(">" + query, modelAvailable: modelAvailable),
            case .planned(let plan) = resolveOutcome(toolID: raw.toolID, params: raw.params) {
             isPlanning = false
-            pending = plannedAction(toolID: raw.toolID, plan: plan)
+            pendingSteps = [plannedAction(toolID: raw.toolID, plan: plan)]
             feedback = ""
             return
         }
@@ -202,12 +217,12 @@ final class ActionController: ObservableObject {
             // Prewarm kicks the on-device model awake while the user types
             // (FoundationModels can report unavailable until first touched).
             AIQueryRouter.shared.prewarm(ThemeStore.shared.settings.aiProvider)
-            pending = nil
+            pendingSteps = []
             isPlanning = false
             feedback = ""
             return
         }
-        pending = nil
+        pendingSteps = []
         isPlanning = true
         // Warm the model + prompt cache now, while the user is still typing, so
         // the first real plan skips model load and prompt processing. Throttled.
@@ -219,13 +234,14 @@ final class ActionController: ObservableObject {
         idleTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.idleDelay)
             guard let self, !Task.isCancelled else { return }
-            let call = await self.planner.plan(query: query)
+            let calls = await self.planner.plan(query: query)
             guard generation == self.planGeneration else { return }  // superseded
             self.isPlanning = false
-            if let call, !Self.isUtilityCall(call) {
+            if !calls.isEmpty, !calls.contains(where: Self.isUtilityCall) {
                 // Live preview never pops a choice list mid-typing; Enter does.
-                // Utility calls (recall/textop) only ever run on Enter.
-                self.propose(call, allowChoice: false)
+                // Utility calls (recall/textop) only ever run on Enter, so a
+                // plan containing one previews nothing.
+                self.propose(calls, allowChoice: false)
             }
             // Not an action: stay quiet. Enter routes the text to chat instead.
         }
@@ -260,18 +276,18 @@ final class ActionController: ObservableObject {
         switch route {
         case .memory(let memoryFeedback):
             isPlanning = false
-            pending = nil
+            pendingSteps = []
             feedback = memoryFeedback
         case .textOp(let label, let instruction):
             isPlanning = false
-            pending = nil
+            pendingSteps = []
             if let note = chat.runTextOp(
                 label: label, instruction: instruction, source: textOpSource()) {
                 feedback = note
             }
         case .files:
             isPlanning = false
-            pending = nil
+            pendingSteps = []
             // An attached file settles it: "summary this file please?" contains
             // the word "file", so the deterministic recall parser claims it and
             // the shell would leave AI mode to show a file LIST - throwing away
@@ -287,7 +303,7 @@ final class ActionController: ObservableObject {
         case .explicit(let toolID, let params):
             if case .planned(let plan) = resolveOutcome(toolID: toolID, params: params) {
                 isPlanning = false
-                pending = plannedAction(toolID: toolID, plan: plan)
+                pendingSteps = [plannedAction(toolID: toolID, plan: plan)]
                 feedback = ""
             } else if modelAvailable {
                 // Deterministic parse resolved to nothing usable: let the
@@ -314,10 +330,13 @@ final class ActionController: ObservableObject {
         let generation = planGeneration
         planTask = Task { [weak self] in
             guard let self else { return }
-            let call = await self.planner.plan(query: query)
+            let calls = await self.planner.plan(query: query)
             guard generation == self.planGeneration else { return }  // superseded
             self.isPlanning = false
-            if let call {
+            if calls.count > 1 {
+                // A compound request: preview every step, confirm once.
+                self.propose(calls)
+            } else if let call = calls.first {
                 self.handlePlannedCall(call, rawQuery: query)
             } else {
                 // Not an add-action: treat it as a chat turn in the session.
@@ -376,6 +395,37 @@ final class ActionController: ObservableObject {
         "reminder.remove": "calendar.cancel_event",
     ]
 
+    /// A whole plan. Every step must resolve: a compound request that can only
+    /// half-execute is refused with the reason, rather than previewing the part
+    /// that happened to work and silently dropping the rest.
+    func propose(_ calls: [ToolCall], allowChoice: Bool = true) {
+        guard calls.count > 1 else {
+            if let single = calls.first { propose(single, allowChoice: allowChoice) }
+            return
+        }
+        pendingChoice = nil
+        var steps: [PlannedAction] = []
+        for (index, call) in calls.enumerated() {
+            switch resolveOutcome(toolID: call.toolID, params: call.params) {
+            case .planned(let plan):
+                steps.append(plannedAction(toolID: call.toolID, plan: plan))
+            case .invalid(let message):
+                pendingSteps = []
+                feedback = "Step \(index + 1): \(message)"
+                return
+            case .choice:
+                // Disambiguating one step of several would need a queue of
+                // questions; say which step is unclear instead of guessing.
+                pendingSteps = []
+                feedback = "Step \(index + 1) matches more than one thing - "
+                    + "name it more precisely."
+                return
+            }
+        }
+        pendingSteps = steps
+        feedback = ""
+    }
+
     func propose(_ call: ToolCall, allowChoice: Bool = true) {
         pendingChoice = nil
         var toolID = call.toolID
@@ -398,27 +448,27 @@ final class ActionController: ObservableObject {
                 params["chosen_id"] = targets[0].id
             } else if targets.count > 1 {
                 guard allowChoice else { return }
-                pending = nil
+                pendingSteps = []
                 pendingChoice = PendingChoice(
                     toolID: toolID, params: params,
                     candidates: targets.map { ActionCandidate(id: $0.id, label: $0.label) })
                 feedback = ""
                 return
             } else {
-                pending = nil
+                pendingSteps = []
                 feedback = "Nothing recent to refer to. Name the item instead."
                 return
             }
         }
         switch resolveOutcome(toolID: toolID, params: params) {
         case .planned(let plan):
-            pending = plannedAction(toolID: toolID, plan: plan)
+            pendingSteps = [plannedAction(toolID: toolID, plan: plan)]
             feedback = ""
         case .invalid(let message):
-            pending = nil
+            pendingSteps = []
             feedback = message
         case .choice(let candidates):
-            pending = nil
+            pendingSteps = []
             guard allowChoice else { return }  // live preview stays quiet
             pendingChoice = PendingChoice(
                 toolID: toolID, params: params, candidates: candidates)
@@ -488,7 +538,7 @@ final class ActionController: ObservableObject {
     func performQuickAction(_ action: PlannedAction) async throws -> String {
         await ensureAccess(for: action.toolID)
         let receipt = try action.perform()
-        lastReceipt = receipt
+        lastReceipts = [receipt]
         return receipt.summary
     }
 
@@ -545,25 +595,42 @@ final class ActionController: ObservableObject {
 
     /// Confirm the pending action. Requests calendar/reminder access on first use
     /// (the only place a permission prompt appears, besides the Settings button).
+    /// Runs the confirmed plan in order. A step that throws STOPS the run and
+    /// says which one: the steps that already ran keep their receipts, so undo
+    /// still reverses exactly what happened rather than pretending the whole
+    /// plan failed or silently carrying on past a failure.
     func confirm() {
-        guard let action = pending else { return }
-        pending = nil
+        let steps = pendingSteps
+        guard !steps.isEmpty else { return }
+        pendingSteps = []
         Task {
-            await ensureAccess(for: action.toolID)
-            do {
-                let receipt = try action.perform()
-                lastReceipt = receipt
-                if let subjectID = receipt.subjectID {
-                    recentTargets = [RecentTarget(
-                        domain: action.toolID.hasPrefix("reminder") ? "reminder" : "calendar",
-                        id: subjectID,
-                        label: receipt.summary)]
+            var receipts: [ActionReceipt] = []
+            var itemIDs: [UUID] = []
+            var targets: [RecentTarget] = []
+            for (index, step) in steps.enumerated() {
+                await ensureAccess(for: step.toolID)
+                do {
+                    let receipt = try step.perform()
+                    receipts.append(receipt)
+                    if let subjectID = receipt.subjectID {
+                        targets.append(RecentTarget(
+                            domain: step.toolID.hasPrefix("reminder") ? "reminder" : "calendar",
+                            id: subjectID,
+                            label: receipt.summary))
+                    }
+                    itemIDs.append(chat.appendAction(receipt.summary))
+                    feedback = ""
+                } catch {
+                    feedback = steps.count == 1
+                        ? "Failed: \(error.localizedDescription)"
+                        : "Step \(index + 1) of \(steps.count) failed: "
+                            + "\(error.localizedDescription)"
+                    break
                 }
-                undoableItemID = chat.appendAction(receipt.summary)
-                feedback = ""
-            } catch {
-                feedback = "Failed: \(error.localizedDescription)"
             }
+            lastReceipts = receipts
+            undoableItemIDs = itemIDs
+            if !targets.isEmpty { recentTargets = targets }
         }
     }
 
@@ -572,7 +639,7 @@ final class ActionController: ObservableObject {
         idleTask?.cancel()
         chat.cancelStreaming()
         planGeneration += 1
-        pending = nil
+        pendingSteps = []
         pendingChoice = nil
         feedback = ""
         isPlanning = false
@@ -588,19 +655,29 @@ final class ActionController: ObservableObject {
         }
     }
 
+    /// Reverses the last plan back to front, so a compound request undoes as
+    /// one thing. A step that fails to reverse is reported but does not strand
+    /// the others: the rest still get undone.
     func undoLast() {
-        guard let receipt = lastReceipt else { return }
-        do {
-            try receipt.undo()
-            if let id = undoableItemID {
-                chat.annotate(id, suffix: "  ·  undone")
+        guard !lastReceipts.isEmpty else { return }
+        var failures = 0
+        for (index, receipt) in lastReceipts.enumerated().reversed() {
+            do {
+                try receipt.undo()
+                if index < undoableItemIDs.count {
+                    chat.annotate(undoableItemIDs[index], suffix: "  ·  undone")
+                }
+            } catch {
+                failures += 1
             }
-            feedback = ""
-        } catch {
-            feedback = "Undo failed"
         }
-        lastReceipt = nil
-        undoableItemID = nil
+        feedback = failures == 0
+            ? ""
+            : (failures == lastReceipts.count
+                ? "Undo failed"
+                : "Undo failed for \(failures) of \(lastReceipts.count) steps")
+        lastReceipts = []
+        undoableItemIDs = []
     }
 
     /// Prompt for ONLY the store this action touches: a reminder must not pop a

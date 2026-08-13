@@ -27,8 +27,9 @@ const DEFAULT_MODEL: &str = "qwen3.5:4b";
 struct Case {
     input: String,
     route: String,
-    /// Present when the case asserts a tool: `Some(None)` is "must decline".
-    tool: Option<Option<String>>,
+    /// Present when the case asserts tools. Empty = "must decline"; more than
+    /// one = a compound request that must plan every step, in order.
+    tools: Option<Vec<String>>,
     params: Value,
     note: Option<String>,
 }
@@ -85,10 +86,9 @@ fn main() {
         let needle = needle.to_lowercase();
         cases.retain(|c| {
             c.input.to_lowercase().contains(&needle)
-                || c.tool
+                || c.tools
                     .as_ref()
-                    .and_then(|t| t.as_deref())
-                    .is_some_and(|t| t.contains(&needle))
+                    .is_some_and(|tools| tools.iter().any(|t| t.contains(&needle)))
         });
     }
     if cases.is_empty() {
@@ -133,36 +133,38 @@ fn main() {
             continue;
         }
 
-        let Some(expected_tool) = &case.tool else {
+        let Some(expected_tools) = &case.tools else {
             print!(".");
             flush();
             continue;
         };
-        let call = match actual_route.as_str() {
-            "explicit" => decision["call"].clone(),
+        let calls = match actual_route.as_str() {
+            "explicit" => vec![decision["call"].clone()],
             "plan" if routes_only => continue,
             "plan" => {
                 let started = Instant::now();
-                let call = plan_once(&host, &model, &case.input);
+                let calls = plan_once(&host, &model, &case.input);
                 latencies.push(started.elapsed().as_millis());
-                call
+                calls
             }
-            _ => Value::Null,
+            _ => Vec::new(),
         };
 
-        let actual_tool = call["tool"].as_str().map(str::to_string);
-        let tool_ok = actual_tool == *expected_tool;
+        let actual_tools: Vec<String> = calls
+            .iter()
+            .filter_map(|c| c["tool"].as_str().map(str::to_string))
+            .collect();
+        let tool_ok = actual_tools == *expected_tools;
         tools.add(tool_ok);
-        let key = expected_tool.clone().unwrap_or_else(|| "(decline)".into());
-        let entry = by_tool.entry(key).or_default();
+        let entry = by_tool.entry(label(expected_tools)).or_default();
         entry.0.add(tool_ok);
         if !tool_ok {
             failures.push(Failure {
                 input: case.input.clone(),
                 reason: format!(
                     "tool   {} -> {}",
-                    expected_tool.as_deref().unwrap_or("(decline)"),
-                    actual_tool.as_deref().unwrap_or("(decline)")
+                    label(expected_tools),
+                    label(&actual_tools)
                 ),
                 note: case.note.clone(),
             });
@@ -172,6 +174,9 @@ fn main() {
         }
 
         if let Some(expected) = case.params.as_object() {
+            // Params are asserted against the first step; a compound case
+            // asserts its shape through the tool list.
+            let call = calls.first().cloned().unwrap_or(Value::Null);
             for (key, want) in expected {
                 let got = call["params"][key].as_str().unwrap_or("");
                 let ok = matches_param(want.as_str().unwrap_or(""), got);
@@ -257,13 +262,12 @@ fn main() {
 
 /// One planning round trip on the same body the app sends, reduced to the
 /// resolved `{tool, params}` call (null when the model declines or garbles).
-fn plan_once(host: &str, model: &str, input: &str) -> Value {
+fn plan_once(host: &str, model: &str, input: &str) -> Vec<Value> {
     let url = format!("{}/api/chat", host.trim_end_matches('/'));
     ollama::post_json(&url, &planner::request_body(model, input), 30)
         .and_then(|body| plan::parse_chat_response(&body))
-        .and_then(|parsed| parsed.steps.into_iter().next())
-        .and_then(|step| planner::resolve_step(&step))
-        .unwrap_or(Value::Null)
+        .map(planner::resolve_steps)
+        .unwrap_or_default()
 }
 
 /// `~needle` asserts a normalized substring (titles and instructions have many
@@ -280,6 +284,15 @@ fn matches_param(want: &str, got: &str) -> bool {
     match want.strip_prefix('~') {
         Some(needle) => norm(got).contains(&norm(needle)),
         None => norm(got) == norm(want),
+    }
+}
+
+/// "(decline)" for nothing, "a + b" for a compound plan.
+fn label(tools: &[String]) -> String {
+    if tools.is_empty() {
+        "(decline)".into()
+    } else {
+        tools.join(" + ")
     }
 }
 
@@ -300,7 +313,14 @@ fn load_cases(path: &str) -> Vec<Case> {
             Case {
                 input: v["input"].as_str().unwrap_or_default().to_string(),
                 route: v["route"].as_str().unwrap_or("plan").to_string(),
-                tool: v.get("tool").map(|t| t.as_str().map(str::to_string)),
+                tools: v
+                    .get("tools")
+                    .and_then(|t| serde_json::from_value::<Vec<String>>(t.clone()).ok())
+                    // `"tool": "x"` / `"tool": null` is the one-step shorthand.
+                    .or_else(|| {
+                        v.get("tool")
+                            .map(|t| t.as_str().map(|s| vec![s.to_string()]).unwrap_or_default())
+                    }),
                 params: v.get("params").cloned().unwrap_or(Value::Null),
                 note: v.get("note").and_then(|n| n.as_str()).map(str::to_string),
             }

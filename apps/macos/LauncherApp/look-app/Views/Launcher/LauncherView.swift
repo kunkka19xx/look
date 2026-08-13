@@ -1515,13 +1515,18 @@ struct LauncherView: View {
                                 }
                             }
                             .padding(.horizontal, 4)
-                        } else if let pendingAction = actionController.pending {
+                        } else if !actionController.pendingSteps.isEmpty {
                             PendingActionBar(
-                                action: pendingAction,
+                                steps: actionController.pendingSteps,
                                 themeStore: themeStore,
                                 onConfirm: {
+                                    // Same as confirming with Enter: entering
+                                    // AI mode already consumed the `>`, so
+                                    // writing one back leaves a stray
+                                    // character in the box.
                                     actionController.confirm()
-                                    query = ">"
+                                    clearQuerySilently()
+                                    DispatchQueue.main.async { isQueryFocused = true }
                                 },
                                 onCancel: { actionController.cancel() }
                             )
@@ -1692,8 +1697,7 @@ struct LauncherView: View {
         case .action:
             ActionResultBar(
                 message: item.text,
-                canUndo: item.id == actionController.undoableItemID
-                    && actionController.lastReceipt != nil,
+                canUndo: actionController.canUndo(item.id),
                 themeStore: themeStore,
                 onUndo: { actionController.undoLast() }
             )

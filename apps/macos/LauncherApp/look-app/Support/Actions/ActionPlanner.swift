@@ -32,43 +32,46 @@ final class ActionPlanner {
     /// request is not an action, or the response is unusable. Cancellation is
     /// real: it kills the request, so a superseded plan never queues in Ollama
     /// behind the one the user is waiting for.
-    func plan(query: String) async -> ToolCall? {
-        guard isAvailable else { return nil }
+    func plan(query: String) async -> [ToolCall] {
+        guard isAvailable else { return [] }
         let settings = ThemeStore.shared.settings
         let bridge = EngineBridge.shared
         let session = bridge.aiPlanStart(
             host: settings.ollamaEndpoint, model: settings.ollamaModel, query: query)
-        guard session != 0 else { return nil }
+        guard session != 0 else { return [] }
 
-        var raw: EngineBridge.AIPlanSnapshot.RawCall?
+        var steps: [EngineBridge.AIPlanSnapshot.RawCall] = []
         while true {
             if Task.isCancelled {
                 bridge.aiPlanCancel(session)
-                return nil
+                return []
             }
-            guard let snapshot = bridge.aiPlanPoll(session) else { return nil }
+            guard let snapshot = bridge.aiPlanPoll(session) else { return [] }
             if snapshot.done {
-                raw = snapshot.call
+                steps = snapshot.steps
                 break
             }
             do {
                 try await Task.sleep(nanoseconds: 60_000_000)
             } catch {
                 bridge.aiPlanCancel(session)
-                return nil
+                return []
             }
         }
-        guard let raw else { return nil }
 
-        var params = raw.params
         // Date seam: add tools get `when` = the raw query when a date resolves
         // in it (NSDataDetector, macOS-quality; the shared-lexicon day-phrase
         // fallback catches abbreviations like "wed" the detector misses).
-        // No date -> all-day / undated.
-        if raw.tool == "calendar.add_event" || raw.tool == "reminder.add",
-           DatePhrase.resolve(query) != nil || bridge.aiDayPhrase(query) != nil {
-            params["when"] = query
+        // No date -> all-day / undated. Applied per step, since a compound
+        // request ("lunch friday and remind me to prep") dates each part from
+        // the same sentence.
+        let dated = DatePhrase.resolve(query) != nil || bridge.aiDayPhrase(query) != nil
+        return steps.map { raw in
+            var params = raw.params
+            if dated, raw.tool == "calendar.add_event" || raw.tool == "reminder.add" {
+                params["when"] = query
+            }
+            return ToolCall(toolID: raw.tool, params: params)
         }
-        return ToolCall(toolID: raw.tool, params: params)
     }
 }

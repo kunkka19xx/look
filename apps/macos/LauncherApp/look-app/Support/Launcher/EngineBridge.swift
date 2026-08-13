@@ -573,7 +573,13 @@ final class EngineBridge: @unchecked Sendable {
             let params: [String: String]
         }
         let done: Bool
+        /// Every step of the plan, in order. `call` (the first step) is the
+        /// core's transitional field; read `calls`.
+        let calls: [RawCall]?
         let call: RawCall?
+
+        /// The plan as a list, whichever field the core supplied.
+        var steps: [RawCall] { calls ?? call.map { [$0] } ?? [] }
     }
 
     /// Starts a cancellable planning call via the Rust-core planner (core/ai):

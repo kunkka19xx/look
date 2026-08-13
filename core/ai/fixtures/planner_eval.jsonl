@@ -107,3 +107,10 @@
 {"input":"add dentist @ friday 3pm","route":"explicit","tool":"calendar.add_event","params":{"title":"dentist","when":"friday 3pm"}}
 {"input":"remind buy milk @ 8am","route":"explicit","tool":"reminder.add","params":{"title":"buy milk","when":"8am"}}
 {"input":"add team offsite @ tomorrow 10am for 2 hours","route":"explicit","tool":"calendar.add_event","params":{"title":"team offsite","when":"tomorrow 10am","duration":"2 hours"}}
+
+# --- compound requests: one utterance, several steps, in order -----------
+{"input":"cancel the dentist and move lunch to 1pm","route":"plan","tools":["calendar.cancel_event","calendar.move_event"]}
+{"input":"remind me to buy milk and water the plants","route":"plan","tools":["reminder.add","reminder.add"]}
+{"input":"cancel the standup and the review","route":"plan","tools":["calendar.cancel_event","calendar.cancel_event"]}
+{"input":"add lunch with sarah friday and remind me to prep the deck","route":"plan","tools":["calendar.add_event","reminder.add"]}
+{"input":"complete buy milk and delete the gym reminder","route":"plan","tools":["reminder.complete","reminder.remove"]}
