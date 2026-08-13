@@ -123,12 +123,34 @@ const NOISE: &[&str] = &[
     "please",
 ];
 
+/// True when the words read as a calendar/reminder request: a schedule noun
+/// anywhere, a schedule-only opening verb, or a reschedule verb with a named
+/// day ("move the doc review to friday"). File-capable verbs alone never
+/// qualify, so "delete the pdfs i downloaded" stays recall.
+fn is_scheduling(words: &[&str]) -> bool {
+    let leads = |set: &[&str]| words.first().is_some_and(|w| set.contains(w));
+    words.iter().any(|w| crate::lexicon::is_schedule_noun(w))
+        || words
+            .first()
+            .is_some_and(|w| crate::lexicon::is_schedule_verb(w))
+        || (leads(&["move", "push", "shift"])
+            && words.iter().any(|w| crate::lexicon::is_day_word(w)))
+}
+
 pub fn parse(query: &str, now_epoch: i64) -> Option<FileQuery> {
     let lower = query.trim().to_lowercase();
     if lower.is_empty() {
         return None;
     }
     let words: Vec<&str> = lower.split_whitespace().collect();
+
+    // A scheduling request that merely NAMES a file type ("cancel the pdf
+    // review meeting", "remind me to send the slides") is an action on a
+    // target, not file recall. Veto it here or the type word below claims it
+    // and the planner never sees the request.
+    if is_scheduling(&words) {
+        return None;
+    }
 
     let mut types: Vec<String> = Vec::new();
     let mut locations: Vec<String> = Vec::new();
@@ -250,6 +272,35 @@ mod tests {
         let q = parse("pdf about taxes", NOW).unwrap();
         assert_eq!(q.types, vec!["pdf"]);
         assert_eq!(q.terms, "taxes");
+    }
+
+    #[test]
+    fn scheduling_requests_keep_their_type_words() {
+        // A file type inside an event or reminder name must not divert the
+        // request to file recall - the planner owns these.
+        for query in [
+            "cancel the pdf review meeting",
+            "move the design doc review to friday",
+            "remind me to send the slides tomorrow",
+            "block 2 hours to review the slides",
+            "delete the gym reminder",
+            "reschedule the screenshot walkthrough",
+        ] {
+            assert!(parse(query, NOW).is_none(), "{query}");
+        }
+    }
+
+    #[test]
+    fn file_capable_verbs_still_recall() {
+        // "delete"/"move"/"open" govern files too, so only a schedule noun
+        // takes these away from recall.
+        for query in [
+            "delete the pdfs i downloaded yesterday",
+            "open the screenshots from today",
+            "move the invoice pdf to desktop",
+        ] {
+            assert!(parse(query, NOW).is_some(), "{query}");
+        }
     }
 
     #[test]

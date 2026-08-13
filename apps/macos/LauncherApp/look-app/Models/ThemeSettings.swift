@@ -251,8 +251,10 @@ struct ThemeSettings: Codable, Equatable {
     var ollamaHost: String = "http://localhost:11434"
 
     /// Ollama model tag, used when `aiProvider` is `.ollama`. Persisted in
-    /// `~/.look.config` under `ollama_model`.
-    var ollamaModel: String = "llama3.1"
+    /// `~/.look.config` under `ollama_model`. The default is the best scorer in
+    /// the planner eval (see docs/ai-action-contracts.md §7): 97% tool accuracy
+    /// at a 2s p50, ahead of both a 7B coder model and a 9B general one.
+    var ollamaModel: String = "qwen3.5:4b"
 
     /// Whether private context (calendar, clipboard, remembered facts) may be
     /// sent to a provider that is NOT on this machine - a remote Ollama host

@@ -84,6 +84,38 @@ stand-in when the model puts the subject there instead of `match`, and `recall`
 is rejected unless at least one of its four facets is present (all four are
 individually optional, but an empty recall is not a query).
 
+Decoding is deliberately tolerant (`plan::parse_plan`). A schema does not stop
+a small local model from adding a stray code fence after the value or dropping
+the final brace, and a strict decode read both as declines: qwen3.5:4b scored
+61% with one and 97% with the other. Junk after the first complete value is
+ignored, unbalanced braces are closed, and a generation cut off mid-string is
+still refused, because inventing the rest of a title is worse than declining.
+
+### The prompt is sharded (`core/ai/src/domain.rs`)
+
+One flat prompt listing every tool is what capped the vocabulary at ten: rules
+added for one tool cost accuracy on the others, so nothing could be sharpened
+and nothing new could be added. Instead, `domain::of` places a request into
+`Calendar`, `Reminder`, or `Clipboard` from deterministic word signals, and the
+prompt is then built from that domain's rows plus that domain's rules. The
+prefilter is conservative: an unplaceable request returns None and sees the
+whole table, exactly as before, because a wrong narrow is unrecoverable while a
+missing one only forgoes accuracy we did not have. `Files` is never returned;
+the strong file shapes never reach the planner (§1) and the rest has no signal.
+
+Two table properties are load-bearing:
+
+- **Order is prompt order.** Alphabetizing the rows cost 3 points of tool
+  accuracy on a 7B model. New rows go next to their domain siblings.
+- **Rows are self-contained.** A row cannot refer to another row ("same rules
+  as above"), because the other row may not be in this shard.
+
+A row may also declare `requires`, a signal the raw request must carry for the
+tool to be offered at all. `block` requires `resolve::has_duration_phrase`, so
+"add gym session tomorrow 6am" is never even shown the tool it used to be
+misfiled under. What is absent from the schema cannot be emitted, which is
+stronger than a precondition written in prose.
+
 Planning runs as a **cancellable session** (`look_ai_plan_start` / `_poll` /
 `_cancel`) on the same curl transport as chat, so a superseded request is
 actually killed rather than left to queue inside Ollama.
@@ -149,3 +181,52 @@ Two confirm surfaces, one spine:
 | C boundary | `bridge/ffi` | JSON in, JSON out; every export panic-caught |
 | Pure Swift helpers (`DatePhrase`, `ScheduleWords`, `LocalHostCheck`, `OllamaCodec`) | `LauncherLogic` package | Foundation-only, unit-tested |
 | EventKit, providers, controllers, SwiftUI | app target | Platform-bound |
+
+## 7. Measuring it (`core/ai/examples/plan_eval.rs`)
+
+Prompt and lexicon changes are only safe if they are measured: adding a
+`duration` param once destabilized classification badly enough that adds fell
+through to chat, and nothing caught it. The eval runs a fixture corpus through
+the real ladder (`route_json`, then the real planner body for whatever reaches
+the model) and scores route, tool, and params separately.
+
+```text
+cargo run -p look-ai --example plan_eval                        # ~/.look.config model
+cargo run -p look-ai --example plan_eval -- --model qwen3.5:9b
+cargo run -p look-ai --example plan_eval -- --routes-only       # no model, instant
+cargo run -p look-ai --example plan_eval -- --min 85            # exit 1 below the bar
+```
+
+Corpus: `core/ai/fixtures/planner_eval.jsonl`, one JSON case per line
+(`input`, `route`, `tool`, `params`, `note`). A `~value` param asserts a
+normalized substring, so defensible title phrasings pass. Fixtures state
+**desired** behaviour, so a failing case is a real gap whether it sits in the
+prompt or in the ladder. Adding a tool means adding its cases first.
+
+Baseline, 77 cases (61 model), Aug 2026, before and after the shard work:
+
+| Model | Tool (flat) | Tool (sharded) | Params | p50 |
+| --- | --- | --- | --- | --- |
+| qwen2.5-coder:7b | 77% | **88%** | 100% | 0.9s |
+| qwen3.5:4b | 75% | **97%** | 100% | 2.0s |
+| qwen3.5:9b | 90% | **91%** | 100% | 3.7s |
+
+Params scoring 100% while tools miss is the standing shape: slot extraction is
+easy, tool choice is not. Note that a general 4B instruct model beats both a
+7B coder model and a 9B one here; the coder model's remaining misses are all
+bare adds ("coffee with mark on thursday") that it declines.
+
+Two prompt lessons the corpus paid for, both counterintuitive enough that they
+would not have survived a vibe check: sharpening a TOOL LINE (spelling out what
+"block" requires) lost 3 points by destabilizing unrelated tools, while the
+same words as a DOMAIN RULE cost nothing, and a clock-time fallback in the
+prefilter looked obviously right and moved nothing. Change one thing, measure,
+keep or revert.
+
+The first bug the corpus caught: `files::parse` triggered on any file-type
+word, so "cancel the pdf review meeting" was claimed by file recall and the
+planner never saw it. `files::is_scheduling` now vetoes a recall when a
+schedule noun appears anywhere, when the opening verb is scheduling-only
+(`is_schedule_verb`), or when a reschedule verb is paired with a named day.
+File-capable verbs are deliberately excluded from that list, so "delete the
+pdfs i downloaded yesterday" is still recall.

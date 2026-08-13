@@ -1,7 +1,12 @@
 //! The action planner: ONE source of truth for the prompt, the tool aliases,
 //! and the model-output mapping, for every shell. Latency contract as designed
-//! on macOS: static prompt (Ollama prompt-prefix cache), temperature 0, tool
-//! alias enum in the schema, title/match-only params, single-shot.
+//! on macOS: temperature 0, tool alias enum in the schema, title/match-only
+//! params, single-shot.
+//!
+//! The prompt is SHARDED by `domain::of`: a request the prefilter can place
+//! sees only that domain's tools plus that domain's rules, and everything else
+//! sees the whole table. The shared preamble stays the token prefix of every
+//! variant so Ollama's prefix cache still covers most of the prompt.
 //!
 //! Date seam: the shell resolves natural time phrases (macOS: NSDataDetector)
 //! AFTER this returns; for add tools the shell injects `when` = the raw query
@@ -9,52 +14,170 @@
 
 use serde_json::{Value, json};
 
+use crate::domain::{self, Domain};
 use crate::{chat, ollama, plan};
 
-pub const ALIASES: [(&str, &str); 10] = [
-    ("event", "calendar.add_event"),
-    ("reminder", "reminder.add"),
-    ("cancel", "calendar.cancel_event"),
-    ("move", "calendar.move_event"),
-    ("complete", "reminder.complete"),
-    ("delete", "reminder.remove"),
-    ("snooze", "reminder.snooze"),
-    ("block", "calendar.block_time"),
-    ("recall", "files.recall"),
-    ("textop", "clipboard.textop"),
+/// One row per tool: alias the model emits, the real tool id, the domain that
+/// gates it, and the prompt line describing it. Adding a tool is a row here.
+///
+/// Table order is prompt order and it is load-bearing: a 7B model reads the
+/// list positionally, and alphabetizing these lines cost 3 points of tool
+/// accuracy in the eval. Add new rows next to their domain siblings.
+pub struct Tool {
+    pub alias: &'static str,
+    pub id: &'static str,
+    pub domain: Domain,
+    /// A signal the raw request must carry for this tool to be offered at all.
+    /// The second half of the prefilter: narrowing by domain removes tools the
+    /// request cannot want, and this removes tools it cannot support. What is
+    /// never in the schema can never be emitted, which beats asking a 7B model
+    /// to respect a precondition stated in prose.
+    pub requires: Option<fn(&str) -> bool>,
+    pub line: &'static str,
+}
+
+pub const TOOLS: [Tool; 10] = [
+    Tool {
+        alias: "event",
+        id: "calendar.add_event",
+        domain: Domain::Calendar,
+        requires: None,
+        line: r#"- "event": add a calendar event - ANY named activity or errand counts ("go to the office", "lunch with Sarah"). params: title (clean short title; drop the leading verb, filler words, and all date/time words; capitalize the first word)."#,
+    },
+    Tool {
+        alias: "reminder",
+        id: "reminder.add",
+        domain: Domain::Reminder,
+        requires: None,
+        // Self-contained BY NECESSITY: the reminder shard does not include the
+        // "event" line, so a "same rules" back-reference would dangle.
+        line: r#"- "reminder": add a reminder. params: title (clean short title; drop the leading verb, filler words, and all date/time words; capitalize the first word)."#,
+    },
+    Tool {
+        alias: "cancel",
+        id: "calendar.cancel_event",
+        domain: Domain::Calendar,
+        requires: None,
+        line: r#"- "cancel": remove an EXISTING event. params: match (the words that identify which event, e.g. "dentist")."#,
+    },
+    Tool {
+        alias: "move",
+        id: "calendar.move_event",
+        domain: Domain::Calendar,
+        requires: None,
+        line: r#"- "move": reschedule an EXISTING event. params: match, when (the NEW time phrase copied verbatim, e.g. "4pm", "friday 9am")."#,
+    },
+    Tool {
+        alias: "complete",
+        id: "reminder.complete",
+        domain: Domain::Reminder,
+        requires: None,
+        line: r#"- "complete": mark an EXISTING reminder done. params: match."#,
+    },
+    Tool {
+        alias: "delete",
+        id: "reminder.remove",
+        domain: Domain::Reminder,
+        requires: None,
+        line: r#"- "delete": remove an EXISTING reminder from the list. params: match."#,
+    },
+    Tool {
+        alias: "snooze",
+        id: "reminder.snooze",
+        domain: Domain::Reminder,
+        requires: None,
+        line: r#"- "snooze": push an EXISTING reminder to a later time. params: match, when (the new time phrase verbatim)."#,
+    },
+    Tool {
+        alias: "block",
+        id: "calendar.block_time",
+        domain: Domain::Calendar,
+        requires: Some(crate::resolve::has_duration_phrase),
+        line: r#"- "block": reserve UNNAMED free/focus time, only when the request names a duration and no activity ("block 2 hours friday"). A named activity is "event", never "block". params: duration (e.g. "2 hours", "90 minutes"), when (the day/window phrase like "friday" or "this week")."#,
+    },
+    Tool {
+        alias: "recall",
+        id: "files.recall",
+        domain: Domain::Files,
+        requires: None,
+        line: r#"- "recall": find the user's OWN files on this machine ("the pdf i downloaded", "find my screenshots from friday"). params (all optional, include what the request names): terms (file name/content words), types (kind words like "pdf", "screenshot", "image"), when (the time phrase verbatim), location ("downloads", "desktop" or "documents")."#,
+    },
+    Tool {
+        alias: "textop",
+        id: "clipboard.textop",
+        domain: Domain::Clipboard,
+        requires: None,
+        line: r#"- "textop": transform the text on the clipboard ("make this shorter", "translate my copied text to german"). params: instruction (a one-sentence imperative, e.g. "Translate the text to German.")."#,
+    },
 ];
 
-pub const SYSTEM_PROMPT: &str = r#"Classify the request into ONE tool and extract its params:
-- "event": add a calendar event - ANY named activity or errand counts ("go to the office", "lunch with Sarah"). params: title (clean short title; drop the leading verb, filler words, and all date/time words; capitalize the first word).
-- "reminder": add a reminder. params: title (same rules).
-- "cancel": remove an EXISTING event. params: match (the words that identify which event, e.g. "dentist").
-- "move": reschedule an EXISTING event. params: match, when (the NEW time phrase copied verbatim, e.g. "4pm", "friday 9am").
-- "complete": mark an EXISTING reminder done. params: match.
-- "delete": remove an EXISTING reminder from the list. params: match.
-- "snooze": push an EXISTING reminder to a later time. params: match, when (the new time phrase verbatim).
-- "block": reserve UNNAMED free/focus time, only when the request names a duration and no activity ("block 2 hours friday"). A named activity is "event", never "block". params: duration (e.g. "2 hours", "90 minutes"), when (the day/window phrase like "friday" or "this week").
-- "recall": find the user's OWN files on this machine ("the pdf i downloaded", "find my screenshots from friday"). params (all optional, include what the request names): terms (file name/content words), types (kind words like "pdf", "screenshot", "image"), when (the time phrase verbatim), location ("downloads", "desktop" or "documents").
-- "textop": transform the text on the clipboard ("make this shorter", "translate my copied text to german"). params: instruction (a one-sentence imperative, e.g. "Translate the text to German.").
-Pronouns and references are valid match values: "remove it" -> match "it"; "cancel this event" -> match "this event".
+const PREAMBLE: &str = "Classify the request into ONE tool and extract its params:";
+
+const FOOTER: &str = r#"Pronouns and references are valid match values: "remove it" -> match "it"; "cancel this event" -> match "this event".
 Reply with JSON only: {"steps":[{"tool":"...","params":{...}}]}.
 If it is none of these, reply {"steps":[]}."#;
 
-fn alias_to_tool(alias: &str) -> Option<&'static str> {
-    ALIASES.iter().find(|(a, _)| *a == alias).map(|(_, t)| *t)
+/// Rules that only load with their own domain. These are the ones a flat
+/// prompt cannot afford: every rule here costs accuracy on the tools it does
+/// not describe, which is why the vocabulary stalled at ten.
+fn domain_rules(domain: Domain) -> &'static str {
+    match domain {
+        Domain::Calendar => concat!(
+            "The request is about the calendar.\n",
+            r#"Default to "event". Pick "cancel" or "move" only for wording about something that already exists ("cancel", "call off", "reschedule", "move ... to"), and "block" only when a LENGTH of time is stated ("2 hours"); a clock time is not a length."#,
+        ),
+        Domain::Reminder => concat!(
+            "The request is about the reminder list, never the calendar.\n",
+            r#"Adding is the default. Only pick "complete", "delete", or "snooze" when the request refers to a reminder that already exists."#,
+        ),
+        Domain::Clipboard => {
+            "The user wants the text on their clipboard transformed. Write the instruction as an imperative about \"the text\"."
+        }
+        Domain::Files => "",
+    }
 }
 
-fn sorted_aliases() -> Vec<&'static str> {
-    let mut aliases: Vec<&str> = ALIASES.iter().map(|(a, _)| *a).collect();
-    aliases.sort_unstable();
-    aliases
+/// The tools offered for a request: its domain's slice (or all of them), minus
+/// any whose precondition the request does not meet. Table order (see `Tool`).
+fn tools_for(domain: Option<Domain>, user: &str) -> Vec<&'static Tool> {
+    TOOLS
+        .iter()
+        .filter(|t| domain.is_none_or(|d| t.domain == d))
+        .filter(|t| t.requires.is_none_or(|met| met(user)))
+        .collect()
+}
+
+/// The system prompt for one domain, or the whole vocabulary for None.
+pub fn system_prompt(domain: Option<Domain>, user: &str) -> String {
+    let mut out = String::from(PREAMBLE);
+    for tool in tools_for(domain, user) {
+        out.push('\n');
+        out.push_str(tool.line);
+    }
+    if let Some(rules) = domain.map(domain_rules).filter(|r| !r.is_empty()) {
+        out.push('\n');
+        out.push_str(rules);
+    }
+    out.push('\n');
+    out.push_str(FOOTER);
+    out
+}
+
+fn alias_to_tool(alias: &str) -> Option<&'static str> {
+    TOOLS.iter().find(|t| t.alias == alias).map(|t| t.id)
 }
 
 /// Request body for the planning call (also used to warm the prompt cache).
 pub fn request_body(model: &str, user: &str) -> String {
+    let domain = domain::of(user);
+    // Prompt keeps table order; the schema enum is sorted so the same domain
+    // always produces a byte-identical `format` block.
+    let mut aliases: Vec<&str> = tools_for(domain, user).iter().map(|t| t.alias).collect();
+    aliases.sort_unstable();
     json!({
         "model": model,
         "messages": [
-            { "role": "system", "content": SYSTEM_PROMPT },
+            { "role": "system", "content": system_prompt(domain, user) },
             { "role": "user", "content": user },
         ],
         "stream": false,
@@ -63,7 +186,7 @@ pub fn request_body(model: &str, user: &str) -> String {
         "think": false,
         "options": { "temperature": 0, "num_predict": 80 },
         "keep_alive": "30m",
-        "format": plan::chat_format(&sorted_aliases()),
+        "format": plan::chat_format(&aliases),
     })
     .to_string()
 }
@@ -149,11 +272,12 @@ fn map_snapshot(snapshot: &str) -> String {
     json!({ "done": true, "call": call }).to_string()
 }
 
-/// Primes the model + Ollama's prompt-prefix cache with the exact planner
-/// prompt so the first real plan skips load and prompt processing.
+/// Primes the model + Ollama's prompt-prefix cache. The warm query is chosen
+/// to produce the WIDEST prompt (no domain, block's precondition met), since
+/// every shard is a subset of it and shares its leading tokens.
 pub fn warm(host: &str, model: &str) {
     let url = format!("{}/api/chat", host.trim_end_matches('/'));
-    let _ = ollama::post_json(&url, &request_body(model, "hi"), 30);
+    let _ = ollama::post_json(&url, &request_body(model, "hold 2 hours"), 30);
 }
 
 #[cfg(test)]
@@ -300,5 +424,93 @@ mod tests {
         assert_eq!(body["stream"], false);
         assert_eq!(body["messages"][0]["role"], "system");
         assert!(body["format"]["properties"]["steps"].is_object());
+    }
+
+    fn offered(user: &str) -> Vec<String> {
+        let body: Value = serde_json::from_str(&request_body("m", user)).unwrap();
+        serde_json::from_value(
+            body["format"]["properties"]["steps"]["items"]["properties"]["tool"]["enum"].clone(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_placed_request_sees_only_its_own_domain() {
+        assert_eq!(
+            offered("delete the buy milk reminder"),
+            ["complete", "delete", "reminder", "snooze"]
+        );
+        // No length of time, so the calendar shard is block-less here.
+        assert_eq!(
+            offered("cancel my dentist appointment"),
+            ["cancel", "event", "move"]
+        );
+        assert_eq!(
+            offered("block 2 hours friday"),
+            ["block", "cancel", "event", "move"]
+        );
+        assert_eq!(offered("make this shorter"), ["textop"]);
+
+        // The prompt narrows with the schema: no stray tool descriptions.
+        let prompt = system_prompt(Some(Domain::Clipboard), "make this shorter");
+        assert!(prompt.contains(r#""textop""#));
+        assert!(!prompt.contains(r#""event""#));
+        assert!(!prompt.contains(r#""recall""#));
+    }
+
+    #[test]
+    fn an_unplaceable_request_sees_every_tool() {
+        // "2 hours" keeps block's precondition met, so this is the full table.
+        let all = "hold 2 hours for lunch with sarah tomorrow at noon";
+        assert_eq!(offered(all).len(), TOOLS.len());
+        let prompt = system_prompt(None, all);
+        for tool in &TOOLS {
+            assert!(prompt.contains(tool.line), "{}", tool.alias);
+        }
+    }
+
+    #[test]
+    fn an_unmet_precondition_withholds_the_tool() {
+        // No length of time stated, so "block" is not even in the vocabulary:
+        // the model cannot misfile an add as a time block.
+        let without_length = offered("add gym session tomorrow 6am");
+        assert!(
+            !without_length.iter().any(|a| a == "block"),
+            "{without_length:?}"
+        );
+        assert!(without_length.iter().any(|a| a == "event"));
+        assert!(!system_prompt(None, "add gym session tomorrow 6am").contains(r#""block""#));
+
+        assert!(offered("block 2 hours friday").iter().any(|a| a == "block"));
+    }
+
+    #[test]
+    fn every_prompt_shares_the_preamble_and_footer() {
+        // The shared prefix is what keeps Ollama's prompt cache useful across
+        // shards, and the footer is what keeps the decline escape hatch.
+        for domain in [
+            None,
+            Some(Domain::Calendar),
+            Some(Domain::Reminder),
+            Some(Domain::Files),
+            Some(Domain::Clipboard),
+        ] {
+            let prompt = system_prompt(domain, "block 2 hours friday");
+            assert!(prompt.starts_with(PREAMBLE));
+            assert!(prompt.ends_with(FOOTER));
+        }
+    }
+
+    #[test]
+    fn aliases_and_ids_are_unique() {
+        let mut aliases: Vec<&str> = TOOLS.iter().map(|t| t.alias).collect();
+        aliases.sort_unstable();
+        let count = aliases.len();
+        aliases.dedup();
+        assert_eq!(aliases.len(), count);
+        for tool in &TOOLS {
+            assert_eq!(alias_to_tool(tool.alias), Some(tool.id));
+            assert!(tool.line.contains(tool.alias), "{}", tool.alias);
+        }
     }
 }

@@ -744,6 +744,24 @@ pub fn has_clock_time(phrase: &str) -> bool {
     AM_PM.is_match(&p) || HH_MM.is_match(&p)
 }
 
+/// Whether free text STATES a length of time ("2 hours", "90 minutes", "an
+/// hour"), as opposed to a clock time ("6am"). `block_time` is meaningless
+/// without one, so the planner uses this to decide whether to offer the tool
+/// at all rather than trusting a weak model to read the difference.
+pub fn has_duration_phrase(text: &str) -> bool {
+    use std::sync::LazyLock;
+    static NUMERIC: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"\d+(\.\d+)?\s*(m|mins?|minutes?|h|hrs?|hours?)\b").expect("valid")
+    });
+    static WORDED: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"\b(an?|half|couple|few)\s+(of\s+)?(an\s+)?(minutes?|hours?)\b")
+            .expect("valid")
+    });
+
+    let text = text.to_lowercase();
+    NUMERIC.is_match(&text) || WORDED.is_match(&text)
+}
+
 fn local(epoch: i64) -> Option<DateTime<Local>> {
     Local.timestamp_opt(epoch, 0).single()
 }
@@ -1207,6 +1225,31 @@ mod tests {
         assert_eq!(parse_duration_minutes("1 day"), None);
         assert_eq!(parse_duration_minutes("all day"), None);
         assert_eq!(parse_duration_minutes("2 weeks"), None);
+    }
+
+    #[test]
+    fn duration_phrases_are_told_from_clock_times() {
+        for text in [
+            "block 2 hours friday",
+            "block 90 minutes tomorrow afternoon",
+            "find me 3 hours of focus time this week",
+            "reserve an hour tomorrow",
+            "block out 30m today",
+            "give me a couple of hours next week",
+        ] {
+            assert!(has_duration_phrase(text), "{text}");
+        }
+        // A clock time is not a length, which is the whole point of the check.
+        for text in [
+            "add gym session tomorrow 6am",
+            "dentist friday 3pm",
+            "move it to 5pm",
+            "schedule a 1:1 with priya monday 2pm",
+            "flight to tokyo next friday",
+            "standup at 9am monday",
+        ] {
+            assert!(!has_duration_phrase(text), "{text}");
+        }
     }
 
     #[test]

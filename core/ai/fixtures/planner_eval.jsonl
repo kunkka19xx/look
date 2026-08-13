@@ -1,0 +1,109 @@
+# Planner eval corpus (see examples/plan_eval.rs). One case per line:
+#   input   what the user types after `>`
+#   route   the routing tier that SHOULD claim it (route.rs ladder)
+#   tool    the resolved tool id, or null when the model should decline to chat
+#   params  expected params; "~x" asserts a normalized substring, else equality
+#   note    why, when the expectation is not obvious
+# Expectations are desired behaviour, not current behaviour: a failure is a real
+# gap whether it lives in the prompt or in the ladder.
+
+# --- calendar.add_event -------------------------------------------------
+{"input":"lunch with sarah tomorrow at noon","route":"plan","tool":"calendar.add_event","params":{"title":"~lunch with sarah"}}
+{"input":"dentist friday 3pm","route":"plan","tool":"calendar.add_event","params":{"title":"~dentist"}}
+{"input":"team standup at 9am monday","route":"plan","tool":"calendar.add_event","params":{"title":"~standup"}}
+{"input":"go to the office tomorrow","route":"plan","tool":"calendar.add_event","params":{"title":"~office"},"note":"an errand with no time is still an event, not chat"}
+{"input":"coffee with mark on thursday","route":"plan","tool":"calendar.add_event","params":{"title":"~coffee with mark"}}
+{"input":"schedule a 1:1 with priya monday 2pm","route":"plan","tool":"calendar.add_event","params":{"title":"~priya"}}
+{"input":"add gym session tomorrow 6am","route":"plan","tool":"calendar.add_event","params":{"title":"~gym"}}
+{"input":"flight to tokyo next friday","route":"plan","tool":"calendar.add_event","params":{"title":"~tokyo"}}
+
+# --- reminder.add -------------------------------------------------------
+{"input":"remind me to buy milk","route":"plan","tool":"reminder.add","params":{"title":"~buy milk"}}
+{"input":"remind me to water the plants tomorrow","route":"plan","tool":"reminder.add","params":{"title":"~water the plants"}}
+{"input":"remind me to pay rent on the 1st","route":"plan","tool":"reminder.add","params":{"title":"~rent"}}
+{"input":"reminder to submit the expense report","route":"plan","tool":"reminder.add","params":{"title":"~expense report"}}
+{"input":"remind me to take out the trash tonight","route":"plan","tool":"reminder.add","params":{"title":"~trash"}}
+{"input":"remind me to call the bank in the morning","route":"plan","tool":"reminder.add","params":{"title":"~call the bank"}}
+{"input":"remind me to send the slides tomorrow","route":"plan","tool":"reminder.add","params":{"title":"~slides"},"note":"file type word inside a reminder title"}
+
+# --- calendar.cancel_event ----------------------------------------------
+{"input":"cancel my dentist appointment","route":"plan","tool":"calendar.cancel_event","params":{"match":"~dentist"}}
+{"input":"cancel the standup tomorrow","route":"plan","tool":"calendar.cancel_event","params":{"match":"~standup"}}
+{"input":"cancel lunch with sarah","route":"plan","tool":"calendar.cancel_event","params":{"match":"~lunch with sarah"}}
+{"input":"call off the sync tomorrow","route":"plan","tool":"calendar.cancel_event","params":{"match":"~sync"}}
+{"input":"cancel it","route":"plan","tool":"calendar.cancel_event","params":{"match":"~it"}}
+{"input":"cancel the pdf review meeting","route":"plan","tool":"calendar.cancel_event","params":{"match":"~pdf review"},"note":"a type word in an event name must not divert to file recall"}
+
+# --- calendar.move_event ------------------------------------------------
+{"input":"move my dentist appointment to 4pm","route":"plan","tool":"calendar.move_event","params":{"match":"~dentist","when":"4pm"}}
+{"input":"reschedule the standup to friday 9am","route":"plan","tool":"calendar.move_event","params":{"match":"~standup","when":"~friday 9"}}
+{"input":"push the sync to tomorrow","route":"plan","tool":"calendar.move_event","params":{"match":"~sync","when":"~tomorrow"}}
+{"input":"move lunch with sarah to 1pm","route":"plan","tool":"calendar.move_event","params":{"match":"~lunch","when":"1pm"}}
+{"input":"shift the review meeting to next monday","route":"plan","tool":"calendar.move_event","params":{"match":"~review","when":"~monday"}}
+{"input":"move it to 5pm","route":"plan","tool":"calendar.move_event","params":{"match":"~it","when":"5pm"}}
+{"input":"move the doc review to friday","route":"plan","tool":"calendar.move_event","params":{"match":"~doc review","when":"~friday"},"note":"reschedule verb plus a named day beats the doc type word"}
+
+# --- reminder.complete --------------------------------------------------
+{"input":"mark buy milk as done","route":"plan","tool":"reminder.complete","params":{"match":"~milk"}}
+{"input":"complete the laundry reminder","route":"plan","tool":"reminder.complete","params":{"match":"~laundry"}}
+{"input":"i finished the expense report","route":"plan","tool":"reminder.complete","params":{"match":"~expense report"}}
+{"input":"check off water the plants","route":"plan","tool":"reminder.complete","params":{"match":"~water the plants"}}
+{"input":"mark it done","route":"plan","tool":"reminder.complete","params":{"match":"~it"}}
+
+# --- reminder.remove ----------------------------------------------------
+{"input":"delete the buy milk reminder","route":"plan","tool":"reminder.remove","params":{"match":"~milk"}}
+{"input":"remove the gym reminder","route":"plan","tool":"reminder.remove","params":{"match":"~gym"}}
+{"input":"get rid of the reminder about the dentist","route":"plan","tool":"reminder.remove","params":{"match":"~dentist"}}
+{"input":"delete it from my reminders","route":"plan","tool":"reminder.remove","params":{"match":"~it"}}
+
+# --- reminder.snooze ----------------------------------------------------
+{"input":"snooze buy milk until tomorrow","route":"plan","tool":"reminder.snooze","params":{"match":"~milk","when":"~tomorrow"}}
+{"input":"push the rent reminder to friday","route":"plan","tool":"reminder.snooze","params":{"match":"~rent","when":"~friday"},"note":"push X to Y is snooze for a reminder, move for an event"}
+{"input":"snooze it to 8am","route":"plan","tool":"reminder.snooze","params":{"match":"~it","when":"8am"}}
+{"input":"postpone the laundry reminder to tonight","route":"plan","tool":"reminder.snooze","params":{"match":"~laundry","when":"~tonight"}}
+
+# --- calendar.block_time ------------------------------------------------
+{"input":"block 2 hours friday","route":"plan","tool":"calendar.block_time","params":{"duration":"~2 hour","when":"~friday"}}
+{"input":"block 90 minutes tomorrow afternoon","route":"plan","tool":"calendar.block_time","params":{"duration":"~90 min","when":"~tomorrow"}}
+{"input":"find me 3 hours of focus time this week","route":"plan","tool":"calendar.block_time","params":{"duration":"~3 hour","when":"~this week"}}
+{"input":"reserve an hour tomorrow","route":"plan","tool":"calendar.block_time","params":{"duration":"~hour","when":"~tomorrow"}}
+{"input":"block out 30 minutes today","route":"plan","tool":"calendar.block_time","params":{"duration":"~30 min","when":"~today"}}
+{"input":"block 2 hours to review the slides","route":"plan","tool":"calendar.block_time","params":{"duration":"~2 hour"},"note":"file type word inside a block request"}
+
+# --- files.recall (model path; the parser below claims the obvious shapes) ---
+{"input":"what was that resume i was working on","route":"plan","tool":"files.recall","params":{"terms":"~resume"}}
+{"input":"the invoice i saved last tuesday","route":"plan","tool":"files.recall","params":{"terms":"~invoice","when":"~tuesday"}}
+{"input":"where did i put the tax return","route":"plan","tool":"files.recall","params":{"terms":"~tax"}}
+
+# --- clipboard.textop (model path; bare verbs are deterministic below) ---
+{"input":"make this shorter","route":"plan","tool":"clipboard.textop","params":{"instruction":"~short"}}
+{"input":"translate my copied text to german","route":"plan","tool":"clipboard.textop","params":{"instruction":"~german"}}
+{"input":"turn what i copied into bullet points","route":"plan","tool":"clipboard.textop","params":{"instruction":"~bullet"}}
+
+# --- decline: chat answers these, the planner must not act ---------------
+{"input":"what is the capital of france","route":"plan","tool":null}
+{"input":"how do i center a div in css","route":"plan","tool":null}
+{"input":"write a haiku about rust","route":"plan","tool":null}
+{"input":"whats on my calendar tomorrow","route":"plan","tool":null,"note":"schedule questions answer from the calendar context, they are not actions"}
+{"input":"who won the world cup in 2022","route":"plan","tool":null}
+{"input":"explain quantum entanglement in one line","route":"plan","tool":null}
+{"input":"hello","route":"plan","tool":null}
+{"input":"thanks","route":"plan","tool":null}
+
+# --- deterministic tiers: no model, must never reach the planner ---------
+{"input":"remember i prefer metric units","route":"memory"}
+{"input":"forget i prefer metric units","route":"memory"}
+{"input":"memories","route":"memory"}
+{"input":"summarize","route":"textop"}
+{"input":"tldr","route":"textop"}
+{"input":"fix grammar","route":"textop"}
+{"input":"translate to french","route":"textop"}
+{"input":"pdfs from last week","route":"files"}
+{"input":"screenshots today","route":"files"}
+{"input":"files i downloaded yesterday","route":"files"}
+{"input":"spreadsheets on my desktop","route":"files"}
+{"input":"delete the pdfs i downloaded yesterday","route":"files","note":"delete governs files too, so the veto must not claim it"}
+{"input":"open the screenshots from today","route":"files"}
+{"input":"add dentist @ friday 3pm","route":"explicit","tool":"calendar.add_event","params":{"title":"dentist","when":"friday 3pm"}}
+{"input":"remind buy milk @ 8am","route":"explicit","tool":"reminder.add","params":{"title":"buy milk","when":"8am"}}
+{"input":"add team offsite @ tomorrow 10am for 2 hours","route":"explicit","tool":"calendar.add_event","params":{"title":"team offsite","when":"tomorrow 10am","duration":"2 hours"}}
