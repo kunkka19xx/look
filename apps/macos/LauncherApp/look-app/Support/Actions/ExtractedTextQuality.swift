@@ -2,27 +2,16 @@ import Foundation
 
 /// Cleanup and a usability verdict for text pulled out of a document.
 ///
-/// PDFs are the reason this exists. A PDF is a drawing format, not a text
-/// format: the characters on screen are glyph ids, and recovering letters from
-/// them depends on a mapping the producer may not have embedded. When it is
-/// missing, extraction still "succeeds" and returns confident nonsense -
-/// private-use scalars, replacement characters, or runs of control codes.
-/// Handing that to a model produces a fluent summary of garbage, which is a
-/// worse failure than refusing, because nothing about the answer looks wrong.
-///
-/// So extraction is followed by a verdict, and the verdict is conservative: it
-/// only rejects text that is provably broken, never text that is merely
-/// unusual. Deciding "this prose looks low quality" is not something a
-/// character histogram can do honestly.
+/// A PDF without an embedded character map still "extracts" - into glyph ids,
+/// not letters - and a model will summarize that gibberish fluently. So the
+/// verdict rejects only provably broken text, never merely unusual text.
 nonisolated enum ExtractedTextQuality {
-    /// Share of broken scalars above which the text is refused. Deliberately
-    /// low: a real document has essentially none, while a mis-decoded one is
-    /// full of them, so anything in between is rare and better refused.
+    /// A real document has essentially none; a mis-decoded one is full of
+    /// them, so anything in between is rare and better refused.
     static let brokenScalarLimit = 0.02
 
-    /// Tidies the artifacts of PDF text layout, which are mechanical and safe
-    /// to undo. Anything requiring judgement (column order, tables) is left
-    /// alone - a wrong guess there would silently reorder the user's document.
+    /// Undoes the mechanical artifacts of PDF layout only. Column order and
+    /// tables are left alone: a wrong guess reorders the user's document.
     static func normalized(_ text: String) -> String {
         // NFKC folds the ligature glyphs PDFs are full of: "ﬁ" -> "fi".
         var out = text.precomposedStringWithCompatibilityMapping
@@ -40,11 +29,8 @@ nonisolated enum ExtractedTextQuality {
     /// The decoder gave up on these bytes and said so.
     private static let replacementCharacter: UInt32 = 0xFFFD
 
-    /// Unicode leaves these blocks permanently undefined so fonts can number
-    /// their own glyphs in them. A PDF whose font has no character map leaks
-    /// those raw glyph numbers straight through, so text landing here is a
-    /// font's internal numbering rather than letters. Three blocks: the main
-    /// one, plus the two supplementary planes.
+    /// Undefined by design, so fonts number their own glyphs here. Text
+    /// landing in these blocks is glyph ids, not letters.
     private static let privateUseAreas: [ClosedRange<UInt32>] = [
         0xE000...0xF8FF,
         0xF0000...0xFFFFD,

@@ -3,9 +3,8 @@ import SwiftUI
 /// Generic confirm bar for any pending action. Mirrors `KillConfirmationBar`;
 /// renders whatever `PlannedAction.preview` says, so every tool reuses it.
 struct PendingActionBar: View {
-    /// Every step of the plan. Usually one; several for a compound request,
-    /// which confirms and undoes as a unit - so the bar must show ALL of what
-    /// Enter is about to do, never just the first.
+    /// Every step: a compound request confirms and undoes as a unit, so the
+    /// bar must show all of what Enter will do.
     let steps: [PlannedAction]
     let themeStore: ThemeStore
     let onConfirm: () -> Void

@@ -1,14 +1,6 @@
-//! The deterministic domain prefilter: which slice of the tool vocabulary a
-//! request could possibly want. Narrowing the planner prompt to one domain is
-//! what lets the vocabulary grow past ten tools on a 7-8B local model. Fewer
-//! candidates is fewer ways to be wrong, and each domain can carry its own
-//! disambiguation rules without paying for them on every other request (a
-//! single flat prompt cannot: rules added for one tool destabilize the rest).
-//!
-//! Conservative BY DESIGN. Every rule fires on an unambiguous signal only, and
-//! everything else is None, meaning "offer the model every tool" - exactly the
-//! pre-shard behaviour. A wrong narrow is unrecoverable; a missing narrow only
-//! forgoes accuracy we did not have.
+//! Which slice of the tool vocabulary a request could want, so the planner
+//! prompt can be narrowed to one domain. Conservative: None means "offer every
+//! tool", because a wrong narrow is unrecoverable and a missing one is not.
 
 use crate::lexicon;
 
@@ -20,13 +12,9 @@ pub enum Domain {
     Clipboard,
 }
 
-/// The one domain a request unambiguously belongs to, or None when the signal
-/// is too weak and the planner must see the whole vocabulary.
-///
-/// Nouns are tested before verbs, so "postpone the standup" is Calendar rather
-/// than a reminder snooze. `Files` is never returned: the strong file shapes
-/// are already claimed by `files::parse` before the planner runs, and what is
-/// left ("what was that resume i was working on") has no reliable signal.
+/// The one domain a request unambiguously belongs to, or None to offer every
+/// tool. Nouns beat verbs ("postpone the standup" is Calendar). `Files` is
+/// never returned: `files::parse` claims those shapes before the planner runs.
 pub fn of(input: &str) -> Option<Domain> {
     let lower = input.trim().to_lowercase();
     let words: Vec<&str> = lower
@@ -44,9 +32,8 @@ pub fn of(input: &str) -> Option<Domain> {
     if words.iter().any(|w| lexicon::is_clipboard_noun(w)) {
         return Some(Domain::Clipboard);
     }
-    // The verb tables live in the lexicon so this prefilter and the file-recall
-    // veto (`files::is_scheduling`) can never disagree about what a scheduling
-    // verb is - they did, inside one commit, over "postpone".
+    // Verb tables live in the lexicon so this and `files::is_scheduling` cannot
+    // disagree - they did, over "postpone".
     if lexicon::is_reminder_verb(first) {
         return Some(Domain::Reminder);
     }

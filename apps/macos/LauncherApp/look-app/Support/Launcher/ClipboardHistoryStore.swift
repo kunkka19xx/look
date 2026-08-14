@@ -2,10 +2,8 @@ import AppKit
 import Combine
 import Foundation
 
-/// Serializes every clipboard write. Independent detached tasks have no
-/// ordering, so a copy racing a clear could land AFTER the clear and resurrect
-/// the content on the next launch. One actor means record, delete, and clear
-/// happen in the order they were asked for.
+/// Serializes clipboard writes: unordered detached tasks let a copy land after
+/// the clear meant to erase it.
 private actor ClipboardWriter {
     static let shared = ClipboardWriter()
 
@@ -184,10 +182,8 @@ final class ClipboardHistoryStore: ObservableObject {
         }
     }
 
-    /// Persisting is off the main thread so a copy never waits on a database
-    /// write, but the row id comes BACK and is attached to the in-memory entry.
-    /// Without that, `deleteEntry` has nothing to delete on disk and the clip
-    /// returns on the next launch.
+    /// Off the main thread, but the row id comes BACK: without it `deleteEntry`
+    /// has nothing to remove on disk and the clip returns next launch.
     private func persist(_ content: String, entryID: UUID) {
         let app = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         Task { [weak self] in
@@ -197,10 +193,8 @@ final class ClipboardHistoryStore: ObservableObject {
         }
     }
 
-    /// Rebuilds the entry with its persisted id. The entry may have been
-    /// deleted or pushed off the list while the write was in flight, in which
-    /// case there is nothing to update - and a delete that raced the write is
-    /// handled by `deleteEntry` forgetting the row directly.
+    /// Rebuilds the entry with its persisted id, or forgets the row when the
+    /// entry was deleted while the write was in flight.
     private func attachStoreID(_ storeID: Int64, to entryID: UUID) {
         guard let index = entries.firstIndex(where: { $0.id == entryID }) else {
             // The user deleted it before the write landed: forget it on disk

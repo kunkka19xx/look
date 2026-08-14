@@ -129,11 +129,8 @@ const NOISE: &[&str] = &[
 /// qualify, so "delete the pdfs i downloaded" stays recall.
 fn is_scheduling(words: &[&str]) -> bool {
     let leads = |set: &[&str]| words.first().is_some_and(|w| set.contains(w));
-    // A schedule noun does NOT win when the request also names a file type or
-    // place: "find the meeting notes pdf from friday" is a file search that
-    // happens to mention a meeting. Without this, the veto sent it to the
-    // planner, whose Calendar shard has no recall tool - so it reached neither
-    // path and simply did nothing.
+    // A schedule noun does not win when the request also names a file type or
+    // place: "find the meeting notes pdf from friday" is a file search.
     let names_a_file = words.iter().any(|w| {
         type_of(w).is_some() || location_of(w).is_some() || matches!(*w, "file" | "files")
     });

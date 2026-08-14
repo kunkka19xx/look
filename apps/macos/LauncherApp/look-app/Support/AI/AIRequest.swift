@@ -34,10 +34,14 @@ nonisolated struct AIMessage: Equatable, Sendable {
     /// conversation reads as one enormous question. A lone user message is left
     /// bare, since labelling a single question would just be noise.
     static func conversation(_ messages: [AIMessage]) -> String {
-        let turns = messages.filter { $0.role != .system }
+        // Empty turns are dropped BEFORE the count, or a lone question sitting
+        // beside a blank turn counts as two and gets labelled as history.
+        let turns = messages.filter {
+            $0.role != .system
+                && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
         guard turns.count > 1 else { return flattened(turns) }
         return turns
-            .filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .map { turn in
                 switch turn.role {
                 case .assistant: "Assistant: \(turn.content)"

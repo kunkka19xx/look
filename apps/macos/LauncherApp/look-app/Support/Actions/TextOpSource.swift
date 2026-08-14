@@ -2,13 +2,8 @@ import Foundation
 import PDFKit
 import UniformTypeIdentifiers
 
-/// Where a text op reads its input. The clipboard was the only source when
-/// text ops shipped; a picked file is the second, so "summarize" can act on a
-/// file the user pointed at instead of whatever they last copied.
-///
-/// The model never chooses this. It emits an instruction and nothing else, and
-/// the target comes from UI state - the same split that keeps the calendar
-/// tools reliable.
+/// Where a text op reads its input. The model never chooses this: it emits an
+/// instruction, and the target comes from UI state.
 nonisolated enum TextOpSource: Equatable {
     case clipboard
     /// `text` is present when the file was `@`-mentioned: it was read and
@@ -96,10 +91,8 @@ nonisolated enum TextExtraction {
         UTType(filenameExtension: (path as NSString).pathExtension)?.conforms(to: .pdf) == true
     }
 
-    /// Text out of a PDF, or a named reason there is none. A PDF is a DRAWING
-    /// format: extraction depends on a character map the producer may have
-    /// omitted, so "it returned a string" is not the same as "it worked" - see
-    /// `ExtractedTextQuality`.
+    /// Text out of a PDF, or a named reason there is none: "it returned a
+    /// string" is not "it worked" (see `ExtractedTextQuality`).
     private static func extractPDF(path: String, cap: Int) -> Result<Extracted, Failure> {
         guard let document = PDFDocument(url: URL(fileURLWithPath: path)) else {
             return .failure(.unreadable)
@@ -129,20 +122,11 @@ nonisolated enum TextExtraction {
         return .success(Extracted(text: cleaned, truncated: truncated))
     }
 
-    /// True when the extension declares a text type, or when macOS has no
-    /// opinion about it. "No opinion" covers three cases that must all fall
-    /// through to the DECODE, which is the only thing that actually knows:
-    ///
-    /// - no extension at all (`Makefile`, `.zshrc`),
-    /// - an extension with no registered type,
-    /// - an extension macOS answers with a DYNAMIC type (`dyn.ah62d4rv4ge80s52`).
-    ///
-    /// That last one is why `main.go` was refused: an unregistered extension
-    /// gets a synthesized `dyn.*` type rather than nil, and a dynamic type
-    /// conforms to nothing - so `.go`, `.rs`, and `.zig` all read as "not
-    /// text" while `.swift`, `.py`, `.md`, and `.toml` passed. Which languages
-    /// happen to be registered depends on what is installed, so treating a
-    /// dynamic type as a verdict would make this vary machine to machine.
+    /// True when the extension declares a text type, or macOS has no opinion:
+    /// no extension, no registered type, or a DYNAMIC type. That last case is
+    /// why `main.go` was refused - an unregistered extension gets a synthesized
+    /// `dyn.*` type, which conforms to nothing. Unknown means let the decode
+    /// decide, or this varies by what is installed.
     static func declaresText(path: String) -> Bool {
         let ext = (path as NSString).pathExtension
         guard !ext.isEmpty else { return true }

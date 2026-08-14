@@ -34,6 +34,25 @@ final class AIRequestTests: XCTestCase {
         XCTAssertEqual(AIMessage.conversation(one), "What is 2+2?")
     }
 
+    /// A blank turn must not make a single question look like history: the
+    /// count has to be taken AFTER empties are dropped, not before.
+    func testABlankTurnDoesNotTurnOneQuestionIntoHistory() {
+        let withBlank = [
+            AIMessage(.system, "Be brief."),
+            AIMessage(.user, "What is 2+2?"),
+            AIMessage(.assistant, "   "),
+        ]
+        XCTAssertEqual(AIMessage.conversation(withBlank), "What is 2+2?")
+
+        // Real history is still labelled, blank turns and all.
+        let mixed = [
+            AIMessage(.user, "What is 2+2?"),
+            AIMessage(.assistant, ""),
+            AIMessage(.assistant, "4"),
+        ]
+        XCTAssertEqual(AIMessage.conversation(mixed), "User: What is 2+2?\n\nAssistant: 4")
+    }
+
     func testEmptyMessagesAreDroppedFromTheFlattenedForm() {
         let messages = [AIMessage(.system, "   "), AIMessage(.user, "hi")]
         XCTAssertEqual(AIMessage.flattened(messages), "hi")

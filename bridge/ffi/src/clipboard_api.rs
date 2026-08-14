@@ -1,12 +1,8 @@
-//! C-ABI wrappers over `look_storage`'s clipboard history, so every shell
-//! remembers clips in the same look.db instead of holding them in memory and
-//! losing them on quit. Direct-store access, mirroring `url_history_api`; all
-//! endpoints are best-effort and panic-safe at `lib.rs`.
+//! C-ABI wrappers over `look_storage`'s clipboard history. Mirrors
+//! `url_history_api`; panic-safe at `lib.rs`.
 //!
-//! The concealed/transient gate is NOT here and cannot be: only the shell can
-//! read the pasteboard type markers that say a clip is a password or a
-//! one-time secret, so the shell must refuse to call `record` for those. This
-//! layer trusts what it is handed.
+//! The concealed/transient gate is NOT here and cannot be: only the shell sees
+//! the pasteboard markers. This layer trusts what it is handed.
 
 use crate::state::{cstr_to_string, default_db_path, store_json_allocation};
 use look_storage::{ClipboardEntry, SqliteStore};
@@ -18,15 +14,10 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 const JSON_EMPTY_ARRAY: &str = "[]";
 
-/// One connection, opened once. `record` runs for every copy made anywhere in
-/// the OS, and `SqliteStore::open` is not cheap: it creates the directory and
-/// re-runs the full migration (a PRAGMA batch including a WAL journal-mode
-/// switch, ~10 CREATE IF NOT EXISTS, two PRAGMA table_info) to perform one
-/// INSERT. The shell already serializes these calls through one actor, so a
-/// mutex-guarded connection matches the access pattern exactly.
-/// Keyed on the path, because `set_db_path_for_test` can repoint the database
-/// at runtime - a connection cached without the key would keep writing to the
-/// previous file. Comparing a path per call is free next to a migration.
+/// One connection, opened once: `record` runs on every copy made anywhere in
+/// the OS, and `SqliteStore::open` re-runs the whole migration each time.
+/// Keyed on the path: `set_db_path_for_test` can repoint the database, and an
+/// unkeyed cache would keep writing to the old file.
 static CLIPBOARD_STORE: OnceLock<Mutex<Option<(PathBuf, SqliteStore)>>> = OnceLock::new();
 
 fn store() -> MutexGuard<'static, Option<(PathBuf, SqliteStore)>> {
@@ -64,9 +55,8 @@ impl From<ClipboardEntry> for ClipboardEntryJSON {
     }
 }
 
-/// Remembers a clip and returns its row id, or 0 on empty input or any store
-/// failure. The id is what lets the shell delete THIS clip later; without it a
-/// deleted clip returns on the next launch.
+/// Remembers a clip, returning its row id (0 on failure). The id is what lets
+/// the shell delete this clip later.
 pub(crate) fn look_clipboard_record_impl(
     content: *const c_char,
     kind: *const c_char,
@@ -121,8 +111,7 @@ pub(crate) fn look_clipboard_delete_impl(id: i64) -> bool {
         .unwrap_or(false)
 }
 
-/// Forgets every clip, returning how many were removed. The promise that makes
-/// persisting clipboard history acceptable in the first place.
+/// Forgets every clip, returning how many were removed.
 pub(crate) fn look_clipboard_clear_impl() -> u32 {
     store()
         .as_ref()

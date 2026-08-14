@@ -1,20 +1,15 @@
 import Foundation
 
-/// Files the user attached to the next AI turn with `@`. Ordered, deduped, and
-/// budgeted: the model's context is finite and Ollama truncates a too-long
-/// prompt SILENTLY, so the bar reports what it is carrying rather than letting
-/// the user find out from a half-informed answer.
+/// Files attached to the next AI turn with `@`. Ordered, deduped, budgeted -
+/// Ollama truncates a too-long prompt silently, so the bar says what it holds.
 nonisolated struct MentionAttachments: Equatable {
 
     private(set) var files: [Attached] = []
 
     struct Attached: Equatable, Identifiable {
         let path: String
-        /// The text as read WHEN IT WAS ATTACHED. Kept rather than re-read at
-        /// submit: a file that changed or was deleted in between would other-
-        /// wise vanish from the prompt while the bar still showed it, and the
-        /// model would answer about nothing with no warning. It also keeps the
-        /// submit path off a second synchronous read of every file.
+        /// Read at ATTACH time. Re-reading at submit would let a file that
+        /// changed since vanish from the prompt while the bar still showed it.
         let text: String
         /// Characters actually readable from the file, after the read cap.
         /// Derived, not stored: two fields to keep in sync would let the
@@ -34,17 +29,14 @@ nonisolated struct MentionAttachments: Equatable {
     /// Roughly how much of a model's window the attachments will occupy.
     var estimatedTokens: Int { totalCharacters / AIGenerationOptions.charactersPerToken }
 
-    /// True once the attachments alone approach the window, where the model
-    /// starts losing either them or the question. Takes the CONFIGURED
-    /// provider's window: a cloud model's is far larger than a local one's, so
-    /// a shared constant here would warn at the wrong point for both.
+    /// Takes the configured provider's window: a cloud model's is far larger
+    /// than a local one's.
     func exceedsContext(_ contextTokens: Int) -> Bool {
         estimatedTokens > contextTokens * 3 / 4
     }
 
-    /// Reads the file to learn its real size, so the bar reports what the model
-    /// will get rather than what the file claims on disk. Returns the failure
-    /// for the caller to show; a file that cannot be read is never attached.
+    /// Returns the failure for the caller to show; an unreadable file is never
+    /// attached.
     mutating func add(path: String) -> TextExtraction.Failure? {
         if files.contains(where: { $0.path == path }) { return nil }
         switch TextExtraction.extract(path: path) {

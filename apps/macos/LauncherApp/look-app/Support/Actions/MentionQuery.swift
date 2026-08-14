@@ -1,15 +1,10 @@
 import Foundation
 
-/// The `@token` being typed in the AI input, used to drive the file-mention
-/// popup. Pure text math so the interaction is unit-tested rather than
-/// discovered by clicking around.
+/// The `@token` being typed in the AI input, driving the file-mention popup.
 ///
-/// Deliberately narrow, because `@` already means something here: `explicit.rs`
-/// splits `>add lunch @ 1pm` on it. A mention needs the `@` to open a word
-/// (start of line or after whitespace) and to be followed IMMEDIATELY by
-/// non-space text, so the date form never triggers one. Nothing is attached
-/// until the user picks from the popup, so typing `@1pm` and carrying on
-/// leaves the text exactly as written.
+/// Narrow on purpose: `@` already means a time in `>add lunch @ 1pm`. A mention
+/// needs `@` to open a word and be followed immediately by non-space text, and
+/// nothing attaches until the user picks - so the date form never triggers.
 nonisolated enum MentionQuery {
     struct Active: Equatable {
         /// The text after `@`, what the file search runs on.

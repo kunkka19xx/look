@@ -15,9 +15,8 @@ const MAX_CANDIDATE_PREALLOC: usize = 10_000;
 /// never depends on how many distinct URLs the user has opened (see url-history
 /// spec). Kept modest - history is a convenience cache, not a system of record.
 const MAX_URL_HISTORY_ROWS: usize = 500;
-/// Clipboard history is a RECALL corpus, not a paste ring, so it is sized for
-/// searching months of clips rather than the last handful. Still bounded: the
-/// rows are text the user copied, and an unbounded log of that is a liability.
+/// A recall corpus, not a paste ring - but still bounded: this is text the
+/// user copied.
 pub const MAX_CLIPBOARD_ROWS: usize = 5_000;
 
 const SETTINGS_KEY_WEB_SEARCH_ENABLED: &str = "web_search_enabled";
@@ -84,8 +83,7 @@ pub struct UrlHistoryEntry {
     pub last_used_at_unix_s: i64,
 }
 
-/// One remembered clip. `content` is the full text: recall searches it, so
-/// truncating here would silently make older clips unfindable.
+/// One remembered clip. `content` is the full text - recall searches it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClipboardEntry {
     pub id: i64,
@@ -502,16 +500,12 @@ impl SqliteStore {
         Ok(rows)
     }
 
-    /// Remembers a clip. Re-copying the same text MOVES the existing row to
-    /// now rather than adding a duplicate, so a corpus of 5,000 holds 5,000
-    /// distinct things. Capacity-bound by oldest-first pruning.
+    /// Remembers a clip and returns its row id (the handle a later delete
+    /// needs). Re-copying moves the row to now instead of duplicating it;
+    /// oldest-first pruning keeps the table bounded.
     ///
-    /// The caller is responsible for never passing a concealed or transient
-    /// clip: only the shell can read the pasteboard markers that say so.
-    /// Returns the row id of the stored clip, so the caller can delete THIS
-    /// entry later. Without it a freshly captured clip has no handle, and
-    /// "delete" would only drop the in-memory copy - the clip would come back
-    /// on the next launch.
+    /// The caller must never pass a concealed or transient clip: only the
+    /// shell can read the pasteboard markers that say so.
     pub fn record_clipboard_entry(
         &self,
         content: &str,
@@ -524,12 +518,9 @@ impl SqliteStore {
         let now = current_unix_s()?;
         let hash = content_hash(content);
         let tx = self.conn.unchecked_transaction()?;
-        // Re-copying is a NEW clip event, so the row is replaced rather than
-        // updated in place: an in-place update keeps the old id, and within
-        // the same second the id is what breaks the recency tie - so the clip
-        // the user just copied would sort below one from a moment earlier.
-        // The source app survives the replacement when the new capture has
-        // none, since that is the same clip either way.
+        // Replaced, not updated: an in-place update keeps the old id, and
+        // within the same second the id breaks the recency tie - so a re-copy
+        // would sort below something older.
         let previous_app: Option<String> = tx
             .query_row(
                 "SELECT app_bundle_id FROM clipboard_entries WHERE content_hash = ?1",
@@ -549,12 +540,8 @@ impl SqliteStore {
             params![content, hash, kind, app, now],
         )?;
         let row_id = tx.last_insert_rowid();
-        // Delete only the overflow. The obvious `WHERE id NOT IN (SELECT ...
-        // LIMIT cap)` builds a 5,000-row set and tests every row against it on
-        // EVERY copy - and this runs for every copy made anywhere in the OS,
-        // while the table is under the cap until the 5,001st distinct clip.
-        // Cutting below the oldest kept row does the same job and touches
-        // nothing until there is something to drop.
+        // Only the overflow: `WHERE id NOT IN (SELECT ... LIMIT cap)` would
+        // scan the whole table on every copy, for nothing until the 5,001st.
         tx.execute(
             "DELETE FROM clipboard_entries
              WHERE (copied_at_unix_s, id) < (
@@ -932,9 +919,8 @@ fn ensure_column_exists(
     Ok(())
 }
 
-/// Stable content id, so re-copying the same text updates one row instead of
-/// piling up. FNV-1a over the trimmed text: this only needs to be stable and
-/// cheap, not cryptographic.
+/// Stable dedupe id. FNV-1a over the trimmed text - stable and cheap, not
+/// cryptographic.
 fn content_hash(content: &str) -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for byte in content.trim().as_bytes() {
@@ -944,9 +930,8 @@ fn content_hash(content: &str) -> String {
     format!("{hash:016x}")
 }
 
-/// Escapes LIKE metacharacters so a typed `%` or `_` matches literally rather
-/// than as a wildcard. Every LIKE query goes through this: the rule was written
-/// out at five call sites, and three of them silently forgot `_`.
+/// Escapes LIKE metacharacters so a typed `%` or `_` is literal. Every LIKE
+/// query goes through this; three hand-written copies had forgotten `_`.
 fn like_escape(text: &str) -> String {
     text.replace('\\', "\\\\")
         .replace('%', "\\%")
