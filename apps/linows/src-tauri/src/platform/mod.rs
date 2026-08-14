@@ -79,6 +79,19 @@ fn resolve_icon(_kind: &str, _path: &str, _id: Option<&str>) -> Option<String> {
     None
 }
 
+/// One blurred rectangle in window-local logical pixels. The frontend sends
+/// these: only it knows which surfaces are painted (the window at inner-gap 0,
+/// each tile once the panes float). Lives here, not in the Linux backend,
+/// because it is a command parameter.
+#[derive(serde::Deserialize, Clone, Copy)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub struct BlurRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
 // --- Platform info (cross-platform Tauri command) ---
 
 #[derive(Serialize)]
@@ -93,6 +106,10 @@ pub struct PlatformInfo {
     /// acceleration is already off; the frontend must also drop backdrop
     /// blur or software compositing ghost-renders stale layers.
     pub virtual_gpu: bool,
+    /// True when the compositor grants behind-window blur on request. A
+    /// capability, not a setting: it only tells the frontend whether Blur
+    /// Opacity has real frost to thin.
+    pub compositor_blur: bool,
 }
 
 #[tauri::command]
@@ -117,11 +134,20 @@ pub fn get_platform() -> PlatformInfo {
     #[cfg(not(target_os = "linux"))]
     let virtual_gpu = false;
 
+    #[cfg(target_os = "linux")]
+    let compositor_blur = linux::blur::is_supported();
+
+    // Windows could via DWM acrylic, but it cannot round a per-pixel-alpha
+    // window - that trades the rounded silhouette for frost.
+    #[cfg(not(target_os = "linux"))]
+    let compositor_blur = false;
+
     PlatformInfo {
         os,
         has_compositor,
         compositor,
         virtual_gpu,
+        compositor_blur,
     }
 }
 

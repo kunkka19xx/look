@@ -245,7 +245,9 @@ Liquid is the one preset that changes how surfaces are drawn rather than only
 what colour they are. It renders the window and every tile on macOS 26's Liquid
 Glass, rounds corners further, and uses far more transparent fills so the glass
 reads as a lens rather than a panel. It needs macOS 26 and is hidden from the
-picker on older releases. If a config written on macOS 26 is opened on an older one, the value is kept and shown as unsupported rather than silently changed. Two consequences worth knowing:
+picker on older releases. If a config written on macOS 26 is opened on an older
+one, the value is kept and shown as unsupported rather than silently changed.
+Two consequences worth knowing:
 
 - `Blur Opacity` is disabled while Liquid Glass is the blur style, because glass
   has no blur to thin. Your value is kept and returns when you switch back.
@@ -254,6 +256,22 @@ picker on older releases. If a config written on macOS 26 is opened on an older 
   glass surface with that theme's palette. Going the other way, selecting Liquid
   and then a different blur style keeps Liquid's palette *and* its rounder
   corners, and swaps only the material for the classic blur.
+
+On Linux and Windows, Liquid is clear glass rather than frosted: the same
+palette, the same rounder corners, plus a bright rim along the top edge.
+Refraction is not available to a web frontend at all - CSS can only blur what
+the page itself drew, and the desktop behind the window is drawn by the system,
+not the page.
+
+Blur behind the window is the compositor's to grant, and Look asks for it
+wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and Niri through the
+`ext-background-effect-v1` protocol, older Plasma through KDE's own, and KWin on
+X11 through a window property. There is nothing to switch on - if your
+compositor takes the request the frost is there, and `Blur Opacity` starts
+thinning the tint so more of it shows through. Everywhere else (GNOME today,
+plain sway, X11 without KWin) Look stays clear glass and `Blur Opacity` applies
+only when you have set a background image. Driving blur from your own compositor
+config still works; Look's request is additional, not exclusive.
 
 **Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. The launcher window stays the same size either way.
 
