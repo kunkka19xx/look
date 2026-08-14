@@ -512,6 +512,8 @@ So every dismiss goes through `commands::hide_armed`, which emits
 `window-hidden` and holds the window until the frontend acks with `confirm_hide`
 from a double `requestAnimationFrame` - one frame to arm, the next to confirm it
 was painted. A 60 ms timer is the backstop for a webview that never answers.
+Each dismiss carries an id that `commands::show_launcher` clears, so a backstop
+or late ack from a dismiss the user undid can't hide the window again.
 
 Two constraints are tighter here than on macOS. Only `transform` and `opacity`
 are animated, since they are compositor-handled and animating `filter` /
