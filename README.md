@@ -168,11 +168,22 @@ One PowerShell line, no admin required:
 iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/windows/install-look.ps1) }"
 ```
 
+Or with [Scoop](https://scoop.sh/) (if you already have it installed):
+
+```powershell
+scoop bucket add extras
+scoop install extras/look
+```
+
 The script resolves the latest release, downloads the NSIS installer, verifies its SHA256 against the published checksums, and runs it silently into `%LOCALAPPDATA%\Programs\Look`. SmartScreen will warn on the first download while reputation builds - click "More info → Run anyway" if Windows blocks the script itself.
 
 Uninstall:
 
 ```powershell
+# Scoop
+scoop uninstall look
+
+# Installer script
 iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/windows/install-look.ps1) } -Uninstall"
 ```
 
