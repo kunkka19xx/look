@@ -185,6 +185,9 @@ scoop uninstall look
 
 # Installer script
 iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/windows/install-look.ps1) } -Uninstall"
+
+# Optional: wipe user data
+Remove-Item -Recurse "$env:LOCALAPPDATA\look"
 ```
 
 The launcher's global hotkey is `Alt+Space` (not user-configurable yet - if it conflicts with another app you use, remap that one). For a manual install: download `Look_<version>_x64-setup.exe` from [Releases](https://github.com/kunkka19xx/look/releases/latest), verify the SHA256 against the published `Look-<version>-windows-checksums.txt`, then run. Uninstall via Settings → Apps or `%LOCALAPPDATA%\Programs\Look\uninstall.exe`. To wipe user data: `Remove-Item -Recurse "$env:LOCALAPPDATA\look"`.
