@@ -490,12 +490,7 @@ impl SqliteStore {
             let mapped = stmt.query_map(params![limit], map_row)?;
             mapped.collect::<rusqlite::Result<Vec<_>>>()?
         } else {
-            // Escape LIKE metacharacters so a typed `%` or `_` is literal.
-            let escaped = query
-                .replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
-            let pattern = format!("%{escaped}%");
+            let pattern = format!("%{}%", like_escape(query));
             let mut stmt = self.conn.prepare(
                 "SELECT url, title, hit_count, last_used_at_unix_s FROM url_history
                  WHERE url LIKE ?1 ESCAPE '\\'
@@ -513,14 +508,18 @@ impl SqliteStore {
     ///
     /// The caller is responsible for never passing a concealed or transient
     /// clip: only the shell can read the pasteboard markers that say so.
+    /// Returns the row id of the stored clip, so the caller can delete THIS
+    /// entry later. Without it a freshly captured clip has no handle, and
+    /// "delete" would only drop the in-memory copy - the clip would come back
+    /// on the next launch.
     pub fn record_clipboard_entry(
         &self,
         content: &str,
         kind: &str,
         app_bundle_id: Option<&str>,
-    ) -> StorageResult<()> {
+    ) -> StorageResult<Option<i64>> {
         if content.trim().is_empty() {
-            return Ok(());
+            return Ok(None);
         }
         let now = current_unix_s()?;
         let hash = content_hash(content);
@@ -549,16 +548,24 @@ impl SqliteStore {
              VALUES (?1, ?2, ?3, ?4, ?5)",
             params![content, hash, kind, app, now],
         )?;
+        let row_id = tx.last_insert_rowid();
+        // Delete only the overflow. The obvious `WHERE id NOT IN (SELECT ...
+        // LIMIT cap)` builds a 5,000-row set and tests every row against it on
+        // EVERY copy - and this runs for every copy made anywhere in the OS,
+        // while the table is under the cap until the 5,001st distinct clip.
+        // Cutting below the oldest kept row does the same job and touches
+        // nothing until there is something to drop.
         tx.execute(
-            "DELETE FROM clipboard_entries WHERE id NOT IN (
-               SELECT id FROM clipboard_entries
+            "DELETE FROM clipboard_entries
+             WHERE (copied_at_unix_s, id) < (
+               SELECT copied_at_unix_s, id FROM clipboard_entries
                ORDER BY copied_at_unix_s DESC, id DESC
-               LIMIT ?1
+               LIMIT 1 OFFSET ?1
              )",
-            params![MAX_CLIPBOARD_ROWS as i64],
+            params![MAX_CLIPBOARD_ROWS as i64 - 1],
         )?;
         tx.commit()?;
-        Ok(())
+        Ok(Some(row_id))
     }
 
     /// Up to `limit` clips matching `query` (case-insensitive substring over
@@ -589,12 +596,7 @@ impl SqliteStore {
             let mapped = stmt.query_map(params![limit], map_row)?;
             mapped.collect::<rusqlite::Result<Vec<_>>>()?
         } else {
-            // Escape LIKE metacharacters so a typed `%` or `_` is literal.
-            let escaped = query
-                .replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
-            let pattern = format!("%{escaped}%");
+            let pattern = format!("%{}%", like_escape(query));
             let mut stmt = self.conn.prepare(&format!(
                 "{select} WHERE content LIKE ?1 ESCAPE '\\'
                  ORDER BY copied_at_unix_s DESC, id DESC LIMIT ?2"
@@ -665,7 +667,7 @@ impl SqliteStore {
         };
         let escaped: Vec<String> = prefixes
             .iter()
-            .map(|p| format!("{}%", p.replace('\\', "\\\\").replace('%', "\\%")))
+            .map(|p| format!("{}%", like_escape(p)))
             .collect();
 
         let tx = self.conn.transaction()?;
@@ -721,7 +723,7 @@ impl SqliteStore {
         }
         let escaped: Vec<String> = prefixes
             .iter()
-            .map(|p| format!("{}%", p.replace('\\', "\\\\").replace('%', "\\%")))
+            .map(|p| format!("{}%", like_escape(p)))
             .collect();
         let like_clause = (0..escaped.len())
             .map(|i| format!("id LIKE ?{} ESCAPE '\\'", i + 2))
@@ -768,7 +770,7 @@ impl SqliteStore {
         keep_ids: &HashSet<&str>,
     ) -> StorageResult<usize> {
         let tx = self.conn.transaction()?;
-        let like_pattern = format!("{}%", prefix.replace('\\', "\\\\").replace('%', "\\%"));
+        let like_pattern = format!("{}%", like_escape(prefix));
 
         let stale_ids: Vec<String> = {
             let mut stmt = tx.prepare("SELECT id FROM candidates WHERE id LIKE ?1 ESCAPE '\\'")?;
@@ -942,6 +944,15 @@ fn content_hash(content: &str) -> String {
     format!("{hash:016x}")
 }
 
+/// Escapes LIKE metacharacters so a typed `%` or `_` matches literally rather
+/// than as a wildcard. Every LIKE query goes through this: the rule was written
+/// out at five call sites, and three of them silently forgot `_`.
+fn like_escape(text: &str) -> String {
+    text.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 fn current_unix_s() -> StorageResult<i64> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1045,6 +1056,21 @@ mod tests {
         // Empty and whitespace-only clips are not worth remembering.
         store.record_clipboard_entry("   ", "text", None).unwrap();
         assert_eq!(store.clipboard_entries("", 10).unwrap().len(), 2);
+
+        // The row id comes back from record, so a freshly captured clip has a
+        // handle to delete by - without it a "deleted" clip returns on the
+        // next launch.
+        let fresh = store
+            .record_clipboard_entry("third clip", "text", None)
+            .unwrap()
+            .expect("row id");
+        assert!(store.delete_clipboard_entry(fresh).unwrap());
+        assert!(store.clipboard_entries("third", 10).unwrap().is_empty());
+        // Nothing stored means no id to hand back.
+        assert_eq!(
+            store.record_clipboard_entry("  ", "text", None).unwrap(),
+            None
+        );
 
         let id = all[0].id;
         assert!(store.delete_clipboard_entry(id).unwrap());

@@ -14,6 +14,26 @@ final class AIRequestTests: XCTestCase {
         XCTAssertEqual(AIMessage.conversation(messages), "hello")
     }
 
+    /// A provider that takes one string still needs to know who said what;
+    /// otherwise a restored conversation reads as one giant user question.
+    func testHistoryKeepsWhoSaidWhat() {
+        let messages = [
+            AIMessage(.system, "Be brief."),
+            AIMessage(.user, "What is 2+2?"),
+            AIMessage(.assistant, "4"),
+            AIMessage(.user, "And 3+3?"),
+        ]
+        let prompt = AIMessage.conversation(messages)
+        XCTAssertEqual(prompt, "User: What is 2+2?\n\nAssistant: 4\n\nUser: And 3+3?")
+        // System messages stay out; they are the provider's instructions.
+        XCTAssertFalse(prompt.contains("Be brief."))
+    }
+
+    func testASingleQuestionIsNotLabelled() {
+        let one = [AIMessage(.system, "Be brief."), AIMessage(.user, "What is 2+2?")]
+        XCTAssertEqual(AIMessage.conversation(one), "What is 2+2?")
+    }
+
     func testEmptyMessagesAreDroppedFromTheFlattenedForm() {
         let messages = [AIMessage(.system, "   "), AIMessage(.user, "hi")]
         XCTAssertEqual(AIMessage.flattened(messages), "hi")

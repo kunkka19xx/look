@@ -153,8 +153,16 @@ fn tools_for(domain: Option<Domain>, user: &str) -> Vec<&'static Tool> {
 
 /// The system prompt for one domain, or the whole vocabulary for None.
 pub fn system_prompt(domain: Option<Domain>, user: &str) -> String {
+    prompt_for(&tools_for(domain, user), domain)
+}
+
+/// The prompt for an already-selected tool set, so a caller needing both the
+/// prompt and the alias list selects once - each `tools_for` re-runs every
+/// `requires` predicate, and `block`'s lowercases the query and runs two
+/// regexes.
+fn prompt_for(tools: &[&Tool], domain: Option<Domain>) -> String {
     let mut out = String::from(PREAMBLE);
-    for tool in tools_for(domain, user) {
+    for tool in tools {
         out.push('\n');
         out.push_str(tool.line);
     }
@@ -174,14 +182,15 @@ fn alias_to_tool(alias: &str) -> Option<&'static str> {
 /// Request body for the planning call (also used to warm the prompt cache).
 pub fn request_body(model: &str, user: &str) -> String {
     let domain = domain::of(user);
+    let tools = tools_for(domain, user);
     // Prompt keeps table order; the schema enum is sorted so the same domain
     // always produces a byte-identical `format` block.
-    let mut aliases: Vec<&str> = tools_for(domain, user).iter().map(|t| t.alias).collect();
+    let mut aliases: Vec<&str> = tools.iter().map(|t| t.alias).collect();
     aliases.sort_unstable();
     json!({
         "model": model,
         "messages": [
-            { "role": "system", "content": system_prompt(domain, user) },
+            { "role": "system", "content": prompt_for(&tools, domain) },
             { "role": "user", "content": user },
         ],
         "stream": false,

@@ -1,12 +1,13 @@
 import AppKit
 import SwiftUI
 
-/// Copies a finished answer. Same affordance as `AICodeBlockView`'s copy (icon,
-/// checkmark confirmation, 1.2s reset) so the two read as one control in two
-/// places, rather than two controls.
+/// THE copy control: icon, checkmark confirmation, 1.2s reset. Used by the
+/// answer bubble and by code blocks, so the two are one control in two places
+/// rather than two implementations that drift.
 struct AnswerCopyButton: View {
     let text: String
     let themeStore: ThemeStore
+    var helpLabel: String = "Copy answer"
 
     @State private var copied = false
 
@@ -22,6 +23,6 @@ struct AnswerCopyButton: View {
                 .foregroundStyle(copied ? Color.green.opacity(0.85) : themeStore.mutedTextColor())
         }
         .buttonStyle(.plain)
-        .help(copied ? "Copied" : "Copy answer")
+        .help(copied ? "Copied" : helpLabel)
     }
 }

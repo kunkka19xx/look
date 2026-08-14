@@ -68,7 +68,13 @@ final class ActionPlanner {
         let dated = DatePhrase.resolve(query) != nil || bridge.aiDayPhrase(query) != nil
         return steps.map { raw in
             var params = raw.params
-            if dated, raw.tool == "calendar.add_event" || raw.tool == "reminder.add" {
+            // Only fill a `when` the step does not have. `resolve_step` emits
+            // title-only for add tools today, so this is defensive - but the
+            // day a step carries its own time phrase, overwriting it with the
+            // whole sentence would silently move the event.
+            let hasOwnWhen = !(params["when"] ?? "").isEmpty
+            if dated, !hasOwnWhen,
+               raw.tool == "calendar.add_event" || raw.tool == "reminder.add" {
                 params["when"] = query
             }
             return ToolCall(toolID: raw.tool, params: params)

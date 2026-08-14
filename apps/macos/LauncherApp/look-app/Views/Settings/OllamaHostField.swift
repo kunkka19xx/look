@@ -83,16 +83,25 @@ struct OllamaHostField: View {
     private func probe() {
         probeTask?.cancel()
         probeTask = Task {
-            var found: [String] = []
-            for candidate in Self.candidates {
-                if Task.isCancelled { return }
-                let models = await OllamaProvider.listModels(host: candidate)
-                if !models.isEmpty {
-                    found.append(candidate)
+            // Concurrently: the probes are independent, and a host that hangs
+            // to its HTTP timeout would otherwise stall the one behind it.
+            let found = await withTaskGroup(of: String?.self) { group in
+                for candidate in Self.candidates {
+                    group.addTask {
+                        await OllamaProvider.listModels(host: candidate).isEmpty
+                            ? nil : candidate
+                    }
                 }
+                var reachable: [String] = []
+                for await candidate in group {
+                    if let candidate { reachable.append(candidate) }
+                }
+                return reachable
             }
             if Task.isCancelled { return }
-            reachable = found
+            // Task-group completion order is arbitrary; keep the declared
+            // order so the list does not reshuffle between probes.
+            reachable = Self.candidates.filter { found.contains($0) }
         }
     }
 }

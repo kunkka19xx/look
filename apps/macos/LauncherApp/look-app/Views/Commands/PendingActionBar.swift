@@ -11,54 +11,35 @@ struct PendingActionBar: View {
     let onConfirm: () -> Void
     let onCancel: () -> Void
 
-    init(
-        steps: [PlannedAction],
-        themeStore: ThemeStore,
-        onConfirm: @escaping () -> Void,
-        onCancel: @escaping () -> Void
-    ) {
-        self.steps = steps
-        self.themeStore = themeStore
-        self.onConfirm = onConfirm
-        self.onCancel = onCancel
-    }
-
-    init(
-        action: PlannedAction,
-        themeStore: ThemeStore,
-        onConfirm: @escaping () -> Void,
-        onCancel: @escaping () -> Void
-    ) {
-        self.init(
-            steps: [action], themeStore: themeStore, onConfirm: onConfirm, onCancel: onCancel)
-    }
-
     private var fontSize: Double { themeStore.settings.fontSize }
+    /// Several steps confirm and undo as one, and the bar reads differently
+    /// for that case: numbered rows under a count, rather than one question.
+    private var isCompound: Bool { steps.count > 1 }
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "sparkles")
                 .font(.system(size: CGFloat(fontSize + 4)))
                 .foregroundStyle(themeStore.accentColor())
-            VStack(alignment: .leading, spacing: steps.count > 1 ? 6 : 2) {
-                if steps.count > 1 {
+            VStack(alignment: .leading, spacing: isCompound ? 6 : 2) {
+                if isCompound {
                     Text("Do \(steps.count) things?")
                         .font(themeStore.uiFont(size: CGFloat(fontSize), weight: .semibold))
                         .foregroundStyle(themeStore.fontColor())
                 }
                 ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                     HStack(alignment: .top, spacing: 6) {
-                        if steps.count > 1 {
+                        if isCompound {
                             // Numbered, because order matters when they run.
                             Text("\(index + 1).")
                                 .font(themeStore.uiFont(size: CGFloat(fontSize - 1), weight: .semibold))
                                 .foregroundStyle(themeStore.mutedTextColor())
                         }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(steps.count > 1 ? step.preview.title : "\(step.preview.title)?")
+                            Text(isCompound ? step.preview.title : "\(step.preview.title)?")
                                 .font(
                                     themeStore.uiFont(
-                                        size: CGFloat(steps.count > 1 ? fontSize - 1 : fontSize),
+                                        size: CGFloat(isCompound ? fontSize - 1 : fontSize),
                                         weight: .semibold)
                                 )
                                 .foregroundStyle(themeStore.fontColor())

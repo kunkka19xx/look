@@ -62,8 +62,14 @@ invalid shape is impossible rather than merely unlikely:
 
 `steps` was an array from day one, so multi-step became a consumer change and
 never a wire change. Every step now executes: `planner::resolve_steps` maps the
-whole plan and `map_snapshot` returns it as `calls`. A step the resolver cannot
-use is DROPPED rather than failing the plan, so the preview shows exactly what
+whole plan and `map_snapshot` returns it as `calls`.
+
+Two different filters run at two different layers, and the difference matters:
+here, a step whose ALIAS or PARAMS are unusable (an invented tool, a `move`
+with no `when`) is dropped, because it never became a call at all. Later, in
+the shell, a step that IS a call but cannot RESOLVE against real data (no
+matching event) refuses the whole plan - see §5. So the core drops nonsense and
+the shell refuses the merely-impossible; the preview always shows exactly what
 will run. Tool ids are 1-token aliases mapped to real ids in the planner, which
 keeps generation short:
 
@@ -172,9 +178,10 @@ A plan is a LIST. One step for most requests, several for a compound one
 ("cancel the dentist and move lunch to 1pm"), and the whole list is confirmed
 with one Enter and undone as a unit. Four rules keep that safe:
 
-- **Every step must resolve, or none is offered.** A plan with an unusable step
-  is refused naming the step ("Step 2: no matching event"), never previewed as
-  the half that worked.
+- **Every step must resolve, or none is offered.** A plan whose step cannot be
+  resolved against real data is refused naming the step ("Step 2: no matching
+  event"), never previewed as the half that worked. (Distinct from §2's
+  dropping of malformed steps, which happens before a call exists.)
 - **Ambiguity in a compound plan is refused, not queued.** Disambiguating one
   step of several would need a queue of questions; the user is asked to name
   that step precisely instead.

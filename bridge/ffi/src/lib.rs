@@ -562,19 +562,19 @@ pub extern "C" fn look_recent_urls_json(query: *const c_char, limit: u32) -> *mu
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// Remembers a clipboard entry. The SHELL must not call this for concealed or
-/// transient clips (password managers, one-time secrets): only it can see the
-/// pasteboard markers that say so.
+/// Remembers a clipboard entry, returning its row id (0 on failure). The SHELL
+/// must not call this for concealed or transient clips (password managers,
+/// one-time secrets): only it can see the pasteboard markers that say so.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_clipboard_record(
     content: *const c_char,
     kind: *const c_char,
     app_bundle_id: *const c_char,
-) -> bool {
+) -> i64 {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         clipboard_api::look_clipboard_record_impl(content, kind, app_bundle_id)
     }))
-    .unwrap_or(false)
+    .unwrap_or(0)
 }
 
 /// JSON array of up to `limit` remembered clips matching `query` (or `[]`).

@@ -2,6 +2,26 @@ import AppKit
 import Combine
 import Foundation
 
+/// Serializes every clipboard write. Independent detached tasks have no
+/// ordering, so a copy racing a clear could land AFTER the clear and resurrect
+/// the content on the next launch. One actor means record, delete, and clear
+/// happen in the order they were asked for.
+private actor ClipboardWriter {
+    static let shared = ClipboardWriter()
+
+    func record(content: String, appBundleID: String?) -> Int64? {
+        EngineBridge.shared.recordClipboard(content: content, appBundleID: appBundleID)
+    }
+
+    func delete(id: Int64) {
+        EngineBridge.shared.deleteClipboardEntry(id: id)
+    }
+
+    func clear() {
+        EngineBridge.shared.clearClipboardHistory()
+    }
+}
+
 struct ClipboardHistoryEntry: Identifiable, Equatable {
     let id: UUID
     let content: String
@@ -164,21 +184,44 @@ final class ClipboardHistoryStore: ObservableObject {
         }
     }
 
-    /// Persisting is fire-and-forget and off the main thread: a copy must never
-    /// wait on a database write.
-    private func persist(_ content: String) {
-        Task.detached(priority: .utility) {
-            EngineBridge.shared.recordClipboard(
-                content: content,
-                appBundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+    /// Persisting is off the main thread so a copy never waits on a database
+    /// write, but the row id comes BACK and is attached to the in-memory entry.
+    /// Without that, `deleteEntry` has nothing to delete on disk and the clip
+    /// returns on the next launch.
+    private func persist(_ content: String, entryID: UUID) {
+        let app = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        Task { [weak self] in
+            let storeID = await ClipboardWriter.shared.record(content: content, appBundleID: app)
+            guard let self, let storeID else { return }
+            self.attachStoreID(storeID, to: entryID)
         }
+    }
+
+    /// Rebuilds the entry with its persisted id. The entry may have been
+    /// deleted or pushed off the list while the write was in flight, in which
+    /// case there is nothing to update - and a delete that raced the write is
+    /// handled by `deleteEntry` forgetting the row directly.
+    private func attachStoreID(_ storeID: Int64, to entryID: UUID) {
+        guard let index = entries.firstIndex(where: { $0.id == entryID }) else {
+            // The user deleted it before the write landed: forget it on disk
+            // too, or it comes back.
+            Task { await ClipboardWriter.shared.delete(id: storeID) }
+            return
+        }
+        let existing = entries[index]
+        entries[index] = ClipboardHistoryEntry(
+            id: existing.id,
+            content: existing.content,
+            capturedAt: existing.capturedAt,
+            payload: existing.payload,
+            storeID: storeID)
     }
 
     /// Forgets every clip, in memory and on disk. The promise that makes
     /// persisting clipboard history acceptable in the first place.
     func clearHistory() {
         entries.removeAll()
-        Task.detached(priority: .utility) { EngineBridge.shared.clearClipboardHistory() }
+        Task { await ClipboardWriter.shared.clear() }
     }
 
     deinit {
@@ -199,8 +242,8 @@ final class ClipboardHistoryStore: ObservableObject {
         let storeIDs = entries.filter { $0.id == id }.compactMap(\.storeID)
         entries.removeAll { $0.id == id }
         guard !storeIDs.isEmpty else { return }
-        Task.detached(priority: .utility) {
-            for storeID in storeIDs { EngineBridge.shared.deleteClipboardEntry(id: storeID) }
+        Task {
+            for storeID in storeIDs { await ClipboardWriter.shared.delete(id: storeID) }
         }
     }
 
@@ -215,8 +258,9 @@ final class ClipboardHistoryStore: ObservableObject {
         lastChangeCount = pasteboard.changeCount
 
         entries.removeAll { $0.content == display }
-        prepend(ClipboardHistoryEntry(content: display, payload: payload))
-        persist(display)
+        let labeled = ClipboardHistoryEntry(content: display, payload: payload)
+        prepend(labeled)
+        persist(display, entryID: labeled.id)
     }
 
     /// Inserts `entry` at the front and drops anything beyond `maxEntries`.
@@ -254,12 +298,15 @@ final class ClipboardHistoryStore: ObservableObject {
 
         startBurstCaptureWindow()
 
-        if pasteboardCarriesFileReference(pasteboard) { return }
+        // One cross-process read of the type list, shared by both gates: this
+        // runs on every copy made anywhere in the OS.
+        let types = pasteboard.types ?? []
+        if typesCarryFileReference(types, pasteboard) { return }
         // Checked BEFORE the text is read, let alone stored: a password
         // manager marks its clip concealed precisely so history tools skip it,
         // and history is now written to disk. The core cannot enforce this -
         // pasteboard markers only exist on this side.
-        if pasteboardIsConcealed(pasteboard) { return }
+        if typesAreConcealed(types) { return }
 
         guard var text = pasteboard.string(forType: .string) else { return }
         if text.count > maxStoredCharacters {
@@ -271,31 +318,37 @@ final class ClipboardHistoryStore: ObservableObject {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return }
 
+        let captured: ClipboardHistoryEntry
         if let existingIndex = entries.firstIndex(where: { $0.content == text }) {
             // Keep the existing id so SwiftUI identity survives the re-capture.
             let existing = entries.remove(at: existingIndex)
-            prepend(
-                ClipboardHistoryEntry(id: existing.id, content: text, storeID: existing.storeID))
+            captured = ClipboardHistoryEntry(
+                id: existing.id, content: text, storeID: existing.storeID)
         } else {
-            prepend(ClipboardHistoryEntry(content: text))
+            captured = ClipboardHistoryEntry(content: text)
         }
-        persist(text)
+        prepend(captured)
+        // Re-copying replaces the stored row, so the id is re-attached here
+        // rather than assumed to be the one this entry already carried.
+        persist(text, entryID: captured.id)
     }
 
     /// The `org.nspasteboard.*` convention: apps mark clips that history tools
     /// must not keep. Concealed is a secret (password managers), transient is
     /// a fleeting intermediate, auto-generated was not typed by the user.
-    private func pasteboardIsConcealed(_ pasteboard: NSPasteboard) -> Bool {
-        let markers: Set<String> = [
-            "org.nspasteboard.ConcealedType",
-            "org.nspasteboard.TransientType",
-            "org.nspasteboard.AutoGeneratedType",
-        ]
-        return (pasteboard.types ?? []).contains { markers.contains($0.rawValue) }
+    private static let concealedMarkers: Set<String> = [
+        "org.nspasteboard.ConcealedType",
+        "org.nspasteboard.TransientType",
+        "org.nspasteboard.AutoGeneratedType",
+    ]
+
+    private func typesAreConcealed(_ types: [NSPasteboard.PasteboardType]) -> Bool {
+        types.contains { Self.concealedMarkers.contains($0.rawValue) }
     }
 
-    private func pasteboardCarriesFileReference(_ pasteboard: NSPasteboard) -> Bool {
-        let types = pasteboard.types ?? []
+    private func typesCarryFileReference(
+        _ types: [NSPasteboard.PasteboardType], _ pasteboard: NSPasteboard
+    ) -> Bool {
         if types.contains(.fileURL) { return true }
         if types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType")) { return true }
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],

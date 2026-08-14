@@ -11,7 +11,11 @@ import UniformTypeIdentifiers
 /// tools reliable.
 nonisolated enum TextOpSource: Equatable {
     case clipboard
-    case file(path: String)
+    /// `text` is present when the file was `@`-mentioned: it was read and
+    /// checked at attach time, and re-reading here would undo that (a file
+    /// edited or deleted since would silently change the answer) and pay a
+    /// second synchronous read on the submit path.
+    case file(path: String, text: String? = nil)
     /// More than one file is picked. Ambiguity is reported, never guessed at,
     /// mirroring how target resolution handles an ambiguous match.
     case ambiguous(count: Int)
@@ -22,14 +26,19 @@ nonisolated enum TextOpSource: Equatable {
     ///
     /// `@`-mentions win over picks: a mention is aimed at this turn, while a
     /// pick may be left over from whatever the user was doing in the main bar.
-    static func resolve(mentioned: [String] = [], pickedFilePaths: [String] = [])
-        -> TextOpSource
-    {
-        let chosen = mentioned.isEmpty ? pickedFilePaths : mentioned
-        switch chosen.count {
+    static func resolve(
+        mentioned: [MentionAttachments.Attached] = [],
+        pickedFilePaths: [String] = []
+    ) -> TextOpSource {
+        if let only = mentioned.first, mentioned.count == 1 {
+            return .file(path: only.path, text: only.text)
+        }
+        if mentioned.count > 1 { return .ambiguous(count: mentioned.count) }
+        switch pickedFilePaths.count {
         case 0: return .clipboard
-        case 1: return .file(path: chosen[0])
-        default: return .ambiguous(count: chosen.count)
+        // A picked file was never read, so it has no captured text.
+        case 1: return .file(path: pickedFilePaths[0])
+        default: return .ambiguous(count: pickedFilePaths.count)
         }
     }
 }
@@ -64,6 +73,23 @@ nonisolated enum TextExtraction {
         /// Refused on purpose: a model will summarize gibberish fluently, and
         /// that answer looks exactly as trustworthy as a real one.
         case garbled
+
+        /// Why this file cannot be used, as one sentence naming it. Lives with
+        /// the enum so a new case cannot be added without its wording: the
+        /// prose was written out at two call sites and had already drifted.
+        /// No trailing period - callers punctuate to suit their surface.
+        func message(for name: String) -> String {
+            switch self {
+            case .notText: "\"\(name)\" is not a text file"
+            case .empty: "\"\(name)\" is empty"
+            case .unreadable: "Could not read \"\(name)\""
+            case .locked: "\"\(name)\" is password-protected"
+            // Naming the scan is what points the user at OCR instead of at a
+            // bug in look.
+            case .noTextLayer: "\"\(name)\" has no text layer - it looks scanned"
+            case .garbled: "\"\(name)\" did not decode to readable text"
+            }
+        }
     }
 
     static func isPDF(path: String) -> Bool {

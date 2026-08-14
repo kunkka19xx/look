@@ -129,7 +129,16 @@ const NOISE: &[&str] = &[
 /// qualify, so "delete the pdfs i downloaded" stays recall.
 fn is_scheduling(words: &[&str]) -> bool {
     let leads = |set: &[&str]| words.first().is_some_and(|w| set.contains(w));
-    words.iter().any(|w| crate::lexicon::is_schedule_noun(w))
+    // A schedule noun does NOT win when the request also names a file type or
+    // place: "find the meeting notes pdf from friday" is a file search that
+    // happens to mention a meeting. Without this, the veto sent it to the
+    // planner, whose Calendar shard has no recall tool - so it reached neither
+    // path and simply did nothing.
+    let names_a_file = words.iter().any(|w| {
+        type_of(w).is_some() || location_of(w).is_some() || matches!(*w, "file" | "files")
+    });
+    let schedule_noun = words.iter().any(|w| crate::lexicon::is_schedule_noun(w));
+    (schedule_noun && !names_a_file)
         || words
             .first()
             .is_some_and(|w| crate::lexicon::is_schedule_verb(w))
@@ -288,6 +297,22 @@ mod tests {
         ] {
             assert!(parse(query, NOW).is_none(), "{query}");
         }
+    }
+
+    /// A file query that mentions a meeting is still a file query. The veto
+    /// exists to protect scheduling requests, not to claim every sentence with
+    /// the word "meeting" in it.
+    #[test]
+    fn a_file_type_beats_a_passing_schedule_noun() {
+        for query in [
+            "find the meeting notes pdf from friday",
+            "the standup screenshots",
+            "files from the meeting",
+        ] {
+            assert!(parse(query, NOW).is_some(), "{query}");
+        }
+        // A LEADING schedule verb still wins: this is an action, not a search.
+        assert!(parse("cancel the meeting notes pdf review", NOW).is_none());
     }
 
     #[test]

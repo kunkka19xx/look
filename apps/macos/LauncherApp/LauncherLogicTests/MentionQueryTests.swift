@@ -125,6 +125,24 @@ final class MentionAttachmentsTests: XCTestCase {
         XCTAssertTrue(block.contains("hello"))
     }
 
+    /// The prompt must carry what the BAR says it carries. Re-reading at submit
+    /// meant a file edited or deleted after attaching silently contributed
+    /// nothing, while its capsule still showed a character count.
+    func testContentIsCapturedAtAttachTimeNotReReadAtSubmit() throws {
+        let path = try write("original contents")
+        var attachments = MentionAttachments()
+        XCTAssertNil(attachments.add(path: path))
+
+        try Data("replaced".utf8).write(to: URL(fileURLWithPath: path))
+        XCTAssertTrue(attachments.contextBlock().contains("original contents"))
+
+        // Deleted after attaching: still exactly what the user attached.
+        try FileManager.default.removeItem(atPath: path)
+        let block = attachments.contextBlock()
+        XCTAssertTrue(block.contains("original contents"), block)
+        XCTAssertEqual(attachments.totalCharacters, "original contents".count)
+    }
+
     func testRemove() throws {
         let path = try write("gone")
         var attachments = MentionAttachments()

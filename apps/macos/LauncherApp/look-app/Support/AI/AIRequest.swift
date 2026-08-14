@@ -28,9 +28,23 @@ nonisolated struct AIMessage: Equatable, Sendable {
         messages.filter { $0.role == .system }.map(\.content).joined(separator: "\n\n")
     }
 
-    /// Everything that is not a system message, as one prompt.
+    /// Everything that is not a system message, as one prompt. A provider that
+    /// takes a single string (Apple Intelligence) still has to be able to tell
+    /// the user's turns from its own: an unlabeled blob of a restored
+    /// conversation reads as one enormous question. A lone user message is left
+    /// bare, since labelling a single question would just be noise.
     static func conversation(_ messages: [AIMessage]) -> String {
-        flattened(messages.filter { $0.role != .system })
+        let turns = messages.filter { $0.role != .system }
+        guard turns.count > 1 else { return flattened(turns) }
+        return turns
+            .filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map { turn in
+                switch turn.role {
+                case .assistant: "Assistant: \(turn.content)"
+                case .user, .system: "User: \(turn.content)"
+                }
+            }
+            .joined(separator: "\n\n")
     }
 }
 

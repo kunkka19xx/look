@@ -132,15 +132,78 @@ pub fn is_schedule_noun(word: &str) -> bool {
 /// verbs that could also govern a file ("delete", "remove", "move", "open"),
 /// so "delete the pdf i downloaded" stays file recall.
 pub fn is_schedule_verb(word: &str) -> bool {
+    is_reminder_verb(word) || is_calendar_verb(word)
+}
+
+/// Opens a request about the reminder list and nothing else.
+pub fn is_reminder_verb(word: &str) -> bool {
+    matches!(word, "remind" | "snooze" | "postpone")
+}
+
+/// Opens a request about the calendar and nothing else.
+pub fn is_calendar_verb(word: &str) -> bool {
     matches!(
         word,
-        "cancel" | "reschedule" | "snooze" | "postpone" | "remind" | "block" | "book" | "schedule"
+        "cancel" | "reschedule" | "block" | "book" | "schedule"
+    )
+}
+
+/// Names the clipboard payload itself, wherever it appears in the request.
+pub fn is_clipboard_noun(word: &str) -> bool {
+    matches!(word, "clipboard" | "copied" | "pasted" | "selection")
+}
+
+/// Only ever opens a rewrite of text the user already has. Excludes
+/// "turn"/"convert", which open system and file requests too.
+pub fn is_rewrite_verb(word: &str) -> bool {
+    matches!(
+        word,
+        "make"
+            | "translate"
+            | "rewrite"
+            | "reword"
+            | "summarize"
+            | "summarise"
+            | "shorten"
+            | "expand"
+            | "proofread"
+            | "paraphrase"
+            | "fix"
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The domain prefilter and the file-recall veto read the SAME verb
+    /// tables. When `domain.rs` kept its own inline copies they drifted inside
+    /// one commit: "postpone" was a schedule verb but not a reminder verb, so
+    /// `of("postpone it")` narrowed to nothing while `of("snooze it")` did.
+    #[test]
+    fn schedule_verbs_are_exactly_the_two_domain_sets() {
+        for word in [
+            "remind",
+            "snooze",
+            "postpone",
+            "cancel",
+            "reschedule",
+            "block",
+        ] {
+            assert!(is_schedule_verb(word), "{word}");
+            assert!(
+                is_reminder_verb(word) || is_calendar_verb(word),
+                "{word} belongs to no domain"
+            );
+        }
+        // A verb cannot claim both domains, or the prefilter has no answer.
+        for word in ["remind", "cancel", "postpone", "book"] {
+            assert!(
+                !(is_reminder_verb(word) && is_calendar_verb(word)),
+                "{word}"
+            );
+        }
+    }
 
     #[test]
     fn schedule_words_exclude_file_capable_verbs() {

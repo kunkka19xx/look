@@ -10,18 +10,21 @@ nonisolated struct MentionAttachments: Equatable {
 
     struct Attached: Equatable, Identifiable {
         let path: String
+        /// The text as read WHEN IT WAS ATTACHED. Kept rather than re-read at
+        /// submit: a file that changed or was deleted in between would other-
+        /// wise vanish from the prompt while the bar still showed it, and the
+        /// model would answer about nothing with no warning. It also keeps the
+        /// submit path off a second synchronous read of every file.
+        let text: String
         /// Characters actually readable from the file, after the read cap.
-        let characters: Int
+        /// Derived, not stored: two fields to keep in sync would let the
+        /// context-budget warning report a size the prompt no longer carries.
+        var characters: Int { text.count }
         /// The file was longer than `TextExtraction` reads.
         let truncated: Bool
 
         var id: String { path }
         var name: String { (path as NSString).lastPathComponent }
-        /// Shown under the name so two files of the same name are tellable.
-        var folder: String {
-            (path as NSString).deletingLastPathComponent
-                .replacingOccurrences(of: NSHomeDirectory(), with: "~")
-        }
     }
 
     var isEmpty: Bool { files.isEmpty }
@@ -49,7 +52,7 @@ nonisolated struct MentionAttachments: Equatable {
             files.append(
                 Attached(
                     path: path,
-                    characters: extracted.text.count,
+                    text: extracted.text,
                     truncated: extracted.truncated))
             return nil
         case .failure(let failure):
@@ -66,14 +69,12 @@ nonisolated struct MentionAttachments: Equatable {
     }
 
     /// The attachments as model context: one block per file, each labeled with
-    /// its path so the answer can cite which file it came from.
+    /// its path so the answer can cite which file it came from. Built from the
+    /// text captured at attach time, so what the model reads is exactly what
+    /// the bar says it is carrying.
     func contextBlock() -> String {
         files
-            .compactMap { file -> String? in
-                guard case .success(let extracted) = TextExtraction.extract(path: file.path)
-                else { return nil }
-                return "--- \(file.path)\n\(extracted.text)"
-            }
+            .map { "--- \($0.path)\n\($0.text)" }
             .joined(separator: "\n\n")
     }
 }

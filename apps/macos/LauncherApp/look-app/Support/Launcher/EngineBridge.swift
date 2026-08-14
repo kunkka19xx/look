@@ -166,7 +166,7 @@ private func look_recent_urls_json(_ query: UnsafePointer<CChar>?, _ limit: UInt
 
 @_silgen_name("look_clipboard_record")
 nonisolated
-private func look_clipboard_record(_ content: UnsafePointer<CChar>?, _ kind: UnsafePointer<CChar>?, _ appBundleID: UnsafePointer<CChar>?) -> Bool
+private func look_clipboard_record(_ content: UnsafePointer<CChar>?, _ kind: UnsafePointer<CChar>?, _ appBundleID: UnsafePointer<CChar>?) -> Int64
 
 @_silgen_name("look_clipboard_list_json")
 nonisolated
@@ -909,13 +909,18 @@ final class EngineBridge: @unchecked Sendable {
         var copiedAt: Date { Date(timeIntervalSince1970: TimeInterval(copiedAtUnixS)) }
     }
 
-    /// Remembers a clip. NEVER call this for a concealed or transient clip:
-    /// the core cannot see pasteboard type markers, so this side is the only
-    /// place a password manager's clip can be kept out of the database.
+    /// Remembers a clip and returns its row id, or nil when nothing was
+    /// stored. The id is the handle a later delete needs: without it, deleting
+    /// the clip would only drop the in-memory copy and it would return on the
+    /// next launch.
+    ///
+    /// NEVER call this for a concealed or transient clip: the core cannot see
+    /// pasteboard type markers, so this side is the only place a password
+    /// manager's clip can be kept out of the database.
     /// Opens the shared look.db - call off the main thread.
     @discardableResult
-    nonisolated func recordClipboard(content: String, kind: String = "text", appBundleID: String? = nil) -> Bool {
-        content.withCString { contentC in
+    nonisolated func recordClipboard(content: String, kind: String = "text", appBundleID: String? = nil) -> Int64? {
+        let id = content.withCString { contentC in
             kind.withCString { kindC in
                 if let appBundleID {
                     return appBundleID.withCString { appC in
@@ -925,6 +930,7 @@ final class EngineBridge: @unchecked Sendable {
                 return look_clipboard_record(contentC, kindC, nil)
             }
         }
+        return id > 0 ? id : nil
     }
 
     /// Up to `limit` remembered clips matching `query` (newest first). An empty

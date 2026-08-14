@@ -20,31 +20,6 @@ pub enum Domain {
     Clipboard,
 }
 
-/// Words that name the clipboard payload itself, wherever they appear.
-fn is_clipboard_noun(word: &str) -> bool {
-    matches!(word, "clipboard" | "copied" | "pasted" | "selection")
-}
-
-/// Verbs that only ever open a rewrite of text the user already has. Excludes
-/// "turn"/"convert" (they open system and file requests too) - those reach
-/// Clipboard through the noun rule instead.
-fn is_rewrite_verb(word: &str) -> bool {
-    matches!(
-        word,
-        "make"
-            | "translate"
-            | "rewrite"
-            | "reword"
-            | "summarize"
-            | "summarise"
-            | "shorten"
-            | "expand"
-            | "proofread"
-            | "paraphrase"
-            | "fix"
-    )
-}
-
 /// The one domain a request unambiguously belongs to, or None when the signal
 /// is too weak and the planner must see the whole vocabulary.
 ///
@@ -66,21 +41,25 @@ pub fn of(input: &str) -> Option<Domain> {
     if words.iter().any(|w| lexicon::is_event_noun(w)) {
         return Some(Domain::Calendar);
     }
-    if words.iter().any(|w| is_clipboard_noun(w)) {
+    if words.iter().any(|w| lexicon::is_clipboard_noun(w)) {
         return Some(Domain::Clipboard);
     }
-    match first {
-        "remind" | "snooze" => Some(Domain::Reminder),
-        "cancel" | "reschedule" | "block" | "schedule" | "book" => Some(Domain::Calendar),
-        // "make this shorter": a rewrite verb pointed at something the user
-        // has, rather than at a new thing to create.
-        _ if is_rewrite_verb(first)
-            && words.iter().any(|w| matches!(*w, "this" | "it" | "that")) =>
-        {
-            Some(Domain::Clipboard)
-        }
-        _ => None,
+    // The verb tables live in the lexicon so this prefilter and the file-recall
+    // veto (`files::is_scheduling`) can never disagree about what a scheduling
+    // verb is - they did, inside one commit, over "postpone".
+    if lexicon::is_reminder_verb(first) {
+        return Some(Domain::Reminder);
     }
+    if lexicon::is_calendar_verb(first) {
+        return Some(Domain::Calendar);
+    }
+    // "make this shorter": a rewrite verb pointed at something the user has,
+    // rather than at a new thing to create.
+    if lexicon::is_rewrite_verb(first) && words.iter().any(|w| matches!(*w, "this" | "it" | "that"))
+    {
+        return Some(Domain::Clipboard);
+    }
+    None
 }
 
 #[cfg(test)]
@@ -102,6 +81,24 @@ mod tests {
         // request is plainly a reschedule.
         assert_eq!(of("postpone the standup"), Some(Domain::Calendar));
         assert_eq!(of("snooze buy milk until tomorrow"), Some(Domain::Reminder));
+    }
+
+    /// Every schedule verb the lexicon knows must narrow to a domain. The
+    /// inline copy this used to keep had already dropped "postpone".
+    #[test]
+    fn every_schedule_verb_narrows() {
+        for word in [
+            "remind",
+            "snooze",
+            "postpone",
+            "cancel",
+            "reschedule",
+            "block",
+            "schedule",
+        ] {
+            assert!(of(&format!("{word} it")).is_some(), "{word}");
+        }
+        assert_eq!(of("postpone it"), Some(Domain::Reminder));
     }
 
     #[test]

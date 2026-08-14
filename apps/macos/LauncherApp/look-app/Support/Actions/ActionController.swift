@@ -73,7 +73,7 @@ final class ActionController: ObservableObject {
     var attachments = MentionAttachments()
 
     private func textOpSource() -> TextOpSource {
-        TextOpSource.resolve(mentioned: attachments.paths, pickedFilePaths: pickedFilePaths)
+        TextOpSource.resolve(mentioned: attachments.files, pickedFilePaths: pickedFilePaths)
     }
 
     /// The plan awaiting confirm: one step for most requests, several for a
@@ -81,8 +81,6 @@ final class ActionController: ObservableObject {
     /// with a single Enter and undone as a unit, so a compound request cannot
     /// leave half of itself behind with no way back.
     @Published private(set) var pendingSteps: [PlannedAction] = []
-    /// The first step, for surfaces that only ever showed one action.
-    var pending: PlannedAction? { pendingSteps.first }
     @Published private(set) var pendingChoice: PendingChoice?
     /// Receipts from the last confirmed plan, in the order they ran. Undo
     /// reverses them back to front.
@@ -92,7 +90,6 @@ final class ActionController: ObservableObject {
     /// The action item the current `lastReceipt` can undo (answers may stack
     /// after it, so "last item" is not reliable).
     @Published private(set) var undoableItemIDs: [UUID] = []
-    var undoableItemID: UUID? { undoableItemIDs.last }
 
     /// Whether this transcript item is part of the plan undo would reverse.
     func canUndo(_ itemID: UUID) -> Bool {
@@ -288,18 +285,8 @@ final class ActionController: ObservableObject {
         case .files:
             isPlanning = false
             pendingSteps = []
-            // An attached file settles it: "summary this file please?" contains
-            // the word "file", so the deterministic recall parser claims it and
-            // the shell would leave AI mode to show a file LIST - throwing away
-            // the question. With something attached, the user is asking ABOUT
-            // it, not searching for it. The parser cannot know that; only this
-            // layer holds the attachments.
-            if attachments.isEmpty {
-                // Empty params = "parse the raw query"; the shell owns results.
-                recallRequest = RecallRequest(query: query, params: [:])
-            } else {
-                chat.askChat(query, attachments: attachments)
-            }
+            // Empty params = "parse the raw query"; the shell owns results.
+            requestRecall(query: query, params: [:])
         case .explicit(let toolID, let params):
             if case .planned(let plan) = resolveOutcome(toolID: toolID, params: params) {
                 isPlanning = false
@@ -345,6 +332,25 @@ final class ActionController: ObservableObject {
         }
     }
 
+    /// A recall request, unless a file is attached - then the user is asking
+    /// ABOUT that file, not searching for others. "summary this file please?"
+    /// contains the word "file", so the deterministic parser claims it and the
+    /// shell would leave AI mode to show a file LIST, discarding the question.
+    /// The parser cannot know about attachments; only this layer does, so the
+    /// rule lives here once rather than at each recall entry point.
+    private func requestRecall(query: String, params: [String: String]) {
+        guard attachments.isEmpty else {
+            chat.askChat(query, attachments: attachments)
+            return
+        }
+        recallRequest = RecallRequest(query: query, params: params)
+    }
+
+    /// Which store a tool touches. Spelled out at three call sites before.
+    private static func domain(of toolID: String) -> String {
+        toolID.hasPrefix("reminder") ? "reminder" : "calendar"
+    }
+
     private static func isUtilityCall(_ call: ToolCall) -> Bool {
         call.toolID == "files.recall" || call.toolID == "clipboard.textop"
     }
@@ -355,13 +361,7 @@ final class ActionController: ObservableObject {
     private func handlePlannedCall(_ call: ToolCall, rawQuery: String) {
         switch call.toolID {
         case "files.recall":
-            // Same rule as the deterministic files route: with a file attached,
-            // the question is about that file, not a search for others.
-            if attachments.isEmpty {
-                recallRequest = RecallRequest(query: rawQuery, params: call.params)
-            } else {
-                chat.askChat(rawQuery, attachments: attachments)
-            }
+            requestRecall(query: rawQuery, params: call.params)
         case "clipboard.textop":
             guard let instruction = call.params["instruction"], !instruction.isEmpty else {
                 chat.askChat(rawQuery, attachments: attachments)
@@ -406,9 +406,28 @@ final class ActionController: ObservableObject {
         pendingChoice = nil
         var steps: [PlannedAction] = []
         for (index, call) in calls.enumerated() {
-            switch resolveOutcome(toolID: call.toolID, params: call.params) {
+            // Referents resolve per step: "cancel the dentist and move it to
+            // 1pm" carries match "it" on step two.
+            let toolID: String
+            let params: [String: String]
+            switch resolveReferent(toolID: call.toolID, params: call.params) {
+            case .resolved(let resolvedTool, let resolvedParams):
+                toolID = resolvedTool
+                params = resolvedParams
+            case .several:
+                // A choice list mid-plan would need a queue of questions.
+                pendingSteps = []
+                feedback = "Step \(index + 1) refers to more than one recent item - "
+                    + "name it instead."
+                return
+            case .nothingToReferTo:
+                pendingSteps = []
+                feedback = "Step \(index + 1) refers to nothing recent. Name the item instead."
+                return
+            }
+            switch resolveOutcome(toolID: toolID, params: params) {
             case .planned(let plan):
-                steps.append(plannedAction(toolID: call.toolID, plan: plan))
+                steps.append(plannedAction(toolID: toolID, plan: plan))
             case .invalid(let message):
                 pendingSteps = []
                 feedback = "Step \(index + 1): \(message)"
@@ -426,39 +445,66 @@ final class ActionController: ObservableObject {
         feedback = ""
     }
 
+    /// What a referent phrase resolved to. Shared by the single-step and
+    /// compound paths: a compound plan that skipped this would let "move it to
+    /// 1pm" fuzzy-match "it" against event titles, which is exactly what the
+    /// referent rule exists to prevent.
+    enum ReferentOutcome {
+        /// No referent, or one resolved to a single target.
+        case resolved(toolID: String, params: [String: String])
+        /// Several recent targets; the caller decides whether to offer a list.
+        case several(toolID: String, params: [String: String], targets: [RecentTarget])
+        case nothingToReferTo
+    }
+
+    /// "remove it" / "cancel this event": referent phrases resolve against what
+    /// the conversation just touched or LISTED. A referent NEVER falls through
+    /// to title matching ("it" must not fuzzy-match "DentIsT").
+    private func resolveReferent(toolID: String, params: [String: String]) -> ReferentOutcome {
+        var toolID = toolID
+        var params = params
+        guard let match = params["match"], EngineBridge.shared.aiIsReferent(match) else {
+            return .resolved(toolID: toolID, params: params)
+        }
+        let domain = Self.domain(of: toolID)
+        var targets = recentTargets.filter { $0.domain == domain }
+        if targets.isEmpty, let sibling = Self.domainSibling[toolID] {
+            let others = recentTargets.filter { $0.domain != domain }
+            if !others.isEmpty {
+                toolID = sibling
+                targets = others
+            }
+        }
+        if targets.count == 1 {
+            params["chosen_id"] = targets[0].id
+            return .resolved(toolID: toolID, params: params)
+        }
+        if targets.count > 1 {
+            return .several(toolID: toolID, params: params, targets: targets)
+        }
+        return .nothingToReferTo
+    }
+
     func propose(_ call: ToolCall, allowChoice: Bool = true) {
         pendingChoice = nil
-        var toolID = call.toolID
-        var params = call.params
-        // "remove it" / "cancel this event": referent phrases resolve against
-        // what the conversation just touched or LISTED. One target -> direct;
-        // several -> the listing becomes the choice list. A referent NEVER falls
-        // through to title matching ("it" must not fuzzy-match "DentIsT").
-        if let match = params["match"], EngineBridge.shared.aiIsReferent(match) {
-            let domain = toolID.hasPrefix("reminder") ? "reminder" : "calendar"
-            var targets = recentTargets.filter { $0.domain == domain }
-            if targets.isEmpty, let sibling = Self.domainSibling[toolID] {
-                let others = recentTargets.filter { $0.domain != domain }
-                if !others.isEmpty {
-                    toolID = sibling
-                    targets = others
-                }
-            }
-            if targets.count == 1 {
-                params["chosen_id"] = targets[0].id
-            } else if targets.count > 1 {
-                guard allowChoice else { return }
-                pendingSteps = []
-                pendingChoice = PendingChoice(
-                    toolID: toolID, params: params,
-                    candidates: targets.map { ActionCandidate(id: $0.id, label: $0.label) })
-                feedback = ""
-                return
-            } else {
-                pendingSteps = []
-                feedback = "Nothing recent to refer to. Name the item instead."
-                return
-            }
+        let toolID: String
+        let params: [String: String]
+        switch resolveReferent(toolID: call.toolID, params: call.params) {
+        case .resolved(let resolvedTool, let resolvedParams):
+            toolID = resolvedTool
+            params = resolvedParams
+        case .several(let resolvedTool, let resolvedParams, let targets):
+            guard allowChoice else { return }
+            pendingSteps = []
+            pendingChoice = PendingChoice(
+                toolID: resolvedTool, params: resolvedParams,
+                candidates: targets.map { ActionCandidate(id: $0.id, label: $0.label) })
+            feedback = ""
+            return
+        case .nothingToReferTo:
+            pendingSteps = []
+            feedback = "Nothing recent to refer to. Name the item instead."
+            return
         }
         switch resolveOutcome(toolID: toolID, params: params) {
         case .planned(let plan):
@@ -614,7 +660,7 @@ final class ActionController: ObservableObject {
                     receipts.append(receipt)
                     if let subjectID = receipt.subjectID {
                         targets.append(RecentTarget(
-                            domain: step.toolID.hasPrefix("reminder") ? "reminder" : "calendar",
+                            domain: Self.domain(of: step.toolID),
                             id: subjectID,
                             label: receipt.summary))
                     }
