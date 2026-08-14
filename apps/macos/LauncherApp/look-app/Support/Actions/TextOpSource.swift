@@ -1,4 +1,5 @@
 import Foundation
+import PDFKit
 import UniformTypeIdentifiers
 
 /// Where a text op reads its input. The clipboard was the only source when
@@ -53,19 +54,78 @@ nonisolated enum TextExtraction {
         case unreadable
         case notText
         case empty
+        /// Password-protected: the contents cannot be reached at all.
+        case locked
+        /// A PDF of page IMAGES with no text layer - a scan or a photo export.
+        /// Distinct from `empty`, because the file is far from empty; there is
+        /// simply nothing to read without OCR.
+        case noTextLayer
+        /// Text came out, but it decoded to junk (see `ExtractedTextQuality`).
+        /// Refused on purpose: a model will summarize gibberish fluently, and
+        /// that answer looks exactly as trustworthy as a real one.
+        case garbled
     }
 
-    /// True when the extension declares a text type. Extensionless files are
-    /// allowed through here and settled by decoding instead, so `.zshrc` and a
-    /// `Makefile` still work.
+    static func isPDF(path: String) -> Bool {
+        UTType(filenameExtension: (path as NSString).pathExtension)?.conforms(to: .pdf) == true
+    }
+
+    /// Text out of a PDF, or a named reason there is none. A PDF is a DRAWING
+    /// format: extraction depends on a character map the producer may have
+    /// omitted, so "it returned a string" is not the same as "it worked" - see
+    /// `ExtractedTextQuality`.
+    private static func extractPDF(path: String, cap: Int) -> Result<Extracted, Failure> {
+        guard let document = PDFDocument(url: URL(fileURLWithPath: path)) else {
+            return .failure(.unreadable)
+        }
+        guard !document.isLocked else { return .failure(.locked) }
+
+        // Page by page, stopping at the cap: a 400-page PDF must not be read
+        // into memory in full just to summarize its opening.
+        var text = ""
+        var truncated = false
+        for index in 0..<document.pageCount {
+            guard let page = document.page(at: index), let pageText = page.string else { continue }
+            if text.count + pageText.count > cap {
+                text += String(pageText.prefix(max(0, cap - text.count)))
+                truncated = true
+                break
+            }
+            text += pageText
+            if index < document.pageCount - 1 { text += "\n\n" }
+        }
+
+        let cleaned = ExtractedTextQuality.normalized(text)
+        // A scan is not an empty file, and saying so is the difference between
+        // the user reaching for OCR and thinking look is broken.
+        guard !cleaned.isEmpty else { return .failure(.noTextLayer) }
+        guard ExtractedTextQuality.isUsable(cleaned) else { return .failure(.garbled) }
+        return .success(Extracted(text: cleaned, truncated: truncated))
+    }
+
+    /// True when the extension declares a text type, or when macOS has no
+    /// opinion about it. "No opinion" covers three cases that must all fall
+    /// through to the DECODE, which is the only thing that actually knows:
+    ///
+    /// - no extension at all (`Makefile`, `.zshrc`),
+    /// - an extension with no registered type,
+    /// - an extension macOS answers with a DYNAMIC type (`dyn.ah62d4rv4ge80s52`).
+    ///
+    /// That last one is why `main.go` was refused: an unregistered extension
+    /// gets a synthesized `dyn.*` type rather than nil, and a dynamic type
+    /// conforms to nothing - so `.go`, `.rs`, and `.zig` all read as "not
+    /// text" while `.swift`, `.py`, `.md`, and `.toml` passed. Which languages
+    /// happen to be registered depends on what is installed, so treating a
+    /// dynamic type as a verdict would make this vary machine to machine.
     static func declaresText(path: String) -> Bool {
         let ext = (path as NSString).pathExtension
         guard !ext.isEmpty else { return true }
-        guard let type = UTType(filenameExtension: ext) else { return true }
+        guard let type = UTType(filenameExtension: ext), !type.isDynamic else { return true }
         return type.conforms(to: .text)
     }
 
     static func extract(path: String, cap: Int = defaultCap) -> Result<Extracted, Failure> {
+        if isPDF(path: path) { return extractPDF(path: path, cap: cap) }
         guard declaresText(path: path) else { return .failure(.notText) }
         guard let handle = FileHandle(forReadingAtPath: path) else { return .failure(.unreadable) }
         defer { try? handle.close() }

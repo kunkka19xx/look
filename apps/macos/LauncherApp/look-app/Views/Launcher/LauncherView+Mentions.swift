@@ -88,9 +88,24 @@ extension LauncherView {
         if let failure = attachments.add(path: path) {
             let name = (path as NSString).lastPathComponent
             switch failure {
-            case .notText: showBanner("\"\(name)\" is not a text file", style: .info, duration: 1.4)
-            case .empty: showBanner("\"\(name)\" is empty", style: .info, duration: 1.4)
-            case .unreadable: showBanner("Could not read \"\(name)\"", style: .error, duration: 1.4)
+            case .notText:
+                showBanner("\"\(name)\" is not a text file", style: .info, duration: 1.4)
+            case .empty:
+                showBanner("\"\(name)\" is empty", style: .info, duration: 1.4)
+            case .unreadable:
+                showBanner("Could not read \"\(name)\"", style: .error, duration: 1.4)
+            case .locked:
+                showBanner("\"\(name)\" is password-protected", style: .info, duration: 1.6)
+            case .noTextLayer:
+                // Says WHY, so the user reaches for OCR instead of assuming
+                // look is broken.
+                showBanner(
+                    "\"\(name)\" has no text layer - it looks scanned",
+                    style: .info, duration: 2.0)
+            case .garbled:
+                showBanner(
+                    "\"\(name)\" did not decode to readable text",
+                    style: .info, duration: 2.0)
             }
         }
     }

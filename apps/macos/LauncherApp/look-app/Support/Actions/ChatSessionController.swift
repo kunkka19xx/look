@@ -351,6 +351,16 @@ final class ChatSessionController: ObservableObject {
                 return "\"\(name)\" is empty."
             case .failure(.unreadable):
                 return "Could not read \"\(name)\"."
+            case .failure(.locked):
+                return "\"\(name)\" is password-protected."
+            case .failure(.noTextLayer):
+                // A scan is not an empty document; naming it points at OCR
+                // rather than leaving the user to guess.
+                return "\"\(name)\" has no text layer - it looks scanned."
+            case .failure(.garbled):
+                // Refusing beats summarizing nonsense: a fluent summary of
+                // garbage reads exactly like a real one.
+                return "\"\(name)\" did not decode to readable text."
             }
         }
 

@@ -60,9 +60,12 @@ invalid shape is impossible rather than merely unlikely:
 {"steps": [{"tool": "<alias>", "params": {...}}]}
 ```
 
-`steps` is an array from day one, so multi-step plans are a consumer change,
-never a wire change (today only `steps[0]` executes). Tool ids are 1-token
-aliases mapped to real ids in the planner, which keeps generation short:
+`steps` was an array from day one, so multi-step became a consumer change and
+never a wire change. Every step now executes: `planner::resolve_steps` maps the
+whole plan and `map_snapshot` returns it as `calls`. A step the resolver cannot
+use is DROPPED rather than failing the plan, so the preview shows exactly what
+will run. Tool ids are 1-token aliases mapped to real ids in the planner, which
+keeps generation short:
 
 | alias | tool id | params |
 | --- | --- | --- |
@@ -162,8 +165,24 @@ next day; a phrase naming a day or month is respected as-is.
 Every producer converges on the same path:
 
 ```text
-ToolCall -> resolve (Rust) -> preview -> confirm -> receipt -> undo
+[ToolCall] -> resolve (Rust) -> preview -> confirm -> receipts -> undo
 ```
+
+A plan is a LIST. One step for most requests, several for a compound one
+("cancel the dentist and move lunch to 1pm"), and the whole list is confirmed
+with one Enter and undone as a unit. Four rules keep that safe:
+
+- **Every step must resolve, or none is offered.** A plan with an unusable step
+  is refused naming the step ("Step 2: no matching event"), never previewed as
+  the half that worked.
+- **Ambiguity in a compound plan is refused, not queued.** Disambiguating one
+  step of several would need a queue of questions; the user is asked to name
+  that step precisely instead.
+- **Execution stops at the first failure** and says which step, keeping the
+  receipts of the steps that already ran - so undo reverses what actually
+  happened rather than pretending all or nothing did.
+- **Undo runs back to front**, reporting partial failure ("Undo failed for 1 of
+  3 steps") rather than stranding the rest.
 
 Two confirm surfaces, one spine:
 
@@ -171,7 +190,9 @@ Two confirm surfaces, one spine:
 - **Main bar**: the plan renders as the first, selected result row, and the
   visible row *is* the confirmation - one Enter runs it, ⌘Z undoes. Styling for
   each tool (icon, type badge, verb) comes from `AIActionAppearance`, so a new
-  tool is one table entry, not new row code.
+  tool is one table entry, not new row code. A COMPOUND plan is not offered
+  here: one row cannot confirm several actions, so Enter escalates to the AI
+  panel's multi-step bar instead of running just the first step.
 
 ## 6. Placement
 

@@ -271,7 +271,7 @@ pub extern "C" fn look_ai_plan_start(
 }
 
 /// Snapshot of a planning session: `{"done":false}` in flight, then
-/// `{"done":true,"call":{tool,params}|null}`; null pointer for unknown ids.
+/// `{"done":true,"calls":[{tool,params}, ...]}`; null pointer for unknown ids.
 /// The poll that observes done removes the session. Free with
 /// `look_free_cstring`.
 #[unsafe(no_mangle)]

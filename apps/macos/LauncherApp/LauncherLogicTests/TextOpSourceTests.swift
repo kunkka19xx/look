@@ -23,6 +23,29 @@ final class TextOpSourceTests: XCTestCase {
         }
     }
 
+    /// macOS answers an unregistered extension with a synthesized `dyn.*`
+    /// type, which conforms to nothing - so these read as "not text" until the
+    /// dynamic case falls through to the decode. `main.go` hit this.
+    func testSourceFilesWithUnregisteredExtensionsAreStillText() {
+        for path in ["/tmp/main.go", "/tmp/lib.rs", "/tmp/main.zig", "/tmp/a.unknownext"] {
+            XCTAssertTrue(TextExtraction.declaresText(path: path), path)
+        }
+    }
+
+    func testAGoFileExtractsRatherThanBeingRefused() throws {
+        let source = "package main\n\nfunc main() {\n\tprintln(\"hi\")\n}\n"
+        let path = try write(Data(source.utf8), ext: "go")
+        let extracted = try XCTUnwrap(try? TextExtraction.extract(path: path).get())
+        XCTAssertEqual(extracted.text, source)
+    }
+
+    /// Falling through is not the same as accepting: an unregistered extension
+    /// holding binary still fails, because the decode decides.
+    func testAnUnregisteredExtensionHoldingBinaryStillFails() throws {
+        let path = try write(Data([0xFF, 0xFE, 0xFD, 0xFC, 0x00, 0x01]), ext: "unknownext")
+        XCTAssertEqual(TextExtraction.extract(path: path), .failure(.notText))
+    }
+
     private func write(_ contents: Data, ext: String) throws -> String {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("textop-\(UUID().uuidString).\(ext)")

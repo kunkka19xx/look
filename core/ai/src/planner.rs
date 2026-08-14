@@ -252,7 +252,8 @@ pub fn start(host: &str, model: &str, query: &str) -> u64 {
 }
 
 /// Snapshot of a planning session: `{"done":false}` while in flight, then
-/// `{"done":true,"call":{tool,params}|null}` (null = not an action / failure).
+/// `{"done":true,"calls":[{tool,params}, ...]}` - empty for "not an action"
+/// or a failure, several for a compound request.
 /// None for unknown ids. Like chat, the poll that observes done removes it.
 pub fn poll(id: u64) -> Option<String> {
     chat::poll(id).map(|snapshot| map_snapshot(&snapshot))
@@ -280,10 +281,7 @@ fn map_snapshot(snapshot: &str) -> String {
         .and_then(plan::parse_plan)
         .map(resolve_steps)
         .unwrap_or_default();
-    // `call` is the first step, kept while the shells still read one action;
-    // `calls` is the whole plan. Remove `call` once both shells consume the
-    // array (see docs/ai-action-contracts.md §2).
-    json!({ "done": true, "call": calls.first(), "calls": calls }).to_string()
+    json!({ "done": true, "calls": calls }).to_string()
 }
 
 /// Primes the model + Ollama's prompt-prefix cache. The warm query is chosen
@@ -392,14 +390,16 @@ mod tests {
         );
         let root: Value = serde_json::from_str(&done).unwrap();
         assert_eq!(root["done"], true);
-        assert_eq!(root["call"]["tool"], "calendar.add_event");
-        assert_eq!(root["call"]["params"]["title"], "Dentist");
+        assert_eq!(root["calls"][0]["tool"], "calendar.add_event");
+        assert_eq!(root["calls"][0]["params"]["title"], "Dentist");
 
         // A decline (empty steps) and a transport error both map to call: null.
         let decline = map_snapshot(r#"{"text":"{\"steps\":[]}","done":true}"#);
-        assert!(serde_json::from_str::<Value>(&decline).unwrap()["call"].is_null());
+        let decline_calls = serde_json::from_str::<Value>(&decline).unwrap();
+        assert_eq!(decline_calls["calls"].as_array().map(Vec::len), Some(0));
         let error = map_snapshot(r#"{"text":"","done":true,"error":"no response"}"#);
-        assert!(serde_json::from_str::<Value>(&error).unwrap()["call"].is_null());
+        let error_calls = serde_json::from_str::<Value>(&error).unwrap();
+        assert_eq!(error_calls["calls"].as_array().map(Vec::len), Some(0));
     }
 
     #[test]
@@ -418,7 +418,7 @@ mod tests {
         }
         let root: Value = serde_json::from_str(&last).unwrap();
         assert_eq!(root["done"], true);
-        assert!(root["call"].is_null());
+        assert_eq!(root["calls"].as_array().map(Vec::len), Some(0));
         // The poll that observed done removed the session.
         assert!(poll(id).is_none());
     }
