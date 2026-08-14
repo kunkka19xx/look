@@ -77,7 +77,7 @@ This document tracks what `look` supports today and what is planned next.
   - **Windows**: from running-window enumeration via Win32
 - on the home screen, activation: `Cmd`+badge digit (macOS) / `Alt`+badge digit (Linux, Windows). In command mode, `Cmd+1`..`Cmd+7` / `Ctrl+1`..`Ctrl+7` keep their existing command-catalog semantics
 - badge labels follow an ergonomic outer-first layout: with N running apps we consume the easiest-to-reach keys first (`1, 2, 3, 9, 8` before `4`, then `7`, then `6`, then `5`). 5 running apps → badges `1, 2, 3, 8, 9`; 9 running apps → all of `1`..`9`
-- focus paths: macOS = `NSRunningApplication.activate()` with Dock-style reopen for windowless apps; Linux = GNOME Shell extension D-Bus on GNOME Wayland, `wlr-foreign-toplevel-management` on sway/Hyprland, `i3-msg` on i3, `_NET_ACTIVE_WINDOW` (x11rb) on other X11 WMs; Windows = `SetForegroundWindow` via window handle
+- focus paths: macOS = `NSRunningApplication.activate()` with Dock-style reopen for windowless apps; Linux = GNOME Shell extension D-Bus on GNOME Wayland, `wlr-foreign-toplevel-management` on sway/Hyprland, niri IPC on niri (focuses and scrolls to the window's workspace), `i3-msg` on i3, `_NET_ACTIVE_WINDOW` (x11rb) on other X11 WMs; Windows = `SetForegroundWindow` via window handle
 - click on an icon also switches; hover shows app name + shortcut tooltip; active app has an accent ring
 - toggled on/off via `Settings > Appearance > Running Apps`. Persisted as `running_apps_placement` in `~/.look.config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` still load as "on"). The window is a single fixed size and never resizes for the row
 - off hides the row and disables the activation shortcut

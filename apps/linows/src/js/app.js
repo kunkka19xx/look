@@ -25,6 +25,7 @@ import { load } from './html-loader.js';
 import {
     onWindowShown,
     onWindowHidden,
+    confirmHide,
     onIndexReady,
     requestIndexRefresh,
     getQuickFolders,
@@ -637,6 +638,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     onWindowHidden(() => {
         superactions.armEntrance();
         motion.armReveal();
+        // Rust holds the window up until this lands. Two frames: the first
+        // callback runs before the armed frame is painted, the second after.
+        requestAnimationFrame(() => requestAnimationFrame(confirmHide));
     });
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {

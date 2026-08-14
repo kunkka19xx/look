@@ -38,6 +38,11 @@ export async function hideWindow() {
     return invoke('hide_window');
 }
 
+/** The armed frame is painted; Rust can drop the window now. */
+export async function confirmHide() {
+    return invoke('confirm_hide');
+}
+
 export async function quitApp() {
     return invoke('quit_app');
 }

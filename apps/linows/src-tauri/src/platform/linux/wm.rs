@@ -7,6 +7,13 @@ pub fn is_sway() -> bool {
         .unwrap_or(false)
 }
 
+/// Returns true if niri is actually running (its IPC socket exists).
+pub fn is_niri() -> bool {
+    std::env::var("NIRI_SOCKET")
+        .map(|s| std::path::Path::new(&s).exists())
+        .unwrap_or(false)
+}
+
 /// Returns true when the session is KDE Plasma (any XDG_CURRENT_DESKTOP
 /// segment is "KDE").
 pub fn is_kde() -> bool {
@@ -25,6 +32,9 @@ pub(crate) fn detect_compositor() -> Option<String> {
     }
     if std::env::var("I3SOCK").is_ok() {
         return Some("i3".into());
+    }
+    if is_niri() {
+        return Some("niri".into());
     }
     // XDG_CURRENT_DESKTOP can be colon-separated ("ubuntu:GNOME", "pop:GNOME").
     // Prefer a recognised desktop name over distro prefixes.
@@ -46,10 +56,12 @@ pub(crate) fn detect_compositor() -> Option<String> {
     })
 }
 
-/// Returns true for tiling WMs (i3, sway, Hyprland) where `set_position` on a
-/// hidden/unmapped window is ignored - the WM applies its own placement on map.
+/// Returns true for tiling WMs (i3, sway, Hyprland, niri) where `set_position`
+/// on a hidden/unmapped window is ignored - the WM applies its own placement
+/// on map.
 pub fn is_tiling_wm() -> bool {
     std::env::var("I3SOCK").is_ok()
         || is_sway()
         || std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok()
+        || is_niri()
 }

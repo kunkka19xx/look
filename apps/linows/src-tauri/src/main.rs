@@ -78,12 +78,10 @@ const AUTO_HIDE_GRACE_MS: u64 = 300;
 const AUTO_HIDE_RESHOW_GUARD_MS: u64 = 200;
 const EVENT_WINDOW_SHOWN: &str = "window-shown";
 
-/// Arm the launchpad, then hide the window. Emitting while the webview can still
-/// paint means the frame the compositor caches is the (invisible) first frame of
-/// the entrance cascade, not the fully-revealed strip.
+/// Arm the launchpad, then hide the window once the webview has painted that
+/// frame - see `commands::hide_armed`.
 fn hide_launcher(window: &tauri::WebviewWindow) {
-    let _ = window.emit(consts::EVENT_WINDOW_HIDDEN, ());
-    let _ = window.hide();
+    commands::hide_armed(window);
 }
 
 /// Scale window size (logical pixels) to fit the current monitor.
@@ -137,6 +135,10 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         let _ = window.show();
         if tiling {
             recenter_window(&window);
+        }
+        #[cfg(target_os = "linux")]
+        if platform::linux::wm::is_niri() {
+            platform::linux::niri::ensure_self_floating();
         }
         let _ = window.emit(EVENT_WINDOW_SHOWN, ());
 
@@ -650,6 +652,7 @@ fn main() {
             commands::force_index_refresh,
             commands::toggle_window,
             commands::hide_window,
+            commands::confirm_hide,
             commands::set_blur_region,
             commands::quit_app,
             // Config

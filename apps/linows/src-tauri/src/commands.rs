@@ -113,7 +113,7 @@ pub fn open_path(
     //   because ShellExecute can't argv-parse a rundll32 command line.
     #[cfg(target_os = "windows")]
     if let Some(rest) = path.strip_prefix("look-cmd://") {
-        let _ = window.hide();
+        hide_armed(&window);
         match rest.split_once('?') {
             Some((program, args)) => {
                 let program = program.to_string();
@@ -145,7 +145,7 @@ pub fn open_path(
     // Linux system settings: settings://panel → gnome-control-center panel
     #[cfg(target_os = "linux")]
     if let Some(panel) = path.strip_prefix("settings://") {
-        let _ = window.hide();
+        hide_armed(&window);
         let panel = panel.to_string();
         std::thread::spawn(move || {
             // D-Bus activation: works on GNOME, properly focuses the window.
@@ -198,14 +198,14 @@ pub fn open_path(
         if kind.as_deref() == Some("app") && !path_is_url {
             let result = launch_app(&path, id.as_deref());
             if result.is_ok() {
-                let _ = window.hide();
+                hide_armed(&window);
             }
             return result;
         }
     }
 
     if kind.as_deref() == Some("browser") {
-        let _ = window.hide();
+        hide_armed(&window);
         std::thread::spawn(move || {
             // Not open::that on Linux: it spawns xdg-open with the inherited
             // env that host_command exists to scrub.
@@ -234,7 +234,7 @@ pub fn open_path(
         if kind.as_deref() == Some("app")
             && crate::platform::windows::window_focus::try_focus_existing(&path)
         {
-            let _ = window.hide();
+            hide_armed(&window);
             return Ok(());
         }
 
@@ -243,14 +243,14 @@ pub fn open_path(
         // Explorer opens them directly.
         #[cfg(target_os = "windows")]
         if path.starts_with("shell:") {
-            let _ = window.hide();
+            hide_armed(&window);
             let _ = std::process::Command::new("explorer.exe")
                 .arg(&path)
                 .spawn();
             return Ok(());
         }
 
-        let _ = window.hide();
+        hide_armed(&window);
         std::thread::spawn(move || {
             #[cfg(target_os = "linux")]
             {
@@ -286,7 +286,7 @@ pub async fn open_elevated(
 ) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        let _ = window.hide();
+        hide_armed(&window);
         let result = tauri::async_runtime::spawn_blocking(move || {
             let (program, args) = crate::platform::windows::launch::split_target(&path);
             crate::platform::windows::launch::run_as_admin(program, args)
@@ -367,12 +367,36 @@ pub fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// Longest the window stays up waiting for the frontend to paint the armed
+/// frame. `confirm_hide` ends the wait as soon as that frame lands, so this
+/// only runs out for a webview that never answers.
+const HIDE_ARM_GRACE: std::time::Duration = std::time::Duration::from_millis(60);
+
+/// Arm the entrance, then hide once the frontend has painted that frame.
+///
+/// The compositor keeps the last buffer the webview painted and presents it
+/// when the window maps again, so hiding in the same frame leaves the fully
+/// revealed panel to flash on the next summon before the entrance rewinds and
+/// replays. Every dismiss goes through here.
+pub fn hide_armed(window: &tauri::WebviewWindow) {
+    let _ = window.emit(crate::consts::EVENT_WINDOW_HIDDEN, ());
+    let window = window.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(HIDE_ARM_GRACE).await;
+        let _ = window.hide();
+    });
+}
+
+/// The frontend has painted the armed frame; the window can go now.
+#[tauri::command]
+pub fn confirm_hide(window: tauri::WebviewWindow) {
+    let _ = window.hide();
+}
+
 #[tauri::command]
 pub fn toggle_window(window: tauri::WebviewWindow) {
     if window.is_visible().unwrap_or(false) {
-        // Arm the launchpad entrance before hiding (see EVENT_WINDOW_HIDDEN).
-        let _ = window.emit(crate::consts::EVENT_WINDOW_HIDDEN, ());
-        let _ = window.hide();
+        hide_armed(&window);
     } else {
         let _ = window.show();
         let _ = window.set_focus();
@@ -381,9 +405,7 @@ pub fn toggle_window(window: tauri::WebviewWindow) {
 
 #[tauri::command]
 pub fn hide_window(window: tauri::WebviewWindow) {
-    // Arm the launchpad entrance before hiding (see EVENT_WINDOW_HIDDEN).
-    let _ = window.emit(crate::consts::EVENT_WINDOW_HIDDEN, ());
-    let _ = window.hide();
+    hide_armed(&window);
 }
 
 /// Blur behind the surfaces the frontend paints, in logical pixels. A no-op
@@ -715,6 +737,11 @@ fn try_focus_window(wm_class: &str) -> bool {
         return false;
     }
 
+    // niri: no swaymsg/i3-msg compatible IPC and no X11 windows to activate.
+    if crate::platform::linux::wm::is_niri() {
+        return try_focus_niri(&[wm_class]);
+    }
+
     // KDE Wayland: the x11rb path below only sees XWayland clients (under
     // the AppImage the Look window itself is XWayland), so native Wayland
     // windows are invisible to it. Go through KWin's scripting D-Bus.
@@ -806,6 +833,9 @@ fn try_focus_wayland(desktop_path: &str, candidates: &[&str]) -> bool {
     if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
         return candidates.iter().any(|id| try_focus_hyprland(id));
     }
+    if crate::platform::linux::wm::is_niri() {
+        return try_focus_niri(candidates);
+    }
     // KDE Wayland: KWin scripting D-Bus (no GNOME Shell, no wlr protocol)
     if crate::platform::linux::wm::is_kde() {
         return crate::platform::linux::kde_focus::try_focus(candidates);
@@ -843,6 +873,20 @@ fn try_focus_sway(app_id: &str) -> bool {
         }
     }
     false
+}
+
+/// niri: its own IPC is the only path that scrolls to the window's workspace.
+/// `wlr-foreign-toplevel` activation (which niri also advertises) raises the
+/// window without moving the view, leaving the user on an empty workspace, so
+/// it is only a fallback for the socket being unavailable.
+#[cfg(target_os = "linux")]
+fn try_focus_niri(candidates: &[&str]) -> bool {
+    if crate::platform::linux::niri::try_focus(candidates) {
+        return true;
+    }
+    candidates
+        .iter()
+        .any(|id| crate::platform::linux::wlr_focus::try_focus(id))
 }
 
 #[cfg(target_os = "linux")]
