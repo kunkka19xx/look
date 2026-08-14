@@ -9,7 +9,6 @@ struct AICodeBlockView: View {
     let language: String?
     let themeStore: ThemeStore
 
-    @State private var copied = false
 
     /// Fence tags that don't match the extensions `SyntaxHighlighter` keys on.
     private static let tagToExtension: [String: String] = [
@@ -40,19 +39,8 @@ struct AICodeBlockView: View {
                     Color.black.opacity(themeStore.surfaceOpacity(0.18)),
                     in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(code, forType: .string)
-                copied = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false }
-            } label: {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: CGFloat(themeStore.settings.fontSize - 3)))
-                    .foregroundStyle(copied ? Color.green.opacity(0.85) : themeStore.mutedTextColor())
-            }
-            .buttonStyle(.plain)
-            .padding(6)
-            .help("Copy code")
+            AnswerCopyButton(text: code, themeStore: themeStore, helpLabel: "Copy code")
+                .padding(6)
         }
     }
 }

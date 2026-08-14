@@ -273,6 +273,14 @@ extension LauncherView {
         hideLauncherWindow(restorePreviousApp: false)
     }
 
+    /// Picked FILES, in pick order. Folders are excluded: a text op reads
+    /// contents, and a folder has none.
+    func pickedFilePathsForTextOp() -> [String] {
+        pickedKeys.compactMap { pickedResultsByKey[$0] }
+            .filter { $0.kind == .file }
+            .map(\.path)
+    }
+
     func removePicked(key: String) {
         guard let idx = pickedKeys.firstIndex(of: key) else { return }
         pickedKeys.remove(at: idx)
