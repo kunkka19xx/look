@@ -402,13 +402,52 @@ also written as inline custom properties, so both sides must agree). Appearance
 is not a flag there: a light preset flips the `--lift` / `--shadow` RGB
 triplets that stand chips off the backdrop and seat panes on it, and repaints
 the semantic tokens the dark presets inherit from `:root`. Opacities are the
-user's (`USER_CONTROLLED_KEYS`) except at one moment: picking a light preset
-from the theme dropdown snaps tint/text/border opacity back to the preset
-(`LIGHT_THEMES`), because paper at a dark theme's transparency doesn't read as
-paper. The switch persists those values, so restore paths stay dumb and the
-sliders are the user's again from the next drag. Its font stack stays in CSS
-and applies while the Font field is left at `system-ui`; an explicit font still
-wins.
+user's (`USER_CONTROLLED_KEYS`) except at one moment: picking a preset whose
+surface *is* its transparency snaps tint/text/border opacity back to the preset
+(`OPACITY_OWNING_THEMES`), because paper at a dark theme's transparency doesn't
+read as paper and glass at a near-opaque one is a blue panel. The switch
+persists those values, so restore paths stay dumb and the sliders are the
+user's again from the next drag. Kindle's font stack stays in CSS and applies
+while the Font field is left at `system-ui`; an explicit font still wins.
+
+The surface axis ports as `data-surface="liquid"` on the document element,
+beside `data-theme`, with `css/liquid.css` carrying it. It is stored under its
+own config key (`ui_surface`) rather than derived from the theme name, for the
+same reason macOS resolves it from `ui_blur_material` first: nudging any slider
+drops `ui_theme` to `custom`, and the surface must not go with it. The radius
+scale is one custom property (`--surface-radius-scale`) that every themed radius
+multiplies through - `--corner-radius`, `--control-radius`, `--tile-radius`,
+`--bar-radius` - so a radius that skips the scale is a rule that hardcodes a px
+value, not a call site that forgot a helper.
+
+The material itself does not port. `backdrop-filter` blurs what the web engine
+composited behind the element, and the desktop behind a `transparent: true`
+window is composited by the OS, outside the webview; refraction has no CSS
+primitive at all. So linows renders Liquid as clear glass rather than frost:
+high transparency, a specular rim drawn as an overlay pseudo-element (above the
+tint and the background image, and a hairline whatever the user's border
+thickness), and saturated accents. Nothing in it needs the compositor, so it
+looks the same everywhere, and it mirrors macOS 26 shipping `Glass.clear`
+beside `Glass.regular`.
+
+Real frost is available where the compositor grants it, and only there.
+`platform/linux/blur.rs` asks: on Wayland through `ext-background-effect-v1`
+(the cross-desktop staging protocol - KWin 6.7+, Hyprland 0.56+, Niri) falling
+back to `org_kde_kwin_blur`, which Plasma spoke until 6.7; on X11 through the
+`_KDE_NET_WM_BLUR_BEHIND_REGION` property, which only KWin reads. The Wayland
+bind (`blur_wayland.rs`) attaches to GTK's own `wl_surface`, taken off the
+window handle rather than through GDK FFI, and runs on a private event queue so
+its roundtrips do not eat the events GDK is waiting for.
+
+Two things follow from that being a capability rather than a setting. The
+region comes from the frontend (`js/blur.js`), because only it knows which
+surfaces are painted: one rectangle for the classic panel, one per tile once
+the panes float, so the gaps stay clear instead of frosting into a single slab.
+Both backends take rectangles only, so a rounded surface is approximated by the
+cross of its two inset rects. And no config key is added: `PlatformInfo`
+carries `compositor_blur`, which is what lets `effectiveBlurOpacity()` treat a
+blurring compositor the same way it treats a background image, so the existing
+Blur Style and Blur Opacity controls act on real frost when there is any.
 
 ### Motion
 
@@ -444,6 +483,27 @@ Panel arrival is a content-layer effect, not a window one: animating the window
 would mean touching the `makeKeyAndOrderFront` path that the Cmd+Space
 cold-login bug lives in. Reduce Motion is honoured by every modifier.
 
+On linows the same pass lives in `src/css/motion.css`: one `:root` block of
+tokens (durations, offsets, stagger, the house curve) and the keyframes that
+read them, driven by classes rather than a token counter. `js/motion.js` toggles
+`is-entering` on `.launcher-window` on every summon, which cascades the panel
+arrival, the top bar, the placeholder overlay and the running-apps strip; the
+launchpad keeps its own replay (`components/superactions.js`) because it is
+built lazily. `window-shown` and `visibilitychange` both replay, and a short
+guard drops whichever lands second. The same stale-buffer problem macOS does not
+have is handled by arming the first frame on hide, so the frame the compositor
+presents on the next summon matches frame 0 instead of flashing and rewinding.
+
+Two constraints are tighter here than on macOS. Only `transform` and `opacity`
+are animated, since they are compositor-handled and animating `filter` /
+`backdrop-filter` tanks the frame rate on WebKitGTK. And the selection pill's
+zoom uses the `scale` property rather than a `transform` function, because
+`components/results.js` drives the pill's position through `transform` and an
+animation on the same property would take the glide over and land the pill
+without it. `prefers-reduced-motion` is honoured throughout, except on Windows,
+where the flag tracks the "best performance" visual-effects preset rather than
+motion sensitivity.
+
 ### Config File Integration
 
 All settings are persisted to `.look.config`:
@@ -454,7 +514,8 @@ All settings are persisted to `.look.config`:
 **Appearance:**
 - `ui_tint_red`, `ui_tint_green`, `ui_tint_blue`, `ui_tint_opacity` - background tint (0-1)
 - `ui_blur_material` - blur style (hudWindow, sidebar, menu, underWindowBackground, liquidGlass). `liquidGlass` renders through `NSGlassEffectView` and needs macOS 26; below that it falls back to `hudWindow`, and neither it nor the Liquid theme is offered as a new choice in Settings. A value already persisted stays selectable and is labelled as unsupported rather than being rewritten, since normalising it would destroy the setting for the same config on a newer machine.
-- `ui_blur_opacity` - blur opacity (0-1)
+- `ui_blur_opacity` - blur opacity (0-1). On linows this thins the tint only when there is frost to thin: a background image, or a compositor granting behind-window blur. With neither it is ignored and Tint Opacity alone decides the window alpha.
+- `ui_surface` - linows only. How surfaces are drawn, as opposed to what colour they are: empty (classic) or `liquid`. Stored separately from `ui_theme` because nudging any slider rewrites that key to `custom`, and a customised Liquid must keep its glass.
 - `ui_font_name`, `ui_font_size` - font settings
 - `ui_font_red`, `ui_font_green`, `ui_font_blue`, `ui_font_opacity` - text color (0-1)
 - `ui_border_thickness`, `ui_border_red`, `ui_border_green`, `ui_border_blue`, `ui_border_opacity` - border

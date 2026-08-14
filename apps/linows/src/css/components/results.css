@@ -46,8 +46,8 @@
     opacity: 0;
     pointer-events: none;
     transition:
-        transform 165ms cubic-bezier(0.22, 1, 0.36, 1),
-        height 165ms cubic-bezier(0.22, 1, 0.36, 1),
+        transform var(--motion-glide-ms) var(--motion-curve),
+        height var(--motion-glide-ms) var(--motion-curve),
         opacity 120ms ease-out;
 }
 

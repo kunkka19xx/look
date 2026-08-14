@@ -61,7 +61,7 @@ html[data-os="windows"] body {
 }
 
 html[data-os="windows"] .launcher-window {
-    border-radius: 16px;
+    border-radius: calc(16px * var(--surface-radius-scale));
 }
 
 /* WebKitGTK ghost-rendering workaround. Hyprland users hit this automatically
@@ -107,7 +107,7 @@ html[data-os="windows"] .launcher-window {
     margin: var(--content-padding) var(--content-padding) 12px;
     padding: var(--input-padding-y) var(--input-padding-x);
     background-color: var(--control-fill);
-    border-radius: 10px;
+    border-radius: var(--bar-radius);
 }
 
 .search-bar {
@@ -116,12 +116,12 @@ html[data-os="windows"] .launcher-window {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--search-gap);
 }
 
 .search-icon {
-    width: 16px;
-    height: 16px;
+    width: var(--search-icon-size);
+    height: var(--search-icon-size);
     color: var(--font-muted);
     flex-shrink: 0;
 }
@@ -134,8 +134,28 @@ html[data-os="windows"] .launcher-window {
     caret-color: var(--accent-color);
 }
 
+/* A single space: ::placeholder cannot be transformed, so the visible one is
+ * the overlay below and this keeps :placeholder-shown as its JS-free gate. */
 #query::placeholder {
+    color: transparent;
+}
+
+/* Starts where the input's text does, so the two look interchangeable. */
+.search-placeholder {
+    position: absolute;
+    left: calc(var(--search-icon-size) + var(--search-gap));
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: calc(var(--font-size) + 1px);
+    font-weight: 500;
     color: var(--font-muted);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+}
+
+#query:placeholder-shown + .search-placeholder {
+    opacity: 1;
 }
 
 /* Generic .content-area wrapper used by other screens (settings, commands). */
@@ -424,7 +444,6 @@ html[data-os="windows"] .launcher-window {
  * (image above tint, under content) so ui_bg_opacity / ui_bg_blur / an
  * opaque tint all behave identically in both modes. */
 .bar-free .pane-tile {
-    --tile-radius: 12px;
     position: relative;
     /* Keep the negative-z image overlay inside this tile's stacking context
    * (above the tile fill, below its content). */
@@ -469,9 +488,14 @@ html[data-os="windows"] .launcher-window {
     margin-bottom: var(--inner-gap);
 }
 
+/* Unlike the classic row: a rectangular clip slices tile shadows and footer
+ * popovers along a straight line, which at a rounded corner reads as a sharp
+ * angle. Nothing escapes anyway - tiles scroll their own content, and the
+ * window is the viewport. */
 .floating .results-row {
     margin: 0 var(--content-padding) var(--content-padding);
     column-gap: var(--inner-gap);
+    overflow: visible;
 }
 
 .floating .pane-col {
@@ -503,7 +527,7 @@ html[data-os="windows"] .launcher-window {
  * with the same inner-gap rhythm; the top bar already spaces it from above. */
 .bar-free #banner {
     margin: 0 var(--content-padding) var(--inner-gap);
-    border-radius: 10px;
+    border-radius: var(--bar-radius);
     border-bottom: none;
     box-shadow: 0 3px 7px rgba(var(--shadow), 0.25);
 }

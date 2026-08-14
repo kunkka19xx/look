@@ -1,4 +1,6 @@
 pub mod autostart;
+pub mod blur;
+pub mod blur_wayland;
 pub mod clipboard;
 pub mod dbus;
 pub mod fonts;

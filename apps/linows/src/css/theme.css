@@ -61,10 +61,20 @@
     --row-height: 38px;
     --row-spacing: 4px;
     --icon-size: 22px;
-    --corner-radius: 0;
-    --control-radius: 8px;
     --input-padding-x: 12px;
     --input-padding-y: 8px;
+    /* Shared by the icon, the flex gap and the placeholder overlay. */
+    --search-icon-size: 16px;
+    --search-gap: 10px;
+
+    /* Every themed radius goes through the surface scale (macOS
+     * ThemeStore.surfaceCornerRadius); one that skips it desyncs from the fill
+     * behind it. */
+    --surface-radius-scale: 1;
+    --corner-radius: 0;
+    --control-radius: calc(8px * var(--surface-radius-scale));
+    --tile-radius: calc(12px * var(--surface-radius-scale));
+    --bar-radius: calc(10px * var(--surface-radius-scale));
 
     /* Floating "inner-gap" layout (0 = classic framed panel) */
     --inner-gap: 0px;
@@ -183,8 +193,31 @@
         "DejaVu Serif", serif;
 }
 
+/* Liquid: the glass surface as a theme of its own (macOS Themes/LiquidTheme).
+ * Fills stay transparent over the tinted base. The selection pill goes the
+ * other way: it moves over the bare desktop, where a light wash vanishes.
+ * Geometry and rim live in liquid.css, under data-surface="liquid". */
+:root[data-theme="liquid"] {
+    --bg-tint: rgba(26, 33, 51, 0.78);
+    --font-color: rgb(250, 250, 255);
+    --font-secondary: rgb(219, 227, 242);
+    --font-muted: rgb(184, 196, 222);
+    --panel-fill: rgba(158, 184, 235, 0.1);
+    --control-fill: rgba(168, 194, 240, 0.12);
+    --divider-color: rgba(255, 255, 255, 0.18);
+    --selection-fill: rgba(102, 153, 255, 0.58);
+    --border-color: rgba(255, 255, 255, 0.1);
+
+    --accent-color: rgb(112, 184, 255);
+    --on-accent-color: rgb(10, 18, 33);
+    --color-success: rgb(102, 219, 168);
+    --color-warning: rgb(255, 199, 107);
+    --color-danger: rgb(255, 117, 133);
+    --color-info: rgb(112, 184, 255);
+}
+
 /* Transparency-capable environments (macOS, Windows, Wayland, X11 with compositor) */
 [data-transparent="true"] {
     --bg-tint: rgba(30, 30, 46, 0.95);
-    --corner-radius: 16px;
+    --corner-radius: calc(16px * var(--surface-radius-scale));
 }
