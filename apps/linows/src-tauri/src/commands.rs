@@ -386,6 +386,22 @@ pub fn hide_window(window: tauri::WebviewWindow) {
     let _ = window.hide();
 }
 
+/// Blur behind the surfaces the frontend paints, in logical pixels. A no-op
+/// wherever the compositor has no such request (see platform::blur).
+#[tauri::command]
+pub fn set_blur_region(
+    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))] window: tauri::WebviewWindow,
+    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))] rects: Vec<
+        crate::platform::BlurRect,
+    >,
+) {
+    #[cfg(target_os = "linux")]
+    if let Some(wid) = crate::platform::linux::window_focus::self_window() {
+        let scale = window.scale_factor().unwrap_or(1.0);
+        crate::platform::linux::blur::set_region(wid, &rects, scale);
+    }
+}
+
 // --- App launching helpers ---
 
 /// Build a Command that runs `prog` inside the user's systemd session, so

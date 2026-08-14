@@ -90,6 +90,8 @@ function render() {
         const item = document.createElement('div');
         item.className = 'running-app-item';
         item.title = app.name;
+        // Entrance stagger (motion.css), leftmost first.
+        item.style.setProperty('--i', i);
 
         // Icon
         const icon = document.createElement('div');

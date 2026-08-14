@@ -22,6 +22,15 @@ export async function init() {
     if (blurForcedOff()) {
         document.documentElement.setAttribute('data-disable-blur', '');
     }
+    if (compositorBlur()) {
+        document.documentElement.setAttribute('data-blur', 'compositor');
+    }
+}
+
+// True when the compositor grants behind-window blur on request. A capability,
+// not a setting: it only says whether Blur Opacity has real frost to act on.
+export function compositorBlur() {
+    return info?.compositor_blur ?? false;
 }
 
 // True when the blur fallback is forced by the platform (VM GPU) rather than
