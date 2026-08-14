@@ -24,12 +24,22 @@ struct ActionSessionItem: Identifiable, Equatable {
     /// Parsed markdown, computed once the answer settles so the view renders
     /// without re-parsing on every frame. Empty for non-answers and mid-stream.
     private(set) var segments: [EngineBridge.AIMarkdownSegment] = []
+    /// Files `@`-attached to this turn, kept on the item so the transcript
+    /// still shows what a question was asked ABOUT after the input is cleared.
+    var attachedPaths: [String] = []
 
-    init(kind: Kind = .action, text: String, source: String? = nil, isStreaming: Bool = false) {
+    init(
+        kind: Kind = .action,
+        text: String,
+        source: String? = nil,
+        isStreaming: Bool = false,
+        attachedPaths: [String] = []
+    ) {
         self.kind = kind
         self.text = text
         self.source = source
         self.isStreaming = isStreaming
+        self.attachedPaths = attachedPaths
         recomputeSegments()
     }
 
@@ -51,13 +61,40 @@ final class ActionController: ObservableObject {
         let candidates: [ActionCandidate]
     }
 
-    @Published private(set) var pending: PlannedAction?
+    /// The file paths picked in the launcher, pushed by `LauncherView` as the
+    /// picks change (this is a singleton with no view context). Picks survive
+    /// the query changing to `>summarize`, which the row selection does not, so
+    /// they are what a text op can actually aim at.
+    var pickedFilePaths: [String] = []
+
+    /// Files `@`-mentioned in the message being submitted. Pushed by
+    /// `LauncherView` on submit and cleared with the input, so they belong to
+    /// one turn rather than lingering like picks.
+    var attachments = MentionAttachments()
+
+    private func textOpSource() -> TextOpSource {
+        TextOpSource.resolve(mentioned: attachments.files, pickedFilePaths: pickedFilePaths)
+    }
+
+    /// The plan awaiting confirm: one step for most requests, several for a
+    /// compound one ("cancel the dentist and move lunch to 1pm"). Confirmed
+    /// with a single Enter and undone as a unit, so a compound request cannot
+    /// leave half of itself behind with no way back.
+    @Published private(set) var pendingSteps: [PlannedAction] = []
     @Published private(set) var pendingChoice: PendingChoice?
-    @Published private(set) var lastReceipt: ActionReceipt?
+    /// Receipts from the last confirmed plan, in the order they ran. Undo
+    /// reverses them back to front.
+    @Published private(set) var lastReceipts: [ActionReceipt] = []
+    var lastReceipt: ActionReceipt? { lastReceipts.last }
     @Published private(set) var feedback: String = ""
     /// The action item the current `lastReceipt` can undo (answers may stack
     /// after it, so "last item" is not reliable).
-    @Published private(set) var undoableItemID: UUID?
+    @Published private(set) var undoableItemIDs: [UUID] = []
+
+    /// Whether this transcript item is part of the plan undo would reverse.
+    func canUndo(_ itemID: UUID) -> Bool {
+        !lastReceipts.isEmpty && undoableItemIDs.contains(itemID)
+    }
     /// True while the model is turning a `>` query into an action, so the UI can
     /// show a "thinking" indicator during the generation.
     @Published private(set) var isPlanning: Bool = false
@@ -115,16 +152,16 @@ final class ActionController: ObservableObject {
         self.planner = ActionPlanner()
     }
 
-    var isPresenting: Bool { pending != nil }
+    var isPresenting: Bool { !pendingSteps.isEmpty }
 
     /// A post-action result (success summary + undo, or an error message) is
     /// showing. Dismissed when the user types something new or hides the window.
-    var hasResult: Bool { lastReceipt != nil || !feedback.isEmpty }
+    var hasResult: Bool { !lastReceipts.isEmpty || !feedback.isEmpty }
 
     var sessionActive: Bool { chat.isActive }
 
     func dismissResult() {
-        lastReceipt = nil
+        lastReceipts = []
         feedback = ""
     }
 
@@ -163,7 +200,7 @@ final class ActionController: ObservableObject {
         if let raw = EngineBridge.shared.aiParseExplicit(">" + query, modelAvailable: modelAvailable),
            case .planned(let plan) = resolveOutcome(toolID: raw.toolID, params: raw.params) {
             isPlanning = false
-            pending = plannedAction(toolID: raw.toolID, plan: plan)
+            pendingSteps = [plannedAction(toolID: raw.toolID, plan: plan)]
             feedback = ""
             return
         }
@@ -177,12 +214,12 @@ final class ActionController: ObservableObject {
             // Prewarm kicks the on-device model awake while the user types
             // (FoundationModels can report unavailable until first touched).
             AIQueryRouter.shared.prewarm(ThemeStore.shared.settings.aiProvider)
-            pending = nil
+            pendingSteps = []
             isPlanning = false
             feedback = ""
             return
         }
-        pending = nil
+        pendingSteps = []
         isPlanning = true
         // Warm the model + prompt cache now, while the user is still typing, so
         // the first real plan skips model load and prompt processing. Throttled.
@@ -194,13 +231,14 @@ final class ActionController: ObservableObject {
         idleTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.idleDelay)
             guard let self, !Task.isCancelled else { return }
-            let call = await self.planner.plan(query: query)
+            let calls = await self.planner.plan(query: query)
             guard generation == self.planGeneration else { return }  // superseded
             self.isPlanning = false
-            if let call, !Self.isUtilityCall(call) {
+            if !calls.isEmpty, !calls.contains(where: Self.isUtilityCall) {
                 // Live preview never pops a choice list mid-typing; Enter does.
-                // Utility calls (recall/textop) only ever run on Enter.
-                self.propose(call, allowChoice: false)
+                // Utility calls (recall/textop) only ever run on Enter, so a
+                // plan containing one previews nothing.
+                self.propose(calls, allowChoice: false)
             }
             // Not an action: stay quiet. Enter routes the text to chat instead.
         }
@@ -217,6 +255,9 @@ final class ActionController: ObservableObject {
         planGeneration += 1
         let query = stripPrefix(rawQuery)
         guard !query.isEmpty else { return }
+        // One message, one turn: whichever route handles it claims the same
+        // transcript entry instead of each path deciding for itself.
+        chat.startTurn()
 
         EventKitService.shared.refreshReminderCache()
         EventKitService.shared.refreshEventCache()
@@ -232,37 +273,38 @@ final class ActionController: ObservableObject {
         switch route {
         case .memory(let memoryFeedback):
             isPlanning = false
-            pending = nil
+            pendingSteps = []
             feedback = memoryFeedback
         case .textOp(let label, let instruction):
             isPlanning = false
-            pending = nil
-            if !chat.runTextOp(label: label, instruction: instruction) {
-                feedback = "Copy some text first, then try \"\(label.lowercased())\"."
+            pendingSteps = []
+            if let note = chat.runTextOp(
+                label: label, instruction: instruction, source: textOpSource()) {
+                feedback = note
             }
         case .files:
             isPlanning = false
-            pending = nil
-            // Empty params = "parse the raw query"; the shell owns file results.
-            recallRequest = RecallRequest(query: query, params: [:])
+            pendingSteps = []
+            // Empty params = "parse the raw query"; the shell owns results.
+            requestRecall(query: query, params: [:])
         case .explicit(let toolID, let params):
             if case .planned(let plan) = resolveOutcome(toolID: toolID, params: params) {
                 isPlanning = false
-                pending = plannedAction(toolID: toolID, plan: plan)
+                pendingSteps = [plannedAction(toolID: toolID, plan: plan)]
                 feedback = ""
             } else if modelAvailable {
                 // Deterministic parse resolved to nothing usable: let the
                 // model read the same text before giving up to chat.
                 startPlanTask(query)
             } else {
-                chat.askChat(query)
+                chat.askChat(query, attachments: attachments)
             }
         case .plan:
             startPlanTask(query)
         case .chat:
             // No planner: hand the text to the provider's answer path instead
             // of dead-ending (askChat itself reports if no provider is usable).
-            chat.askChat(query)
+            chat.askChat(query, attachments: attachments)
         }
     }
 
@@ -271,21 +313,42 @@ final class ActionController: ObservableObject {
     /// indicator, not before the user sees their own message.
     private func startPlanTask(_ query: String) {
         isPlanning = true
-        chat.append(ActionSessionItem(kind: .user, text: query))
-        chat.saveConversation()
+        chat.beginTurn(text: query, attachedPaths: attachments.paths)
         let generation = planGeneration
         planTask = Task { [weak self] in
             guard let self else { return }
-            let call = await self.planner.plan(query: query)
+            let calls = await self.planner.plan(query: query)
             guard generation == self.planGeneration else { return }  // superseded
             self.isPlanning = false
-            if let call {
+            if calls.count > 1 {
+                // A compound request: preview every step, confirm once.
+                self.propose(calls)
+            } else if let call = calls.first {
                 self.handlePlannedCall(call, rawQuery: query)
             } else {
                 // Not an add-action: treat it as a chat turn in the session.
-                self.chat.askChat(query, userItemAppended: true)
+                self.chat.askChat(query, attachments: self.attachments)
             }
         }
+    }
+
+    /// A recall request, unless a file is attached - then the user is asking
+    /// ABOUT that file, not searching for others. "summary this file please?"
+    /// contains the word "file", so the deterministic parser claims it and the
+    /// shell would leave AI mode to show a file LIST, discarding the question.
+    /// The parser cannot know about attachments; only this layer does, so the
+    /// rule lives here once rather than at each recall entry point.
+    private func requestRecall(query: String, params: [String: String]) {
+        guard attachments.isEmpty else {
+            chat.askChat(query, attachments: attachments)
+            return
+        }
+        recallRequest = RecallRequest(query: query, params: params)
+    }
+
+    /// Which store a tool touches. Spelled out at three call sites before.
+    private static func domain(of toolID: String) -> String {
+        toolID.hasPrefix("reminder") ? "reminder" : "calendar"
     }
 
     private static func isUtilityCall(_ call: ToolCall) -> Bool {
@@ -298,15 +361,16 @@ final class ActionController: ObservableObject {
     private func handlePlannedCall(_ call: ToolCall, rawQuery: String) {
         switch call.toolID {
         case "files.recall":
-            recallRequest = RecallRequest(query: rawQuery, params: call.params)
+            requestRecall(query: rawQuery, params: call.params)
         case "clipboard.textop":
             guard let instruction = call.params["instruction"], !instruction.isEmpty else {
-                chat.askChat(rawQuery, userItemAppended: true)
+                chat.askChat(rawQuery, attachments: attachments)
                 return
             }
             let label = String(instruction.prefix(48))
-            if !chat.runTextOp(label: label, instruction: instruction) {
-                feedback = "Copy some text first, then try \"\(label.lowercased())\"."
+            if let note = chat.runTextOp(
+                label: label, instruction: instruction, source: textOpSource()) {
+                feedback = note
             }
         default:
             propose(call)
@@ -316,8 +380,6 @@ final class ActionController: ObservableObject {
     /// A chat turn in the session: the question and a streaming answer stack as
     /// items, with the session (including performed actions) as conversation
     /// context. This is what a non-action `>` query becomes on Enter.
-    /// `userItemAppended` = the submit already put the message in the transcript
-    /// (it shows instantly while the planner thinks); don't add it twice.
     private func stripPrefix(_ raw: String) -> String {
         let text = raw.hasPrefix(">") ? String(raw.dropFirst()) : raw
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -333,49 +395,126 @@ final class ActionController: ObservableObject {
         "reminder.remove": "calendar.cancel_event",
     ]
 
-    func propose(_ call: ToolCall, allowChoice: Bool = true) {
+    /// A whole plan. Every step must resolve: a compound request that can only
+    /// half-execute is refused with the reason, rather than previewing the part
+    /// that happened to work and silently dropping the rest.
+    func propose(_ calls: [ToolCall], allowChoice: Bool = true) {
+        guard calls.count > 1 else {
+            if let single = calls.first { propose(single, allowChoice: allowChoice) }
+            return
+        }
         pendingChoice = nil
-        var toolID = call.toolID
-        var params = call.params
-        // "remove it" / "cancel this event": referent phrases resolve against
-        // what the conversation just touched or LISTED. One target -> direct;
-        // several -> the listing becomes the choice list. A referent NEVER falls
-        // through to title matching ("it" must not fuzzy-match "DentIsT").
-        if let match = params["match"], EngineBridge.shared.aiIsReferent(match) {
-            let domain = toolID.hasPrefix("reminder") ? "reminder" : "calendar"
-            var targets = recentTargets.filter { $0.domain == domain }
-            if targets.isEmpty, let sibling = Self.domainSibling[toolID] {
-                let others = recentTargets.filter { $0.domain != domain }
-                if !others.isEmpty {
-                    toolID = sibling
-                    targets = others
-                }
-            }
-            if targets.count == 1 {
-                params["chosen_id"] = targets[0].id
-            } else if targets.count > 1 {
-                guard allowChoice else { return }
-                pending = nil
-                pendingChoice = PendingChoice(
-                    toolID: toolID, params: params,
-                    candidates: targets.map { ActionCandidate(id: $0.id, label: $0.label) })
-                feedback = ""
+        var steps: [PlannedAction] = []
+        for (index, call) in calls.enumerated() {
+            // Referents resolve per step: "cancel the dentist and move it to
+            // 1pm" carries match "it" on step two.
+            let toolID: String
+            let params: [String: String]
+            switch resolveReferent(toolID: call.toolID, params: call.params) {
+            case .resolved(let resolvedTool, let resolvedParams):
+                toolID = resolvedTool
+                params = resolvedParams
+            case .several:
+                // A choice list mid-plan would need a queue of questions.
+                pendingSteps = []
+                feedback = "Step \(index + 1) refers to more than one recent item - "
+                    + "name it instead."
                 return
-            } else {
-                pending = nil
-                feedback = "Nothing recent to refer to. Name the item instead."
+            case .nothingToReferTo:
+                pendingSteps = []
+                feedback = "Step \(index + 1) refers to nothing recent. Name the item instead."
+                return
+            }
+            switch resolveOutcome(toolID: toolID, params: params) {
+            case .planned(let plan):
+                steps.append(plannedAction(toolID: toolID, plan: plan))
+            case .invalid(let message):
+                pendingSteps = []
+                feedback = "Step \(index + 1): \(message)"
+                return
+            case .choice:
+                // Disambiguating one step of several would need a queue of
+                // questions; say which step is unclear instead of guessing.
+                pendingSteps = []
+                feedback = "Step \(index + 1) matches more than one thing - "
+                    + "name it more precisely."
                 return
             }
         }
+        pendingSteps = steps
+        feedback = ""
+    }
+
+    /// What a referent phrase resolved to. Shared by the single-step and
+    /// compound paths: a compound plan that skipped this would let "move it to
+    /// 1pm" fuzzy-match "it" against event titles, which is exactly what the
+    /// referent rule exists to prevent.
+    enum ReferentOutcome {
+        /// No referent, or one resolved to a single target.
+        case resolved(toolID: String, params: [String: String])
+        /// Several recent targets; the caller decides whether to offer a list.
+        case several(toolID: String, params: [String: String], targets: [RecentTarget])
+        case nothingToReferTo
+    }
+
+    /// "remove it" / "cancel this event": referent phrases resolve against what
+    /// the conversation just touched or LISTED. A referent NEVER falls through
+    /// to title matching ("it" must not fuzzy-match "DentIsT").
+    private func resolveReferent(toolID: String, params: [String: String]) -> ReferentOutcome {
+        var toolID = toolID
+        var params = params
+        guard let match = params["match"], EngineBridge.shared.aiIsReferent(match) else {
+            return .resolved(toolID: toolID, params: params)
+        }
+        let domain = Self.domain(of: toolID)
+        var targets = recentTargets.filter { $0.domain == domain }
+        if targets.isEmpty, let sibling = Self.domainSibling[toolID] {
+            let others = recentTargets.filter { $0.domain != domain }
+            if !others.isEmpty {
+                toolID = sibling
+                targets = others
+            }
+        }
+        if targets.count == 1 {
+            params["chosen_id"] = targets[0].id
+            return .resolved(toolID: toolID, params: params)
+        }
+        if targets.count > 1 {
+            return .several(toolID: toolID, params: params, targets: targets)
+        }
+        return .nothingToReferTo
+    }
+
+    func propose(_ call: ToolCall, allowChoice: Bool = true) {
+        pendingChoice = nil
+        let toolID: String
+        let params: [String: String]
+        switch resolveReferent(toolID: call.toolID, params: call.params) {
+        case .resolved(let resolvedTool, let resolvedParams):
+            toolID = resolvedTool
+            params = resolvedParams
+        case .several(let resolvedTool, let resolvedParams, let targets):
+            guard allowChoice else { return }
+            pendingSteps = []
+            pendingChoice = PendingChoice(
+                toolID: resolvedTool, params: resolvedParams,
+                candidates: targets.map { ActionCandidate(id: $0.id, label: $0.label) })
+            feedback = ""
+            return
+        case .nothingToReferTo:
+            pendingSteps = []
+            feedback = "Nothing recent to refer to. Name the item instead."
+            return
+        }
         switch resolveOutcome(toolID: toolID, params: params) {
         case .planned(let plan):
-            pending = plannedAction(toolID: toolID, plan: plan)
+            pendingSteps = [plannedAction(toolID: toolID, plan: plan)]
             feedback = ""
         case .invalid(let message):
-            pending = nil
+            pendingSteps = []
             feedback = message
         case .choice(let candidates):
-            pending = nil
+            pendingSteps = []
             guard allowChoice else { return }  // live preview stays quiet
             pendingChoice = PendingChoice(
                 toolID: toolID, params: params, candidates: candidates)
@@ -445,7 +584,7 @@ final class ActionController: ObservableObject {
     func performQuickAction(_ action: PlannedAction) async throws -> String {
         await ensureAccess(for: action.toolID)
         let receipt = try action.perform()
-        lastReceipt = receipt
+        lastReceipts = [receipt]
         return receipt.summary
     }
 
@@ -502,25 +641,42 @@ final class ActionController: ObservableObject {
 
     /// Confirm the pending action. Requests calendar/reminder access on first use
     /// (the only place a permission prompt appears, besides the Settings button).
+    /// Runs the confirmed plan in order. A step that throws STOPS the run and
+    /// says which one: the steps that already ran keep their receipts, so undo
+    /// still reverses exactly what happened rather than pretending the whole
+    /// plan failed or silently carrying on past a failure.
     func confirm() {
-        guard let action = pending else { return }
-        pending = nil
+        let steps = pendingSteps
+        guard !steps.isEmpty else { return }
+        pendingSteps = []
         Task {
-            await ensureAccess(for: action.toolID)
-            do {
-                let receipt = try action.perform()
-                lastReceipt = receipt
-                if let subjectID = receipt.subjectID {
-                    recentTargets = [RecentTarget(
-                        domain: action.toolID.hasPrefix("reminder") ? "reminder" : "calendar",
-                        id: subjectID,
-                        label: receipt.summary)]
+            var receipts: [ActionReceipt] = []
+            var itemIDs: [UUID] = []
+            var targets: [RecentTarget] = []
+            for (index, step) in steps.enumerated() {
+                await ensureAccess(for: step.toolID)
+                do {
+                    let receipt = try step.perform()
+                    receipts.append(receipt)
+                    if let subjectID = receipt.subjectID {
+                        targets.append(RecentTarget(
+                            domain: Self.domain(of: step.toolID),
+                            id: subjectID,
+                            label: receipt.summary))
+                    }
+                    itemIDs.append(chat.appendAction(receipt.summary))
+                    feedback = ""
+                } catch {
+                    feedback = steps.count == 1
+                        ? "Failed: \(error.localizedDescription)"
+                        : "Step \(index + 1) of \(steps.count) failed: "
+                            + "\(error.localizedDescription)"
+                    break
                 }
-                undoableItemID = chat.appendAction(receipt.summary)
-                feedback = ""
-            } catch {
-                feedback = "Failed: \(error.localizedDescription)"
             }
+            lastReceipts = receipts
+            undoableItemIDs = itemIDs
+            if !targets.isEmpty { recentTargets = targets }
         }
     }
 
@@ -529,7 +685,7 @@ final class ActionController: ObservableObject {
         idleTask?.cancel()
         chat.cancelStreaming()
         planGeneration += 1
-        pending = nil
+        pendingSteps = []
         pendingChoice = nil
         feedback = ""
         isPlanning = false
@@ -545,19 +701,29 @@ final class ActionController: ObservableObject {
         }
     }
 
+    /// Reverses the last plan back to front, so a compound request undoes as
+    /// one thing. A step that fails to reverse is reported but does not strand
+    /// the others: the rest still get undone.
     func undoLast() {
-        guard let receipt = lastReceipt else { return }
-        do {
-            try receipt.undo()
-            if let id = undoableItemID {
-                chat.annotate(id, suffix: "  ·  undone")
+        guard !lastReceipts.isEmpty else { return }
+        var failures = 0
+        for (index, receipt) in lastReceipts.enumerated().reversed() {
+            do {
+                try receipt.undo()
+                if index < undoableItemIDs.count {
+                    chat.annotate(undoableItemIDs[index], suffix: "  ·  undone")
+                }
+            } catch {
+                failures += 1
             }
-            feedback = ""
-        } catch {
-            feedback = "Undo failed"
         }
-        lastReceipt = nil
-        undoableItemID = nil
+        feedback = failures == 0
+            ? ""
+            : (failures == lastReceipts.count
+                ? "Undo failed"
+                : "Undo failed for \(failures) of \(lastReceipts.count) steps")
+        lastReceipts = []
+        undoableItemIDs = []
     }
 
     /// Prompt for ONLY the store this action touches: a reminder must not pop a

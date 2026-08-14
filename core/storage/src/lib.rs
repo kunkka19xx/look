@@ -1,5 +1,5 @@
 use look_indexing::{Candidate, CandidateKind};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::path::Path;
@@ -15,6 +15,9 @@ const MAX_CANDIDATE_PREALLOC: usize = 10_000;
 /// never depends on how many distinct URLs the user has opened (see url-history
 /// spec). Kept modest - history is a convenience cache, not a system of record.
 const MAX_URL_HISTORY_ROWS: usize = 500;
+/// A recall corpus, not a paste ring - but still bounded: this is text the
+/// user copied.
+pub const MAX_CLIPBOARD_ROWS: usize = 5_000;
 
 const SETTINGS_KEY_WEB_SEARCH_ENABLED: &str = "web_search_enabled";
 const SETTINGS_KEY_WEB_SEARCH_ENGINE: &str = "web_search_engine";
@@ -78,6 +81,16 @@ pub struct UrlHistoryEntry {
     pub title: Option<String>,
     pub hit_count: u64,
     pub last_used_at_unix_s: i64,
+}
+
+/// One remembered clip. `content` is the full text - recall searches it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClipboardEntry {
+    pub id: i64,
+    pub content: String,
+    pub kind: String,
+    pub app_bundle_id: Option<String>,
+    pub copied_at_unix_s: i64,
 }
 
 pub struct SqliteStore {
@@ -475,12 +488,7 @@ impl SqliteStore {
             let mapped = stmt.query_map(params![limit], map_row)?;
             mapped.collect::<rusqlite::Result<Vec<_>>>()?
         } else {
-            // Escape LIKE metacharacters so a typed `%` or `_` is literal.
-            let escaped = query
-                .replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
-            let pattern = format!("%{escaped}%");
+            let pattern = format!("%{}%", like_escape(query));
             let mut stmt = self.conn.prepare(
                 "SELECT url, title, hit_count, last_used_at_unix_s FROM url_history
                  WHERE url LIKE ?1 ESCAPE '\\'
@@ -490,6 +498,113 @@ impl SqliteStore {
             mapped.collect::<rusqlite::Result<Vec<_>>>()?
         };
         Ok(rows)
+    }
+
+    /// Remembers a clip and returns its row id (the handle a later delete
+    /// needs). Re-copying moves the row to now instead of duplicating it;
+    /// oldest-first pruning keeps the table bounded.
+    ///
+    /// The caller must never pass a concealed or transient clip: only the
+    /// shell can read the pasteboard markers that say so.
+    pub fn record_clipboard_entry(
+        &self,
+        content: &str,
+        kind: &str,
+        app_bundle_id: Option<&str>,
+    ) -> StorageResult<Option<i64>> {
+        if content.trim().is_empty() {
+            return Ok(None);
+        }
+        let now = current_unix_s()?;
+        let hash = content_hash(content);
+        let tx = self.conn.unchecked_transaction()?;
+        // Replaced, not updated: an in-place update keeps the old id, and
+        // within the same second the id breaks the recency tie - so a re-copy
+        // would sort below something older.
+        let previous_app: Option<String> = tx
+            .query_row(
+                "SELECT app_bundle_id FROM clipboard_entries WHERE content_hash = ?1",
+                params![hash],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        tx.execute(
+            "DELETE FROM clipboard_entries WHERE content_hash = ?1",
+            params![hash],
+        )?;
+        let app = app_bundle_id.map(str::to_string).or(previous_app);
+        tx.execute(
+            "INSERT INTO clipboard_entries(content, content_hash, kind, app_bundle_id, copied_at_unix_s)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![content, hash, kind, app, now],
+        )?;
+        let row_id = tx.last_insert_rowid();
+        // Only the overflow: `WHERE id NOT IN (SELECT ... LIMIT cap)` would
+        // scan the whole table on every copy, for nothing until the 5,001st.
+        tx.execute(
+            "DELETE FROM clipboard_entries
+             WHERE (copied_at_unix_s, id) < (
+               SELECT copied_at_unix_s, id FROM clipboard_entries
+               ORDER BY copied_at_unix_s DESC, id DESC
+               LIMIT 1 OFFSET ?1
+             )",
+            params![MAX_CLIPBOARD_ROWS as i64 - 1],
+        )?;
+        tx.commit()?;
+        Ok(Some(row_id))
+    }
+
+    /// Up to `limit` clips matching `query` (case-insensitive substring over
+    /// the content), newest first. An empty query returns the most recent.
+    /// This is the keyword tier; semantic recall ranks the same rows later.
+    pub fn clipboard_entries(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> StorageResult<Vec<ClipboardEntry>> {
+        let query = query.trim();
+        let limit = limit as i64;
+        let map_row = |row: &rusqlite::Row| -> rusqlite::Result<ClipboardEntry> {
+            Ok(ClipboardEntry {
+                id: row.get(0)?,
+                content: row.get(1)?,
+                kind: row.get(2)?,
+                app_bundle_id: row.get(3)?,
+                copied_at_unix_s: row.get(4)?,
+            })
+        };
+        let select = "SELECT id, content, kind, app_bundle_id, copied_at_unix_s
+                      FROM clipboard_entries";
+        let rows = if query.is_empty() {
+            let mut stmt = self.conn.prepare(&format!(
+                "{select} ORDER BY copied_at_unix_s DESC, id DESC LIMIT ?1"
+            ))?;
+            let mapped = stmt.query_map(params![limit], map_row)?;
+            mapped.collect::<rusqlite::Result<Vec<_>>>()?
+        } else {
+            let pattern = format!("%{}%", like_escape(query));
+            let mut stmt = self.conn.prepare(&format!(
+                "{select} WHERE content LIKE ?1 ESCAPE '\\'
+                 ORDER BY copied_at_unix_s DESC, id DESC LIMIT ?2"
+            ))?;
+            let mapped = stmt.query_map(params![pattern, limit], map_row)?;
+            mapped.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        Ok(rows)
+    }
+
+    pub fn delete_clipboard_entry(&self, id: i64) -> StorageResult<bool> {
+        let changed = self
+            .conn
+            .execute("DELETE FROM clipboard_entries WHERE id = ?1", params![id])?;
+        Ok(changed > 0)
+    }
+
+    /// Forget everything copied. The user-facing promise behind persisting
+    /// clipboard history at all, so it must be one call, not a per-row loop.
+    pub fn clear_clipboard_entries(&self) -> StorageResult<usize> {
+        Ok(self.conn.execute("DELETE FROM clipboard_entries", [])?)
     }
 
     pub fn delete_stale_candidates(&mut self, older_than_unix_s: i64) -> StorageResult<usize> {
@@ -539,7 +654,7 @@ impl SqliteStore {
         };
         let escaped: Vec<String> = prefixes
             .iter()
-            .map(|p| format!("{}%", p.replace('\\', "\\\\").replace('%', "\\%")))
+            .map(|p| format!("{}%", like_escape(p)))
             .collect();
 
         let tx = self.conn.transaction()?;
@@ -595,7 +710,7 @@ impl SqliteStore {
         }
         let escaped: Vec<String> = prefixes
             .iter()
-            .map(|p| format!("{}%", p.replace('\\', "\\\\").replace('%', "\\%")))
+            .map(|p| format!("{}%", like_escape(p)))
             .collect();
         let like_clause = (0..escaped.len())
             .map(|i| format!("id LIKE ?{} ESCAPE '\\'", i + 2))
@@ -642,7 +757,7 @@ impl SqliteStore {
         keep_ids: &HashSet<&str>,
     ) -> StorageResult<usize> {
         let tx = self.conn.transaction()?;
-        let like_pattern = format!("{}%", prefix.replace('\\', "\\\\").replace('%', "\\%"));
+        let like_pattern = format!("{}%", like_escape(prefix));
 
         let stale_ids: Vec<String> = {
             let mut stmt = tx.prepare("SELECT id FROM candidates WHERE id LIKE ?1 ESCAPE '\\'")?;
@@ -747,7 +862,25 @@ impl SqliteStore {
               );
 
               CREATE INDEX IF NOT EXISTS idx_url_history_last_used
-                  ON url_history(last_used_at_unix_s);",
+                  ON url_history(last_used_at_unix_s);
+
+              -- Clipboard history, persisted so it survives a restart and can
+              -- later be searched semantically (Recall, see docs/ai-vision.md).
+              -- `content_hash` dedupes re-copying the same text: the row moves
+              -- to the top instead of piling up. Concealed/transient clips are
+              -- never written - that gate is at the capture site, since only
+              -- the shell can see the pasteboard's type markers.
+              CREATE TABLE IF NOT EXISTS clipboard_entries (
+                  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                  content           TEXT NOT NULL,
+                  content_hash      TEXT NOT NULL UNIQUE,
+                  kind              TEXT NOT NULL DEFAULT 'text',
+                  app_bundle_id     TEXT,
+                  copied_at_unix_s  INTEGER NOT NULL
+              );
+
+              CREATE INDEX IF NOT EXISTS idx_clipboard_copied_at
+                  ON clipboard_entries(copied_at_unix_s);",
         )?;
 
         ensure_column_exists(&self.conn, "candidates", "indexed_at_unix_s", "INTEGER")?;
@@ -784,6 +917,25 @@ fn ensure_column_exists(
         [],
     )?;
     Ok(())
+}
+
+/// Stable dedupe id. FNV-1a over the trimmed text - stable and cheap, not
+/// cryptographic.
+fn content_hash(content: &str) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in content.trim().as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x1000_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// Escapes LIKE metacharacters so a typed `%` or `_` is literal. Every LIKE
+/// query goes through this; three hand-written copies had forgotten `_`.
+fn like_escape(text: &str) -> String {
+    text.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 fn current_unix_s() -> StorageResult<i64> {
@@ -851,6 +1003,102 @@ fn parse_kind(value: &str) -> StorageResult<CandidateKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Clipboard history is persisted BECAUSE it is meant to outlive the app,
+    /// so the properties that make it a corpus rather than a paste ring are
+    /// pinned here: dedupe, recency order, bounded growth, and a real wipe.
+    #[test]
+    fn clipboard_history_dedupes_orders_and_stays_bounded() {
+        let store = SqliteStore::open_in_memory().unwrap();
+        store
+            .record_clipboard_entry("first clip", "text", Some("com.apple.Safari"))
+            .unwrap();
+        store
+            .record_clipboard_entry("second clip", "text", None)
+            .unwrap();
+        // Re-copying moves the row to the top instead of adding a duplicate.
+        store
+            .record_clipboard_entry("first clip", "text", None)
+            .unwrap();
+
+        let all = store.clipboard_entries("", 10).unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].content, "first clip");
+        // The source app is kept from the first capture rather than nulled.
+        assert_eq!(all[0].app_bundle_id.as_deref(), Some("com.apple.Safari"));
+
+        // Substring search, case-insensitive, newest first.
+        let found = store.clipboard_entries("SECOND", 10).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].content, "second clip");
+        assert!(
+            store
+                .clipboard_entries("nothing here", 10)
+                .unwrap()
+                .is_empty()
+        );
+
+        // Empty and whitespace-only clips are not worth remembering.
+        store.record_clipboard_entry("   ", "text", None).unwrap();
+        assert_eq!(store.clipboard_entries("", 10).unwrap().len(), 2);
+
+        // The row id comes back from record, so a freshly captured clip has a
+        // handle to delete by - without it a "deleted" clip returns on the
+        // next launch.
+        let fresh = store
+            .record_clipboard_entry("third clip", "text", None)
+            .unwrap()
+            .expect("row id");
+        assert!(store.delete_clipboard_entry(fresh).unwrap());
+        assert!(store.clipboard_entries("third", 10).unwrap().is_empty());
+        // Nothing stored means no id to hand back.
+        assert_eq!(
+            store.record_clipboard_entry("  ", "text", None).unwrap(),
+            None
+        );
+
+        let id = all[0].id;
+        assert!(store.delete_clipboard_entry(id).unwrap());
+        assert!(!store.delete_clipboard_entry(id).unwrap());
+        assert_eq!(store.clear_clipboard_entries().unwrap(), 1);
+        assert!(store.clipboard_entries("", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn clipboard_history_prunes_oldest_beyond_the_cap() {
+        let store = SqliteStore::open_in_memory().unwrap();
+        for i in 0..(MAX_CLIPBOARD_ROWS + 25) {
+            store
+                .record_clipboard_entry(&format!("clip {i}"), "text", None)
+                .unwrap();
+        }
+        let all = store
+            .clipboard_entries("", MAX_CLIPBOARD_ROWS + 100)
+            .unwrap();
+        assert_eq!(all.len(), MAX_CLIPBOARD_ROWS);
+        // The oldest went, not the newest: this is a recall corpus.
+        assert!(store.clipboard_entries("clip 0", 10).unwrap().is_empty());
+        assert!(
+            !store
+                .clipboard_entries(&format!("clip {}", MAX_CLIPBOARD_ROWS + 24), 10)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_typed_wildcard_is_searched_literally() {
+        let store = SqliteStore::open_in_memory().unwrap();
+        store
+            .record_clipboard_entry("100% done", "text", None)
+            .unwrap();
+        store
+            .record_clipboard_entry("nothing special", "text", None)
+            .unwrap();
+        // Without escaping, "%" would match every row.
+        let found = store.clipboard_entries("100%", 10).unwrap();
+        assert_eq!(found.len(), 1);
+    }
 
     fn candidate(id: &str, title: &str, path: &str) -> Candidate {
         Candidate {
