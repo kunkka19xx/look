@@ -77,6 +77,23 @@ enum AppConstants {
             static let speed = "speed"
         }
 
+        enum AIAction {
+            /// Synthetic id prefix of the main-bar action row (planner-
+            /// proposed; Enter performs it directly, the visible row is the
+            /// confirm). The suffix is the tool id, so the row and preview
+            /// can style per tool.
+            static let resultIDPrefix = "aiaction:"
+
+            static func resultID(toolID: String) -> String {
+                resultIDPrefix + toolID
+            }
+
+            static func toolID(fromResultID id: String) -> String? {
+                guard id.hasPrefix(resultIDPrefix) else { return nil }
+                return String(id.dropFirst(resultIDPrefix.count))
+            }
+        }
+
         enum QueryPrefix {
             static let apps = "a\""
             static let files = "f\""
@@ -502,6 +519,12 @@ enum AppConstants {
     enum ThemeUI {
         static let labelWidth: CGFloat = 150
         static let pickerWidth: CGFloat = 140
+        /// Dimming for a control the active theme has taken over, so the value
+        /// stays readable while reading as not-yours-to-set.
+        static let disabledControlOpacity: Double = 0.4
+        /// Appended to a picker entry this OS cannot render, so a value carried
+        /// over from a newer machine reads as inert rather than broken.
+        static let unsupportedSuffix = "(needs macOS 26)"
     }
 
     enum FileScan {

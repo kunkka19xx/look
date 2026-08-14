@@ -41,7 +41,7 @@ Look is designed to need as few macOS permissions as possible:
 - **No Accessibility permission** is required.
 - **No Full Disk Access** is required. Look indexes standard user directories (`~`, `/Applications`, `~/Documents`, `~/Downloads`, etc.). To index a directory outside those defaults, add it via `file_scan_extra_roots` in `~/.look.config`.
 - **No Screen Recording** is required.
-- **Network access** is used for explicit actions - `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search - and, when **AI features** are enabled (macOS, on by default), for live Google search suggestions and the DuckDuckGo/Wikipedia answer card as you type. The on-device Apple Intelligence model runs locally and makes no network calls of its own. Turn the AI/web features off by setting `ai_enabled = false` in `~/.look.config` (or via Settings). Local search and indexing never make network calls.
+- **Network access** is used for explicit actions - `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search - and, when **AI features** are enabled (macOS, on by default), for live Google search suggestions and the DuckDuckGo/Wikipedia answer card as you type. The AI model runs wherever you point it. Apple Intelligence is on-device and Ollama defaults to `localhost`, so by default no prompt leaves the machine. If you change `ollama_host` to a non-loopback address, or select a cloud-routed Ollama model (a `-cloud` tag, which the local daemon proxies to Ollama's service), then **your prompt travels over the network to that provider**. Separately from the prompt, your calendar, clipboard, and remembered facts are attached only when inference is on this machine; for anything remote they are withheld until you turn on `ai_allow_remote_context` in Settings. Turn the AI/web features off by setting `ai_enabled = false` in `~/.look.config` (or via Settings). Local search and indexing never make network calls.
 - **Finder Automation** is requested only when you empty the Trash (`Cmd+D` on the pinned Trash folder). The Trash is protected by macOS, so Look asks Finder to empty it; macOS prompts once, and you can manage it under `System Settings > Privacy & Security > Automation`. Moving individual files to the Trash needs no permission.
 
 If macOS prompts for permission during an action you didn't trigger, that's a bug - please [file an issue](https://github.com/kunkka19xx/look/issues).
@@ -229,6 +229,7 @@ Built-in theme presets are available:
 | Dracula     | Classic purple-accented dark      |
 | Kanagawa    | Japanese-inspired dark theme      |
 | Kindle      | Paper and ink e-reader look       |
+| Liquid      | Liquid Glass surface (macOS 26+)  |
 | Custom      | Your own colors derived from tint |
 
 Theme is saved as `ui_theme=<name>` in config, and a name written there overrides
@@ -239,6 +240,38 @@ one light preset: it also switches the frosted panels to a light material and th
 font to Charter, macOS' stand-in for Bookerly. Picking a preset overwrites your
 tint, text color, border and font; `Custom` keeps the current values and derives
 the rest from them.
+
+Liquid is the one preset that changes how surfaces are drawn rather than only
+what colour they are. It renders the window and every tile on macOS 26's Liquid
+Glass, rounds corners further, and uses far more transparent fills so the glass
+reads as a lens rather than a panel. It needs macOS 26 and is hidden from the
+picker on older releases. If a config written on macOS 26 is opened on an older
+one, the value is kept and shown as unsupported rather than silently changed.
+Two consequences worth knowing:
+
+- `Blur Opacity` is disabled while Liquid Glass is the blur style, because glass
+  has no blur to thin. Your value is kept and returns when you switch back.
+- The glass follows `Blur Style`, not the theme name, so you can pick
+  `Settings > Appearance > Blur Style > Liquid Glass` on any theme to get the
+  glass surface with that theme's palette. Going the other way, selecting Liquid
+  and then a different blur style keeps Liquid's palette *and* its rounder
+  corners, and swaps only the material for the classic blur.
+
+On Linux and Windows, Liquid is clear glass rather than frosted: the same
+palette, the same rounder corners, plus a bright rim along the top edge.
+Refraction is not available to a web frontend at all - CSS can only blur what
+the page itself drew, and the desktop behind the window is drawn by the system,
+not the page.
+
+Blur behind the window is the compositor's to grant, and Look asks for it
+wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and Niri through the
+`ext-background-effect-v1` protocol, older Plasma through KDE's own, and KWin on
+X11 through a window property. There is nothing to switch on - if your
+compositor takes the request the frost is there, and `Blur Opacity` starts
+thinning the tint so more of it shows through. Everywhere else (GNOME today,
+plain sway, X11 without KWin) Look stays clear glass and `Blur Opacity` applies
+only when you have set a background image. Driving blur from your own compositor
+config still works; Look's request is additional, not exclusive.
 
 **Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. The launcher window stays the same size either way.
 

@@ -54,9 +54,11 @@ flowchart LR
   - `LauncherWindowCoordinator`: window/focus management
   - `EngineBridge`: search engine communication
   - `ClipboardHistoryStore`, `KeyboardSelectionMonitor`, `GlobalHotKeyManager`
-- `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle) and semantic color tokens
+- `Themes/`: builtin theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid) and semantic color tokens
+- `Support/UI/`: shared UI primitives - `Motion` (all animation constants and the reveal modifiers), `ToggleSwitch`, `HoverTooltip`, `HoverBubble`
 - `bridge/ffi`: narrow C ABI surface for search, usage recording, config reload, translation, todo load/save, speed test, and error payloads.
 - `core/answers`: platform-agnostic, network-backed "web answer" lookups shared by every shell (macOS via `bridge/ffi`, Windows/Linux via Tauri commands). Instant answers (currency/weather/crypto), search suggestions, knowledge sources, and translation. Best-effort and panic-free: every entry point returns "no answer" on failure, with cheap network-free pattern-gating (`has_match`) so callers can fire speculatively while typing. No async runtime - HTTP is a blocking `curl` subprocess.
+- `core/ai`: the shared AI brain - everything both shells must agree on so prompts, parsers, and precedence cannot drift. The routing ladder (`route.rs`), the planner prompt/aliases/mapping (`planner.rs`, `plan.rs`), tool resolution with the ambiguity gate, dates, previews, and undo recipes (`resolve.rs`), the `@` grammar (`explicit.rs`), the date/word lexicon and window grammar (`lexicon.rs`, `window.rs`), natural-language file recall (`files.rs`), clipboard text-ops, conversations and long-term memory (crash-safe JSON stores), markdown segmentation, and the streamed chat transport (`chat.rs`: a curl child plus a reader thread, polled by the shell - chosen because it fits both FFI and Tauri without an async runtime). Data-only across the boundary: JSON in, JSON out, no closures. See `docs/ai-action-contracts.md`.
 - `core/indexing`: candidate model and indexing helpers used by engine/storage flows.
 - `core/matching`: exact/prefix/fuzzy matching primitives.
 - `core/ranking`: ranking helpers (usage/recency-aware adjustments and score composition).
@@ -357,6 +359,7 @@ Available themes (selected via Settings > Appearance):
 | Dracula | Classic purple-accented dark |
 | Kanagawa | Japanese-inspired dark theme |
 | Kindle | Paper and ink, e-reader light theme (Charter serif) |
+| Liquid | Liquid Glass surface, translucent fills (macOS 26+) |
 | Custom | Auto-derived semantic colors from tint |
 
 Themes are defined in `Themes/` folder:
@@ -371,6 +374,27 @@ pane scrims are mixed: dark themes darken, light themes lighten. A preset may
 also declare a `fontName`; presets that do not reset the font to the app default
 when applied.
 
+A preset also declares a `ThemeSurface` (`.classic` or `.liquid`), the second
+non-token axis alongside `ThemeAppearance`: it selects how surfaces are drawn
+rather than what colour they are, and scales every themed corner radius through
+`ThemeStore.surfaceCornerRadius(_:)`. Any new border or `clipShape` on a themed
+surface must go through that helper, or it desyncs from the fill behind it and
+draws a stray line across the corners.
+
+`ThemeStore.themeSurface()` resolves the axis from `blurMaterial` first and the
+preset second. That is deliberate: `savedThemeName()` stops recording `ui_theme`
+as soon as any value diverges from its preset (the load path applies the theme
+*over* the individual `ui_*` keys, so a stale name would discard the user's
+tweaks), while `ui_blur_material` persists on its own. Keying off the material
+means a customised Liquid theme keeps its glass across a relaunch.
+
+Liquid Glass itself is `Components/GlassEffectBackdrop.swift`, an
+`NSGlassEffectView` wrapper. Not SwiftUI's `glassEffect`, which refracts only
+what sits behind it inside its own view tree: the launcher window is
+transparent, so that renders as nearly nothing. The view also draws nothing
+without a `contentView`, and the theme tint is passed into its `tintColor`
+rather than layered over it, since a colour wash on top cancels the refraction.
+
 On linows the same presets live in `apps/linows/src/css/theme.css`, one
 `:root[data-theme="…"]` block per preset, with `js/screens/settings.js`
 mirroring the raw slider values in `THEME_PRESETS` (tint, text and border are
@@ -378,25 +402,120 @@ also written as inline custom properties, so both sides must agree). Appearance
 is not a flag there: a light preset flips the `--lift` / `--shadow` RGB
 triplets that stand chips off the backdrop and seat panes on it, and repaints
 the semantic tokens the dark presets inherit from `:root`. Opacities are the
-user's (`USER_CONTROLLED_KEYS`) except at one moment: picking a light preset
-from the theme dropdown snaps tint/text/border opacity back to the preset
-(`LIGHT_THEMES`), because paper at a dark theme's transparency doesn't read as
-paper. The switch persists those values, so restore paths stay dumb and the
-sliders are the user's again from the next drag. Its font stack stays in CSS
-and applies while the Font field is left at `system-ui`; an explicit font still
-wins.
+user's (`USER_CONTROLLED_KEYS`) except at one moment: picking a preset whose
+surface *is* its transparency snaps tint/text/border opacity back to the preset
+(`OPACITY_OWNING_THEMES`), because paper at a dark theme's transparency doesn't
+read as paper and glass at a near-opaque one is a blue panel. The switch
+persists those values, so restore paths stay dumb and the sliders are the
+user's again from the next drag. Kindle's font stack stays in CSS and applies
+while the Font field is left at `system-ui`; an explicit font still wins.
+
+The surface axis ports as `data-surface="liquid"` on the document element,
+beside `data-theme`, with `css/liquid.css` carrying it. It is stored under its
+own config key (`ui_surface`) rather than derived from the theme name, for the
+same reason macOS resolves it from `ui_blur_material` first: nudging any slider
+drops `ui_theme` to `custom`, and the surface must not go with it. The radius
+scale is one custom property (`--surface-radius-scale`) that every themed radius
+multiplies through - `--corner-radius`, `--control-radius`, `--tile-radius`,
+`--bar-radius` - so a radius that skips the scale is a rule that hardcodes a px
+value, not a call site that forgot a helper.
+
+The material itself does not port. `backdrop-filter` blurs what the web engine
+composited behind the element, and the desktop behind a `transparent: true`
+window is composited by the OS, outside the webview; refraction has no CSS
+primitive at all. So linows renders Liquid as clear glass rather than frost:
+high transparency, a specular rim drawn as an overlay pseudo-element (above the
+tint and the background image, and a hairline whatever the user's border
+thickness), and saturated accents. Nothing in it needs the compositor, so it
+looks the same everywhere, and it mirrors macOS 26 shipping `Glass.clear`
+beside `Glass.regular`.
+
+Real frost is available where the compositor grants it, and only there.
+`platform/linux/blur.rs` asks: on Wayland through `ext-background-effect-v1`
+(the cross-desktop staging protocol - KWin 6.7+, Hyprland 0.56+, Niri) falling
+back to `org_kde_kwin_blur`, which Plasma spoke until 6.7; on X11 through the
+`_KDE_NET_WM_BLUR_BEHIND_REGION` property, which only KWin reads. The Wayland
+bind (`blur_wayland.rs`) attaches to GTK's own `wl_surface`, taken off the
+window handle rather than through GDK FFI, and runs on a private event queue so
+its roundtrips do not eat the events GDK is waiting for.
+
+Two things follow from that being a capability rather than a setting. The
+region comes from the frontend (`js/blur.js`), because only it knows which
+surfaces are painted: one rectangle for the classic panel, one per tile once
+the panes float, so the gaps stay clear instead of frosting into a single slab.
+Both backends take rectangles only, so a rounded surface is approximated by the
+cross of its two inset rects. And no config key is added: `PlatformInfo`
+carries `compositor_blur`, which is what lets `effectiveBlurOpacity()` treat a
+blurring compositor the same way it treats a background image, so the existing
+Blur Style and Blur Opacity controls act on real frost when there is any.
+
+### Motion
+
+Every animated surface reads its physics from `Support/UI/Motion.swift`, so the
+feel is tuned in one place: `Spawn` (the launchpad cascade), `Selection` (the
+gliding pill and the one-shot zoom), `Slide` (horizontal entrances), `Surface`
+(the panel arriving), `Press`, `Value` (digit rolls) and `Caret`.
+
+Entrances key off `appearanceRevealToken`, a counter `LauncherView` bumps on
+every show. The window is only ordered out and back in, so `onAppear` fires once
+per process and cannot drive them. The modifiers are `rootReveal` (whole panel),
+`spawnReveal` (launchpad tiles, quick actions, the search bar), `slideReveal`
+via `placeholderReveal` / `stripReveal`, plus `symbolEffect(.bounce, value:)` on
+SF Symbols.
+
+Three constraints that are easy to break:
+
+- **Scope animations tightly.** An `.animation(_:value:)` high in the tree
+  attaches to its whole subtree, so when it fires every result row animates at
+  once. Per-row it is just as bad: it fires on each neighbour as the selection
+  passes. Row-local one-shot state driven by `onChange(of: isSelected)` is what
+  keeps a single row moving.
+- **`ThemedBackdrop` opts out of ambient transactions.** Nav wraps its selection
+  assignment in a global `withAnimation`, and re-compositing an
+  `NSVisualEffectView` or `NSGlassEffectView` inside that transaction flickers
+  the whole window on every keypress.
+- **Do not resolve icons inside `body` uncached.** `NSWorkspace.icon(forFile:)`
+  returns a fresh `NSImage` per call, which SwiftUI redraws; every icon in the
+  list then flickers on each keypress. `Support/RowIconCache.swift` returns one
+  instance per path. Process icons stay uncached, since pids are reused.
+
+Panel arrival is a content-layer effect, not a window one: animating the window
+would mean touching the `makeKeyAndOrderFront` path that the Cmd+Space
+cold-login bug lives in. Reduce Motion is honoured by every modifier.
+
+On linows the same pass lives in `src/css/motion.css`: one `:root` block of
+tokens (durations, offsets, stagger, the house curve) and the keyframes that
+read them, driven by classes rather than a token counter. `js/motion.js` toggles
+`is-entering` on `.launcher-window` on every summon, which cascades the panel
+arrival, the top bar, the placeholder overlay and the running-apps strip; the
+launchpad keeps its own replay (`components/superactions.js`) because it is
+built lazily. `window-shown` and `visibilitychange` both replay, and a short
+guard drops whichever lands second. The same stale-buffer problem macOS does not
+have is handled by arming the first frame on hide, so the frame the compositor
+presents on the next summon matches frame 0 instead of flashing and rewinding.
+
+Two constraints are tighter here than on macOS. Only `transform` and `opacity`
+are animated, since they are compositor-handled and animating `filter` /
+`backdrop-filter` tanks the frame rate on WebKitGTK. And the selection pill's
+zoom uses the `scale` property rather than a `transform` function, because
+`components/results.js` drives the pill's position through `transform` and an
+animation on the same property would take the glide over and land the pill
+without it. `prefers-reduced-motion` is honoured throughout, except on Windows,
+where the flag tracks the "best performance" visual-effects preset rather than
+motion sensitivity.
 
 ### Config File Integration
 
 All settings are persisted to `.look.config`:
 
 **UI Theme:**
-- `ui_theme` - theme name (catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle). Matched case-insensitively, and applied after the individual `ui_*` keys below, so a preset overrides them. Empty means Custom. Save Config writes a preset name only while the values still match that preset, so a theme you have tweaked is stored as its literal values.
+- `ui_theme` - theme name (catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle, liquid). Matched case-insensitively, and applied after the individual `ui_*` keys below, so a preset overrides them. Empty means Custom. Save Config writes a preset name only while the values still match that preset, so a theme you have tweaked is stored as its literal values.
 
 **Appearance:**
 - `ui_tint_red`, `ui_tint_green`, `ui_tint_blue`, `ui_tint_opacity` - background tint (0-1)
-- `ui_blur_material` - blur style (hudWindow, sidebar, menu, underWindowBackground)
-- `ui_blur_opacity` - blur opacity (0-1)
+- `ui_blur_material` - blur style (hudWindow, sidebar, menu, underWindowBackground, liquidGlass). `liquidGlass` renders through `NSGlassEffectView` and needs macOS 26; below that it falls back to `hudWindow`, and neither it nor the Liquid theme is offered as a new choice in Settings. A value already persisted stays selectable and is labelled as unsupported rather than being rewritten, since normalising it would destroy the setting for the same config on a newer machine.
+- `ui_blur_opacity` - blur opacity (0-1). On linows this thins the tint only when there is frost to thin: a background image, or a compositor granting behind-window blur. With neither it is ignored and Tint Opacity alone decides the window alpha.
+- `ui_surface` - linows only. How surfaces are drawn, as opposed to what colour they are: empty (classic) or `liquid`. Stored separately from `ui_theme` because nudging any slider rewrites that key to `custom`, and a customised Liquid must keep its glass.
 - `ui_font_name`, `ui_font_size` - font settings
 - `ui_font_red`, `ui_font_green`, `ui_font_blue`, `ui_font_opacity` - text color (0-1)
 - `ui_border_thickness`, `ui_border_red`, `ui_border_green`, `ui_border_blue`, `ui_border_opacity` - border

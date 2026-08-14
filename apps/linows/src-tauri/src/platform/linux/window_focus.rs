@@ -19,6 +19,12 @@ use x11rb::protocol::xproto::*;
 /// Cached X11 window ID for Look's own window, resolved once at startup.
 static SELF_WID: AtomicU32 = AtomicU32::new(0);
 
+/// Look's own X11 window, or `None` before it has been mapped and cached.
+pub fn self_window() -> Option<u32> {
+    let wid = SELF_WID.load(Ordering::Relaxed);
+    (wid != 0).then_some(wid)
+}
+
 /// Set to true when Look is shown and needs focus.
 /// The monitor thread will retry activation until focus is granted.
 static NEEDS_FOCUS: AtomicBool = AtomicBool::new(false);
