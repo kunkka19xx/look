@@ -6,6 +6,8 @@ struct AIConversation: Codable, Identifiable {
         var kind: String
         var text: String
         var source: String?
+        /// Optional so conversations written before `@`-mentions still decode.
+        var attachedPaths: [String]?
     }
 
     var id: UUID

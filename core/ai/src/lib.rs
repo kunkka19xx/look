@@ -6,6 +6,7 @@
 pub mod chat;
 pub mod context;
 pub mod conversations;
+pub mod domain;
 pub mod explicit;
 pub mod files;
 pub mod lexicon;

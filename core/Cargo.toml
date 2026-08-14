@@ -16,6 +16,9 @@ members = [
 resolver = "2"
 
 [workspace.package]
+# Let chains (`if let ... && ...`) are used across the core; they stabilized in
+# 1.88, so edition 2024 alone is not enough to build this.
+rust-version = "1.88"
 edition = "2024"
 license = "GPL-3.0-or-later"
 authors = ["kunkka19xx <nobita079x@gmail.com>"]

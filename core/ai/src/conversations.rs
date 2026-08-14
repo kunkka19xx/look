@@ -18,6 +18,15 @@ pub struct StoredItem {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// Files the turn was asked about (`@`-mentions). The core re-serializes
+    /// what the shell hands it, so a field missing HERE is silently dropped on
+    /// the round trip no matter what the shell sends.
+    #[serde(
+        default,
+        rename = "attachedPaths",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub attached_paths: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -97,9 +106,42 @@ mod tests {
                     kind: "user".into(),
                     text: format!("m{i}"),
                     source: None,
+                    attached_paths: None,
                 })
                 .collect(),
         }
+    }
+
+    /// The core re-serializes whatever the shell sends, so any field it does
+    /// not model is dropped on the round trip - silently, because serde ignores
+    /// unknown keys. That is exactly how `@`-mention capsules vanished from
+    /// reopened conversations, so the shell's shape is pinned here.
+    #[test]
+    fn shell_fields_survive_the_round_trip() {
+        let json = r#"{"id":"c1","title":"t","updatedAt":"2026-08-13T00:00:00Z","items":[
+            {"kind":"user","text":"translate this","attachedPaths":["/tmp/a.md"]},
+            {"kind":"answer","text":"done","source":"qwen3.5:4b"}]}"#;
+        let parsed: Conversation = serde_json::from_str(json).expect("parses");
+        assert_eq!(
+            parsed.items[0].attached_paths.as_deref(),
+            Some(["/tmp/a.md".to_string()].as_slice())
+        );
+        let round_tripped = serde_json::to_string(&parsed).expect("serializes");
+        assert!(
+            round_tripped.contains(r#""attachedPaths":["/tmp/a.md"]"#),
+            "{round_tripped}"
+        );
+        // An item with none stays clean rather than gaining a null.
+        assert!(!round_tripped.contains(r#""attachedPaths":null"#));
+    }
+
+    /// Conversations written before mentions existed must still load.
+    #[test]
+    fn older_conversations_without_attachments_still_load() {
+        let json =
+            r#"{"id":"c1","title":"t","updatedAt":"x","items":[{"kind":"user","text":"hi"}]}"#;
+        let parsed: Conversation = serde_json::from_str(json).expect("parses");
+        assert!(parsed.items[0].attached_paths.is_none());
     }
 
     #[test]

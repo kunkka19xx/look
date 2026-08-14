@@ -875,7 +875,7 @@ ai_enabled=true
 ai_provider=appleIntelligence
 # Ollama (local) settings, used when ai_provider=ollama.
 ollama_host=http://localhost:11434
-ollama_model=llama3.1
+ollama_model=qwen3.5:4b
 
 # Whether the calendar, clipboard, and remembered facts may be attached to
 # prompts when the AI provider is NOT on this machine (a remote ollama_host, or

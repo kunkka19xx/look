@@ -53,6 +53,23 @@ final class AIQueryRouter: @unchecked Sendable {
         return provider.answer(query: query)
     }
 
+    /// The structured path: roles and limits reach the provider intact, and it
+    /// translates them into its own dialect.
+    func respond(
+        messages: [AIMessage], options: AIGenerationOptions, using kind: AIProviderKind
+    ) -> AsyncThrowingStream<String, Error>? {
+        let provider = provider(for: kind)
+        guard provider.availability.isAvailable else { return nil }
+        return provider.respond(messages: messages, options: options)
+    }
+
+    /// How much the configured provider can read at once, for the attachment
+    /// budget. A cloud model's window is far larger than a local one's, so this
+    /// must never be a shared constant.
+    func contextTokens(of kind: AIProviderKind) -> Int {
+        provider(for: kind).contextTokens
+    }
+
     /// Warm up the provider so the next answer is faster. Safe to call often.
     /// Not gated on availability: providers self-guard, and touching a provider
     /// that reports transiently-unavailable is exactly what wakes it up.

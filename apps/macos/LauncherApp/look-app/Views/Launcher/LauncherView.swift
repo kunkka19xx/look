@@ -102,6 +102,14 @@ struct LauncherView: View {
     @State var pendingQuickActions: Set<String> = []
     @State var quickActionTask: Task<Void, Never>?
     @State var selectedResultID: String?
+    /// `@`-mention state for the AI input. `mentionHighlight` starts at -1 so
+    /// Enter still SENDS: the popup is passive until Tab reaches into it (same
+    /// shape as the conversation list's -1).
+    @State var mentionMatches: [LauncherResult] = []
+    @State var mentionHighlight = -1
+    @State var mentionSearchTask: Task<Void, Never>?
+    @State var attachments = MentionAttachments()
+
     @State var pickedKeys: [String] = []
     @State var pickedResultsByKey: [String: LauncherResult] = [:]
 
@@ -783,6 +791,23 @@ struct LauncherView: View {
             focusActiveInput()
             refreshClipboardMonitoringMode()
             runningAppsService.refresh()
+            actionController.pickedFilePaths = pickedFilePathsForTextOp()
+        }
+        // A text op reads the picked file rather than the clipboard, so the
+        // controller needs the picks as they change.
+        .onChange(of: pickedKeys) { _, _ in
+            actionController.pickedFilePaths = pickedFilePathsForTextOp()
+        }
+        // `@token` in the AI input offers files. Separate from the main query
+        // handler so the mention search cannot disturb the search results.
+        .onChange(of: query) { _, _ in
+            refreshMentionMatches()
+        }
+        .onChange(of: isAIMode) { _, stillAI in
+            if !stillAI {
+                dismissMentionPopup()
+                clearAttachments()
+            }
         }
         .onDisappear {
             invalidateSearchRequests()
@@ -1449,6 +1474,11 @@ struct LauncherView: View {
 
     private var aiSessionPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Inside the panel rather than in the gap above it: floating in the
+            // margin, these read as chrome belonging to nothing.
+            mentionAttachmentBar
+            mentionPopup
+
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -1485,13 +1515,18 @@ struct LauncherView: View {
                                 }
                             }
                             .padding(.horizontal, 4)
-                        } else if let pendingAction = actionController.pending {
+                        } else if !actionController.pendingSteps.isEmpty {
                             PendingActionBar(
-                                action: pendingAction,
+                                steps: actionController.pendingSteps,
                                 themeStore: themeStore,
                                 onConfirm: {
+                                    // Same as confirming with Enter: entering
+                                    // AI mode already consumed the `>`, so
+                                    // writing one back leaves a stray
+                                    // character in the box.
                                     actionController.confirm()
-                                    query = ">"
+                                    clearQuerySilently()
+                                    DispatchQueue.main.async { isQueryFocused = true }
                                 },
                                 onCancel: { actionController.cancel() }
                             )
@@ -1662,8 +1697,7 @@ struct LauncherView: View {
         case .action:
             ActionResultBar(
                 message: item.text,
-                canUndo: item.id == actionController.undoableItemID
-                    && actionController.lastReceipt != nil,
+                canUndo: actionController.canUndo(item.id),
                 themeStore: themeStore,
                 onUndo: { actionController.undoLast() }
             )
@@ -1680,6 +1714,11 @@ struct LauncherView: View {
                         .background(
                             themeStore.accentColor().opacity(0.14),
                             in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    // What this question was asked ABOUT, kept with the turn so
+                    // the transcript still says it after the bar is cleared.
+                    ForEach(item.attachedPaths, id: \.self) { path in
+                        AttachedFileCapsule(path: path, themeStore: themeStore)
+                    }
                 }
             }
         case .answer:
@@ -1718,6 +1757,17 @@ struct LauncherView: View {
             }
             .padding(10)
             .background(themeStore.surfaceFill(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            // Floated into the bubble's own corner padding rather than added as
+            // a row: a row reserves its full height on EVERY answer just to
+            // hold one icon. Hidden mid-stream, when there is nothing whole to
+            // take yet.
+            .overlay(alignment: .bottomTrailing) {
+                if !item.isStreaming, !item.text.isEmpty {
+                    AnswerCopyButton(text: item.text, themeStore: themeStore)
+                        .padding(.trailing, 6)
+                        .padding(.bottom, 4)
+                }
+            }
     }
 
     /// Inline markdown (bold, italic, `code`, links) for chat prose. Block

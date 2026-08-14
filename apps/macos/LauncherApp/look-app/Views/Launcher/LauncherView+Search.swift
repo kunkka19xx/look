@@ -72,8 +72,13 @@ extension LauncherView {
             // "firefox" would wrongly drop matches the user can already see.
             guard aiEnabled, rawResults.isEmpty else { return }
             _ = aiProvider
-            guard let call = await ActionPlanner().plan(query: currentQuery) else { return }
+            let calls = await ActionPlanner().plan(query: currentQuery)
             guard !Task.isCancelled else { return }
+            // The main bar confirms ONE row, so a compound plan belongs to the
+            // AI panel's multi-step bar. Running just the first step here would
+            // do less than the user asked for, with no sign of the rest:
+            // Enter escalates instead, exactly like an unresolvable call.
+            guard calls.count == 1, let call = calls.first else { return }
             if call.toolID != "files.recall" {
                 // Action-shaped phrasing: the Q&A answer card must not "refuse"
                 // on our behalf. The resolved action becomes the FIRST, selected
