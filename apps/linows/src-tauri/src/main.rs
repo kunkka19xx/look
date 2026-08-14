@@ -132,13 +132,9 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
             recenter_window(&window);
         }
         let _ = window.set_always_on_top(true);
-        let _ = window.show();
+        commands::show_launcher(&window);
         if tiling {
             recenter_window(&window);
-        }
-        #[cfg(target_os = "linux")]
-        if platform::linux::wm::is_niri() {
-            platform::linux::niri::ensure_self_floating();
         }
         let _ = window.emit(EVENT_WINDOW_SHOWN, ());
 
@@ -546,7 +542,7 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window(consts::MAIN_WINDOW) {
                 LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
-                let _ = window.show();
+                commands::show_launcher(&window);
                 let _ = window.set_focus();
             }
         }))
@@ -621,7 +617,7 @@ fn main() {
             platform::linux::blur::init(&window);
             #[cfg(target_os = "linux")]
             if supports_transparency() {
-                let _ = window.show();
+                commands::show_launcher(&window);
             }
             #[cfg(target_os = "windows")]
             {

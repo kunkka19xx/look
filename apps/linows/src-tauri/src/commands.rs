@@ -3,6 +3,7 @@ use crate::platform::linux::host_command;
 use crate::state::AppState;
 use look_engine::config::RuntimeConfig;
 use serde::Serialize;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, State};
 
@@ -296,7 +297,7 @@ pub async fn open_elevated(
         if let Err(e) = &result {
             // Declined, refused, or the task died: don't leave Look hidden.
             eprintln!("[open_elevated] {e}");
-            let _ = window.show();
+            show_launcher(&window);
             let _ = window.set_focus();
         }
         result
@@ -372,6 +373,11 @@ pub fn quit_app(app: tauri::AppHandle) {
 /// only runs out for a webview that never answers.
 const HIDE_ARM_GRACE: std::time::Duration = std::time::Duration::from_millis(60);
 
+/// Id of the dismissal still in flight, 0 when none is; a show clears it so a
+/// fallback the user already undid can't pull the window back down.
+static PENDING_HIDE: AtomicU64 = AtomicU64::new(0);
+static HIDE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 /// Arm the entrance, then hide once the frontend has painted that frame.
 ///
 /// The compositor keeps the last buffer the webview painted and presents it
@@ -379,18 +385,38 @@ const HIDE_ARM_GRACE: std::time::Duration = std::time::Duration::from_millis(60)
 /// revealed panel to flash on the next summon before the entrance rewinds and
 /// replays. Every dismiss goes through here.
 pub fn hide_armed(window: &tauri::WebviewWindow) {
+    let arm = HIDE_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
+    PENDING_HIDE.store(arm, Ordering::Relaxed);
     let _ = window.emit(crate::consts::EVENT_WINDOW_HIDDEN, ());
     let window = window.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(HIDE_ARM_GRACE).await;
-        let _ = window.hide();
+        if PENDING_HIDE
+            .compare_exchange(arm, 0, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+        {
+            let _ = window.hide();
+        }
     });
 }
 
 /// The frontend has painted the armed frame; the window can go now.
 #[tauri::command]
 pub fn confirm_hide(window: tauri::WebviewWindow) {
-    let _ = window.hide();
+    if PENDING_HIDE.swap(0, Ordering::Relaxed) != 0 {
+        let _ = window.hide();
+    }
+}
+
+/// Drop any dismissal in flight, show, and keep niri from tiling the window.
+/// Every show goes through here.
+pub fn show_launcher(window: &tauri::WebviewWindow) {
+    PENDING_HIDE.store(0, Ordering::Relaxed);
+    let _ = window.show();
+    #[cfg(target_os = "linux")]
+    if crate::platform::linux::wm::is_niri() {
+        crate::platform::linux::niri::ensure_self_floating();
+    }
 }
 
 #[tauri::command]
@@ -398,7 +424,7 @@ pub fn toggle_window(window: tauri::WebviewWindow) {
     if window.is_visible().unwrap_or(false) {
         hide_armed(&window);
     } else {
-        let _ = window.show();
+        show_launcher(&window);
         let _ = window.set_focus();
     }
 }

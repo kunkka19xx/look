@@ -640,7 +640,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         motion.armReveal();
         // Rust holds the window up until this lands. Two frames: the first
         // callback runs before the armed frame is painted, the second after.
-        requestAnimationFrame(() => requestAnimationFrame(confirmHide));
+        // A failed invoke falls back to Rust's timeout.
+        requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+                confirmHide().catch(() => {});
+            }),
+        );
     });
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
