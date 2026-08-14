@@ -54,6 +54,11 @@ pub fn post_json(url: &str, body: &str, timeout_secs: u32) -> Option<String> {
 /// One parsed NDJSON line of a `/api/chat` response.
 pub struct StreamLine {
     pub delta: String,
+    /// The line carried hidden reasoning instead of answer text. A model that
+    /// ignores `think: false` (or a shell linked against a core that never
+    /// sent it) spends the whole budget here and returns no content, which
+    /// otherwise reads as an unexplained empty answer.
+    pub thinking: bool,
     pub done: bool,
     /// The server's own error message: Ollama emits `{"error":"..."}` both
     /// in-stream (e.g. model OOM mid-generation) and as the body of a non-2xx
@@ -79,14 +84,17 @@ pub fn parse_stream_line(line: &str) -> Option<StreamLine> {
         .map(String::from);
     let done = root.get("done").and_then(|d| d.as_bool()).unwrap_or(false);
     let truncated = root.get("done_reason").and_then(|d| d.as_str()) == Some("length");
-    let delta = root
-        .get("message")
-        .and_then(|m| m.get("content"))
-        .and_then(|c| c.as_str())
-        .unwrap_or("")
-        .to_string();
+    let field = |name: &str| -> &str {
+        root.get("message")
+            .and_then(|m| m.get(name))
+            .and_then(|c| c.as_str())
+            .unwrap_or("")
+    };
+    let delta = field("content").to_string();
+    let thinking = !field("thinking").is_empty();
     Some(StreamLine {
         delta,
+        thinking,
         done,
         error,
         truncated,
@@ -106,6 +114,19 @@ mod tests {
         let line = parse_stream_line(r#"{"message":{"content":""},"done":true}"#).unwrap();
         assert!(line.done);
         assert!(parse_stream_line("   ").is_none());
+    }
+
+    #[test]
+    fn stream_line_tells_hidden_reasoning_from_answer_text() {
+        // What a reasoning model emits when `think: false` did not reach it:
+        // content stays empty for the whole budget.
+        let line =
+            parse_stream_line(r#"{"message":{"content":"","thinking":"Let me"},"done":false}"#)
+                .unwrap();
+        assert!(line.thinking);
+        assert!(line.delta.is_empty());
+        let line = parse_stream_line(r#"{"message":{"content":"Xin"},"done":false}"#).unwrap();
+        assert!(!line.thinking);
     }
 
     #[test]

@@ -25,6 +25,13 @@ extension LauncherView {
     ) {
         guard !appUIState.showsThemeSettings else { return }
 
+        // The `@`-mention popup owns the highlight while it is open, so Tab
+        // reaches into the file list instead of the results behind it.
+        if direction == .down || direction == .up,
+           moveMentionHighlight(forward: direction == .down) {
+            return
+        }
+
         // Sessions list: Tab/Shift-Tab and ↑/↓ move the highlight over
         // [-1 = new chat, 0..<count = sessions]. Enter opens the highlighted
         // session, or starts a new chat when nothing is highlighted (-1).
@@ -239,7 +246,15 @@ extension LauncherView {
                 openSessionAt(index)
             },
             onEscapeHome: { [self] in
-                exitAIToHome()
+                // Esc closes the file popup first and leaves the typed text
+                // alone, so dismissing a suggestion never costs the message.
+                // True means handled, which is what stops Esc also leaving AI
+                // mode on the same press.
+                if showsMentionPopup {
+                    dismissMentionPopup()
+                    return true
+                }
+                return exitAIToHome()
             },
             onConfirmKill: { [self] in
                 if let pendingKillCandidate {

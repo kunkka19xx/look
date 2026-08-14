@@ -52,6 +52,49 @@ struct AppleIntelligenceProvider: AIQueryProvider {
         #endif
     }
 
+    /// The on-device model's window. Small, and it is shared by prompt and
+    /// response, so the attachment budget must not assume Ollama's.
+    var contextTokens: Int { 4096 }
+
+    /// Roles preserved: system messages become the session's instructions,
+    /// which is how this model is meant to be steered. The old flattened form
+    /// pushed the instruction into the prompt body, where it competed with the
+    /// user's own text.
+    func respond(messages: [AIMessage], options: AIGenerationOptions)
+        -> AsyncThrowingStream<String, Error>?
+    {
+        #if canImport(FoundationModels)
+        guard #available(macOS 26, *), availability.isAvailable else { return nil }
+        let instructions = AIMessage.instructions(messages)
+        let prompt = AIMessage.conversation(messages)
+        guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let session = LanguageModelSession(
+                        instructions: instructions.isEmpty
+                            ? Self.answerInstructions : instructions)
+                    let generation = GenerationOptions(
+                        maximumResponseTokens: options.maxOutputTokens)
+                    for try await snapshot in session.streamResponse(
+                        to: prompt, options: generation)
+                    {
+                        if Task.isCancelled { break }
+                        continuation.yield(snapshot.content)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+        #else
+        return nil
+        #endif
+    }
+
     func answer(query: String) -> AsyncThrowingStream<String, Error>? {
         #if canImport(FoundationModels)
         guard #available(macOS 26, *), availability.isAvailable else { return nil }

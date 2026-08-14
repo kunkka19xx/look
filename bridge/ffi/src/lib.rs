@@ -3,6 +3,7 @@
 mod ai_api;
 mod answers_api;
 mod calc_api;
+mod clipboard_api;
 mod lunar_api;
 mod matching_api;
 mod netspeed_api;
@@ -271,7 +272,7 @@ pub extern "C" fn look_ai_plan_start(
 }
 
 /// Snapshot of a planning session: `{"done":false}` in flight, then
-/// `{"done":true,"call":{tool,params}|null}`; null pointer for unknown ids.
+/// `{"done":true,"calls":[{tool,params}, ...]}`; null pointer for unknown ids.
 /// The poll that observes done removes the session. Free with
 /// `look_free_cstring`.
 #[unsafe(no_mangle)]
@@ -559,6 +560,47 @@ pub extern "C" fn look_recent_urls_json(query: *const c_char, limit: u32) -> *mu
         url_history_api::look_recent_urls_json_impl(query, limit)
     }))
     .unwrap_or(std::ptr::null_mut())
+}
+
+/// Remembers a clipboard entry, returning its row id (0 on failure). The SHELL
+/// must not call this for concealed or transient clips (password managers,
+/// one-time secrets): only it can see the pasteboard markers that say so.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_clipboard_record(
+    content: *const c_char,
+    kind: *const c_char,
+    app_bundle_id: *const c_char,
+) -> i64 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        clipboard_api::look_clipboard_record_impl(content, kind, app_bundle_id)
+    }))
+    .unwrap_or(0)
+}
+
+/// JSON array of up to `limit` remembered clips matching `query` (or `[]`).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_clipboard_list_json(query: *const c_char, limit: u32) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        clipboard_api::look_clipboard_list_json_impl(query, limit)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn look_clipboard_delete(id: i64) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        clipboard_api::look_clipboard_delete_impl(id)
+    }))
+    .unwrap_or(false)
+}
+
+/// Forgets every remembered clip, returning how many were removed.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_clipboard_clear() -> u32 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        clipboard_api::look_clipboard_clear_impl,
+    ))
+    .unwrap_or(0)
 }
 
 /// Quick Action descriptors JSON for the result `(result_id, kind)` (or `[]`).

@@ -19,7 +19,7 @@
     padding: 12px;
     background: var(--control-fill);
     border: 1px solid rgba(var(--lift), 0.08);
-    border-radius: 10px;
+    border-radius: var(--bar-radius);
     display: flex;
     flex-direction: column;
     gap: 8px;

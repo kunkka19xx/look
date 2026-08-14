@@ -15,7 +15,7 @@ struct OllamaModelField: View {
     var body: some View {
         Group {
             if installed.isEmpty {
-                TextField("llama3.1", text: $model)
+                TextField("qwen3.5:4b", text: $model)
                     .textFieldStyle(.roundedBorder)
             } else {
                 Menu {

@@ -75,8 +75,11 @@ html[data-transparent="false"] .control-strip-grid {
 }
 
 .control-strip.is-entering .ctl-tile {
-    animation: ctl-tile-in 240ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
-    animation-delay: calc(var(--i, 0) * 18ms);
+    animation: ctl-tile-in var(--motion-tile-ms) var(--motion-curve-spring) backwards;
+    animation-delay: min(
+        calc(var(--i, 0) * var(--motion-tile-stagger)),
+        var(--motion-tile-max-stagger)
+    );
 }
 
 /* Armed = the cascade's first frame, held while the window is hidden so the
@@ -116,7 +119,12 @@ html[data-transparent="false"] .control-strip-grid {
      * floating mode (the window behind is transparent). So the face is stacked
      * to effectively opaque from the tint tokens: control-fill over a doubled
      * bg-tint pushes transmittance under ~1%, a solid card that still carries
-     * the theme color and antialiases its corners cleanly. */
+     * the theme color and antialiases its corners cleanly. One property, so a
+     * surface wanting a different stack (liquid.css) changes it once. */
+    --ctl-face:
+        linear-gradient(var(--control-fill), var(--control-fill)),
+        linear-gradient(var(--bg-tint), var(--bg-tint)),
+        linear-gradient(var(--bg-tint), var(--bg-tint));
     isolation: isolate;
     display: flex;
     align-items: center;
@@ -124,12 +132,9 @@ html[data-transparent="false"] .control-strip-grid {
     padding: 12px 14px;
     text-align: left;
     color: var(--font-color);
-    background-image:
-        linear-gradient(var(--control-fill), var(--control-fill)),
-        linear-gradient(var(--bg-tint), var(--bg-tint)),
-        linear-gradient(var(--bg-tint), var(--bg-tint));
+    background-image: var(--ctl-face);
     border: var(--border-thickness) solid var(--border-color);
-    border-radius: 12px;
+    border-radius: var(--tile-radius);
     box-shadow: 0 3px 7px rgba(var(--shadow), 0.22);
     cursor: pointer;
     transition:
@@ -158,17 +163,15 @@ html[data-transparent="false"] .control-strip-grid {
     }
 }
 
-/* Active toggle: accent wash + border, icon and state pick up the accent. The
- * doubled bg-tint keeps the face opaque under the wash, same as the base tile. */
+/* Active toggle: accent wash over the tile's own face, so it follows whatever
+ * stack the surface set. Icon and state pick up the accent. */
 .ctl-tile.is-active {
     background-image:
         linear-gradient(
             color-mix(in srgb, var(--accent-color) 18%, transparent),
             color-mix(in srgb, var(--accent-color) 18%, transparent)
         ),
-        linear-gradient(var(--control-fill), var(--control-fill)),
-        linear-gradient(var(--bg-tint), var(--bg-tint)),
-        linear-gradient(var(--bg-tint), var(--bg-tint));
+        var(--ctl-face);
     border-color: color-mix(in srgb, var(--accent-color) 34%, var(--border-color));
 }
 
@@ -269,7 +272,7 @@ html[data-transparent="false"] .control-strip-grid {
     width: 40px;
     height: 40px;
     background: var(--control-fill);
-    border-radius: 10px;
+    border-radius: var(--bar-radius);
     color: var(--font-secondary);
 }
 
@@ -526,17 +529,15 @@ html[data-transparent="false"] .control-strip-grid {
 }
 
 /* Armed destructive confirm: danger wash + border and a red "Confirm?" label,
- * held until the second press disarms it. Layered like .is-active so the face
- * stays opaque under the wash. */
+ * held until the second press disarms it. Layered like .is-active, over the
+ * tile's own face. */
 .ctl-tile--action.is-confirming {
     background-image:
         linear-gradient(
             color-mix(in srgb, var(--color-danger) 20%, transparent),
             color-mix(in srgb, var(--color-danger) 20%, transparent)
         ),
-        linear-gradient(var(--control-fill), var(--control-fill)),
-        linear-gradient(var(--bg-tint), var(--bg-tint)),
-        linear-gradient(var(--bg-tint), var(--bg-tint));
+        var(--ctl-face);
     border-color: color-mix(in srgb, var(--color-danger) 50%, var(--border-color));
 }
 
@@ -584,7 +585,7 @@ html[data-transparent="false"] .control-strip-grid {
     justify-content: center;
     width: 34px;
     height: 34px;
-    border-radius: 8px;
+    border-radius: var(--control-radius);
     color: var(--font-secondary);
     cursor: pointer;
 }

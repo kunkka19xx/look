@@ -37,6 +37,26 @@ fn sessions() -> MutexGuard<'static, HashMap<u64, Session>> {
         .unwrap_or_else(|e| e.into_inner())
 }
 
+/// A session that is already finished and carrying `message`, so a caller that
+/// cannot even be attempted reports WHY through the normal poll path instead of
+/// looking like a silent model failure.
+fn failed_session(message: &str) -> u64 {
+    let state = Arc::new(Mutex::new(SessionState {
+        done: true,
+        error: Some(message.to_string()),
+        ..SessionState::default()
+    }));
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    sessions().insert(
+        id,
+        Session {
+            state,
+            child: Arc::new(Mutex::new(None)),
+        },
+    );
+    id
+}
+
 /// Kill + wait so a child never outlives its session as a zombie. Both are
 /// needed: kill alone leaves the exited process unreaped.
 fn reap(slot: &Mutex<Option<Child>>) {
@@ -54,6 +74,12 @@ fn reap(slot: &Mutex<Option<Child>>) {
 /// transport instead of hand-rolling its own HTTP. Returns a session id, or 0
 /// when the request could not even be spawned.
 pub fn start(host: &str, model: &str, messages_json: &str, options_json: &str) -> u64 {
+    // A blank host builds the URL "/api/chat", which curl cannot resolve. The
+    // reader then sees zero lines and reports "returned no answer", blaming the
+    // model for a setting that was never filled in.
+    if host.trim().is_empty() {
+        return failed_session("no Ollama host is configured (Settings > AI)");
+    }
     let Ok(messages) = serde_json::from_str::<Value>(messages_json) else {
         return 0;
     };
@@ -70,6 +96,15 @@ pub fn start(host: &str, model: &str, messages_json: &str, options_json: &str) -
         .get("timeout_secs")
         .and_then(|v| v.as_u64())
         .unwrap_or(300) as u32;
+    // Ollama defaults the context to 4096 and SILENTLY truncates a prompt past
+    // it, so a surface that attaches a file has to ask for the room it needs.
+    // Omitted unless the caller sets it: a needlessly large KV cache costs
+    // memory on every request.
+    let num_ctx = opts.get("num_ctx").and_then(|v| v.as_i64());
+    let mut options = json!({ "temperature": temperature, "num_predict": num_predict });
+    if let Some(num_ctx) = num_ctx {
+        options["num_ctx"] = json!(num_ctx);
+    }
     let body = json!({
         "model": model,
         "messages": messages,
@@ -80,7 +115,7 @@ pub fn start(host: &str, model: &str, messages_json: &str, options_json: &str) -
         // tokens returns NOTHING and a chat answer arrives truncated. Ollama
         // ignores this field for models without a thinking mode.
         "think": false,
-        "options": { "temperature": temperature, "num_predict": num_predict },
+        "options": options,
         "keep_alive": "30m",
     })
     .to_string();
@@ -131,6 +166,7 @@ pub(crate) fn start_request(url: &str, body: &str, max_time_secs: u32) -> u64 {
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
         let mut saw_done = false;
+        let mut saw_thinking = false;
         for line in reader.lines() {
             let Ok(line) = line else { break };
             let Some(parsed) = ollama::parse_stream_line(&line) else {
@@ -142,6 +178,7 @@ pub(crate) fn start_request(url: &str, body: &str, max_time_secs: u32) -> u64 {
                 }
                 break;
             }
+            saw_thinking |= parsed.thinking;
             if !parsed.delta.is_empty()
                 && let Ok(mut s) = reader_state.lock()
             {
@@ -164,8 +201,14 @@ pub(crate) fn start_request(url: &str, body: &str, max_time_secs: u32) -> u64 {
             // Empty text IS no response, even when lines parsed fine: a
             // reasoning model with thinking left on emits only hidden tokens,
             // which would otherwise leave the placeholder spinning forever.
+            // Name that case, or it reads as an unexplained failure of the
+            // model rather than a budget spent somewhere invisible.
             if s.error.is_none() && s.text.is_empty() {
-                s.error = Some("the model returned no answer".into());
+                s.error = Some(if saw_thinking {
+                    "the model spent its whole token budget on hidden reasoning".into()
+                } else {
+                    "the model returned no answer".to_string()
+                });
             } else if s.error.is_none() && !saw_done && !s.text.is_empty() {
                 // The stream died mid-answer (e.g. curl's --max-time): partial
                 // text must not read as a complete answer.
@@ -228,6 +271,22 @@ mod tests {
         assert_eq!(start("http://localhost:1", "m", "not json", ""), 0);
         assert!(poll(999_999).is_none());
         cancel(999_999); // must not panic
+    }
+
+    #[test]
+    fn a_blank_host_names_the_missing_setting() {
+        // Otherwise the URL becomes "/api/chat", curl returns nothing, and the
+        // panel blames the model for an empty Settings field.
+        let id = start("  ", "m", "[]", "{}");
+        assert_ne!(id, 0);
+        let snapshot = poll(id).unwrap();
+        assert!(snapshot.contains("\"done\":true"), "{snapshot}");
+        assert!(
+            snapshot.contains("no Ollama host is configured"),
+            "{snapshot}"
+        );
+        // The poll that observed done removed it, like any other session.
+        assert!(poll(id).is_none());
     }
 
     #[test]

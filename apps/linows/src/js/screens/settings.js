@@ -159,9 +159,9 @@ export function init(exitFn) {
         for (const el of themeMenu.children) el.classList.remove('settings-dropdown-active');
         item.classList.add('settings-dropdown-active');
         themeMenu.hidden = true;
-        const overrides = lightSwitchOverrides(theme);
+        const overrides = switchOverrides(theme);
         applyThemePreset(theme, overrides);
-        saveConfig({ ui_theme: theme, ...overrides });
+        saveConfig({ ui_theme: theme, [SURFACE_KEY]: surfaceToPersist(theme), ...overrides });
     });
 
     // Blur style dropdown - populate labels from platform
@@ -554,6 +554,8 @@ export function init(exitFn) {
             const themeDD = document.getElementById('settings-theme');
             const activeThemeItem = themeDD.querySelector('.settings-dropdown-active');
             updates.ui_theme = activeThemeItem?.dataset.value ?? '';
+            // Live, not derived: a tweaked Liquid reads as "custom" here.
+            updates[SURFACE_KEY] = surfaceToPersist(updates.ui_theme);
 
             // All data-key sliders (tint, font color, border, blur, bg opacity/blur)
             for (const row of screen.querySelectorAll('.settings-row[data-key]')) {
@@ -643,8 +645,10 @@ export async function reloadFromFile() {
         }
 
         // Theme
+        hydrateUserSliders(map);
         const theme = map.ui_theme || '';
         applyThemePreset(theme);
+        restoreSurface(map, theme);
         if (theme === 'custom') {
             applyTintFromMap(map);
             applyFontColorFromMap(map);
@@ -740,22 +744,12 @@ export async function restoreOnStartup() {
             if (map.ui_bg_blur) CSS_MAP.ui_bg_blur(map.ui_bg_blur);
         }
 
-        // Pre-populate user-controlled sliders from config so the preset's
-        // applytint/applyBorderColor read the user's saved opacity/thickness
-        // instead of the HTML default values. Without this, first-launch
-        // appearance ignores any user opacity / border-thickness overrides
-        // until they actually open Settings.
-        for (const key of USER_CONTROLLED_KEYS) {
-            if (map[key] === undefined) continue;
-            const slider = screen?.querySelector(
-                `.settings-row[data-key="${key}"] .settings-slider`,
-            );
-            if (slider) slider.value = map[key];
-        }
+        hydrateUserSliders(map);
 
         // Restore theme preset - preset values drive tint/font/border
         const theme = map.ui_theme || '';
         applyThemePreset(theme);
+        restoreSurface(map, theme);
 
         // "custom" theme: restore individual overrides from config
         if (theme === 'custom') {
@@ -1096,7 +1090,51 @@ const THEME_PRESETS = {
         ui_border_opacity: 0.26,
         ui_border_thickness: 1.0,
     },
+    // macOS Themes/LiquidTheme.
+    liquid: {
+        ui_tint_red: 0.1,
+        ui_tint_green: 0.13,
+        ui_tint_blue: 0.2,
+        ui_tint_opacity: 0.78,
+        ui_font_red: 0.98,
+        ui_font_green: 0.98,
+        ui_font_blue: 1.0,
+        ui_font_opacity: 1.0,
+        ui_border_red: 1.0,
+        ui_border_green: 1.0,
+        ui_border_blue: 1.0,
+        ui_border_opacity: 0.1,
+        ui_border_thickness: 1.0,
+    },
 };
+
+// How a preset renders its surfaces, not what colour they are (macOS
+// ThemeSurface). Stored under its own key, not derived from the theme name:
+// nudging a slider drops `ui_theme` to "custom", and the glass must not go
+// with it.
+const THEME_SURFACES = { liquid: 'liquid' };
+const SURFACE_KEY = 'ui_surface';
+
+function surfaceForTheme(themeId) {
+    return THEME_SURFACES[themeId] || '';
+}
+
+// "Custom" means "keep the values I have", and the surface is one of them.
+function surfaceToPersist(themeId) {
+    return themeId === 'custom'
+        ? (document.documentElement.getAttribute('data-surface') ?? '')
+        : surfaceForTheme(themeId);
+}
+
+function applySurface(surface) {
+    if (surface) document.documentElement.setAttribute('data-surface', surface);
+    else document.documentElement.removeAttribute('data-surface');
+}
+
+// The stored key wins over the theme name; older configs have only the name.
+function restoreSurface(map, themeId) {
+    applySurface(map[SURFACE_KEY] ?? surfaceForTheme(themeId));
+}
 
 // Keys that belong to the user, not the theme - preserved when switching
 // themes so the user doesn't lose their custom transparency / border tweaks.
@@ -1107,18 +1145,30 @@ const USER_CONTROLLED_KEYS = new Set([
     'ui_border_thickness',
 ]);
 
-// A paper tint carrying a dark theme's transparency doesn't read as paper, so
-// switching to a light preset is the one moment it takes the opacities back.
-// They are the user's again from the next drag on, which is why the switch also
-// persists them: config and sliders have to agree on the next launch.
-const LIGHT_THEMES = new Set(['kindle']);
-const LIGHT_SWITCH_KEYS = ['ui_tint_opacity', 'ui_font_opacity', 'ui_border_opacity'];
+// applyThemePreset skips these keys and then reads them back off the sliders,
+// so the saved values have to be in the DOM before it runs. Without this a
+// restore or reload computes the tint from whatever the last theme left there,
+// not from config.
+function hydrateUserSliders(map) {
+    for (const key of USER_CONTROLLED_KEYS) {
+        if (map[key] === undefined) continue;
+        const slider = screen?.querySelector(`.settings-row[data-key="${key}"] .settings-slider`);
+        if (slider) slider.value = map[key];
+    }
+}
 
-function lightSwitchOverrides(themeId) {
+// Presets whose surface *is* their transparency: paper at a dark theme's
+// opacity isn't paper, glass at a near-opaque one is a panel. Switching to one
+// takes those keys back, and persists them so config and sliders agree on the
+// next launch; they are the user's again from the next drag.
+const OPACITY_OWNING_THEMES = new Set(['kindle', 'liquid']);
+const OPACITY_SWITCH_KEYS = ['ui_tint_opacity', 'ui_font_opacity', 'ui_border_opacity'];
+
+function switchOverrides(themeId) {
     const preset = THEME_PRESETS[themeId];
-    if (!preset || !LIGHT_THEMES.has(themeId)) return {};
+    if (!preset || !OPACITY_OWNING_THEMES.has(themeId)) return {};
     const out = {};
-    for (const key of LIGHT_SWITCH_KEYS) {
+    for (const key of OPACITY_SWITCH_KEYS) {
         if (preset[key] !== undefined) out[key] = preset[key];
     }
     return out;
@@ -1135,6 +1185,7 @@ function applyThemePreset(themeId, overrides = {}) {
     } else {
         document.documentElement.removeAttribute('data-theme');
     }
+    applySurface(surfaceForTheme(themeId));
 
     const preset = THEME_PRESETS[themeId];
     if (!preset) return;
@@ -1172,17 +1223,28 @@ function getSliderVal(key) {
     return parseFloat(row.querySelector('.settings-slider')?.value || 0);
 }
 
+// Stacks where WebKitGTK ghost-renders backdrop-filter, so the CSS drops it.
+function isGhostingStack() {
+    return platform.compositor() === 'hyprland';
+}
+
+function hasDisableBlur() {
+    return document.documentElement.hasAttribute('data-disable-blur');
+}
+
 function hasBgImage() {
     return document.documentElement.style.getPropertyValue('--bg-image') !== '';
 }
 
-// Blur Opacity scales the tint down so the frosted layer shows through. That
-// layer is the in-page bg image: backdrop-filter can't blur behind the
-// window (compositor territory), so without a bg image the reduction is raw
-// see-through-to-desktop. Only apply it when a bg image exists; otherwise
-// Tint Opacity alone decides the window alpha.
+// Blur Opacity thins the tint so the frost shows through, and the frost is
+// either the in-page bg image or a compositor that grants blur. With neither,
+// thinning is raw see-through-to-desktop, so Tint Opacity alone decides.
+function hasFrost() {
+    return hasBgImage() || platform.compositorBlur();
+}
+
 function effectiveBlurOpacity(blurA) {
-    return hasBgImage() ? blurA : 1.0;
+    return hasFrost() ? blurA : 1.0;
 }
 
 function applytint() {
@@ -1197,10 +1259,9 @@ function applytint() {
     // Hyprland (auto) and Arch toggle (manual): backdrop-filter is disabled
     // (CSS) due to WebKitGTK ghosting. Force a near-opaque alpha so themes
     // still pick the color while the window stays readable without blur.
-    if (
-        platform.compositor() === 'hyprland' ||
-        document.documentElement.hasAttribute('data-disable-blur')
-    ) {
+    // Unless the compositor blurs behind the window - then readability is not
+    // ours to defend, and the floor would hide the frost we just asked for.
+    if (!platform.compositorBlur() && (isGhostingStack() || hasDisableBlur())) {
         document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, 0.97)`);
         return;
     }
@@ -1263,10 +1324,7 @@ function applyTintFromMap(map) {
         document.documentElement.style.setProperty('--bg-tint', `rgb(${r}, ${g}, ${b})`);
         return;
     }
-    if (
-        platform.compositor() === 'hyprland' ||
-        document.documentElement.hasAttribute('data-disable-blur')
-    ) {
+    if (!platform.compositorBlur() && (isGhostingStack() || hasDisableBlur())) {
         document.documentElement.style.setProperty('--bg-tint', `rgba(${r}, ${g}, ${b}, 0.97)`);
         return;
     }

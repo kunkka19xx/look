@@ -613,6 +613,10 @@ fn main() {
             }
             center_and_scale_window(&window);
             apply_transparency(&window);
+            // Needs the main thread and a live window: the surface pointer
+            // comes off the window handle.
+            #[cfg(target_os = "linux")]
+            platform::linux::blur::init(&window);
             #[cfg(target_os = "linux")]
             if supports_transparency() {
                 let _ = window.show();
@@ -646,6 +650,7 @@ fn main() {
             commands::force_index_refresh,
             commands::toggle_window,
             commands::hide_window,
+            commands::set_blur_region,
             commands::quit_app,
             // Config
             config::get_config,

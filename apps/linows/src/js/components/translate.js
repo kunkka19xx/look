@@ -1,3 +1,4 @@
+import * as layout from '../layout.js';
 import { translate, copyToClipboard } from '../ipc.js';
 import { globeLg, copy as copyIcon, link as linkIcon, externalLink } from '../icons.js';
 
@@ -32,12 +33,16 @@ export function showPlaceholder() {
         '<div class="translate-placeholder-text">Press Enter after finishing input to translate on web</div>';
     panel.appendChild(placeholder);
     container.appendChild(panel);
+    layout.refresh();
 }
 
 export function hide() {
     active = false;
     const panel = container.querySelector('.translate-panel');
-    if (panel) panel.remove();
+    if (panel) {
+        panel.remove();
+        layout.refresh();
+    }
 }
 
 export async function perform(text) {
@@ -51,7 +56,6 @@ export async function perform(text) {
     panel = document.createElement('div');
     panel.className = 'translate-panel pane-tile';
     container.appendChild(panel);
-
     // Source header: bold text + WEB badge
     const sourceHeader = document.createElement('div');
     sourceHeader.className = 'translate-source';
@@ -119,6 +123,7 @@ export async function perform(text) {
         externalLink +
         '</span>';
     panel.appendChild(footer);
+    layout.refresh();
 
     // Translate all 3 in parallel
     const results = await Promise.allSettled(LANGUAGES.map((lang) => translate(text, lang.code)));
