@@ -4,6 +4,8 @@
 //! value name is "Look"; the data is the current exe path wrapped in quotes so
 //! paths with spaces survive Run's command parsing.
 
+use std::path::{Path, PathBuf};
+
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_SZ, RegCloseKey, RegDeleteValueW,
     RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
@@ -12,16 +14,16 @@ use windows::core::PCWSTR;
 
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const VALUE_NAME: &str = "Look";
+/// Junction that package managers keep beside the versioned install directory,
+/// always pointing at the active version.
+const VERSION_LINK_DIR: &str = "current";
 
 pub(crate) fn set(enabled: bool) -> Result<(), String> {
     let key = open_run_key(enabled)?;
     let value_name = to_wide(VALUE_NAME);
 
     if enabled {
-        let exe = std::env::current_exe()
-            .map_err(|e| format!("current_exe: {e}"))?
-            .to_string_lossy()
-            .into_owned();
+        let exe = autostart_exe_path()?.to_string_lossy().into_owned();
         let quoted = format!("\"{exe}\"");
         let value_wide = to_wide(&quoted);
         // REG_SZ wants the UTF-16 string including its trailing null. The
@@ -59,6 +61,35 @@ pub(crate) fn get() -> bool {
     let err =
         unsafe { RegQueryValueExW(key.0, PCWSTR(value_name.as_ptr()), None, None, None, None) };
     err.0 == 0
+}
+
+/// Path to record in the Run key.
+///
+/// Package managers like Scoop install to `<app>\<version>\` and keep a
+/// `current` junction pointing at the active version. Recording the versioned
+/// path leaves autostart aimed at a directory the next upgrade deletes, so
+/// prefer the junction whenever one resolves to our own directory.
+fn autostart_exe_path() -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
+    Ok(version_link_exe(&exe).unwrap_or(exe))
+}
+
+fn version_link_exe(exe: &Path) -> Option<PathBuf> {
+    let dir = exe.parent()?;
+    let file = exe.file_name()?;
+    let linked = dir.parent()?.join(VERSION_LINK_DIR);
+    let linked_exe = linked.join(file);
+    (linked_exe.is_file() && resolves_to_same_dir(&linked, dir)).then_some(linked_exe)
+}
+
+/// Canonicalisation resolves reparse points, so a junction and its target
+/// compare equal while a plain directory that happens to be named `current`
+/// does not.
+fn resolves_to_same_dir(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }
 
 struct OwnedHKey(HKEY);
