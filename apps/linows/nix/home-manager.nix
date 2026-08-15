@@ -128,8 +128,19 @@ in
   config = lib.mkIf cfg.enable {
     home.packages = [ cfg.package ];
 
-    home.file.".look.config" = lib.mkIf (finalSettings != { } || cfg.aliases != { }) {
-      text = configText;
-    };
+    # Look rewrites ~/.look.config itself on every settings change, so a
+    # home.file symlink into the read-only store makes those writes fail - and
+    # the frontend only logs the error. Install a mutable copy instead: Nix
+    # still wins on each activation, but the app can write between them.
+    home.activation.lookappConfig = lib.mkIf manageConfig (
+      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        lookappConfig="$HOME/.look.config"
+        if [ -e "$lookappConfig" ] && [ ! -e "$lookappConfig.hm-backup" ]; then
+          run cp --no-preserve=mode "$lookappConfig" "$lookappConfig.hm-backup"
+        fi
+        run install -m 0644 ${configFile} "$lookappConfig"
+      ''
+    );
+  };
   };
 }
