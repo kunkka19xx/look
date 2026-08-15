@@ -11,107 +11,109 @@
   };
 
   outputs =
-    { self, nixpkgs, rust-overlay, ... }:
+    {
+      self,
+      nixpkgs,
+      rust-overlay,
+      ...
+    }:
     let
       systems = [
         "x86_64-linux"
         "aarch64-linux"
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
+
+      # nixpkgs' default rustc lags behind. libsqlite3-sys (via rusqlite 0.40)
+      # uses cfg_select!, stable only since Rust 1.95, so the default toolchain
+      # fails to build it. Every consumer pins the same version through here.
+      rustVersion = "1.95.0";
+
+      pkgsFor =
+        system:
+        import nixpkgs {
+          inherit system;
+          overlays = [ rust-overlay.overlays.default ];
+        };
+
+      # `minimal` (cargo + rustc + rust-std) rather than `default`: building
+      # never invokes clippy or rustfmt, and `default` also drags in rust-docs,
+      # which is 632 MiB unpacked. The devShell keeps `default` because
+      # contributors do want those tools.
+      rustPlatformFor =
+        pkgs:
+        let
+          toolchain = pkgs.rust-bin.stable.${rustVersion}.minimal;
+        in
+        pkgs.makeRustPlatform {
+          cargo = toolchain;
+          rustc = toolchain;
+        };
+
+      lookappFor =
+        pkgs:
+        pkgs.callPackage ./nix/package.nix {
+          rustPlatform = rustPlatformFor pkgs;
+        };
     in
     {
-      packages = forAllSystems (
-        system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ rust-overlay.overlays.default ];
-          };
-          # nixpkgs' default rustc lags behind. libsqlite3-sys (via rusqlite
-          # 0.40) uses cfg_select!, stable only since Rust 1.95, so the default
-          # toolchain fails to build it. Pin the build toolchain to match the
-          # devShell instead of relying on nixpkgs' older default.
-          #
-          # `minimal` (cargo + rustc + rust-std) rather than `default`: building
-          # never invokes clippy or rustfmt, and `default` also drags in
-          # rust-docs, which is 632 MiB unpacked. The devShell keeps `default`
-          # because contributors do want those tools.
-          rustToolchain = pkgs.rust-bin.stable."1.95.0".minimal;
-          rustPlatform = pkgs.makeRustPlatform {
-            cargo = rustToolchain;
-            rustc = rustToolchain;
-          };
-        in
-        {
-          default = pkgs.callPackage ./nix/package.nix { inherit rustPlatform; };
-        }
-      );
+      packages = forAllSystems (system: {
+        default = lookappFor (pkgsFor system);
+      });
 
-      nixosModules.default = import ./nix/module.nix;
+      # Both modules default `programs.lookapp.package` to `self.packages`, so
+      # `enable = true` gets the pinned toolchain and the cached build.
+      nixosModules.default = import ./nix/module.nix self;
       homeModules.default = import ./nix/home-manager.nix self;
 
-      overlays.default = final: _prev: {
-        lookapp = final.callPackage ./nix/package.nix { };
-      };
+      # Composed with rust-overlay so `pkgs.lookapp` builds against the pinned
+      # toolchain wherever the overlay is applied, not nixpkgs' older rustc.
+      overlays.default = nixpkgs.lib.composeExtensions rust-overlay.overlays.default (
+        final: _prev: {
+          lookapp = lookappFor final;
+        }
+      );
 
       devShells = forAllSystems (
         system:
         let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ rust-overlay.overlays.default ];
-          };
-          rustToolchain = pkgs.rust-bin.stable."1.95.0".default;
+          pkgs = pkgsFor system;
+          # Needed both to link against and to find at runtime, so the list is
+          # shared between buildInputs and LD_LIBRARY_PATH.
+          runtimeLibs = with pkgs; [
+            dbus
+            openssl
+            webkitgtk_4_1
+            gtk3
+            libsoup_3
+            glib
+            cairo
+            pango
+            gdk-pixbuf
+            harfbuzz
+            librsvg
+            alsa-lib
+            libappindicator-gtk3
+          ];
         in
         {
           default = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [
               pkg-config
-              rustToolchain
+              rust-bin.stable.${rustVersion}.default
               cargo-tauri
               xdg-desktop-portal
               xdg-desktop-portal-gtk
               prettier
             ];
 
-            buildInputs = with pkgs; [
-              dbus
-              openssl
-              webkitgtk_4_1
-              gtk3
-              libsoup_3
-              glib
-              cairo
-              pango
-              gdk-pixbuf
-              harfbuzz
-              librsvg
-              alsa-lib
-              libappindicator-gtk3
-            ];
+            buildInputs = runtimeLibs;
 
             shellHook = ''
-              export LD_LIBRARY_PATH="${
-                pkgs.lib.makeLibraryPath [
-                  pkgs.dbus
-                  pkgs.openssl
-                  pkgs.webkitgtk_4_1
-                  pkgs.gtk3
-                  pkgs.libsoup_3
-                  pkgs.glib
-                  pkgs.cairo
-                  pkgs.pango
-                  pkgs.gdk-pixbuf
-                  pkgs.harfbuzz
-                  pkgs.librsvg
-                  pkgs.alsa-lib
-                  pkgs.libappindicator-gtk3
-                ]
-              }:$LD_LIBRARY_PATH"
+              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:$LD_LIBRARY_PATH"
               export GSETTINGS_SCHEMA_DIR="${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}/glib-2.0/schemas''${GSETTINGS_SCHEMA_DIR:+:$GSETTINGS_SCHEMA_DIR}"
             '';
           };
-
         }
       );
     };

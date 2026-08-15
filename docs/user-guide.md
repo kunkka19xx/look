@@ -321,9 +321,22 @@ Runtime config file:
 - reset to fresh defaults from UI: `Settings -> Advanced -> Create Fresh Config` (confirmation popup)
 
 NixOS / Home Manager users can manage the same file declaratively through the
-flake's Home Manager module:
+flake's Home Manager module. Add the input and pass `inputs` down to your
+modules, which Home Manager does not do on its own:
 
 ```nix
+# flake.nix
+inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
+
+homeConfigurations."me" = home-manager.lib.homeManagerConfiguration {
+  inherit pkgs;
+  extraSpecialArgs = { inherit inputs; };   # or home-manager.extraSpecialArgs
+  modules = [ ./home.nix ];
+};
+```
+
+```nix
+# home.nix
 { inputs, ... }: {
   imports = [ inputs.look.homeModules.default ];
 
@@ -331,12 +344,18 @@ flake's Home Manager module:
     enable = true;
     theme = "kindle";
     settings.ai_enabled = false;
+    # package = null;  # config only, Look already installed system-wide
   };
 }
 ```
 
-In this mode Home Manager owns `~/.look.config`; edit the Nix config and
-rebuild instead of using Look's in-app Save Config button as the source of truth.
+Activation merges those keys into `~/.look.config` instead of replacing it, so
+settings you change in the app are kept and only the keys declared in Nix are
+overwritten. Removing a key from the Nix config removes it from the file on the
+next rebuild. Nix wins on every activation, so for the keys it manages, edit the
+Nix config and rebuild rather than using Look's in-app Save Config button. The
+first activation copies the pre-Nix file to `~/.look.config.hm-backup`. See
+`apps/linows/BUILDING.md` for the full option list.
 
 Backend-related keys:
 

@@ -39,6 +39,13 @@ jobs:
           name: look
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
+      # `nix build .#default` never touches the module outputs, so a broken
+      # NixOS or Home Manager module would only surface in a user's rebuild.
+      - name: Evaluate flake modules
+        run: |
+          nix eval ./apps/linows#nixosModules.default --apply builtins.isFunction
+          nix eval ./apps/linows#homeModules.default --apply builtins.isFunction
+
       # -L streams the derivation's build log. Without it nix buffers the whole
       # compile into one silent block, which makes a slow or stuck build
       # impossible to diagnose from the Actions log.
