@@ -31,6 +31,8 @@ const DEFAULT_SESSIONS = [
 const ENDING_SOON_SECS = 10;
 const IDLE_FADE_SECS = 5;
 const TICK_INTERVAL_MS = 500;
+const SESSION_FIELD_NAME = 'name';
+const SESSION_FIELD_DURATION = 'duration';
 
 // --- Persistence ---
 const STORAGE_KEY_SESSIONS = 'pomo_sessions';
@@ -44,7 +46,7 @@ function loadConfig() {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         }
-    } catch {}
+    } catch { }
     return DEFAULT_SESSIONS.map((s) => ({ ...s }));
 }
 
@@ -52,7 +54,7 @@ function saveConfig() {
     try {
         localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(sessions));
         localStorage.setItem(STORAGE_KEY_STYLE, timerStyle);
-    } catch {}
+    } catch { }
 }
 
 function loadStyle() {
@@ -191,28 +193,39 @@ export function exit() {
     clearIdleFade();
 }
 
+export function isEditing() {
+    return activeSessionField() !== null;
+}
+
 function activeSessionField() {
     const ae = document.activeElement;
     if (!ae || !panel?.contains(ae)) return null;
-    if (
-        ae.classList.contains('cmd-pomo-session-name-input') ||
-        ae.classList.contains('cmd-pomo-session-dur')
-    ) {
-        return ae;
-    }
-    return null;
+    return ae.dataset?.pomoField ? ae : null;
+}
+
+// Restoring the model value means the input's `change` listener will not fire
+// on blur, so an abandoned edit is never persisted.
+function revertSessionField(field) {
+    const s = sessions[Number(field.dataset.pomoIdx)];
+    if (!s) return;
+    field.value = field.dataset.pomoField === SESSION_FIELD_NAME ? s.name : s.duration;
 }
 
 export function handleKey(e) {
     const field = activeSessionField();
     if (field) {
-        // While editing a session, keep timer/music shortcuts from hijacking
-        // text input. Esc just leaves the field instead of exiting /pomo.
-        if (e.key === 'Escape') {
+        // Enter commits, Esc reverts, anything else types into the field.
+        if (e.key === 'Enter') {
             e.preventDefault();
             field.blur();
             return true;
         }
+        if (e.key === 'Escape') {
+            revertSessionField(field);
+            field.blur();
+            return true;
+        }
+        restoreFromIdle();
         return false;
     }
 
@@ -361,6 +374,11 @@ function notify(title, body) {
 function startIdleFade() {
     clearIdleFade();
     idleFadeTimer = setTimeout(() => {
+        // Never fade a row the user is typing into.
+        if (activeSessionField()) {
+            startIdleFade();
+            return;
+        }
         idleFaded = true;
         applyIdleFade();
     }, IDLE_FADE_SECS * 1000);
@@ -496,9 +514,9 @@ function getTimerColor() {
         );
     return sessions[activeIndex].type === 'focus'
         ? getComputedStyle(document.documentElement).getPropertyValue('--color-danger').trim() ||
-              '#e55'
+        '#e55'
         : getComputedStyle(document.documentElement).getPropertyValue('--color-success').trim() ||
-              '#3a3';
+        '#3a3';
 }
 
 export function formatTime(secs) {
@@ -669,11 +687,19 @@ function renderSessionList() {
         // Name input
         const nameInput = document.createElement('input');
         nameInput.className = 'cmd-pomo-session-name-input';
+        nameInput.dataset.pomoField = SESSION_FIELD_NAME;
+        nameInput.dataset.pomoIdx = i;
         nameInput.value = s.name;
         nameInput.addEventListener('change', () => {
-            sessions[i].name = nameInput.value.trim() || s.name;
+            const nextName = nameInput.value.trim() || s.name;
+            if (sessions[i].name === nextName) return;
+            sessions[i].name = nextName;
             saveConfig();
-            updateAll();
+            // Avoid re-rendering the list here so Tab can move to the next field.
+            if (i === activeIndex) {
+                updateHeader();
+                updateSessionName();
+            }
         });
         row.appendChild(nameInput);
 
@@ -682,15 +708,21 @@ function renderSessionList() {
         durWrap.className = 'cmd-pomo-session-dur-wrap';
         const durInput = document.createElement('input');
         durInput.className = 'cmd-pomo-session-dur';
+        durInput.dataset.pomoField = SESSION_FIELD_DURATION;
+        durInput.dataset.pomoIdx = i;
         durInput.type = 'number';
         durInput.min = '1';
         durInput.max = '120';
         durInput.value = s.duration;
         durInput.addEventListener('change', () => {
-            const val = parseInt(durInput.value);
-            if (val > 0 && val <= 120) sessions[i].duration = val;
+            const val = parseInt(durInput.value, 10);
+            if (!(val > 0 && val <= 120) || sessions[i].duration === val) return;
+            sessions[i].duration = val;
             saveConfig();
-            updateAll();
+            // Avoid re-rendering the list here so Tab can move to the next field.
+            if (i === activeIndex || (activeIndex === null && i === 0)) {
+                drawTimer();
+            }
         });
         durWrap.appendChild(durInput);
         const durUnit = document.createElement('span');
