@@ -33,6 +33,9 @@ const IDLE_FADE_SECS = 5;
 const TICK_INTERVAL_MS = 500;
 const SESSION_FIELD_NAME = 'name';
 const SESSION_FIELD_DURATION = 'duration';
+const SESSION_DUR_MIN = 1;
+const SESSION_DUR_MAX = 120;
+const FIELD_INVALID_CLASS = 'cmd-pomo-field-invalid';
 
 // --- Persistence ---
 const STORAGE_KEY_SESSIONS = 'pomo_sessions';
@@ -203,25 +206,21 @@ function activeSessionField() {
     return ae.dataset?.pomoField ? ae : null;
 }
 
-// Restoring the model value means the input's `change` listener will not fire
-// on blur, so an abandoned edit is never persisted.
-function revertSessionField(field) {
-    const s = sessions[Number(field.dataset.pomoIdx)];
-    if (!s) return;
-    field.value = field.dataset.pomoField === SESSION_FIELD_NAME ? s.name : s.duration;
+// A rejected edit snaps back silently otherwise, so flash the field instead.
+function flashInvalid(field) {
+    field.classList.add(FIELD_INVALID_CLASS);
+    field.addEventListener('animationend', () => field.classList.remove(FIELD_INVALID_CLASS), {
+        once: true,
+    });
 }
 
 export function handleKey(e) {
     const field = activeSessionField();
     if (field) {
-        // Enter commits, Esc reverts, anything else types into the field.
-        if (e.key === 'Enter') {
+        // Enter and Esc both commit the edit; Esc only leaves the field, so it
+        // takes a second press to close the panel. Anything else types.
+        if (e.key === 'Enter' || e.key === 'Escape') {
             e.preventDefault();
-            field.blur();
-            return true;
-        }
-        if (e.key === 'Escape') {
-            revertSessionField(field);
             field.blur();
             return true;
         }
@@ -514,9 +513,9 @@ function getTimerColor() {
         );
     return sessions[activeIndex].type === 'focus'
         ? getComputedStyle(document.documentElement).getPropertyValue('--color-danger').trim() ||
-        '#e55'
+              '#e55'
         : getComputedStyle(document.documentElement).getPropertyValue('--color-success').trim() ||
-        '#3a3';
+              '#3a3';
 }
 
 export function formatTime(secs) {
@@ -691,7 +690,12 @@ function renderSessionList() {
         nameInput.dataset.pomoIdx = i;
         nameInput.value = s.name;
         nameInput.addEventListener('change', () => {
-            const nextName = nameInput.value.trim() || s.name;
+            const nextName = nameInput.value.trim();
+            if (!nextName) {
+                nameInput.value = sessions[i].name;
+                flashInvalid(nameInput);
+                return;
+            }
             nameInput.value = nextName;
             if (sessions[i].name === nextName) return;
             sessions[i].name = nextName;
@@ -712,16 +716,17 @@ function renderSessionList() {
         durInput.dataset.pomoField = SESSION_FIELD_DURATION;
         durInput.dataset.pomoIdx = i;
         durInput.type = 'number';
-        durInput.min = '1';
-        durInput.max = '120';
+        durInput.min = String(SESSION_DUR_MIN);
+        durInput.max = String(SESSION_DUR_MAX);
         durInput.value = s.duration;
         durInput.addEventListener('change', () => {
             const val = durInput.valueAsNumber;
-            if (!Number.isInteger(val) || val < 1 || val > 120) {
+            if (!Number.isInteger(val) || val < SESSION_DUR_MIN || val > SESSION_DUR_MAX) {
                 durInput.value = sessions[i].duration;
+                flashInvalid(durInput);
                 return;
             }
-            if (sessions[i].duration === val) return; 
+            if (sessions[i].duration === val) return;
             sessions[i].duration = val;
             saveConfig();
             // Avoid re-rendering the list here so Tab can move to the next field.
