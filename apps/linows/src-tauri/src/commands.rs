@@ -401,14 +401,12 @@ pub fn hide_armed(window: &tauri::WebviewWindow) {
 }
 
 /// The frontend has painted the armed frame; the window can go now. Keyed on
-/// `arm` so a confirmation that arrives late, after a show or a later dismiss,
-/// can't hide a window whose current arm hasn't painted yet.
+/// `arm` so a late confirmation can't hide a window a later dismiss just armed.
 #[tauri::command]
 pub fn confirm_hide(window: tauri::WebviewWindow, arm: u64) {
-    if arm != 0
-        && PENDING_HIDE
-            .compare_exchange(arm, 0, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok()
+    if PENDING_HIDE
+        .compare_exchange(arm, 0, Ordering::Relaxed, Ordering::Relaxed)
+        .is_ok()
     {
         let _ = window.hide();
     }

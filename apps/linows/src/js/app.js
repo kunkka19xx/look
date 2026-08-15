@@ -640,13 +640,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         motion.armReveal();
         // Rust holds the window up until this lands. Two frames: the first
         // callback runs before the armed frame is painted, the second after.
-        // The payload is the dismissal id, so a confirmation that misses its
-        // window is dropped instead of hiding a later one. A failed invoke
-        // falls back to Rust's timeout.
-        const arm = event?.payload ?? 0;
+        // The payload keys the dismissal. A failed invoke falls back to Rust's
+        // timeout.
         requestAnimationFrame(() =>
             requestAnimationFrame(() => {
-                confirmHide(arm).catch(() => {});
+                confirmHide(event.payload).catch(() => {});
             }),
         );
     });

@@ -46,7 +46,7 @@
     opacity: 0;
     pointer-events: none;
     transition:
-        transform var(--motion-glide-ms) var(--motion-curve),
+        translate var(--motion-glide-ms) var(--motion-curve),
         height var(--motion-glide-ms) var(--motion-curve),
         opacity 120ms ease-out;
 }
