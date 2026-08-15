@@ -28,13 +28,13 @@ arboard = { version = "3", features = ["wayland-data-control"] }
 dirs = "6"
 tauri-plugin-dialog = "2"
 trash = "5"
+tokio = { version = "1.52.3", features = ["rt", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 x11rb = { version = "0.13", features = ["allow-unsafe-code"] }
 # Window/display pointers for the Wayland blur bind, without GDK FFI.
 raw-window-handle = "0.6"
 zbus = "5"
-tokio = { version = "1.52.3", features = ["rt", "time"] }
 # StreamExt for zbus signal streams.
 futures-util = { version = "0.3", default-features = false }
 webkit2gtk = "2.0"

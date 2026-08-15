@@ -439,6 +439,19 @@ bind (`blur_wayland.rs`) attaches to GTK's own `wl_surface`, taken off the
 window handle rather than through GDK FFI, and runs on a private event queue so
 its roundtrips do not eat the events GDK is waiting for.
 
+The Wayland request does not currently reach a native Wayland session: the
+`set_blur_region` command is gated on the X11 window id, which nothing caches
+when the window is not an X11 one, so the frost there is CSS only. Lifting that
+gate is not enough on its own, and the notes below are what a second attempt
+needs. GTK destroys the `wl_surface` on hide and makes a new one on the next
+show, so the effect object bound at startup goes inert and the next
+`set_blur_region` is a fatal `surface_destroyed` error, not a no-op: the object
+has to be re-attached per surface. The region is double-buffered state applied
+on the next surface commit, so a settled UI never publishes it. And
+`getBoundingClientRect` reports the *animated* box, so a region built during the
+entrance cascade is a hard-edged rectangle of frost sitting where the tile is
+not, over a part of the window that paints nothing.
+
 Two things follow from that being a capability rather than a setting. The
 region comes from the frontend (`js/blur.js`), because only it knows which
 surfaces are painted: one rectangle for the classic panel, one per tile once
@@ -493,6 +506,14 @@ built lazily. `window-shown` and `visibilitychange` both replay, and a short
 guard drops whichever lands second. The same stale-buffer problem macOS does not
 have is handled by arming the first frame on hide, so the frame the compositor
 presents on the next summon matches frame 0 instead of flashing and rewinding.
+Arming alone is not enough: the compositor keeps the last frame the webview
+*painted*, and a hide in the same tick leaves the revealed panel in that buffer.
+So every dismiss goes through `commands::hide_armed`, which emits
+`window-hidden` and holds the window until the frontend acks with `confirm_hide`
+from a double `requestAnimationFrame` - one frame to arm, the next to confirm it
+was painted. A 60 ms timer is the backstop for a webview that never answers.
+Each dismiss carries an id that `commands::show_launcher` clears, so a backstop
+or late ack from a dismiss the user undid can't hide the window again.
 
 Two constraints are tighter here than on macOS. Only `transform` and `opacity`
 are animated, since they are compositor-handled and animating `filter` /

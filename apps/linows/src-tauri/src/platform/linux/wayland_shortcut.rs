@@ -106,6 +106,7 @@ enum Compositor {
     Kde,
     Sway,
     Hyprland,
+    Niri,
     Other,
 }
 
@@ -115,6 +116,9 @@ fn detect_compositor() -> Compositor {
     }
     if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
         return Compositor::Hyprland;
+    }
+    if super::wm::is_niri() {
+        return Compositor::Niri;
     }
     let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
     let desktop_is = |name: &str| {
@@ -162,6 +166,7 @@ where
             Compositor::Gnome => ensure_gnome_keybinding(),
             Compositor::Sway => ensure_sway_keybinding(),
             Compositor::Hyprland => ensure_hyprland_keybinding(),
+            Compositor::Niri => report_niri_keybinding(),
             // KDE registers via async D-Bus alongside the Toggle service below.
             Compositor::Kde => {}
             Compositor::Other => {
@@ -338,6 +343,58 @@ fn cleanup_hyprland_keybinding() {
     }
 
     eprintln!("[look] Removed Hyprland keybinding for Alt+Space");
+}
+
+// ---------------------------------------------------------------------------
+// niri
+// ---------------------------------------------------------------------------
+
+/// niri keeps binds in `config.kdl` with no IPC to add one, so the best we can
+/// do is hand the user the exact stanza. `spawn` takes argv, not a shell line,
+/// so the D-Bus call has to be re-quoted argument by argument.
+fn niri_bind_snippet() -> String {
+    let argv = toggle_cmd()
+        .split_whitespace()
+        .map(|arg| format!("\"{arg}\""))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("binds {{ Alt+Space {{ spawn {argv}; }} }}")
+}
+
+/// Where niri looks for its config, in the order it does.
+fn niri_config_paths() -> Vec<std::path::PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
+        .map(|dir| dir.join("niri/config.kdl"))
+        .into_iter()
+        .chain([std::path::PathBuf::from("/etc/niri/config.kdl")])
+        .collect()
+}
+
+/// Whether a bind already spawns something that talks to Look's D-Bus service.
+/// Matching on the bus name rather than a full command line keeps this true
+/// for any of the three callers, and for a user's own wrapper script.
+fn niri_bind_present() -> bool {
+    niri_config_paths().iter().any(|path| {
+        std::fs::read_to_string(path)
+            .map(|config| config.contains(DBUS_NAME))
+            .unwrap_or(false)
+    })
+}
+
+fn report_niri_keybinding() {
+    if niri_bind_present() {
+        return;
+    }
+    health::report(
+        health::ISSUE_HOTKEY,
+        format!(
+            "niri has no API to register hotkeys, so Alt+Space must be bound in \
+             ~/.config/niri/config.kdl: {}",
+            niri_bind_snippet()
+        ),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -636,7 +693,8 @@ pub fn cleanup_keybinding() {
         Compositor::Kde => cleanup_kde_keybinding(),
         Compositor::Sway => cleanup_sway_keybinding(),
         Compositor::Hyprland => cleanup_hyprland_keybinding(),
-        Compositor::Other => {}
+        // Nothing registered: the niri bind lives in the user's own config.
+        Compositor::Niri | Compositor::Other => {}
     }
 }
 
