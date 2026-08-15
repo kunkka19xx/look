@@ -692,6 +692,7 @@ function renderSessionList() {
         nameInput.value = s.name;
         nameInput.addEventListener('change', () => {
             const nextName = nameInput.value.trim() || s.name;
+            nameInput.value = nextName;
             if (sessions[i].name === nextName) return;
             sessions[i].name = nextName;
             saveConfig();
@@ -715,8 +716,12 @@ function renderSessionList() {
         durInput.max = '120';
         durInput.value = s.duration;
         durInput.addEventListener('change', () => {
-            const val = parseInt(durInput.value, 10);
-            if (!(val > 0 && val <= 120) || sessions[i].duration === val) return;
+            const val = durInput.valueAsNumber;
+            if (!Number.isInteger(val) || val < 1 || val > 120) {
+                durInput.value = sessions[i].duration;
+                return;
+            }
+            if (sessions[i].duration === val) return; 
             sessions[i].duration = val;
             saveConfig();
             // Avoid re-rendering the list here so Tab can move to the next field.
