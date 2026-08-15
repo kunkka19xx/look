@@ -51,6 +51,10 @@ let
 
     ${lib.concatStringsSep "\n" (renderedSettings ++ renderedAliases)}
   '';
+
+  configFile = pkgs.writeText "look.config" configText;
+
+  manageConfig = finalSettings != { } || cfg.aliases != { };
 in
 {
   options.programs.lookapp = {
