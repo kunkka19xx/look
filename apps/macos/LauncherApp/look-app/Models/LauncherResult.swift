@@ -38,4 +38,9 @@ struct LauncherResult: Identifiable {
     /// grouped display value.
     var calcExpression: String? = nil
     var calcRawValue: String? = nil
+    /// Set only for the synthetic meeting row: what the preview shows without
+    /// re-parsing the subtitle it was written into. The join URL itself rides
+    /// in the result id.
+    var meetingProviderLabel: String? = nil
+    var meetingWhen: String? = nil
 }

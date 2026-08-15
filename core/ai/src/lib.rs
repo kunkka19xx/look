@@ -12,6 +12,7 @@ pub mod files;
 pub mod lexicon;
 pub mod markdown;
 pub mod matcher;
+pub mod meeting;
 pub mod memory;
 pub mod ollama;
 pub mod plan;

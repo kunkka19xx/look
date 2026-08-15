@@ -72,13 +72,69 @@ the newest turns that fit ~2500 tokens (`core/ai/src/context.rs`), so a long
 chat stays coherent without a summarizer and an old conversation resumes with
 bounded weight.
 
-Empty AI mode shows the recent conversations: typing searches them (title +
-content), and **⌘ + a home-row key** (⌘A, ⌘S, ⌘D ... matching the chip on each
-row) opens one - as does highlighting it with Tab/↑↓ and pressing Enter, or
-clicking. The full transcript restores and the chat picks up with context;
-typing a real prompt starts a fresh conversation instead. A bare number is NOT a
-shortcut here - numbers answer the disambiguation list only. While browsing the list, no model calls fire; Enter drives
-everything (instant `@` forms still preview live).
+Empty AI mode shows the **10 most recent** conversations: typing searches them
+(title + content), and **⌘ + a digit** (⌘1 … ⌘9 then ⌘0 for the tenth, matching
+the chip on each row) opens one - as does highlighting it with Tab/↑↓ and
+pressing Enter, or clicking. The full transcript restores and the chat picks up
+with context; typing a real prompt starts a fresh conversation instead.
+
+Ten is a ceiling, not a preference: a ⌘ chord is one keypress, so there is no
+⌘10 and no eleventh chip to hand out. The list is capped at the same number
+(`AppConstants.Launcher.AISessions.jumpKeyLimit`), so it never grows a row no
+chord can reach. Older conversations stay stored and stay findable by typing,
+then Tab/↑↓ and Enter.
+
+The digits are free because AI mode hides the running-apps strip that owns ⌘1-9
+everywhere else; both handlers gate themselves, so only one can claim the chord.
+⌘0 is the one real collision: while the sessions list is on screen it opens the
+tenth row instead of the "Actual Size" zoom reset, which stays available
+everywhere else.
+
+**`@name` attaches a file.** The suggestion popup is two columns: matches with
+their abbreviated paths on the left, a preview of the HIGHLIGHTED file on the
+right (`FilePreview`, the same text/Quick Look pair the result pane uses). It
+follows the highlight rather than the top match, because with nothing
+highlighted Enter still sends the message, and previewing a file the keyboard is
+not pointing at would suggest otherwise. Six files called `main.go` is a normal
+result, so the path is on every row, and the attachment capsule in the
+transcript carries its folder for the same reason: a transcript outlives the
+moment it was written in.
+
+**Shift+Enter** inserts a line break instead of sending. The input is the same
+`SmoothCaretTextField` as the search bar, so multiline is switched on only for AI
+mode (`allowsMultiline`): it wraps and grows to 6 lines and stops there, with the
+caret scrolled into view past that. Three things follow from that and must stay
+true - a field editor routes Shift+Return to `insertNewline:` as well, so the
+delegate decides from the EVENT's modifiers, never from the selector alone (the
+selector-only version sent the message instead of breaking the line); the field
+editor takes its line mode at begin-editing, so flipping the mode mid-edit
+restarts editing and restores the caret; and the caret layer measures x from the
+start of the CARET'S line, not from glyph 0, or it walks off the right edge on
+every line but the first.
+
+**⌥↑/⌥↓** walks the prompt history (shell style). It used to be ⇧↑/⇧↓, which the
+multiline composer needs for selecting text. Two constraints pinned the
+replacement: ⌃↑/⌃↓ are Mission Control and Application Windows at the
+WindowServer level, so the app never receives them; and the handler must sit
+above the monitor's modifier passthrough, which hands every ⌘/⌥/⌃ combo straight
+to the system. AI mode consumes the chord even at a boundary, so a press at the
+oldest entry stays put instead of moving the caret by paragraph.
+
+**⌘D** deletes the highlighted session (same delete as ⌘⌫ and the row's trash
+button, undoable from the banner). In AI mode the chord stops there rather than
+falling through to the main bar's "trash the selected file": with a conversation
+open there is simply no delete target. **⌘H** opens the help screen from
+anywhere in AI mode - the panel branch puts help ahead of the session screen, so
+the mode is paused rather than left, and ⌘H again (or Esc, or typing) puts the
+conversation straight back. Help is filtered by topic capsules (All / Main / AI
+/ Prefixes / Command); arriving from AI mode opens on the **AI** capsule, so the
+assistant's keys are the first thing on screen rather than something to scroll
+for. The capsules are clickable from any topic, and the screen re-opens on the
+topic it was entered from, not the last one clicked.
+
+A TYPED bare number is still not a session shortcut - typed numbers answer the
+disambiguation list only. While browsing the list, no model calls fire; Enter
+drives everything (instant `@` forms still preview live).
 
 ## Markdown in answers
 

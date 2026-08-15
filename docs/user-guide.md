@@ -273,7 +273,7 @@ plain sway, X11 without KWin) Look stays clear glass and `Blur Opacity` applies
 only when you have set a background image. Driving blur from your own compositor
 config still works; Look's request is additional, not exclusive.
 
-**Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. The launcher window stays the same size either way.
+**Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. AI mode (`>`) hides the row regardless of this setting, and its digits open listed conversations instead. The launcher window stays the same size either way.
 
 Behavior:
 
@@ -396,6 +396,12 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:todo`, `:speed`): jump to a command directly from the home screen
 - `Cmd+1`..`Cmd+7`: in command mode, direct command switch (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`)
 - `Cmd+1`..`Cmd+9` (macOS) / `Alt+1`..`Alt+9` (Linux, Windows): on the home screen, activate the running-app whose badge shows that digit, when `Running Apps` is on. Badge labels are ergonomic, not strictly positional - see Settings → Appearance → Running Apps
+- `Option+Up` / `Option+Down` in AI mode (`>`): walk your recent prompts, like a shell history. `Shift+Up` / `Shift+Down` select text in the message instead
+- `Shift+Enter` in AI mode (`>`): new line in the message instead of sending. The box grows to 6 lines and stops there. Elsewhere `Shift+Enter` still opens all picked files
+- `join` (or `join meeting`, `join my next meeting`): pins a "Join <meeting>" row for the next Teams / Zoom / Meet / Webex meeting in your calendar; Enter opens the link. Needs the account in macOS Calendar (System Settings → Internet Accounts), since Look reads the OS's calendar and makes no network call of its own
+- `Cmd+D` in AI mode (`>`): delete the highlighted conversation (same as `Cmd+Delete`; undo from the banner with `Cmd+Z`)
+- `Cmd+H` in AI mode (`>`): open the help screen on its **AI** topic without leaving the conversation. `Cmd+H`, `Esc`, or typing returns to it. The help screen's topic capsules (All / Main / AI / Prefixes / Command) also switch by click
+- `Cmd+1`..`Cmd+9` and `Cmd+0` in AI mode (`>`): open the listed conversation carrying that chip (`Cmd+0` is the tenth). The running-apps row is hidden on the AI screen, so the digits mean sessions there, and `Cmd+0` opens the tenth session rather than resetting the UI scale while the list is up. The list stops at ten because a `Cmd` chord is a single keypress; older conversations are found by typing, then Tab/arrows and Enter
 - `Cmd+<letter>` (macOS) / `Alt+<letter>` (Linux, Windows): on the empty home screen, fire the super action with that highlighted letter (`B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `P` play/pause, `R` Restart, `D` Shut Down), when `Super Actions` is on
 - `Space` / `R` / `P` (inside `/pomo`): start/pause session, reset, toggle music play/pause
 - `Cmd+N` / `Cmd+S` (inside `/todo`): switch Tasks/Stats page, save changes

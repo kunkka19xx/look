@@ -108,6 +108,14 @@ private func look_ai_parse_explicit(_ input: UnsafePointer<CChar>?, _ modelAvail
 nonisolated
 private func look_ai_route(_ memoryPath: UnsafePointer<CChar>?, _ input: UnsafePointer<CChar>?, _ modelAvailable: Bool, _ now: Int64) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_meeting_is_join_query")
+nonisolated
+private func look_meeting_is_join_query(_ query: UnsafePointer<CChar>?) -> Bool
+
+@_silgen_name("look_meeting_next_json")
+nonisolated
+private func look_meeting_next_json(_ eventsJSON: UnsafePointer<CChar>?, _ now: Int64) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_ai_chat_start")
 nonisolated
 private func look_ai_chat_start(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ messagesJSON: UnsafePointer<CChar>?, _ optionsJSON: UnsafePointer<CChar>?) -> UInt64
@@ -372,6 +380,27 @@ final class EngineBridge: @unchecked Sendable {
     nonisolated struct FileRecallOutcome {
         let results: [LauncherResult]
         let relaxed: String?
+    }
+
+    /// Whether the typed text is asking to join a meeting. Pure string work in
+    /// core, so it is safe on the per-keystroke path.
+    nonisolated func isJoinQuery(_ query: String) -> Bool {
+        query.withCString { look_meeting_is_join_query($0) }
+    }
+
+    /// The meeting to join out of `eventsJSON`, or nil when none of them is an
+    /// online meeting. Which event wins, and where the join link hides inside
+    /// it, are decided in core (`look_ai::meeting`) so every shell agrees.
+    nonisolated func nextJoinableMeeting(eventsJSON: String, now: Int64) -> JoinableMeeting? {
+        guard let ptr = eventsJSON.withCString({ look_meeting_next_json($0, now) }) else {
+            return nil
+        }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        // Core answers the JSON literal `null` when nothing is joinable, and
+        // decoding that into a non-optional throws, which `try?` turns into the
+        // nil this returns anyway.
+        return try? JSONDecoder().decode(JoinableMeeting.self, from: data)
     }
 
     /// Natural-language file recall over Look's own index. Returns nil when the

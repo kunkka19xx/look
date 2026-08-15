@@ -186,6 +186,29 @@ nonisolated final class EventKitService: @unchecked Sendable {
         }
     }
 
+    /// Events in a window, flattened for the meeting core: the three fields a
+    /// join link hides in, plus what it takes to choose between them.
+    ///
+    /// `refreshSourcesIfNecessary` first, because an invite that arrived
+    /// moments ago may not have synced down yet and "join my next meeting" is
+    /// asked precisely when a meeting is about to start. It is a hint, not a
+    /// blocking fetch, so it costs nothing when the store is already current.
+    func meetingEventPayloads(from: Date, to: Date) -> [MeetingEventPayload] {
+        guard calendarAccess == .authorized else { return [] }
+        store.refreshSourcesIfNecessary()
+        let predicate = store.predicateForEvents(withStart: from, end: to, calendars: nil)
+        return store.events(matching: predicate).map { event in
+            MeetingEventPayload(
+                title: event.title ?? "Untitled",
+                startUnixS: Int64(event.startDate.timeIntervalSince1970),
+                endUnixS: Int64(event.endDate.timeIntervalSince1970),
+                url: event.url?.absoluteString,
+                location: event.location,
+                notes: event.notes,
+                allDay: event.isAllDay)
+        }
+    }
+
     /// Event cache mirroring the reminder cache, so the per-keystroke `@` mutate
     /// preview resolves without a live EventKit fetch each stroke. Warmed while
     /// composing (throttled) and forced on `.EKEventStoreChanged`. Main-thread

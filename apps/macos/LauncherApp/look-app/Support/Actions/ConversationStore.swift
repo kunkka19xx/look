@@ -14,6 +14,23 @@ struct AIConversation: Codable, Identifiable {
     var title: String
     var updatedAt: Date
     var items: [StoredItem]
+
+    /// How much of the first message becomes the title.
+    static let titleLimit = 48
+
+    /// One line, whitespace collapsed. A title is drawn in a list row and in the
+    /// delete banner, and the message it comes from can carry newlines (pasted
+    /// text, or Shift+Enter in the composer) - which render as a stack of short
+    /// rows rather than one line. Applied when the title is MADE and again when
+    /// it is DRAWN, so conversations stored before this stay tidy too.
+    static func singleLine(_ text: String, limit: Int = titleLimit) -> String {
+        String(text.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(limit))
+    }
+
+    /// The title as one line, for any surface that draws it.
+    func displayTitle(limit: Int = AIConversation.titleLimit) -> String {
+        AIConversation.singleLine(title, limit: limit)
+    }
 }
 
 /// Thin shell over the Rust-core conversation store (core/ai), which owns the

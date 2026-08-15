@@ -110,9 +110,9 @@ struct ResultPreviewView: View {
             KindBadge(kind: look.typeName.lowercased())
 
             VStack(alignment: .leading, spacing: 8) {
-                aiActionHintRow(key: "↵", text: look.verb)
-                aiActionHintRow(key: "⌘Z", text: "Undo after it runs")
-                aiActionHintRow(key: "Esc", text: "Dismiss")
+                hintRow(key: "↵", text: look.verb)
+                hintRow(key: "⌘Z", text: "Undo after it runs")
+                hintRow(key: "Esc", text: "Dismiss")
             }
             .padding(.top, 6)
 
@@ -122,7 +122,77 @@ struct ResultPreviewView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func aiActionHintRow(key: String, text: String) -> some View {
+    /// The synthesized join row: no file behind it either, so it takes the same
+    /// centered hero shape as the action and calc rows.
+    private var meetingJoinURL: String? {
+        if case .meeting(let url) = SyntheticRow.classify(resultID: result.id) {
+            return url
+        }
+        return nil
+    }
+
+    private var meetingIcon: NSImage {
+        NSImage(systemSymbolName: "video.fill", accessibilityDescription: nil)
+            ?? NSWorkspace.shared.icon(for: .plainText)
+    }
+
+    /// "Teams  ·  14:30  ·  in 4 min", dropping whichever half is missing.
+    private var meetingDetailLine: String? {
+        let parts = [result.meetingProviderLabel, result.meetingWhen].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
+    }
+
+    private func meetingPreview(_ url: String) -> some View {
+        VStack(spacing: 14) {
+            Spacer(minLength: 0)
+
+            Image(nsImage: meetingIcon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 52, height: 52)
+                .foregroundStyle(themeStore.accentColor())
+
+            Text(result.title)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 5), weight: .bold))
+                .foregroundStyle(themeStore.fontColor())
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .minimumScaleFactor(0.6)
+
+            // Not a `KindBadge`: it renders `kind.capitalized`, which would turn
+            // "GoToMeeting" into "Gotomeeting". Provider names are the one label
+            // here whose casing is the brand.
+            if let detail = meetingDetailLine {
+                Text(detail)
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
+                    .foregroundStyle(themeStore.mutedTextColor())
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                hintRow(key: "↵", text: "Join the meeting")
+                hintRow(key: "Esc", text: "Dismiss")
+            }
+            .padding(.top, 6)
+
+            // Where Enter actually goes. An invite is written by whoever sent
+            // it, so naming the host is the one thing that lets a reader catch
+            // a link that is not the meeting it claims to be.
+            if let host = URL(string: url)?.host {
+                Text(host)
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                    .foregroundStyle(themeStore.secondaryTextColor())
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func hintRow(key: String, text: String) -> some View {
         HStack(spacing: 10) {
             Text(key)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
@@ -235,6 +305,8 @@ struct ResultPreviewView: View {
             calcPreview
         } else if let toolID = aiActionToolID {
             aiActionPreview(toolID)
+        } else if let joinURL = meetingJoinURL {
+            meetingPreview(joinURL)
         } else {
         let info = bundleInfo
 
@@ -291,11 +363,7 @@ struct ResultPreviewView: View {
                 }
 
                 if result.kind == .file {
-                    if QuickLookPreviewService.isTextFile(path: result.path) {
-                        TextFilePreview(path: result.path, maxHeight: .infinity)
-                    } else {
-                        QuickLookPreviewImage(path: result.path, maxHeight: .infinity)
-                    }
+                    FilePreview(path: result.path)
                 }
 
                 if result.kind == .folder {

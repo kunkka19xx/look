@@ -188,7 +188,11 @@ extension LauncherView {
             },
             onRecallPrompt: { [self] older in
                 guard isAIMode else { return false }
-                return recallPrompt(older ? .up : .down)
+                // Consumed even when it does nothing (empty history, or already
+                // at the oldest/newest end), so a boundary press stays put
+                // instead of reaching the composer as a move-by-paragraph.
+                recallPrompt(older ? .up : .down)
+                return true
             },
             onEnterCommandMode: {
                 if !isCommandMode {
@@ -202,6 +206,7 @@ extension LauncherView {
                 hideLauncherWindow()
             },
             inCommandMode: { isCommandMode },
+            inAIMode: { isAIMode },
             onWebSearch: {
                 performWebSearchFromQuery()
             },
@@ -273,6 +278,18 @@ extension LauncherView {
                     showsThemeSettings: appUIState.showsThemeSettings,
                     showsHelpScreen: showsHelpScreen
                 ) else { return }
+                // In AI mode ⌘D belongs to the sessions list and nothing else:
+                // it deletes the highlighted conversation (same delete as ⌘⌫
+                // and the row's trash button, undoable from the banner). With a
+                // conversation open there is no delete target, and trashing a
+                // file left selected in the main bar would be a nasty surprise,
+                // so the chord stops here rather than falling through.
+                if isAIMode {
+                    if isBrowsingConversations {
+                        deleteHighlightedSession()
+                    }
+                    return
+                }
                 let selected = displayedResults.first { $0.id == selectedResultID }
                 if DeleteTargetLogic.removesClipboardHistory(selected), let selected {
                     deleteClipboardResult(resultID: selected.id)

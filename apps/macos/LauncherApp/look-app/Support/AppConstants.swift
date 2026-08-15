@@ -94,6 +94,30 @@ enum AppConstants {
             }
         }
 
+        /// The ⌘-digit chips on the AI sessions list. A ⌘ chord is ONE
+        /// keypress, so there is no ⌘10 and ten rows is the hard ceiling:
+        /// ⌘1…⌘9 then ⌘0 for the tenth. Older sessions are reached by typing
+        /// (the list filters on title and content), Tab/↑↓, then Enter.
+        enum AISessions {
+            /// Rows carrying a chip, and therefore how many the list shows.
+            static let jumpKeyLimit = 10
+            /// The tenth row wraps onto `0`, the key sitting next to `9`.
+            private static let lastRowDigit = 0
+
+            /// The digit shown on row `index`, or nil past the mapped rows.
+            static func jumpDigit(forRow index: Int) -> Int? {
+                guard index >= 0, index < jumpKeyLimit else { return nil }
+                return index == jumpKeyLimit - 1 ? lastRowDigit : index + 1
+            }
+
+            /// The row ⌘`digit` addresses, or nil when the digit maps to none.
+            static func row(forJumpDigit digit: Int) -> Int? {
+                if digit == lastRowDigit { return jumpKeyLimit - 1 }
+                guard digit > 0, digit < jumpKeyLimit else { return nil }
+                return digit - 1
+            }
+        }
+
         enum QueryPrefix {
             static let apps = "a\""
             static let files = "f\""
@@ -203,6 +227,23 @@ enum AppConstants {
         // Synthesized calculator row, pinned above everything else while the
         // query is arithmetic (shared `core/calc` intent gate via EngineBridge).
         // Like WebSuggestion/WebURL, told apart from real candidates by id.
+        /// The synthesized "Join <meeting>" row. Told apart from real
+        /// candidates by id; the join URL rides in it, so pressing Enter never
+        /// has to re-read the calendar.
+        enum Meeting {
+            static let resultIDPrefix = "meeting:"
+
+            static func resultID(url: String) -> String {
+                resultIDPrefix + url
+            }
+
+            /// Recovers the join URL encoded in a result id, or nil.
+            static func url(fromResultID resultID: String) -> String? {
+                guard resultID.hasPrefix(resultIDPrefix) else { return nil }
+                return String(resultID.dropFirst(resultIDPrefix.count))
+            }
+        }
+
         enum Calc {
             static let resultIDPrefix = "calc:"
             static let enterToCopyHint = "Enter to copy"

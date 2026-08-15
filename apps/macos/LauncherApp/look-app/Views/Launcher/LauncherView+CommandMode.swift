@@ -115,7 +115,10 @@ extension LauncherView {
         actionController.submitExplicitAIQuery(text)
         clearQuerySilently()
         clearAttachments()
-        DispatchQueue.main.async { isQueryFocused = true }
+        // The whole panel below the bar swaps (results list -> AI session), so
+        // a single `isQueryFocused = true` can land before the layout settles.
+        // focusActiveInput retries and also sets first responder in AppKit.
+        focusActiveInput(activateApp: false)
     }
 
     /// Clears the input without triggering the AI side effects of the query

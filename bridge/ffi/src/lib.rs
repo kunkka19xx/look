@@ -6,6 +6,7 @@ mod calc_api;
 mod clipboard_api;
 mod lunar_api;
 mod matching_api;
+mod meeting_api;
 mod netspeed_api;
 mod qactions_api;
 mod runtime_config;
@@ -155,6 +156,33 @@ pub extern "C" fn look_todo_save_json(json: *const c_char) -> bool {
 pub extern "C" fn look_lunar_date_json(year: i64, month: i64, day: i64, tz: f64) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         lunar_api::look_lunar_date_json_impl(year, month, day, tz)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Whether `query` is asking to join a meeting ("join", "join my next
+/// meeting"). Tier-1 grammar: cheap enough to call on every keystroke, and
+/// strict enough that "join two pdfs" stays a file search.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_meeting_is_join_query(query: *const c_char) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        meeting_api::look_meeting_is_join_query_impl(query)
+    }))
+    .unwrap_or(false)
+}
+
+/// The meeting to join right now, from the events the shell fetched.
+///
+/// `events_json` is an array of `{title, startUnixS, endUnixS, url?, location?,
+/// notes?, allDay?}`. Returns the chosen meeting as JSON, or the literal
+/// `null` when nothing is joinable. Free the result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_meeting_next_json(
+    events_json: *const c_char,
+    now_epoch: i64,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        meeting_api::look_meeting_next_json_impl(events_json, now_epoch)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

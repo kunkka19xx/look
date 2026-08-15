@@ -7,7 +7,7 @@ import SwiftUI
 struct ConversationRowView: View {
     let conversation: AIConversation
     let snippet: String
-    /// The ⌘-chip shown on the left ("⌘A"), empty past the mapped keys.
+    /// The ⌘-chip shown on the left ("⌘1"), empty past the mapped digits.
     let jumpKey: String
     let isSelected: Bool
     let themeStore: ThemeStore
@@ -33,7 +33,7 @@ struct ConversationRowView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
-                    Text(conversation.title)
+                    Text(conversation.displayTitle())
                         .font(themeStore.uiFont(size: CGFloat(fontSize - 1), weight: .medium))
                         .foregroundStyle(themeStore.fontColor())
                         .lineLimit(1)
@@ -59,7 +59,7 @@ struct ConversationRowView: View {
                     .foregroundStyle(themeStore.mutedTextColor().opacity(isSelected ? 0.9 : 0.35))
             }
             .buttonStyle(.plain)
-            .help("Delete conversation (⌘⌫)")
+            .help("Delete conversation (⌘D or ⌘⌫)")
         }
         .padding(.horizontal, 10)
         // Matches the results rows, so the pill is the same height in both lists.
