@@ -635,15 +635,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // of flashing the full strip then rewinding. Rust's `window-hidden` is the
     // primary trigger (WebView2 doesn't reliably fire visibilitychange on a
     // native hide); visibilitychange stays as a WebKitGTK fallback.
-    onWindowHidden(() => {
+    onWindowHidden((event) => {
         superactions.armEntrance();
         motion.armReveal();
         // Rust holds the window up until this lands. Two frames: the first
         // callback runs before the armed frame is painted, the second after.
-        // A failed invoke falls back to Rust's timeout.
+        // The payload is the dismissal id, so a confirmation that misses its
+        // window is dropped instead of hiding a later one. A failed invoke
+        // falls back to Rust's timeout.
+        const arm = event?.payload ?? 0;
         requestAnimationFrame(() =>
             requestAnimationFrame(() => {
-                confirmHide().catch(() => {});
+                confirmHide(arm).catch(() => {});
             }),
         );
     });

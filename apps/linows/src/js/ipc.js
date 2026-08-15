@@ -38,9 +38,9 @@ export async function hideWindow() {
     return invoke('hide_window');
 }
 
-/** The armed frame is painted; Rust can drop the window now. */
-export async function confirmHide() {
-    return invoke('confirm_hide');
+/** The armed frame is painted; Rust can drop the window for that dismissal. */
+export async function confirmHide(arm) {
+    return invoke('confirm_hide', { arm });
 }
 
 export async function quitApp() {

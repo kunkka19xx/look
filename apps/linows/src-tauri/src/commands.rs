@@ -387,7 +387,7 @@ static HIDE_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub fn hide_armed(window: &tauri::WebviewWindow) {
     let arm = HIDE_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
     PENDING_HIDE.store(arm, Ordering::Relaxed);
-    let _ = window.emit(crate::consts::EVENT_WINDOW_HIDDEN, ());
+    let _ = window.emit(crate::consts::EVENT_WINDOW_HIDDEN, arm);
     let window = window.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(HIDE_ARM_GRACE).await;
@@ -400,10 +400,16 @@ pub fn hide_armed(window: &tauri::WebviewWindow) {
     });
 }
 
-/// The frontend has painted the armed frame; the window can go now.
+/// The frontend has painted the armed frame; the window can go now. Keyed on
+/// `arm` so a confirmation that arrives late, after a show or a later dismiss,
+/// can't hide a window whose current arm hasn't painted yet.
 #[tauri::command]
-pub fn confirm_hide(window: tauri::WebviewWindow) {
-    if PENDING_HIDE.swap(0, Ordering::Relaxed) != 0 {
+pub fn confirm_hide(window: tauri::WebviewWindow, arm: u64) {
+    if arm != 0
+        && PENDING_HIDE
+            .compare_exchange(arm, 0, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+    {
         let _ = window.hide();
     }
 }
