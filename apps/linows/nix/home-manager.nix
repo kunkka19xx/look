@@ -28,10 +28,26 @@ let
 
   finalSettings = themeSettings // cfg.settings;
 
+  # core splits `ignored_patterns_*` and `alias_*` on `|` (parse_pattern_values)
+  # and every other list key on `,` (parse_csv), which also unescapes `\,`/`\\`.
+  isPipeSeparated =
+    name: lib.hasPrefix "ignored_patterns_" name || lib.hasPrefix "alias_" name;
+
+  escapeCsvEntry = entry: lib.replaceStrings [ "\\" "," ] [ "\\\\" "\\," ] (toString entry);
+
   formatValue =
-    value:
+    name: value:
     if lib.isBool value then
       lib.boolToString value
+    else if !lib.isList value then
+      toString value
+    else if isPipeSeparated name then
+      lib.concatStringsSep "|" (map toString value)
+    else
+      lib.concatStringsSep "," (map escapeCsvEntry value);
+
+  renderedSettings =
+    lib.mapAttrsToList (name: value: "${name}=${formatValue name value}") finalSettings;
     else if lib.isList value then
       lib.concatStringsSep "," (map toString value)
     else
