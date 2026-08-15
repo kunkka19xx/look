@@ -110,7 +110,9 @@ in
       description = ''
         Settings written to ~/.look.config. Attribute names map directly to
         Look config keys, for example `ui_theme` becomes `ui_theme=...`.
-        Lists are serialized as comma-separated values.
+        Lists are serialized as comma-separated values, except for
+        `ignored_patterns_*` and `alias_*` keys, which Look parses as
+        pipe-separated.
       '';
     };
 
