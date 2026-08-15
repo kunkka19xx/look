@@ -34,9 +34,19 @@ rustPlatform.buildRustPackage {
         basePath = toString ../../..;
         relPath = lib.removePrefix basePath (toString path);
       in
-      relPath == "/apps"
-      || lib.hasPrefix "/apps/linows" relPath
-      || lib.hasPrefix "/core" relPath;
+      (
+        relPath == "/apps"
+        || lib.hasPrefix "/apps/linows" relPath
+        || lib.hasPrefix "/core" relPath
+      )
+      # Packaging and prose sit inside the copied tree without being build
+      # inputs. Without this, editing a module or a doc changes `src` and every
+      # consumer recompiles the whole workspace for nothing.
+      && !(
+        lib.hasPrefix "/apps/linows/nix" relPath
+        || lib.hasPrefix "/apps/linows/flake" relPath
+        || lib.hasSuffix ".md" relPath
+      );
   };
 
   cargoRoot = "apps/linows/src-tauri";
@@ -116,7 +126,7 @@ EOF
 
   meta = {
     description = "Keyboard-first desktop launcher";
-    license = lib.licenses.mit;
+    license = lib.licenses.gpl3Plus;
     platforms = lib.platforms.linux;
     mainProgram = "lookapp";
   };
