@@ -138,7 +138,7 @@ sudo nixos-rebuild switch --flake /path/to/your/flake#hostname
 
 > **Note:** On GNOME desktops, log out and log back in after the first install so the GNOME Shell extension (used for window focusing and hotkey on Wayland) can load.
 
-**Window manager users (i3, sway, Hyprland, etc.):** Autostart via `.desktop` files only works on full DEs (GNOME, KDE). On standalone WMs, add Look to your config manually. The `Alt+Space` hotkey and window rules (float, no border) are registered automatically at runtime - you only need the autostart line:
+**Window manager users (i3, sway, Hyprland, niri, etc.):** Autostart via `.desktop` files only works on full DEs (GNOME, KDE). On standalone WMs, add Look to your config manually. On i3, sway, and Hyprland the `Alt+Space` hotkey and window rules (float, no border) are registered automatically at runtime, so you only need the autostart line; niri needs the bind added by hand (see below):
 
 ```bash
 # i3: ~/.config/i3/config
@@ -152,6 +152,27 @@ exec lookapp
 # Hyprland: ~/.config/hypr/hyprland.conf
 exec-once = lookapp
 # (Alt+Space, float, and border rules are injected automatically via hyprctl)
+```
+
+niri has no API to add binds at runtime, so `Alt+Space` has to go in `~/.config/niri/config.kdl` yourself. Look shows the exact stanza for your system (the `gdbus` path differs on NixOS) in its setup notice on first run:
+
+```kdl
+spawn-at-startup "lookapp"
+
+binds {
+    Alt+Space { spawn "gdbus" "call" "--session" "--dest" "com.look.Desktop" "--object-path" "/com/look/Desktop" "--method" "com.look.Desktop.Toggle"; }
+}
+```
+
+Floating is applied at runtime over niri's IPC; add a rule only if you also want the focus ring and shadow off:
+
+```kdl
+window-rule {
+    match app-id="^lookapp$"
+    open-floating true
+    focus-ring { off; }
+    shadow { off; }
+}
 ```
 
 > **Hyprland 0.55+ only.** Focus-existing-window uses the `wlr-foreign-toplevel-management` protocol. Older Hyprland versions relied on the legacy `hyprctl dispatch focuswindow` syntax which was deprecated in 0.55; selecting an already-running app on <0.55 may launch a second instance instead of focusing. Upgrade to 0.55+ for correct behavior.
