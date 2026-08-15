@@ -175,8 +175,9 @@
     }
 }
 
-/* The `scale` property, not a transform function: results.js drives position
- * through `transform`, and an animation there would eat the glide. */
+/* The `scale` property, not a transform function: an animation on `transform`
+ * would eat the glide. Position rides `translate` (results.js) so this can't
+ * multiply it. */
 @keyframes pill-gain {
     0% {
         scale: 1 1;
