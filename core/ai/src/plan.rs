@@ -24,7 +24,49 @@ pub struct ActionPlan {
 pub fn parse_chat_response(body: &str) -> Option<ActionPlan> {
     let root: Value = serde_json::from_str(body).ok()?;
     let content = root.get("message")?.get("content")?.as_str()?;
-    serde_json::from_str(content).ok()
+    parse_plan(content)
+}
+
+/// Decodes a plan from model text, tolerating the two ways small local models
+/// break their own JSON even under a schema: junk after the value (a stray
+/// code fence) and a missing closing brace. Measured on qwen3.5:4b, where a
+/// strict decode threw away otherwise-correct plans as declines.
+pub fn parse_plan(content: &str) -> Option<ActionPlan> {
+    let content = content.trim().trim_start_matches("```json").trim();
+    // Reads the first complete value and ignores whatever trails it.
+    let first = serde_json::Deserializer::from_str(content)
+        .into_iter::<ActionPlan>()
+        .next()
+        .and_then(Result::ok);
+    first.or_else(|| serde_json::from_str(&closed(content)?).ok())
+}
+
+/// The text with any still-open braces and brackets closed, or None when
+/// nothing was left open (so a genuinely malformed value is not retried).
+fn closed(content: &str) -> Option<String> {
+    let mut stack: Vec<char> = Vec::new();
+    let (mut in_string, mut escaped) = (false, false);
+    for c in content.chars() {
+        match c {
+            _ if escaped => escaped = false,
+            '\\' if in_string => escaped = true,
+            '"' => in_string = !in_string,
+            '{' | '[' if !in_string => stack.push(if c == '{' { '}' } else { ']' }),
+            // A closer that does not match the open one is malformed beyond
+            // repair, not an unfinished value.
+            '}' | ']' if !in_string => match stack.pop() {
+                Some(open) if open == c => {}
+                _ => return None,
+            },
+            _ => {}
+        }
+    }
+    if in_string || stack.is_empty() {
+        return None;
+    }
+    let mut out = String::from(content);
+    out.extend(stack.iter().rev());
+    Some(out)
 }
 
 /// The JSON Schema handed to Ollama's `format` field. `tool` is an enum of the
@@ -81,6 +123,34 @@ mod tests {
     fn empty_steps_is_a_decline() {
         let body = r#"{"message":{"content":"{\"steps\":[]}"}}"#;
         assert!(parse_chat_response(body).unwrap().steps.is_empty());
+    }
+
+    #[test]
+    fn recovers_the_plans_small_models_mangle() {
+        // Trailing junk after a complete value (qwen3.5:4b emits a lone fence).
+        let fenced =
+            parse_plan(r#"{"steps":[{"tool":"reminder","params":{"title":"Buy milk"}}]}`"#)
+                .unwrap();
+        assert_eq!(fenced.steps[0].tool, "reminder");
+        // Missing the closing brace of the outer object.
+        let unclosed =
+            parse_plan(r#"{"steps":[{"tool":"reminder","params":{"title":"buy milk"}}]"#).unwrap();
+        assert_eq!(unclosed.steps[0].params["title"], "buy milk");
+        let fence =
+            parse_plan("```json\n{\"steps\":[{\"tool\":\"cancel\",\"params\":{}}]}").unwrap();
+        assert_eq!(fence.steps[0].tool, "cancel");
+        // A brace inside a string is text, not structure, so only the real
+        // outer brace is added back.
+        let braces = parse_plan(
+            r#"{"steps":[{"tool":"textop","params":{"instruction":"Close the { brace"}}]"#,
+        )
+        .unwrap();
+        assert_eq!(braces.steps[0].params["instruction"], "Close the { brace");
+        // A generation cut off mid-string is NOT repaired: inventing the rest
+        // of an instruction or title would be worse than declining.
+        assert!(
+            parse_plan(r#"{"steps":[{"tool":"textop","params":{"instruction":"Trans"#).is_none()
+        );
     }
 
     #[test]

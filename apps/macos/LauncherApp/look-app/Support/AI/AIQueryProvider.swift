@@ -58,6 +58,18 @@ protocol AIQueryProvider: Sendable {
     /// treats as "no answer". Purely additive - never blocks search.
     func answer(query: String) -> AsyncThrowingStream<String, Error>?
 
+    /// Stream a response to a full request: roles intact, limits stated in
+    /// neutral terms the provider translates itself. This is the seam a cloud
+    /// provider plugs into - `answer(query:)` above is the answer-card
+    /// shorthand, which cannot express a system prompt or a token budget.
+    func respond(messages: [AIMessage], options: AIGenerationOptions)
+        -> AsyncThrowingStream<String, Error>?
+
+    /// How much this provider can read in one request. Drives the attachment
+    /// budget warning, which would otherwise assume one provider's window for
+    /// all of them.
+    var contextTokens: Int { get }
+
     /// Optional hint that an answer may be coming soon, so the provider can warm
     /// up resources. Default is a no-op.
     func prewarm()
@@ -67,6 +79,19 @@ extension AIQueryProvider {
     /// Providers that only do query understanding don't have to implement
     /// free-form answering.
     func answer(query: String) -> AsyncThrowingStream<String, Error>? { nil }
+
+    /// Degrades to the flattened form rather than failing, so a provider that
+    /// has not been taught roles still works exactly as it does today.
+    func respond(messages: [AIMessage], options: AIGenerationOptions)
+        -> AsyncThrowingStream<String, Error>?
+    {
+        answer(query: AIMessage.flattened(messages))
+    }
+
+    /// Conservative on purpose: a provider that has not declared its window
+    /// should under-promise, so the attachment warning fires early rather than
+    /// letting a prompt be silently truncated.
+    var contextTokens: Int { 4096 }
 
     func prewarm() {}
 

@@ -78,12 +78,10 @@ const AUTO_HIDE_GRACE_MS: u64 = 300;
 const AUTO_HIDE_RESHOW_GUARD_MS: u64 = 200;
 const EVENT_WINDOW_SHOWN: &str = "window-shown";
 
-/// Arm the launchpad, then hide the window. Emitting while the webview can still
-/// paint means the frame the compositor caches is the (invisible) first frame of
-/// the entrance cascade, not the fully-revealed strip.
+/// Arm the launchpad, then hide the window once the webview has painted that
+/// frame - see `commands::hide_armed`.
 fn hide_launcher(window: &tauri::WebviewWindow) {
-    let _ = window.emit(consts::EVENT_WINDOW_HIDDEN, ());
-    let _ = window.hide();
+    commands::hide_armed(window);
 }
 
 /// Scale window size (logical pixels) to fit the current monitor.
@@ -134,7 +132,7 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
             recenter_window(&window);
         }
         let _ = window.set_always_on_top(true);
-        let _ = window.show();
+        commands::show_launcher(&window);
         if tiling {
             recenter_window(&window);
         }
@@ -544,7 +542,7 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window(consts::MAIN_WINDOW) {
                 LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
-                let _ = window.show();
+                commands::show_launcher(&window);
                 let _ = window.set_focus();
             }
         }))
@@ -619,7 +617,7 @@ fn main() {
             platform::linux::blur::init(&window);
             #[cfg(target_os = "linux")]
             if supports_transparency() {
-                let _ = window.show();
+                commands::show_launcher(&window);
             }
             #[cfg(target_os = "windows")]
             {
@@ -650,6 +648,7 @@ fn main() {
             commands::force_index_refresh,
             commands::toggle_window,
             commands::hide_window,
+            commands::confirm_hide,
             commands::set_blur_region,
             commands::quit_app,
             // Config

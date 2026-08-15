@@ -111,8 +111,10 @@ extension LauncherView {
         isAIMode = true
         conversationCache = ConversationStore.load()
         recordAIPrompt(text)
+        actionController.attachments = attachments
         actionController.submitExplicitAIQuery(text)
         clearQuerySilently()
+        clearAttachments()
         DispatchQueue.main.async { isQueryFocused = true }
     }
 
@@ -131,6 +133,11 @@ extension LauncherView {
 
     func handleSubmit() {
         logUIEvent("submit isCommand=\(isCommandMode) active=\(activeCommandID ?? "nil") selectedKill=\(selectedKillSuggestionIndex.map(String.init) ?? "nil") pendingKill=\(pendingKillCandidate?.displayName ?? "nil") input='\(commandArgsPart)'")
+
+        // A highlighted `@`-mention takes Enter as "attach this file". With
+        // nothing highlighted this returns false and Enter sends, so the popup
+        // never swallows a message the user meant to send.
+        if acceptHighlightedMention() { return }
 
         // A pending action bar takes Enter as "confirm". Stay in AI mode with a
         // cleared input, ready for the next message; Esc leaves.
@@ -161,8 +168,12 @@ extension LauncherView {
                 // Routing (incl. file-recall detection) lives in the Rust-core
                 // ladder; a files decision comes back via recallRequest.
                 recordAIPrompt(submitTrimmed)
+                // The turn owns its attachments: handed over here, cleared with
+                // the input so they never leak into the next message.
+                actionController.attachments = attachments
                 actionController.submitExplicitAIQuery(submitTrimmed)
                 clearQuerySilently()
+                clearAttachments()
             }
             DispatchQueue.main.async { isQueryFocused = true }
             return

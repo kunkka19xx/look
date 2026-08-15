@@ -117,8 +117,9 @@ plan.
 > differences: tool ids are 1-token aliases (`event`, `move`, `block`, ...) not
 > `op` verbs; params are a flat `[String: String]` limited to
 > `title`/`match`/`when`/`duration`/`terms`/`types`/`location`/`instruction`;
-> durations are phrases ("2 hours") rather than `duration_minutes`; and only
-> `steps[0]` executes today. `find_free_slot` never shipped as a separate op -
+> durations are phrases ("2 hours") rather than `duration_minutes`; and every
+> step of a plan executes, confirmed and undone as a unit (see
+> `ai-action-contracts.md` §5). `find_free_slot` never shipped as a separate op -
 > `block` does find-then-block in one step. The rest of this section documents
 > the intent, which held.
 

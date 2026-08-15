@@ -75,11 +75,10 @@ struct AISettingsSection: View {
                 .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
                 .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
                 .foregroundStyle(themeStore.secondaryTextColor())
-            TextField("http://localhost:11434", text: $settings.ollamaHost)
-                .textFieldStyle(.roundedBorder)
+            OllamaHostField(host: $settings.ollamaHost, themeStore: themeStore)
                 .frame(maxWidth: 180)
             OllamaModelField(
-                host: settings.ollamaHost,
+                host: settings.ollamaEndpoint,
                 model: $settings.ollamaModel,
                 themeStore: themeStore)
                 .frame(maxWidth: 160)

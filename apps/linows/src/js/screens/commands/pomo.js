@@ -31,6 +31,11 @@ const DEFAULT_SESSIONS = [
 const ENDING_SOON_SECS = 10;
 const IDLE_FADE_SECS = 5;
 const TICK_INTERVAL_MS = 500;
+const SESSION_FIELD_NAME = 'name';
+const SESSION_FIELD_DURATION = 'duration';
+const SESSION_DUR_MIN = 1;
+const SESSION_DUR_MAX = 120;
+const FIELD_INVALID_CLASS = 'cmd-pomo-field-invalid';
 
 // --- Persistence ---
 const STORAGE_KEY_SESSIONS = 'pomo_sessions';
@@ -191,7 +196,38 @@ export function exit() {
     clearIdleFade();
 }
 
+export function isEditing() {
+    return activeSessionField() !== null;
+}
+
+function activeSessionField() {
+    const ae = document.activeElement;
+    if (!ae || !panel?.contains(ae)) return null;
+    return ae.dataset?.pomoField ? ae : null;
+}
+
+// A rejected edit snaps back silently otherwise, so flash the field instead.
+function flashInvalid(field) {
+    field.classList.add(FIELD_INVALID_CLASS);
+    field.addEventListener('animationend', () => field.classList.remove(FIELD_INVALID_CLASS), {
+        once: true,
+    });
+}
+
 export function handleKey(e) {
+    const field = activeSessionField();
+    if (field) {
+        // Enter and Esc both commit the edit; Esc only leaves the field, so it
+        // takes a second press to close the panel. Anything else types.
+        if (e.key === 'Enter' || e.key === 'Escape') {
+            e.preventDefault();
+            field.blur();
+            return true;
+        }
+        restoreFromIdle();
+        return false;
+    }
+
     if (e.key === ' ' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         toggle();
@@ -337,6 +373,11 @@ function notify(title, body) {
 function startIdleFade() {
     clearIdleFade();
     idleFadeTimer = setTimeout(() => {
+        // Never fade a row the user is typing into.
+        if (activeSessionField()) {
+            startIdleFade();
+            return;
+        }
         idleFaded = true;
         applyIdleFade();
     }, IDLE_FADE_SECS * 1000);
@@ -645,11 +686,25 @@ function renderSessionList() {
         // Name input
         const nameInput = document.createElement('input');
         nameInput.className = 'cmd-pomo-session-name-input';
+        nameInput.dataset.pomoField = SESSION_FIELD_NAME;
+        nameInput.dataset.pomoIdx = i;
         nameInput.value = s.name;
         nameInput.addEventListener('change', () => {
-            sessions[i].name = nameInput.value.trim() || s.name;
+            const nextName = nameInput.value.trim();
+            if (!nextName) {
+                nameInput.value = sessions[i].name;
+                flashInvalid(nameInput);
+                return;
+            }
+            nameInput.value = nextName;
+            if (sessions[i].name === nextName) return;
+            sessions[i].name = nextName;
             saveConfig();
-            updateAll();
+            // Avoid re-rendering the list here so Tab can move to the next field.
+            if (i === activeIndex) {
+                updateHeader();
+                updateSessionName();
+            }
         });
         row.appendChild(nameInput);
 
@@ -658,15 +713,26 @@ function renderSessionList() {
         durWrap.className = 'cmd-pomo-session-dur-wrap';
         const durInput = document.createElement('input');
         durInput.className = 'cmd-pomo-session-dur';
+        durInput.dataset.pomoField = SESSION_FIELD_DURATION;
+        durInput.dataset.pomoIdx = i;
         durInput.type = 'number';
-        durInput.min = '1';
-        durInput.max = '120';
+        durInput.min = String(SESSION_DUR_MIN);
+        durInput.max = String(SESSION_DUR_MAX);
         durInput.value = s.duration;
         durInput.addEventListener('change', () => {
-            const val = parseInt(durInput.value);
-            if (val > 0 && val <= 120) sessions[i].duration = val;
+            const val = durInput.valueAsNumber;
+            if (!Number.isInteger(val) || val < SESSION_DUR_MIN || val > SESSION_DUR_MAX) {
+                durInput.value = sessions[i].duration;
+                flashInvalid(durInput);
+                return;
+            }
+            if (sessions[i].duration === val) return;
+            sessions[i].duration = val;
             saveConfig();
-            updateAll();
+            // Avoid re-rendering the list here so Tab can move to the next field.
+            if (i === activeIndex || (activeIndex === null && i === 0)) {
+                drawTimer();
+            }
         });
         durWrap.appendChild(durInput);
         const durUnit = document.createElement('span');

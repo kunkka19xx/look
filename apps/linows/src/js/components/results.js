@@ -209,9 +209,10 @@ export function select(index, glide = false) {
 }
 
 // The pill is absolutely positioned in the list's content box, so its top:0 and
-// a row's offsetTop share an origin: translateY + height overlay it exactly. Its
+// a row's offsetTop share an origin: translate + height overlay it exactly. Its
 // left/right insets come from CSS (they match the row margin), so only the
-// vertical geometry is set here.
+// vertical geometry is set here. Position rides `translate`, not `transform`, or
+// the gain's `scale` multiplies it and kicks the pill by 2% of offsetTop.
 function placeSelectionPill(row, glide) {
     if (!selectionPill || selectionPill.parentNode !== container) {
         selectionPill = document.createElement('div');
@@ -219,7 +220,7 @@ function placeSelectionPill(row, glide) {
         container.prepend(selectionPill);
     }
     if (!glide) selectionPill.classList.add('is-instant');
-    selectionPill.style.transform = `translateY(${row.offsetTop}px)`;
+    selectionPill.style.translate = `0 ${row.offsetTop}px`;
     selectionPill.style.height = `${row.offsetHeight}px`;
     selectionPill.classList.add('is-visible');
     if (!glide) {

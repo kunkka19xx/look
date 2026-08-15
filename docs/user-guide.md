@@ -279,7 +279,7 @@ Behavior:
 
 - **Stable** - icons sit in alphabetical order and don't shuffle when you switch apps. The activation digit for a given app stays the same until you launch or quit something.
 - **Ergonomic badge keys** - easier-to-reach keys are assigned first. With 5 running apps the badges are `1, 2, 3, 8, 9` (skipping the harder middle keys); `5/6/7` only get used when you have 7+ apps running.
-- **Linux focus** - Look's GNOME Shell extension activates the app's most-recent window on Wayland; X11 uses `_NET_ACTIVE_WINDOW` via x11rb; sway/Hyprland use `wlr-foreign-toplevel-management`; i3 uses `i3-msg`.
+- **Linux focus** - Look's GNOME Shell extension activates the app's most-recent window on Wayland; X11 uses `_NET_ACTIVE_WINDOW` via x11rb; sway/Hyprland use `wlr-foreign-toplevel-management`; i3 uses `i3-msg`; niri uses its own IPC socket, which also scrolls the view to the window's workspace.
 - **Windowless apps** (Finder with no Finder windows, etc.) get a fresh window via a Dock-style "reopen" so you don't see an empty flash.
 
 Saved as `running_apps_placement=<value>` in `~/.look.config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.

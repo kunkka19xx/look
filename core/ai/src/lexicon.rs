@@ -1,7 +1,8 @@
-//! The ONE date/time lexicon: weekday and month names with their common
-//! abbreviations, relative-day words, calendar units, and modifiers. Every
-//! parser (explicit, window, files) reads from here so the lists can never
-//! drift apart - "screenshots fri" must mean the same Friday everywhere.
+//! The ONE scheduling lexicon: weekday and month names with their common
+//! abbreviations, relative-day words, calendar units, modifiers, and the
+//! calendar/reminder domain words. Every parser (explicit, window, files)
+//! reads from here so the lists can never drift apart - "screenshots fri" must
+//! mean the same Friday everywhere.
 
 use chrono::Weekday;
 
@@ -97,9 +98,129 @@ pub fn is_date_word(word: &str) -> bool {
         )
 }
 
+/// A noun that names something on the calendar.
+pub fn is_event_noun(word: &str) -> bool {
+    matches!(
+        word,
+        "meeting"
+            | "meetings"
+            | "appointment"
+            | "appointments"
+            | "event"
+            | "events"
+            | "invite"
+            | "invites"
+            | "calendar"
+            | "standup"
+            | "standups"
+    )
+}
+
+/// A noun that names something on the reminder list.
+pub fn is_reminder_noun(word: &str) -> bool {
+    matches!(word, "reminder" | "reminders" | "todo" | "todos")
+}
+
+/// A noun that names a calendar or reminder object, so the request is about
+/// the user's schedule even when it also names a file type ("cancel the pdf
+/// review meeting").
+pub fn is_schedule_noun(word: &str) -> bool {
+    is_event_noun(word) || is_reminder_noun(word)
+}
+
+/// A verb that only ever opens a scheduling request. Deliberately excludes the
+/// verbs that could also govern a file ("delete", "remove", "move", "open"),
+/// so "delete the pdf i downloaded" stays file recall.
+pub fn is_schedule_verb(word: &str) -> bool {
+    is_reminder_verb(word) || is_calendar_verb(word)
+}
+
+/// Opens a request about the reminder list and nothing else.
+pub fn is_reminder_verb(word: &str) -> bool {
+    matches!(word, "remind" | "snooze" | "postpone")
+}
+
+/// Opens a request about the calendar and nothing else.
+pub fn is_calendar_verb(word: &str) -> bool {
+    matches!(
+        word,
+        "cancel" | "reschedule" | "block" | "book" | "schedule"
+    )
+}
+
+/// Names the clipboard payload itself, wherever it appears in the request.
+pub fn is_clipboard_noun(word: &str) -> bool {
+    matches!(word, "clipboard" | "copied" | "pasted" | "selection")
+}
+
+/// Only ever opens a rewrite of text the user already has. Excludes
+/// "turn"/"convert", which open system and file requests too.
+pub fn is_rewrite_verb(word: &str) -> bool {
+    matches!(
+        word,
+        "make"
+            | "translate"
+            | "rewrite"
+            | "reword"
+            | "summarize"
+            | "summarise"
+            | "shorten"
+            | "expand"
+            | "proofread"
+            | "paraphrase"
+            | "fix"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The domain prefilter and the file-recall veto read the SAME verb
+    /// tables. When `domain.rs` kept its own inline copies they drifted inside
+    /// one commit: "postpone" was a schedule verb but not a reminder verb, so
+    /// `of("postpone it")` narrowed to nothing while `of("snooze it")` did.
+    #[test]
+    fn schedule_verbs_are_exactly_the_two_domain_sets() {
+        for word in [
+            "remind",
+            "snooze",
+            "postpone",
+            "cancel",
+            "reschedule",
+            "block",
+        ] {
+            assert!(is_schedule_verb(word), "{word}");
+            assert!(
+                is_reminder_verb(word) || is_calendar_verb(word),
+                "{word} belongs to no domain"
+            );
+        }
+        // A verb cannot claim both domains, or the prefilter has no answer.
+        for word in ["remind", "cancel", "postpone", "book"] {
+            assert!(
+                !(is_reminder_verb(word) && is_calendar_verb(word)),
+                "{word}"
+            );
+        }
+    }
+
+    #[test]
+    fn schedule_words_exclude_file_capable_verbs() {
+        for word in ["meeting", "appointment", "reminder", "calendar"] {
+            assert!(is_schedule_noun(word), "{word}");
+        }
+        for word in ["pdf", "screenshot", "invoice", "desktop"] {
+            assert!(!is_schedule_noun(word), "{word}");
+        }
+        for word in ["cancel", "reschedule", "snooze", "remind"] {
+            assert!(is_schedule_verb(word), "{word}");
+        }
+        // These govern files too, so they must never veto file recall.
+        for word in ["delete", "remove", "move", "open", "find"] {
+            assert!(!is_schedule_verb(word), "{word}");
+        }
+    }
 
     #[test]
     fn abbreviations_match_their_full_names() {

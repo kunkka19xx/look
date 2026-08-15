@@ -164,6 +164,22 @@ private func look_record_url_hit(_ url: UnsafePointer<CChar>?) -> Bool
 nonisolated
 private func look_recent_urls_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_clipboard_record")
+nonisolated
+private func look_clipboard_record(_ content: UnsafePointer<CChar>?, _ kind: UnsafePointer<CChar>?, _ appBundleID: UnsafePointer<CChar>?) -> Int64
+
+@_silgen_name("look_clipboard_list_json")
+nonisolated
+private func look_clipboard_list_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_clipboard_delete")
+nonisolated
+private func look_clipboard_delete(_ id: Int64) -> Bool
+
+@_silgen_name("look_clipboard_clear")
+nonisolated
+private func look_clipboard_clear() -> UInt32
+
 @_silgen_name("look_qactions_json")
 nonisolated
 private func look_qactions_json(_ resultID: UnsafePointer<CChar>?, _ kind: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -573,7 +589,11 @@ final class EngineBridge: @unchecked Sendable {
             let params: [String: String]
         }
         let done: Bool
-        let call: RawCall?
+        /// Every step of the plan, in order. Empty when the request was not an
+        /// action; several for a compound one.
+        let calls: [RawCall]?
+
+        var steps: [RawCall] { calls ?? [] }
     }
 
     /// Starts a cancellable planning call via the Rust-core planner (core/ai):
@@ -876,6 +896,62 @@ final class EngineBridge: @unchecked Sendable {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return (try? decoder.decode([URLHistoryEntry].self, from: data)) ?? []
+    }
+
+    /// One remembered clip, as stored in the shared look.db.
+    nonisolated struct ClipboardEntry: Decodable, Identifiable, Equatable {
+        let id: Int64
+        let content: String
+        let kind: String
+        let appBundleID: String?
+        let copiedAtUnixS: Int64
+
+        var copiedAt: Date { Date(timeIntervalSince1970: TimeInterval(copiedAtUnixS)) }
+    }
+
+    /// Remembers a clip and returns its row id, or nil when nothing was
+    /// stored. The id is the handle a later delete needs: without it, deleting
+    /// the clip would only drop the in-memory copy and it would return on the
+    /// next launch.
+    ///
+    /// NEVER call this for a concealed or transient clip: the core cannot see
+    /// pasteboard type markers, so this side is the only place a password
+    /// manager's clip can be kept out of the database.
+    /// Opens the shared look.db - call off the main thread.
+    @discardableResult
+    nonisolated func recordClipboard(content: String, kind: String = "text", appBundleID: String? = nil) -> Int64? {
+        let id = content.withCString { contentC in
+            kind.withCString { kindC in
+                if let appBundleID {
+                    return appBundleID.withCString { appC in
+                        look_clipboard_record(contentC, kindC, appC)
+                    }
+                }
+                return look_clipboard_record(contentC, kindC, nil)
+            }
+        }
+        return id > 0 ? id : nil
+    }
+
+    /// Up to `limit` remembered clips matching `query` (newest first). An empty
+    /// query returns the most recent. Opens look.db - call off the main thread.
+    nonisolated func clipboardEntries(query: String = "", limit: Int) -> [ClipboardEntry] {
+        let ptr = query.withCString { look_clipboard_list_json($0, UInt32(limit)) }
+        guard let ptr else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([ClipboardEntry].self, from: data)) ?? []
+    }
+
+    @discardableResult
+    nonisolated func deleteClipboardEntry(id: Int64) -> Bool {
+        look_clipboard_delete(id)
+    }
+
+    /// Forgets every clip, returning how many were removed.
+    @discardableResult
+    nonisolated func clearClipboardHistory() -> Int {
+        Int(look_clipboard_clear())
     }
 
     /// Quick Action descriptors for a result, from the shared `look_qactions`

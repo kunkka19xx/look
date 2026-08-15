@@ -910,6 +910,16 @@
     margin: 0;
 }
 
+.cmd-pomo-field-invalid {
+    animation: cmd-pomo-field-reject 0.4s ease;
+}
+
+@keyframes cmd-pomo-field-reject {
+    40% {
+        background: color-mix(in srgb, var(--color-danger) 28%, transparent);
+    }
+}
+
 .cmd-pomo-session-type-btn {
     font-size: calc(var(--font-size) - 2px);
     padding: 1px 6px;
