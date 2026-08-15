@@ -46,7 +46,7 @@ function loadConfig() {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         }
-    } catch { }
+    } catch {}
     return DEFAULT_SESSIONS.map((s) => ({ ...s }));
 }
 
@@ -54,7 +54,7 @@ function saveConfig() {
     try {
         localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(sessions));
         localStorage.setItem(STORAGE_KEY_STYLE, timerStyle);
-    } catch { }
+    } catch {}
 }
 
 function loadStyle() {
