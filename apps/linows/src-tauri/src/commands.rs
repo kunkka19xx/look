@@ -3,6 +3,7 @@ use crate::platform::linux::host_command;
 use crate::state::AppState;
 use look_engine::config::RuntimeConfig;
 use serde::Serialize;
+use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, State};
@@ -402,10 +403,12 @@ pub fn hide_armed(window: &tauri::WebviewWindow) {
 
 /// The frontend has painted the armed frame; the window can go now. Keyed on
 /// `arm` so a late confirmation can't hide a window a later dismiss just armed.
+/// `NonZeroU64` keeps the idle sentinel out of the compare: a payload of 0 is
+/// rejected while deserializing, never as a match against an idle `PENDING_HIDE`.
 #[tauri::command]
-pub fn confirm_hide(window: tauri::WebviewWindow, arm: u64) {
+pub fn confirm_hide(window: tauri::WebviewWindow, arm: NonZeroU64) {
     if PENDING_HIDE
-        .compare_exchange(arm, 0, Ordering::Relaxed, Ordering::Relaxed)
+        .compare_exchange(arm.get(), 0, Ordering::Relaxed, Ordering::Relaxed)
         .is_ok()
     {
         let _ = window.hide();
