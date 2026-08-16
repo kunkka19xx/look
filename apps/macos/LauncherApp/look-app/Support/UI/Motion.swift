@@ -76,6 +76,33 @@ enum Motion {
         }
     }
 
+    /// A row landing in or leaving a list: a skipped folder, an extra scan
+    /// directory. Springs so an entry reads as placed rather than popped in.
+    enum Insert {
+        static let response: Double = 0.34
+        static let dampingFraction: Double = 0.82
+        /// Grown from, and collapsed back to, on the row's leading edge.
+        static let startScale: CGFloat = 0.9
+
+        static var animation: Animation {
+            .spring(response: response, dampingFraction: dampingFraction)
+        }
+
+        static var transition: AnyTransition {
+            .scale(scale: startScale, anchor: .leading).combined(with: .opacity)
+        }
+    }
+
+    /// Content changing in place rather than moving: the pomo panel dimming to
+    /// its idle state, a chosen path replacing the empty-state line.
+    enum Fade {
+        static let seconds: Double = 0.4
+
+        static var animation: Animation {
+            .easeInOut(duration: seconds)
+        }
+    }
+
     /// The whole panel arriving when the launcher opens. A content-layer effect
     /// on purpose: animating the window would mean touching the
     /// `makeKeyAndOrderFront` path the Cmd+Space cold-login bug lives in.

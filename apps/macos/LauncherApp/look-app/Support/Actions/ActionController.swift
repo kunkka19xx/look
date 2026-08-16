@@ -61,6 +61,33 @@ final class ActionController: ObservableObject {
         let candidates: [ActionCandidate]
     }
 
+    /// One openable thing in a picker: a meeting to join, a way to reach a
+    /// person. Everything the row needs, plus the URL that IS the action.
+    struct LinkOption: Identifiable, Equatable {
+        let id: String
+        let title: String
+        /// The line that says what this row will actually do.
+        let detail: String
+        let symbol: String
+        let url: String
+    }
+
+    /// A list of things to open, and which one the keyboard is on.
+    ///
+    /// Shared by `join` and `call` because both end the same way: the user
+    /// picks a row and a URL opens. Its own type rather than `PendingChoice` -
+    /// that one carries a tool call to re-propose, and neither of these is a
+    /// tool.
+    struct LinkPicker: Equatable {
+        let header: String
+        var options: [LinkOption]
+        var selected: Int
+
+        var selectedOption: LinkOption? {
+            options.indices.contains(selected) ? options[selected] : nil
+        }
+    }
+
     /// The file paths picked in the launcher, pushed by `LauncherView` as the
     /// picks change (this is a singleton with no view context). Picks survive
     /// the query changing to `>summarize`, which the row selection does not, so
@@ -82,6 +109,8 @@ final class ActionController: ObservableObject {
     /// leave half of itself behind with no way back.
     @Published private(set) var pendingSteps: [PlannedAction] = []
     @Published private(set) var pendingChoice: PendingChoice?
+    /// The rows a `join` or `call` turned up, or nil when nothing is pending.
+    @Published private(set) var linkPicker: LinkPicker?
     /// Receipts from the last confirmed plan, in the order they ran. Undo
     /// reverses them back to front.
     @Published private(set) var lastReceipts: [ActionReceipt] = []
@@ -110,6 +139,14 @@ final class ActionController: ObservableObject {
 
     /// A leftover disambiguation must not survive into an unrelated turn.
     func clearPendingChoice() { pendingChoice = nil }
+
+    /// Writers for the extensions that live in other files (see
+    /// `ActionController+Links.swift`). The properties stay `private(set)` so
+    /// nothing outside this controller can write them, and in Swift a private
+    /// setter is scoped to the FILE - an extension elsewhere cannot assign it,
+    /// only call through.
+    func setLinkPicker(_ picker: LinkPicker?) { linkPicker = picker }
+    func setFeedback(_ text: String) { feedback = text }
 
     /// A listing the user just saw becomes the referent set: "remove this
     /// event" right after "what's on this week?" targets what was listed.
@@ -275,6 +312,14 @@ final class ActionController: ObservableObject {
             isPlanning = false
             pendingSteps = []
             feedback = memoryFeedback
+        case .join(let name):
+            isPlanning = false
+            pendingSteps = []
+            feedback = presentJoinChoices(named: name)
+        case .call(let name, let modality):
+            isPlanning = false
+            pendingSteps = []
+            feedback = presentCallChoices(named: name, modality: modality)
         case .textOp(let label, let instruction):
             isPlanning = false
             pendingSteps = []
@@ -687,6 +732,7 @@ final class ActionController: ObservableObject {
         planGeneration += 1
         pendingSteps = []
         pendingChoice = nil
+        linkPicker = nil
         feedback = ""
         isPlanning = false
     }

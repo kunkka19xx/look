@@ -94,7 +94,7 @@ enum ShortcutDocs {
             items: [
                 ShortcutItem(keys: "Cmd+-", action: "Zoom out UI scale"),
                 ShortcutItem(keys: "Cmd+=", action: "Zoom in UI scale"),
-                ShortcutItem(keys: "Cmd+0", action: "Reset UI scale"),
+                ShortcutItem(keys: "Cmd+0", action: "Reset UI scale (opens the tenth session while the AI list is up)"),
             ]
         ),
         ShortcutSectionData(

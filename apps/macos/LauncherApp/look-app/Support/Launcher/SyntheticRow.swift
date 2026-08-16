@@ -11,6 +11,10 @@ enum SyntheticRow {
     case calc(raw: String)
     /// The planner-proposed action row in the main bar (Enter performs it).
     case aiAction(toolID: String)
+    /// "Join <meeting>" for a `join` query (Enter opens the conferencing link).
+    case meeting(url: String)
+    /// "Call <name>" for a `call` query (Enter opens FaceTime or Messages).
+    case call(url: String)
 
     static func classify(resultID: String) -> SyntheticRow? {
         if let toolID = AppConstants.Launcher.AIAction.toolID(fromResultID: resultID) {
@@ -30,6 +34,12 @@ enum SyntheticRow {
         }
         if let raw = AppConstants.Launcher.Calc.rawValue(fromResultID: resultID) {
             return .calc(raw: raw)
+        }
+        if let url = AppConstants.Launcher.Meeting.url(fromResultID: resultID) {
+            return .meeting(url: url)
+        }
+        if let url = AppConstants.Launcher.Call.url(fromResultID: resultID) {
+            return .call(url: url)
         }
         return nil
     }

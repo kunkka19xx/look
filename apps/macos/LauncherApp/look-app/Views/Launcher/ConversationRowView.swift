@@ -7,20 +7,13 @@ import SwiftUI
 struct ConversationRowView: View {
     let conversation: AIConversation
     let snippet: String
-    /// The ⌘-chip shown on the left ("⌘A"), empty past the mapped keys.
+    /// The ⌘-chip shown on the left ("⌘1"), empty past the mapped digits.
     let jumpKey: String
     let isSelected: Bool
     let themeStore: ThemeStore
     let namespace: Namespace.ID
     let onOpen: () -> Void
     let onDelete: () -> Void
-
-    /// Drives the one-shot zoom as this row takes the selection.
-    @State private var zoomed = false
-    /// Bumped on every zoom and on deselect, so a pending reset belonging to an
-    /// earlier zoom cannot cut short a newer one (arrow away and back fast).
-    @State private var zoomGeneration = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var fontSize: Double { themeStore.settings.fontSize }
 
@@ -33,7 +26,7 @@ struct ConversationRowView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
-                    Text(conversation.title)
+                    Text(conversation.displayTitle())
                         .font(themeStore.uiFont(size: CGFloat(fontSize - 1), weight: .medium))
                         .foregroundStyle(themeStore.fontColor())
                         .lineLimit(1)
@@ -59,7 +52,7 @@ struct ConversationRowView: View {
                     .foregroundStyle(themeStore.mutedTextColor().opacity(isSelected ? 0.9 : 0.35))
             }
             .buttonStyle(.plain)
-            .help("Delete conversation (⌘⌫)")
+            .help("Delete conversation (⌘D or ⌘⌫)")
         }
         .padding(.horizontal, 10)
         // Matches the results rows, so the pill is the same height in both lists.
@@ -70,33 +63,14 @@ struct ConversationRowView: View {
                 style: .continuous
             )
             .fill(themeStore.surfaceFill(0.55))
-            if isSelected {
-                SelectionPill(
-                    themeStore: themeStore,
-                    namespace: namespace,
-                    geometryID: Self.geometryID,
-                    zoomed: zoomed)
-            }
         }
+        .selectionPill(
+            isSelected: isSelected,
+            themeStore: themeStore,
+            namespace: namespace,
+            geometryID: Self.geometryID)
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpen)
-        // No `.animation(_:value:)` here: per-row it fires on every neighbour as
-        // the selection passes, flickering the whole list.
-        .onChange(of: isSelected) { _, selected in
-            guard selected else {
-                zoomGeneration &+= 1
-                zoomed = false
-                return
-            }
-            guard !reduceMotion else { return }
-            zoomGeneration &+= 1
-            let generation = zoomGeneration
-            withAnimation(Motion.Selection.zoomIn) { zoomed = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + Motion.Selection.zoomInSeconds) {
-                guard generation == zoomGeneration else { return }
-                withAnimation(Motion.Selection.zoomOut) { zoomed = false }
-            }
-        }
     }
 
     /// Its own pill id: the results list has its own, and one pill must never

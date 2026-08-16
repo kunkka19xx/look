@@ -3,9 +3,11 @@
 mod ai_api;
 mod answers_api;
 mod calc_api;
+mod calling_api;
 mod clipboard_api;
 mod lunar_api;
 mod matching_api;
+mod meeting_api;
 mod netspeed_api;
 mod qactions_api;
 mod runtime_config;
@@ -155,6 +157,69 @@ pub extern "C" fn look_todo_save_json(json: *const c_char) -> bool {
 pub extern "C" fn look_lunar_date_json(year: i64, month: i64, day: i64, tz: f64) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         lunar_api::look_lunar_date_json_impl(year, month, day, tz)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The call request in `query` (`{"name":"mom","modality":null}`), or the
+/// literal `null` for an ordinary search. Tier-1 grammar, cheap enough to call
+/// on every keystroke. Free the result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_call_query_json(query: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        calling_api::look_call_query_json_impl(query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The modality a bare "call" means (a `Modality` id). Free with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_call_default_modality() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        calling_api::look_call_default_modality_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The URL that dials `handle` with `modality` (a `Modality` id such as
+/// `face_time_audio`). Null when the modality is unknown. Free the result with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_call_url(modality: *const c_char, handle: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        calling_api::look_call_url_impl(modality, handle)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The join request in `query` (`{}` for a bare "join", `{"name": "..."}` when
+/// it names a meeting), or the literal `null` for an ordinary search. Tier-1
+/// grammar, cheap enough to call on every keystroke. Free the result with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_meeting_join_query_json(query: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        meeting_api::look_meeting_join_query_json_impl(query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// What a `join` found in the events the shell fetched.
+///
+/// `events_json` is an array of `{title, startUnixS, endUnixS, url?, location?,
+/// notes?, allDay?}`. `name` narrows to meetings whose title carries those
+/// words; pass an empty string for "whatever is next". Returns
+/// `{"meetings":[...],"withoutLink":[...]}`, the second list naming events that
+/// matched but carry no join link. Free the result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_meeting_outcome_json(
+    events_json: *const c_char,
+    now_epoch: i64,
+    name: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        meeting_api::look_meeting_outcome_json_impl(events_json, now_epoch, name)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

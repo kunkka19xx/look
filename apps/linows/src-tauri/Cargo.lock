@@ -2501,6 +2501,9 @@ dependencies = [
 [[package]]
 name = "look-matching"
 version = "0.1.0"
+dependencies = [
+ "unicode-normalization",
+]
 
 [[package]]
 name = "look-netspeed"
