@@ -21,8 +21,9 @@ Every item below keeps generation out of the execution path.
 ## 1. Predict what `/shell` will do, before it does it
 
 **The gap.** `/shell` is the one thing Look does that mutates anything, reaches
-the network, and asks nobody. Everything else destructive already previews and
-confirms (calendar tools, Empty Trash, file delete).
+the network, and asks nobody. Everything else destructive either previews and
+confirms (calendar tools, Empty Trash) or is recoverable by design (`Cmd+D`
+moves a file to the Trash unconfirmed, because the Trash is the undo).
 `LauncherView+CommandMode.runCommandModeAction` runs it on Enter with a single
 cue: a warning when the input contains `sudo`. That is a string match, not an
 understanding, and it says nothing about `rm -rf`, `curl | sh`, `> file`, or
@@ -30,8 +31,10 @@ understanding, and it says nothing about `rm -rf`, `curl | sh`, `> file`, or
 
 **What to take.** Substage's headline is a prediction that CATEGORISES an
 operation: what will be "created, changed, moved, deleted, or sent over the
-network". The network category is the one Look is uniquely entitled to, because
-"no network calls" is a promise Look already makes everywhere else.
+network". The network category earns its place because Look is otherwise
+precise about which features touch the network - web answers, suggestions, and
+the speed test do; local search, indexing, and the AI action tiers do not. A
+shell command is the one path where the user cannot tell which it is.
 
 **Design.** A `core/shell` crate: text in, ordered effects out. No model, no
 execution, fully testable.
@@ -64,7 +67,7 @@ Two rules that carry the whole feature:
   then `Deletes`, then `Network`. A user scanning one line meets the worst thing
   first.
 
-```
+```text
 Will run:  curl -fsSL https://get.example.sh | sh
   network  get.example.sh
   runs     whatever that host returns
@@ -95,7 +98,7 @@ Look.
 **Design.** A new rung on the ladder `TextOpSource.resolve` already implements,
 below the explicit ones so nothing changes for anyone using them:
 
-```
+```text
 @-mention  >  Cmd+P picks  >  frontmost Finder selection  >  clipboard
 ```
 
@@ -134,7 +137,7 @@ history holds clean prose with no stale filename in it.
 command is about to act on until after it runs. The whole of this item is one
 line in the composer:
 
-```
+```text
 summarize                    → report.pdf   (picked)
 ```
 
@@ -160,7 +163,7 @@ shipped with.
 `ai-action-contracts.md` already gives about memory: a weak planner must not be
 able to pollute durable state.
 
-```
+```text
 remember exports means ~/Work/exports
 remember convert means 1080p mp4
 ```

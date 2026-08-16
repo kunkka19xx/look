@@ -4,11 +4,6 @@ import UniformTypeIdentifiers
 
 struct LauncherRowView: View {
     @EnvironmentObject private var themeStore: ThemeStore
-    /// The shared selection zoom, published by `selectionPill` on the row
-    /// itself. The icon pops on the same beat as the pill without this view
-    /// keeping a second copy of the state.
-    @Environment(\.isSelectionZoomed) private var zoomed
-
     let result: LauncherResult
     let isSelected: Bool
     let isPicked: Bool
@@ -159,10 +154,7 @@ struct LauncherRowView: View {
                             .foregroundStyle(themeStore.selectionFillColor())
                             .frame(width: 14)
                     }
-                    Image(nsImage: rowIcon)
-                        .resizable()
-                        .frame(width: 22, height: 22)
-                        .scaleEffect(isSelected && zoomed ? Motion.Selection.iconZoomScale : 1)
+                    RowIcon(image: rowIcon, isSelected: isSelected)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(result.title)
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
@@ -198,5 +190,24 @@ struct LauncherRowView: View {
                 .padding(.horizontal, Layout.dividerInset)
                 .opacity(showsDivider ? 1 : 0)
         }
+    }
+}
+
+/// The row's icon, popping with the selection.
+///
+/// Its own view for a SwiftUI reason: `selectionPill` publishes the zoom into
+/// the environment of the content it wraps, and a view cannot read an
+/// environment value its OWN body sets. Read from `LauncherRowView` the value
+/// was always the default, so the icon never moved. A descendant sees it.
+private struct RowIcon: View {
+    @Environment(\.isSelectionZoomed) private var zoomed
+    let image: NSImage
+    let isSelected: Bool
+
+    var body: some View {
+        Image(nsImage: image)
+            .resizable()
+            .frame(width: 22, height: 22)
+            .scaleEffect(isSelected && zoomed ? Motion.Selection.iconZoomScale : 1)
     }
 }

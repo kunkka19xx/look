@@ -186,6 +186,10 @@ nonisolated final class EventKitService: @unchecked Sendable {
         }
     }
 
+    /// How many events a join looks at. Generous next to a real day, and a
+    /// bound on the JSON crossing the FFI.
+    private static let meetingFetchLimit = 60
+
     /// Events in a window, flattened for the meeting core: the three fields a
     /// join link hides in, plus what it takes to choose between them.
     ///
@@ -197,7 +201,10 @@ nonisolated final class EventKitService: @unchecked Sendable {
         guard calendarAccess == .authorized else { return [] }
         store.refreshSourcesIfNecessary()
         let predicate = store.predicateForEvents(withStart: from, end: to, calendars: nil)
-        return store.events(matching: predicate).map { event in
+        // Capped like `eventsSummary` and `eventCandidates`: this carries full
+        // `notes` bodies across the FFI, and a packed two-day window on a busy
+        // calendar is a lot of text to copy for one join.
+        return store.events(matching: predicate).prefix(Self.meetingFetchLimit).map { event in
             MeetingEventPayload(
                 title: event.title ?? "Untitled",
                 startUnixS: Int64(event.startDate.timeIntervalSince1970),

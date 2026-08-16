@@ -331,7 +331,11 @@ final class KeyboardSelectionMonitor {
             if event.keyCode == KeyCode.arrowUp || event.keyCode == KeyCode.arrowDown,
                 flags.contains(.option),
                 !flags.contains(.command),
-                !flags.contains(.control)
+                !flags.contains(.control),
+                // ⌥⇧↑/↓ extends the selection by paragraph in the composer.
+                // Claiming it here would replace the draft with a history entry
+                // while the user is trying to select text.
+                !flags.contains(.shift)
             {
                 let older = event.keyCode == KeyCode.arrowUp
                 if onRecallPrompt?(older) == true { return nil }

@@ -92,20 +92,27 @@ const VERBS: &[(&str, Option<Modality>)] = &[
     ("imessage", Some(Modality::Message)),
 ];
 
-/// Words after the verb that refine HOW, rather than naming anyone.
-const MODALITY_WORDS: &[(&str, Modality)] = &[
+/// Words after the verb that name a SERVICE. These always win: "facetime
+/// sarah with audio" asked for audio.
+const SERVICE_WORDS: &[(&str, Modality)] = &[
     ("facetime", Modality::FaceTimeVideo),
     ("video", Modality::FaceTimeVideo),
     ("audio", Modality::FaceTimeAudio),
     ("voice", Modality::FaceTimeAudio),
-    ("iphone", Modality::Phone),
-    ("phone", Modality::Phone),
-    ("mobile", Modality::Phone),
-    ("cell", Modality::Phone),
     ("message", Modality::Message),
     ("text", Modality::Message),
     ("imessage", Modality::Message),
     ("sms", Modality::Message),
+];
+
+/// Words that name a DEVICE rather than a service. They only decide when the
+/// verb did not: "message alex on iphone" is still a message, sent to his
+/// iPhone - reading it as a phone call contradicts the word the user typed.
+const DEVICE_WORDS: &[(&str, Modality)] = &[
+    ("iphone", Modality::Phone),
+    ("phone", Modality::Phone),
+    ("mobile", Modality::Phone),
+    ("cell", Modality::Phone),
 ];
 
 /// Words that carry neither a name nor a modality.
@@ -131,8 +138,16 @@ pub fn call_query(input: &str) -> Option<CallRequest> {
 
     let mut name_words: Vec<&str> = Vec::new();
     for word in words {
-        if let Some((_, refined)) = MODALITY_WORDS.iter().find(|(w, _)| *w == word) {
-            modality = Some(*refined);
+        if let Some((_, service)) = SERVICE_WORDS.iter().find(|(w, _)| *w == word) {
+            modality = Some(*service);
+            continue;
+        }
+        if let Some((_, device)) = DEVICE_WORDS.iter().find(|(w, _)| *w == word) {
+            // Only when nothing has been said yet, so a device never overrides
+            // the verb.
+            if modality.is_none() {
+                modality = Some(*device);
+            }
             continue;
         }
         if FILLER.contains(&word) {
@@ -207,6 +222,10 @@ mod tests {
             ("call mom on her mobile", Modality::Phone),
             ("facetime sarah with audio", Modality::FaceTimeAudio),
             ("call alex via sms", Modality::Message),
+            // The verb wins over a device qualifier: this is a message to a
+            // phone, not a phone call.
+            ("message alex on iphone", Modality::Message),
+            ("text mom on her mobile", Modality::Message),
         ] {
             let parsed = request(input);
             assert_eq!(parsed.modality, Some(expected), "for {input}");

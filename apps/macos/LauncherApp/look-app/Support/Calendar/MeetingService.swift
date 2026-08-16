@@ -75,10 +75,14 @@ nonisolated final class MeetingService: @unchecked Sendable {
         static let cacheTTL: TimeInterval = 5
     }
 
-    private let lock = NSLock()
-    private var cached = JoinOutcome()
-    private var cachedName = ""
-    private var cachedAt = Date.distantPast
+    /// The EventKit read, cached WITHOUT the name. Keying on the name meant
+    /// every keystroke inside "join stand|up" was a fresh key and so a fresh
+    /// synchronous EventKit fetch on the main thread, which is the one thing
+    /// the cache existed to prevent. The name filter is pure text and runs in
+    /// core, so it costs nothing to re-apply. The single key is the window, so
+    /// a fetch is shared by every query inside the TTL.
+    private let events = TimedCache<String, String?>(ttl: Metrics.cacheTTL)
+    private static let windowKey = "window"
 
     private init() {}
 
@@ -91,15 +95,23 @@ nonisolated final class MeetingService: @unchecked Sendable {
     /// on the name too, since typing "join st" then "join standup" asks two
     /// different questions inside one TTL.
     func outcome(name: String = "", now: Date = Date()) -> JoinOutcome {
-        lock.lock()
-        defer { lock.unlock() }
-        if name == cachedName, now.timeIntervalSince(cachedAt) < Metrics.cacheTTL {
-            return cached
+        guard let json = eventsJSON(now: now) else { return JoinOutcome() }
+        return EngineBridge.shared.joinOutcome(
+            eventsJSON: json, now: Int64(now.timeIntervalSince1970), name: name)
+    }
+
+    /// The window's events as JSON, refetched at most once per `cacheTTL`.
+    private func eventsJSON(now: Date) -> String? {
+        events.value(for: Self.windowKey, now: now) {
+            let payloads = EventKitService.shared.meetingEventPayloads(
+                from: now.addingTimeInterval(Metrics.lookbehind),
+                to: now.addingTimeInterval(Metrics.lookahead))
+            guard !payloads.isEmpty,
+                let data = try? JSONEncoder().encode(payloads),
+                let json = String(data: data, encoding: .utf8)
+            else { return nil }
+            return json
         }
-        cachedAt = now
-        cachedName = name
-        cached = fetchOutcome(name: name, now: now)
-        return cached
     }
 
     /// Every meeting that could be joined, best first.
@@ -113,24 +125,7 @@ nonisolated final class MeetingService: @unchecked Sendable {
     }
 
     /// Drop the cache, for when the calendar changed under us.
-    func invalidate() {
-        lock.lock()
-        defer { lock.unlock() }
-        cachedAt = .distantPast
-        cached = JoinOutcome()
-    }
-
-    private func fetchOutcome(name: String, now: Date) -> JoinOutcome {
-        let events = EventKitService.shared.meetingEventPayloads(
-            from: now.addingTimeInterval(Metrics.lookbehind),
-            to: now.addingTimeInterval(Metrics.lookahead))
-        guard !events.isEmpty else { return JoinOutcome() }
-        guard let json = try? JSONEncoder().encode(events),
-            let jsonString = String(data: json, encoding: .utf8)
-        else { return JoinOutcome() }
-        return EngineBridge.shared.joinOutcome(
-            eventsJSON: jsonString, now: Int64(now.timeIntervalSince1970), name: name)
-    }
+    func invalidate() { events.invalidate() }
 
     /// Opens the join link. The https form is deliberate: it reaches the
     /// desktop app through universal links when installed, and the browser when

@@ -9,7 +9,10 @@ nonisolated enum PathDisplay {
     /// rather than to `/Users/<name>`.
     static func abbreviated(_ path: String) -> String {
         let home = NSHomeDirectory()
-        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
+        // On the boundary, not the prefix: with a home of `/Users/alex`, a bare
+        // prefix test turns `/Users/alexander/notes` into `~ander/notes`.
+        guard path == home || (home != "/" && path.hasPrefix(home + "/")) else { return path }
+        return "~" + path.dropFirst(home.count)
     }
 
     /// The containing folder, abbreviated. Empty for a path with no parent.

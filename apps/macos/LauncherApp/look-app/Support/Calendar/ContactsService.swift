@@ -47,10 +47,9 @@ nonisolated final class ContactsService: @unchecked Sendable {
     }
 
     private let store = CNContactStore()
-    private let lock = NSLock()
-    private var cached: [ContactMatch] = []
-    private var cachedName = ""
-    private var cachedAt = Date.distantPast
+    /// Keyed on the name, because that IS the query here - unlike the meeting
+    /// window, a different name is a different lookup.
+    private let found = TimedCache<String, [ContactMatch]>(ttl: Metrics.cacheTTL)
 
     private init() {}
 
@@ -77,15 +76,7 @@ nonisolated final class ContactsService: @unchecked Sendable {
         guard access == .authorized, !name.trimmingCharacters(in: .whitespaces).isEmpty else {
             return []
         }
-        lock.lock()
-        defer { lock.unlock() }
-        if name == cachedName, now.timeIntervalSince(cachedAt) < Metrics.cacheTTL {
-            return cached
-        }
-        cachedAt = now
-        cachedName = name
-        cached = fetch(name: name)
-        return cached
+        return found.value(for: name, now: now) { fetch(name: name) }
     }
 
     private func fetch(name: String) -> [ContactMatch] {
