@@ -105,9 +105,8 @@ const SERVICE_WORDS: &[(&str, Modality)] = &[
     ("sms", Modality::Message),
 ];
 
-/// Words that name a DEVICE rather than a service. They only decide when the
-/// verb did not: "message alex on iphone" is still a message, sent to his
-/// iPhone - reading it as a phone call contradicts the word the user typed.
+/// Words naming a DEVICE. They only decide when the verb did not, so
+/// "message alex on iphone" stays a message.
 const DEVICE_WORDS: &[(&str, Modality)] = &[
     ("iphone", Modality::Phone),
     ("phone", Modality::Phone),
@@ -120,12 +119,9 @@ const FILLER: &[&str] = &[
     "my", "the", "a", "up", "on", "by", "via", "with", "to", "using", "please", "over",
 ];
 
-/// The call request in the typed text, or None when this is ordinary search.
-///
-/// Only the leading verb is fixed; everything after it is either a modality
-/// word or part of the name. A name is REQUIRED - a bare "call" asks for
-/// nobody - and a name that matches no contact shows nothing, which is what
-/// keeps "call stack" a file search.
+/// The call request in the typed text, or None for an ordinary search. A name
+/// is required, and one that matches no contact shows nothing, so "call stack"
+/// stays a file search.
 pub fn call_query(input: &str) -> Option<CallRequest> {
     let lower = input.trim().to_lowercase();
     let mut words = lower
@@ -143,8 +139,7 @@ pub fn call_query(input: &str) -> Option<CallRequest> {
             continue;
         }
         if let Some((_, device)) = DEVICE_WORDS.iter().find(|(w, _)| *w == word) {
-            // Only when nothing has been said yet, so a device never overrides
-            // the verb.
+            // Never overrides the verb.
             if modality.is_none() {
                 modality = Some(*device);
             }

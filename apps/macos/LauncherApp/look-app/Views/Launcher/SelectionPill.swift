@@ -38,15 +38,9 @@ struct SelectionPill: View {
     }
 }
 
-/// THE way a row shows selection: the shared pill, plus the one-shot zoom as
-/// the row takes it. Every keyboard-navigable list applies this, so the motion
-/// is the same wherever a selection moves.
-///
-/// A `ViewModifier` and not a helper function because the zoom needs `@State`,
-/// which an inline `ForEach` body cannot hold. That is why the conversation row
-/// had to become its own type, and why the lists that skipped that extraction
-/// (mentions, the join picker) ended up with a pill that glided but never
-/// zoomed. As a modifier, any row gets both.
+/// How a row shows selection: the shared pill plus the one-shot zoom. A
+/// `ViewModifier` because the zoom needs `@State`, which an inline `ForEach`
+/// body cannot hold.
 private struct SelectionPillModifier: ViewModifier {
     let isSelected: Bool
     let themeStore: ThemeStore
@@ -61,9 +55,7 @@ private struct SelectionPillModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            // Published downward so a row can join in - the results row pops
-            // its icon on the same beat - without keeping a second copy of the
-            // zoom state that could drift out of step with the pill.
+            // Published downward so a row's own content can move with it.
             .environment(\.isSelectionZoomed, zoomed)
             .background {
                 if isSelected {
@@ -99,9 +91,7 @@ private struct SelectionZoomedKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// True during the one-shot zoom of the row that just took the selection.
-    /// Set by `selectionPill`; read by anything inside the row that wants to
-    /// move with it.
+    /// True during the one-shot zoom of the newly selected row.
     var isSelectionZoomed: Bool {
         get { self[SelectionZoomedKey.self] }
         set { self[SelectionZoomedKey.self] = newValue }

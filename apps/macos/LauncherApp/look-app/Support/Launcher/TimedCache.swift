@@ -1,16 +1,10 @@
 import Foundation
 
-/// One value, held for a short while.
+/// One value, held for a short while, behind a lock.
 ///
-/// Exists because the launcher's pinned rows are COMPUTED properties: SwiftUI
-/// re-reads them on every view update, so anything expensive behind one (an
-/// EventKit fetch, a Contacts lookup) runs many times per keystroke without a
-/// cache. Two services hand-rolled the same lock, timestamp, and key check
-/// before this.
-///
-/// Deliberately not a general-purpose cache: one slot, one key, no eviction
-/// policy. The keyed slot is what makes it correct for a query that changes as
-/// the user types, since a new key is a miss rather than a stale hit.
+/// The launcher's pinned rows are computed properties SwiftUI re-reads on every
+/// update, so an EventKit or Contacts lookup behind one needs a cache. One slot,
+/// one key, no eviction: a new key is a miss, not a stale hit.
 nonisolated final class TimedCache<Key: Equatable, Value>: @unchecked Sendable {
     private let ttl: TimeInterval
     private let lock = NSLock()
@@ -22,10 +16,8 @@ nonisolated final class TimedCache<Key: Equatable, Value>: @unchecked Sendable {
         self.ttl = ttl
     }
 
-    /// The cached value for `key`, or `make()` if it is missing or stale.
-    ///
-    /// `make` runs while the lock is held: these callers are all on the main
-    /// actor, and letting two of them fetch at once would defeat the point.
+    /// The cached value for `key`, or `make()` when missing or stale. `make`
+    /// runs under the lock, so two callers cannot fetch at once.
     func value(for key: Key, now: Date = Date(), make: () -> Value) -> Value {
         lock.lock()
         defer { lock.unlock() }
@@ -39,7 +31,7 @@ nonisolated final class TimedCache<Key: Equatable, Value>: @unchecked Sendable {
         return fresh
     }
 
-    /// Drop what is held, for when the source changed underneath.
+    /// Drop what is held.
     func invalidate() {
         lock.lock()
         defer { lock.unlock() }

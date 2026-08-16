@@ -27,11 +27,17 @@ extension LauncherView {
         let wanted = request.modality ?? bridge.defaultCallModality
         let matches = ContactsService.shared.matches(name: request.name)
 
+        // Deduped by id, which is the URL: a number shared by two contacts (a
+        // family landline) would otherwise be two rows that do exactly the
+        // same thing, with the same id - and a duplicate id breaks row
+        // identity in the results list.
+        var seen = Set<String>()
         return matches.flatMap { match in
             match.handles
                 .filter { $0.modalityID == wanted }
                 .compactMap { handle in row(match: match, handle: handle) }
         }
+        .filter { seen.insert($0.id).inserted }
         .prefix(Copy.rowLimit)
         .enumerated()
         .map { index, result in

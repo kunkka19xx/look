@@ -60,10 +60,7 @@ nonisolated final class MeetingService: @unchecked Sendable {
     static let shared = MeetingService()
 
     private enum Metrics {
-        /// How far ahead to look for something to join. Two days, not twelve
-        /// hours: "my next meeting" on a Friday evening is Monday's, and a
-        /// window that quietly excludes tomorrow reads as the feature being
-        /// broken rather than as a policy.
+        /// Two days, so "my next meeting" on a Friday evening finds Monday's.
         static let lookahead: TimeInterval = 48 * 60 * 60
         /// A meeting that started a while ago is still joinable, so the window
         /// opens slightly behind now. Core drops anything already ended.
@@ -75,12 +72,8 @@ nonisolated final class MeetingService: @unchecked Sendable {
         static let cacheTTL: TimeInterval = 5
     }
 
-    /// The EventKit read, cached WITHOUT the name. Keying on the name meant
-    /// every keystroke inside "join stand|up" was a fresh key and so a fresh
-    /// synchronous EventKit fetch on the main thread, which is the one thing
-    /// the cache existed to prevent. The name filter is pure text and runs in
-    /// core, so it costs nothing to re-apply. The single key is the window, so
-    /// a fetch is shared by every query inside the TTL.
+    /// Keyed on the window, not the name: the name filter is pure text in
+    /// core, so every query inside the TTL shares one EventKit read.
     private let events = TimedCache<String, String?>(ttl: Metrics.cacheTTL)
     private static let windowKey = "window"
 

@@ -94,9 +94,8 @@ fn normalize(raw: &str) -> String {
     if lower.starts_with(HTTPS_PREFIX) {
         return decoded;
     }
-    // An invite is written by whoever sent it, and a join URL carries a token.
-    // Upgrading rather than passing `http://` through keeps the promise this
-    // type's own doc comment makes, and every provider here serves https.
+    // A join URL carries a token and an invite is attacker-written, so http
+    // is upgraded rather than opened.
     if lower.starts_with(HTTP_PREFIX) {
         return format!("{HTTPS_PREFIX}{}", &decoded[HTTP_PREFIX.len()..]);
     }
@@ -118,10 +117,8 @@ fn patterns() -> &'static [(Provider, Regex)] {
     static PATTERNS: LazyLock<Vec<(Provider, Regex)>> = LazyLock::new(|| {
         let compile = |source: &str| Regex::new(source).expect("valid");
         vec![
-            // `/l/meetup-join/` is the join link; `/meet/` is the newer short
-            // form. Deliberately NOT `teams.microsoft.com/...` in general, which
-            // would match the "Meeting options" and "Learn more" links sitting
-            // right beside it in every invite.
+            // Join shapes only: a bare host would match the "Meeting options"
+            // and "Learn more" links beside it in every invite.
             (
                 Provider::Teams,
                 compile(&format!(

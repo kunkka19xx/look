@@ -174,11 +174,8 @@ struct LauncherRowView: View {
             }
             .buttonStyle(.plain)
             .focusable(false)
-            // One pill shared across rows via matchedGeometryEffect. It glides
-            // when the selection change is wrapped in `Motion.Selection.glide`
-            // (keyboard nav) and snaps otherwise (click, results refresh). The
-            // modifier also owns the one-shot zoom, so this list and every
-            // other one move identically.
+            // Glides when the change is wrapped in `Motion.Selection.glide`
+            // (keyboard nav), snaps otherwise (click, refresh).
             .selectionPill(
                 isSelected: isSelected,
                 themeStore: themeStore,
@@ -195,10 +192,8 @@ struct LauncherRowView: View {
 
 /// The row's icon, popping with the selection.
 ///
-/// Its own view for a SwiftUI reason: `selectionPill` publishes the zoom into
-/// the environment of the content it wraps, and a view cannot read an
-/// environment value its OWN body sets. Read from `LauncherRowView` the value
-/// was always the default, so the icon never moved. A descendant sees it.
+/// Its own view because a view cannot read an environment value its own body
+/// sets, and `selectionPill` publishes the zoom from inside `LauncherRowView`.
 private struct RowIcon: View {
     @Environment(\.isSelectionZoomed) private var zoomed
     let image: NSImage

@@ -52,6 +52,8 @@ struct PermissionsRow: View {
 
     @State private var states: [PermissionItem.Capability: CalendarAccess] = [:]
     @State private var isGranting = false
+    /// Shown when a settings deep link fails, so the row never looks inert.
+    @State private var problem: String?
 
     private func state(_ item: PermissionItem) -> CalendarAccess {
         states[item.id, default: .notDetermined]
@@ -93,6 +95,13 @@ struct PermissionsRow: View {
                     .padding(.vertical, 5)
                     .background(themeStore.controlFillColor(), in: Capsule())
                     .help("Ask for each remaining permission in turn")
+            }
+
+            if let problem {
+                Text(problem)
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                    .foregroundStyle(themeStore.dangerColor())
+                    .lineLimit(1)
             }
 
             Spacer(minLength: 0)
@@ -163,10 +172,23 @@ struct PermissionsRow: View {
         ]
     }
 
+    /// Opens a Privacy pane. The modern identifier first - verified on macOS
+    /// 26, where `SecurityPrivacyExtension.appex` declares
+    /// `com.apple.settings.PrivacySecurity.extension` - with the legacy id as a
+    /// fallback for older releases that still answer to it. A silent no-op
+    /// would leave a button that looks broken, so a total failure says so.
     private func openSettings(pane: String) {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")
-        else { return }
-        NSWorkspace.shared.open(url)
+        let candidates = [
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?\(pane)",
+            "x-apple.systempreferences:com.apple.preference.security?\(pane)",
+        ]
+        for candidate in candidates {
+            if let url = URL(string: candidate), NSWorkspace.shared.open(url) {
+                problem = nil
+                return
+            }
+        }
+        problem = "Could not open System Settings. Privacy & Security > \(pane)."
     }
 }
 

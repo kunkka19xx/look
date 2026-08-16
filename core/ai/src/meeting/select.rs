@@ -66,12 +66,8 @@ pub fn next_joinable(
         .next()
 }
 
-/// What a `join` request found: the meetings it can open, plus the ones it
-/// matched by name and could NOT open.
-///
-/// The second list is why this is not just a `Vec`. "No meeting matching
-/// Testing" is a lie when a meeting called Testing is sitting right there
-/// without a link - the honest answer names it and says what is missing.
+/// What a `join` found: the meetings it can open, and the ones it matched by
+/// name that carry no link, so the shell can name what is missing.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JoinOutcome {
@@ -139,13 +135,9 @@ pub fn join_outcome(events: &[EventInput], now_unix_s: i64, name: Option<&str>) 
     }
 }
 
-/// Whether an event title answers to `name`: every word of the name appears in
-/// it. Word containment, not fuzzy scoring - a meeting is opened, not searched,
-/// so a near-miss that opens the WRONG call is worse than no row at all.
-///
-/// Folded through the same normalization the file search uses, or `join hop`
-/// would miss a meeting called `Họp` that `hop` finds everywhere else in the
-/// app.
+/// Whether an event title answers to `name`. Containment, not fuzzy scoring: a
+/// near-miss opens the wrong call. Folded like the file search, so `hop` finds
+/// `Họp`.
 fn title_matches(title: &str, name: Option<&str>) -> bool {
     let Some(name) = name else { return true };
     let title = look_matching::normalize_for_search(title);

@@ -37,18 +37,15 @@ nonisolated final class ContactsService: @unchecked Sendable {
     static let shared = ContactsService()
 
     private enum Metrics {
-        /// Enough to fill a picker without turning a common first name into a
-        /// wall. Beyond this the user should type more of the name.
+        /// Enough for a picker; past this, type more of the name.
         static let matchLimit = 8
-        /// Mirrors `MeetingService`: the launcher's call row is a computed
-        /// property, so an uncached lookup would hit Contacts several times per
-        /// keystroke.
+        /// The call row is a computed property; without this, several lookups
+        /// per keystroke.
         static let cacheTTL: TimeInterval = 5
     }
 
     private let store = CNContactStore()
-    /// Keyed on the name, because that IS the query here - unlike the meeting
-    /// window, a different name is a different lookup.
+    /// Keyed on the name: a different name is a different lookup.
     private let found = TimedCache<String, [ContactMatch]>(ttl: Metrics.cacheTTL)
 
     private init() {}
