@@ -61,6 +61,18 @@ final class ActionController: ObservableObject {
         let candidates: [ActionCandidate]
     }
 
+    /// The joinable meetings offered for a `join` request, and which one the
+    /// keyboard is on. Its own type rather than `PendingChoice`: that one
+    /// carries a tool call to re-propose, and joining is not a tool.
+    struct MeetingChoice: Equatable {
+        var candidates: [JoinableMeeting]
+        var selected: Int
+
+        var selectedMeeting: JoinableMeeting? {
+            candidates.indices.contains(selected) ? candidates[selected] : nil
+        }
+    }
+
     /// The file paths picked in the launcher, pushed by `LauncherView` as the
     /// picks change (this is a singleton with no view context). Picks survive
     /// the query changing to `>summarize`, which the row selection does not, so
@@ -82,6 +94,8 @@ final class ActionController: ObservableObject {
     /// leave half of itself behind with no way back.
     @Published private(set) var pendingSteps: [PlannedAction] = []
     @Published private(set) var pendingChoice: PendingChoice?
+    /// The meetings a `join` request turned up, or nil when none is pending.
+    @Published private(set) var meetingChoice: MeetingChoice?
     /// Receipts from the last confirmed plan, in the order they ran. Undo
     /// reverses them back to front.
     @Published private(set) var lastReceipts: [ActionReceipt] = []
@@ -275,6 +289,10 @@ final class ActionController: ObservableObject {
             isPlanning = false
             pendingSteps = []
             feedback = memoryFeedback
+        case .join(let name):
+            isPlanning = false
+            pendingSteps = []
+            feedback = presentJoinChoices(named: name)
         case .textOp(let label, let instruction):
             isPlanning = false
             pendingSteps = []
@@ -307,6 +325,120 @@ final class ActionController: ObservableObject {
             chat.askChat(query, attachments: attachments)
         }
     }
+
+    /// Puts the joinable meetings on screen for the user to pick from.
+    ///
+    /// It LISTS rather than joining outright, even when there is only one
+    /// candidate: "join" resolves to a specific meeting at a specific time, and
+    /// opening it before the user has seen which one gives them no way to
+    /// notice it picked the wrong thing. Returns feedback only when there is
+    /// nothing to show.
+    private func presentJoinChoices(named name: String?) -> String {
+        // Without access the calendar reads as empty, which downstream is
+        // indistinguishable from "you have no meetings" - and saying that when
+        // Look simply cannot see them sends the user hunting for the wrong
+        // problem. Settle access FIRST, and say so in its own words.
+        switch EventKitService.shared.calendarAccess {
+        case .authorized:
+            break
+        case .notDetermined:
+            // A TCC prompt is one-shot, so it belongs at the moment the user
+            // asked for something that needs it, not at launch.
+            Task {
+                await EventKitService.shared.requestCalendarAccess()
+                feedback = presentJoinChoices(named: name)
+            }
+            return ""
+        // Write-only can add events but cannot READ them, so there is nothing
+        // to join with it either.
+        case .writeOnly, .denied, .restricted:
+            meetingChoice = nil
+            return Self.noCalendarAccess
+        }
+
+        let wanted = name ?? ""
+        let outcome = MeetingService.shared.outcome(name: wanted)
+        guard !outcome.meetings.isEmpty else {
+            meetingChoice = nil
+            return Self.nothingToJoin(wanted: wanted, withoutLink: outcome.withoutLink)
+        }
+        meetingChoice = MeetingChoice(candidates: outcome.meetings, selected: 0)
+        return ""
+    }
+
+    /// Names the actual blocker and where to fix it. Not "no meetings": Look
+    /// has not looked.
+    private static let noCalendarAccess =
+        "Look has no calendar access, so it cannot see your meetings. "
+        + "Grant it in Settings (\u{2318}\u{21E7},) under Permissions."
+
+    /// Why there was nothing to open. A meeting that IS on the calendar but
+    /// carries no conferencing link gets named: "no meeting matching Testing"
+    /// reads as "you have no such meeting", which is a different, wrong
+    /// problem to go looking for.
+    private static func nothingToJoin(wanted: String, withoutLink: [String]) -> String {
+        let where_ = "Add a Zoom, Teams, or Meet link to its URL, location, or notes."
+        switch withoutLink.count {
+        case 0:
+            guard !wanted.isEmpty else { return "No meeting to join in the next two days." }
+            return "No meeting matching \u{201C}\(wanted)\u{201D} in the next two days."
+        case 1:
+            return "\u{201C}\(withoutLink[0])\u{201D} has no meeting link. \(where_)"
+        default:
+            let named = withoutLink.map { "\u{201C}\($0)\u{201D}" }.joined(separator: ", ")
+            return "No join link on \(named). \(where_)"
+        }
+    }
+
+    /// Opens the highlighted meeting. No confirm step beyond this and no undo,
+    /// unlike the calendar tools: the row the user just read IS the
+    /// confirmation, and opening a link reverses nothing.
+    ///
+    /// Returns whether the link opened, so the caller can put the launcher
+    /// away. Success leaves NO feedback behind: the meeting is on screen by
+    /// then, and a sticky "Joining ..." bar would sit on the panel forever
+    /// (it also blocks the sessions list, which reads feedback as "busy").
+    /// A failure is the one case worth leaving up to read.
+    @discardableResult
+    func joinSelectedMeeting() -> Bool {
+        guard let choice = meetingChoice, let meeting = choice.selectedMeeting else { return false }
+        meetingChoice = nil
+        guard MeetingService.shared.join(meeting) else {
+            feedback = "Could not open the \(meeting.providerLabel) link for \(meeting.title)."
+            return false
+        }
+        feedback = ""
+        return true
+    }
+
+    /// Tab / arrows roll the meeting list. Returns false when no list is up, so
+    /// the key falls through to whatever else the panel is showing.
+    @discardableResult
+    func moveMeetingSelection(forward: Bool) -> Bool {
+        guard var choice = meetingChoice, !choice.candidates.isEmpty else { return false }
+        let count = choice.candidates.count
+        choice.selected =
+            forward
+            ? (choice.selected >= count - 1 ? 0 : choice.selected + 1)
+            : (choice.selected <= 0 ? count - 1 : choice.selected - 1)
+        meetingChoice = choice
+        return true
+    }
+
+    /// Moves the highlight to a 1-based position, matching what the rows show.
+    /// Returns false when the number names no row, so a typed "7" with three
+    /// meetings listed stays an ordinary message rather than doing nothing.
+    @discardableResult
+    func selectMeeting(number: Int) -> Bool {
+        guard var choice = meetingChoice, number >= 1, number <= choice.candidates.count else {
+            return false
+        }
+        choice.selected = number - 1
+        meetingChoice = choice
+        return true
+    }
+
+    func clearMeetingChoice() { meetingChoice = nil }
 
     /// The model turn of the ladder. The message joins the transcript NOW; the
     /// planner round-trip ("is this an action?") happens under the Thinking
@@ -687,6 +819,7 @@ final class ActionController: ObservableObject {
         planGeneration += 1
         pendingSteps = []
         pendingChoice = nil
+        meetingChoice = nil
         feedback = ""
         isPlanning = false
     }

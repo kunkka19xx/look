@@ -42,7 +42,7 @@ Two deliberate exceptions:
 ONE ladder, shared by every shell so precedence cannot drift:
 
 ```text
-memory -> textop -> files -> explicit -> plan -> chat
+memory -> join -> textop -> files -> explicit -> plan -> chat
 ```
 
 Deterministic tiers run first, most precise first. `plan` appears only when a
@@ -50,6 +50,13 @@ capable model is configured; otherwise the ladder ends at `chat`. The shell
 calls `look_ai_route(memory_path, input, model_available, now)` and switches on
 the returned decision. The memory tier has already executed when it answers
 (it is the handler, not a preview).
+
+`join` sits above the planner for a concrete reason: asked to plan "join the
+standup", a 7B model proposes ADDING an event called "the standup", so a
+meeting that already exists turns into a confirm bar for a duplicate. The tier
+is a fixed grammar (`meeting::join_query`), needs no model, and hands the shell
+the meeting name to resolve against the calendar - the shell owns that, since
+the calendar store is platform code.
 
 ## 2. The planner wire format (`core/ai/src/plan.rs`, `planner.rs`)
 

@@ -4,6 +4,10 @@ import UniformTypeIdentifiers
 
 struct LauncherRowView: View {
     @EnvironmentObject private var themeStore: ThemeStore
+    /// The shared selection zoom, published by `selectionPill` on the row
+    /// itself. The icon pops on the same beat as the pill without this view
+    /// keeping a second copy of the state.
+    @Environment(\.isSelectionZoomed) private var zoomed
 
     let result: LauncherResult
     let isSelected: Bool
@@ -21,29 +25,6 @@ struct LauncherRowView: View {
         static let dividerHeight: CGFloat = 1
         static let dividerInset: CGFloat = 6
         static let dividerOpacity: Double = 0.8
-    }
-
-    /// Drives the one-shot zoom as this row takes the selection.
-    @State private var zoomed = false
-    /// Bumped on every zoom and on deselect, so a pending reset that belongs to
-    /// an earlier zoom cannot cut short a newer one. Reachable by arrowing away
-    /// and back inside `zoomInSeconds`.
-    @State private var zoomGeneration = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private func zoom() {
-        guard !reduceMotion else { return }
-        zoomGeneration &+= 1
-        let generation = zoomGeneration
-        withAnimation(Motion.Selection.zoomIn) {
-            zoomed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Motion.Selection.zoomInSeconds) {
-            guard zoomGeneration == generation else { return }
-            withAnimation(Motion.Selection.zoomOut) {
-                zoomed = false
-            }
-        }
     }
 
     /// Hidden under the selection pill and after the final row. The row keeps
@@ -195,30 +176,15 @@ struct LauncherRowView: View {
             }
             .buttonStyle(.plain)
             .focusable(false)
-            .background {
-                // One pill shared across rows via matchedGeometryEffect. It
-                // glides when the selection change is wrapped in
-                // `Motion.Selection.glide` (keyboard nav) and snaps otherwise
-                // (click, results refresh).
-                if isSelected {
-                    SelectionPill(
-                        themeStore: themeStore,
-                        namespace: selectionNamespace,
-                        zoomed: zoomed)
-                }
-            }
-            // Deliberately no `.animation(_:value:)` in this row: per-row it
-            // fires on every neighbour as the selection passes, flickering the
-            // whole list. Clearing on deselect covers LazyVStack recycling,
-            // where a view can arrive holding a previous row's `zoomed`.
-            .onChange(of: isSelected) { _, selected in
-                guard selected else {
-                    zoomGeneration &+= 1
-                    zoomed = false
-                    return
-                }
-                zoom()
-            }
+            // One pill shared across rows via matchedGeometryEffect. It glides
+            // when the selection change is wrapped in `Motion.Selection.glide`
+            // (keyboard nav) and snaps otherwise (click, results refresh). The
+            // modifier also owns the one-shot zoom, so this list and every
+            // other one move identically.
+            .selectionPill(
+                isSelected: isSelected,
+                themeStore: themeStore,
+                namespace: selectionNamespace)
 
             Rectangle()
                 .fill(themeStore.dividerColor().opacity(Layout.dividerOpacity))

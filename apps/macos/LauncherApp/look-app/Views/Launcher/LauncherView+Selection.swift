@@ -32,6 +32,18 @@ extension LauncherView {
             return
         }
 
+        // The join picker owns Tab while it is up: it is the only thing on the
+        // panel, and Enter is about to open one of its rows. Wrapped in the
+        // shared curve, like every other list, or its pill would jump while the
+        // rest glide.
+        if direction == .down || direction == .up {
+            var moved = false
+            withAnimation(Motion.Selection.glide) {
+                moved = actionController.moveMeetingSelection(forward: direction == .down)
+            }
+            if moved { return }
+        }
+
         // Sessions list: Tab/Shift-Tab and ↑/↓ move the highlight over
         // [-1 = new chat, 0..<count = sessions]. Enter opens the highlighted
         // session, or starts a new chat when nothing is highlighted (-1).
@@ -319,7 +331,9 @@ extension LauncherView {
                 // Esc ladder: a pending confirm cancels first (keep composing);
                 // an open chat saves and drops to the sessions list (stay in AI
                 // mode); the sessions list leaves AI mode for home.
-                if actionController.isPresenting || actionController.awaitingChoice {
+                if actionController.isPresenting || actionController.awaitingChoice
+                    || actionController.meetingChoice != nil
+                {
                     actionController.cancel()
                 } else if !chat.sessionItems.isEmpty {
                     chat.endSession()

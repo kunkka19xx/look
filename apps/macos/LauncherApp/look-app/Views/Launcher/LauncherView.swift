@@ -50,6 +50,8 @@ struct LauncherView: View {
     /// Its own namespace, not the session one: two lists sharing an id would
     /// make the pill try to fly between them.
     @Namespace var mentionSelectionNamespace
+    /// Ditto for the join picker.
+    @Namespace var meetingSelectionNamespace
     /// Highlight in the sessions list. `-1` = no selection (Enter starts a new
     /// chat); `0..<count` = a session (Enter opens it). Tab/↑↓ move it; typing
     /// resets to -1 so a new chat stays one Enter away.
@@ -1366,6 +1368,7 @@ struct LauncherView: View {
             && chat.sessionItems.isEmpty
             && !actionController.isPresenting
             && actionController.pendingChoice == nil
+            && actionController.meetingChoice == nil
             && actionController.feedback.isEmpty
     }
 
@@ -1525,6 +1528,75 @@ struct LauncherView: View {
         .accessibilityHidden(true)
     }
 
+    /// The meetings a `join` turned up. It always lists, even for a single
+    /// candidate: the point is to see WHICH meeting and WHEN before a link
+    /// opens. Tab/arrows move, Enter joins, a number picks directly.
+    @ViewBuilder
+    private func meetingChoiceList(_ choice: ActionController.MeetingChoice) -> some View {
+        let fontSize = themeStore.settings.fontSize
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Join which?  ·  Tab to move  ·  Enter joins  ·  Esc cancels")
+                .font(themeStore.uiFont(size: CGFloat(fontSize - 3), weight: .semibold))
+                .foregroundStyle(themeStore.mutedTextColor())
+
+            ForEach(Array(choice.candidates.enumerated()), id: \.element.url) { index, meeting in
+                Button {
+                    actionController.selectMeeting(number: index + 1)
+                    joinHighlightedMeeting()
+                } label: {
+                    HStack(spacing: 10) {
+                        Text("\(index + 1)")
+                            .font(themeStore.uiFont(size: CGFloat(fontSize - 2), weight: .semibold))
+                            .foregroundStyle(themeStore.accentColor())
+                            .frame(minWidth: 14, alignment: .leading)
+                        Image(systemName: "video.fill")
+                            .font(.system(size: CGFloat(fontSize - 3)))
+                            .foregroundStyle(themeStore.accentColor())
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(meeting.title)
+                                .font(themeStore.uiFont(size: CGFloat(fontSize - 1), weight: .medium))
+                                .foregroundStyle(themeStore.fontColor())
+                                .lineLimit(1)
+                            // What the row is actually promising: which service,
+                            // and when. Joining without seeing this is what the
+                            // first version got wrong.
+                            Text(Self.meetingSubtitle(meeting))
+                                .font(themeStore.uiFont(size: CGFloat(fontSize - 3), weight: .regular))
+                                .foregroundStyle(themeStore.mutedTextColor())
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background {
+                        RoundedRectangle(cornerRadius: SelectionPill.Metrics.cornerRadius, style: .continuous)
+                            .fill(themeStore.surfaceFill(0.55))
+                    }
+                    .selectionPill(
+                        isSelected: index == choice.selected,
+                        themeStore: themeStore,
+                        namespace: meetingSelectionNamespace,
+                        geometryID: Self.meetingPillID)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    /// "Google Meet  ·  tomorrow 14:30  ·  meet.google.com" - service, time, and
+    /// the host the link will actually open.
+    private static func meetingSubtitle(_ meeting: JoinableMeeting) -> String {
+        var parts = [meeting.providerLabel, meetingTiming(meeting)]
+        if let host = URL(string: meeting.url)?.host { parts.append(host) }
+        return parts.joined(separator: "  ·  ")
+    }
+
+    /// Its own pill id: two lists must never share one, or the pill flies
+    /// between them.
+    static let meetingPillID = "look.meeting.pill"
+
     private var aiSessionPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Inside the panel rather than in the gap above it: floating in the
@@ -1568,6 +1640,8 @@ struct LauncherView: View {
                                 }
                             }
                             .padding(.horizontal, 4)
+                        } else if let choice = actionController.meetingChoice {
+                            meetingChoiceList(choice)
                         } else if !actionController.pendingSteps.isEmpty {
                             PendingActionBar(
                                 steps: actionController.pendingSteps,

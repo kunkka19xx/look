@@ -248,17 +248,13 @@ extension LauncherView {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
-                    .background {
-                        // THE pill, moved between rows by matchedGeometryEffect
-                        // rather than redrawn per row, so Tab glides it the way
-                        // the results and session lists do.
-                        if index == mentionHighlight {
-                            SelectionPill(
-                                themeStore: themeStore,
-                                namespace: mentionSelectionNamespace,
-                                geometryID: Self.mentionPillID)
-                        }
-                    }
+                    // The shared pill and zoom, so Tab here moves exactly as it
+                    // does in the results and session lists.
+                    .selectionPill(
+                        isSelected: index == mentionHighlight,
+                        themeStore: themeStore,
+                        namespace: mentionSelectionNamespace,
+                        geometryID: Self.mentionPillID)
                 }
                 .buttonStyle(.plain)
             }

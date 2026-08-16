@@ -13,6 +13,20 @@ nonisolated struct MeetingEventPayload: Encodable {
     let allDay: Bool
 }
 
+/// What a `join` request turned up. Mirrors `look_ai::meeting::JoinOutcome`.
+nonisolated struct JoinOutcome: Decodable, Equatable {
+    var meetings: [JoinableMeeting] = []
+    /// Titles that matched the name but carry no join link, so the answer can
+    /// say which meeting is missing one rather than claiming none exists.
+    var withoutLink: [String] = []
+}
+
+/// A parsed `join ...` request. `name` is the words that were not filler, so
+/// "join testing" carries "testing" and a bare "join" carries nothing.
+nonisolated struct JoinRequest: Decodable, Equatable {
+    var name: String?
+}
+
 /// The meeting to join, as decided in core. Mirrors
 /// `look_ai::meeting::JoinableMeeting`.
 nonisolated struct JoinableMeeting: Decodable, Equatable {
@@ -46,10 +60,11 @@ nonisolated final class MeetingService: @unchecked Sendable {
     static let shared = MeetingService()
 
     private enum Metrics {
-        /// How far ahead to look for something to join. Long enough to answer
-        /// "my next meeting" during a quiet morning, short enough that the
-        /// fetch stays cheap on the launcher's open path.
-        static let lookahead: TimeInterval = 12 * 60 * 60
+        /// How far ahead to look for something to join. Two days, not twelve
+        /// hours: "my next meeting" on a Friday evening is Monday's, and a
+        /// window that quietly excludes tomorrow reads as the feature being
+        /// broken rather than as a policy.
+        static let lookahead: TimeInterval = 48 * 60 * 60
         /// A meeting that started a while ago is still joinable, so the window
         /// opens slightly behind now. Core drops anything already ended.
         static let lookbehind: TimeInterval = -60 * 60
@@ -61,23 +76,40 @@ nonisolated final class MeetingService: @unchecked Sendable {
     }
 
     private let lock = NSLock()
-    private var cached: JoinableMeeting?
+    private var cached = JoinOutcome()
+    private var cachedName = ""
     private var cachedAt = Date.distantPast
 
     private init() {}
 
-    /// The meeting to join right now, or nil when there is nothing to join.
-    /// Cached for `Metrics.cacheTTL`; the countdown in the subtitle is derived
-    /// from the meeting's own start time, so a cached answer is not a stale one.
-    func nextMeeting(now: Date = Date()) -> JoinableMeeting? {
+    /// What a `join` finds: the joinable meetings, best first, and the titles
+    /// that matched but carry no link. `name` narrows to meetings whose title
+    /// holds those words.
+    ///
+    /// Cached for `Metrics.cacheTTL`; the countdown shown is derived from each
+    /// meeting's own start time, so a cached answer is not a stale one. Keyed
+    /// on the name too, since typing "join st" then "join standup" asks two
+    /// different questions inside one TTL.
+    func outcome(name: String = "", now: Date = Date()) -> JoinOutcome {
         lock.lock()
         defer { lock.unlock() }
-        if now.timeIntervalSince(cachedAt) < Metrics.cacheTTL {
+        if name == cachedName, now.timeIntervalSince(cachedAt) < Metrics.cacheTTL {
             return cached
         }
         cachedAt = now
-        cached = fetchNextMeeting(now: now)
+        cachedName = name
+        cached = fetchOutcome(name: name, now: now)
         return cached
+    }
+
+    /// Every meeting that could be joined, best first.
+    func meetings(name: String = "", now: Date = Date()) -> [JoinableMeeting] {
+        outcome(name: name, now: now).meetings
+    }
+
+    /// The one a bare "join" would take: the head of the list.
+    func nextMeeting(name: String = "", now: Date = Date()) -> JoinableMeeting? {
+        meetings(name: name, now: now).first
     }
 
     /// Drop the cache, for when the calendar changed under us.
@@ -85,19 +117,19 @@ nonisolated final class MeetingService: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         cachedAt = .distantPast
-        cached = nil
+        cached = JoinOutcome()
     }
 
-    private func fetchNextMeeting(now: Date) -> JoinableMeeting? {
+    private func fetchOutcome(name: String, now: Date) -> JoinOutcome {
         let events = EventKitService.shared.meetingEventPayloads(
             from: now.addingTimeInterval(Metrics.lookbehind),
             to: now.addingTimeInterval(Metrics.lookahead))
-        guard !events.isEmpty else { return nil }
+        guard !events.isEmpty else { return JoinOutcome() }
         guard let json = try? JSONEncoder().encode(events),
             let jsonString = String(data: json, encoding: .utf8)
-        else { return nil }
-        return EngineBridge.shared.nextJoinableMeeting(
-            eventsJSON: jsonString, now: Int64(now.timeIntervalSince1970))
+        else { return JoinOutcome() }
+        return EngineBridge.shared.joinOutcome(
+            eventsJSON: jsonString, now: Int64(now.timeIntervalSince1970), name: name)
     }
 
     /// Opens the join link. The https form is deliberate: it reaches the

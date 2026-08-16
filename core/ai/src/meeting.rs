@@ -156,22 +156,74 @@ impl JoinableMeeting {
 /// A meeting already under way wins over one starting sooner-but-later, which
 /// is what "join my next meeting" means when you are five minutes late. Ended
 /// events, all-day entries, and anything without a join link are not
-/// candidates at all.
-pub fn next_joinable(events: &[EventInput], now_unix_s: i64) -> Option<JoinableMeeting> {
-    events
+/// candidates at all. With a `name`, only meetings whose title contains all of
+/// its words qualify, so "join standup" skips past the thing starting sooner.
+pub fn next_joinable(
+    events: &[EventInput],
+    now_unix_s: i64,
+    name: Option<&str>,
+) -> Option<JoinableMeeting> {
+    joinable_meetings(events, now_unix_s, name)
+        .into_iter()
+        .next()
+}
+
+/// What a `join` request found: the meetings it can open, plus the ones it
+/// matched by name and could NOT open.
+///
+/// The second list is why this is not just a `Vec`. "No meeting matching
+/// Testing" is a lie when a meeting called Testing is sitting right there
+/// without a link - the honest answer names it and says what is missing.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinOutcome {
+    pub meetings: Vec<JoinableMeeting>,
+    /// Titles that answered to the name but carry no join link, earliest
+    /// first, each named once.
+    pub without_link: Vec<String>,
+}
+
+/// Every meeting that could be joined, best first. A surface that asks the
+/// user to pick needs the whole list; `next_joinable` is the head of it, so
+/// the order the picker shows and the one a bare "join" takes cannot diverge.
+pub fn joinable_meetings(
+    events: &[EventInput],
+    now_unix_s: i64,
+    name: Option<&str>,
+) -> Vec<JoinableMeeting> {
+    join_outcome(events, now_unix_s, name).meetings
+}
+
+/// The joinable meetings and the near-misses, in one pass over the events.
+pub fn join_outcome(events: &[EventInput], now_unix_s: i64, name: Option<&str>) -> JoinOutcome {
+    let mut candidates: Vec<&EventInput> = events
         .iter()
         .filter(|event| !event.all_day && event.end_unix_s > now_unix_s)
-        .filter_map(|event| {
-            find_join_link(
-                event.url.as_deref(),
-                event.location.as_deref(),
-                event.notes.as_deref(),
-            )
-            .map(|link| (event, link))
-        })
-        // Everything in progress collapses to the same key, so the sort puts
-        // all of them ahead of anything upcoming; start time breaks the tie.
-        .min_by_key(|(event, _)| (event.start_unix_s.max(now_unix_s), event.start_unix_s))
+        .filter(|event| title_matches(&event.title, name))
+        .collect();
+    candidates.sort_by_key(|event| (event.start_unix_s.max(now_unix_s), event.start_unix_s));
+
+    let mut without_link: Vec<String> = Vec::new();
+    let mut found: Vec<(&EventInput, JoinLink)> = Vec::new();
+    for event in candidates {
+        match find_join_link(
+            event.url.as_deref(),
+            event.location.as_deref(),
+            event.notes.as_deref(),
+        ) {
+            Some(link) => found.push((event, link)),
+            None => {
+                if !without_link.contains(&event.title) {
+                    without_link.push(event.title.clone());
+                }
+            }
+        }
+    }
+
+    // The candidates were sorted before the link lookup, so both lists come out
+    // in the same order: anything in progress first, then by start time.
+    let meetings = found
+        .into_iter()
         .map(|(event, link)| JoinableMeeting {
             title: event.title.clone(),
             start_unix_s: event.start_unix_s,
@@ -182,34 +234,73 @@ pub fn next_joinable(events: &[EventInput], now_unix_s: i64) -> Option<JoinableM
             starts_in_s: event.start_unix_s - now_unix_s,
             in_progress: event.start_unix_s <= now_unix_s,
         })
+        .collect();
+    JoinOutcome {
+        meetings,
+        without_link,
+    }
 }
 
 /// The verb that opens a join request. Deliberately the only one: "open" and
 /// "start" are already spoken for by apps and files.
 const JOIN_VERB: &str = "join";
 
-/// Words allowed to follow `join` and still mean "my next meeting". Anything
-/// else makes it a search again, so "join two pdfs" stays a file query.
+/// Words that carry no meeting name of their own, so "join my next meeting"
+/// means "whatever is next". Everything else after the verb is read as the
+/// name of a meeting. Provider names count as filler ("join zoom" is not
+/// hunting for an event titled Zoom); ordinary words like "standup" do NOT,
+/// because that is exactly how people name their meetings.
 const JOIN_FILLER: &[&str] = &[
-    "meeting", "meetings", "call", "my", "the", "a", "next", "now", "up", "in", "current",
-    "standup", "zoom", "teams", "meet", "webex", "please",
+    "meeting", "meetings", "call", "my", "the", "a", "next", "now", "up", "in", "current", "zoom",
+    "teams", "meet", "webex", "please",
 ];
 
-/// Whether the typed text is asking to join a meeting.
+/// Whether an event title answers to `name`: every word of the name appears in
+/// it. Word containment, not fuzzy scoring - a meeting is opened, not searched,
+/// so a near-miss that opens the WRONG call is worse than no row at all.
+fn title_matches(title: &str, name: Option<&str>) -> bool {
+    let Some(name) = name else { return true };
+    let title = title.to_lowercase();
+    name.split_whitespace()
+        .all(|word| title.contains(&word.to_lowercase()))
+}
+
+/// A parsed join request: the words after `join` that were not filler, if any.
+/// `None` name means "whatever is next".
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinRequest {
+    /// Absent from the JSON when there is no name, so a bare "join" crosses the
+    /// boundary as `{}` rather than a null the shell has to special-case.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+/// The join request in the typed text, or None when this is an ordinary search.
 ///
-/// Tier 1: a fixed grammar, no model, cheap enough for every keystroke. It has
-/// to be strict because it competes with real search - the launcher must not
-/// swallow "join" as a verb when the user is looking for a file called Join.
-pub fn is_join_query(input: &str) -> bool {
+/// Tier 1: a fixed grammar, no model, cheap enough for every keystroke. Only
+/// the leading verb is fixed; the rest is either filler ("my next meeting") or
+/// the name of the meeting to join ("join standup"). Naming one is the shape
+/// people reach for first, and it is safe here because a name that matches no
+/// meeting produces no row at all, so "join two pdfs" still falls through to
+/// file search.
+pub fn join_query(input: &str) -> Option<JoinRequest> {
     let lower = input.trim().to_lowercase();
     let mut words = lower
         .split(|c: char| !c.is_alphanumeric())
         .filter(|word| !word.is_empty());
 
     if words.next() != Some(JOIN_VERB) {
-        return false;
+        return None;
     }
-    words.all(|word| JOIN_FILLER.contains(&word))
+    let name: Vec<&str> = words.filter(|word| !JOIN_FILLER.contains(word)).collect();
+    Some(JoinRequest {
+        name: if name.is_empty() {
+            None
+        } else {
+            Some(name.join(" "))
+        },
+    })
 }
 
 /// What a URL may still contain after its host. NOT `\S+`: an invite body is
@@ -499,7 +590,7 @@ Find your local number: https://us02web.zoom.us/u/kbXyZ1
             ),
             event("Design review", -10, 45, Some("https://meet.jit.si/design")),
         ];
-        let next = next_joinable(&events, NOW).expect("a meeting");
+        let next = next_joinable(&events, NOW, None).expect("a meeting");
         assert_eq!(next.title, "Design review");
         assert!(next.in_progress);
         assert_eq!(next.starts_in_s, -10 * MINUTE);
@@ -511,7 +602,7 @@ Find your local number: https://us02web.zoom.us/u/kbXyZ1
             event("Later", 90, 30, Some("https://meet.jit.si/later")),
             event("Sooner", 20, 30, Some("https://meet.jit.si/sooner")),
         ];
-        let next = next_joinable(&events, NOW).expect("a meeting");
+        let next = next_joinable(&events, NOW, None).expect("a meeting");
         assert_eq!(next.title, "Sooner");
         assert!(!next.in_progress);
         assert_eq!(next.starts_in_s, 20 * MINUTE);
@@ -520,7 +611,7 @@ Find your local number: https://us02web.zoom.us/u/kbXyZ1
     #[test]
     fn finished_events_are_not_candidates() {
         let events = [event("Over", -60, 30, Some("https://meet.jit.si/over"))];
-        assert_eq!(next_joinable(&events, NOW), None);
+        assert_eq!(next_joinable(&events, NOW, None), None);
     }
 
     #[test]
@@ -529,7 +620,7 @@ Find your local number: https://us02web.zoom.us/u/kbXyZ1
             event("Desk work", 5, 60, None),
             event("Sync", 30, 30, Some("https://meet.jit.si/sync")),
         ];
-        let next = next_joinable(&events, NOW).expect("a meeting");
+        let next = next_joinable(&events, NOW, None).expect("a meeting");
         assert_eq!(next.title, "Sync");
     }
 
@@ -541,7 +632,7 @@ Find your local number: https://us02web.zoom.us/u/kbXyZ1
             all_day,
             event("Standup", 10, 15, Some("https://meet.jit.si/standup")),
         ];
-        let next = next_joinable(&events, NOW).expect("a meeting");
+        let next = next_joinable(&events, NOW, None).expect("a meeting");
         assert_eq!(next.title, "Standup");
     }
 
@@ -550,6 +641,7 @@ Find your local number: https://us02web.zoom.us/u/kbXyZ1
         let soon = next_joinable(
             &[event("Soon", 10, 30, Some("https://meet.jit.si/soon"))],
             NOW,
+            None,
         )
         .expect("a meeting");
         assert!(soon.is_imminent());
@@ -557,6 +649,7 @@ Find your local number: https://us02web.zoom.us/u/kbXyZ1
         let later = next_joinable(
             &[event("Later", 40, 30, Some("https://meet.jit.si/later"))],
             NOW,
+            None,
         )
         .expect("a meeting");
         assert!(!later.is_imminent());
@@ -569,6 +662,7 @@ Find your local number: https://us02web.zoom.us/u/kbXyZ1
                 Some("https://meet.jit.si/running"),
             )],
             NOW,
+            None,
         )
         .expect("a meeting");
         assert!(running.is_imminent());
@@ -576,7 +670,7 @@ Find your local number: https://us02web.zoom.us/u/kbXyZ1
 
     #[test]
     fn an_empty_calendar_has_nothing_to_join() {
-        assert_eq!(next_joinable(&[], NOW), None);
+        assert_eq!(next_joinable(&[], NOW, None), None);
     }
 
     #[test]
@@ -593,36 +687,128 @@ Find your local number: https://us02web.zoom.us/u/kbXyZ1
             "join now",
             "join zoom",
             "join teams meeting",
-            "join the standup",
         ] {
-            assert!(is_join_query(phrasing), "expected a join query: {phrasing}");
+            assert_eq!(
+                join_query(phrasing),
+                Some(JoinRequest { name: None }),
+                "expected a nameless join query: {phrasing}"
+            );
         }
     }
 
     #[test]
-    fn a_search_that_merely_starts_with_join_is_not_a_join_query() {
-        for phrasing in [
-            "join two pdfs",
-            "join the tables in sql",
-            "joins",
-            "joint account",
-            "adjoin",
-            "join.pdf",
-            "rejoin meeting",
-            "",
+    fn the_words_after_join_name_a_meeting() {
+        for (phrasing, expected) in [
+            ("join testing", "testing"),
+            ("Join Testing", "testing"),
+            ("join the design review", "design review"),
+            ("join the standup", "standup"),
+            ("join my standup with sarah", "standup with sarah"),
+            // Punctuation splits like any other separator, and the pieces are
+            // matched against the title independently, so `1:1` still finds it.
+            ("join 1:1", "1 1"),
         ] {
-            assert!(
-                !is_join_query(phrasing),
+            assert_eq!(
+                join_query(phrasing),
+                Some(JoinRequest {
+                    name: Some(expected.to_string())
+                }),
+                "for {phrasing}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_search_that_does_not_start_with_join_is_never_a_join_query() {
+        // A NAME is allowed after the verb now, so the guard is the verb itself
+        // plus the fact that a name matching no meeting yields no row at all.
+        for phrasing in ["joins", "joint account", "adjoin", "rejoin meeting", ""] {
+            assert_eq!(
+                join_query(phrasing),
+                None,
                 "expected a plain search: {phrasing}"
             );
         }
     }
 
     #[test]
+    fn a_named_join_skips_the_sooner_meeting() {
+        let events = [
+            event("Sooner", 5, 30, Some("https://meet.jit.si/sooner")),
+            event("Design review", 60, 30, Some("https://meet.jit.si/design")),
+        ];
+        let named = next_joinable(&events, NOW, Some("design review")).expect("a meeting");
+        assert_eq!(named.title, "Design review");
+
+        // Matching is case- and order-insensitive over words, but every word
+        // has to appear.
+        assert!(next_joinable(&events, NOW, Some("REVIEW")).is_some());
+        assert_eq!(next_joinable(&events, NOW, Some("design retro")), None);
+    }
+
+    #[test]
+    fn the_list_holds_every_candidate_best_first() {
+        let events = [
+            event("Later", 90, 30, Some("https://meet.jit.si/later")),
+            event("No link", 5, 30, None),
+            event("Running", -5, 30, Some("https://meet.jit.si/running")),
+            event("Soon", 20, 30, Some("https://meet.jit.si/soon")),
+        ];
+        let listed = joinable_meetings(&events, NOW, None);
+        let titles: Vec<&str> = listed.iter().map(|m| m.title.as_str()).collect();
+        assert_eq!(titles, ["Running", "Soon", "Later"]);
+        // The head of the list is exactly what a bare "join" would take.
+        assert_eq!(
+            next_joinable(&events, NOW, None).map(|m| m.title),
+            Some("Running".to_string())
+        );
+    }
+
+    #[test]
+    fn a_matching_meeting_without_a_link_is_reported_by_name() {
+        // Two meetings called Testing, one with a link and one without: the
+        // list holds the joinable one and the outcome still names the other.
+        let events = [
+            event(
+                "Testing",
+                30,
+                60,
+                Some("https://meet.google.com/abc-defg-hij"),
+            ),
+            event("Testing", 300, 60, None),
+            event("Retro", 20, 30, None),
+        ];
+        let outcome = join_outcome(&events, NOW, Some("testing"));
+        assert_eq!(outcome.meetings.len(), 1);
+        assert_eq!(outcome.without_link, ["Testing"]);
+        // "Retro" did not answer to the name, so it is not a near-miss.
+        assert!(!outcome.without_link.contains(&"Retro".to_string()));
+    }
+
+    #[test]
+    fn near_misses_are_named_once_each() {
+        let events = [
+            event("Standup", 10, 30, None),
+            event("Standup", 60, 30, None),
+        ];
+        let outcome = join_outcome(&events, NOW, Some("standup"));
+        assert!(outcome.meetings.is_empty());
+        assert_eq!(outcome.without_link, ["Standup"]);
+    }
+
+    #[test]
+    fn a_name_that_matches_nothing_produces_no_row() {
+        // This is what keeps "join two pdfs" a file search: the words are read
+        // as a name, no meeting answers to it, and the launcher shows nothing.
+        let events = [event("Standup", 5, 30, Some("https://meet.jit.si/standup"))];
+        assert_eq!(next_joinable(&events, NOW, Some("two pdfs")), None);
+    }
+
+    #[test]
     fn the_link_is_found_in_notes_as_well_as_the_url_field() {
         let mut in_notes = event("Standup", 5, 15, None);
         in_notes.notes = Some(ZOOM_NOTES.to_string());
-        let next = next_joinable(&[in_notes], NOW).expect("a meeting");
+        let next = next_joinable(&[in_notes], NOW, None).expect("a meeting");
         assert_eq!(next.provider, Provider::Zoom);
         assert_eq!(next.provider_label, "Zoom");
     }

@@ -108,13 +108,13 @@ private func look_ai_parse_explicit(_ input: UnsafePointer<CChar>?, _ modelAvail
 nonisolated
 private func look_ai_route(_ memoryPath: UnsafePointer<CChar>?, _ input: UnsafePointer<CChar>?, _ modelAvailable: Bool, _ now: Int64) -> UnsafeMutablePointer<CChar>?
 
-@_silgen_name("look_meeting_is_join_query")
+@_silgen_name("look_meeting_join_query_json")
 nonisolated
-private func look_meeting_is_join_query(_ query: UnsafePointer<CChar>?) -> Bool
+private func look_meeting_join_query_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
-@_silgen_name("look_meeting_next_json")
+@_silgen_name("look_meeting_outcome_json")
 nonisolated
-private func look_meeting_next_json(_ eventsJSON: UnsafePointer<CChar>?, _ now: Int64) -> UnsafeMutablePointer<CChar>?
+private func look_meeting_outcome_json(_ eventsJSON: UnsafePointer<CChar>?, _ now: Int64, _ name: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_ai_chat_start")
 nonisolated
@@ -322,10 +322,14 @@ final class EngineBridge: @unchecked Sendable {
     }
 
     /// The Rust-core routing decision for submitted AI-mode input (see
-    /// core/ai/src/route.rs: memory -> textop -> files -> explicit -> plan ->
-    /// chat). The memory tier has already executed by the time this returns.
+    /// core/ai/src/route.rs: memory -> join -> textop -> files -> explicit ->
+    /// plan -> chat). The memory tier has already executed by the time this
+    /// returns.
     enum AIRoute {
         case memory(feedback: String)
+        /// "join", "join my next meeting", "join <name>". The shell resolves
+        /// the name against the calendar.
+        case join(name: String?)
         case textOp(label: String, instruction: String)
         case files
         case explicit(toolID: String, params: [String: String])
@@ -344,6 +348,8 @@ final class EngineBridge: @unchecked Sendable {
             let label: String?
             let instruction: String?
             let call: Call?
+            /// The join tier's meeting name; absent for a bare "join".
+            let name: String?
         }
         let now = Int64(Date().timeIntervalSince1970)
         let ptr = memoryPath.withCString { pathC in
@@ -360,6 +366,8 @@ final class EngineBridge: @unchecked Sendable {
         switch payload.route {
         case "memory":
             return .memory(feedback: payload.feedback ?? "")
+        case "join":
+            return .join(name: payload.name)
         case "textop":
             guard let instruction = payload.instruction, !instruction.isEmpty else { return .chat }
             return .textOp(label: payload.label ?? instruction, instruction: instruction)
@@ -382,25 +390,35 @@ final class EngineBridge: @unchecked Sendable {
         let relaxed: String?
     }
 
-    /// Whether the typed text is asking to join a meeting. Pure string work in
-    /// core, so it is safe on the per-keystroke path.
-    nonisolated func isJoinQuery(_ query: String) -> Bool {
-        query.withCString { look_meeting_is_join_query($0) }
-    }
-
-    /// The meeting to join out of `eventsJSON`, or nil when none of them is an
-    /// online meeting. Which event wins, and where the join link hides inside
-    /// it, are decided in core (`look_ai::meeting`) so every shell agrees.
-    nonisolated func nextJoinableMeeting(eventsJSON: String, now: Int64) -> JoinableMeeting? {
-        guard let ptr = eventsJSON.withCString({ look_meeting_next_json($0, now) }) else {
+    /// The join request in the typed text, or nil when it is an ordinary
+    /// search. Pure string work in core, so it is safe per keystroke.
+    nonisolated func joinQuery(_ query: String) -> JoinRequest? {
+        guard let ptr = query.withCString({ look_meeting_join_query_json($0) }) else {
             return nil
         }
         defer { look_free_cstring(ptr) }
         guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
-        // Core answers the JSON literal `null` when nothing is joinable, and
-        // decoding that into a non-optional throws, which `try?` turns into the
-        // nil this returns anyway.
-        return try? JSONDecoder().decode(JoinableMeeting.self, from: data)
+        return try? JSONDecoder().decode(JoinRequest.self, from: data)
+    }
+
+    /// What a `join` finds in `eventsJSON`: the meetings it can open, best
+    /// first, plus the titles that matched the name but carry no link. `name`
+    /// narrows to meetings whose title holds those words. The ordering, and
+    /// where a join link hides inside an event, are decided in core
+    /// (`look_ai::meeting`) so every shell agrees.
+    nonisolated func joinOutcome(
+        eventsJSON: String, now: Int64, name: String = ""
+    ) -> JoinOutcome {
+        guard
+            let ptr = eventsJSON.withCString({ events in
+                name.withCString { look_meeting_outcome_json(events, now, $0) }
+            })
+        else {
+            return JoinOutcome()
+        }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return JoinOutcome() }
+        return (try? JSONDecoder().decode(JoinOutcome.self, from: data)) ?? JoinOutcome()
     }
 
     /// Natural-language file recall over Look's own index. Returns nil when the

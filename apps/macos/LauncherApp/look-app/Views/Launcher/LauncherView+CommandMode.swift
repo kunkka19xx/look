@@ -156,6 +156,24 @@ extension LauncherView {
         // first, then planner/chat).
         let submitTrimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if !isCommandMode, isAIMode {
+            // The join picker takes Enter: a bare Enter joins the highlighted
+            // row, a typed number picks that one. Before the message path, so
+            // "1" answers the list rather than becoming a new question.
+            if actionController.meetingChoice != nil {
+                if submitTrimmed.isEmpty {
+                    joinHighlightedMeeting()
+                    DispatchQueue.main.async { isQueryFocused = true }
+                    return
+                }
+                if let number = Int(submitTrimmed), actionController.selectMeeting(number: number) {
+                    joinHighlightedMeeting()
+                    DispatchQueue.main.async { isQueryFocused = true }
+                    return
+                }
+                // Anything else typed is a new request, so the list stops being
+                // the answer and the message path below takes over.
+                actionController.clearMeetingChoice()
+            }
             if let choice = actionController.pendingChoice,
                let number = Int(submitTrimmed),
                number >= 1, number <= choice.candidates.count {

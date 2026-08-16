@@ -160,29 +160,33 @@ pub extern "C" fn look_lunar_date_json(year: i64, month: i64, day: i64, tz: f64)
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// Whether `query` is asking to join a meeting ("join", "join my next
-/// meeting"). Tier-1 grammar: cheap enough to call on every keystroke, and
-/// strict enough that "join two pdfs" stays a file search.
+/// The join request in `query` (`{}` for a bare "join", `{"name": "..."}` when
+/// it names a meeting), or the literal `null` for an ordinary search. Tier-1
+/// grammar, cheap enough to call on every keystroke. Free the result with
+/// `look_free_cstring`.
 #[unsafe(no_mangle)]
-pub extern "C" fn look_meeting_is_join_query(query: *const c_char) -> bool {
+pub extern "C" fn look_meeting_join_query_json(query: *const c_char) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        meeting_api::look_meeting_is_join_query_impl(query)
+        meeting_api::look_meeting_join_query_json_impl(query)
     }))
-    .unwrap_or(false)
+    .unwrap_or(std::ptr::null_mut())
 }
 
-/// The meeting to join right now, from the events the shell fetched.
+/// What a `join` found in the events the shell fetched.
 ///
 /// `events_json` is an array of `{title, startUnixS, endUnixS, url?, location?,
-/// notes?, allDay?}`. Returns the chosen meeting as JSON, or the literal
-/// `null` when nothing is joinable. Free the result with `look_free_cstring`.
+/// notes?, allDay?}`. `name` narrows to meetings whose title carries those
+/// words; pass an empty string for "whatever is next". Returns
+/// `{"meetings":[...],"withoutLink":[...]}`, the second list naming events that
+/// matched but carry no join link. Free the result with `look_free_cstring`.
 #[unsafe(no_mangle)]
-pub extern "C" fn look_meeting_next_json(
+pub extern "C" fn look_meeting_outcome_json(
     events_json: *const c_char,
     now_epoch: i64,
+    name: *const c_char,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        meeting_api::look_meeting_next_json_impl(events_json, now_epoch)
+        meeting_api::look_meeting_outcome_json_impl(events_json, now_epoch, name)
     }))
     .unwrap_or(std::ptr::null_mut())
 }
