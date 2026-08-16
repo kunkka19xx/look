@@ -68,6 +68,95 @@ For i3/X11 without compositor:
 WEBKIT_DISABLE_COMPOSITING_MODE=1 cargo tauri dev
 ```
 
+### Home Manager
+
+The flake exports a Home Manager module for declarative user configuration. Add
+the input and make sure `inputs` reaches your modules, since Home Manager does
+not pass it by default:
+
+```nix
+# flake.nix
+{
+  inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
+
+  outputs = { nixpkgs, home-manager, ... }@inputs: {
+    homeConfigurations."me" = home-manager.lib.homeManagerConfiguration {
+      pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      extraSpecialArgs = { inherit inputs; };   # required for the import below
+      modules = [ ./home.nix ];
+    };
+  };
+}
+```
+
+Home Manager as a NixOS module wants `home-manager.extraSpecialArgs = { inherit
+inputs; };` instead. Then:
+
+```nix
+# home.nix
+{ inputs, ... }: {
+  imports = [ inputs.look.homeModules.default ];
+
+  programs.lookapp = {
+    enable = true;
+    theme = "kindle";
+    settings = {
+      running_apps_placement = "right";
+      file_scan_extra_roots = [ "~/Projects" "/mnt/data" ];
+      ai_enabled = false;
+    };
+    aliases = {
+      note = [ "Obsidian" "Logseq" ];
+      term = [ "Alacritty" "Kitty" ];
+    };
+  };
+}
+```
+
+`package` defaults to the flake's own build, so nothing else needs wiring. Set
+it to `null` to manage only the config file, for example when the package is
+already installed system-wide through `environment.systemPackages` or
+`nixosModules.default`.
+
+**Binary cache.** The module deliberately does not touch substituters. Those are
+read by the nix daemon, and Home Manager's `nix.settings` only writes
+`~/.config/nix/nix.conf`, which the daemon ignores unless you are listed in
+`trusted-users`. A flake's own `nixConfig` also applies only when that flake is
+the one being built, never when it is an input, so this repo's `nixConfig` does
+nothing for you. Put the cache in the flake you actually build:
+
+```nix
+# your own flake.nix, top level
+nixConfig = {
+  extra-substituters = [ "https://look.cachix.org" ];
+  extra-trusted-public-keys = [ "look.cachix.org-1:8elPCeSVBzlDZXqIRKBK9GyLIK/Hoe1xiWZF0ir7uX4=" ];
+};
+```
+
+Nix asks once whether to trust those settings, or pass `--accept-flake-config`.
+On NixOS the system-wide equivalent is `programs.lookapp.cachix = true` from
+`nixosModules.default`. Elsewhere, `cachix use look` or `/etc/nix/nix.conf`.
+Without one of these, Home Manager will build Look from source.
+
+`theme` accepts `catppuccin` (the default), `tokyo-night`, `rose-pine`,
+`gruvbox`, `dracula`, `kanagawa`, `kindle`, `liquid` and `custom`. Colours are
+derived from the preset at startup, so the module only writes `ui_theme`, plus
+the opacity values for `kindle` and `liquid` because those two own them. Use
+`custom` to drive every `ui_*` value from `settings` instead.
+
+`settings` keys map directly to `~/.look.config` keys and override values
+derived from `theme`. Lists are written as comma-separated values, except
+`ignored_patterns_*` and `alias_*`, which Look parses as pipe-separated.
+`aliases` is the same thing with the prefix filled in, so declaring
+`aliases.note` and `settings.alias_note` together is an error.
+
+Activation merges the managed keys into `~/.look.config` rather than replacing
+it: keys you set in Nix win, anything you changed in-app is kept, and keys you
+remove from the Nix config are cleaned up on the next rebuild. The file stays
+writable so the app can keep saving to it, but Nix wins again on every
+activation, so treat Nix as the source of truth for the keys it manages. The
+first activation copies the pre-Nix file to `~/.look.config.hm-backup`.
+
 ### Windows
 
 **Prerequisites:**

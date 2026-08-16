@@ -1,17 +1,23 @@
-{ config, lib, pkgs, ... }:
+self:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   cfg = config.programs.lookapp;
-  lookPkg = pkgs.callPackage ./package.nix { };
 in
 {
   options.programs.lookapp = {
-    enable = lib.mkEnableOption "Look - keyboard-first desktop launcher";
+    enable = lib.mkEnableOption "Look, a keyboard-first desktop launcher";
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = lookPkg;
-      description = "The lookapp package to install.";
+      default = import ./default-package.nix self pkgs;
+      defaultText = lib.literalExpression "inputs.look.packages.\${pkgs.stdenv.hostPlatform.system}.default";
+      description = "The Look package to install.";
     };
 
     cachix = lib.mkOption {
@@ -26,7 +32,7 @@ in
 
     nix.settings = lib.mkIf cfg.cachix {
       substituters = [ "https://look.cachix.org" ];
-      trusted-public-keys = [ "look.cachix.org-1:8eIPCeSVBzIDZXqIRKBK9GyLIK/Hoe1xiWZF0ir7uX4=" ];
+      trusted-public-keys = [ "look.cachix.org-1:8elPCeSVBzlDZXqIRKBK9GyLIK/Hoe1xiWZF0ir7uX4=" ];
     };
   };
 }
