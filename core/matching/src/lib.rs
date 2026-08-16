@@ -1,3 +1,6 @@
+pub mod normalize;
+pub use normalize::normalize_for_search;
+
 pub struct PreparedQuery<'a> {
     raw: &'a str,
     chars: Vec<char>,

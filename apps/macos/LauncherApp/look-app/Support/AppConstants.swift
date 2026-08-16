@@ -244,6 +244,22 @@ enum AppConstants {
             }
         }
 
+        /// The synthesized "Call <name>" rows. Like `Meeting`, the URL rides
+        /// in the id, so pressing Enter never re-reads Contacts and can never
+        /// dial someone other than the row the user read.
+        enum Call {
+            static let resultIDPrefix = "call:"
+
+            static func resultID(url: String) -> String {
+                resultIDPrefix + url
+            }
+
+            static func url(fromResultID resultID: String) -> String? {
+                guard resultID.hasPrefix(resultIDPrefix) else { return nil }
+                return String(resultID.dropFirst(resultIDPrefix.count))
+            }
+        }
+
         enum Calc {
             static let resultIDPrefix = "calc:"
             static let enterToCopyHint = "Enter to copy"

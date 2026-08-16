@@ -258,11 +258,16 @@ const JOIN_FILLER: &[&str] = &[
 /// Whether an event title answers to `name`: every word of the name appears in
 /// it. Word containment, not fuzzy scoring - a meeting is opened, not searched,
 /// so a near-miss that opens the WRONG call is worse than no row at all.
+///
+/// Folded through the same normalization the file search uses, or `join hop`
+/// would miss a meeting called `Họp` that `hop` finds everywhere else in the
+/// app.
 fn title_matches(title: &str, name: Option<&str>) -> bool {
     let Some(name) = name else { return true };
-    let title = title.to_lowercase();
-    name.split_whitespace()
-        .all(|word| title.contains(&word.to_lowercase()))
+    let title = look_matching::normalize_for_search(title);
+    look_matching::normalize_for_search(name)
+        .split_whitespace()
+        .all(|word| title.contains(word))
 }
 
 /// A parsed join request: the words after `join` that were not filler, if any.
@@ -794,6 +799,26 @@ Find your local number: https://us02web.zoom.us/u/kbXyZ1
         let outcome = join_outcome(&events, NOW, Some("standup"));
         assert!(outcome.meetings.is_empty());
         assert_eq!(outcome.without_link, ["Standup"]);
+    }
+
+    #[test]
+    fn a_name_matches_across_diacritics() {
+        // What a Vietnamese user actually types. The file search has folded
+        // this way for a long time; the join tier now agrees with it.
+        let events = [
+            event("Họp nhóm", 30, 60, Some("https://meet.jit.si/hop")),
+            event("Điện thoại", 90, 30, Some("https://meet.jit.si/dt")),
+        ];
+        assert_eq!(
+            next_joinable(&events, NOW, Some("hop")).map(|m| m.title),
+            Some("Họp nhóm".to_string())
+        );
+        assert_eq!(
+            next_joinable(&events, NOW, Some("dien thoai")).map(|m| m.title),
+            Some("Điện thoại".to_string())
+        );
+        // And the other direction: typing the diacritics still works.
+        assert!(next_joinable(&events, NOW, Some("Họp")).is_some());
     }
 
     #[test]

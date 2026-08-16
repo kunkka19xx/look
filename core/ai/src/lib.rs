@@ -3,6 +3,7 @@
 //! Ported module by module from the macOS Swift package; the Swift tests are
 //! the parity spec and are deleted as their Rust replacements land.
 
+pub mod calling;
 pub mod chat;
 pub mod context;
 pub mod conversations;

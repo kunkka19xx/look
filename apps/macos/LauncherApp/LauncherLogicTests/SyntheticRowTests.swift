@@ -26,6 +26,7 @@ final class SyntheticRowTests: XCTestCase {
                 AppConstants.Launcher.Meeting.resultID(url: "https://meet.jit.si/standup"),
                 "meeting"
             ),
+            (AppConstants.Launcher.Call.resultID(url: "facetime-audio://+15551234567"), "call"),
         ]
         for (id, expected) in cases {
             XCTAssertEqual(name(of: SyntheticRow.classify(resultID: id)), expected, id)
@@ -48,6 +49,7 @@ final class SyntheticRowTests: XCTestCase {
         case .webURL: "webURL"
         case .calc: "calc"
         case .meeting: "meeting"
+        case .call: "call"
         case nil: "nil"
         }
     }

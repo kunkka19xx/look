@@ -50,8 +50,8 @@ struct LauncherView: View {
     /// Its own namespace, not the session one: two lists sharing an id would
     /// make the pill try to fly between them.
     @Namespace var mentionSelectionNamespace
-    /// Ditto for the join picker.
-    @Namespace var meetingSelectionNamespace
+    /// Ditto for the join/call picker.
+    @Namespace var linkPickerNamespace
     /// Highlight in the sessions list. `-1` = no selection (Enter starts a new
     /// chat); `0..<count` = a session (Enter opens it). Tab/↑↓ move it; typing
     /// resets to -1 so a new chat stays one Enter away.
@@ -516,13 +516,15 @@ struct LauncherView: View {
         // file that fuzzy-matched some of its digits - above everything,
         // including the structural URL row.
         let withCalc = calcResult.map { [$0] + base } ?? base
-        // "join" is a request, not a search term: the meeting the user is late
-        // for outranks a file whose name happens to contain the word.
+        // "join" and "call" are requests, not search terms: the meeting the
+        // user is late for, or the person they meant to ring, outranks a file
+        // whose name happens to contain the word.
         let withMeeting = meetingResult.map { [$0] + withCalc } ?? withCalc
+        let withCall = callResults.isEmpty ? withMeeting : callResults + withMeeting
         // The planner-proposed action row outranks everything: the user typed
         // an instruction, not a search.
-        guard let actionRow = mainBarActionRow else { return withMeeting }
-        return [actionRow] + withMeeting
+        guard let actionRow = mainBarActionRow else { return withCall }
+        return [actionRow] + withCall
     }
 
     var mainBarActionRow: LauncherResult? {
@@ -1368,7 +1370,7 @@ struct LauncherView: View {
             && chat.sessionItems.isEmpty
             && !actionController.isPresenting
             && actionController.pendingChoice == nil
-            && actionController.meetingChoice == nil
+            && actionController.linkPicker == nil
             && actionController.feedback.isEmpty
     }
 
@@ -1398,8 +1400,7 @@ struct LauncherView: View {
         guard isBrowsingConversations, index >= 0, index < filteredConversations.count else {
             return false
         }
-        chat.continueConversation(filteredConversations[index])
-        query = ""
+        openConversation(filteredConversations[index])
         return true
     }
 
@@ -1504,9 +1505,25 @@ struct LauncherView: View {
 
     /// ⌘D and ⌘⌫ delete the highlighted session (no-op when nothing is
     /// highlighted).
+    ///
+    /// Guarded HERE rather than at each chord, so every entry point inherits
+    /// it: with a conversation open there is no list on screen, and the index
+    /// left over from the row the user opened is not a delete target. Deleting
+    /// the conversation you are reading, from a list you cannot see, was the
+    /// bug this prevents.
     func deleteHighlightedSession() {
+        guard isBrowsingConversations else { return }
         guard selectedConversationIndex >= 0, selectedConversationIndex < filteredConversations.count else { return }
         deleteConversation(filteredConversations[selectedConversationIndex])
+    }
+
+    /// Open a stored conversation. Clears the list highlight with it: the row
+    /// is no longer a selection once its transcript is on screen, and a stale
+    /// index is what let a delete chord reach it.
+    func openConversation(_ conversation: AIConversation) {
+        chat.continueConversation(conversation)
+        selectedConversationIndex = -1
+        query = ""
     }
 
     /// The AI session screen: actions, questions, and streaming answers stack in
@@ -1521,46 +1538,47 @@ struct LauncherView: View {
                 .keyboardShortcut(.escape, modifiers: .shift)
             Button("") { deleteHighlightedSession() }
                 .keyboardShortcut(.delete, modifiers: .command)
-                .disabled(selectedConversationIndex < 0 || filteredConversations.isEmpty)
+                .disabled(!isBrowsingConversations || selectedConversationIndex < 0)
         }
         .buttonStyle(.plain)
         .opacity(0)
         .accessibilityHidden(true)
     }
 
-    /// The meetings a `join` turned up. It always lists, even for a single
-    /// candidate: the point is to see WHICH meeting and WHEN before a link
-    /// opens. Tab/arrows move, Enter joins, a number picks directly.
+    /// The rows a `join` or `call` turned up. It always lists when there is
+    /// any choice at all: the point is to see WHICH meeting, or WHICH way to
+    /// reach someone, before a link opens. Tab/arrows move, Enter opens, a
+    /// number picks directly.
     @ViewBuilder
-    private func meetingChoiceList(_ choice: ActionController.MeetingChoice) -> some View {
+    private func linkPickerList(_ picker: ActionController.LinkPicker) -> some View {
         let fontSize = themeStore.settings.fontSize
         VStack(alignment: .leading, spacing: 6) {
-            Text("Join which?  ·  Tab to move  ·  Enter joins  ·  Esc cancels")
+            Text("\(picker.header)  ·  Tab to move  ·  Enter opens  ·  Esc cancels")
                 .font(themeStore.uiFont(size: CGFloat(fontSize - 3), weight: .semibold))
                 .foregroundStyle(themeStore.mutedTextColor())
 
-            ForEach(Array(choice.candidates.enumerated()), id: \.element.url) { index, meeting in
+            ForEach(Array(picker.options.enumerated()), id: \.element.id) { index, option in
                 Button {
-                    actionController.selectMeeting(number: index + 1)
-                    joinHighlightedMeeting()
+                    actionController.selectPickerRow(number: index + 1)
+                    openHighlightedLink()
                 } label: {
                     HStack(spacing: 10) {
                         Text("\(index + 1)")
                             .font(themeStore.uiFont(size: CGFloat(fontSize - 2), weight: .semibold))
                             .foregroundStyle(themeStore.accentColor())
                             .frame(minWidth: 14, alignment: .leading)
-                        Image(systemName: "video.fill")
+                        Image(systemName: option.symbol)
                             .font(.system(size: CGFloat(fontSize - 3)))
                             .foregroundStyle(themeStore.accentColor())
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(meeting.title)
+                            Text(option.title)
                                 .font(themeStore.uiFont(size: CGFloat(fontSize - 1), weight: .medium))
                                 .foregroundStyle(themeStore.fontColor())
                                 .lineLimit(1)
-                            // What the row is actually promising: which service,
-                            // and when. Joining without seeing this is what the
-                            // first version got wrong.
-                            Text(Self.meetingSubtitle(meeting))
+                            // What the row is actually promising. Opening
+                            // without showing this is what the first version
+                            // got wrong.
+                            Text(option.detail)
                                 .font(themeStore.uiFont(size: CGFloat(fontSize - 3), weight: .regular))
                                 .foregroundStyle(themeStore.mutedTextColor())
                                 .lineLimit(1)
@@ -1574,10 +1592,10 @@ struct LauncherView: View {
                             .fill(themeStore.surfaceFill(0.55))
                     }
                     .selectionPill(
-                        isSelected: index == choice.selected,
+                        isSelected: index == picker.selected,
                         themeStore: themeStore,
-                        namespace: meetingSelectionNamespace,
-                        geometryID: Self.meetingPillID)
+                        namespace: linkPickerNamespace,
+                        geometryID: Self.linkPickerPillID)
                 }
                 .buttonStyle(.plain)
             }
@@ -1585,17 +1603,9 @@ struct LauncherView: View {
         .padding(.horizontal, 4)
     }
 
-    /// "Google Meet  ·  tomorrow 14:30  ·  meet.google.com" - service, time, and
-    /// the host the link will actually open.
-    private static func meetingSubtitle(_ meeting: JoinableMeeting) -> String {
-        var parts = [meeting.providerLabel, meetingTiming(meeting)]
-        if let host = URL(string: meeting.url)?.host { parts.append(host) }
-        return parts.joined(separator: "  ·  ")
-    }
-
     /// Its own pill id: two lists must never share one, or the pill flies
     /// between them.
-    static let meetingPillID = "look.meeting.pill"
+    static let linkPickerPillID = "look.linkpicker.pill"
 
     private var aiSessionPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1640,8 +1650,8 @@ struct LauncherView: View {
                                 }
                             }
                             .padding(.horizontal, 4)
-                        } else if let choice = actionController.meetingChoice {
-                            meetingChoiceList(choice)
+                        } else if let picker = actionController.linkPicker {
+                            linkPickerList(picker)
                         } else if !actionController.pendingSteps.isEmpty {
                             PendingActionBar(
                                 steps: actionController.pendingSteps,
@@ -1681,10 +1691,7 @@ struct LauncherView: View {
                                             isSelected: selectedConversationIndex == index,
                                             themeStore: themeStore,
                                             namespace: conversationSelectionNamespace,
-                                            onOpen: {
-                                                chat.continueConversation(convo)
-                                                query = ""
-                                            },
+                                            onOpen: { openConversation(convo) },
                                             onDelete: { deleteConversation(convo) })
                                         .id(convo.id)
                                     }

@@ -5,3 +5,6 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 version = "0.1.0"
+
+[dependencies]
+unicode-normalization = "0.1"

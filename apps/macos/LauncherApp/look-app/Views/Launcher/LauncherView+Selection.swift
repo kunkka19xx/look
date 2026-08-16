@@ -32,14 +32,14 @@ extension LauncherView {
             return
         }
 
-        // The join picker owns Tab while it is up: it is the only thing on the
+        // The picker owns Tab while it is up: it is the only thing on the
         // panel, and Enter is about to open one of its rows. Wrapped in the
         // shared curve, like every other list, or its pill would jump while the
         // rest glide.
         if direction == .down || direction == .up {
             var moved = false
             withAnimation(Motion.Selection.glide) {
-                moved = actionController.moveMeetingSelection(forward: direction == .down)
+                moved = actionController.movePickerSelection(forward: direction == .down)
             }
             if moved { return }
         }
@@ -332,7 +332,7 @@ extension LauncherView {
                 // an open chat saves and drops to the sessions list (stay in AI
                 // mode); the sessions list leaves AI mode for home.
                 if actionController.isPresenting || actionController.awaitingChoice
-                    || actionController.meetingChoice != nil
+                    || actionController.linkPicker != nil
                 {
                     actionController.cancel()
                 } else if !chat.sessionItems.isEmpty {

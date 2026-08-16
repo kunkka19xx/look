@@ -58,6 +58,12 @@ struct LauncherRowView: View {
                 NSImage(systemSymbolName: "video.fill", accessibilityDescription: nil)
                     ?? NSWorkspace.shared.icon(for: .plainText)
             }
+        case .call(let url):
+            let symbol = LinkRowAppearance.symbol(forURL: url)
+            return RowIconCache.image(key: "symbol:\(symbol)") {
+                NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+                    ?? NSWorkspace.shared.icon(for: .plainText)
+            }
         case .prefixSuggestion, .webSuggestion:
             return RowIconCache.image(key: "symbol:magnifyingglass") {
                 NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)

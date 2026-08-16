@@ -47,10 +47,10 @@ extension LauncherView {
             guard let planned = mainBarAction else { return }
             runQuickAction(planned)
             return
-        case .meeting(let url):
-            // Join row: the link travelled in the row id, so pressing Enter
-            // never re-reads the calendar and can never open a different
-            // meeting from the one the row named.
+        case .meeting(let url), .call(let url):
+            // Join and call rows: the link travelled in the row id, so pressing
+            // Enter never re-reads the calendar or Contacts, and can never open
+            // something other than what the row named.
             openURLScheme(url)
             hideLauncherWindow(restorePreviousApp: false)
             return

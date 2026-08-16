@@ -61,15 +61,30 @@ final class ActionController: ObservableObject {
         let candidates: [ActionCandidate]
     }
 
-    /// The joinable meetings offered for a `join` request, and which one the
-    /// keyboard is on. Its own type rather than `PendingChoice`: that one
-    /// carries a tool call to re-propose, and joining is not a tool.
-    struct MeetingChoice: Equatable {
-        var candidates: [JoinableMeeting]
+    /// One openable thing in a picker: a meeting to join, a way to reach a
+    /// person. Everything the row needs, plus the URL that IS the action.
+    struct LinkOption: Identifiable, Equatable {
+        let id: String
+        let title: String
+        /// The line that says what this row will actually do.
+        let detail: String
+        let symbol: String
+        let url: String
+    }
+
+    /// A list of things to open, and which one the keyboard is on.
+    ///
+    /// Shared by `join` and `call` because both end the same way: the user
+    /// picks a row and a URL opens. Its own type rather than `PendingChoice` -
+    /// that one carries a tool call to re-propose, and neither of these is a
+    /// tool.
+    struct LinkPicker: Equatable {
+        let header: String
+        var options: [LinkOption]
         var selected: Int
 
-        var selectedMeeting: JoinableMeeting? {
-            candidates.indices.contains(selected) ? candidates[selected] : nil
+        var selectedOption: LinkOption? {
+            options.indices.contains(selected) ? options[selected] : nil
         }
     }
 
@@ -94,8 +109,8 @@ final class ActionController: ObservableObject {
     /// leave half of itself behind with no way back.
     @Published private(set) var pendingSteps: [PlannedAction] = []
     @Published private(set) var pendingChoice: PendingChoice?
-    /// The meetings a `join` request turned up, or nil when none is pending.
-    @Published private(set) var meetingChoice: MeetingChoice?
+    /// The rows a `join` or `call` turned up, or nil when nothing is pending.
+    @Published private(set) var linkPicker: LinkPicker?
     /// Receipts from the last confirmed plan, in the order they ran. Undo
     /// reverses them back to front.
     @Published private(set) var lastReceipts: [ActionReceipt] = []
@@ -293,6 +308,10 @@ final class ActionController: ObservableObject {
             isPlanning = false
             pendingSteps = []
             feedback = presentJoinChoices(named: name)
+        case .call(let name, let modality):
+            isPlanning = false
+            pendingSteps = []
+            feedback = presentCallChoices(named: name, modality: modality)
         case .textOp(let label, let instruction):
             isPlanning = false
             pendingSteps = []
@@ -352,19 +371,104 @@ final class ActionController: ObservableObject {
         // Write-only can add events but cannot READ them, so there is nothing
         // to join with it either.
         case .writeOnly, .denied, .restricted:
-            meetingChoice = nil
+            linkPicker = nil
             return Self.noCalendarAccess
         }
 
         let wanted = name ?? ""
         let outcome = MeetingService.shared.outcome(name: wanted)
         guard !outcome.meetings.isEmpty else {
-            meetingChoice = nil
+            linkPicker = nil
             return Self.nothingToJoin(wanted: wanted, withoutLink: outcome.withoutLink)
         }
-        meetingChoice = MeetingChoice(candidates: outcome.meetings, selected: 0)
+        linkPicker = LinkPicker(
+            header: "Join which?", options: outcome.meetings.map(Self.option), selected: 0)
         return ""
     }
+
+    /// One meeting as a picker row. The detail line is what the row promises:
+    /// which service, when, and the host the link will actually open.
+    private static func option(_ meeting: JoinableMeeting) -> LinkOption {
+        var detail = [meeting.providerLabel, MeetingTiming.phrase(meeting)]
+        if let host = URL(string: meeting.url)?.host { detail.append(host) }
+        return LinkOption(
+            id: meeting.url,
+            title: meeting.title,
+            detail: detail.joined(separator: "  ·  "),
+            symbol: "video.fill",
+            url: meeting.url)
+    }
+
+    /// Ways to reach the person the user named.
+    ///
+    /// ALWAYS lists, even for a single option. An earlier version dialled
+    /// straight through when there was only one way to reach someone, on the
+    /// theory that confirming what you just typed is noise - but from the
+    /// user's side nothing appeared in the launcher and then FaceTime started
+    /// ringing a person. Placing a call is socially expensive and has no undo,
+    /// so the row the user reads IS the confirmation.
+    private func presentCallChoices(named name: String, modality: String?) -> String {
+        switch ContactsService.shared.access {
+        case .authorized:
+            break
+        case .notDetermined:
+            Task {
+                await ContactsService.shared.requestAccess()
+                feedback = presentCallChoices(named: name, modality: modality)
+            }
+            return ""
+        case .writeOnly, .denied, .restricted:
+            linkPicker = nil
+            return Self.noContactsAccess
+        }
+
+        // The verb said "call" but not how, so this is the house default. Kept
+        // out of core: which one is right depends on what the platform can do.
+        let wantedModality = modality ?? EngineBridge.shared.defaultCallModality
+        let matches = ContactsService.shared.matches(name: name)
+        let options: [LinkOption] = matches.flatMap { match in
+            match.handles
+                .filter { $0.modalityID == wantedModality }
+                .compactMap { handle in Self.option(match: match, handle: handle) }
+        }
+
+        guard !options.isEmpty else {
+            linkPicker = nil
+            guard !matches.isEmpty else {
+                return "No contact matching \u{201C}\(name)\u{201D}."
+            }
+            // Found the person, but not a handle that does THIS. Naming the
+            // gap beats "no contact", which would send them looking for the
+            // wrong problem.
+            return "\u{201C}\(matches[0].name)\u{201D} has no number or address for that."
+        }
+        // Several people is a "who"; one person with several numbers is a
+        // "how". Both are the same list, but the question is not.
+        linkPicker = LinkPicker(
+            header: matches.count > 1 ? "Reach who?" : "Reach how?",
+            options: options,
+            selected: 0)
+        return ""
+    }
+
+    /// One way to reach one person, as a picker row.
+    private static func option(match: ContactMatch, handle: ContactHandle) -> LinkOption? {
+        guard let url = EngineBridge.shared.callURL(modality: handle.modalityID, handle: handle.handle)
+        else { return nil }
+        var detail = [handle.modalityLabel]
+        if let label = handle.handleLabel, !label.isEmpty { detail.append(label) }
+        detail.append(handle.handle)
+        return LinkOption(
+            id: "\(match.id)|\(handle.id)",
+            title: match.name,
+            detail: detail.joined(separator: "  ·  "),
+            symbol: handle.modalityID == "message" ? "message.fill" : "video.fill",
+            url: url)
+    }
+
+    private static let noContactsAccess =
+        "Look has no contacts access, so it cannot find who you mean. "
+        + "Grant it in Settings (\u{2318}\u{21E7},) under Permissions."
 
     /// Names the actual blocker and where to fix it. Not "no meetings": Look
     /// has not looked.
@@ -390,55 +494,55 @@ final class ActionController: ObservableObject {
         }
     }
 
-    /// Opens the highlighted meeting. No confirm step beyond this and no undo,
+    /// Opens the highlighted row. No confirm step beyond this and no undo,
     /// unlike the calendar tools: the row the user just read IS the
     /// confirmation, and opening a link reverses nothing.
     ///
-    /// Returns whether the link opened, so the caller can put the launcher
-    /// away. Success leaves NO feedback behind: the meeting is on screen by
-    /// then, and a sticky "Joining ..." bar would sit on the panel forever
+    /// Returns whether it opened, so the caller can put the launcher away.
+    /// Success leaves NO feedback behind: the meeting or the call is on screen
+    /// by then, and a sticky "Joining ..." bar would sit on the panel forever
     /// (it also blocks the sessions list, which reads feedback as "busy").
     /// A failure is the one case worth leaving up to read.
     @discardableResult
-    func joinSelectedMeeting() -> Bool {
-        guard let choice = meetingChoice, let meeting = choice.selectedMeeting else { return false }
-        meetingChoice = nil
-        guard MeetingService.shared.join(meeting) else {
-            feedback = "Could not open the \(meeting.providerLabel) link for \(meeting.title)."
+    func openSelectedLink() -> Bool {
+        guard let picker = linkPicker, let option = picker.selectedOption else { return false }
+        linkPicker = nil
+        guard let url = URL(string: option.url), NSWorkspace.shared.open(url) else {
+            feedback = "Could not open \(option.title)."
             return false
         }
         feedback = ""
         return true
     }
 
-    /// Tab / arrows roll the meeting list. Returns false when no list is up, so
-    /// the key falls through to whatever else the panel is showing.
+    /// Tab / arrows roll the picker. Returns false when none is up, so the key
+    /// falls through to whatever else the panel is showing.
     @discardableResult
-    func moveMeetingSelection(forward: Bool) -> Bool {
-        guard var choice = meetingChoice, !choice.candidates.isEmpty else { return false }
-        let count = choice.candidates.count
-        choice.selected =
+    func movePickerSelection(forward: Bool) -> Bool {
+        guard var picker = linkPicker, !picker.options.isEmpty else { return false }
+        let count = picker.options.count
+        picker.selected =
             forward
-            ? (choice.selected >= count - 1 ? 0 : choice.selected + 1)
-            : (choice.selected <= 0 ? count - 1 : choice.selected - 1)
-        meetingChoice = choice
+            ? (picker.selected >= count - 1 ? 0 : picker.selected + 1)
+            : (picker.selected <= 0 ? count - 1 : picker.selected - 1)
+        linkPicker = picker
         return true
     }
 
     /// Moves the highlight to a 1-based position, matching what the rows show.
     /// Returns false when the number names no row, so a typed "7" with three
-    /// meetings listed stays an ordinary message rather than doing nothing.
+    /// rows listed stays an ordinary message rather than doing nothing.
     @discardableResult
-    func selectMeeting(number: Int) -> Bool {
-        guard var choice = meetingChoice, number >= 1, number <= choice.candidates.count else {
+    func selectPickerRow(number: Int) -> Bool {
+        guard var picker = linkPicker, number >= 1, number <= picker.options.count else {
             return false
         }
-        choice.selected = number - 1
-        meetingChoice = choice
+        picker.selected = number - 1
+        linkPicker = picker
         return true
     }
 
-    func clearMeetingChoice() { meetingChoice = nil }
+    func clearPicker() { linkPicker = nil }
 
     /// The model turn of the ladder. The message joins the transcript NOW; the
     /// planner round-trip ("is this an action?") happens under the Thinking
@@ -819,7 +923,7 @@ final class ActionController: ObservableObject {
         planGeneration += 1
         pendingSteps = []
         pendingChoice = nil
-        meetingChoice = nil
+        linkPicker = nil
         feedback = ""
         isPlanning = false
     }

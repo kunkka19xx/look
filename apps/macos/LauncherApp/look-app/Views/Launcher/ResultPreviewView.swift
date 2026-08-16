@@ -122,31 +122,34 @@ struct ResultPreviewView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// The synthesized join row: no file behind it either, so it takes the same
-    /// centered hero shape as the action and calc rows.
-    private var meetingJoinURL: String? {
-        if case .meeting(let url) = SyntheticRow.classify(resultID: result.id) {
-            return url
+    /// The synthesized rows that open a URL - a meeting to join, a way to
+    /// reach someone. No file behind either, so they take the same centered
+    /// hero shape as the action and calc rows.
+    private var linkURL: String? {
+        switch SyntheticRow.classify(resultID: result.id) {
+        case .meeting(let url), .call(let url): return url
+        default: return nil
         }
-        return nil
     }
 
-    private var meetingIcon: NSImage {
-        NSImage(systemSymbolName: "video.fill", accessibilityDescription: nil)
+    private func linkIcon(_ url: String) -> NSImage {
+        NSImage(
+            systemSymbolName: LinkRowAppearance.symbol(forURL: url), accessibilityDescription: nil)
             ?? NSWorkspace.shared.icon(for: .plainText)
     }
 
-    /// "Teams  ·  14:30  ·  in 4 min", dropping whichever half is missing.
-    private var meetingDetailLine: String? {
-        let parts = [result.meetingProviderLabel, result.meetingWhen].compactMap { $0 }
+    /// "Teams  ·  14:30  ·  in 4 min", or "FaceTime audio  ·  mobile  ·  +1 …",
+    /// dropping whichever half is missing.
+    private var linkDetailLine: String? {
+        let parts = [result.linkKindLabel, result.linkDetail].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
     }
 
-    private func meetingPreview(_ url: String) -> some View {
+    private func linkPreview(_ url: String) -> some View {
         VStack(spacing: 14) {
             Spacer(minLength: 0)
 
-            Image(nsImage: meetingIcon)
+            Image(nsImage: linkIcon(url))
                 .resizable()
                 .scaledToFit()
                 .frame(width: 52, height: 52)
@@ -162,7 +165,7 @@ struct ResultPreviewView: View {
             // Not a `KindBadge`: it renders `kind.capitalized`, which would turn
             // "GoToMeeting" into "Gotomeeting". Provider names are the one label
             // here whose casing is the brand.
-            if let detail = meetingDetailLine {
+            if let detail = linkDetailLine {
                 Text(detail)
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
                     .foregroundStyle(themeStore.mutedTextColor())
@@ -170,7 +173,7 @@ struct ResultPreviewView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                hintRow(key: "↵", text: "Join the meeting")
+                hintRow(key: "↵", text: openHint(url))
                 hintRow(key: "Esc", text: "Dismiss")
             }
             .padding(.top, 6)
@@ -190,6 +193,15 @@ struct ResultPreviewView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// What Enter will actually do, in the words of the destination.
+    private func openHint(_ url: String) -> String {
+        let lower = url.lowercased()
+        if lower.hasPrefix("sms:") || lower.hasPrefix("imessage:") { return "Open Messages" }
+        if lower.hasPrefix("tel:") { return "Call through your iPhone" }
+        if lower.hasPrefix("facetime") { return "Start the FaceTime call" }
+        return "Join the meeting"
     }
 
     private func hintRow(key: String, text: String) -> some View {
@@ -305,8 +317,8 @@ struct ResultPreviewView: View {
             calcPreview
         } else if let toolID = aiActionToolID {
             aiActionPreview(toolID)
-        } else if let joinURL = meetingJoinURL {
-            meetingPreview(joinURL)
+        } else if let linkURL {
+            linkPreview(linkURL)
         } else {
         let info = bundleInfo
 

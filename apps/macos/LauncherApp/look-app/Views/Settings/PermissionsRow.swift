@@ -12,6 +12,7 @@ nonisolated struct PermissionItem: Identifiable {
     enum Capability: String {
         case calendar
         case reminders
+        case contacts
     }
 
     let id: Capability
@@ -35,6 +36,11 @@ nonisolated struct PermissionItem: Identifiable {
             title: "Reminders",
             purpose: "Add, complete, and snooze reminders",
             settingsPane: "Privacy_Reminders"),
+        PermissionItem(
+            id: .contacts,
+            title: "Contacts",
+            purpose: "Find who to message or FaceTime by name",
+            settingsPane: "Privacy_Contacts"),
     ]
 }
 
@@ -145,6 +151,7 @@ struct PermissionsRow: View {
         switch capability {
         case .calendar: await EventKitService.shared.requestCalendarAccess()
         case .reminders: await EventKitService.shared.requestReminderAccess()
+        case .contacts: await ContactsService.shared.requestAccess()
         }
     }
 
@@ -152,6 +159,7 @@ struct PermissionsRow: View {
         states = [
             .calendar: EventKitService.shared.calendarAccess,
             .reminders: EventKitService.shared.reminderAccess,
+            .contacts: ContactsService.shared.access,
         ]
     }
 
