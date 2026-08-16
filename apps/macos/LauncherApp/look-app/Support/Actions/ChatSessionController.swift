@@ -109,7 +109,7 @@ final class ChatSessionController: ObservableObject {
         guard !items.isEmpty else { return }
         ConversationStore.upsert(AIConversation(
             id: conversationID,
-            title: String((items.first?.text ?? "Conversation").prefix(48)),
+            title: AIConversation.singleLine(items.first?.text ?? "Conversation"),
             updatedAt: Date(),
             items: items.map {
                 AIConversation.StoredItem(

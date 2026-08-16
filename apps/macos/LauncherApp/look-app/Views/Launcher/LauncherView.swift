@@ -47,6 +47,11 @@ struct LauncherView: View {
     @State var conversationCache: [AIConversation] = []
     /// Backs the single selection pill that glides between session rows.
     @Namespace private var conversationSelectionNamespace
+    /// Its own namespace, not the session one: two lists sharing an id would
+    /// make the pill try to fly between them.
+    @Namespace var mentionSelectionNamespace
+    /// Ditto for the join/call picker.
+    @Namespace var linkPickerNamespace
     /// Highlight in the sessions list. `-1` = no selection (Enter starts a new
     /// chat); `0..<count` = a session (Enter opens it). Tab/↑↓ move it; typing
     /// resets to -1 so a new chat stays one Enter away.
@@ -171,6 +176,9 @@ struct LauncherView: View {
     static let searchBarRevealIndex = 0
     static let floatingTileCornerRadius: CGFloat = 12
     static let seatedTileCornerRadius: CGFloat = 10
+    /// Shorter than the stored title: a banner shares its line with the undo
+    /// hint, and the pill is meant to read at a glance.
+    static let bannerTitleLimit = 32
     static let attachedPanelScrimOpacity = 0.16
 
     var runningAppsPlacement: RunningAppsPlacement {
@@ -185,9 +193,13 @@ struct LauncherView: View {
         !isCommandMode && !appUIState.showsThemeSettings && !showsHelpScreen
     }
 
+    /// AI mode hides the strip: the assistant screen is about the conversation,
+    /// not about switching apps, and the freed ⌘1-9 chords tag the listed
+    /// sessions instead (see `sessionJumpKeyLimit`).
     var shouldShowRunningAppsStrip: Bool {
         runningAppsPlacement != .none
             && isLauncherIdle
+            && !isAIMode
             && !runningAppsService.items.isEmpty
     }
 
@@ -204,8 +216,11 @@ struct LauncherView: View {
         let log = RunningAppsLog.logger
         let total = runningAppsService.items.count
 
-        if runningAppsPlacement == .none || !isLauncherIdle {
-            log.debug("⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public) help=\(self.showsHelpScreen, privacy: .public))")
+        // The same gate as `shouldShowRunningAppsStrip`: a chord must never
+        // activate an icon that is not on screen, which is also what hands
+        // ⌘1-9 to the session list in AI mode.
+        if runningAppsPlacement == .none || !isLauncherIdle || isAIMode {
+            log.debug("⌘+\(key, privacy: .public) declined (placement=\(self.runningAppsPlacement.rawValue, privacy: .public) cmd=\(self.isCommandMode, privacy: .public) settings=\(self.appUIState.showsThemeSettings, privacy: .public) help=\(self.showsHelpScreen, privacy: .public) ai=\(self.isAIMode, privacy: .public))")
             return false
         }
         guard let position = AppConstants.Launcher.RunningAppsStrip.visualPosition(forKey: key, total: total) else {
@@ -501,10 +516,15 @@ struct LauncherView: View {
         // file that fuzzy-matched some of its digits - above everything,
         // including the structural URL row.
         let withCalc = calcResult.map { [$0] + base } ?? base
+        // "join" and "call" are requests, not search terms: the meeting the
+        // user is late for, or the person they meant to ring, outranks a file
+        // whose name happens to contain the word.
+        let withMeeting = meetingResult.map { [$0] + withCalc } ?? withCalc
+        let withCall = callResults.isEmpty ? withMeeting : callResults + withMeeting
         // The planner-proposed action row outranks everything: the user typed
         // an instruction, not a search.
-        guard let actionRow = mainBarActionRow else { return withCalc }
-        return [actionRow] + withCalc
+        guard let actionRow = mainBarActionRow else { return withCall }
+        return [actionRow] + withCall
     }
 
     var mainBarActionRow: LauncherResult? {
@@ -1160,15 +1180,22 @@ struct LauncherView: View {
             ThemeSettingsView(settings: $themeStore.settings)
         } else {
             if !isCommandMode && !showsHelpScreen {
-                if shouldShowRunningAppsStrip {
-                    // The search field and running-apps icons always share one
-                    // background so they read as a single unified bar: a frosted
-                    // tile when floating, the classic rounded fill otherwise. The
-                    // search field drops its own box since the bar supplies it.
-                    topRowBar {
-                        HStack(alignment: .center, spacing: 10) {
-                            searchInputBar(showsBackground: false)
-                                .frame(maxWidth: .infinity)
+                // The search field and running-apps icons always share one
+                // background so they read as a single unified bar: a frosted
+                // tile when floating, the classic rounded fill otherwise. The
+                // search field drops its own box since the bar supplies it, and
+                // takes the whole bar when the strip is hidden.
+                //
+                // ONE branch on purpose: the strip appearing or hiding (which
+                // now happens on every entry into AI mode) must not restructure
+                // the row around the field. Two branches gave SwiftUI two
+                // different hierarchies, so the text field was torn down and
+                // rebuilt, dropping first-responder status with it.
+                topRowBar {
+                    HStack(alignment: .center, spacing: 10) {
+                        searchInputBar(showsBackground: false)
+                            .frame(maxWidth: .infinity)
+                        if shouldShowRunningAppsStrip {
                             RunningAppsStripView(
                                 service: runningAppsService,
                                 themeStore: themeStore,
@@ -1178,10 +1205,6 @@ struct LauncherView: View {
                             .frame(maxWidth: .infinity)
                         }
                     }
-                } else {
-                    // No running apps: the search field is the whole bar; the
-                    // chrome (classic fill or frosted tile) comes from topRowBar.
-                    topRowBar { searchInputBar(showsBackground: false) }
                 }
             }
 
@@ -1191,6 +1214,14 @@ struct LauncherView: View {
 
             if isCommandMode {
                 commandModeView
+            } else if showsHelpScreen {
+                // Ahead of the AI panel: ⌘H must reach help from inside a
+                // conversation too, and the mode is only paused - ⌘H again (or
+                // Esc, or typing) puts the session straight back. Arriving from
+                // AI opens on the AI keys rather than the generic first page.
+                LauncherHelpScreenView(
+                    themeStore: themeStore,
+                    initialTopic: isAIMode ? .ai : .all)
             } else if isActionSessionUI {
                 // `>` owns the whole panel area, like translation and clipboard
                 // do: the session screen holds completed actions, the pending
@@ -1205,8 +1236,6 @@ struct LauncherView: View {
                         themeStore: themeStore
                     )
                 }
-            } else if showsHelpScreen {
-                LauncherHelpScreenView(themeStore: themeStore)
             } else if isClipboardQuery && displayedResults.isEmpty {
                 // The empty clipboard screen is naturally two columns (history /
                 // how-to), so float it as the same two-card grid as the results.
@@ -1278,6 +1307,11 @@ struct LauncherView: View {
             Text(message)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
                 .foregroundStyle(themeStore.fontColor())
+                // A banner is one line inside a capsule. Anything longer is
+                // truncated by its caller; without this a stray newline in an
+                // interpolated title stacks the pill into a tall narrow block.
+                .lineLimit(1)
+                .truncationMode(.middle)
             if let copyText = bannerCopyText {
                 Button("Copy") {
                     NSPasteboard.general.clearContents()
@@ -1309,16 +1343,19 @@ struct LauncherView: View {
     }
 
     /// Stored conversations matching the typed text (title or content), for the
-    /// browse list shown while no conversation is active. Capped at 9 so the
-    /// "number + Enter continues" affordance stays unambiguous.
+    /// browse list shown while no conversation is active. Capped at exactly as
+    /// many rows as there are ⌘-digit chips, so every listed row is reachable by
+    /// its chip and no row is listed without one. More conversations than that
+    /// are stored and stay findable by typing.
     var filteredConversations: [AIConversation] {
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let all = conversationCache
-        guard !term.isEmpty, Int(term) == nil else { return Array(all.prefix(9)) }
+        let limit = AppConstants.Launcher.AISessions.jumpKeyLimit
+        guard !term.isEmpty, Int(term) == nil else { return Array(all.prefix(limit)) }
         return Array(all.filter { convo in
             convo.title.lowercased().contains(term)
                 || convo.items.contains { $0.text.lowercased().contains(term) }
-        }.prefix(9))
+        }.prefix(limit))
     }
 
     /// AI compose text (the input with `>` already consumed on entry).
@@ -1333,6 +1370,7 @@ struct LauncherView: View {
             && chat.sessionItems.isEmpty
             && !actionController.isPresenting
             && actionController.pendingChoice == nil
+            && actionController.linkPicker == nil
             && actionController.feedback.isEmpty
     }
 
@@ -1346,18 +1384,23 @@ struct LauncherView: View {
         return flat.count > 200 ? String(flat.prefix(200)) + "…" : flat
     }
 
-    /// Ergonomic home-row jump keys for the sessions list (⌘A, ⌘S, ⌘D, …).
-    /// The order MUST match the monitor's "asdfghjkl".
-    static let sessionJumpKeys: [Character] = Array("asdfghjkl")
+    /// The chip for row `index` ("⌘1" … "⌘9", "⌘0" for the tenth), empty past
+    /// the mapped rows. The digits are free in AI mode because it hides the
+    /// running-apps strip that owns them everywhere else.
+    static func sessionJumpKey(at index: Int) -> String {
+        guard let digit = AppConstants.Launcher.AISessions.jumpDigit(forRow: index) else {
+            return ""
+        }
+        return "⌘\(digit)"
+    }
 
-    /// `⌘`+home-row jump: open the Nth listed conversation. Only while browsing;
+    /// `⌘`+digit jump: open the Nth listed conversation. Only while browsing;
     /// returns false so the chord falls through otherwise.
     func openSessionAt(_ index: Int) -> Bool {
         guard isBrowsingConversations, index >= 0, index < filteredConversations.count else {
             return false
         }
-        chat.continueConversation(filteredConversations[index])
-        query = ""
+        openConversation(filteredConversations[index])
         return true
     }
 
@@ -1385,7 +1428,7 @@ struct LauncherView: View {
         }
         deletedConversation = convo
         showBanner(
-            "Deleted \u{201C}\(convo.title.prefix(32))\u{201D}  ·  ⌘Z undo",
+            "Deleted \u{201C}\(convo.displayTitle(limit: Self.bannerTitleLimit))\u{201D}  ·  ⌘Z undo",
             duration: 6.0)
     }
 
@@ -1396,7 +1439,7 @@ struct LauncherView: View {
         deletedConversation = nil
         ConversationStore.upsert(convo)
         conversationCache = ConversationStore.load()
-        showBanner("Restored \u{201C}\(convo.title.prefix(32))\u{201D}")
+        showBanner("Restored \u{201C}\(convo.displayTitle(limit: Self.bannerTitleLimit))\u{201D}")
         return true
     }
 
@@ -1412,10 +1455,10 @@ struct LauncherView: View {
         promptHistoryIndex = nil
     }
 
-    /// ↑/↓ in an open chat walk the prompt history like a shell: ↑ older, ↓
+    /// ⌥↑/⌥↓ in an open chat walk the prompt history like a shell: ↑ older, ↓
     /// newer, ↓ past the end returns to the empty input. Returns whether it
-    /// acted, so a no-op (empty history, past a boundary) lets the key fall
-    /// through to normal text-selection extension.
+    /// moved; in AI mode the caller consumes the chord either way, so a boundary
+    /// press does nothing rather than reaching the composer.
     @discardableResult
     func recallPrompt(_ direction: MoveCommandDirection) -> Bool {
         guard !aiPromptHistory.isEmpty else { return false }
@@ -1447,10 +1490,40 @@ struct LauncherView: View {
         query = text
     }
 
-    /// ⌘⌫ deletes the highlighted session (no-op when nothing is highlighted).
+    /// The footer keys, matched to what is actually on screen: the browse list
+    /// has chords a live conversation does not, and a streaming answer can be
+    /// stopped. One line either way, so the panel height never shifts.
+    var sessionFooterHint: String {
+        if chat.isStreamingAnswer {
+            return "⌘. stop  ·  Esc leave  ·  ⌘Z undo"
+        }
+        if isBrowsingConversations, !filteredConversations.isEmpty {
+            return "⌘1-9 ⌘0 open  ·  ⌘D delete  ·  ⌘H help  ·  Esc leave"
+        }
+        return "⇧↵ new line  ·  Esc leave  ·  ⌘Z undo  ·  @ sets exact time"
+    }
+
+    /// ⌘D and ⌘⌫ delete the highlighted session (no-op when nothing is
+    /// highlighted).
+    ///
+    /// Guarded HERE rather than at each chord, so every entry point inherits
+    /// it: with a conversation open there is no list on screen, and the index
+    /// left over from the row the user opened is not a delete target. Deleting
+    /// the conversation you are reading, from a list you cannot see, was the
+    /// bug this prevents.
     func deleteHighlightedSession() {
+        guard isBrowsingConversations else { return }
         guard selectedConversationIndex >= 0, selectedConversationIndex < filteredConversations.count else { return }
         deleteConversation(filteredConversations[selectedConversationIndex])
+    }
+
+    /// Open a stored conversation. Clears the list highlight with it: the row
+    /// is no longer a selection once its transcript is on screen, and a stale
+    /// index is what let a delete chord reach it.
+    func openConversation(_ conversation: AIConversation) {
+        chat.continueConversation(conversation)
+        selectedConversationIndex = -1
+        query = ""
     }
 
     /// The AI session screen: actions, questions, and streaming answers stack in
@@ -1465,7 +1538,7 @@ struct LauncherView: View {
                 .keyboardShortcut(.escape, modifiers: .shift)
             Button("") { deleteHighlightedSession() }
                 .keyboardShortcut(.delete, modifiers: .command)
-                .disabled(selectedConversationIndex < 0 || filteredConversations.isEmpty)
+                .disabled(!isBrowsingConversations || selectedConversationIndex < 0)
         }
         .buttonStyle(.plain)
         .opacity(0)
@@ -1515,6 +1588,8 @@ struct LauncherView: View {
                                 }
                             }
                             .padding(.horizontal, 4)
+                        } else if let picker = actionController.linkPicker {
+                            linkPickerList(picker)
                         } else if !actionController.pendingSteps.isEmpty {
                             PendingActionBar(
                                 steps: actionController.pendingSteps,
@@ -1550,16 +1625,11 @@ struct LauncherView: View {
                                         ConversationRowView(
                                             conversation: convo,
                                             snippet: conversationSnippet(convo),
-                                            jumpKey: index < Self.sessionJumpKeys.count
-                                                ? "⌘\(String(Self.sessionJumpKeys[index]).uppercased())"
-                                                : "",
+                                            jumpKey: Self.sessionJumpKey(at: index),
                                             isSelected: selectedConversationIndex == index,
                                             themeStore: themeStore,
                                             namespace: conversationSelectionNamespace,
-                                            onOpen: {
-                                                chat.continueConversation(convo)
-                                                query = ""
-                                            },
+                                            onOpen: { openConversation(convo) },
                                             onDelete: { deleteConversation(convo) })
                                         .id(convo.id)
                                     }
@@ -1615,9 +1685,7 @@ struct LauncherView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            Text(chat.isStreamingAnswer
-                ? "⌘. stop  ·  Esc leave  ·  ⌘Z undo"
-                : "Esc leave  ·  ⌘Z undo  ·  @ sets exact time")
+            Text(sessionFooterHint)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
                 .foregroundStyle(themeStore.mutedTextColor())
                 .padding(.horizontal, 4)

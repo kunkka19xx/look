@@ -123,6 +123,10 @@ pub fn start(host: &str, model: &str, messages_json: &str, options_json: &str) -
     start_request(&url, &body, timeout_secs)
 }
 
+/// Bounds the connect phase only, so an unreachable host fails in seconds
+/// rather than holding the UI for the whole answer timeout.
+pub(crate) const CONNECT_TIMEOUT_SECS: u32 = 5;
+
 /// Spawns a curl session POSTing `body` to `url`; the reader thread accumulates
 /// `message.content` deltas (streamed NDJSON and single-response lines both
 /// parse). Returns a pollable session id, or 0 when the spawn/write fails.
@@ -133,6 +137,8 @@ pub(crate) fn start_request(url: &str, body: &str, max_time_secs: u32) -> u64 {
     command
         .arg("-sS")
         .arg("--no-buffer")
+        .arg("--connect-timeout")
+        .arg(CONNECT_TIMEOUT_SECS.to_string())
         .arg("--max-time")
         .arg(max_time_secs.to_string())
         .arg("-H")
@@ -296,7 +302,10 @@ mod tests {
         let id = start("http://127.0.0.1:1", "m", "[]", "");
         assert_ne!(id, 0);
         let mut last = String::new();
-        for _ in 0..100 {
+        // Outlasts CONNECT_TIMEOUT_SECS: a platform that drops the SYN rather
+        // than refusing it takes the whole connect budget to fail.
+        let attempts = (CONNECT_TIMEOUT_SECS as usize + 5) * 20;
+        for _ in 0..attempts {
             let Some(snapshot) = poll(id) else { break };
             last = snapshot;
             if last.contains("\"done\":true") {

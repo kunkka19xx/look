@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 
 struct LauncherRowView: View {
     @EnvironmentObject private var themeStore: ThemeStore
-
     let result: LauncherResult
     let isSelected: Bool
     let isPicked: Bool
@@ -21,29 +20,6 @@ struct LauncherRowView: View {
         static let dividerHeight: CGFloat = 1
         static let dividerInset: CGFloat = 6
         static let dividerOpacity: Double = 0.8
-    }
-
-    /// Drives the one-shot zoom as this row takes the selection.
-    @State private var zoomed = false
-    /// Bumped on every zoom and on deselect, so a pending reset that belongs to
-    /// an earlier zoom cannot cut short a newer one. Reachable by arrowing away
-    /// and back inside `zoomInSeconds`.
-    @State private var zoomGeneration = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private func zoom() {
-        guard !reduceMotion else { return }
-        zoomGeneration &+= 1
-        let generation = zoomGeneration
-        withAnimation(Motion.Selection.zoomIn) {
-            zoomed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Motion.Selection.zoomInSeconds) {
-            guard zoomGeneration == generation else { return }
-            withAnimation(Motion.Selection.zoomOut) {
-                zoomed = false
-            }
-        }
     }
 
     /// Hidden under the selection pill and after the final row. The row keeps
@@ -70,6 +46,17 @@ struct LauncherRowView: View {
         case .webURL:
             return RowIconCache.image(key: "symbol:globe") {
                 NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+                    ?? NSWorkspace.shared.icon(for: .plainText)
+            }
+        case .meeting:
+            return RowIconCache.image(key: "symbol:video") {
+                NSImage(systemSymbolName: "video.fill", accessibilityDescription: nil)
+                    ?? NSWorkspace.shared.icon(for: .plainText)
+            }
+        case .call(let url):
+            let symbol = LinkRowAppearance.symbol(forURL: url)
+            return RowIconCache.image(key: "symbol:\(symbol)") {
+                NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
                     ?? NSWorkspace.shared.icon(for: .plainText)
             }
         case .prefixSuggestion, .webSuggestion:
@@ -167,10 +154,7 @@ struct LauncherRowView: View {
                             .foregroundStyle(themeStore.selectionFillColor())
                             .frame(width: 14)
                     }
-                    Image(nsImage: rowIcon)
-                        .resizable()
-                        .frame(width: 22, height: 22)
-                        .scaleEffect(isSelected && zoomed ? Motion.Selection.iconZoomScale : 1)
+                    RowIcon(image: rowIcon, isSelected: isSelected)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(result.title)
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
@@ -190,30 +174,12 @@ struct LauncherRowView: View {
             }
             .buttonStyle(.plain)
             .focusable(false)
-            .background {
-                // One pill shared across rows via matchedGeometryEffect. It
-                // glides when the selection change is wrapped in
-                // `Motion.Selection.glide` (keyboard nav) and snaps otherwise
-                // (click, results refresh).
-                if isSelected {
-                    SelectionPill(
-                        themeStore: themeStore,
-                        namespace: selectionNamespace,
-                        zoomed: zoomed)
-                }
-            }
-            // Deliberately no `.animation(_:value:)` in this row: per-row it
-            // fires on every neighbour as the selection passes, flickering the
-            // whole list. Clearing on deselect covers LazyVStack recycling,
-            // where a view can arrive holding a previous row's `zoomed`.
-            .onChange(of: isSelected) { _, selected in
-                guard selected else {
-                    zoomGeneration &+= 1
-                    zoomed = false
-                    return
-                }
-                zoom()
-            }
+            // Glides when the change is wrapped in `Motion.Selection.glide`
+            // (keyboard nav), snaps otherwise (click, refresh).
+            .selectionPill(
+                isSelected: isSelected,
+                themeStore: themeStore,
+                namespace: selectionNamespace)
 
             Rectangle()
                 .fill(themeStore.dividerColor().opacity(Layout.dividerOpacity))
@@ -221,5 +187,22 @@ struct LauncherRowView: View {
                 .padding(.horizontal, Layout.dividerInset)
                 .opacity(showsDivider ? 1 : 0)
         }
+    }
+}
+
+/// The row's icon, popping with the selection.
+///
+/// Its own view because a view cannot read an environment value its own body
+/// sets, and `selectionPill` publishes the zoom from inside `LauncherRowView`.
+private struct RowIcon: View {
+    @Environment(\.isSelectionZoomed) private var zoomed
+    let image: NSImage
+    let isSelected: Bool
+
+    var body: some View {
+        Image(nsImage: image)
+            .resizable()
+            .frame(width: 22, height: 22)
+            .scaleEffect(isSelected && zoomed ? Motion.Selection.iconZoomScale : 1)
     }
 }

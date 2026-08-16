@@ -24,7 +24,9 @@ extension ThemeSettingsView {
                         }
                         if settings.backgroundImagePath != nil {
                             Button("Clear") {
-                                themeStore.setBackgroundImage(url: nil)
+                                withAnimation(Motion.Fade.animation) {
+                                    themeStore.setBackgroundImage(url: nil)
+                                }
                             }
                         }
                     }
@@ -172,8 +174,10 @@ extension ThemeSettingsView {
                                                 Text(path)
                                                     .lineLimit(1)
                                                 Button {
-                                                    themeStore.removeExtraFileScanRoot(path)
-                                                    extraScanDirectoryMessage = nil
+                                                    withAnimation(Motion.Insert.animation) {
+                                                        themeStore.removeExtraFileScanRoot(path)
+                                                        extraScanDirectoryMessage = nil
+                                                    }
                                                 } label: {
                                                     Image(systemName: "xmark")
                                                         .font(.system(size: 10, weight: .semibold))
@@ -185,6 +189,7 @@ extension ThemeSettingsView {
                                             .padding(.horizontal, 9)
                                             .padding(.vertical, 5)
                                             .background(themeStore.liftColor(opacity: 0.12), in: Capsule())
+                                            .transition(Motion.Insert.transition)
                                         }
                                     }
                                 }
@@ -224,7 +229,9 @@ extension ThemeSettingsView {
                                                 Text(path)
                                                     .lineLimit(1)
                                                 Button {
-                                                    themeStore.removeExcludedFolderPath(path)
+                                                    withAnimation(Motion.Insert.animation) {
+                                                        themeStore.removeExcludedFolderPath(path)
+                                                    }
                                                 } label: {
                                                     Image(systemName: "xmark")
                                                         .font(.system(size: 10, weight: .semibold))
@@ -236,6 +243,7 @@ extension ThemeSettingsView {
                                             .padding(.horizontal, 9)
                                             .padding(.vertical, 5)
                                             .background(themeStore.liftColor(opacity: 0.12), in: Capsule())
+                                            .transition(Motion.Insert.transition)
                                         }
                                     }
                                 }
@@ -375,7 +383,9 @@ extension ThemeSettingsView {
         panel.canChooseFiles = true
         panel.allowedContentTypes = [.image]
         if panel.runModal() == .OK {
-            themeStore.setBackgroundImage(url: panel.url)
+            withAnimation(Motion.Fade.animation) {
+                themeStore.setBackgroundImage(url: panel.url)
+            }
         }
     }
 
@@ -385,7 +395,9 @@ extension ThemeSettingsView {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         if panel.runModal() == .OK, let url = panel.url {
-            themeStore.addExcludedFolderPath(url: url)
+            withAnimation(Motion.Insert.animation) {
+                themeStore.addExcludedFolderPath(url: url)
+            }
         }
     }
 
@@ -395,10 +407,12 @@ extension ThemeSettingsView {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         if panel.runModal() == .OK, let url = panel.url {
-            if let error = themeStore.addExtraFileScanRoot(url: url) {
-                extraScanDirectoryMessage = error.message
-            } else {
-                extraScanDirectoryMessage = nil
+            withAnimation(Motion.Insert.animation) {
+                if let error = themeStore.addExtraFileScanRoot(url: url) {
+                    extraScanDirectoryMessage = error.message
+                } else {
+                    extraScanDirectoryMessage = nil
+                }
             }
         }
     }

@@ -108,6 +108,26 @@ private func look_ai_parse_explicit(_ input: UnsafePointer<CChar>?, _ modelAvail
 nonisolated
 private func look_ai_route(_ memoryPath: UnsafePointer<CChar>?, _ input: UnsafePointer<CChar>?, _ modelAvailable: Bool, _ now: Int64) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_meeting_join_query_json")
+nonisolated
+private func look_meeting_join_query_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_call_query_json")
+nonisolated
+private func look_call_query_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_call_url")
+nonisolated
+private func look_call_url(_ modality: UnsafePointer<CChar>?, _ handle: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_call_default_modality")
+nonisolated
+private func look_call_default_modality() -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_meeting_outcome_json")
+nonisolated
+private func look_meeting_outcome_json(_ eventsJSON: UnsafePointer<CChar>?, _ now: Int64, _ name: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_ai_chat_start")
 nonisolated
 private func look_ai_chat_start(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ messagesJSON: UnsafePointer<CChar>?, _ optionsJSON: UnsafePointer<CChar>?) -> UInt64
@@ -314,10 +334,17 @@ final class EngineBridge: @unchecked Sendable {
     }
 
     /// The Rust-core routing decision for submitted AI-mode input (see
-    /// core/ai/src/route.rs: memory -> textop -> files -> explicit -> plan ->
-    /// chat). The memory tier has already executed by the time this returns.
+    /// core/ai/src/route.rs: memory -> join -> textop -> files -> explicit ->
+    /// plan -> chat). The memory tier has already executed by the time this
+    /// returns.
     enum AIRoute {
         case memory(feedback: String)
+        /// "join", "join my next meeting", "join <name>". The shell resolves
+        /// the name against the calendar.
+        case join(name: String?)
+        /// "call mom", "facetime sarah". `modality` is a `Modality` id, or nil
+        /// when the words did not say and the default applies.
+        case call(name: String, modality: String?)
         case textOp(label: String, instruction: String)
         case files
         case explicit(toolID: String, params: [String: String])
@@ -336,6 +363,11 @@ final class EngineBridge: @unchecked Sendable {
             let label: String?
             let instruction: String?
             let call: Call?
+            /// The join tier's meeting name (absent for a bare "join"), or the
+            /// call tier's person.
+            let name: String?
+            /// The call tier's modality id, absent when the words did not say.
+            let modality: String?
         }
         let now = Int64(Date().timeIntervalSince1970)
         let ptr = memoryPath.withCString { pathC in
@@ -352,6 +384,11 @@ final class EngineBridge: @unchecked Sendable {
         switch payload.route {
         case "memory":
             return .memory(feedback: payload.feedback ?? "")
+        case "join":
+            return .join(name: payload.name)
+        case "call":
+            guard let name = payload.name, !name.isEmpty else { return .chat }
+            return .call(name: name, modality: payload.modality)
         case "textop":
             guard let instruction = payload.instruction, !instruction.isEmpty else { return .chat }
             return .textOp(label: payload.label ?? instruction, instruction: instruction)
@@ -372,6 +409,68 @@ final class EngineBridge: @unchecked Sendable {
     nonisolated struct FileRecallOutcome {
         let results: [LauncherResult]
         let relaxed: String?
+    }
+
+    /// The join request in the typed text, or nil when it is an ordinary
+    /// search. Pure string work in core, so it is safe per keystroke.
+    nonisolated func joinQuery(_ query: String) -> JoinRequest? {
+        guard let ptr = query.withCString({ look_meeting_join_query_json($0) }) else {
+            return nil
+        }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(JoinRequest.self, from: data)
+    }
+
+    /// The call request in the typed text, or nil when it is an ordinary
+    /// search. Pure string work in core, so it is safe per keystroke.
+    nonisolated func callQuery(_ query: String) -> CallRequest? {
+        guard let ptr = query.withCString({ look_call_query_json($0) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        // Core answers the literal `null` for a non-call, which fails to decode
+        // into a non-optional and so becomes the nil this returns anyway.
+        return try? JSONDecoder().decode(CallRequest.self, from: data)
+    }
+
+    /// The URL that dials `handle` with `modality`, or nil when the modality
+    /// is unknown to core. Building it there keeps the schemes in one place.
+    nonisolated func callURL(modality: String, handle: String) -> String? {
+        guard
+            let ptr = modality.withCString({ modalityC in
+                handle.withCString { look_call_url(modalityC, $0) }
+            })
+        else { return nil }
+        defer { look_free_cstring(ptr) }
+        let url = String(cString: ptr)
+        return url.isEmpty ? nil : url
+    }
+
+    /// The modality a bare "call" means, straight from core.
+    nonisolated var defaultCallModality: String {
+        guard let ptr = look_call_default_modality() else { return "" }
+        defer { look_free_cstring(ptr) }
+        return String(cString: ptr)
+    }
+
+    /// What a `join` finds in `eventsJSON`: the meetings it can open, best
+    /// first, plus the titles that matched the name but carry no link. `name`
+    /// narrows to meetings whose title holds those words. The ordering, and
+    /// where a join link hides inside an event, are decided in core
+    /// (`look_ai::meeting`) so every shell agrees.
+    nonisolated func joinOutcome(
+        eventsJSON: String, now: Int64, name: String = ""
+    ) -> JoinOutcome {
+        guard
+            let ptr = eventsJSON.withCString({ events in
+                name.withCString { look_meeting_outcome_json(events, now, $0) }
+            })
+        else {
+            return JoinOutcome()
+        }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return JoinOutcome() }
+        return (try? JSONDecoder().decode(JoinOutcome.self, from: data)) ?? JoinOutcome()
     }
 
     /// Natural-language file recall over Look's own index. Returns nil when the

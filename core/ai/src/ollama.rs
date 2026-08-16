@@ -17,6 +17,8 @@ pub fn post_json(url: &str, body: &str, timeout_secs: u32) -> Option<String> {
     command
         .arg("-sS")
         .arg("--fail")
+        .arg("--connect-timeout")
+        .arg(crate::chat::CONNECT_TIMEOUT_SECS.to_string())
         .arg("--max-time")
         .arg(timeout_secs.to_string())
         .arg("-H")

@@ -2,7 +2,7 @@
 //! the precedence is code, not convention:
 //!
 //! ```text
-//! memory -> textop -> files -> explicit -> plan -> chat
+//! memory -> join -> call -> textop -> files -> explicit -> plan -> chat
 //! ```
 //!
 //! Deterministic tiers run first, most-precise first (memory and textop match
@@ -17,12 +17,14 @@ use std::path::Path;
 
 use serde_json::json;
 
-use crate::{explicit, files, memory, textops};
+use crate::{calling, explicit, files, meeting, memory, textops};
 
 /// Route `input` (the `>` already consumed) and return the decision as JSON:
-/// `{"route":"memory","feedback":...}` | `{"route":"textop","label":...,
-/// "instruction":...}` | `{"route":"files"}` | `{"route":"explicit","call":
-/// {tool,params}}` | `{"route":"plan"}` | `{"route":"chat"}`.
+/// `{"route":"memory","feedback":...}` | `{"route":"join","name":...}` |
+/// `{"route":"call","name":...,"modality":...}` |
+/// `{"route":"textop","label":...,"instruction":...}` | `{"route":"files"}` |
+/// `{"route":"explicit","call":{tool,params}}` | `{"route":"plan"}` |
+/// `{"route":"chat"}`.
 /// The memory tier executes the command (it is the handler, not a preview).
 pub fn route_json(
     memory_path: &Path,
@@ -36,6 +38,24 @@ pub fn route_json(
     }
     if let Some(feedback) = memory::handle_command(memory_path, trimmed) {
         return json!({ "route": "memory", "feedback": feedback }).to_string();
+    }
+    // Above the planner, which reads "join the standup" as ADD an event called
+    // "the standup" - a confirm bar for a meeting that already exists. The
+    // shell resolves the name against the calendar and falls through to chat
+    // when nothing answers to it, so an unmatched name costs nothing.
+    if let Some(request) = meeting::join_query(trimmed) {
+        return json!({ "route": "join", "name": request.name }).to_string();
+    }
+    // Same reasoning as `join`: asked to plan "call mom", a 7B model proposes
+    // adding an EVENT called "call mom". The shell resolves the name against
+    // the address book.
+    if let Some(request) = calling::call_query(trimmed) {
+        return json!({
+            "route": "call",
+            "name": request.name,
+            "modality": request.modality.map(|modality| modality.id()),
+        })
+        .to_string();
     }
     if let Some(op) = textops::parse(trimmed) {
         return json!({ "route": "textop", "label": op.label, "instruction": op.instruction })
@@ -96,6 +116,69 @@ mod tests {
             decoded(&route_json(&path, "   ", true, NOW))["route"],
             "chat"
         );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn join_routes_ahead_of_the_planner() {
+        let path = temp_memory();
+        let _ = std::fs::remove_file(&path);
+        const NOW: i64 = 1_754_000_000;
+
+        let bare = decoded(&route_json(&path, "join", true, NOW));
+        assert_eq!(bare["route"], "join");
+        assert!(bare["name"].is_null());
+
+        // The phrasing that the planner used to turn into "add an event called
+        // Testing Meeting".
+        let named = decoded(&route_json(&path, "Join Testing Meeting", true, NOW));
+        assert_eq!(named["route"], "join");
+        assert_eq!(named["name"], "testing");
+
+        // Still routed with no model configured: it never needed one.
+        assert_eq!(
+            decoded(&route_json(&path, "join", false, NOW))["route"],
+            "join"
+        );
+
+        // "remember to join the standup" is a memory write, not a join.
+        let memory = decoded(&route_json(
+            &path,
+            "remember to join the standup",
+            true,
+            NOW,
+        ));
+        assert_eq!(memory["route"], "memory");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn call_routes_ahead_of_the_planner() {
+        let path = temp_memory();
+        let _ = std::fs::remove_file(&path);
+        const NOW: i64 = 1_754_000_000;
+
+        // The phrasing the planner would otherwise turn into "add an event
+        // called call mom".
+        let bare = decoded(&route_json(&path, "call mom", true, NOW));
+        assert_eq!(bare["route"], "call");
+        assert_eq!(bare["name"], "mom");
+        assert!(
+            bare["modality"].is_null(),
+            "unsaid, for the shell to default"
+        );
+
+        let named = decoded(&route_json(&path, "facetime sarah lee", true, NOW));
+        assert_eq!(named["route"], "call");
+        assert_eq!(named["name"], "sarah lee");
+        assert_eq!(named["modality"], "face_time_video");
+
+        // "remind me to call mom @ 5pm" is a reminder, not a call: the line
+        // does not OPEN with the verb.
+        let reminder = decoded(&route_json(&path, "remind me to call mom @ 5pm", true, NOW));
+        assert_eq!(reminder["route"], "explicit");
 
         let _ = std::fs::remove_file(&path);
     }

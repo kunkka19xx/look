@@ -49,6 +49,9 @@ struct SearchInputBar: View {
                 placeholder: "",
                 isFocused: isQueryFocused,
                 themeStore: themeStore,
+                // Only the assistant composes prose; a search query with a line
+                // break in it means nothing to the matcher.
+                allowsMultiline: isAIMode,
                 onSubmit: onSubmit
             )
                 // The field's own placeholder is empty, so it would otherwise
@@ -508,19 +511,99 @@ struct RecentEmptyStateView: View {
     }
 }
 
+/// Which slice of the help the screen is showing. `all` keeps the original one
+/// scroll; the rest narrow it, so arriving from a mode lands on that mode's keys
+/// instead of a page the reader has to search.
+enum LauncherHelpTopic: CaseIterable, Identifiable {
+    case all
+    case main
+    case ai
+    case prefixes
+    case command
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .all: return "All"
+        case .main: return "Main"
+        case .ai: return "AI"
+        case .prefixes: return "Prefixes"
+        case .command: return "Command"
+        }
+    }
+
+    /// The sections this topic shows, in reading order.
+    var sections: [LauncherHelpSection] {
+        switch self {
+        case .all:
+            return LauncherHelpTopic.main.sections
+                + LauncherHelpTopic.ai.sections
+                + LauncherHelpTopic.prefixes.sections
+                + LauncherHelpTopic.command.sections
+        case .main:
+            return [
+                LauncherHelpSection(title: "Main", items: LauncherHelpContent.mainShortcuts),
+                LauncherHelpSection(title: "Super actions", items: LauncherHelpContent.superActions),
+            ]
+        case .ai:
+            return [LauncherHelpSection(title: "AI mode (>)", items: LauncherHelpContent.aiMode)]
+        case .prefixes:
+            return [LauncherHelpSection(title: "Query prefixes", items: LauncherHelpContent.queryModes)]
+        case .command:
+            return [LauncherHelpSection(title: "Command mode", items: LauncherHelpContent.commandMode)]
+        }
+    }
+}
+
+/// One titled block of key/description pairs. The title is the identity: two
+/// sections never share one on the same screen.
+struct LauncherHelpSection: Identifiable {
+    let title: String
+    let items: [(String, String)]
+    var id: String { title }
+}
+
 struct LauncherHelpScreenView: View {
+    private enum Metrics {
+        static let selectedCapsuleOpacity = 0.22
+        static let capsuleSpacing: CGFloat = 6
+        static let capsuleHorizontalPadding: CGFloat = 10
+        static let capsuleVerticalPadding: CGFloat = 4
+        /// Wider than the gap between capsules, so the group reads as one unit
+        /// next to the title rather than a sixth capsule.
+        static let titleRowSpacing: CGFloat = 12
+    }
+
     let themeStore: ThemeStore
+    /// Where the screen opens. ⌘H from AI mode passes `.ai` so the assistant's
+    /// keys are the first thing on screen.
+    var initialTopic: LauncherHelpTopic = .all
+
+    @State private var topic: LauncherHelpTopic
+
+    init(themeStore: ThemeStore, initialTopic: LauncherHelpTopic = .all) {
+        self.themeStore = themeStore
+        self.initialTopic = initialTopic
+        _topic = State(initialValue: initialTopic)
+    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
-                HStack {
+                // The topics ride in the title row rather than owning a band of
+                // their own: they are navigation for this screen, and a full
+                // row of them pushed the first shortcut below the fold.
+                HStack(spacing: Metrics.titleRowSpacing) {
                     Text(LauncherHelpContent.title)
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 3), weight: .semibold))
-                    Spacer()
+                        .fixedSize()
+                    topicPicker
+                    Spacer(minLength: 0)
                     Text(LauncherHelpContent.closeHint)
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                         .foregroundStyle(themeStore.mutedTextColor())
+                        .fixedSize()
                 }
 
                 AppUpdateStatusView(themeStore: themeStore)
@@ -529,13 +612,42 @@ struct LauncherHelpScreenView: View {
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .regular))
                     .foregroundStyle(themeStore.secondaryTextColor())
 
-                ShortcutHelpSection(title: "Main", items: LauncherHelpContent.mainShortcuts)
-                ShortcutHelpSection(title: "Super actions", items: LauncherHelpContent.superActions)
-                ShortcutHelpSection(title: "Query prefixes", items: LauncherHelpContent.queryModes)
-                ShortcutHelpSection(title: "Command mode", items: LauncherHelpContent.commandMode)
+                ForEach(topic.sections) { section in
+                    ShortcutHelpSection(title: section.title, items: section.items)
+                }
             }
             .padding(12)
         }
+        // The screen is rebuilt on each open, but a reused instance would keep
+        // the last topic and ignore where the reader came from.
+        .onChange(of: initialTopic) { _, requested in topic = requested }
+    }
+
+    private var topicPicker: some View {
+        HStack(spacing: Metrics.capsuleSpacing) {
+            ForEach(LauncherHelpTopic.allCases) { candidate in
+                let isSelected = candidate == topic
+                Button { topic = candidate } label: {
+                    Text(candidate.label)
+                        .font(themeStore.uiFont(
+                            size: CGFloat(themeStore.settings.fontSize - 1),
+                            weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? themeStore.fontColor() : themeStore.mutedTextColor())
+                        .padding(.horizontal, Metrics.capsuleHorizontalPadding)
+                        .padding(.vertical, Metrics.capsuleVerticalPadding)
+                        .background(
+                            isSelected
+                                ? themeStore.accentColor().opacity(Metrics.selectedCapsuleOpacity)
+                                : themeStore.controlFillColor(),
+                            in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Show \(candidate.label) shortcuts")
+            }
+        }
+        // Sits between the title and the close hint, so the capsules keep their
+        // own width instead of being squeezed by the row.
+        .fixedSize()
     }
 }
 
@@ -561,6 +673,28 @@ private enum LauncherHelpContent {
         ("Cmd+Shift+H", "Hide the selected app from Look"),
         ("Cmd+H", "Toggle this help screen"),
         ("Esc", "Close help / back / hide launcher"),
+    ]
+
+    // The `>` assistant: the sessions list, a live conversation, and the keys
+    // that only exist there (the running-apps strip is hidden in this mode, so
+    // Cmd+digit addresses conversations instead of apps).
+    static let aiMode: [(String, String)] = [
+        (">", "Enter AI mode (a dead-end Enter on the home screen goes here too)"),
+        ("Enter", "Send the message, or open the highlighted conversation"),
+        ("Shift+Enter", "New line in the message (the box grows to 6 lines)"),
+        ("Option+Up / Option+Down", "Walk your recent prompts, like a shell history"),
+        ("Shift+Up / Shift+Down", "Select text in the message you are composing"),
+        ("Cmd+1..Cmd+9, Cmd+0", "Open the conversation carrying that chip (Cmd+0 is the tenth)"),
+        ("Tab / Up / Down", "Move over the conversation list"),
+        ("Cmd+D", "Delete the highlighted conversation"),
+        ("Cmd+Z", "Undo the last action, or restore a just-deleted conversation"),
+        ("Cmd+.", "Stop a streaming answer"),
+        ("@name", "Attach a file to the message (Enter picks the highlighted one)"),
+        ("@ 5pm", "Set an exact time on an event or reminder"),
+        ("1, 2, 3 + Enter", "Answer a \u{201C}which one?\u{201D} list"),
+        ("Cmd+H", "Open this help without leaving the conversation"),
+        ("Esc", "Close the file popup, then leave the conversation"),
+        ("Shift+Esc", "Leave AI mode straight to the home screen"),
     ]
 
     // The strip on the empty home screen. Keys are the tile mnemonics from the

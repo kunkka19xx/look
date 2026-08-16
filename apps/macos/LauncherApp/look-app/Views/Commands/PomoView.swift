@@ -234,7 +234,7 @@ struct PomoView: View {
         VStack(spacing: 8) {
             headerBar
                 .opacity(idle ? 0 : 1)
-                .animation(.easeInOut(duration: 0.4), value: idle)
+                .animation(Motion.Fade.animation, value: idle)
 
             GeometryReader { geo in
                 ScrollView(.vertical, showsIndicators: false) {
@@ -243,7 +243,7 @@ struct PomoView: View {
                             timerCard
                             controlsRow
                                 .opacity(idle ? 0 : 1)
-                                .animation(.easeInOut(duration: 0.4), value: idle)
+                                .animation(Motion.Fade.animation, value: idle)
                                 // Defensive: nothing inside the controls
                                 // row should animate. Suppresses any
                                 // inherited animation transaction so the
@@ -256,7 +256,7 @@ struct PomoView: View {
 
                         sessionListToggleAndList
                             .opacity(idle ? 0 : 1)
-                            .animation(.easeInOut(duration: 0.4), value: idle)
+                            .animation(Motion.Fade.animation, value: idle)
                     }
                     .frame(minHeight: geo.size.height)
                 }
@@ -618,7 +618,9 @@ struct PomoView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         if panel.runModal() == .OK, let url = panel.url {
-            state.music.setFolder(url)
+            withAnimation(Motion.Fade.animation) {
+                state.music.setFolder(url)
+            }
         }
     }
 

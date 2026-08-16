@@ -47,6 +47,13 @@ extension LauncherView {
             guard let planned = mainBarAction else { return }
             runQuickAction(planned)
             return
+        case .meeting(let url), .call(let url):
+            // Join and call rows: the link travelled in the row id, so pressing
+            // Enter never re-reads the calendar or Contacts, and can never open
+            // something other than what the row named.
+            openURLScheme(url)
+            hideLauncherWindow(restorePreviousApp: false)
+            return
         case nil:
             break
         }
@@ -351,13 +358,24 @@ extension LauncherView {
             return
         }
         showsHelpScreen.toggle()
+        if !showsHelpScreen { restoreFocusAfterHelp() }
     }
 
     @discardableResult
     func dismissHelpIfVisible() -> Bool {
         guard showsHelpScreen else { return false }
         showsHelpScreen = false
+        restoreFocusAfterHelp()
         return true
+    }
+
+    /// Put the caret back in the search field after help closes. The top row is
+    /// dropped entirely while help is up, so the field is a NEW view by the time
+    /// we return and setting `isQueryFocused` alone lands on nothing: the staged
+    /// recovery delays are what wait for it to exist. Not `activateApp`, the
+    /// launcher is already frontmost.
+    private func restoreFocusAfterHelp() {
+        focusActiveInput(activateApp: false)
     }
 
     func deleteClipboardResult(resultID: String) {

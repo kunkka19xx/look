@@ -22,7 +22,10 @@ struct LauncherResult: Identifiable {
     let title: String
     let subtitle: String?
     let path: String
-    let score: Int
+    /// `var`, not `let`: most rows are built with their final rank, but the
+    /// call rows order themselves after the fact. Its POSITION is load-bearing
+    /// - the memberwise initializer is called positionally all over the app.
+    var score: Int
     var clipboardContent: String? = nil
     var clipboardCapturedAt: Date? = nil
     var clipboardCharacterCount: Int? = nil
@@ -38,4 +41,9 @@ struct LauncherResult: Identifiable {
     /// grouped display value.
     var calcExpression: String? = nil
     var calcRawValue: String? = nil
+    /// Set on the synthetic rows that open a URL (a meeting to join, a way to
+    /// reach a person): what the preview shows without re-parsing the subtitle
+    /// it was written into. The URL itself rides in the result id.
+    var linkKindLabel: String? = nil
+    var linkDetail: String? = nil
 }
