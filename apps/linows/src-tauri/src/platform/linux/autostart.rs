@@ -58,16 +58,18 @@ const EXEC_RESERVED: &[char] = &[
 /// Serialize a path as an `Exec` argument. Escaping is two-layered: the Exec
 /// grammar backslash-escapes `"`, backtick, `$` and `\` inside quotes, then the
 /// key file's string type escapes each backslash again - so a literal backslash
-/// ends up as four, and control characters as `\n`-style sequences.
+/// ends up as four, and control characters as `\n`-style sequences. `%` doubles
+/// regardless of quoting, else `100%foo` reads as the `%f` field code.
 fn exec_arg(path: &Path) -> String {
     let raw = path.to_string_lossy();
     if !raw.contains(EXEC_RESERVED) {
-        return raw.into_owned();
+        return raw.replace('%', "%%");
     }
     let mut out = String::with_capacity(raw.len() + 2);
     out.push('"');
     for c in raw.chars() {
         match c {
+            '%' => out.push_str("%%"),
             '\\' => out.push_str(r"\\\\"),
             '"' | '`' | '$' => {
                 out.push_str(r"\\");
@@ -157,6 +159,18 @@ mod tests {
         assert_eq!(
             exec_arg(Path::new("/opt/a\"b/lookapp")),
             r#""/opt/a\\"b/lookapp""#
+        );
+    }
+
+    #[test]
+    fn doubles_percent_in_either_form() {
+        assert_eq!(
+            exec_arg(Path::new("/opt/100%foo/lookapp")),
+            "/opt/100%%foo/lookapp"
+        );
+        assert_eq!(
+            exec_arg(Path::new("/opt/100%foo bar/lookapp")),
+            "\"/opt/100%%foo bar/lookapp\""
         );
     }
 
