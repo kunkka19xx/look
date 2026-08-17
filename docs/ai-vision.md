@@ -4,23 +4,14 @@ Status: direction, not a commitment to specific packages or timelines. This doc
 sets the north star for AI in `look` and specifies the Recall pillar in enough
 detail to build against.
 
-**What of this has shipped** (see `ai-session.md` and `ai-action-contracts.md`
-for the as-built detail):
+**What of this has shipped** (see `ai-architecture.md` for the as-built detail):
 
 | Verb | State |
 | --- | --- |
 | Find | Shipped. Deterministic file recall plus a model fallback that emits a structured query, never a rewritten string. |
 | Answer | Shipped. Instant answers, web sources, and a streamed local-model answer; personal schedule questions answer from the calendar itself. |
 | Act | Shipped for calendar + reminders (add/move/cancel/complete/remove/snooze/block), confirm-gated with undo, reachable from both `>` and the main bar. |
-| Recall | **Not built.** No embeddings, no clipboard corpus. Today's "recall" is deterministic keyword+time file search, which is useful but not semantic. |
-
-Two structural notes on the sections below: the **tool registry** described in
-Architecture was built and then deleted - resolution lives in Rust
-(`core/ai/src/resolve.rs`) so both shells share it, and adding a tool is a table
-entry rather than a registered object. And the **context provider** (frontmost
-app, selection) has not been built; the context that exists today is the
-calendar, the clipboard, and explicitly remembered facts, each gated on the
-provider running locally.
+| Recall | **Partly built.** The clipboard corpus is persisted (step 1 below); there are no embeddings yet, so today's "recall" is deterministic keyword+time search, useful but not semantic. |
 
 ## The wedge
 
@@ -56,7 +47,7 @@ an explicit prefix, so the model never runs on ordinary searches, opening a
 session screen that owns the panel area (like command mode does). Actions,
 questions, and streamed answers stack in one ephemeral session; Esc ends it
 (archived locally), hide/recall suspends it. Not a chat app: the box stays the
-only input and history is session-scoped. As-built spec: `ai-session.md`.
+only input and history is session-scoped. As-built spec: `ai-architecture.md` §7.
 
 A user who never types the new verbs has exactly the launcher they have today.
 AI is additive power, invisible until asked for.
@@ -96,15 +87,10 @@ Safety spine, inherited by every primitive:
 Adding primitives over time makes the agent more capable without ever making it
 less safe.
 
-### Model tiers: acting needs a capable model
+### Two levers make this robust regardless of model quality
 
-The on-device Apple Intelligence model (~3B) is too weak for reliable action
-planning (multi-step plans, disambiguation, date reasoning). It stays on the
-find/answer paths. Acting requires a capable provider: Ollama 7-8B+ (local) or a
-cloud key. So **the "act" verb is unavailable until a capable provider is
-configured**, with a hint to connect one. No capable model, no agentic actions.
-
-Two levers keep this robust regardless of model quality:
+Both proved out in the shipped planner, and they are why a 4B model scores 97%
+on the eval (`ai-architecture.md` §9):
 
 - Push work into deterministic code. The model only classifies, picks a
   primitive, and extracts slots; code does date resolution, matching,
@@ -119,18 +105,19 @@ All verbs ride one architecture, so this stays one product and not a pile of
 features.
 
 - **Intent router.** Text in, classify into find / answer / act / recall,
-  dispatch. `AIQueryRouter` (macOS) is the seed.
+  dispatch. Shipped as `core/ai/src/route.rs`, one ladder in one place.
 - **Provider layer.** `AIQueryProvider` protocol, `AIProviderKind` enum. Ollama
   and cloud providers plug in with no other changes. On-device by default.
 - **Context provider.** Frontmost app, current selection, clipboard, recents.
+  Not built; today's context is the calendar, the clipboard, and remembered
+  facts.
 - **Local memory.** Embeddings over clipboard, files, and todos. Powers Recall.
-- **Tool layer.** A registry of audited action primitives with the safety spine
-  above. Each capability registers a tool (id + params schema + a `plan()` that
-  resolves and validates); one generic confirm/preview/undo surface renders any
-  tool. Act is NOT a command-mode palette: the main box + intent router + this
-  registry is what scales to many connectors. Adding a connector means
-  registering tools, not editing a switch or the UI. See
-  `ai-eventkit-pr1-checklist.md`.
+  Not built.
+- **Tool layer.** Audited action primitives on the safety spine above, with one
+  generic confirm/preview/undo surface. Act is NOT a command-mode palette: the
+  main box plus the router plus a table of tools is what scales to many
+  connectors. Adding a tool is a row in `core/ai`, not a new switch or new UI.
+  See `ai-architecture.md`.
 
 ## Provider strategy and the setup-cost tradeoff
 
@@ -182,19 +169,16 @@ Defaults and posture:
 - One clear Settings surface: which provider powers which verb, current
   availability, and the egress disclosure per provider.
 
-## Roadmap ordering
+## What is left
 
-1. Provider layer: Ollama + one cloud provider (keychain-backed) + intent router.
-   This is now a prerequisite for Act, since acting needs a capable model. Apple
-   Intelligence stays for find/answer only.
-2. **Recall v1** over clipboard history (this doc). Smallest, safest, most
-   clearly-local, most differentiated. (Recall ranking is embeddings, not a chat
-   model, so it can land alongside the provider work.)
-3. Recall extends to files and todos.
-4. Act v1 with 3 to 5 curated primitives on the safety spine, on a capable
-   provider.
-5. Context injection (frontmost + selection feed the same box).
-6. Grow the primitive vocabulary.
+The provider layer and Act both shipped. In order:
+
+1. **Recall v1** over clipboard history (this doc). Smallest, safest, most
+   clearly-local, most differentiated. Ranking is embeddings, not a chat model.
+2. Recall extends to files and todos.
+3. A cloud provider (keychain-backed key, egress disclosure).
+4. Context injection (frontmost app + selection feed the same box).
+5. Grow the primitive vocabulary.
 
 ---
 
@@ -218,43 +202,18 @@ it. `look` already holds the data.
 
 ## Current state (what we build on)
 
-- Clipboard history is **in-memory** today (`ClipboardHistoryStore`, macOS). It
-  is not persisted and not in `look.db`.
-- The core DB (`core/storage`, `look.db`) has no vector or FTS table.
-- So Recall v1 is three pieces: persist, embed, retrieve.
+- **Step 1 shipped.** Clipboard history is persisted in `look.db`
+  (`clipboard_entries` in `core/storage`), owned by the Rust core so both
+  shells share it. `content_hash` is UNIQUE, so re-copying the same text moves
+  the row to the top instead of piling up. Concealed and transient clips are
+  never written, and that gate sits at the capture site because only the shell
+  can see the pasteboard's type markers.
+- The DB still has no vector or FTS table.
+- So what remains of Recall v1 is: embed, retrieve.
 
 ## Design
 
-### 1. Persist clipboard history (prerequisite)
-
-Move clipboard history from in-memory to a capacity-bound table in `look.db`,
-owned by the Rust core (so macOS and linows share it).
-
-Sketch:
-
-```
-clipboard_entries(
-  id INTEGER PRIMARY KEY,
-  content TEXT NOT NULL,
-  content_hash TEXT NOT NULL,   -- dedupe repeated copies
-  kind TEXT NOT NULL,           -- text | url | ...
-  copied_at_unix_s INTEGER NOT NULL,
-  app_bundle_id TEXT,           -- source app, for context and filtering
-  concealed INTEGER NOT NULL DEFAULT 0
-)
-```
-
-Rules:
-
-- Capacity-bound (row cap + optional age cap), like `url_history`.
-- **Skip sensitive copies.** Honor the macOS `org.nspasteboard.ConcealedType`
-  and `TransientType` markers so password managers and one-time secrets are
-  never stored. This is a privacy requirement, not an option.
-- Opt-in persistence toggle in Settings. Default off is the safer stance for a
-  privacy-first app; to confirm with product.
-- A one-command "clear clipboard memory".
-
-### 2. Embeddings
+### 1. Embeddings
 
 For each stored entry, compute and store an embedding vector.
 
@@ -270,7 +229,7 @@ For each stored entry, compute and store an embedding vector.
   corpus grows to files/todos and brute force stops being cheap. Do not add a
   vector-store dependency for v1.
 
-### 3. Retrieval and answer
+### 2. Retrieval and answer
 
 Query flow for a `?`-prefixed (or clearly question-like) recall query:
 
@@ -283,7 +242,7 @@ Query flow for a `?`-prefixed (or clearly question-like) recall query:
    ("You copied it from 1Password on Tuesday: sk-..."). Synthesis is additive and
    must never block the raw hits from showing.
 
-### 4. Grammar
+### 3. Grammar
 
 - `?query` enters recall explicitly.
 - A question-like query with zero local find results can route to recall
@@ -291,7 +250,7 @@ Query flow for a `?`-prefixed (or clearly question-like) recall query:
 - Recall over clipboard is a natural superset of today's `c"`; `c"` stays as the
   fast keyword path.
 
-### 5. Graceful degradation
+### 4. Graceful degradation
 
 Recall must work, in reduced form, with no AI at all:
 
@@ -308,22 +267,25 @@ local-first promise intact for users who run nothing extra.
   provider, even when one is configured for answering. Embeddings and search are
   local-only.
 - Concealed/transient clipboard types are never stored.
-- Persistence is opt-in and clearable; capacity- and age-bound.
+- Clearable in one command (`look_clipboard_clear`) and capacity-bound
+  (`MAX_CLIPBOARD_ROWS`, 5000). There is no age cap and no opt-out toggle
+  today; persistence is on, which is worth revisiting before embeddings make
+  the corpus searchable by meaning rather than by substring.
 - Source app is recorded to enable "exclude this app from clipboard memory".
 
 ## Open decisions (confirm before building)
 
 1. Ollama embeddings model choice and dim (`nomic-embed-text` vs alternatives).
-2. Default for clipboard persistence: off (privacy) vs on (utility).
-3. Whether synthesis (LLM one-line answer over hits) ships in v1 or after raw
+2. Whether synthesis (LLM one-line answer over hits) ships in v1 or after raw
    ranked hits prove out.
-4. Vector search: confirm brute-force-cosine-first, defer any vector-store crate.
-5. linows parity: same pass or macOS-first.
+3. Vector search: confirm brute-force-cosine-first, defer any vector-store crate.
+4. macOS-only, like every other AI feature. linows AI is not being built;
+   users who want it should open an issue. Note embeddings need a local model,
+   so the hardware caveat applies there too.
 
 ## Recall phased plan
 
-1. Persist clipboard to `look.db` with concealed-type exclusion and capacity
-   bounds. No AI yet. Ships value on its own (survives restart).
+1. ~~Persist clipboard to `look.db`.~~ **Shipped.**
 2. Add local embeddings (Ollama) + brute-force cosine + recency blend. Render
    ranked hits. No synthesis.
 3. Add optional one-line synthesis over top-k.
@@ -368,21 +330,9 @@ Cost: a one-time EventKit full-access permission grant, same as Calendar.app
 asks for. The same framework and permission also cover **Reminders**, which ties
 into the existing `:todo`.
 
-Curated primitives (each with preview / confirm / undo; undo is trivial since
-EventKit returns the event id):
-
-- `add_event(title, start, end, calendar?)`
-- `move_event(match, new_start)`
-- `cancel_event(match)`
-- `block_time(duration, when, title?)`
-- `find_free_slot(duration, window)` (read-only, feeds the others)
-- reminders: `add_reminder`, `complete_reminder`, `snooze_reminder`
-
-Framework to confirm before implementing: EventKit (`EKEventStore`), an Apple
-system framework, no third-party dependency.
-
-Build-level spec: see `ai-eventkit-connector.md` for per-primitive contracts,
-the plan schema, resolution/ambiguity rules, undo receipts, and the test plan.
+Shipped: add, move, cancel, and block for events; add, complete, snooze, and
+remove for reminders. Each previewed, confirmed, and undoable. Per-tool
+contracts and the permission model: `ai-eventkit.md`.
 
 Platform matrix (the honest, uneven part):
 
@@ -394,8 +344,12 @@ Platform matrix (the honest, uneven part):
 - **Linux**: no unified system calendar. GNOME via Evolution Data Server over
   D-Bus, KDE via Akonadi. Desktop-dependent and fragmented.
 
-Realistic plan: a macOS-first EventKit connector (calendar + reminders together),
-with Windows/Linux as a later, thinner, best-effort story.
+Current position: **macOS-only**, and a Windows/Linux calendar backend is not
+being built. Not refused either - if a linows user asks for it, that is an
+issue worth having. But the matrix above is the reason to be honest in that
+conversation rather than optimistic: on Linux there is no unified store to
+write to at all, so "calendar acting on linows" may be a thinner feature than
+the macOS one no matter how much work goes in.
 
 ## Other apps that fit the same pattern
 
@@ -443,8 +397,9 @@ PowerShell; Linux automation is desktop-dependent. macOS-first again.
 
 ## Open decisions (connectors)
 
-1. EventKit macOS-first; Windows/Linux later and thinner. Confirm we accept the
-   platform gap rather than block on parity.
+1. ~~EventKit macOS-first vs parity.~~ **Decided: macOS-only.** The platform
+   gap is accepted rather than deferred. Revisit only on real demand (an
+   issue), and expect a thinner feature there, not parity.
 2. Breadth vs depth: Shortcuts (one integration, huge reach, coarse control) vs
    bespoke connectors (native feel, per-app work). Likely both.
 3. Which Tier-1 connector follows EventKit: Contacts (everyday utility) or Photos
