@@ -21,7 +21,7 @@ extension ActionController {
             // retrying on that loops.
             guard !didAsk else { return Self.noCalendarAccess }
             Task {
-                await EventKitService.shared.requestCalendarAccess()
+                await PermissionPrompt.run { await EventKitService.shared.requestCalendarAccess() }
                 setFeedback(presentJoinChoices(named: name, didAsk: true))
             }
             return ""
@@ -68,7 +68,7 @@ extension ActionController {
             // Once only: see the calendar branch.
             guard !didAsk else { return Self.noContactsAccess }
             Task {
-                await ContactsService.shared.requestAccess()
+                await PermissionPrompt.run { await ContactsService.shared.requestAccess() }
                 setFeedback(presentCallChoices(named: name, modality: modality, didAsk: true))
             }
             return ""

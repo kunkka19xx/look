@@ -157,10 +157,12 @@ struct PermissionsRow: View {
     }
 
     private func request(_ capability: PermissionItem.Capability) async {
-        switch capability {
-        case .calendar: await EventKitService.shared.requestCalendarAccess()
-        case .reminders: await EventKitService.shared.requestReminderAccess()
-        case .contacts: await ContactsService.shared.requestAccess()
+        await PermissionPrompt.run {
+            switch capability {
+            case .calendar: await EventKitService.shared.requestCalendarAccess()
+            case .reminders: await EventKitService.shared.requestReminderAccess()
+            case .contacts: await ContactsService.shared.requestAccess()
+            }
         }
     }
 
