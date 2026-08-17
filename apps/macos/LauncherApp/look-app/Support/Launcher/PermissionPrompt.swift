@@ -7,12 +7,17 @@ import AppKit
 /// next prompt, so a sequence of requests dies after the first one.
 @MainActor
 enum PermissionPrompt {
-    private(set) static var isPresenting = false
+    /// Counted, not a flag: `await` inside `run` is a suspension point, so a
+    /// second request can start before the first returns, and the first to
+    /// finish would otherwise unpin the window while a dialog is still up.
+    private static var active = 0
+
+    static var isPresenting: Bool { active > 0 }
 
     static func run(_ request: () async -> Void) async {
-        isPresenting = true
+        active += 1
+        defer { active -= 1 }
         NSApplication.shared.activate(ignoringOtherApps: true)
         await request()
-        isPresenting = false
     }
 }
