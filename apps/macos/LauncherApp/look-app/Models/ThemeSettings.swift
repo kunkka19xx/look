@@ -6,6 +6,7 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
     case sidebar
     case menu
     case underWindowBackground
+    case liquidGlass
 
     var id: String { rawValue }
 
@@ -15,6 +16,7 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         case .sidebar: return "Soft"
         case .menu: return "Balanced"
         case .underWindowBackground: return "Subtle"
+        case .liquidGlass: return "Liquid Glass"
         }
     }
 
@@ -24,15 +26,19 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         case .sidebar: return "Light and gentle blur"
         case .menu: return "Neutral default look"
         case .underWindowBackground: return "Most transparent feel"
+        case .liquidGlass: return "Refracts the desktop behind the window"
         }
     }
 
+    /// Liquid Glass does not render through one; it names what it degrades to
+    /// on macOS 15. See `ThemedBackdrop`.
     var material: NSVisualEffectView.Material {
         switch self {
         case .hudWindow: return .hudWindow
         case .sidebar: return .sidebar
         case .menu: return .menu
         case .underWindowBackground: return .underWindowBackground
+        case .liquidGlass: return .hudWindow
         }
     }
 
@@ -42,16 +48,69 @@ enum LauncherBlurMaterial: String, CaseIterable, Codable, Identifiable {
         case .sidebar: return 0.86
         case .menu: return 1.0
         case .underWindowBackground: return 0.72
+        case .liquidGlass: return 1.0
         }
     }
 
+    /// Glass carries its own depth, so the tint sits lighter on it: anything
+    /// near the other materials' weight cancels the refraction.
     var tintOpacityScale: Double {
         switch self {
         case .hudWindow: return 1.16
         case .sidebar: return 0.84
         case .menu: return 1.0
         case .underWindowBackground: return 0.68
+        case .liquidGlass: return 0.42
         }
+    }
+
+    /// Plates drawn INSIDE an already-materialized panel (chat bubbles, the
+    /// thinking/stop bars, pills, key caps). Same reasoning as `tintOpacityScale`
+    /// one level down: on glass a stack of full-weight fills cancels the
+    /// refraction the panel is there to show, so they thin out. Deliberately not
+    /// `glassEffect` per plate - Liquid Glass is not meant to stack on itself.
+    var surfaceOpacityScale: Double {
+        switch self {
+        case .hudWindow, .sidebar, .menu, .underWindowBackground: return 1.0
+        case .liquidGlass: return 0.55
+        }
+    }
+
+    /// False where the material needs an OS newer than the one running.
+    var isSupported: Bool {
+        switch self {
+        case .liquidGlass:
+            if #available(macOS 26.0, *) {
+                return true
+            }
+            return false
+        case .hudWindow, .sidebar, .menu, .underWindowBackground:
+            return true
+        }
+    }
+
+    /// True when this renders as glass, which has no blur to thin.
+    var rendersGlass: Bool {
+        self == .liquidGlass && isSupported
+    }
+
+    /// Title in Settings. An unsupported value can still be the current
+    /// selection, so it says why it is inert rather than looking broken.
+    var pickerTitle: String {
+        isSupported ? title : "\(title) \(AppConstants.ThemeUI.unsupportedSuffix)"
+    }
+
+    /// Offered in Settings on this machine, plus `current` when that is a value
+    /// this OS cannot render (a config written on a newer machine). Keeping it
+    /// in the list is deliberate: a `Picker` whose selection matches no tag
+    /// renders blank, and rewriting the value here would destroy the user's
+    /// setting the next time they open the same config on a newer machine.
+    static func options(including current: LauncherBlurMaterial) -> [LauncherBlurMaterial] {
+        var options = allCases.filter(\.isSupported)
+        if !options.contains(current) {
+            options.append(current)
+        }
+        return options
     }
 }
 
@@ -101,12 +160,14 @@ enum RunningAppsPlacement: String, CaseIterable, Codable, Identifiable {
 /// touching the rest of the app. Persisted in `~/.look.config` as `ai_provider`.
 enum AIProviderKind: String, CaseIterable, Codable, Identifiable {
     case appleIntelligence
+    case ollama
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .appleIntelligence: return "Apple Intelligence (on-device)"
+        case .ollama: return "Ollama (local)"
         }
     }
 }
@@ -184,6 +245,35 @@ struct ThemeSettings: Codable, Equatable {
 
     /// Which AI backend powers query understanding when `aiEnabled` is on.
     var aiProvider: AIProviderKind = .appleIntelligence
+
+    /// Ollama daemon endpoint, used when `aiProvider` is `.ollama`. Persisted in
+    /// `~/.look.config` under `ollama_host`. Kept exactly as typed so the
+    /// settings field can show an empty box; call `ollamaEndpoint` to USE it.
+    var ollamaHost: String = "http://localhost:11434"
+
+    /// The endpoint to actually call. Blank means the local daemon, which is
+    /// what the field's placeholder promises, so an emptied box degrades to
+    /// "local Ollama" instead of building the unresolvable URL "/api/chat" and
+    /// surfacing as a model failure. Only ever consulted on the Ollama paths,
+    /// so this never invents a host for some other provider.
+    var ollamaEndpoint: String {
+        let trimmed = ollamaHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "http://localhost:11434" : trimmed
+    }
+
+    /// Ollama model tag, used when `aiProvider` is `.ollama`. Persisted in
+    /// `~/.look.config` under `ollama_model`. The default is the best scorer in
+    /// the planner eval (see docs/ai-architecture.md §9): 97% tool accuracy
+    /// at a 2s p50, ahead of both a 7B coder model and a 9B general one.
+    var ollamaModel: String = "qwen3.5:4b"
+
+    /// Whether private context (calendar, clipboard, remembered facts) may be
+    /// sent to a provider that is NOT on this machine - a remote Ollama host
+    /// today, a cloud provider later. Off by default: the answer is simply
+    /// computed without that context and says so, rather than quietly shipping
+    /// personal data off-device. Persisted in `~/.look.config` under
+    /// `ai_allow_remote_context`.
+    var aiAllowRemoteContext: Bool = false
 
     /// Whether the empty-state super actions launchpad is shown. Off hides the
     /// strip and makes its ⌘-mnemonics inert. Persisted in `~/.look.config`

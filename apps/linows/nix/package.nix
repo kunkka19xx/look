@@ -34,9 +34,19 @@ rustPlatform.buildRustPackage {
         basePath = toString ../../..;
         relPath = lib.removePrefix basePath (toString path);
       in
-      relPath == "/apps"
-      || lib.hasPrefix "/apps/linows" relPath
-      || lib.hasPrefix "/core" relPath;
+      (
+        relPath == "/apps"
+        || lib.hasPrefix "/apps/linows" relPath
+        || lib.hasPrefix "/core" relPath
+      )
+      # Packaging and prose sit inside the copied tree without being build
+      # inputs. Without this, editing a module or a doc changes `src` and every
+      # consumer recompiles the whole workspace for nothing.
+      && !(
+        lib.hasPrefix "/apps/linows/nix" relPath
+        || lib.hasPrefix "/apps/linows/flake" relPath
+        || lib.hasSuffix ".md" relPath
+      );
   };
 
   cargoRoot = "apps/linows/src-tauri";
@@ -83,38 +93,42 @@ rustPlatform.buildRustPackage {
         fontconfig
         curl
         procps
+        # gdbus backs the Wayland hotkey's D-Bus call, and is the first
+        # caller wayland_shortcut.rs looks for.
         glib
       ]}
     )
   '';
 
   postInstall = ''
-    # Desktop file
+    # Desktop file. StartupWMClass is the app_id GTK derives from argv[0], and
+    # the icon name matches the .deb's (both keyed off the binary name), so the
+    # shell resolves the window to this entry on either packaging.
     mkdir -p $out/share/applications
     cat > $out/share/applications/lookapp.desktop <<'EOF'
 [Desktop Entry]
 Name=Look
 Comment=Keyboard-first desktop launcher
 Exec=lookapp
-Icon=look
+Icon=lookapp
 Type=Application
 Categories=Utility;
-StartupWMClass=Look
+StartupWMClass=lookapp
 EOF
 
     # Icons
-    for size in 32 128 256; do
+    for size in 32 64 128; do
       icon="$src/apps/linows/src-tauri/icons/''${size}x''${size}.png"
       if [ -f "$icon" ]; then
         mkdir -p $out/share/icons/hicolor/''${size}x''${size}/apps
-        cp "$icon" $out/share/icons/hicolor/''${size}x''${size}/apps/look.png
+        cp "$icon" $out/share/icons/hicolor/''${size}x''${size}/apps/lookapp.png
       fi
     done
   '';
 
   meta = {
     description = "Keyboard-first desktop launcher";
-    license = lib.licenses.mit;
+    license = lib.licenses.gpl3Plus;
     platforms = lib.platforms.linux;
     mainProgram = "lookapp";
   };

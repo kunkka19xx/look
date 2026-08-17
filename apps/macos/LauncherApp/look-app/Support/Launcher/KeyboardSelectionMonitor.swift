@@ -26,10 +26,14 @@ final class KeyboardSelectionMonitor {
         onPrevious: @escaping @MainActor () -> Void,
         onArrowDown: (@MainActor () -> Void)? = nil,
         onArrowUp: (@MainActor () -> Void)? = nil,
+        onRecallPrompt: (@MainActor (Bool) -> Bool)? = nil,
         onEnterCommandMode: @escaping @MainActor () -> Void,
         onExitCommandMode: @escaping @MainActor () -> Void,
         onHideLauncher: @escaping @MainActor () -> Void,
         inCommandMode: @escaping @MainActor () -> Bool,
+        /// AI mode owns some chords the main bar spends elsewhere (Shift+Enter
+        /// is a line break there, not "open all picked").
+        inAIMode: @escaping @MainActor () -> Bool = { false },
         onWebSearch: @escaping @MainActor () -> Void,
         onRevealInFinder: @escaping @MainActor () -> Void,
         onCopySelection: @escaping @MainActor () -> Bool,
@@ -41,6 +45,8 @@ final class KeyboardSelectionMonitor {
         onDismissHelpIfVisible: @escaping @MainActor () -> Bool,
         onSelectCommandByIndex: @escaping @MainActor (Int) -> Void,
         onActivateRunningApp: @escaping @MainActor (Int) -> Bool = { _ in false },
+        onActivateSession: @escaping @MainActor (Int) -> Bool = { _ in false },
+        onEscapeHome: (@MainActor () -> Bool)? = nil,
         onConfirmKill: (@MainActor () -> Void)? = nil,
         onCancelKill: (@MainActor () -> Void)? = nil,
         killConfirmationActive: @escaping @MainActor () -> Bool = { false },
@@ -51,6 +57,10 @@ final class KeyboardSelectionMonitor {
         onConfirmHideApp: (@MainActor () -> Void)? = nil,
         onCancelHideApp: (@MainActor () -> Void)? = nil,
         hideAppConfirmationActive: @escaping @MainActor () -> Bool = { false },
+        onCancelAction: (@MainActor () -> Void)? = nil,
+        actionConfirmationActive: @escaping @MainActor () -> Bool = { false },
+        onUndoAction: (@MainActor () -> Bool)? = nil,
+        onStopGeneration: (@MainActor () -> Bool)? = nil,
         onToggleQuickAction: (@MainActor () -> Void)? = nil,
         hasToggleQuickAction: @escaping @MainActor () -> Bool = { false },
         isLaunchpadActive: @escaping @MainActor () -> Bool = { false },
@@ -141,6 +151,24 @@ final class KeyboardSelectionMonitor {
                 return event
             }
 
+            // ⌘. stops a running generation (the macOS-standard cancel chord).
+            // The handler gates itself, so it only fires while streaming.
+            if event.charactersIgnoringModifiers == "." && flags == [.command] {
+                if onStopGeneration?() == true {
+                    return nil
+                }
+                return event
+            }
+
+            // Undo the last action (its result row is showing). The handler gates
+            // itself, so Cmd+Z passes through to text-field undo otherwise.
+            if event.charactersIgnoringModifiers?.lowercased() == "z" && flags == [.command] {
+                if onUndoAction?() == true {
+                    return nil
+                }
+                return event
+            }
+
             // The handler owns the gating, so the key is only consumed when it acts.
             if (event.keyCode == KeyCode.h || event.charactersIgnoringModifiers?.lowercased() == "h")
                 && flags == [.command, .shift]
@@ -187,9 +215,11 @@ final class KeyboardSelectionMonitor {
 
             // Shift+Enter opens every picked file/folder at once. Only when
             // there are picks; otherwise fall through so plain submit still
-            // opens the selected result.
+            // opens the selected result. In AI mode it always falls through:
+            // the chord is a line break in the composer, and a pick left over
+            // from the main bar must not steal it.
             if (event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter) && flags == [.shift] {
-                if !inCommandMode() && hasPickedItems() {
+                if !inCommandMode() && !inAIMode() && hasPickedItems() {
                     onOpenAllPicked()
                     return nil
                 }
@@ -225,7 +255,7 @@ final class KeyboardSelectionMonitor {
             if event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control)
                 && !event.modifierFlags.contains(.option)
             {
-                // macOS digit keyCodes are not contiguous: 1=18, 2=19, 3=20, 4=21, 5=23, 6=22, 7=26, 8=28, 9=25.
+                // macOS digit keyCodes are not contiguous: 1=18, 2=19, 3=20, 4=21, 5=23, 6=22, 7=26, 8=28, 9=25, 0=29.
                 let cmdNumberKey: Int?
                 switch event.keyCode {
                 case 18: cmdNumberKey = 1
@@ -237,11 +267,15 @@ final class KeyboardSelectionMonitor {
                 case 26: cmdNumberKey = 7
                 case 28: cmdNumberKey = 8
                 case 25: cmdNumberKey = 9
+                // Only the sessions list claims 0; everything below is 1-based
+                // and declines it, so ⌘0 keeps its "Actual Size" meaning
+                // everywhere else.
+                case 29: cmdNumberKey = 0
                 default: cmdNumberKey = nil
                 }
                 if let key = cmdNumberKey {
                     if inCommandMode() {
-                        if key <= AppConstants.Launcher.commandCatalog.count {
+                        if key > 0, key <= AppConstants.Launcher.commandCatalog.count {
                             Self.logger.debug("⌘+\(key, privacy: .public) -> command catalog")
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                                 onSelectCommandByIndex(key)
@@ -251,15 +285,61 @@ final class KeyboardSelectionMonitor {
                         Self.logger.debug(
                             "⌘+\(key, privacy: .public) ignored (command mode maps 1-\(AppConstants.Launcher.commandCatalog.count, privacy: .public))")
                     } else {
-                        Self.logger.debug("⌘+\(key, privacy: .public) -> running-apps switcher")
-                        if onActivateRunningApp(key) {
+                        // AI mode hides the running-apps strip, so the digits
+                        // jump to the Nth listed conversation there (⌘0 being
+                        // the tenth). Sessions are asked first and both handlers
+                        // gate themselves, so only one can claim the chord.
+                        if let row = AppConstants.Launcher.AISessions.row(forJumpDigit: key),
+                            onActivateSession(row)
+                        {
+                            Self.logger.debug("⌘+\(key, privacy: .public) -> session row \(row, privacy: .public)")
                             return nil
                         }
-                        Self.logger.debug(
-                            "⌘+\(key, privacy: .public) running-apps activation declined, falling through"
-                        )
+                        // The strip badges are 1-9, so 0 addresses no icon and
+                        // falls through to its "Actual Size" menu equivalent.
+                        if key > 0 {
+                            Self.logger.debug("⌘+\(key, privacy: .public) -> running-apps switcher")
+                            if onActivateRunningApp(key) {
+                                return nil
+                            }
+                            Self.logger.debug(
+                                "⌘+\(key, privacy: .public) running-apps activation declined, falling through"
+                            )
+                        }
                     }
                 }
+            }
+
+            // Shift+Esc leaves AI mode straight to home (skips the list step).
+            // Only consume it when it actually acts, so Shift+Esc keeps its
+            // command-mode "hide" meaning elsewhere.
+            if event.keyCode == KeyCode.escape,
+                flags.contains(.shift),
+                !flags.contains(.command),
+                !flags.contains(.option),
+                !flags.contains(.control),
+                onEscapeHome?() == true
+            {
+                return nil
+            }
+
+            // ⌥↑/↓ walks the AI prompt history. It has to sit ABOVE the modifier
+            // passthrough below, which hands every Option combo to the system.
+            // Not ⌃↑/↓: those are Mission Control and Application Windows at the
+            // WindowServer level, so the app never sees them. Not ⇧↑/↓ either -
+            // the composer is multiline now and needs them to select text.
+            if event.keyCode == KeyCode.arrowUp || event.keyCode == KeyCode.arrowDown,
+                flags.contains(.option),
+                !flags.contains(.command),
+                !flags.contains(.control),
+                // ⌥⇧↑/↓ extends the selection by paragraph in the composer.
+                // Claiming it here would replace the draft with a history entry
+                // while the user is trying to select text.
+                !flags.contains(.shift)
+            {
+                let older = event.keyCode == KeyCode.arrowUp
+                if onRecallPrompt?(older) == true { return nil }
+                return event
             }
 
             if event.modifierFlags.contains(.command)
@@ -288,6 +368,11 @@ final class KeyboardSelectionMonitor {
 
                 if deleteConfirmationActive() {
                     onCancelDelete?()
+                    return nil
+                }
+
+                if actionConfirmationActive() {
+                    onCancelAction?()
                     return nil
                 }
 
@@ -340,6 +425,16 @@ final class KeyboardSelectionMonitor {
                     onNext()
                 }
                 return nil
+            }
+
+            // Shift+↑/↓ belongs to the text field: it extends the selection, and
+            // in AI mode that is over a composer several lines tall. Passed
+            // through untouched - the plain-arrow handlers below take no flags
+            // into account, so without this they would swallow it.
+            if event.keyCode == KeyCode.arrowUp || event.keyCode == KeyCode.arrowDown,
+                flags.contains(.shift)
+            {
+                return event
             }
 
             if event.keyCode == KeyCode.arrowUp {

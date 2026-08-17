@@ -24,7 +24,8 @@ extension LauncherView {
     /// not in command mode / settings / help). Gates the Command-mnemonic keys so
     /// they only fire when the strip is actually shown.
     var isLaunchpadActive: Bool {
-        themeStore.settings.superActionsEnabled && hidesResultsForEmptyQuery && !launchpadTiles.isEmpty
+        themeStore.settings.superActionsEnabled && hidesResultsForEmptyQuery
+            && !launchpadTiles.isEmpty && !isAIMode
     }
 
     /// Re-reads adapter-backed tiles and weather. Called on every open: the

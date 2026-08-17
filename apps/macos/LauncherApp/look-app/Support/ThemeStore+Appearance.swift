@@ -35,6 +35,13 @@ extension ThemeStore {
         return dimmableColor(baseColor: fontColor(), factor: 0.64)
     }
 
+    /// Muted everywhere except on glass. Glass keeps whatever is on the desktop
+    /// visible through it, so the dimmest text in the app loses against a white
+    /// document. Steps up to secondary there.
+    func placeholderTextColor() -> Color {
+        settings.blurMaterial.rendersGlass ? secondaryTextColor() : mutedTextColor()
+    }
+
     func panelFillColor() -> Color {
         if let style = activeAppearanceStyle(), let token = style.panelFill {
             return color(from: token, opacity: style.panelFillOpacity)
@@ -47,6 +54,19 @@ extension ThemeStore {
             return color(from: token, opacity: style.controlFillOpacity)
         }
         return Color(red: 0.18, green: 0.18, blue: 0.20, opacity: 0.30)
+    }
+
+    /// A plate drawn inside an already-materialized panel: chat bubbles, the
+    /// thinking/stop bars, note pills, key caps. Scaled per material so Liquid
+    /// Glass keeps refracting instead of being covered by stacked fills.
+    func surfaceFill(_ opacity: Double = 1) -> Color {
+        controlFillColor().opacity(surfaceOpacity(opacity))
+    }
+
+    /// The scaled opacity itself, for surfaces that need their own colour (the
+    /// code block's darkening plate) rather than the control fill.
+    func surfaceOpacity(_ opacity: Double) -> Double {
+        min(1, max(0, opacity * settings.blurMaterial.surfaceOpacityScale))
     }
 
     func dividerColor() -> Color {
@@ -173,6 +193,27 @@ extension ThemeStore {
 
     func themeAppearance() -> ThemeAppearance {
         activeAppearanceStyle()?.appearance ?? .dark
+    }
+
+    /// The active rendering surface.
+    ///
+    /// Keyed off the blur material first, not the preset alone: `savedThemeName`
+    /// drops `ui_theme` as soon as any value diverges from the preset, while
+    /// `ui_blur_material` persists on its own. So a customised Liquid theme
+    /// keeps its glass across a relaunch instead of reverting to classic.
+    func themeSurface() -> ThemeSurface {
+        guard LauncherBlurMaterial.liquidGlass.isSupported else {
+            return .classic
+        }
+        if settings.blurMaterial == .liquidGlass {
+            return .liquid
+        }
+        return activeAppearanceStyle()?.surface ?? .classic
+    }
+
+    /// Scales a surface's resting corner radius for the active theme.
+    func surfaceCornerRadius(_ base: CGFloat) -> CGFloat {
+        base * themeSurface().cornerRadiusScale
     }
 
     func borderColor() -> Color {

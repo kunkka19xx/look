@@ -79,8 +79,11 @@ jobs:
             core
             apps/linows/src-tauri
 
+      # 2.6 is the floor: earlier bundlers emit a .desktop file without
+      # StartupWMClass, so GNOME can't match the window (app_id "lookapp") to
+      # the entry it installs as Look.desktop, and falls back to a blank icon.
       - name: Install cargo-tauri
-        run: cargo install tauri-cli --version "^2" --locked
+        run: cargo install tauri-cli --version "^2.6" --locked
 
       - name: Build Tauri app
         working-directory: apps/linows

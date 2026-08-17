@@ -26,6 +26,9 @@ final class AIAnswerController: ObservableObject {
     }
 
     @Published private(set) var question: String = ""
+    /// The provider that produced (or is producing) the streamed answer, so the
+    /// card can label it truthfully instead of assuming Apple Intelligence.
+    @Published private(set) var llmProvider: AIProviderKind = .appleIntelligence
     /// Finished blocks (DuckDuckGo / Wikipedia), in arrival order.
     @Published private(set) var items: [Item] = []
     /// Streaming on-device model answer, used only when no web source hit.
@@ -34,6 +37,18 @@ final class AIAnswerController: ObservableObject {
 
     /// Whether the card should be shown at all.
     var isActive: Bool { state != .idle }
+
+    /// Source label for the streamed model answer: the exact provider, plus the
+    /// model tag for Ollama (e.g. "Ollama · qwen2.5-coder:7b").
+    var llmSourceLabel: String {
+        switch llmProvider {
+        case .appleIntelligence:
+            return "Apple Intelligence"
+        case .ollama:
+            let model = ThemeStore.shared.settings.ollamaModel
+            return model.isEmpty ? "Ollama" : "Ollama · \(model)"
+        }
+    }
 
     private var task: Task<Void, Never>?
     private let router: AIQueryRouter
@@ -78,6 +93,7 @@ final class AIAnswerController: ObservableObject {
 
         task?.cancel()
         question = trimmed
+        llmProvider = provider
         items = []
         llmAnswer = ""
         state = .streaming
@@ -85,6 +101,16 @@ final class AIAnswerController: ObservableObject {
         task = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.debounceNanoseconds)
             guard let self, !Task.isCancelled else { return }
+
+            // Personal schedule questions answer from the calendar itself:
+            // deterministic, instant, and never sent to web sources or a model
+            // ("what's on my calendar?" must not shrug "I don't have access").
+            if let schedule = ScheduleContextProvider.cardAnswer(for: trimmed) {
+                self.items = [Item(
+                    text: schedule.text, source: schedule.source, url: nil, imageURL: nil)]
+                self.state = .done
+                return
+            }
 
             // Web sources run concurrently and each renders the moment it lands -
             // first available first, the slower one slots in below it.
@@ -204,7 +230,7 @@ final class AIAnswerController: ObservableObject {
         guard words.count >= 3 else { return false }
 
         let starters: Set<String> = [
-            "how", "what", "why", "who", "when", "where", "which", "whose",
+            "how", "what", "what's", "whats", "why", "who", "when", "where", "which", "whose",
             "can", "could", "should", "would", "is", "are", "am", "do", "does",
             "did", "will", "explain", "tell", "give", "write", "summarize",
             "summarise", "define", "translate", "convert", "calculate",

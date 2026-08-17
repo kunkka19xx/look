@@ -1,6 +1,8 @@
 [package]
 name = "look-ffi"
 edition = "2024"
+# Let chains, stabilized in 1.88 (edition 2024 alone is not enough).
+rust-version = "1.88"
 license = "GPL-3.0-or-later"
 authors = ["kunkka19xx <nobita079x@gmail.com>"]
 version = "0.1.0"
@@ -9,6 +11,7 @@ version = "0.1.0"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
+look-ai = { path = "../../core/ai" }
 look-answers = { path = "../../core/answers" }
 look-calc = { path = "../../core/calc" }
 look-engine = { path = "../../core/engine" }

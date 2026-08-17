@@ -102,6 +102,11 @@ struct ThemeSettingsView: View {
         .onExitCommand {
             closeSettingsPanel()
         }
+        // Nothing is focused on open. Otherwise the window hands first
+        // responder to whichever text field comes first, and a stray keystroke
+        // silently rewrites a live value (the Ollama host learned this the
+        // hard way).
+        .defaultFocus($focusedField, nil)
         .onAppear {
             installLocalKeyMonitorIfNeeded()
         }

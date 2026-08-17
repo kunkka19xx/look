@@ -38,6 +38,11 @@ export async function hideWindow() {
     return invoke('hide_window');
 }
 
+/** The armed frame is painted; Rust can drop the window for that dismissal. */
+export async function confirmHide(arm) {
+    return invoke('confirm_hide', { arm });
+}
+
 export async function quitApp() {
     return invoke('quit_app');
 }
@@ -156,6 +161,11 @@ export async function resetConfig() {
 
 export async function getPlatform() {
     return invoke('get_platform');
+}
+
+// Blur region in window-local logical pixels (see platform/linux/blur.rs).
+export async function setBlurRegion(rects) {
+    return invoke('set_blur_region', { rects });
 }
 
 export async function listCandidateDrives() {

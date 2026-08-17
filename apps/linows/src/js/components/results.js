@@ -19,6 +19,8 @@ import * as layout from '../layout.js';
 // oldest key is always keys().next(). Bounds heap growth while browsing many
 // icons; evicted entries re-resolve instantly from the backend's own cache.
 const ICON_CACHE_MAX = 256;
+// Marks the row (and pill) taking the selection, for the one-shot zoom.
+const GAIN_CLASS = 'is-gaining';
 const iconCache = new Map();
 const pickedMap = new Map(); // key → result
 
@@ -123,10 +125,9 @@ export function render(results, query = null) {
     // seconds after the user picks another row. Auto-selected rows are exempt
     // (see userNavigated above) so the cursor lands on row 0 once the full
     // result order settles.
-    const prevSelectedId =
-        userNavigated && selectedIndex >= 0 && selectedIndex < currentResults.length
-            ? currentResults[selectedIndex].id
-            : null;
+    const preserving = userNavigated && selectedIndex >= 0 && selectedIndex < currentResults.length;
+    const prevSelectedId = preserving ? currentResults[selectedIndex].id : null;
+    const prevIndex = selectedIndex;
 
     currentResults = results;
     container.innerHTML = '';
@@ -145,7 +146,7 @@ export function render(results, query = null) {
     let nextIndex = 0;
     if (prevSelectedId != null) {
         const idx = results.findIndex((r) => r.id === prevSelectedId);
-        if (idx >= 0) nextIndex = idx;
+        nextIndex = idx >= 0 ? idx : Math.min(prevIndex, results.length - 1);
     }
 
     if (layout.isEmptyQuery(query) && layout.hidesResultsForEmptyQuery()) {
@@ -185,7 +186,7 @@ export function selectPrev() {
 // fresh render, click, or data refresh, where the pill should just be there.
 export function select(index, glide = false) {
     const prev = container.querySelector('.result-row.selected');
-    if (prev) prev.classList.remove('selected');
+    if (prev) prev.classList.remove('selected', GAIN_CLASS);
 
     selectedIndex = index;
 
@@ -194,6 +195,8 @@ export function select(index, glide = false) {
     if (row) {
         row.classList.add('selected');
         placeSelectionPill(row, glide);
+        // Keyboard moves only: a re-render per keystroke would pulse row 0.
+        if (glide) playGain(row);
         row.scrollIntoView({
             block: 'nearest',
             behavior: prefersReducedMotion() ? 'auto' : 'smooth',
@@ -206,9 +209,10 @@ export function select(index, glide = false) {
 }
 
 // The pill is absolutely positioned in the list's content box, so its top:0 and
-// a row's offsetTop share an origin: translateY + height overlay it exactly. Its
+// a row's offsetTop share an origin: translate + height overlay it exactly. Its
 // left/right insets come from CSS (they match the row margin), so only the
-// vertical geometry is set here.
+// vertical geometry is set here. Position rides `translate`, not `transform`, or
+// the gain's `scale` multiplies it and kicks the pill by 2% of offsetTop.
 function placeSelectionPill(row, glide) {
     if (!selectionPill || selectionPill.parentNode !== container) {
         selectionPill = document.createElement('div');
@@ -216,13 +220,24 @@ function placeSelectionPill(row, glide) {
         container.prepend(selectionPill);
     }
     if (!glide) selectionPill.classList.add('is-instant');
-    selectionPill.style.transform = `translateY(${row.offsetTop}px)`;
+    selectionPill.style.translate = `0 ${row.offsetTop}px`;
     selectionPill.style.height = `${row.offsetHeight}px`;
     selectionPill.classList.add('is-visible');
     if (!glide) {
         // Commit the jump this frame, then restore gliding for later moves.
         void selectionPill.offsetWidth;
         selectionPill.classList.remove('is-instant');
+    }
+}
+
+// One-shot zoom on the row taking the selection, and the pill under it. Row-
+// local by design (see motion.css); restarting needs a forced reflow.
+function playGain(row) {
+    for (const el of [row, selectionPill]) {
+        if (!el) continue;
+        el.classList.remove(GAIN_CLASS);
+        void el.offsetWidth;
+        el.classList.add(GAIN_CLASS);
     }
 }
 

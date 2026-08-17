@@ -78,6 +78,147 @@ struct ResultPreviewView: View {
 
     private var calcIcon: NSImage { LauncherCalcFeature.icon() }
 
+    /// The planner-proposed action row: no file behind it, so it gets its own
+    /// hero panel - icon, the plan (the point of the row), a type badge, and
+    /// the key hints - all styled from `AIActionAppearance` so new tools reuse
+    /// this panel unchanged.
+    private var aiActionToolID: String? {
+        if case .aiAction(let toolID) = SyntheticRow.classify(resultID: result.id) {
+            return toolID
+        }
+        return nil
+    }
+
+    private func aiActionPreview(_ toolID: String) -> some View {
+        let look = AIActionAppearance.look(forToolID: toolID)
+        return VStack(spacing: 14) {
+            Spacer(minLength: 0)
+
+            Image(nsImage: AIActionAppearance.icon(forToolID: toolID))
+                .resizable()
+                .scaledToFit()
+                .frame(width: 52, height: 52)
+                .foregroundStyle(themeStore.accentColor())
+
+            Text(result.title)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 5), weight: .bold))
+                .foregroundStyle(themeStore.fontColor())
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .minimumScaleFactor(0.6)
+
+            KindBadge(kind: look.typeName.lowercased())
+
+            VStack(alignment: .leading, spacing: 8) {
+                hintRow(key: "↵", text: look.verb)
+                hintRow(key: "⌘Z", text: "Undo after it runs")
+                hintRow(key: "Esc", text: "Dismiss")
+            }
+            .padding(.top, 6)
+
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The synthesized rows that open a URL - a meeting to join, a way to
+    /// reach someone. No file behind either, so they take the same centered
+    /// hero shape as the action and calc rows.
+    private var linkURL: String? {
+        switch SyntheticRow.classify(resultID: result.id) {
+        case .meeting(let url), .call(let url): return url
+        default: return nil
+        }
+    }
+
+    private func linkIcon(_ url: String) -> NSImage {
+        NSImage(
+            systemSymbolName: LinkRowAppearance.symbol(forURL: url), accessibilityDescription: nil)
+            ?? NSWorkspace.shared.icon(for: .plainText)
+    }
+
+    /// "Teams  ·  14:30  ·  in 4 min", or "FaceTime audio  ·  mobile  ·  +1 …",
+    /// dropping whichever half is missing.
+    private var linkDetailLine: String? {
+        let parts = [result.linkKindLabel, result.linkDetail].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
+    }
+
+    private func linkPreview(_ url: String) -> some View {
+        VStack(spacing: 14) {
+            Spacer(minLength: 0)
+
+            Image(nsImage: linkIcon(url))
+                .resizable()
+                .scaledToFit()
+                .frame(width: 52, height: 52)
+                .foregroundStyle(themeStore.accentColor())
+
+            Text(result.title)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 5), weight: .bold))
+                .foregroundStyle(themeStore.fontColor())
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .minimumScaleFactor(0.6)
+
+            // Not a `KindBadge`: it renders `kind.capitalized`, which would turn
+            // "GoToMeeting" into "Gotomeeting". Provider names are the one label
+            // here whose casing is the brand.
+            if let detail = linkDetailLine {
+                Text(detail)
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
+                    .foregroundStyle(themeStore.mutedTextColor())
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                hintRow(key: "↵", text: openHint(url))
+                hintRow(key: "Esc", text: "Dismiss")
+            }
+            .padding(.top, 6)
+
+            // Where Enter actually goes. An invite is written by whoever sent
+            // it, so naming the host is the one thing that lets a reader catch
+            // a link that is not the meeting it claims to be.
+            if let host = URL(string: url)?.host {
+                Text(host)
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                    .foregroundStyle(themeStore.secondaryTextColor())
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// What Enter will actually do, in the words of the destination.
+    private func openHint(_ url: String) -> String {
+        let lower = url.lowercased()
+        if lower.hasPrefix("sms:") || lower.hasPrefix("imessage:") { return "Open Messages" }
+        if lower.hasPrefix("tel:") { return "Call through your iPhone" }
+        if lower.hasPrefix("facetime") { return "Start the FaceTime call" }
+        return "Join the meeting"
+    }
+
+    private func hintRow(key: String, text: String) -> some View {
+        HStack(spacing: 10) {
+            Text(key)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
+                .foregroundStyle(themeStore.accentColor())
+                .frame(minWidth: 36)
+                .padding(.vertical, 4)
+                .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            Text(text)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
+                .foregroundStyle(themeStore.secondaryTextColor())
+        }
+        .frame(width: 230, alignment: .leading)
+    }
+
     /// No file/bundle behind this row, so - like a web-search suggestion -
     /// it gets a centered hero layout instead of the header+detail one above:
     /// icon, the answer (the point of the row), the expression it came from,
@@ -174,6 +315,10 @@ struct ResultPreviewView: View {
             clipboardPreview
         } else if isCalcResult {
             calcPreview
+        } else if let toolID = aiActionToolID {
+            aiActionPreview(toolID)
+        } else if let linkURL {
+            linkPreview(linkURL)
         } else {
         let info = bundleInfo
 
@@ -230,11 +375,7 @@ struct ResultPreviewView: View {
                 }
 
                 if result.kind == .file {
-                    if QuickLookPreviewService.isTextFile(path: result.path) {
-                        TextFilePreview(path: result.path, maxHeight: .infinity)
-                    } else {
-                        QuickLookPreviewImage(path: result.path, maxHeight: .infinity)
-                    }
+                    FilePreview(path: result.path)
                 }
 
                 if result.kind == .folder {

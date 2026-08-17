@@ -41,6 +41,19 @@ extension LauncherView {
             clipboardStore.recordLabeled(display: "\(selected.calcExpression ?? "") = \(selected.title)", payload: raw)
             hideLauncherWindow(restorePreviousApp: false)
             return
+        case .aiAction:
+            // Planner-proposed action row: the row the user just read IS the
+            // confirmation - one Enter performs it, the banner offers ⌘Z.
+            guard let planned = mainBarAction else { return }
+            runQuickAction(planned)
+            return
+        case .meeting(let url), .call(let url):
+            // Join and call rows: the link travelled in the row id, so pressing
+            // Enter never re-reads the calendar or Contacts, and can never open
+            // something other than what the row named.
+            openURLScheme(url)
+            hideLauncherWindow(restorePreviousApp: false)
+            return
         case nil:
             break
         }
@@ -267,6 +280,14 @@ extension LauncherView {
         hideLauncherWindow(restorePreviousApp: false)
     }
 
+    /// Picked FILES, in pick order. Folders are excluded: a text op reads
+    /// contents, and a folder has none.
+    func pickedFilePathsForTextOp() -> [String] {
+        pickedKeys.compactMap { pickedResultsByKey[$0] }
+            .filter { $0.kind == .file }
+            .map(\.path)
+    }
+
     func removePicked(key: String) {
         guard let idx = pickedKeys.firstIndex(of: key) else { return }
         pickedKeys.remove(at: idx)
@@ -337,13 +358,24 @@ extension LauncherView {
             return
         }
         showsHelpScreen.toggle()
+        if !showsHelpScreen { restoreFocusAfterHelp() }
     }
 
     @discardableResult
     func dismissHelpIfVisible() -> Bool {
         guard showsHelpScreen else { return false }
         showsHelpScreen = false
+        restoreFocusAfterHelp()
         return true
+    }
+
+    /// Put the caret back in the search field after help closes. The top row is
+    /// dropped entirely while help is up, so the field is a NEW view by the time
+    /// we return and setting `isQueryFocused` alone lands on nothing: the staged
+    /// recovery delays are what wait for it to exist. Not `activateApp`, the
+    /// launcher is already frontmost.
+    private func restoreFocusAfterHelp() {
+        focusActiveInput(activateApp: false)
     }
 
     func deleteClipboardResult(resultID: String) {

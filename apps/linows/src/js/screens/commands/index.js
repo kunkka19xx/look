@@ -106,6 +106,9 @@ export function handleKey(e) {
     }
 
     if (e.key === 'Tab' || (e.code === 'Tab' && e.key === 'Unidentified')) {
+        // A module editing a text field owns Tab (field-to-field movement).
+        const mod = currentModule();
+        if (mod.isEditing?.()) return mod.handleKey(e);
         e.preventDefault();
         switchCommand(e.shiftKey ? -1 : 1);
         return true;

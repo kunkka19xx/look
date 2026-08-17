@@ -41,8 +41,10 @@ Look is designed to need as few macOS permissions as possible:
 - **No Accessibility permission** is required.
 - **No Full Disk Access** is required. Look indexes standard user directories (`~`, `/Applications`, `~/Documents`, `~/Downloads`, etc.). To index a directory outside those defaults, add it via `file_scan_extra_roots` in `~/.look.config`.
 - **No Screen Recording** is required.
-- **Network access** is used for explicit actions - `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search - and, when **AI features** are enabled (macOS, on by default), for live Google search suggestions and the DuckDuckGo/Wikipedia answer card as you type. The on-device Apple Intelligence model runs locally and makes no network calls of its own. Turn the AI/web features off by setting `ai_enabled = false` in `~/.look.config` (or via Settings). Local search and indexing never make network calls.
+- **Network access** is used for explicit actions - `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search - and, when **AI features** are enabled (macOS, on by default), for live Google search suggestions and the DuckDuckGo/Wikipedia answer card as you type. The AI model runs wherever you point it. Apple Intelligence is on-device and Ollama defaults to `localhost`, so by default no prompt leaves the machine. If you change `ollama_host` to a non-loopback address, or select a cloud-routed Ollama model (a `-cloud` tag, which the local daemon proxies to Ollama's service), then **your prompt travels over the network to that provider**. Separately from the prompt, your calendar, clipboard, and remembered facts are attached only when inference is on this machine; for anything remote they are withheld until you turn on `ai_allow_remote_context` in Settings. Turn the AI/web features off by setting `ai_enabled = false` in `~/.look.config` (or via Settings). Local search and indexing never make network calls.
 - **Finder Automation** is requested only when you empty the Trash (`Cmd+D` on the pinned Trash folder). The Trash is protected by macOS, so Look asks Finder to empty it; macOS prompts once, and you can manage it under `System Settings > Privacy & Security > Automation`. Moving individual files to the Trash needs no permission.
+
+**Settings > AI > Permissions** lists every capability that needs OS access (Calendar, Reminders), what Look does with it, and whether it's connected. **Grant all** asks for the outstanding ones in turn; macOS has no single "allow everything" prompt, so each still appears on its own. Once a permission has been answered - granted or denied - only System Settings can change it, so those rows link straight to the right pane. Look also asks the first time you use a feature that needs access, which is why `join` may prompt for Calendar.
 
 If macOS prompts for permission during an action you didn't trigger, that's a bug - please [file an issue](https://github.com/kunkka19xx/look/issues).
 
@@ -229,6 +231,7 @@ Built-in theme presets are available:
 | Dracula     | Classic purple-accented dark      |
 | Kanagawa    | Japanese-inspired dark theme      |
 | Kindle      | Paper and ink e-reader look       |
+| Liquid      | Liquid Glass surface (macOS 26+)  |
 | Custom      | Your own colors derived from tint |
 
 Theme is saved as `ui_theme=<name>` in config, and a name written there overrides
@@ -240,13 +243,45 @@ font to Charter, macOS' stand-in for Bookerly. Picking a preset overwrites your
 tint, text color, border and font; `Custom` keeps the current values and derives
 the rest from them.
 
-**Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. The launcher window stays the same size either way.
+Liquid is the one preset that changes how surfaces are drawn rather than only
+what colour they are. It renders the window and every tile on macOS 26's Liquid
+Glass, rounds corners further, and uses far more transparent fills so the glass
+reads as a lens rather than a panel. It needs macOS 26 and is hidden from the
+picker on older releases. If a config written on macOS 26 is opened on an older
+one, the value is kept and shown as unsupported rather than silently changed.
+Two consequences worth knowing:
+
+- `Blur Opacity` is disabled while Liquid Glass is the blur style, because glass
+  has no blur to thin. Your value is kept and returns when you switch back.
+- The glass follows `Blur Style`, not the theme name, so you can pick
+  `Settings > Appearance > Blur Style > Liquid Glass` on any theme to get the
+  glass surface with that theme's palette. Going the other way, selecting Liquid
+  and then a different blur style keeps Liquid's palette *and* its rounder
+  corners, and swaps only the material for the classic blur.
+
+On Linux and Windows, Liquid is clear glass rather than frosted: the same
+palette, the same rounder corners, plus a bright rim along the top edge.
+Refraction is not available to a web frontend at all - CSS can only blur what
+the page itself drew, and the desktop behind the window is drawn by the system,
+not the page.
+
+Blur behind the window is the compositor's to grant, and Look asks for it
+wherever the ask exists: KDE Plasma 6.7+, Hyprland 0.56+ and Niri through the
+`ext-background-effect-v1` protocol, older Plasma through KDE's own, and KWin on
+X11 through a window property. There is nothing to switch on - if your
+compositor takes the request the frost is there, and `Blur Opacity` starts
+thinning the tint so more of it shows through. Everywhere else (GNOME today,
+plain sway, X11 without KWin) Look stays clear glass and `Blur Opacity` applies
+only when you have set a background image. Driving blur from your own compositor
+config still works; Look's request is additional, not exclusive.
+
+**Running Apps**: a switch that shows running-app icons in the right half of the search bar. When on, the search field shrinks to the left half and the running apps fill the right half (right-aligned, growing leftward as more apps open). Each icon has a corner number badge; pressing the modifier + the badge digit on the home screen activates that app - `Cmd+1`..`Cmd+9` on macOS, `Alt+1`..`Alt+9` on Linux and Windows. When off, the search bar spans the full width and the switcher shortcut is disabled. AI mode (`>`) hides the row regardless of this setting, and its digits open listed conversations instead. The launcher window stays the same size either way.
 
 Behavior:
 
 - **Stable** - icons sit in alphabetical order and don't shuffle when you switch apps. The activation digit for a given app stays the same until you launch or quit something.
 - **Ergonomic badge keys** - easier-to-reach keys are assigned first. With 5 running apps the badges are `1, 2, 3, 8, 9` (skipping the harder middle keys); `5/6/7` only get used when you have 7+ apps running.
-- **Linux focus** - Look's GNOME Shell extension activates the app's most-recent window on Wayland; X11 uses `_NET_ACTIVE_WINDOW` via x11rb; sway/Hyprland use `wlr-foreign-toplevel-management`; i3 uses `i3-msg`.
+- **Linux focus** - Look's GNOME Shell extension activates the app's most-recent window on Wayland; X11 uses `_NET_ACTIVE_WINDOW` via x11rb; sway/Hyprland use `wlr-foreign-toplevel-management`; i3 uses `i3-msg`; niri uses its own IPC socket, which also scrolls the view to the window's workspace.
 - **Windowless apps** (Finder with no Finder windows, etc.) get a fresh window via a Dock-style "reopen" so you don't see an empty flash.
 
 Saved as `running_apps_placement=<value>` in `~/.look.config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
@@ -286,6 +321,43 @@ Runtime config file:
 - optional override: `LOOK_CONFIG_PATH=/path/to/config`
 - reload after manual edits: `Cmd+Shift+;`
 - reset to fresh defaults from UI: `Settings -> Advanced -> Create Fresh Config` (confirmation popup)
+
+NixOS / Home Manager users can manage the same file declaratively through the
+flake's Home Manager module. Add the input and pass `inputs` down to your
+modules, which Home Manager does not do on its own:
+
+```nix
+# flake.nix
+inputs.look.url = "github:kunkka19xx/look?dir=apps/linows";
+
+homeConfigurations."me" = home-manager.lib.homeManagerConfiguration {
+  inherit pkgs;
+  extraSpecialArgs = { inherit inputs; };   # or home-manager.extraSpecialArgs
+  modules = [ ./home.nix ];
+};
+```
+
+```nix
+# home.nix
+{ inputs, ... }: {
+  imports = [ inputs.look.homeModules.default ];
+
+  programs.lookapp = {
+    enable = true;
+    theme = "kindle";
+    settings.ai_enabled = false;
+    # package = null;  # config only, Look already installed system-wide
+  };
+}
+```
+
+Activation merges those keys into `~/.look.config` instead of replacing it, so
+settings you change in the app are kept and only the keys declared in Nix are
+overwritten. Removing a key from the Nix config removes it from the file on the
+next rebuild. Nix wins on every activation, so for the keys it manages, edit the
+Nix config and rebuild rather than using Look's in-app Save Config button. The
+first activation copies the pre-Nix file to `~/.look.config.hm-backup`. See
+`apps/linows/BUILDING.md` for the full option list.
 
 Backend-related keys:
 
@@ -363,6 +435,13 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `:cmd` (e.g. `:calc 2+2`, `:kill chrome`, `:sys`, `:todo`, `:speed`): jump to a command directly from the home screen
 - `Cmd+1`..`Cmd+7`: in command mode, direct command switch (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`)
 - `Cmd+1`..`Cmd+9` (macOS) / `Alt+1`..`Alt+9` (Linux, Windows): on the home screen, activate the running-app whose badge shows that digit, when `Running Apps` is on. Badge labels are ergonomic, not strictly positional - see Settings → Appearance → Running Apps
+- `Option+Up` / `Option+Down` in AI mode (`>`): walk your recent prompts, like a shell history. `Shift+Up` / `Shift+Down` select text in the message instead
+- `Shift+Enter` in AI mode (`>`): new line in the message instead of sending. The box grows to 6 lines and stops there. Elsewhere `Shift+Enter` still opens all picked files
+- `join` (or `join meeting`, `join my next meeting`, or `join <meeting name>`): pins a "Join <meeting>" row for the next Teams / Zoom / Meet / Webex / Jitsi / GoToMeeting / Whereby meeting in your calendar; Enter opens the link. Works in the main bar and in `>` AI mode. Looks two days ahead. Needs the account in macOS Calendar (System Settings → Internet Accounts), since Look reads the OS's calendar and makes no network call of its own
+- `call <name>` / `facetime <name>` / `message <name>` in AI mode (`>`): finds the person in Contacts and opens FaceTime or Messages. `call mom on iphone` dials through your iPhone. A bare `call` means FaceTime audio, the one that works with no iPhone nearby. Look always lists what it found first; `Enter` on the highlighted row places the call
+- `Cmd+D` in AI mode (`>`): delete the highlighted conversation (same as `Cmd+Delete`; undo from the banner with `Cmd+Z`)
+- `Cmd+H` in AI mode (`>`): open the help screen on its **AI** topic without leaving the conversation. `Cmd+H`, `Esc`, or typing returns to it. The help screen's topic capsules (All / Main / AI / Prefixes / Command) also switch by click
+- `Cmd+1`..`Cmd+9` and `Cmd+0` in AI mode (`>`): open the listed conversation carrying that chip (`Cmd+0` is the tenth). The running-apps row is hidden on the AI screen, so the digits mean sessions there, and `Cmd+0` opens the tenth session rather than resetting the UI scale while the list is up. The list stops at ten because a `Cmd` chord is a single keypress; older conversations are found by typing, then Tab/arrows and Enter
 - `Cmd+<letter>` (macOS) / `Alt+<letter>` (Linux, Windows): on the empty home screen, fire the super action with that highlighted letter (`B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `P` play/pause, `R` Restart, `D` Shut Down), when `Super Actions` is on
 - `Space` / `R` / `P` (inside `/pomo`): start/pause session, reset, toggle music play/pause
 - `Cmd+N` / `Cmd+S` (inside `/todo`): switch Tasks/Stats page, save changes

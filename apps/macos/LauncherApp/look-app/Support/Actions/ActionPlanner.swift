@@ -1,0 +1,83 @@
+import Foundation
+
+/// Thin shell over the Rust-core planner (core/ai/src/planner.rs), which owns
+/// the prompt, the tool aliases, and the model-output mapping for every shell.
+/// This side keeps only the availability gate and the date seam: for add tools,
+/// `when` is injected from the raw query when NSDataDetector can resolve it.
+@MainActor
+final class ActionPlanner {
+    init() {}
+
+    /// Whether a capable model is configured to plan actions. Apple Intelligence
+    /// is not a planner; only a reachable Ollama with the model pulled qualifies.
+    var isAvailable: Bool {
+        let settings = ThemeStore.shared.settings
+        guard settings.aiEnabled, settings.aiProvider == .ollama else { return false }
+        return AIQueryRouter.shared.availability(of: .ollama).isAvailable
+    }
+
+    /// Primes the model + Ollama's prompt-prefix cache while the user types.
+    func warmUp() async {
+        guard isAvailable else { return }
+        let settings = ThemeStore.shared.settings
+        let host = settings.ollamaEndpoint
+        let model = settings.ollamaModel
+        let bridge = EngineBridge.shared
+        await Task.detached(priority: .utility) {
+            bridge.aiWarmPlanner(host: host, model: model)
+        }.value
+    }
+
+    /// Returns a `ToolCall`, or nil when there is no capable provider, the
+    /// request is not an action, or the response is unusable. Cancellation is
+    /// real: it kills the request, so a superseded plan never queues in Ollama
+    /// behind the one the user is waiting for.
+    func plan(query: String) async -> [ToolCall] {
+        guard isAvailable else { return [] }
+        let settings = ThemeStore.shared.settings
+        let bridge = EngineBridge.shared
+        let session = bridge.aiPlanStart(
+            host: settings.ollamaEndpoint, model: settings.ollamaModel, query: query)
+        guard session != 0 else { return [] }
+
+        var steps: [EngineBridge.AIPlanSnapshot.RawCall] = []
+        while true {
+            if Task.isCancelled {
+                bridge.aiPlanCancel(session)
+                return []
+            }
+            guard let snapshot = bridge.aiPlanPoll(session) else { return [] }
+            if snapshot.done {
+                steps = snapshot.steps
+                break
+            }
+            do {
+                try await Task.sleep(nanoseconds: 60_000_000)
+            } catch {
+                bridge.aiPlanCancel(session)
+                return []
+            }
+        }
+
+        // Date seam: add tools get `when` = the raw query when a date resolves
+        // in it (NSDataDetector, macOS-quality; the shared-lexicon day-phrase
+        // fallback catches abbreviations like "wed" the detector misses).
+        // No date -> all-day / undated. Applied per step, since a compound
+        // request ("lunch friday and remind me to prep") dates each part from
+        // the same sentence.
+        let dated = DatePhrase.resolve(query) != nil || bridge.aiDayPhrase(query) != nil
+        return steps.map { raw in
+            var params = raw.params
+            // Only fill a `when` the step does not have. `resolve_step` emits
+            // title-only for add tools today, so this is defensive - but the
+            // day a step carries its own time phrase, overwriting it with the
+            // whole sentence would silently move the event.
+            let hasOwnWhen = !(params["when"] ?? "").isEmpty
+            if dated, !hasOwnWhen,
+               raw.tool == "calendar.add_event" || raw.tool == "reminder.add" {
+                params["when"] = query
+            }
+            return ToolCall(toolID: raw.tool, params: params)
+        }
+    }
+}

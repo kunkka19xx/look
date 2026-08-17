@@ -9,6 +9,7 @@
 
 import * as platform from './platform.js';
 import * as superactions from './components/superactions.js';
+import * as blur from './blur.js';
 
 const GAP_MIN = 0;
 const GAP_MAX = 24;
@@ -48,7 +49,13 @@ export function init() {
     // the panel-sized image shifted by its own offset, so adjacent tiles read
     // as one continuous picture cut apart by the transparent gaps. Observing
     // the row alongside the pane catches column show/hide without a resize.
-    const ro = new ResizeObserver(() => updateTileOrigins());
+    blur.init(win);
+    // Blur rides the same observer: a collapsing column moves the painted
+    // surfaces without touching the layout gate.
+    const ro = new ResizeObserver(() => {
+        updateTileOrigins();
+        blur.sync();
+    });
     ro.observe(mainPane);
     ro.observe(document.getElementById('results-row'));
     for (const tile of mainPane.querySelectorAll('.pane-tile')) ro.observe(tile);
@@ -170,6 +177,7 @@ function apply() {
     mainPane.classList.toggle('translating', translateQuery);
     placeHints(floatingGrid);
     if (floating) updateTileOrigins();
+    blur.sync();
 }
 
 // The nodes MOVE between the bottom bar and the card footers (not clone),

@@ -138,7 +138,7 @@ sudo nixos-rebuild switch --flake /path/to/your/flake#hostname
 
 > **Note:** On GNOME desktops, log out and log back in after the first install so the GNOME Shell extension (used for window focusing and hotkey on Wayland) can load.
 
-**Window manager users (i3, sway, Hyprland, etc.):** Autostart via `.desktop` files only works on full DEs (GNOME, KDE). On standalone WMs, add Look to your config manually. The `Alt+Space` hotkey and window rules (float, no border) are registered automatically at runtime - you only need the autostart line:
+**Window manager users (i3, sway, Hyprland, niri, etc.):** Autostart via `.desktop` files only works on full DEs (GNOME, KDE). On standalone WMs, add Look to your config manually. On i3, sway, and Hyprland the `Alt+Space` hotkey and window rules (float, no border) are registered automatically at runtime, so you only need the autostart line; niri needs the bind added by hand (see below):
 
 ```bash
 # i3: ~/.config/i3/config
@@ -152,6 +152,27 @@ exec lookapp
 # Hyprland: ~/.config/hypr/hyprland.conf
 exec-once = lookapp
 # (Alt+Space, float, and border rules are injected automatically via hyprctl)
+```
+
+niri has no API to add binds at runtime, so `Alt+Space` has to go in `~/.config/niri/config.kdl` yourself. Look shows the exact stanza for your system (the `gdbus` path differs on NixOS) in its setup notice on first run:
+
+```kdl
+spawn-at-startup "lookapp"
+
+binds {
+    Alt+Space { spawn "gdbus" "call" "--session" "--dest" "com.look.Desktop" "--object-path" "/com/look/Desktop" "--method" "com.look.Desktop.Toggle"; }
+}
+```
+
+Floating is applied at runtime over niri's IPC; add a rule only if you also want the focus ring and shadow off:
+
+```kdl
+window-rule {
+    match app-id="^lookapp$"
+    open-floating true
+    focus-ring { off; }
+    shadow { off; }
+}
 ```
 
 > **Hyprland 0.55+ only.** Focus-existing-window uses the `wlr-foreign-toplevel-management` protocol. Older Hyprland versions relied on the legacy `hyprctl dispatch focuswindow` syntax which was deprecated in 0.55; selecting an already-running app on <0.55 may launch a second instance instead of focusing. Upgrade to 0.55+ for correct behavior.
@@ -168,12 +189,26 @@ One PowerShell line, no admin required:
 iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/windows/install-look.ps1) }"
 ```
 
+Or with [Scoop](https://scoop.sh/) (if you already have it installed):
+
+```powershell
+scoop bucket add extras
+scoop install extras/look
+```
+
 The script resolves the latest release, downloads the NSIS installer, verifies its SHA256 against the published checksums, and runs it silently into `%LOCALAPPDATA%\Programs\Look`. SmartScreen will warn on the first download while reputation builds - click "More info → Run anyway" if Windows blocks the script itself.
 
 Uninstall:
 
 ```powershell
+# Scoop
+scoop uninstall look
+
+# Installer script
 iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/windows/install-look.ps1) } -Uninstall"
+
+# Optional: wipe user data
+Remove-Item -Recurse "$env:LOCALAPPDATA\look"
 ```
 
 The launcher's global hotkey is `Alt+Space` (not user-configurable yet - if it conflicts with another app you use, remap that one). For a manual install: download `Look_<version>_x64-setup.exe` from [Releases](https://github.com/kunkka19xx/look/releases/latest), verify the SHA256 against the published `Look-<version>-windows-checksums.txt`, then run. Uninstall via Settings → Apps or `%LOCALAPPDATA%\Programs\Look\uninstall.exe`. To wipe user data: `Remove-Item -Recurse "$env:LOCALAPPDATA\look"`.
@@ -242,7 +277,7 @@ Full reference: [docs/user-guide.md](docs/user-guide.md).
 
 ## Themes
 
-Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, plus Custom. Kindle is the one light preset - paper, ink, and a serif face. Switch in `Settings > Appearance`.
+Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, plus Custom. Kindle is the one light preset - paper, ink, and a serif face. Liquid renders on macOS 26's Liquid Glass and is hidden on older releases; on Linux and Windows it ships as clear glass - same palette and geometry, a specular rim instead of refraction, plus real behind-window blur wherever the compositor grants it (KDE, Hyprland 0.56+, Niri). Switch in `Settings > Appearance`.
 
 <p align="center">
   <img src="assets/look-ui/1.png" width="45%" />

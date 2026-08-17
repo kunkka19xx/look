@@ -91,8 +91,115 @@ extension LauncherView {
         focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
     }
 
+    /// Whether Enter should escalate over the current selection: yes when
+    /// nothing is selected or the selection is just the auto-seeded Google
+    /// suggestion row; a URL, calc, prefix, or real result row keeps Enter.
+    private var escalationBeatsSelection: Bool {
+        guard let selectedResultID,
+              let selected = displayedResults.first(where: { $0.id == selectedResultID })
+        else { return true }
+        if case .webSuggestion = SyntheticRow.classify(resultID: selected.id) {
+            return true
+        }
+        return false
+    }
+
+    /// Dead-end Enter in the main bar: hand the phrasing to the AI surface so
+    /// the routing ladder (actions, recall, chat) reads it, with its confirm
+    /// gates. Mirrors the `>` entry path, then submits immediately.
+    func escalateToAIMode(with text: String) {
+        isAIMode = true
+        conversationCache = ConversationStore.load()
+        recordAIPrompt(text)
+        actionController.attachments = attachments
+        actionController.submitExplicitAIQuery(text)
+        clearQuerySilently()
+        clearAttachments()
+        // The whole panel below the bar swaps (results list -> AI session), so
+        // a single `isQueryFocused = true` can land before the layout settles.
+        // focusActiveInput retries and also sets first responder in AppKit.
+        focusActiveInput(activateApp: false)
+    }
+
+    /// Clears the input without triggering the AI side effects of the query
+    /// `onChange` (clearFeedback / handleComposeCleared): a submit's just-set
+    /// state - feedback, confirm bar, running plan/chat - must survive its own
+    /// clear.
+    func clearQuerySilently() {
+        // Only arm the flag when the assignment will actually fire `onChange`.
+        // An already-empty query publishes nothing, and a stale flag would then
+        // swallow the AI side effects of the user's NEXT keystroke.
+        guard !query.isEmpty else { return }
+        querySilentlyCleared = true
+        query = ""
+    }
+
     func handleSubmit() {
         logUIEvent("submit isCommand=\(isCommandMode) active=\(activeCommandID ?? "nil") selectedKill=\(selectedKillSuggestionIndex.map(String.init) ?? "nil") pendingKill=\(pendingKillCandidate?.displayName ?? "nil") input='\(commandArgsPart)'")
+
+        // A highlighted `@`-mention takes Enter as "attach this file". With
+        // nothing highlighted this returns false and Enter sends, so the popup
+        // never swallows a message the user meant to send.
+        if acceptHighlightedMention() { return }
+
+        // A pending action bar takes Enter as "confirm". Stay in AI mode with a
+        // cleared input, ready for the next message; Esc leaves.
+        if actionController.isPresenting {
+            actionController.confirm()
+            clearQuerySilently()
+            DispatchQueue.main.async { isQueryFocused = true }
+            return
+        }
+
+        // AI mode: a bare number answers a disambiguation first, then continues
+        // a listed conversation; anything else is a message (deterministic `@`
+        // first, then planner/chat).
+        let submitTrimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !isCommandMode, isAIMode {
+            // The picker takes Enter: a bare Enter joins the highlighted
+            // row, a typed number picks that one. Before the message path, so
+            // "1" answers the list rather than becoming a new question.
+            if actionController.linkPicker != nil {
+                if submitTrimmed.isEmpty {
+                    openHighlightedLink()
+                    DispatchQueue.main.async { isQueryFocused = true }
+                    return
+                }
+                if let number = Int(submitTrimmed), actionController.selectPickerRow(number: number) {
+                    openHighlightedLink()
+                    DispatchQueue.main.async { isQueryFocused = true }
+                    return
+                }
+                // Anything else typed is a new request, so the list stops being
+                // the answer and the message path below takes over.
+                actionController.clearPicker()
+            }
+            if let choice = actionController.pendingChoice,
+               let number = Int(submitTrimmed),
+               number >= 1, number <= choice.candidates.count {
+                actionController.choose(choice.candidates[number - 1])
+                clearQuerySilently()
+            } else if chat.sessionItems.isEmpty,
+                      selectedConversationIndex >= 0,
+                      selectedConversationIndex < filteredConversations.count {
+                // A highlighted session opens; otherwise Enter starts a new chat.
+                openConversation(filteredConversations[selectedConversationIndex])
+                clearQuerySilently()
+            } else if !submitTrimmed.isEmpty {
+                // Routing (incl. file-recall detection) lives in the Rust-core
+                // ladder; a files decision comes back via recallRequest.
+                recordAIPrompt(submitTrimmed)
+                // The turn owns its attachments: handed over here, cleared with
+                // the input so they never leak into the next message.
+                actionController.attachments = attachments
+                actionController.submitExplicitAIQuery(submitTrimmed)
+                clearQuerySilently()
+                clearAttachments()
+            }
+            DispatchQueue.main.async { isQueryFocused = true }
+            return
+        }
+
         if isCommandMode {
             if activeCommandID == AppConstants.Launcher.Command.kill, let selectedNum = selectedKillSuggestionIndex {
                 if let candidate = killSuggestions.first(where: { $0.number == selectedNum }) {
@@ -113,6 +220,19 @@ extension LauncherView {
             } else if let translationCommand = extractTranslationQuery(from: trimmed) {
                 handleTranslation(command: translationCommand)
                 isQueryFocused = true
+            } else if themeStore.settings.aiEnabled, !trimmed.isEmpty, escalationBeatsSelection,
+                      !aiAnswer.isActive {
+                // Never while the answer card is answering: re-asking an
+                // answered question in chat is noise, not help.
+                // Dead-end Enter (nothing real to open): escalate to the AI
+                // surface - the same routing ladder with its confirm gates - so
+                // the `>` prefix stays optional knowledge. Auto-seeded Google
+                // rows don't count as "found something" (Cmd+Enter still
+                // web-searches); a URL/calc/prefix/result row keeps Enter.
+                // Deliberately NOT gated on backendResults: those lag a
+                // debounce behind the input, and an Enter with no selection
+                // would otherwise do nothing at all.
+                escalateToAIMode(with: trimmed)
             } else {
                 openSelectedApp()
             }

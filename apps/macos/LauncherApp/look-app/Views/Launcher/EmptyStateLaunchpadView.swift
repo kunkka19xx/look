@@ -85,6 +85,7 @@ struct EmptyStateLaunchpadView: View {
             HStack(alignment: .top, spacing: Const.gap) {
                 slot(cell: cell)
                     .frame(width: width(columns: 2, cell: cell), height: height(rows: 2))
+                    .symbolEffect(.bounce, value: revealToken)
                     .spawnReveal(index: RevealIndex.slot, token: revealToken)
 
                 VStack(spacing: Const.gap) {
@@ -127,6 +128,8 @@ struct EmptyStateLaunchpadView: View {
             let h = height(rows: model.rowSpanCount)
             tileContent(model)
                 .frame(width: w, height: h)
+                // On the container: symbol effects reach the images inside.
+                .symbolEffect(.bounce, value: revealToken)
                 .spawnReveal(index: reveal, token: revealToken)
         }
     }
@@ -223,6 +226,9 @@ private struct LaunchpadToggleTile: View {
                 Image(systemName: iconName)
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(isOn ? themeStore.accentColor() : themeStore.mutedTextColor())
+                    // Theme and Keep Awake swap glyph on flip.
+                    .contentTransition(.symbolEffect(.replace))
+                    .symbolEffect(.bounce, value: isOn)
                 VStack(alignment: .leading, spacing: 1) {
                     mnemonicText(
                         model.title,
@@ -249,7 +255,7 @@ private struct LaunchpadToggleTile: View {
             )
             .overlay(tileBorder(isOn: isOn, themeStore: themeStore))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableSurfaceStyle())
     }
 
     private var stateLabel: String {
@@ -302,6 +308,8 @@ private struct LaunchpadInfoTile: View {
             Image(systemName: iconName)
                 .font(.system(size: 18, weight: .medium))
                 .foregroundColor(themeStore.accentColor())
+                // The glyph gains and loses its bolt as charging changes.
+                .contentTransition(.symbolEffect(.replace))
             VStack(alignment: .leading, spacing: 1) {
                 Text(label)
                     .font(themeStore.uiFont(size: Const.captionFontSize - 1, weight: .medium))
@@ -311,6 +319,8 @@ private struct LaunchpadInfoTile: View {
                     .foregroundColor(themeStore.fontColor())
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                    .contentTransition(.numericText())
+                    .animation(Motion.Value.rollDigits, value: value)
             }
             Spacer(minLength: 0)
         }
@@ -342,9 +352,12 @@ private struct LaunchpadWeatherTile: View {
             Image(systemName: weather?.symbolName ?? "cloud.sun.fill")
                 .font(.system(size: 20, weight: .medium))
                 .foregroundColor(themeStore.accentColor())
+                .contentTransition(.symbolEffect(.replace))
             Text(weather?.temperature ?? Const.weatherPlaceholderValue)
                 .font(themeStore.uiFont(size: Const.valueFontSize - 4, weight: .bold))
                 .foregroundColor(themeStore.fontColor())
+                .contentTransition(.numericText())
+                .animation(Motion.Value.rollDigits, value: weather?.temperature)
             Text(caption)
                 .font(themeStore.uiFont(size: Const.captionFontSize - 1, weight: .medium))
                 .foregroundColor(themeStore.mutedTextColor())
@@ -427,7 +440,7 @@ private struct LaunchpadActionTile: View {
             )
             .overlay(border)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableSurfaceStyle())
     }
 
     /// An armed confirm or a muted mic always draws its coloured state border, so
@@ -436,7 +449,11 @@ private struct LaunchpadActionTile: View {
     /// tiles, and disappears with them when the border is turned off.
     @ViewBuilder
     private var border: some View {
-        let shape = RoundedRectangle(cornerRadius: Const.cornerRadius, style: .continuous)
+        // Same scaled radius as `frostedTile`, or the outline cuts the corners.
+        let shape = RoundedRectangle(
+            cornerRadius: themeStore.surfaceCornerRadius(Const.cornerRadius),
+            style: .continuous
+        )
         if confirming || micMuted {
             shape.strokeBorder(tint.opacity(launchpadAlertBorderOpacity), lineWidth: launchpadStateBorderWidth)
         } else if themeStore.borderLineWidth() > 0 {
@@ -526,7 +543,7 @@ private struct LaunchpadMediaTile: View {
                 .background(themeStore.controlFillColor())
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableSurfaceStyle())
             transportButton("forward.fill", action: onNext)
         }
     }
@@ -538,7 +555,7 @@ private struct LaunchpadMediaTile: View {
                 .foregroundColor(themeStore.secondaryTextColor())
                 .padding(6)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableSurfaceStyle())
     }
 }
 
@@ -561,9 +578,9 @@ private let launchpadAlertBorderOpacity = 0.3
 /// control-fill stack as `LauncherView.tileBackground(floats:)`. An optional tint
 /// (accent for on-state toggles, caution for a confirming/muted action) layers on top.
 func frostedTile(themeStore: ThemeStore, tint: Color? = nil, tintOpacity: Double = 0) -> some View {
-    let radius = AppConstants.Launcher.Launchpad.cornerRadius
+    let radius = themeStore.surfaceCornerRadius(AppConstants.Launcher.Launchpad.cornerRadius)
     return ZStack {
-        ThemedBackdrop(themeStore: themeStore)
+        ThemedBackdrop(themeStore: themeStore, cornerRadius: radius)
         themeStore.controlFillColor()
         if let tint {
             tint.opacity(tintOpacity)
@@ -578,7 +595,11 @@ func frostedTile(themeStore: ThemeStore, tint: Color? = nil, tintOpacity: Double
 /// with it when the border is turned off.
 @ViewBuilder
 private func tileBorder(isOn: Bool, themeStore: ThemeStore) -> some View {
-    let shape = RoundedRectangle(cornerRadius: AppConstants.Launcher.Launchpad.cornerRadius, style: .continuous)
+    // Must track `frostedTile`'s radius, or the two disagree at the corners.
+    let shape = RoundedRectangle(
+        cornerRadius: themeStore.surfaceCornerRadius(AppConstants.Launcher.Launchpad.cornerRadius),
+        style: .continuous
+    )
     if isOn {
         shape.strokeBorder(themeStore.accentColor().opacity(launchpadOnBorderOpacity), lineWidth: launchpadStateBorderWidth)
     } else if themeStore.borderLineWidth() > 0 {

@@ -8,8 +8,8 @@ extension ThemeSettingsView {
                 HStack(spacing: 14) {
                     inlinePickerLabel("Theme")
                     Picker("Theme", selection: $settings.uiTheme) {
-                        ForEach(BuiltinThemePreset.allCases) { preset in
-                            Text(preset.title).tag(preset)
+                        ForEach(BuiltinThemePreset.options(including: settings.uiTheme)) { preset in
+                            Text(preset.pickerTitle).tag(preset)
                         }
                     }
                     .pickerStyle(.menu)
@@ -59,7 +59,11 @@ extension ThemeSettingsView {
 
                 sectionHeader("Blur")
 
+                // Glass has no blur to thin, so `ThemedBackdrop` ignores this.
+                // Disabled rather than hidden, to keep the value visible.
                 LabeledSlider(title: "Blur Opacity", value: $settings.blurOpacity, range: 0...1)
+                    .disabled(settings.blurMaterial.rendersGlass)
+                    .opacity(settings.blurMaterial.rendersGlass ? AppConstants.ThemeUI.disabledControlOpacity : 1)
                 LabeledSlider(title: "Settings Blur", value: $appUIState.settingsBlurMultiplier, range: 0.4...1)
 
                 HStack(spacing: 10) {
@@ -69,8 +73,8 @@ extension ThemeSettingsView {
                         .foregroundStyle(themeStore.secondaryTextColor())
 
                     Picker("Blur Style", selection: $settings.blurMaterial) {
-                        ForEach(LauncherBlurMaterial.allCases) { item in
-                            Text(item.title).tag(item)
+                        ForEach(LauncherBlurMaterial.options(including: settings.blurMaterial)) { item in
+                            Text(item.pickerTitle).tag(item)
                         }
                     }
                     .pickerStyle(.menu)

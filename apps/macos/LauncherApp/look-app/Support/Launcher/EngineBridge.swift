@@ -8,6 +8,10 @@ private func look_search_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -
 nonisolated
 private func look_search_json_compact(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_search_files_json")
+nonisolated
+private func look_search_files_json(_ query: UnsafePointer<CChar>?, _ now: Int64, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_record_usage_json")
 nonisolated
 private func look_record_usage_json(_ candidateID: UnsafePointer<CChar>?, _ action: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -35,6 +39,114 @@ private func look_fuzzy_score(_ query: UnsafePointer<CChar>?, _ title: UnsafePoi
 @_silgen_name("look_instant_answer_json")
 nonisolated
 private func look_instant_answer_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_is_referent")
+nonisolated
+private func look_ai_is_referent(_ phrase: UnsafePointer<CChar>?) -> Bool
+
+@_silgen_name("look_search_files_params_json")
+nonisolated
+private func look_search_files_params_json(_ paramsJSON: UnsafePointer<CChar>?, _ now: Int64, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_query_window")
+nonisolated
+private func look_ai_query_window(_ query: UnsafePointer<CChar>?, _ nowEpoch: Int64) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_day_phrase")
+nonisolated
+private func look_ai_day_phrase(_ phrase: UnsafePointer<CChar>?, _ nowEpoch: Int64) -> Int64
+
+@_silgen_name("look_ai_plan_start")
+nonisolated
+private func look_ai_plan_start(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?) -> UInt64
+
+@_silgen_name("look_ai_plan_poll")
+nonisolated
+private func look_ai_plan_poll(_ id: UInt64) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_plan_cancel")
+nonisolated
+private func look_ai_plan_cancel(_ id: UInt64)
+
+@_silgen_name("look_ai_warm_planner")
+nonisolated
+private func look_ai_warm_planner(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?)
+
+@_silgen_name("look_ai_conversations_json")
+nonisolated
+private func look_ai_conversations_json(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_conversation_upsert")
+nonisolated
+private func look_ai_conversation_upsert(_ path: UnsafePointer<CChar>?, _ json: UnsafePointer<CChar>?) -> Bool
+
+@_silgen_name("look_ai_conversation_delete")
+nonisolated
+private func look_ai_conversation_delete(_ path: UnsafePointer<CChar>?, _ id: UnsafePointer<CChar>?) -> Bool
+
+@_silgen_name("look_ai_resolve")
+nonisolated
+private func look_ai_resolve(_ requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_load_targets")
+nonisolated
+private func look_ai_load_targets(_ eventsJSON: UnsafePointer<CChar>?, _ remindersJSON: UnsafePointer<CChar>?)
+
+@_silgen_name("look_ai_memory_context")
+nonisolated
+private func look_ai_memory_context(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_context_window")
+nonisolated
+private func look_ai_context_window(_ textsJSON: UnsafePointer<CChar>?, _ budget: UInt32) -> UInt32
+
+@_silgen_name("look_ai_parse_explicit")
+nonisolated
+private func look_ai_parse_explicit(_ input: UnsafePointer<CChar>?, _ modelAvailable: Bool) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_route")
+nonisolated
+private func look_ai_route(_ memoryPath: UnsafePointer<CChar>?, _ input: UnsafePointer<CChar>?, _ modelAvailable: Bool, _ now: Int64) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_meeting_join_query_json")
+nonisolated
+private func look_meeting_join_query_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_call_query_json")
+nonisolated
+private func look_call_query_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_call_url")
+nonisolated
+private func look_call_url(_ modality: UnsafePointer<CChar>?, _ handle: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_call_default_modality")
+nonisolated
+private func look_call_default_modality() -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_meeting_outcome_json")
+nonisolated
+private func look_meeting_outcome_json(_ eventsJSON: UnsafePointer<CChar>?, _ now: Int64, _ name: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_chat_start")
+nonisolated
+private func look_ai_chat_start(_ host: UnsafePointer<CChar>?, _ model: UnsafePointer<CChar>?, _ messagesJSON: UnsafePointer<CChar>?, _ optionsJSON: UnsafePointer<CChar>?) -> UInt64
+
+@_silgen_name("look_ai_chat_poll")
+nonisolated
+private func look_ai_chat_poll(_ id: UInt64) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_ai_chat_cancel")
+nonisolated
+private func look_ai_chat_cancel(_ id: UInt64)
+
+@_silgen_name("look_ai_future_leaning")
+nonisolated
+private func look_ai_future_leaning(_ phrase: UnsafePointer<CChar>?, _ resolvedEpoch: Int64, _ nowEpoch: Int64) -> Int64
+
+@_silgen_name("look_ai_markdown_segments_json")
+nonisolated
+private func look_ai_markdown_segments_json(_ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_instant_has_match")
 nonisolated
@@ -71,6 +183,22 @@ private func look_record_url_hit(_ url: UnsafePointer<CChar>?) -> Bool
 @_silgen_name("look_recent_urls_json")
 nonisolated
 private func look_recent_urls_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_clipboard_record")
+nonisolated
+private func look_clipboard_record(_ content: UnsafePointer<CChar>?, _ kind: UnsafePointer<CChar>?, _ appBundleID: UnsafePointer<CChar>?) -> Int64
+
+@_silgen_name("look_clipboard_list_json")
+nonisolated
+private func look_clipboard_list_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_clipboard_delete")
+nonisolated
+private func look_clipboard_delete(_ id: Int64) -> Bool
+
+@_silgen_name("look_clipboard_clear")
+nonisolated
+private func look_clipboard_clear() -> UInt32
 
 @_silgen_name("look_qactions_json")
 nonisolated
@@ -148,9 +276,9 @@ nonisolated struct LunarDate: Decodable {
 }
 
 final class EngineBridge: @unchecked Sendable {
-    static let shared = EngineBridge()
+    nonisolated static let shared = EngineBridge()
 
-    private init() {}
+    nonisolated private init() {}
 
     nonisolated func search(query: String, limit: Int = 40) -> [LauncherResult] {
         let ptr = query.withCString { cstr in
@@ -203,6 +331,196 @@ final class EngineBridge: @unchecked Sendable {
                 score: item.score
             )
         }
+    }
+
+    /// The Rust-core routing decision for submitted AI-mode input (see
+    /// core/ai/src/route.rs: memory -> join -> textop -> files -> explicit ->
+    /// plan -> chat). The memory tier has already executed by the time this
+    /// returns.
+    enum AIRoute {
+        case memory(feedback: String)
+        /// "join", "join my next meeting", "join <name>". The shell resolves
+        /// the name against the calendar.
+        case join(name: String?)
+        /// "call mom", "facetime sarah". `modality` is a `Modality` id, or nil
+        /// when the words did not say and the default applies.
+        case call(name: String, modality: String?)
+        case textOp(label: String, instruction: String)
+        case files
+        case explicit(toolID: String, params: [String: String])
+        case plan
+        case chat
+    }
+
+    nonisolated func aiRoute(input: String, memoryPath: String, modelAvailable: Bool) -> AIRoute {
+        struct Payload: Decodable {
+            struct Call: Decodable {
+                let tool: String
+                let params: [String: String]
+            }
+            let route: String
+            let feedback: String?
+            let label: String?
+            let instruction: String?
+            let call: Call?
+            /// The join tier's meeting name (absent for a bare "join"), or the
+            /// call tier's person.
+            let name: String?
+            /// The call tier's modality id, absent when the words did not say.
+            let modality: String?
+        }
+        let now = Int64(Date().timeIntervalSince1970)
+        let ptr = memoryPath.withCString { pathC in
+            input.withCString { inputC in
+                look_ai_route(pathC, inputC, modelAvailable, now)
+            }
+        }
+        guard let ptr else { return .chat }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let payload = try? JSONDecoder().decode(Payload.self, from: data)
+        else { return .chat }
+        switch payload.route {
+        case "memory":
+            return .memory(feedback: payload.feedback ?? "")
+        case "join":
+            return .join(name: payload.name)
+        case "call":
+            guard let name = payload.name, !name.isEmpty else { return .chat }
+            return .call(name: name, modality: payload.modality)
+        case "textop":
+            guard let instruction = payload.instruction, !instruction.isEmpty else { return .chat }
+            return .textOp(label: payload.label ?? instruction, instruction: instruction)
+        case "files":
+            return .files
+        case "explicit":
+            guard let call = payload.call else { return .chat }
+            return .explicit(toolID: call.tool, params: call.params)
+        case "plan":
+            return .plan
+        default:
+            return .chat
+        }
+    }
+
+    /// File-recall results plus which fallback produced them, when the strict
+    /// query matched nothing ("window" | "terms" | "window_terms", nil = exact).
+    nonisolated struct FileRecallOutcome {
+        let results: [LauncherResult]
+        let relaxed: String?
+    }
+
+    /// The join request in the typed text, or nil when it is an ordinary
+    /// search. Pure string work in core, so it is safe per keystroke.
+    nonisolated func joinQuery(_ query: String) -> JoinRequest? {
+        guard let ptr = query.withCString({ look_meeting_join_query_json($0) }) else {
+            return nil
+        }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(JoinRequest.self, from: data)
+    }
+
+    /// The call request in the typed text, or nil when it is an ordinary
+    /// search. Pure string work in core, so it is safe per keystroke.
+    nonisolated func callQuery(_ query: String) -> CallRequest? {
+        guard let ptr = query.withCString({ look_call_query_json($0) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        // Core answers the literal `null` for a non-call, which fails to decode
+        // into a non-optional and so becomes the nil this returns anyway.
+        return try? JSONDecoder().decode(CallRequest.self, from: data)
+    }
+
+    /// The URL that dials `handle` with `modality`, or nil when the modality
+    /// is unknown to core. Building it there keeps the schemes in one place.
+    nonisolated func callURL(modality: String, handle: String) -> String? {
+        guard
+            let ptr = modality.withCString({ modalityC in
+                handle.withCString { look_call_url(modalityC, $0) }
+            })
+        else { return nil }
+        defer { look_free_cstring(ptr) }
+        let url = String(cString: ptr)
+        return url.isEmpty ? nil : url
+    }
+
+    /// The modality a bare "call" means, straight from core.
+    nonisolated var defaultCallModality: String {
+        guard let ptr = look_call_default_modality() else { return "" }
+        defer { look_free_cstring(ptr) }
+        return String(cString: ptr)
+    }
+
+    /// What a `join` finds in `eventsJSON`: the meetings it can open, best
+    /// first, plus the titles that matched the name but carry no link. `name`
+    /// narrows to meetings whose title holds those words. The ordering, and
+    /// where a join link hides inside an event, are decided in core
+    /// (`look_ai::meeting`) so every shell agrees.
+    nonisolated func joinOutcome(
+        eventsJSON: String, now: Int64, name: String = ""
+    ) -> JoinOutcome {
+        guard
+            let ptr = eventsJSON.withCString({ events in
+                name.withCString { look_meeting_outcome_json(events, now, $0) }
+            })
+        else {
+            return JoinOutcome()
+        }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return JoinOutcome() }
+        return (try? JSONDecoder().decode(JoinOutcome.self, from: data)) ?? JoinOutcome()
+    }
+
+    /// Natural-language file recall over Look's own index. Returns nil when the
+    /// query is not a file-recall query (so the caller does normal search).
+    nonisolated func searchFiles(query: String, limit: Int = 40) -> FileRecallOutcome? {
+        let now = Int64(Date().timeIntervalSince1970)
+        guard let ptr = query.withCString({ look_search_files_json($0, now, UInt32(limit)) }) else {
+            return nil
+        }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let payload = try? JSONDecoder().decode(SearchPayload.self, from: data),
+            payload.error == nil
+        else { return nil }
+        return Self.fileRecallOutcome(from: payload)
+    }
+
+    /// File recall from the model's structured `recall` params (terms, types,
+    /// when, location). Nil when the params are unusable.
+    nonisolated func searchFiles(params: [String: String], limit: Int = 40) -> FileRecallOutcome? {
+        guard
+            let paramsData = try? JSONSerialization.data(withJSONObject: params),
+            let paramsJSON = String(data: paramsData, encoding: .utf8)
+        else { return nil }
+        let now = Int64(Date().timeIntervalSince1970)
+        guard let ptr = paramsJSON.withCString({ look_search_files_params_json($0, now, UInt32(limit)) }) else {
+            return nil
+        }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let payload = try? JSONDecoder().decode(SearchPayload.self, from: data),
+            payload.error == nil
+        else { return nil }
+        return Self.fileRecallOutcome(from: payload)
+    }
+
+    private nonisolated static func fileRecallOutcome(from payload: SearchPayload) -> FileRecallOutcome {
+        let results = payload.results.map { item in
+            LauncherResult(
+                id: item.id,
+                kind: LauncherResultKind(rawValue: item.kind) ?? .file,
+                title: item.title,
+                subtitle: item.subtitle,
+                path: item.path,
+                score: item.score
+            )
+        }
+        return FileRecallOutcome(results: results, relaxed: payload.relaxed)
     }
 
     nonisolated func recordUsage(candidateID: String, action: String) -> BridgeError? {
@@ -318,6 +636,271 @@ final class EngineBridge: @unchecked Sendable {
     /// Shared `core/matching` fuzzy score for `query` vs `title` (identical
     /// ranking to linows), or nil on no match. Both sides must be pre-lowercased
     /// by the caller (the scorer is case-sensitive). Cheap - safe while typing.
+    /// One chat-answer chunk from the Rust-core markdown segmentation (core/ai).
+    struct AIMarkdownSegment: Decodable, Equatable {
+        let kind: String  // "text" | "code"
+        let text: String
+        let language: String?
+    }
+
+    /// Whether a mutate `match` phrase refers to conversation context ("it",
+    /// "this event") rather than naming an item. Rust core (core/ai).
+    nonisolated func aiIsReferent(_ phrase: String) -> Bool {
+        phrase.withCString { look_ai_is_referent($0) }
+    }
+
+    /// The specific day a phrase names ("wed", "tmr", "last fri"), from the
+    /// shared lexicon - the fallback behind NSDataDetector so abbreviations
+    /// resolve the same on every shell. Local midnight; nil when none named.
+    nonisolated func aiDayPhrase(_ phrase: String) -> Date? {
+        let now = Int64(Date().timeIntervalSince1970)
+        let epoch = phrase.withCString { look_ai_day_phrase($0, now) }
+        guard epoch > 0 else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(epoch))
+    }
+
+    /// Timeframe a schedule question names ("next week", "in august"), from the
+    /// Rust-core window grammar (core/ai). ISO Monday weeks, local midnights.
+    nonisolated func aiQueryWindow(_ query: String) -> (start: Date, end: Date, label: String)? {
+        struct RawWindow: Decodable {
+            let start: Int64
+            let end: Int64
+            let label: String
+        }
+        let now = Int64(Date().timeIntervalSince1970)
+        guard let ptr = query.withCString({ look_ai_query_window($0, now) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let window = try? JSONDecoder().decode(RawWindow.self, from: data)
+        else { return nil }
+        return (
+            Date(timeIntervalSince1970: TimeInterval(window.start)),
+            Date(timeIntervalSince1970: TimeInterval(window.end)),
+            window.label)
+    }
+
+    /// One line of a planning session poll: pending until `done`, then the
+    /// resolved call (nil call = not an action / failure).
+    nonisolated struct AIPlanSnapshot: Decodable {
+        struct RawCall: Decodable {
+            let tool: String
+            let params: [String: String]
+        }
+        let done: Bool
+        /// Every step of the plan, in order. Empty when the request was not an
+        /// action; several for a compound one.
+        let calls: [RawCall]?
+
+        var steps: [RawCall] { calls ?? [] }
+    }
+
+    /// Starts a cancellable planning call via the Rust-core planner (core/ai):
+    /// the prompt, aliases, and mapping live there. Returns 0 on failure.
+    nonisolated func aiPlanStart(host: String, model: String, query: String) -> UInt64 {
+        host.withCString { hostC in
+            model.withCString { modelC in
+                query.withCString { queryC in
+                    look_ai_plan_start(hostC, modelC, queryC)
+                }
+            }
+        }
+    }
+
+    /// Snapshot of a planning session; nil for unknown ids. The poll that
+    /// observes `done` removes the session.
+    nonisolated func aiPlanPoll(_ id: UInt64) -> AIPlanSnapshot? {
+        guard let ptr = look_ai_plan_poll(id) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(AIPlanSnapshot.self, from: data)
+    }
+
+    /// Kills the planning request (Ollama aborts generation on disconnect).
+    nonisolated func aiPlanCancel(_ id: UInt64) {
+        look_ai_plan_cancel(id)
+    }
+
+    /// Primes the model + prompt cache (BLOCKING network; call off-thread).
+    nonisolated func aiWarmPlanner(host: String, model: String) {
+        host.withCString { hostC in
+            model.withCString { modelC in
+                look_ai_warm_planner(hostC, modelC)
+            }
+        }
+    }
+
+    /// Stored AI conversations (newest first) from the Rust-core store.
+    nonisolated func aiConversationsJSON(path: String) -> Data? {
+        guard let ptr = path.withCString({ look_ai_conversations_json($0) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        return String(cString: ptr).data(using: .utf8)
+    }
+
+    /// Insert-or-replace one conversation in the Rust-core store.
+    nonisolated func aiConversationUpsert(path: String, json: String) -> Bool {
+        path.withCString { pathC in
+            json.withCString { jsonC in
+                look_ai_conversation_upsert(pathC, jsonC)
+            }
+        }
+    }
+
+    nonisolated func aiConversationDelete(path: String, id: String) -> Bool {
+        path.withCString { pathC in
+            id.withCString { idC in
+                look_ai_conversation_delete(pathC, idC)
+            }
+        }
+    }
+
+    /// Tool resolution via the Rust core (core/ai): candidates + params in,
+    /// a data-only planned/choice/invalid outcome out. Pure CPU.
+    nonisolated func aiResolve(requestJSON: String) -> Data? {
+        guard let ptr = requestJSON.withCString({ look_ai_resolve($0) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        return String(cString: ptr).data(using: .utf8)
+    }
+
+    /// Load the AI mutate targets once (events + reminders JSON arrays) so
+    /// per-keystroke `aiResolve` calls can omit the lists. Rust core.
+    nonisolated func aiLoadTargets(eventsJSON: String, remindersJSON: String) {
+        eventsJSON.withCString { ev in
+            remindersJSON.withCString { rem in
+                look_ai_load_targets(ev, rem)
+            }
+        }
+    }
+
+    /// Stored facts as a model context block (empty when none). Rust core.
+    nonisolated func aiMemoryContext(path: String) -> String {
+        guard let ptr = path.withCString({ look_ai_memory_context($0) }) else { return "" }
+        defer { look_free_cstring(ptr) }
+        return String(cString: ptr)
+    }
+
+    /// How many recent item texts fit the token budget (0 = default). The shell
+    /// keeps that many tail turns as chat history. Rust core (core/ai/context).
+    nonisolated func aiContextWindow(texts: [String], budget: Int = 0) -> Int {
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: texts),
+            let json = String(data: data, encoding: .utf8)
+        else { return texts.count }
+        let count = json.withCString { look_ai_context_window($0, UInt32(max(0, budget))) }
+        return Int(count)
+    }
+
+    /// The explicit `>verb title @ when` parser (Rust core). Nil = natural
+    /// language, deferred to the model.
+    nonisolated func aiParseExplicit(_ input: String, modelAvailable: Bool) -> (toolID: String, params: [String: String])? {
+        struct RawCall: Decodable {
+            let tool: String
+            let params: [String: String]
+        }
+        let ptr = input.withCString { look_ai_parse_explicit($0, modelAvailable) }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let call = try? JSONDecoder().decode(RawCall.self, from: data)
+        else { return nil }
+        return (call.tool, call.params)
+    }
+
+    nonisolated struct AIChatSnapshot: Decodable {
+        let text: String
+        let done: Bool
+        let error: String?
+        /// The answer hit the generation length cap and was cut off.
+        let truncated: Bool?
+    }
+
+    /// Start a streamed chat session in the Rust core (curl child). 0 = failed.
+    /// `optionsJSON` tunes the generation for this surface
+    /// (`{num_predict, temperature, timeout_secs}`); empty for core defaults.
+    nonisolated func aiChatStart(
+        host: String, model: String, messagesJSON: String, optionsJSON: String = ""
+    ) -> UInt64 {
+        host.withCString { hostC in
+            model.withCString { modelC in
+                messagesJSON.withCString { messagesC in
+                    optionsJSON.withCString { optionsC in
+                        look_ai_chat_start(hostC, modelC, messagesC, optionsC)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Streams an Ollama answer over the shared Rust chat transport, yielding
+    /// cumulative text (the `AIQueryProvider.answer` contract). One transport
+    /// for every Ollama caller: same cancellation, timeout, and error handling
+    /// as session chat. Cancelling the consuming task kills the request.
+    nonisolated func aiChatStream(
+        host: String, model: String, messagesJSON: String, optionsJSON: String
+    ) -> AsyncThrowingStream<String, Error>? {
+        let session = aiChatStart(
+            host: host, model: model, messagesJSON: messagesJSON, optionsJSON: optionsJSON)
+        guard session != 0 else { return nil }
+        return AsyncThrowingStream { continuation in
+            let task = Task.detached(priority: .userInitiated) {
+                defer { if Task.isCancelled { EngineBridge.shared.aiChatCancel(session) } }
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 85_000_000)
+                    if Task.isCancelled { return }
+                    guard let snapshot = EngineBridge.shared.aiChatPoll(session) else {
+                        continuation.finish()
+                        return
+                    }
+                    if !snapshot.text.isEmpty {
+                        continuation.yield(snapshot.text)
+                    }
+                    if let error = snapshot.error {
+                        continuation.finish(throwing: OllamaError.server(error))
+                        return
+                    }
+                    if snapshot.done {
+                        continuation.finish()
+                        return
+                    }
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// Snapshot of a chat session's cumulative text; nil for unknown ids.
+    nonisolated func aiChatPoll(_ id: UInt64) -> AIChatSnapshot? {
+        guard let ptr = look_ai_chat_poll(id) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(AIChatSnapshot.self, from: data)
+    }
+
+    /// Abort a chat session (Ollama stops generating).
+    nonisolated func aiChatCancel(_ id: UInt64) {
+        look_ai_chat_cancel(id)
+    }
+
+    /// Rolls a time-only phrase forward when it already passed today (Rust core).
+    nonisolated func aiFutureLeaning(phrase: String, resolved: Date, now: Date) -> Date {
+        let adjusted = phrase.withCString {
+            look_ai_future_leaning($0, Int64(resolved.timeIntervalSince1970), Int64(now.timeIntervalSince1970))
+        }
+        return Date(timeIntervalSince1970: TimeInterval(adjusted))
+    }
+
+    /// Markdown segmentation for AI chat answers. Rust core (core/ai).
+    nonisolated func aiMarkdownSegments(_ text: String) -> [AIMarkdownSegment] {
+        guard let ptr = text.withCString({ look_ai_markdown_segments_json($0) }) else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard
+            let data = String(cString: ptr).data(using: .utf8),
+            let segments = try? JSONDecoder().decode([AIMarkdownSegment].self, from: data)
+        else { return [] }
+        return segments
+    }
+
     nonisolated func fuzzyScore(query: String, title: String) -> Int? {
         let score = query.withCString { queryCstr in
             title.withCString { titleCstr in
@@ -412,6 +995,62 @@ final class EngineBridge: @unchecked Sendable {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return (try? decoder.decode([URLHistoryEntry].self, from: data)) ?? []
+    }
+
+    /// One remembered clip, as stored in the shared look.db.
+    nonisolated struct ClipboardEntry: Decodable, Identifiable, Equatable {
+        let id: Int64
+        let content: String
+        let kind: String
+        let appBundleID: String?
+        let copiedAtUnixS: Int64
+
+        var copiedAt: Date { Date(timeIntervalSince1970: TimeInterval(copiedAtUnixS)) }
+    }
+
+    /// Remembers a clip and returns its row id, or nil when nothing was
+    /// stored. The id is the handle a later delete needs: without it, deleting
+    /// the clip would only drop the in-memory copy and it would return on the
+    /// next launch.
+    ///
+    /// NEVER call this for a concealed or transient clip: the core cannot see
+    /// pasteboard type markers, so this side is the only place a password
+    /// manager's clip can be kept out of the database.
+    /// Opens the shared look.db - call off the main thread.
+    @discardableResult
+    nonisolated func recordClipboard(content: String, kind: String = "text", appBundleID: String? = nil) -> Int64? {
+        let id = content.withCString { contentC in
+            kind.withCString { kindC in
+                if let appBundleID {
+                    return appBundleID.withCString { appC in
+                        look_clipboard_record(contentC, kindC, appC)
+                    }
+                }
+                return look_clipboard_record(contentC, kindC, nil)
+            }
+        }
+        return id > 0 ? id : nil
+    }
+
+    /// Up to `limit` remembered clips matching `query` (newest first). An empty
+    /// query returns the most recent. Opens look.db - call off the main thread.
+    nonisolated func clipboardEntries(query: String = "", limit: Int) -> [ClipboardEntry] {
+        let ptr = query.withCString { look_clipboard_list_json($0, UInt32(limit)) }
+        guard let ptr else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([ClipboardEntry].self, from: data)) ?? []
+    }
+
+    @discardableResult
+    nonisolated func deleteClipboardEntry(id: Int64) -> Bool {
+        look_clipboard_delete(id)
+    }
+
+    /// Forgets every clip, returning how many were removed.
+    @discardableResult
+    nonisolated func clearClipboardHistory() -> Int {
+        Int(look_clipboard_clear())
     }
 
     /// Quick Action descriptors for a result, from the shared `look_qactions`
@@ -550,6 +1189,9 @@ private nonisolated struct SearchPayload: Decodable {
     let query: String
     let count: Int
     let results: [SearchItem]
+    /// File recall only: which fallback produced the results (see
+    /// EngineBridge.FileRecallOutcome).
+    let relaxed: String?
     let error: BridgeError?
 }
 

@@ -1,0 +1,233 @@
+/* Shell motion: the launcher arriving, and the selection moving through the
+ * results. Ported from macOS Support/UI/Motion, whose springs become the house
+ * easing here. Tokens first, so the feel is tuned in one place.
+ *
+ * Transform and opacity only - animating filter or backdrop-filter tanks the
+ * frame rate on WebKitGTK, and layout properties reflow.
+ *
+ * Windows is excluded from every reduce-motion opt-out below: its flag tracks
+ * the "best performance" visual-effects preset, not motion sensitivity (see
+ * superactions.css). */
+
+:root {
+    --motion-curve: cubic-bezier(0.22, 1, 0.36, 1);
+    /* Spawn and slide are damped under 0.8 on macOS: they overshoot. */
+    --motion-curve-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+    /* Panel arrival, on the content layer: the compositor shows the window
+     * before the webview paints. */
+    --motion-arrive-ms: 340ms;
+    --motion-arrive-scale: 0.965;
+
+    /* The top bar leads. Never scaled: that softens a live input's glyphs. */
+    --motion-spawn-ms: 460ms;
+    --motion-spawn-rise: 8px;
+
+    /* Placeholder from the right, strip from the left, both landing just
+     * behind the bar they sit in. */
+    --motion-slide-ms: 800ms;
+    --motion-slide-delay: 90ms;
+    --motion-slide-stagger: 40ms;
+    --motion-slide-max-stagger: 280ms;
+    --motion-placeholder-shift: 20px;
+    --motion-strip-shift: -18px;
+
+    /* The icon needs far more zoom than the pill: at 22px a few percent is a
+     * pixel, on a full-width pill it is the layout breathing. The keyframe peak
+     * sits at 26%, macOS's 110ms of zoom-in over this duration. */
+    --motion-zoom-ms: 420ms;
+    --motion-glide-ms: 300ms;
+    --motion-icon-zoom: 1.24;
+    --motion-pill-zoom: 1.02;
+    --motion-title-shift: 4px;
+
+    /* Glyph bounce, the CSS stand-in for symbolEffect(.bounce). */
+    --motion-bounce-ms: 460ms;
+    --motion-bounce-scale: 1.18;
+
+    /* Launchpad cascade (superactions.css owns the tile animation itself). */
+    --motion-tile-ms: 460ms;
+    --motion-tile-stagger: 35ms;
+    --motion-tile-max-stagger: 340ms;
+}
+
+/* --- Panel arrival ---------------------------------------------------- */
+
+@keyframes shell-arrive {
+    from {
+        opacity: 0;
+        transform: scale(var(--motion-arrive-scale));
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.launcher-window.is-entering {
+    animation: shell-arrive var(--motion-arrive-ms) var(--motion-curve) backwards;
+}
+
+/* The reveal's first frame, held while hidden: the stale buffer is presented a
+ * beat before window-shown runs, so a visible panel would flash then rewind. */
+.launcher-window.is-armed {
+    opacity: 0;
+}
+
+/* --- Top bar ---------------------------------------------------------- */
+
+@keyframes shell-spawn {
+    from {
+        opacity: 0;
+        transform: translateY(var(--motion-spawn-rise));
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.launcher-window.is-entering .top-bar {
+    animation: shell-spawn var(--motion-spawn-ms) var(--motion-curve-spring) backwards;
+}
+
+/* --- Search placeholder ----------------------------------------------- */
+
+/* Keeps the centering translate, or the overlay drops half its height. */
+@keyframes placeholder-slide-in {
+    from {
+        opacity: 0;
+        transform: translate(var(--motion-placeholder-shift), -50%);
+    }
+    to {
+        opacity: 1;
+        transform: translate(0, -50%);
+    }
+}
+
+.launcher-window.is-entering #query:placeholder-shown + .search-placeholder {
+    animation: placeholder-slide-in var(--motion-slide-ms) var(--motion-curve-spring)
+        var(--motion-slide-delay) backwards;
+}
+
+/* --- Running apps strip ----------------------------------------------- */
+
+@keyframes strip-slide-in {
+    from {
+        opacity: 0;
+        transform: translateX(var(--motion-strip-shift));
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* Leftmost first; --i is the index, set by running-apps.js. */
+.launcher-window.is-entering .running-app-item {
+    animation: strip-slide-in var(--motion-slide-ms) var(--motion-curve-spring) backwards;
+    animation-delay: calc(
+        var(--motion-slide-delay) +
+            min(var(--i, 0) * var(--motion-slide-stagger), var(--motion-slide-max-stagger))
+    );
+}
+
+/* --- Glyph bounce ------------------------------------------------------ */
+
+@keyframes glyph-bounce {
+    0% {
+        transform: none;
+    }
+    38% {
+        transform: scale(var(--motion-bounce-scale));
+    }
+    100% {
+        transform: none;
+    }
+}
+
+.launcher-window.is-entering .search-icon,
+.control-strip.is-entering .ctl-icon svg {
+    animation: glyph-bounce var(--motion-bounce-ms) var(--motion-curve) backwards;
+}
+
+/* Rides the tile stagger, so a glyph bounces as its tile lands. */
+.control-strip.is-entering .ctl-icon svg {
+    animation-delay: min(
+        calc(var(--i, 0) * var(--motion-tile-stagger)),
+        var(--motion-tile-max-stagger)
+    );
+}
+
+/* --- Selection --------------------------------------------------------- */
+
+/* Row-local and one-shot: a transition high in the tree animates every row at
+ * once, a per-row one fires on each neighbour the selection passes. */
+@keyframes row-icon-gain {
+    0% {
+        transform: none;
+    }
+    26% {
+        transform: scale(var(--motion-icon-zoom));
+    }
+    100% {
+        transform: none;
+    }
+}
+
+/* The `scale` property, not a transform function: an animation on `transform`
+ * would eat the glide. Position rides `translate` (results.js) so this can't
+ * multiply it. */
+@keyframes pill-gain {
+    0% {
+        scale: 1 1;
+    }
+    26% {
+        scale: 1 var(--motion-pill-zoom);
+    }
+    100% {
+        scale: 1 1;
+    }
+}
+
+.result-row.is-gaining .result-icon {
+    animation: row-icon-gain var(--motion-zoom-ms) var(--motion-curve);
+}
+
+.results-selection.is-gaining {
+    animation: pill-gain var(--motion-zoom-ms) var(--motion-curve);
+}
+
+/* Held while selected; the pill's glide sets the pace. */
+.result-row .result-title {
+    transition: transform var(--motion-glide-ms) var(--motion-curve);
+}
+
+.result-row.selected .result-title {
+    transform: translateX(var(--motion-title-shift));
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html:not([data-os="windows"]) .launcher-window.is-entering,
+    html:not([data-os="windows"]) .launcher-window.is-entering .top-bar,
+    html:not([data-os="windows"]) .launcher-window.is-entering .search-icon,
+    html:not([data-os="windows"]) .launcher-window.is-entering .running-app-item,
+    html:not([data-os="windows"]) .control-strip.is-entering .ctl-icon svg,
+    html:not([data-os="windows"])
+        .launcher-window.is-entering
+        #query:placeholder-shown
+        + .search-placeholder,
+    html:not([data-os="windows"]) .result-row.is-gaining .result-icon,
+    html:not([data-os="windows"]) .results-selection.is-gaining {
+        animation: none;
+    }
+
+    /* No fade to align to, so don't pre-hide: the panel just reappears. */
+    html:not([data-os="windows"]) .launcher-window.is-armed {
+        opacity: 1;
+    }
+
+    html:not([data-os="windows"]) .result-row .result-title {
+        transition: none;
+    }
+}

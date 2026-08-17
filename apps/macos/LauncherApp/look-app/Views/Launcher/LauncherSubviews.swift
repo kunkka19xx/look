@@ -7,27 +7,89 @@ struct SearchInputBar: View {
     let isQueryFocused: FocusState<Bool>.Binding
     let activeCommand: AppCommand?
     let themeStore: ThemeStore
+    /// AI mode (`>`): sparkles icon + its own placeholder, no prefix needed.
+    var isAIMode: Bool = false
     /// When false the field draws no background of its own - used when it lives
     /// inside a shared top-row pane that already supplies one, so the search
     /// input and running-apps icons read as a single unified bar.
     var showsBackground: Bool = true
+    /// Changes each time the launcher opens, replaying the spawn cascade.
+    var revealToken: UInt64 = 0
     let onSubmit: () -> Void
     let onExitCommandMode: () -> Void
 
+    private enum Layout {
+        /// Matches where `NSTextField` starts drawing its own text, so the
+        /// placeholder does not shift sideways as soon as you type.
+        static let placeholderLeadingInset: CGFloat = 2
+    }
+
+    /// Command mode wins the bar's identity (see the icon below), so the badge
+    /// steps aside rather than sitting next to the `/command` capsule.
+    private var showsBetaBadge: Bool { isAIMode && !isCommandMode }
+
+    private var placeholderText: String {
+        if isCommandMode {
+            return activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder
+        }
+        if isAIMode {
+            return "Ask, act, or search conversations"
+        }
+        return AppConstants.Launcher.searchPlaceholder
+    }
+
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: isCommandMode ? "terminal" : "magnifyingglass")
-                .foregroundStyle(isCommandMode ? themeStore.accentColor() : themeStore.secondaryTextColor())
+            Image(systemName: isCommandMode ? "terminal" : (isAIMode ? "sparkles" : "magnifyingglass"))
+                .foregroundStyle(
+                    isCommandMode || isAIMode
+                        ? themeStore.accentColor() : themeStore.secondaryTextColor())
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: revealToken)
             SmoothCaretTextField(
                 text: $text,
-                placeholder: isCommandMode
-                    ? (activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder)
-                    : AppConstants.Launcher.searchPlaceholder,
+                // Empty: the placeholder is drawn as the overlay below instead,
+                // since an NSTextField's own placeholder cannot be animated.
+                placeholder: "",
                 isFocused: isQueryFocused,
                 themeStore: themeStore,
+                // Only the assistant composes prose; a search query with a line
+                // break in it means nothing to the matcher.
+                allowsMultiline: isAIMode,
                 onSubmit: onSubmit
             )
+                // The field's own placeholder is empty, so it would otherwise
+                // reach VoiceOver unnamed.
+                .accessibilityLabel(placeholderText)
                 .frame(maxWidth: .infinity)
+                .overlay(alignment: .leading) {
+                    if text.isEmpty {
+                        Text(placeholderText)
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize)))
+                            .foregroundStyle(themeStore.placeholderTextColor())
+                            .lineLimit(1)
+                            .padding(.leading, Layout.placeholderLeadingInset)
+                            .allowsHitTesting(false)
+                            // Decorative: the field above carries the name.
+                            // `allowsHitTesting` does not remove it from the
+                            // accessibility tree.
+                            .accessibilityHidden(true)
+                            .placeholderReveal(token: revealToken)
+                    }
+                }
+
+            if showsBetaBadge {
+                Text("BETA")
+                    .font(
+                        themeStore.uiFont(
+                            size: CGFloat(max(9, themeStore.settings.fontSize - 4)),
+                            weight: .semibold))
+                    .foregroundStyle(themeStore.accentColor().opacity(0.9))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(themeStore.liftColor(opacity: 0.14), in: Capsule())
+                    .accessibilityLabel("AI is in beta")
+            }
 
             if isCommandMode {
                 if let command = activeCommand {
@@ -198,6 +260,7 @@ struct ResultsListView: View {
                             result: result,
                             isSelected: selectedID == result.id,
                             isPicked: pickedKeys.contains("\(result.kind.rawValue)|\(result.path)"),
+                            isLast: result.id == results.last?.id,
                             selectionNamespace: selectionNamespace,
                             onOpen: {
                                 onSelect(result.id)
@@ -211,10 +274,16 @@ struct ResultsListView: View {
             }
             .onChange(of: selectedID) { _, newID in
                 guard let newID else { return }
-                // Same curve as the selection pill, so the pill can't trail the
-                // list when rows differ in height.
+                // No anchor, so this scrolls the minimum needed to bring the row
+                // into view and does nothing at all while the selection is
+                // already visible. `.center` re-centred on every keypress, which
+                // slid the whole list under a stationary pill and made the one
+                // thing that actually moved the hardest thing to follow.
+                //
+                // Same curve as the pill, so the two stay together on the scrolls
+                // that do happen.
                 withAnimation(Motion.Selection.glide) {
-                    proxy.scrollTo(newID, anchor: .center)
+                    proxy.scrollTo(newID)
                 }
             }
         }
@@ -459,19 +528,86 @@ struct RecentEmptyStateView: View {
     }
 }
 
+/// Which slice of the help the screen is showing. `all` keeps the original one
+/// scroll; the rest narrow it, so arriving from a mode lands on that mode's keys
+/// instead of a page the reader has to search.
+/// The help screen's capsules: every `ShortcutTopic`, plus an "All" that shows
+/// the whole catalog. Only the screen needs `all`, so it lives here rather than
+/// in the catalog Settings also reads.
+enum LauncherHelpTopic: CaseIterable, Identifiable {
+    case all
+    case topic(ShortcutTopic)
+
+    static var allCases: [LauncherHelpTopic] { [.all] + ShortcutTopic.allCases.map(Self.topic) }
+
+    var id: String {
+        switch self {
+        case .all: return "all"
+        case .topic(let topic): return topic.id
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .all: return "All"
+        case .topic(let topic): return topic.label
+        }
+    }
+
+    var groups: [ShortcutGroup] {
+        switch self {
+        case .all: return ShortcutCatalog.groups
+        case .topic(let topic): return ShortcutCatalog.groups(for: topic)
+        }
+    }
+
+    static let ai = LauncherHelpTopic.topic(.ai)
+}
+
+extension LauncherHelpTopic: Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+}
+
 struct LauncherHelpScreenView: View {
+    private enum Metrics {
+        static let selectedCapsuleOpacity = 0.22
+        static let capsuleSpacing: CGFloat = 6
+        static let capsuleHorizontalPadding: CGFloat = 10
+        static let capsuleVerticalPadding: CGFloat = 4
+        /// Wider than the gap between capsules, so the group reads as one unit
+        /// next to the title rather than a sixth capsule.
+        static let titleRowSpacing: CGFloat = 12
+    }
+
     let themeStore: ThemeStore
+    /// Where the screen opens. ⌘H from AI mode passes `.ai` so the assistant's
+    /// keys are the first thing on screen.
+    var initialTopic: LauncherHelpTopic = .all
+
+    @State private var topic: LauncherHelpTopic
+
+    init(themeStore: ThemeStore, initialTopic: LauncherHelpTopic = .all) {
+        self.themeStore = themeStore
+        self.initialTopic = initialTopic
+        _topic = State(initialValue: initialTopic)
+    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
-                HStack {
+                // The topics ride in the title row rather than owning a band of
+                // their own: they are navigation for this screen, and a full
+                // row of them pushed the first shortcut below the fold.
+                HStack(spacing: Metrics.titleRowSpacing) {
                     Text(LauncherHelpContent.title)
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 3), weight: .semibold))
-                    Spacer()
+                        .fixedSize()
+                    topicPicker
+                    Spacer(minLength: 0)
                     Text(LauncherHelpContent.closeHint)
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                         .foregroundStyle(themeStore.mutedTextColor())
+                        .fixedSize()
                 }
 
                 AppUpdateStatusView(themeStore: themeStore)
@@ -480,13 +616,42 @@ struct LauncherHelpScreenView: View {
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .regular))
                     .foregroundStyle(themeStore.secondaryTextColor())
 
-                ShortcutHelpSection(title: "Main", items: LauncherHelpContent.mainShortcuts)
-                ShortcutHelpSection(title: "Super actions", items: LauncherHelpContent.superActions)
-                ShortcutHelpSection(title: "Query prefixes", items: LauncherHelpContent.queryModes)
-                ShortcutHelpSection(title: "Command mode", items: LauncherHelpContent.commandMode)
+                ForEach(topic.groups) { group in
+                    ShortcutGroupView(title: group.title, entries: group.entries)
+                }
             }
             .padding(12)
         }
+        // The screen is rebuilt on each open, but a reused instance would keep
+        // the last topic and ignore where the reader came from.
+        .onChange(of: initialTopic) { _, requested in topic = requested }
+    }
+
+    private var topicPicker: some View {
+        HStack(spacing: Metrics.capsuleSpacing) {
+            ForEach(LauncherHelpTopic.allCases) { candidate in
+                let isSelected = candidate == topic
+                Button { topic = candidate } label: {
+                    Text(candidate.label)
+                        .font(themeStore.uiFont(
+                            size: CGFloat(themeStore.settings.fontSize - 1),
+                            weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? themeStore.fontColor() : themeStore.mutedTextColor())
+                        .padding(.horizontal, Metrics.capsuleHorizontalPadding)
+                        .padding(.vertical, Metrics.capsuleVerticalPadding)
+                        .background(
+                            isSelected
+                                ? themeStore.accentColor().opacity(Metrics.selectedCapsuleOpacity)
+                                : themeStore.controlFillColor(),
+                            in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Show \(candidate.label) shortcuts")
+            }
+        }
+        // Sits between the title and the close hint, so the capsules keep their
+        // own width instead of being squeezed by the row.
+        .fixedSize()
     }
 }
 
@@ -494,75 +659,4 @@ private enum LauncherHelpContent {
     static let title = "Help"
     static let closeHint = "Cmd+H to close"
     static let subtitle = "Quick guide for app list, clipboard search, and command flow."
-
-    static let mainShortcuts: [(String, String)] = [
-        ("Enter", "Open selected app/file/folder or copy selected clipboard item"),
-        ("Cmd+C", "Copy selected file/folder to pasteboard"),
-        ("Cmd+P", "Toggle pick on selected file/folder (multi-select copy)"),
-        ("Shift+Enter", "Open all picked files/folders at once"),
-        ("Cmd+Shift+P", "Clear all picked items"),
-        ("Cmd+D", "Trash selected file/folder (Trash pin: empty it) or remove the clipboard item"),
-        ("Tab / Shift+Tab", "Move selection"),
-        ("Up / Down", "Move selection"),
-        ("Cmd+F", "Reveal selected app/file/folder in Finder"),
-        ("Cmd+Enter", "Search current query on Google"),
-        ("Cmd+/", "Enter command mode"),
-        ("Cmd+Shift+,", "Open/close settings panel"),
-        ("Cmd+Shift+;", "Reload .look.config"),
-        ("Cmd+Shift+H", "Hide the selected app from Look"),
-        ("Cmd+H", "Toggle this help screen"),
-        ("Esc", "Close help / back / hide launcher"),
-    ]
-
-    // The strip on the empty home screen. Keys are the tile mnemonics from the
-    // shared catalog (core/qactions), fired with Cmd.
-    static let superActions: [(String, String)] = [
-        ("Cmd+B / Cmd+W", "Toggle Bluetooth / Wi-Fi"),
-        ("Cmd+T / Cmd+K", "Switch theme / toggle Keep Awake"),
-        ("Cmd+S / Cmd+M", "Start screensaver / mute mic"),
-        ("Cmd+P", "Play/pause the current track"),
-        ("Cmd+R / Cmd+D", "Restart / Shut Down (press twice, Esc cancels)"),
-        ("Settings > Appearance", "Show or hide the super actions strip"),
-    ]
-
-    // Derived from the canonical prefix list so the help screen and the `"`
-    // discovery menu stay in sync.
-    static let queryModes: [(String, String)] =
-        AppConstants.Launcher.PrefixSuggestion.all.map { ($0.displayWithArg, $0.description) }
-
-    static let commandMode: [(String, String)] = [
-        ("Tab / Shift+Tab", "Switch command"),
-        ("Cmd+1 / Cmd+2 / Cmd+3 / Cmd+4", "Switch command"),
-        ("3000", "Find process by port or PID"),
-        ("Up / Down", "Select app in kill results"),
-        ("Y / N", "Confirm/cancel kill action"),
-    ]
-}
-
-private struct ShortcutHelpSection: View {
-    @EnvironmentObject private var themeStore: ThemeStore
-    let title: String
-    let items: [(String, String)]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
-                .foregroundStyle(themeStore.secondaryTextColor())
-
-            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(item.0)
-                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(themeStore.controlFillColor(), in: Capsule())
-                    Text(item.1)
-                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                        .foregroundStyle(themeStore.mutedTextColor())
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-    }
 }

@@ -12,6 +12,9 @@ struct AppleIntelligenceProvider: AIQueryProvider {
     let id = AIProviderKind.appleIntelligence.rawValue
     let displayName = "Apple Intelligence (on-device)"
 
+    /// Runs on the Neural Engine; nothing leaves the machine.
+    let isLocal = true
+
     var availability: AIProviderAvailability {
         #if canImport(FoundationModels)
         guard #available(macOS 26, *) else {
@@ -36,37 +39,59 @@ struct AppleIntelligenceProvider: AIQueryProvider {
         #endif
     }
 
-    func understand(query: String) async -> AISearchIntent? {
-        #if canImport(FoundationModels)
-        guard #available(macOS 26, *), availability.isAvailable else { return nil }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        do {
-            let session = LanguageModelSession(instructions: Self.instructions)
-            let response = try await session.respond(
-                to: trimmed,
-                generating: EngineQueryPlan.self
-            )
-            return response.content.asIntent()
-        } catch {
-            // Any failure (guardrails, generation error, cancellation) falls back
-            // to the raw query - AI is best-effort, never a hard dependency.
-            return nil
-        }
-        #else
-        return nil
-        #endif
-    }
-
     /// Warms up the on-device model so the first real answer doesn't pay the
     /// cold-load cost. Cheap and idempotent - safe to call repeatedly while the
     /// user types.
     func prewarm() {
         #if canImport(FoundationModels)
-        guard #available(macOS 26, *), availability.isAvailable else { return }
+        // Deliberately NOT gated on availability: right after app launch the
+        // framework can report unavailable until first touched, and touching it
+        // here is what wakes it up.
+        guard #available(macOS 26, *) else { return }
         Task { @MainActor in AppleIntelligenceWarmer.shared.prewarm() }
+        #endif
+    }
+
+    /// The on-device model's window. Small, and it is shared by prompt and
+    /// response, so the attachment budget must not assume Ollama's.
+    var contextTokens: Int { 4096 }
+
+    /// Roles preserved: system messages become the session's instructions,
+    /// which is how this model is meant to be steered. The old flattened form
+    /// pushed the instruction into the prompt body, where it competed with the
+    /// user's own text.
+    func respond(messages: [AIMessage], options: AIGenerationOptions)
+        -> AsyncThrowingStream<String, Error>?
+    {
+        #if canImport(FoundationModels)
+        guard #available(macOS 26, *), availability.isAvailable else { return nil }
+        let instructions = AIMessage.instructions(messages)
+        let prompt = AIMessage.conversation(messages)
+        guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let session = LanguageModelSession(
+                        instructions: instructions.isEmpty
+                            ? Self.answerInstructions : instructions)
+                    let generation = GenerationOptions(
+                        maximumResponseTokens: options.maxOutputTokens)
+                    for try await snapshot in session.streamResponse(
+                        to: prompt, options: generation)
+                    {
+                        if Task.isCancelled { break }
+                        continuation.yield(snapshot.content)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+        #else
+        return nil
         #endif
     }
 
@@ -108,22 +133,6 @@ struct AppleIntelligenceProvider: AIQueryProvider {
         command. If you are unsure or the question needs the web, say so in one \
         sentence rather than guessing.
         """
-
-    private static let instructions = """
-        You translate a macOS launcher search into a structured plan. The user types \
-        natural language; map it to what they want to find.
-
-        Pick `kind`:
-        - app: launching an application ("open spotify", "launch terminal")
-        - file: a document/file ("my budget spreadsheet", "the resume pdf")
-        - folder: a directory ("downloads folder", "where my projects live")
-        - recent: emphasises recently used items ("the doc I opened yesterday")
-        - any: unclear, or a mix - let the launcher decide
-
-        Set `searchText` to just the keywords to match, stripped of filler words \
-        like "open", "find", "my", "the". Keep it short. Do not invent terms that \
-        are not implied by the query.
-        """
 }
 
 #if canImport(FoundationModels)
@@ -143,39 +152,4 @@ private final class AppleIntelligenceWarmer {
     }
 }
 
-@available(macOS 26, *)
-@Generable
-private struct EngineQueryPlan {
-    @Guide(description: "The kind of thing the user wants to find.")
-    let kind: PlanKind
-
-    @Guide(description: "Just the keywords to search for, with filler words removed.")
-    let searchText: String
-
-    @Generable
-    enum PlanKind: String {
-        case app
-        case file
-        case folder
-        case recent
-        case any
-    }
-
-    func asIntent() -> AISearchIntent {
-        AISearchIntent(kind: kind.asSearchKind, searchText: searchText)
-    }
-}
-
-@available(macOS 26, *)
-extension EngineQueryPlan.PlanKind {
-    var asSearchKind: AISearchKind {
-        switch self {
-        case .app: return .app
-        case .file: return .file
-        case .folder: return .folder
-        case .recent: return .recent
-        case .any: return .any
-        }
-    }
-}
 #endif

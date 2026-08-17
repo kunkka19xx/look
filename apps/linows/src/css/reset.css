@@ -30,6 +30,13 @@ input {
     color: inherit;
 }
 
+/* Buttons default to an opaque ButtonFace, invisible until a button's own
+ * surface is translucent - which is why the launchpad read as grey cards on
+ * glass. Colour only: UA border and metrics stay load-bearing. */
+button {
+    background-color: transparent;
+}
+
 ::-webkit-scrollbar {
     width: 0;
     height: 0;

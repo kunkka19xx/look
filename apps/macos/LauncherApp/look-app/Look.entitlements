@@ -8,5 +8,12 @@
 	     the Automation consent prompt, so Look can't empty the Trash. -->
 	<key>com.apple.security.automation.apple-events</key>
 	<true/>
+	<!-- Same rule for EventKit and Contacts: without these, tccd logs "requires
+	     entitlement ... but it is missing" and denies without ever prompting,
+	     so the permission can never be granted from inside the app. -->
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+	<key>com.apple.security.personal-information.addressbook</key>
+	<true/>
 </dict>
 </plist>

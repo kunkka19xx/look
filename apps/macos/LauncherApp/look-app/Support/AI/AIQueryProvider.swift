@@ -1,40 +1,5 @@
 import Foundation
 
-/// The kind of result an AI provider believes the user is looking for. Mirrors
-/// the engine's prefix grammar (`core/engine/src/query.rs`) so an intent can be
-/// rendered straight into a query string the Rust engine already understands.
-enum AISearchKind: String, Codable, Sendable {
-    case app
-    case file
-    case folder
-    case recent
-    case any
-}
-
-/// A provider-agnostic understanding of a natural-language query. Whatever model
-/// produced it (Apple Intelligence today, a cloud LLM tomorrow), the rest of the
-/// app only ever sees this struct.
-struct AISearchIntent: Sendable, Equatable {
-    var kind: AISearchKind
-    /// The cleaned search text, with natural-language filler removed
-    /// (e.g. "open my budget spreadsheet" -> "budget spreadsheet").
-    var searchText: String
-
-    /// Renders the intent into the engine's prefix grammar. Returns plain text
-    /// for `.any` so the engine's default ranking applies.
-    func engineQuery() -> String {
-        let text = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return "" }
-        switch kind {
-        case .app: return "a\"\(text)"
-        case .file: return "f\"\(text)"
-        case .folder: return "d\"\(text)"
-        case .recent: return "rc\"\(text)"
-        case .any: return text
-        }
-    }
-}
-
 /// Why a provider can't run right now - surfaced to the UI so we can tell the
 /// user *what* to fix (update macOS, enable Apple Intelligence, add an API key).
 enum AIProviderUnavailableReason: Equatable, Sendable {
@@ -81,10 +46,10 @@ protocol AIQueryProvider: Sendable {
     /// Whether this provider can serve a request right now.
     var availability: AIProviderAvailability { get }
 
-    /// Translate a natural-language query into a structured intent. Returns
-    /// `nil` when the provider declines or fails, so the caller can fall back to
-    /// the raw query - AI must never block a search.
-    func understand(query: String) async -> AISearchIntent?
+    /// Whether prompts stay on this machine. Gates private context (calendar,
+    /// clipboard, remembered facts): a provider must DECLARE it is local, so
+    /// adding a cloud provider can't silently inherit the data by default.
+    var isLocal: Bool { get }
 
     /// Stream a short, free-form answer to a natural-language question. Each
     /// yielded value is the *cumulative* answer text so far (so the UI can show
@@ -92,6 +57,18 @@ protocol AIQueryProvider: Sendable {
     /// all; the stream may otherwise finish with an error, which the caller
     /// treats as "no answer". Purely additive - never blocks search.
     func answer(query: String) -> AsyncThrowingStream<String, Error>?
+
+    /// Stream a response to a full request: roles intact, limits stated in
+    /// neutral terms the provider translates itself. This is the seam a cloud
+    /// provider plugs into - `answer(query:)` above is the answer-card
+    /// shorthand, which cannot express a system prompt or a token budget.
+    func respond(messages: [AIMessage], options: AIGenerationOptions)
+        -> AsyncThrowingStream<String, Error>?
+
+    /// How much this provider can read in one request. Drives the attachment
+    /// budget warning, which would otherwise assume one provider's window for
+    /// all of them.
+    var contextTokens: Int { get }
 
     /// Optional hint that an answer may be coming soon, so the provider can warm
     /// up resources. Default is a no-op.
@@ -103,5 +80,22 @@ extension AIQueryProvider {
     /// free-form answering.
     func answer(query: String) -> AsyncThrowingStream<String, Error>? { nil }
 
+    /// Degrades to the flattened form rather than failing, so a provider that
+    /// has not been taught roles still works exactly as it does today.
+    func respond(messages: [AIMessage], options: AIGenerationOptions)
+        -> AsyncThrowingStream<String, Error>?
+    {
+        answer(query: AIMessage.flattened(messages))
+    }
+
+    /// Conservative on purpose: a provider that has not declared its window
+    /// should under-promise, so the attachment warning fires early rather than
+    /// letting a prompt be silently truncated.
+    var contextTokens: Int { 4096 }
+
     func prewarm() {}
+
+    /// Fail closed: a provider that hasn't declared itself local is treated as
+    /// remote, so private context is withheld until someone says otherwise.
+    var isLocal: Bool { false }
 }

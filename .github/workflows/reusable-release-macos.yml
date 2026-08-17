@@ -174,9 +174,32 @@ jobs:
             --entitlements "$ENTITLEMENTS_PATH" \
             --sign "$APPLE_DEVELOPER_ID_APPLICATION" "$APP_PATH"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-          # Confirm the entitlement actually made it into the signature.
-          codesign -d --entitlements - --xml "$APP_PATH" | grep -q "com.apple.security.automation.apple-events" \
-            || { echo "apple-events entitlement missing after signing" >&2; exit 1; }
+          # Confirm the entitlements actually made it into the signature. Under
+          # Hardened Runtime a missing one is silent: tccd denies the service
+          # without ever prompting, so the app can never ask for it.
+          # Read as a plist rather than grepped as text: a key signed as
+          # <false/> is present but disabled, which text matching would pass.
+          SIGNED_ENTITLEMENTS="$(codesign -d --entitlements - --xml "$APP_PATH")"
+          SIGNED_ENTITLEMENTS="$SIGNED_ENTITLEMENTS" python3 <<'PY'
+          import os
+          import plistlib
+          import sys
+
+          REQUIRED = (
+              "com.apple.security.automation.apple-events",
+              "com.apple.security.personal-information.calendars",
+              "com.apple.security.personal-information.addressbook",
+          )
+
+          try:
+              signed = plistlib.loads(os.environ["SIGNED_ENTITLEMENTS"].encode())
+          except plistlib.InvalidFileException as error:
+              sys.exit(f"Could not parse signed entitlements: {error}")
+
+          disabled = [key for key in REQUIRED if signed.get(key) is not True]
+          if disabled:
+              sys.exit("missing or disabled after signing: " + ", ".join(disabled))
+          PY
 
           rm -f "$ZIP_PATH"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
