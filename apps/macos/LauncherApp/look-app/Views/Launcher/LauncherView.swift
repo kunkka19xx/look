@@ -929,7 +929,9 @@ struct LauncherView: View {
         .onReceive(
             NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
         ) { _ in
-            if launcherWindow()?.isVisible == true {
+            // Not while a TCC dialog is up: it steals focus, and hiding here
+            // backgrounds the app so the next prompt never appears.
+            if !PermissionPrompt.isPresenting, launcherWindow()?.isVisible == true {
                 Logger(subsystem: "noah-code.Look", category: "window-resize")
                     .debug("didResignActiveNotification -> hideLauncherWindow(restorePreviousApp: false)")
                 hideLauncherWindow(restorePreviousApp: false)
