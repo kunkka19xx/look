@@ -101,25 +101,27 @@ rustPlatform.buildRustPackage {
   '';
 
   postInstall = ''
-    # Desktop file
+    # Desktop file. StartupWMClass is the app_id GTK derives from argv[0], and
+    # the icon name matches the .deb's (both keyed off the binary name), so the
+    # shell resolves the window to this entry on either packaging.
     mkdir -p $out/share/applications
     cat > $out/share/applications/lookapp.desktop <<'EOF'
 [Desktop Entry]
 Name=Look
 Comment=Keyboard-first desktop launcher
 Exec=lookapp
-Icon=look
+Icon=lookapp
 Type=Application
 Categories=Utility;
-StartupWMClass=Look
+StartupWMClass=lookapp
 EOF
 
     # Icons
-    for size in 32 128 256; do
+    for size in 32 64 128; do
       icon="$src/apps/linows/src-tauri/icons/''${size}x''${size}.png"
       if [ -f "$icon" ]; then
         mkdir -p $out/share/icons/hicolor/''${size}x''${size}/apps
-        cp "$icon" $out/share/icons/hicolor/''${size}x''${size}/apps/look.png
+        cp "$icon" $out/share/icons/hicolor/''${size}x''${size}/apps/lookapp.png
       fi
     done
   '';
