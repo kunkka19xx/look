@@ -24,6 +24,10 @@ struct SearchInputBar: View {
         static let placeholderLeadingInset: CGFloat = 2
     }
 
+    /// Command mode wins the bar's identity (see the icon below), so the badge
+    /// steps aside rather than sitting next to the `/command` capsule.
+    private var showsBetaBadge: Bool { isAIMode && !isCommandMode }
+
     private var placeholderText: String {
         if isCommandMode {
             return activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder
@@ -73,6 +77,19 @@ struct SearchInputBar: View {
                             .placeholderReveal(token: revealToken)
                     }
                 }
+
+            if showsBetaBadge {
+                Text("BETA")
+                    .font(
+                        themeStore.uiFont(
+                            size: CGFloat(max(9, themeStore.settings.fontSize - 4)),
+                            weight: .semibold))
+                    .foregroundStyle(themeStore.accentColor().opacity(0.9))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(themeStore.liftColor(opacity: 0.14), in: Capsule())
+                    .accessibilityLabel("AI is in beta")
+            }
 
             if isCommandMode {
                 if let command = activeCommand {
@@ -514,54 +531,41 @@ struct RecentEmptyStateView: View {
 /// Which slice of the help the screen is showing. `all` keeps the original one
 /// scroll; the rest narrow it, so arriving from a mode lands on that mode's keys
 /// instead of a page the reader has to search.
+/// The help screen's capsules: every `ShortcutTopic`, plus an "All" that shows
+/// the whole catalog. Only the screen needs `all`, so it lives here rather than
+/// in the catalog Settings also reads.
 enum LauncherHelpTopic: CaseIterable, Identifiable {
     case all
-    case main
-    case ai
-    case prefixes
-    case command
+    case topic(ShortcutTopic)
 
-    var id: Self { self }
+    static var allCases: [LauncherHelpTopic] { [.all] + ShortcutTopic.allCases.map(Self.topic) }
+
+    var id: String {
+        switch self {
+        case .all: return "all"
+        case .topic(let topic): return topic.id
+        }
+    }
 
     var label: String {
         switch self {
         case .all: return "All"
-        case .main: return "Main"
-        case .ai: return "AI"
-        case .prefixes: return "Prefixes"
-        case .command: return "Command"
+        case .topic(let topic): return topic.label
         }
     }
 
-    /// The sections this topic shows, in reading order.
-    var sections: [LauncherHelpSection] {
+    var groups: [ShortcutGroup] {
         switch self {
-        case .all:
-            return LauncherHelpTopic.main.sections
-                + LauncherHelpTopic.ai.sections
-                + LauncherHelpTopic.prefixes.sections
-                + LauncherHelpTopic.command.sections
-        case .main:
-            return [
-                LauncherHelpSection(title: "Main", items: LauncherHelpContent.mainShortcuts),
-                LauncherHelpSection(title: "Super actions", items: LauncherHelpContent.superActions),
-            ]
-        case .ai:
-            return [LauncherHelpSection(title: "AI mode (>)", items: LauncherHelpContent.aiMode)]
-        case .prefixes:
-            return [LauncherHelpSection(title: "Query prefixes", items: LauncherHelpContent.queryModes)]
-        case .command:
-            return [LauncherHelpSection(title: "Command mode", items: LauncherHelpContent.commandMode)]
+        case .all: return ShortcutCatalog.groups
+        case .topic(let topic): return ShortcutCatalog.groups(for: topic)
         }
     }
+
+    static let ai = LauncherHelpTopic.topic(.ai)
 }
 
-/// One titled block of key/description pairs. The title is the identity: two
-/// sections never share one on the same screen.
-struct LauncherHelpSection: Identifiable {
-    let title: String
-    let items: [(String, String)]
-    var id: String { title }
+extension LauncherHelpTopic: Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
 
 struct LauncherHelpScreenView: View {
@@ -612,8 +616,8 @@ struct LauncherHelpScreenView: View {
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .regular))
                     .foregroundStyle(themeStore.secondaryTextColor())
 
-                ForEach(topic.sections) { section in
-                    ShortcutHelpSection(title: section.title, items: section.items)
+                ForEach(topic.groups) { group in
+                    ShortcutGroupView(title: group.title, entries: group.entries)
                 }
             }
             .padding(12)
@@ -655,97 +659,4 @@ private enum LauncherHelpContent {
     static let title = "Help"
     static let closeHint = "Cmd+H to close"
     static let subtitle = "Quick guide for app list, clipboard search, and command flow."
-
-    static let mainShortcuts: [(String, String)] = [
-        ("Enter", "Open selected app/file/folder or copy selected clipboard item"),
-        ("Cmd+C", "Copy selected file/folder to pasteboard"),
-        ("Cmd+P", "Toggle pick on selected file/folder (multi-select copy)"),
-        ("Shift+Enter", "Open all picked files/folders at once"),
-        ("Cmd+Shift+P", "Clear all picked items"),
-        ("Cmd+D", "Trash selected file/folder (Trash pin: empty it) or remove the clipboard item"),
-        ("Tab / Shift+Tab", "Move selection"),
-        ("Up / Down", "Move selection"),
-        ("Cmd+F", "Reveal selected app/file/folder in Finder"),
-        ("Cmd+Enter", "Search current query on Google"),
-        ("Cmd+/", "Enter command mode"),
-        ("Cmd+Shift+,", "Open/close settings panel"),
-        ("Cmd+Shift+;", "Reload .look.config"),
-        ("Cmd+Shift+H", "Hide the selected app from Look"),
-        ("Cmd+H", "Toggle this help screen"),
-        ("Esc", "Close help / back / hide launcher"),
-    ]
-
-    // The `>` assistant: the sessions list, a live conversation, and the keys
-    // that only exist there (the running-apps strip is hidden in this mode, so
-    // Cmd+digit addresses conversations instead of apps).
-    static let aiMode: [(String, String)] = [
-        (">", "Enter AI mode (a dead-end Enter on the home screen goes here too)"),
-        ("Enter", "Send the message, or open the highlighted conversation"),
-        ("Shift+Enter", "New line in the message (the box grows to 6 lines)"),
-        ("Option+Up / Option+Down", "Walk your recent prompts, like a shell history"),
-        ("Shift+Up / Shift+Down", "Select text in the message you are composing"),
-        ("Cmd+1..Cmd+9, Cmd+0", "Open the conversation carrying that chip (Cmd+0 is the tenth)"),
-        ("Tab / Up / Down", "Move over the conversation list"),
-        ("Cmd+D", "Delete the highlighted conversation"),
-        ("Cmd+Z", "Undo the last action, or restore a just-deleted conversation"),
-        ("Cmd+.", "Stop a streaming answer"),
-        ("@name", "Attach a file to the message (Enter picks the highlighted one)"),
-        ("@ 5pm", "Set an exact time on an event or reminder"),
-        ("1, 2, 3 + Enter", "Answer a \u{201C}which one?\u{201D} list"),
-        ("Cmd+H", "Open this help without leaving the conversation"),
-        ("Esc", "Close the file popup, then leave the conversation"),
-        ("Shift+Esc", "Leave AI mode straight to the home screen"),
-    ]
-
-    // The strip on the empty home screen. Keys are the tile mnemonics from the
-    // shared catalog (core/qactions), fired with Cmd.
-    static let superActions: [(String, String)] = [
-        ("Cmd+B / Cmd+W", "Toggle Bluetooth / Wi-Fi"),
-        ("Cmd+T / Cmd+K", "Switch theme / toggle Keep Awake"),
-        ("Cmd+S / Cmd+M", "Start screensaver / mute mic"),
-        ("Cmd+P", "Play/pause the current track"),
-        ("Cmd+R / Cmd+D", "Restart / Shut Down (press twice, Esc cancels)"),
-        ("Settings > Appearance", "Show or hide the super actions strip"),
-    ]
-
-    // Derived from the canonical prefix list so the help screen and the `"`
-    // discovery menu stay in sync.
-    static let queryModes: [(String, String)] =
-        AppConstants.Launcher.PrefixSuggestion.all.map { ($0.displayWithArg, $0.description) }
-
-    static let commandMode: [(String, String)] = [
-        ("Tab / Shift+Tab", "Switch command"),
-        ("Cmd+1 / Cmd+2 / Cmd+3 / Cmd+4", "Switch command"),
-        ("3000", "Find process by port or PID"),
-        ("Up / Down", "Select app in kill results"),
-        ("Y / N", "Confirm/cancel kill action"),
-    ]
-}
-
-private struct ShortcutHelpSection: View {
-    @EnvironmentObject private var themeStore: ThemeStore
-    let title: String
-    let items: [(String, String)]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
-                .foregroundStyle(themeStore.secondaryTextColor())
-
-            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(item.0)
-                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(themeStore.controlFillColor(), in: Capsule())
-                    Text(item.1)
-                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
-                        .foregroundStyle(themeStore.mutedTextColor())
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-    }
 }
