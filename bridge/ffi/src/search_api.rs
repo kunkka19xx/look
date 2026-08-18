@@ -136,6 +136,7 @@ pub(crate) fn look_search_files_json_impl(
 /// the web answer for what is usually a question ("how to download bitcoin").
 fn is_weak_empty_recall(filter: &look_engine::FileFilter, results: &[LaunchResult]) -> bool {
     results.is_empty()
+        && !filter.terms.trim().is_empty()
         && filter.categories.is_empty()
         && filter.locations.is_empty()
         && filter.start.is_none()
@@ -356,5 +357,12 @@ mod tests {
         };
         assert!(!is_weak_empty_recall(&typed, &[]));
         assert!(!is_weak_empty_recall(&dated, &[]));
+    }
+
+    #[test]
+    fn a_bare_files_request_is_not_weak() {
+        // "show me my files": every word is glue, so an empty index is the only
+        // way it comes back empty. That still asked for files.
+        assert!(!is_weak_empty_recall(&FileFilter::default(), &[]));
     }
 }
