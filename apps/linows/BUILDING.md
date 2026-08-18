@@ -326,7 +326,7 @@ environment.systemPackages = [ pkgs.lookapp ];
 
 For non-NixOS Nix users: `cachix use look` then `nix profile install`.
 
-> **Note:** The NixOS module requires a NixOS system configuration. Home Manager is not currently supported; use `nix profile install` or the overlay instead. Contributions to add Look to [nixpkgs](https://github.com/NixOS/nixpkgs) or a Home Manager module are welcome.
+> **Note:** For user-level declarative installation and configuration, use the Home Manager module described above. The NixOS module is intended for system-level configuration. Contributions to add Look to [nixpkgs](https://github.com/NixOS/nixpkgs) are welcome.
 
 ### AppImage (universal)
 
