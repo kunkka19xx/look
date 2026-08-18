@@ -103,8 +103,8 @@ pub(crate) fn look_search_json_impl(query: *const c_char, limit: u32) -> *mut c_
 
 /// Natural-language file recall: parse the query (core/ai), run it against
 /// Look's own index (fast, no Spotlight), and return the same JSON shape as
-/// `look_search_json`. Null when the query is not a file-recall query, so the
-/// shell falls back to normal search.
+/// `look_search_json`. Null when the query is not a file-recall query or when
+/// a terms-only parse matched nothing, so the shell falls back to normal search.
 pub(crate) fn look_search_files_json_impl(
     query: *const c_char,
     now_epoch: i64,
@@ -123,8 +123,24 @@ pub(crate) fn look_search_files_json_impl(
         locations: fq.locations,
     };
     let outcome = with_engine(|engine| engine.search_files(&filter, max as usize));
+    if is_weak_empty_recall(&filter, &outcome.results) {
+        return std::ptr::null_mut();
+    }
     let relaxed = relaxed_code(outcome.relaxation);
     store_json_allocation(serialize_full_payload(&query, outcome.results, relaxed))
+}
+
+/// A parse with terms and nothing else was triggered by a bare "file" or
+/// "download" word, so the terms are just words lifted from a sentence. With
+/// zero matches there is nothing to show, and claiming the panel would cancel
+/// the web answer for what is usually a question ("how to download bitcoin").
+fn is_weak_empty_recall(filter: &look_engine::FileFilter, results: &[LaunchResult]) -> bool {
+    results.is_empty()
+        && !filter.terms.trim().is_empty()
+        && filter.categories.is_empty()
+        && filter.locations.is_empty()
+        && filter.start.is_none()
+        && filter.end.is_none()
 }
 
 fn relaxed_code(relaxation: Option<look_engine::FileSearchRelaxation>) -> Option<&'static str> {
@@ -301,4 +317,52 @@ fn search_error_json_compact(err: SearchError) -> String {
         }
     })
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_weak_empty_recall;
+    use look_engine::{FileFilter, LaunchResult};
+    use look_indexing::{Candidate, CandidateKind};
+
+    fn result() -> LaunchResult {
+        LaunchResult::from((
+            &Candidate::new("file:a", CandidateKind::File, "a.pdf", "/tmp/a.pdf"),
+            1,
+        ))
+    }
+
+    #[test]
+    fn terms_only_recall_with_no_match_falls_back_to_normal_search() {
+        let filter = FileFilter {
+            terms: "bitcoin price".into(),
+            ..Default::default()
+        };
+        assert!(is_weak_empty_recall(&filter, &[]));
+        assert!(!is_weak_empty_recall(&filter, &[result()]));
+    }
+
+    #[test]
+    fn typed_or_dated_recall_keeps_its_empty_panel() {
+        let typed = FileFilter {
+            terms: "invoice".into(),
+            categories: vec!["pdf".into()],
+            ..Default::default()
+        };
+        let dated = FileFilter {
+            terms: "invoice".into(),
+            start: Some(0),
+            end: Some(1),
+            ..Default::default()
+        };
+        assert!(!is_weak_empty_recall(&typed, &[]));
+        assert!(!is_weak_empty_recall(&dated, &[]));
+    }
+
+    #[test]
+    fn a_bare_files_request_is_not_weak() {
+        // "show me my files": every word is glue, so an empty index is the only
+        // way it comes back empty. That still asked for files.
+        assert!(!is_weak_empty_recall(&FileFilter::default(), &[]));
+    }
 }
