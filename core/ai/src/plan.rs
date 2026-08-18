@@ -1,4 +1,4 @@
-//! The planner's wire format (see docs/ai-action-contracts.md): the model emits
+//! The planner's wire format (see docs/ai-architecture.md): the model emits
 //! `{"steps":[{"tool":"<alias>","params":{...}}]}` forced by a JSON Schema in
 //! Ollama's `format` field. `steps` is an array from day one so multi-action
 //! plans are a consumer change, never a wire change.

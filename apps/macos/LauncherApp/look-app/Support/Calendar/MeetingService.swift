@@ -55,7 +55,7 @@ nonisolated struct JoinableMeeting: Decodable, Equatable {
 ///
 /// Look makes no network call here. A Teams, Zoom, or Meet invite already
 /// carries its join URL, and the account sync that put it there is the OS's
-/// job (see docs/ai-eventkit-connector.md).
+/// job (see docs/ai-eventkit.md).
 nonisolated final class MeetingService: @unchecked Sendable {
     static let shared = MeetingService()
 

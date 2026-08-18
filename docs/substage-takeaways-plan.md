@@ -11,8 +11,9 @@ not, ordered by value.
 
 **One thing Look must not copy**, stated once here because it shapes all four:
 Substage has a model WRITE a shell command that the user audits. Look's
-contract (`ai-action-contracts.md`) is the opposite - the model is another
-parser that "can never reach an execution path the deterministic parser can't".
+contract (`ai-architecture.md` §2) is the opposite - the model is "just another
+parser" that "can never reach an execution path the deterministic parser
+cannot".
 Auditing generated shell asks the user to review a language they may not read.
 Every item below keeps generation out of the execution path.
 
@@ -79,7 +80,7 @@ Enter still runs it. The preview informs; it never blocks.
 `unparsed` - a convert, an `rm -rf` with a variable, a piped installer, a `git
 push`, a heredoc. (2) `look_shell_predict_json`. (3) The preview block in the
 `/shell` panel. (4) `features.md`, `user-guide.md`, and a line in
-`ai-action-contracts.md` saying where this sits (it is not a ladder tier -
+`ai-architecture.md` saying where this sits (it is not a ladder tier -
 `/shell` is command mode, not AI mode).
 
 **Out of scope.** Generating commands from language; blocking or sandboxing;
@@ -160,7 +161,7 @@ shipped with.
 
 **Design.** Typed rules rather than free text, stored the way memory already is
 - tier-1 only, user-written, **never model-written**, for the reason
-`ai-action-contracts.md` already gives about memory: a weak planner must not be
+`ai-architecture.md` already gives about memory: a weak planner must not be
 able to pollute durable state.
 
 ```text
