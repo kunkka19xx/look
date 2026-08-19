@@ -154,7 +154,7 @@ exec-once = lookapp
 # (Alt+Space, float, and border rules are injected automatically via hyprctl)
 ```
 
-niri has no API to add binds at runtime, so `Alt+Space` has to go in `~/.config/niri/config.kdl` yourself. Look shows the exact stanza for your system (the `gdbus` path differs on NixOS) in its setup notice on first run:
+niri has no API to add binds at runtime, so `Alt+Space` has to go in `~/.config/niri/config.kdl` yourself, or in any file that config includes. Look shows the exact stanza for your system (the `gdbus` path differs on NixOS) in its setup notice on first run:
 
 ```kdl
 spawn-at-startup "lookapp"
@@ -163,6 +163,8 @@ binds {
     Alt+Space { spawn "gdbus" "call" "--session" "--dest" "com.look.Desktop" "--object-path" "/com/look/Desktop" "--method" "com.look.Desktop.Toggle"; }
 }
 ```
+
+Any key works, it is the same `spawn` line: Look only ever sees the D-Bus call. Bind a key niri already uses (`Mod+D` spawns fuzzel in the default config) and niri rejects the whole config as a duplicate keybind, keeping the last good one, so drop the existing bind first and check with `niri validate`.
 
 Floating is applied at runtime over niri's IPC; add a rule only if you also want the focus ring and shadow off:
 

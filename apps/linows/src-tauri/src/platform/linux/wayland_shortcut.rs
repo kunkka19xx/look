@@ -361,8 +361,12 @@ fn niri_bind_snippet() -> String {
     format!("binds {{ Alt+Space {{ spawn {argv}; }} }}")
 }
 
-/// Where niri looks for its config, in the order it does.
+/// Where niri looks for its config, in the order it does. `NIRI_CONFIG` wins
+/// when set; a `-c` given on niri's command line stays invisible to us.
 fn niri_config_paths() -> Vec<std::path::PathBuf> {
+    if let Some(path) = std::env::var_os("NIRI_CONFIG") {
+        return vec![std::path::PathBuf::from(path)];
+    }
     std::env::var_os("XDG_CONFIG_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
@@ -372,15 +376,70 @@ fn niri_config_paths() -> Vec<std::path::PathBuf> {
         .collect()
 }
 
+/// Ceiling on `include` nesting, matching niri's own recursion limit.
+const NIRI_INCLUDE_DEPTH: u8 = 10;
+
+/// Files an `include` node pulls in, resolved as niri resolves them: one
+/// quoted path per node, relative to the including file, `~` for `$HOME`,
+/// no globs. The path is the only quoted token on the line, so an
+/// `optional=true` property in front of it needs no parsing of its own.
+fn niri_includes(config: &str, dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    config
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim_start().strip_prefix("include")?;
+            let (_, quoted) = rest.strip_prefix(char::is_whitespace)?.split_once('"')?;
+            resolve_niri_include(quoted.split_once('"')?.0, dir)
+        })
+        .collect()
+}
+
+fn resolve_niri_include(arg: &str, dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let path = match arg.strip_prefix("~/") {
+        Some(rest) => std::path::PathBuf::from(std::env::var_os("HOME")?).join(rest),
+        None => std::path::PathBuf::from(arg),
+    };
+    Some(if path.is_absolute() {
+        path
+    } else {
+        dir.join(path)
+    })
+}
+
 /// Whether a bind already spawns something that talks to Look's D-Bus service.
 /// Matching on the bus name rather than a full command line keeps this true
-/// for any of the three callers, and for a user's own wrapper script.
+/// for any of the three callers, and for a user's own wrapper script. Included
+/// files count: splitting binds into their own `.kdl` is common, and missing
+/// one means nagging a user whose hotkey already works.
 fn niri_bind_present() -> bool {
-    niri_config_paths().iter().any(|path| {
-        std::fs::read_to_string(path)
-            .map(|config| config.contains(DBUS_NAME))
-            .unwrap_or(false)
-    })
+    niri_bind_present_in(niri_config_paths())
+}
+
+fn niri_bind_present_in(roots: Vec<std::path::PathBuf>) -> bool {
+    let mut pending: Vec<(std::path::PathBuf, u8)> =
+        roots.into_iter().map(|path| (path, 0)).collect();
+    let mut seen = std::collections::HashSet::new();
+
+    while let Some((path, depth)) = pending.pop() {
+        if !seen.insert(path.clone()) {
+            continue;
+        }
+        let Ok(config) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if config.contains(DBUS_NAME) {
+            return true;
+        }
+        if depth < NIRI_INCLUDE_DEPTH {
+            let dir = path.parent().unwrap_or(std::path::Path::new(""));
+            pending.extend(
+                niri_includes(&config, dir)
+                    .into_iter()
+                    .map(|path| (path, depth + 1)),
+            );
+        }
+    }
+    false
 }
 
 fn report_niri_keybinding() {
@@ -391,7 +450,7 @@ fn report_niri_keybinding() {
         health::ISSUE_HOTKEY,
         format!(
             "niri has no API to register hotkeys, so Alt+Space must be bound in \
-             ~/.config/niri/config.kdl: {}",
+             ~/.config/niri/config.kdl, or any file it includes: {}",
             niri_bind_snippet()
         ),
     );
@@ -833,5 +892,84 @@ mod tests {
             caller_invocation(CALLER_GDBUS, Path::new("/usr/bin/gdbus")),
             CALLER_GDBUS
         );
+    }
+
+    #[test]
+    fn includes_resolve_against_the_including_file() {
+        assert_eq!(
+            niri_includes("include \"binds.kdl\"", Path::new("/home/u/.config/niri")),
+            [Path::new("/home/u/.config/niri/binds.kdl")]
+        );
+    }
+
+    #[test]
+    fn absolute_includes_are_taken_as_is() {
+        assert_eq!(
+            niri_includes(
+                "  include   \"/etc/niri/binds.kdl\" // shared",
+                Path::new("/tmp")
+            ),
+            [Path::new("/etc/niri/binds.kdl")]
+        );
+    }
+
+    #[test]
+    fn tilde_includes_expand_to_home() {
+        let home = std::env::var("HOME").expect("HOME");
+        assert_eq!(
+            niri_includes("include \"~/dots/binds.kdl\"", Path::new("/tmp")),
+            [Path::new(&home).join("dots/binds.kdl")]
+        );
+    }
+
+    #[test]
+    fn a_bind_in_an_included_file_counts_as_present() {
+        let dir = std::env::temp_dir().join("look-niri-include-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("nested")).expect("temp dir");
+        std::fs::write(dir.join("config.kdl"), "include \"nested/binds.kdl\"\n").expect("config");
+        std::fs::write(
+            dir.join("nested/binds.kdl"),
+            format!("binds {{ Alt+Space {{ spawn \"gdbus\" \"{DBUS_NAME}\"; }} }}"),
+        )
+        .expect("binds");
+
+        assert!(niri_bind_present_in(vec![dir.join("config.kdl")]));
+
+        std::fs::write(dir.join("nested/binds.kdl"), "binds { }").expect("binds");
+        assert!(!niri_bind_present_in(vec![dir.join("config.kdl")]));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cyclic_includes_terminate() {
+        let dir = std::env::temp_dir().join("look-niri-cycle-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        std::fs::write(dir.join("a.kdl"), "include \"b.kdl\"\n").expect("a");
+        std::fs::write(dir.join("b.kdl"), "include \"a.kdl\"\n").expect("b");
+
+        assert!(!niri_bind_present_in(vec![dir.join("a.kdl")]));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn optional_includes_are_followed_too() {
+        assert_eq!(
+            niri_includes(
+                "include optional=true \"local.kdl\"",
+                Path::new("/etc/niri")
+            ),
+            [Path::new("/etc/niri/local.kdl")]
+        );
+    }
+
+    #[test]
+    fn non_include_lines_pull_in_nothing() {
+        let config =
+            "// include \"old.kdl\"\nincludes \"x.kdl\"\nbinds { Alt+Space { spawn \"x\"; } }";
+        assert!(niri_includes(config, Path::new("/tmp")).is_empty());
     }
 }
