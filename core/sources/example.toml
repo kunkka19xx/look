@@ -1,0 +1,74 @@
+# Look sources: the whole format in one file.
+# Copy to ~/.look/sources/<anything>.toml and edit.
+#
+# A file is a set of blocks. Every block has a `name` you can type, and ONE
+# producer key that says what it is:
+#
+#   do    one row; Enter performs its steps
+#   dir   rows from the children of a directory
+#   file  rows from a text file
+#   run   rows from a command's stdout
+#
+# Nothing is file-wide. Each block stands alone.
+
+
+# ------------------------------------------------------------------ bundle --
+# One name, several things happen. No rows to pick, no placeholders needed.
+
+[work]
+name = "Work setup"
+do = [
+  "open -a Slack",
+  "open -a Ghostty",
+  "open -a Safari https://github.com",
+]
+
+
+# --------------------------------------------------------------------- dir --
+# Rows are the children of one or more directories.
+
+[projects]
+name  = "Projects"
+dir   = "~/dev"                   # or: dirs = ["~/dev", "~/work"]
+depth = 1                         # 1 = immediate children
+only  = "dirs"                    # dirs | files | all
+# match   = ["*.md"]              # keep only these names
+# exclude = ["archive*"]          # drop these
+# bias    = -50                   # sit below apps and files
+# aliases = ["repo", "code"]      # extra words that find this block
+# enabled = false                 # keep the file, stop loading it
+
+# What the standard keys do to a picked row. Each verb has one key across the
+# whole app, so Cmd+E always edits. Declare only what differs from your global
+# default in ~/.look.config.
+open     = "open {path}"
+edit     = "nvim {path}"
+terminal = "tmux new-session -As {title} -c {path}"
+
+
+# -------------------------------------------------------------------- file --
+# Rows from a text file, one per line: id<TAB>title<TAB>group
+# A bare line is both id and title. The id is what the verbs receive.
+
+[hosts]
+name = "SSH hosts"
+file = "~/.look/hosts.txt"
+open = "ssh {id}"
+
+
+# --------------------------------------------------------------------- run --
+# Rows from stdout, same line format as a file block.
+
+[branches]
+name    = "Git branches"
+run     = "git -C ~/dev/look for-each-ref --format='%(refname:short)' refs/heads"
+refresh = "open"                  # startup | open | manual | 30s | 5m | 1h
+# cwd     = "~/dev/look"
+# timeout = "5s"
+open    = "git -C ~/dev/look checkout {id}"
+
+
+# Placeholders usable in verbs and preview:
+#   {id} {title} {subtitle} {group} {path} {dir} {query}
+# They are shell-escaped on substitution, so they never need quoting and a row
+# named "; rm -rf ~" is inert.

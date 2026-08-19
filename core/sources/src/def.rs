@@ -1,5 +1,16 @@
-//! The declared shape of a source: what it is, how it refreshes, what its rows
-//! can do. Parsing only. Nothing here reads a directory or runs a command.
+//! What a user declares. Parsing only: nothing here reads a directory or runs a
+//! command.
+//!
+//! A file is a set of blocks. Every block has a `name` you can type, and one
+//! producer key that decides what it is:
+//!
+//! - `do`   a bundle. One row; Enter performs its steps.
+//! - `dir`  a list of the children of one or more directories.
+//! - `file` a list read from a text file.
+//! - `run`  a list read from a command's stdout.
+//!
+//! The producer key is the only thing that distinguishes them, so there is no
+//! `kind` to remember and no way for the two to disagree.
 
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -7,11 +18,8 @@ use std::time::Duration;
 use serde::Deserialize;
 
 /// Immediate children only. Deep walks belong to the file index, not to a
-/// source the user declared to get one short list.
+/// block the user declared to get one short list.
 pub const DEFAULT_FOLDER_DEPTH: usize = 1;
-
-/// The action Enter runs. Any other key is an entry in the actions panel.
-pub const DEFAULT_ACTION_KEY: &str = "default";
 
 const SECONDS_PER_MINUTE: u64 = 60;
 const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE;
@@ -21,7 +29,7 @@ const REFRESH_STARTUP: &str = "startup";
 const REFRESH_OPEN: &str = "open";
 const REFRESH_MANUAL: &str = "manual";
 
-/// Which entries a folder source keeps.
+/// Which entries a `dir` block keeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Only {
@@ -31,16 +39,7 @@ pub enum Only {
     All,
 }
 
-/// Whether the rows join the main result list or only their own scope.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Scope {
-    #[default]
-    Global,
-    Prefix,
-}
-
-/// How the rows a source emits are encoded.
+/// How the rows a `file` or `run` block emits are encoded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RowFormat {
@@ -49,23 +48,7 @@ pub enum RowFormat {
     Json,
 }
 
-/// Where an action runs. A launcher cannot host an interactive process, so
-/// anything that needs a TTY is handed to the user's terminal instead.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ActionMode {
-    /// Detached, no window; the outcome is a banner.
-    #[default]
-    Background,
-    /// Spawned in the user's terminal emulator.
-    Terminal,
-    /// Run, then show stdout in the panel.
-    Output,
-    /// Stdout becomes the next level of rows.
-    Push,
-}
-
-/// When a command source re-runs. Never per keystroke.
+/// When a `run` block re-runs. Never per keystroke.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Refresh {
     #[default]
@@ -86,11 +69,10 @@ impl Refresh {
             _ => {}
         }
 
-        let (digits, unit) = trimmed.split_at(
-            trimmed
-                .find(|c: char| !c.is_ascii_digit())
-                .ok_or_else(|| format!("refresh \"{trimmed}\" has no unit, try \"5m\""))?,
-        );
+        let split = trimmed
+            .find(|c: char| !c.is_ascii_digit())
+            .ok_or_else(|| format!("refresh \"{trimmed}\" has no unit, try \"5m\""))?;
+        let (digits, unit) = trimmed.split_at(split);
         let amount: u64 = digits
             .parse()
             .map_err(|_| format!("refresh \"{trimmed}\" is not a duration"))?;
@@ -108,39 +90,23 @@ impl Refresh {
     }
 }
 
-/// One thing the user can do with a selected row.
+/// What a block produces.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Action {
-    pub key: String,
-    pub label: String,
-    pub run: String,
-    pub mode: ActionMode,
-    /// Prompt for a typed value, substituted as `{input}`.
-    pub input: Option<String>,
-    /// Yes or no gate before running.
-    pub confirm: Option<String>,
-    /// Actions on the rows a `push` action returned.
-    pub actions: Vec<Action>,
-}
-
-/// The kind-specific half of a declaration.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SourceSpec {
-    Folder {
-        /// One list can gather several places: projects live under `~/dev` and
-        /// `~/work` and are still one thing to the user. Written as `root` for
-        /// the single case or `roots` for many; both land here.
+pub enum Producer {
+    /// One row. Enter performs every step in order.
+    Bundle { steps: Vec<String> },
+    /// Rows from the children of one or more directories.
+    Dir {
         roots: Vec<String>,
         depth: usize,
         only: Only,
         include: Vec<String>,
         exclude: Vec<String>,
     },
-    List {
-        file: String,
-        format: RowFormat,
-    },
-    Command {
+    /// Rows from a text file.
+    File { path: String, format: RowFormat },
+    /// Rows from a command's stdout.
+    Run {
         command: String,
         cwd: Option<String>,
         refresh: Refresh,
@@ -149,75 +115,102 @@ pub enum SourceSpec {
     },
 }
 
-impl SourceSpec {
-    pub fn kind_key(&self) -> &'static str {
+impl Producer {
+    pub fn key(&self) -> &'static str {
         match self {
-            Self::Folder { .. } => "folder",
-            Self::List { .. } => "list",
-            Self::Command { .. } => "command",
+            Self::Bundle { .. } => KEY_DO,
+            Self::Dir { .. } => KEY_DIR,
+            Self::File { .. } => KEY_FILE,
+            Self::Run { .. } => KEY_RUN,
         }
     }
 }
 
-/// A validated source. `id` is the file stem, which is what row ids and scoped
-/// pruning key on, so it is never read from the file's own contents.
+pub const KEY_DO: &str = "do";
+pub const KEY_DIR: &str = "dir";
+pub const KEY_FILE: &str = "file";
+pub const KEY_RUN: &str = "run";
+
+/// The standard things a user does to a row. Each has one key across the whole
+/// app, so Cmd+E edits whatever the row is and wherever it came from. A block
+/// only names the ones whose command differs from the global default.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Verbs {
+    pub open: Option<String>,
+    pub edit: Option<String>,
+    pub terminal: Option<String>,
+    pub reveal: Option<String>,
+}
+
+impl Verbs {
+    pub const OPEN: &'static str = "open";
+    pub const EDIT: &'static str = "edit";
+    pub const TERMINAL: &'static str = "terminal";
+    pub const REVEAL: &'static str = "reveal";
+
+    pub fn is_empty(&self) -> bool {
+        self.open.is_none()
+            && self.edit.is_none()
+            && self.terminal.is_none()
+            && self.reveal.is_none()
+    }
+
+    /// Declared verbs in a stable order, for the action menu.
+    pub fn declared(&self) -> Vec<(&'static str, &str)> {
+        [
+            (Self::OPEN, self.open.as_deref()),
+            (Self::EDIT, self.edit.as_deref()),
+            (Self::TERMINAL, self.terminal.as_deref()),
+            (Self::REVEAL, self.reveal.as_deref()),
+        ]
+        .into_iter()
+        .filter_map(|(name, command)| command.map(|command| (name, command)))
+        .collect()
+    }
+}
+
+/// One declared block. `id` is the table header, which is what row ids and
+/// scoped pruning key on, so it never comes from the block's own contents.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceDef {
+pub struct Block {
     pub id: String,
+    /// What the user types to see this block's rows. Defaults to the id.
     pub name: String,
-    pub spec: SourceSpec,
-    pub scope: Scope,
-    pub prefix: Option<String>,
+    pub producer: Producer,
+    pub verbs: Verbs,
     pub aliases: Vec<String>,
     pub bias: i64,
     pub icon: Option<String>,
-    pub subtitle: Option<String>,
     pub enabled: bool,
     pub preview: Option<String>,
-    pub actions: Vec<Action>,
+    /// The file this block was declared in, so the app can show it and reveal
+    /// it. Set by the loader; parsing a string alone has no file to name.
+    pub source_file: Option<String>,
     /// Keys the parser did not recognize. Reported, never fatal, so a file
     /// written for a newer version still loads.
     pub unknown_keys: Vec<String>,
 }
 
-impl SourceDef {
-    pub fn action(&self, key: &str) -> Option<&Action> {
-        self.actions.iter().find(|action| action.key == key)
+impl Block {
+    pub fn is_bundle(&self) -> bool {
+        matches!(self.producer, Producer::Bundle { .. })
     }
-
-    pub fn default_action(&self) -> Option<&Action> {
-        self.action(DEFAULT_ACTION_KEY)
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct RawAction {
-    label: Option<String>,
-    run: Option<String>,
-    mode: Option<ActionMode>,
-    input: Option<String>,
-    confirm: Option<String>,
-    #[serde(default)]
-    actions: BTreeMap<String, RawAction>,
-    #[serde(flatten)]
-    extra: BTreeMap<String, toml::Value>,
 }
 
 #[derive(Debug, Default, Deserialize)]
-struct RawSource {
+struct RawBlock {
     name: Option<String>,
-    kind: Option<String>,
-    scope: Option<Scope>,
-    prefix: Option<String>,
     aliases: Option<Vec<String>>,
     bias: Option<i64>,
     icon: Option<String>,
-    subtitle: Option<String>,
     enabled: Option<bool>,
     preview: Option<String>,
 
-    root: Option<String>,
-    roots: Option<Vec<String>>,
+    #[serde(rename = "do")]
+    steps: Option<Vec<String>>,
+
+    dir: Option<String>,
+    dirs: Option<Vec<String>>,
     depth: Option<usize>,
     only: Option<Only>,
     #[serde(rename = "match")]
@@ -226,66 +219,147 @@ struct RawSource {
 
     file: Option<String>,
 
-    command: Option<String>,
+    run: Option<String>,
     cwd: Option<String>,
     refresh: Option<String>,
     timeout: Option<String>,
     format: Option<RowFormat>,
 
-    #[serde(default)]
-    actions: BTreeMap<String, RawAction>,
+    open: Option<String>,
+    edit: Option<String>,
+    terminal: Option<String>,
+    reveal: Option<String>,
+
     #[serde(flatten)]
     extra: BTreeMap<String, toml::Value>,
 }
 
-/// Parse a declared source. `id` is the caller's (the file stem);
-/// `inferred_command` is the sibling or self executable used when the file
-/// names no command of its own.
-pub fn parse(
-    id: &str,
-    contents: &str,
-    inferred_command: Option<&str>,
-) -> Result<SourceDef, String> {
-    let raw: RawSource = toml::from_str(contents).map_err(|err| err.to_string())?;
-    build(id, raw, inferred_command)
+/// Everything one file declared. A block that does not validate is reported
+/// without taking its neighbours down.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ParsedFile {
+    pub blocks: Vec<Block>,
+    pub problems: Vec<String>,
 }
 
-/// A source with no declaration file at all: an executable dropped in the
-/// directory, where everything comes from defaults.
-pub fn inferred(id: &str, command: &str) -> SourceDef {
-    build(id, RawSource::default(), Some(command))
-        .expect("an inferred command source has every required field")
+/// Parse a file of blocks. Every top-level table is one block, keyed by its
+/// header.
+pub fn parse_file(contents: &str) -> Result<ParsedFile, String> {
+    let value: toml::Value = toml::from_str(contents).map_err(|err| err.to_string())?;
+    let table = value
+        .as_table()
+        .ok_or("a source file must be a table of blocks")?;
+
+    let mut parsed = ParsedFile::default();
+    for (id, block) in table {
+        let Some(block) = block.as_table() else {
+            parsed.problems.push(format!(
+                "[{id}] must be a table, like [{id}]\\nname = \"…\""
+            ));
+            continue;
+        };
+        let raw: RawBlock = match toml::Value::Table(block.clone()).try_into() {
+            Ok(raw) => raw,
+            Err(err) => {
+                parsed.problems.push(format!("[{id}]: {err}"));
+                continue;
+            }
+        };
+        match build(id, raw) {
+            Ok(block) => parsed.blocks.push(block),
+            Err(message) => parsed.problems.push(format!("[{id}]: {message}")),
+        }
+    }
+    Ok(parsed)
 }
 
-fn build(id: &str, raw: RawSource, inferred_command: Option<&str>) -> Result<SourceDef, String> {
-    let mut unknown_keys: Vec<String> = raw.extra.keys().cloned().collect();
+/// A block with no declaration at all: an executable dropped in the directory,
+/// where the file itself is the command and everything else is a default.
+pub fn inferred(id: &str, command: &str) -> Block {
+    build(
+        id,
+        RawBlock {
+            run: Some(command.to_string()),
+            ..Default::default()
+        },
+    )
+    .expect("an inferred run block has every required field")
+}
 
-    let kind = match raw.kind.as_deref() {
-        Some(value) => value.to_string(),
-        None if raw.root.is_some() || raw.roots.is_some() => "folder".into(),
-        None if raw.file.is_some() => "list".into(),
-        None if raw.command.is_some() || inferred_command.is_some() => "command".into(),
-        None => return Err("kind is missing and cannot be inferred".into()),
+fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
+    let producer = producer_from(&raw)?;
+
+    let verbs = Verbs {
+        open: raw.open,
+        edit: raw.edit,
+        terminal: raw.terminal,
+        reveal: raw.reveal,
     };
+    // A bundle IS the action, so a verb on it would be a second, hidden meaning
+    // for Enter.
+    if matches!(producer, Producer::Bundle { .. }) && !verbs.is_empty() {
+        return Err(format!(
+            "a `{KEY_DO}` block performs its own steps, so it cannot also declare open/edit/terminal/reveal"
+        ));
+    }
 
-    let spec = match kind.as_str() {
-        "folder" => SourceSpec::Folder {
-            roots: folder_roots(raw.root, raw.roots)?,
+    Ok(Block {
+        id: id.to_string(),
+        name: raw.name.unwrap_or_else(|| id.to_string()),
+        producer,
+        verbs,
+        aliases: raw.aliases.unwrap_or_default(),
+        bias: raw.bias.unwrap_or_default(),
+        icon: raw.icon,
+        enabled: raw.enabled.unwrap_or(true),
+        preview: raw.preview,
+        source_file: None,
+        unknown_keys: raw.extra.keys().cloned().collect(),
+    })
+}
+
+fn producer_from(raw: &RawBlock) -> Result<Producer, String> {
+    let declared: Vec<&str> = [
+        (KEY_DO, raw.steps.is_some()),
+        (KEY_DIR, raw.dir.is_some() || raw.dirs.is_some()),
+        (KEY_FILE, raw.file.is_some()),
+        (KEY_RUN, raw.run.is_some()),
+    ]
+    .into_iter()
+    .filter_map(|(key, present)| present.then_some(key))
+    .collect();
+
+    match declared.as_slice() {
+        [] => Err(format!(
+            "needs one of {KEY_DO}, {KEY_DIR}, {KEY_FILE}, or {KEY_RUN}"
+        )),
+        [KEY_DO] => {
+            let steps: Vec<String> = raw
+                .steps
+                .clone()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|step| !step.trim().is_empty())
+                .collect();
+            if steps.is_empty() {
+                return Err(format!("`{KEY_DO}` needs at least one step"));
+            }
+            Ok(Producer::Bundle { steps })
+        }
+        [KEY_DIR] => Ok(Producer::Dir {
+            roots: dir_roots(raw)?,
             depth: raw.depth.unwrap_or(DEFAULT_FOLDER_DEPTH),
             only: raw.only.unwrap_or_default(),
-            include: raw.include.unwrap_or_default(),
-            exclude: raw.exclude.unwrap_or_default(),
-        },
-        "list" => SourceSpec::List {
-            file: raw.file.ok_or("list source needs a file")?,
+            include: raw.include.clone().unwrap_or_default(),
+            exclude: raw.exclude.clone().unwrap_or_default(),
+        }),
+        [KEY_FILE] => Ok(Producer::File {
+            path: raw.file.clone().unwrap_or_default(),
             format: raw.format.unwrap_or_default(),
-        },
-        "command" => SourceSpec::Command {
-            command: raw
-                .command
-                .or_else(|| inferred_command.map(String::from))
-                .ok_or("command source needs a command")?,
-            cwd: raw.cwd,
+        }),
+        [KEY_RUN] => Ok(Producer::Run {
+            command: raw.run.clone().unwrap_or_default(),
+            cwd: raw.cwd.clone(),
             refresh: raw
                 .refresh
                 .as_deref()
@@ -301,275 +375,201 @@ fn build(id: &str, raw: RawSource, inferred_command: Option<&str>) -> Result<Sou
                 })
                 .transpose()?,
             format: raw.format.unwrap_or_default(),
-        },
-        other => return Err(format!("kind \"{other}\" is not folder, list, or command")),
-    };
-
-    let scope = raw.scope.unwrap_or_default();
-    if scope == Scope::Prefix && raw.prefix.is_none() {
-        return Err("scope = \"prefix\" needs a prefix".into());
+        }),
+        many => Err(format!(
+            "declares {}, but a block is one thing: pick one",
+            many.join(" and ")
+        )),
     }
-
-    let mut actions = Vec::new();
-    for (key, raw_action) in raw.actions {
-        actions.push(build_action(&key, raw_action, &mut unknown_keys)?);
-    }
-    // The panel and Enter both read this list, so `default` leads and the rest
-    // stay in a stable order rather than TOML's.
-    actions.sort_by(|a, b| {
-        let rank = |action: &Action| u8::from(action.key != DEFAULT_ACTION_KEY);
-        rank(a).cmp(&rank(b)).then_with(|| a.key.cmp(&b.key))
-    });
-
-    Ok(SourceDef {
-        id: id.to_string(),
-        name: raw.name.unwrap_or_else(|| id.to_string()),
-        spec,
-        scope,
-        prefix: raw.prefix,
-        aliases: raw.aliases.unwrap_or_default(),
-        bias: raw.bias.unwrap_or_default(),
-        icon: raw.icon,
-        subtitle: raw.subtitle,
-        enabled: raw.enabled.unwrap_or(true),
-        preview: raw.preview,
-        actions,
-        unknown_keys,
-    })
 }
 
-/// `root` and `roots` are the same key in two shapes, so a user who starts with
-/// one place and later adds another never has to restructure the file.
-fn folder_roots(root: Option<String>, roots: Option<Vec<String>>) -> Result<Vec<String>, String> {
+/// `dir` and `dirs` are the same key in two shapes, so a block that starts with
+/// one place and later gathers another never has to be restructured.
+fn dir_roots(raw: &RawBlock) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
-    out.extend(root);
-    out.extend(roots.unwrap_or_default());
+    out.extend(raw.dir.clone());
+    out.extend(raw.dirs.clone().unwrap_or_default());
     out.retain(|value| !value.trim().is_empty());
     if out.is_empty() {
-        return Err("folder source needs a root (or roots)".into());
+        return Err(format!("`{KEY_DIR}` cannot be empty"));
     }
     Ok(out)
-}
-
-fn build_action(
-    key: &str,
-    raw: RawAction,
-    unknown_keys: &mut Vec<String>,
-) -> Result<Action, String> {
-    for extra in raw.extra.keys() {
-        unknown_keys.push(format!("actions.{key}.{extra}"));
-    }
-
-    let mut nested = Vec::new();
-    for (nested_key, nested_raw) in raw.actions {
-        nested.push(build_action(&nested_key, nested_raw, unknown_keys)?);
-    }
-
-    Ok(Action {
-        key: key.to_string(),
-        label: raw.label.unwrap_or_else(|| key.to_string()),
-        run: raw
-            .run
-            .ok_or_else(|| format!("action \"{key}\" needs a run"))?,
-        mode: raw.mode.unwrap_or_default(),
-        input: raw.input,
-        confirm: raw.confirm,
-        actions: nested,
-    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn one(contents: &str) -> Block {
+        let parsed = parse_file(contents).expect("valid file");
+        assert!(parsed.problems.is_empty(), "{:?}", parsed.problems);
+        parsed.blocks.into_iter().next().expect("one block")
+    }
+
     #[test]
-    fn folder_source_takes_its_defaults() {
-        let def = parse("projects", "kind = \"folder\"\nroot = \"~/dev\"\n", None).unwrap();
-        assert_eq!(def.name, "projects");
-        assert_eq!(def.scope, Scope::Global);
-        assert!(def.enabled);
-        match def.spec {
-            SourceSpec::Folder { depth, only, .. } => {
-                assert_eq!(depth, DEFAULT_FOLDER_DEPTH);
-                assert_eq!(only, Only::All);
-            }
-            other => panic!("expected a folder spec, got {other:?}"),
+    fn a_bundle_is_a_name_and_a_list_of_steps() {
+        let block = one(r#"
+[work]
+name = "Work setup"
+do = [
+  "open -a Slack",
+  "open -a Safari https://github.com",
+]
+"#);
+        assert_eq!(block.id, "work");
+        assert_eq!(block.name, "Work setup");
+        assert!(block.is_bundle());
+        match block.producer {
+            Producer::Bundle { steps } => assert_eq!(steps.len(), 2),
+            other => panic!("expected a bundle, got {other:?}"),
         }
     }
 
     #[test]
-    fn kind_is_inferred_from_the_key_that_is_present() {
-        let folder = parse("a", "root = \"~/dev\"\n", None).unwrap();
-        assert_eq!(folder.spec.kind_key(), "folder");
-        let list = parse("b", "file = \"~/hosts.txt\"\n", None).unwrap();
-        assert_eq!(list.spec.kind_key(), "list");
-        let command = parse("c", "command = \"ls\"\n", None).unwrap();
-        assert_eq!(command.spec.kind_key(), "command");
+    fn the_producer_key_is_the_only_thing_that_says_what_a_block_is() {
+        assert_eq!(one("[a]\ndir = \"~/dev\"\n").producer.key(), KEY_DIR);
+        assert_eq!(one("[b]\nfile = \"~/hosts\"\n").producer.key(), KEY_FILE);
+        assert_eq!(one("[c]\nrun = \"ls\"\n").producer.key(), KEY_RUN);
+        assert_eq!(one("[d]\ndo = [\"ls\"]\n").producer.key(), KEY_DO);
     }
 
     #[test]
-    fn an_executable_alone_is_a_whole_source() {
-        let def = inferred("projects", "/home/u/.look/sources/projects");
-        assert_eq!(def.name, "projects");
-        assert!(def.enabled);
-        match def.spec {
-            SourceSpec::Command {
-                command, refresh, ..
-            } => {
-                assert_eq!(command, "/home/u/.look/sources/projects");
-                assert_eq!(refresh, Refresh::Startup);
-            }
-            other => panic!("expected a command spec, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn actions_put_default_first_then_stay_stable() {
-        let def = parse(
-            "repos",
-            r#"
-root = "~/dev"
-
-[actions.zeta]
-run = "z {path}"
-
-[actions.default]
-label = "Open"
-run = "code {path}"
-
-[actions.alpha]
-run = "a {path}"
-"#,
-            None,
-        )
-        .unwrap();
-        let keys: Vec<&str> = def.actions.iter().map(|a| a.key.as_str()).collect();
-        assert_eq!(keys, ["default", "alpha", "zeta"]);
-        assert_eq!(def.default_action().unwrap().label, "Open");
-        // An action with no label is still usable; the key names it.
-        assert_eq!(def.action("alpha").unwrap().label, "alpha");
-    }
-
-    #[test]
-    fn run_values_survive_pipes_and_quotes_verbatim() {
-        // The reason this format is TOML: a run value is shell text, and any
-        // separator we invented would need escaping rules for it.
-        let def = parse(
-            "hosts",
-            r#"
-command = "awk '/^Host /{print $2}' ~/.ssh/config | sort"
-
-[actions.default]
-run = "$TERMINAL -e ssh {title} # connect"
-"#,
-            None,
-        )
-        .unwrap();
-        match &def.spec {
-            SourceSpec::Command { command, .. } => {
-                assert_eq!(command, "awk '/^Host /{print $2}' ~/.ssh/config | sort");
-            }
-            other => panic!("expected a command spec, got {other:?}"),
-        }
-        assert_eq!(
-            def.default_action().unwrap().run,
-            "$TERMINAL -e ssh {title} # connect"
+    fn a_block_that_is_two_things_at_once_is_refused() {
+        let parsed = parse_file("[a]\ndir = \"~/dev\"\nrun = \"ls\"\n").unwrap();
+        assert!(parsed.blocks.is_empty());
+        assert!(
+            parsed.problems[0].contains("pick one"),
+            "{:?}",
+            parsed.problems
         );
     }
 
     #[test]
-    fn nested_actions_describe_a_pushed_level() {
-        let def = parse(
-            "repos",
+    fn a_block_with_no_producer_says_what_it_needs() {
+        let parsed = parse_file("[a]\nname = \"Nothing\"\n").unwrap();
+        assert!(
+            parsed.problems[0].contains(KEY_DIR),
+            "{:?}",
+            parsed.problems
+        );
+    }
+
+    #[test]
+    fn verbs_are_the_commands_a_row_can_run() {
+        let block = one(r#"
+[projects]
+name = "Projects"
+dir  = "~/dev"
+only = "dirs"
+open = "open {path}"
+edit = "nvim {path}"
+"#);
+        assert_eq!(
+            block.verbs.declared(),
+            [("open", "open {path}"), ("edit", "nvim {path}")]
+        );
+    }
+
+    #[test]
+    fn a_bundle_cannot_also_declare_a_verb() {
+        // Enter already means "perform the steps", so a verb would be a second
+        // hidden meaning for the same key.
+        let parsed = parse_file("[a]\ndo = [\"ls\"]\nedit = \"nvim\"\n").unwrap();
+        assert!(
+            parsed.problems[0].contains("cannot also"),
+            "{:?}",
+            parsed.problems
+        );
+    }
+
+    #[test]
+    fn name_falls_back_to_the_block_header() {
+        assert_eq!(
+            one("[downloads]\ndir = \"~/Downloads\"\n").name,
+            "downloads"
+        );
+    }
+
+    #[test]
+    fn one_file_holds_as_many_blocks_as_you_like() {
+        let parsed = parse_file(
             r#"
-root = "~/dev"
+[projects]
+dir = "~/dev"
 
-[actions.branches]
-mode = "push"
-run = "git -C {path} branch"
+[work]
+do = ["open -a Slack"]
 
-[actions.branches.actions.default]
-label = "Checkout"
-run = "git checkout {id}"
-
-[actions.branches.actions.new]
-input = "New branch name"
-run = "git checkout -b {input}"
+[notes]
+dir = "~/notes"
 "#,
-            None,
         )
         .unwrap();
-        let branches = def.action("branches").unwrap();
-        assert_eq!(branches.mode, ActionMode::Push);
-        let keys: Vec<&str> = branches.actions.iter().map(|a| a.key.as_str()).collect();
-        assert_eq!(keys, ["default", "new"]);
-        assert_eq!(
-            branches.actions[1].input.as_deref(),
-            Some("New branch name")
-        );
+        let ids: Vec<&str> = parsed.blocks.iter().map(|b| b.id.as_str()).collect();
+        assert_eq!(ids, ["notes", "projects", "work"]);
+        assert!(parsed.problems.is_empty());
+    }
+
+    #[test]
+    fn a_broken_block_is_reported_and_its_neighbours_still_load() {
+        let parsed = parse_file("[good]\ndir = \"~/dev\"\n\n[bad]\nname = \"x\"\n").unwrap();
+        let ids: Vec<&str> = parsed.blocks.iter().map(|b| b.id.as_str()).collect();
+        assert_eq!(ids, ["good"]);
+        assert_eq!(parsed.problems.len(), 1);
+        assert!(parsed.problems[0].contains("[bad]"));
+    }
+
+    #[test]
+    fn dir_and_dirs_are_the_same_key_in_two_shapes() {
+        let block = one("[a]\ndir = \"~/dev\"\ndirs = [\"~/work\"]\n");
+        match block.producer {
+            Producer::Dir { roots, .. } => assert_eq!(roots, ["~/dev", "~/work"]),
+            other => panic!("expected a dir block, got {other:?}"),
+        }
     }
 
     #[test]
     fn unknown_keys_are_reported_but_never_fatal() {
-        let def = parse(
-            "projects",
-            r#"
-root = "~/dev"
-future_key = "whatever"
-
-[actions.default]
-run = "code {path}"
-also_new = true
-"#,
-            None,
-        )
-        .unwrap();
-        assert_eq!(def.unknown_keys, ["future_key", "actions.default.also_new"]);
+        let block = one("[a]\ndir = \"~/dev\"\nfuture_key = 1\n");
+        assert_eq!(block.unknown_keys, ["future_key"]);
     }
 
     #[test]
-    fn missing_required_fields_name_what_is_missing() {
-        assert!(
-            parse("a", "kind = \"folder\"\n", None)
-                .unwrap_err()
-                .contains("root")
-        );
-        assert!(
-            parse("b", "kind = \"list\"\n", None)
-                .unwrap_err()
-                .contains("file")
-        );
-        assert!(
-            parse("c", "root = \"~/dev\"\nscope = \"prefix\"\n", None)
-                .unwrap_err()
-                .contains("prefix")
-        );
-        assert!(
-            parse(
-                "d",
-                "root = \"~/dev\"\n\n[actions.default]\nlabel = \"x\"\n",
-                None
-            )
-            .unwrap_err()
-            .contains("run")
-        );
+    fn an_executable_alone_is_a_whole_block() {
+        let block = inferred("hosts", "/home/u/.look/sources/hosts");
+        assert_eq!(block.name, "hosts");
+        assert_eq!(block.producer.key(), KEY_RUN);
+    }
+
+    #[test]
+    fn the_shipped_example_parses_with_nothing_left_unexplained() {
+        // example.toml is what users copy, so a key renamed here without
+        // updating it would hand everyone a file full of ignored settings.
+        let parsed = parse_file(include_str!("../example.toml")).expect("valid example");
+        assert!(parsed.problems.is_empty(), "{:?}", parsed.problems);
+
+        let ids: Vec<&str> = parsed.blocks.iter().map(|b| b.id.as_str()).collect();
+        assert_eq!(ids, ["branches", "hosts", "projects", "work"]);
+
+        for block in &parsed.blocks {
+            assert!(
+                block.unknown_keys.is_empty(),
+                "[{}] has unknown keys: {:?}",
+                block.id,
+                block.unknown_keys
+            );
+        }
     }
 
     #[test]
     fn refresh_accepts_keywords_and_durations() {
         assert_eq!(Refresh::parse("startup").unwrap(), Refresh::Startup);
         assert_eq!(Refresh::parse("open").unwrap(), Refresh::Open);
-        assert_eq!(Refresh::parse("manual").unwrap(), Refresh::Manual);
         assert_eq!(
             Refresh::parse("90s").unwrap(),
             Refresh::Interval(Duration::from_secs(90))
         );
-        assert_eq!(
-            Refresh::parse("2h").unwrap(),
-            Refresh::Interval(Duration::from_secs(2 * SECONDS_PER_HOUR))
-        );
         assert!(Refresh::parse("1w").is_err());
         assert!(Refresh::parse("0m").is_err());
-        assert!(Refresh::parse("soon").is_err());
     }
 }

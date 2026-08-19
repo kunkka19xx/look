@@ -26,6 +26,10 @@ struct ResultPreviewView: View {
 
     @State private var folderListing: FolderListing?
     @State private var trashItemCount: Int?
+    /// Steps of the declared block behind an `.action` row, read on selection,
+    /// with the file that declared it.
+    @State private var blockSteps: [String] = []
+    @State private var blockFile: String?
 
     /// A System Settings pane result (its "path" is a URL scheme, not a file).
     private var isSetting: Bool {
@@ -309,7 +313,9 @@ struct ResultPreviewView: View {
     }
 
     var body: some View {
-        if result.kind == .process {
+        if result.kind == .action {
+            actionPreview
+        } else if result.kind == .process {
             processPreview
         } else if result.kind == .clipboard {
             clipboardPreview
@@ -438,6 +444,65 @@ struct ResultPreviewView: View {
                 if Task.isCancelled { return }
                 folderListing = listing
             }
+        }
+    }
+
+    /// A declared block has no file to describe, so the panel answers the only
+    /// question that matters before Enter: exactly what is about to run.
+    private var actionPreview: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(themeStore.accentColor())
+                    .frame(width: 48, height: 48)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(result.title)
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 2), weight: .semibold))
+                        .foregroundStyle(themeStore.fontColor())
+                        .lineLimit(2)
+                    Text(result.subtitle ?? "")
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                        .foregroundStyle(themeStore.secondaryTextColor())
+                }
+                Spacer()
+            }
+
+            Text("Enter runs")
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
+                .foregroundStyle(themeStore.secondaryTextColor())
+
+            // The steps ARE shell, so they get the same block an AI answer's
+            // code gets: highlighted, selectable, and copyable in one press.
+            ScrollView {
+                AICodeBlockView(
+                    code: blockSteps.joined(separator: "\n"),
+                    language: "sh",
+                    themeStore: themeStore
+                )
+            }
+
+            Spacer(minLength: 0)
+
+            if let file = blockFile {
+                Divider().overlay(themeStore.secondaryTextColor().opacity(0.2))
+                InfoRow(label: "Declared in", value: (file as NSString).abbreviatingWithTildeInPath)
+                hintRow(key: "⌘F", text: "Reveal that file")
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .task(id: result.id) {
+            let candidateID = result.id
+            let block = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.sourceBlock(candidateID: candidateID)
+            }.value
+            // The detached read outlives a cancelled task, so a late answer must
+            // not populate the panel of a row the user has already left.
+            if Task.isCancelled { return }
+            blockSteps = block?.steps ?? []
+            blockFile = block?.file
         }
     }
 

@@ -8,6 +8,9 @@ pub enum CandidateKind {
     App,
     File,
     Folder,
+    /// A row with no filesystem target: a bundle of steps, or a row a user's
+    /// list or command produced. It is performed, never opened.
+    Action,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -123,12 +126,14 @@ impl CandidateKind {
     pub const APP_KEY: &'static str = "app";
     pub const FILE_KEY: &'static str = "file";
     pub const FOLDER_KEY: &'static str = "folder";
+    pub const ACTION_KEY: &'static str = "action";
 
     pub fn as_str(&self) -> &'static str {
         match self {
             CandidateKind::App => Self::APP_KEY,
             CandidateKind::File => Self::FILE_KEY,
             CandidateKind::Folder => Self::FOLDER_KEY,
+            CandidateKind::Action => Self::ACTION_KEY,
         }
     }
 
@@ -137,6 +142,7 @@ impl CandidateKind {
             Self::APP_KEY => Some(CandidateKind::App),
             Self::FILE_KEY => Some(CandidateKind::File),
             Self::FOLDER_KEY => Some(CandidateKind::Folder),
+            Self::ACTION_KEY => Some(CandidateKind::Action),
             _ => None,
         }
     }

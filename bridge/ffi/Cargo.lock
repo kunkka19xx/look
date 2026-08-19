@@ -419,6 +419,7 @@ dependencies = [
  "look-netspeed",
  "look-qactions",
  "look-ranking",
+ "look-sources",
  "look-storage",
  "look-todo",
  "notify",

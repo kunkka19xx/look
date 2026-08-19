@@ -81,6 +81,15 @@ struct LauncherRowView: View {
             }
         }
 
+        // A declared block has no file to take an icon from, and must not look
+        // like one: Enter performs steps rather than opening anything.
+        if result.kind == .action {
+            return RowIconCache.image(key: "symbol:bolt") {
+                NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil)
+                    ?? NSWorkspace.shared.icon(for: .plainText)
+            }
+        }
+
         // Not cached: a process icon is keyed to a live pid, and pids are reused.
         if result.kind == .process, let pid = result.processPID {
             return LauncherProcessFeature.icon(forPID: pid)
@@ -125,6 +134,8 @@ struct LauncherRowView: View {
             return "Clipboard"
         case .process:
             return "Process"
+        case .action:
+            return "Action"
         }
     }
 
@@ -141,6 +152,13 @@ struct LauncherRowView: View {
         }
         if result.kind == .app {
             return kindLabel
+        }
+        if result.kind == .action {
+            // "Action • 3 steps": there is no path, and the step count says this
+            // will do several things before the user commits to it.
+            return [kindLabel, result.subtitle]
+                .compactMap { $0 }
+                .joined(separator: "  •  ")
         }
         return "\(kindLabel)  •  \(pathInfo)"
     }

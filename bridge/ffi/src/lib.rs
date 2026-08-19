@@ -13,6 +13,7 @@ mod qactions_api;
 mod runtime_config;
 mod search_api;
 mod seed_api;
+mod sources_api;
 mod state;
 mod todo_api;
 mod translate_api;
@@ -260,6 +261,27 @@ pub extern "C" fn look_translate_json(
 pub extern "C" fn look_instant_answer_json(query: *const c_char) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         answers_api::look_instant_answer_json_impl(query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// `{id, name, steps}` for the user-declared block a candidate id belongs to,
+/// so the panel can show what Enter will perform. `null` when the row is not a
+/// block row.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_block_json(candidate_id: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_source_block_json_impl(candidate_id)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Performs every step of that block, detached, through the user's login shell.
+/// Returns `{performed, errors}`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_perform_block_json(candidate_id: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_perform_block_json_impl(candidate_id)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

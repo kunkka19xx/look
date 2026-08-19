@@ -318,6 +318,14 @@ enum AppConstants {
             static let cannotRevealBanner = "Cannot reveal this target in Finder"
         }
 
+        /// Rows from a user-declared block in `~/.look/sources`.
+        enum SourceBlock {
+            static let idPrefix = "src:"
+            /// Recorded like an open, so a routine run every morning ranks like
+            /// one. The engine's usage table only needs the verb to be stable.
+            static let usageAction = "execute"
+        }
+
         enum QuickFolder {
             static let idPrefix = "quickfolder:"
             static let pinnedSubtitle = "Pinned home folder"

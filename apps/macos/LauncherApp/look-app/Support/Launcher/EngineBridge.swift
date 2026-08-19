@@ -224,6 +224,14 @@ private func look_todo_save_json(_ json: UnsafePointer<CChar>?) -> Bool
 nonisolated
 private func look_lunar_date_json(_ year: Int64, _ month: Int64, _ day: Int64, _ tz: Double) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_source_block_json")
+nonisolated
+private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_perform_block_json")
+nonisolated
+private func look_perform_block_json(_ candidateID: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_netspeed_run_json")
 nonisolated
 private func look_netspeed_run_json() -> UnsafeMutablePointer<CChar>?
@@ -985,6 +993,30 @@ final class EngineBridge: @unchecked Sendable {
         url.withCString { look_record_url_hit($0) }
     }
 
+    /// The user-declared block a row belongs to, with the exact steps Enter will
+    /// perform. Reads the sources directory, so call it off the main thread.
+    nonisolated func sourceBlock(candidateID: String) -> SourceBlock? {
+        let ptr = candidateID.withCString { look_source_block_json($0) }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(SourceBlock.self, from: data)
+    }
+
+    /// Performs every step of that block, detached, through the user's login
+    /// shell. Spawns processes - call off the main thread.
+    nonisolated func performBlock(candidateID: String) -> PerformBlockOutcome {
+        let ptr = candidateID.withCString { look_perform_block_json($0) }
+        guard let ptr else { return PerformBlockOutcome(performed: 0, errors: []) }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8),
+              let outcome = try? JSONDecoder().decode(PerformBlockOutcome.self, from: data)
+        else {
+            return PerformBlockOutcome(performed: 0, errors: [])
+        }
+        return outcome
+    }
+
     /// Up to `limit` previously-opened URLs matching `query`, most-recent first.
     /// Opens the shared look.db - call off the main thread.
     nonisolated func recentURLs(query: String, limit: Int) -> [URLHistoryEntry] {
@@ -1171,6 +1203,23 @@ nonisolated struct URLMatch: Decodable {
 
     let url: String
     let tier: Tier
+}
+
+/// A user-declared block and the steps performing it will run, so the panel can
+/// show exactly what Enter is about to do.
+nonisolated struct SourceBlock: Decodable {
+    let id: String
+    let name: String
+    let steps: [String]
+    /// The `.toml` (or script) that declared it, for showing and revealing.
+    let file: String?
+}
+
+/// How performing a block went. `errors` is empty when every step was spawned;
+/// a step's own exit code is its business, since nothing waits for it.
+nonisolated struct PerformBlockOutcome: Decodable {
+    let performed: Int
+    let errors: [String]
 }
 
 /// Wire shape of a `url_history` row (see url-history spec), decoded with

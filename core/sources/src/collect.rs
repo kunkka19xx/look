@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
-use crate::def::{Only, RowFormat, SourceDef, SourceSpec};
+use crate::def::{Block, Only, Producer, RowFormat};
 use crate::rows::{SourceRow, parse_lines};
 
 /// Hard ceiling on rows from one source. A source that hits this is a mistake
@@ -50,9 +50,16 @@ impl std::fmt::Display for CollectError {
 }
 
 /// Rows for `def`, with `~` in any declared path resolved against `home`.
-pub fn collect(def: &SourceDef, home: &Path) -> Result<Collected, CollectError> {
-    match &def.spec {
-        SourceSpec::Folder {
+pub fn collect(block: &Block, home: &Path) -> Result<Collected, CollectError> {
+    match &block.producer {
+        Producer::Bundle { .. } => Ok(Collected {
+            // A bundle is one row: itself. Its steps are what Enter performs,
+            // not something to pick from.
+            rows: vec![SourceRow::new(String::new(), block.name.clone())],
+            truncated: false,
+            unreadable: Vec::new(),
+        }),
+        Producer::Dir {
             roots,
             depth,
             only,
@@ -62,8 +69,8 @@ pub fn collect(def: &SourceDef, home: &Path) -> Result<Collected, CollectError> 
             let roots: Vec<PathBuf> = roots.iter().map(|root| expand_home(root, home)).collect();
             collect_folders(&roots, *depth, *only, include, exclude)
         }
-        SourceSpec::List { file, format } => collect_list(&expand_home(file, home), *format),
-        SourceSpec::Command { .. } => Err(CollectError::NeedsRunner),
+        Producer::File { path, format } => collect_list(&expand_home(path, home), *format),
+        Producer::Run { .. } => Err(CollectError::NeedsRunner),
     }
 }
 
@@ -243,7 +250,7 @@ fn is_hidden(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::def::parse;
+    use crate::def::parse_file;
 
     struct TempDir(PathBuf);
 
@@ -281,8 +288,10 @@ mod tests {
         }
     }
 
-    fn folder_def(body: &str) -> SourceDef {
-        parse("projects", body, None).expect("valid source")
+    fn folder_def(body: &str) -> Block {
+        let parsed = parse_file(&format!("[projects]\n{body}")).expect("valid file");
+        assert!(parsed.problems.is_empty(), "{:?}", parsed.problems);
+        parsed.blocks.into_iter().next().expect("one block")
     }
 
     #[test]
@@ -292,7 +301,7 @@ mod tests {
         tmp.dir("alpha");
         tmp.file("notes.md", "x");
 
-        let def = folder_def(&format!("root = {:?}\n", tmp.0.to_str().unwrap()));
+        let def = folder_def(&format!("dir = {:?}\n", tmp.0.to_str().unwrap()));
         let collected = collect(&def, Path::new("/nonexistent")).unwrap();
 
         let titles: Vec<&str> = collected.rows.iter().map(|r| r.title.as_str()).collect();
@@ -308,7 +317,7 @@ mod tests {
         tmp.file("readme.md", "x");
 
         let def = folder_def(&format!(
-            "root = {:?}\nonly = \"dirs\"\n",
+            "dir = {:?}\nonly = \"dirs\"\n",
             tmp.0.to_str().unwrap()
         ));
         let collected = collect(&def, Path::new("/nonexistent")).unwrap();
@@ -322,7 +331,7 @@ mod tests {
         tmp.dir("look");
         tmp.file("look/nested.txt", "x");
 
-        let shallow = folder_def(&format!("root = {:?}\n", tmp.0.to_str().unwrap()));
+        let shallow = folder_def(&format!("dir = {:?}\n", tmp.0.to_str().unwrap()));
         let titles: Vec<String> = collect(&shallow, Path::new("/nonexistent"))
             .unwrap()
             .rows
@@ -331,10 +340,7 @@ mod tests {
             .collect();
         assert_eq!(titles, ["look"]);
 
-        let deep = folder_def(&format!(
-            "root = {:?}\ndepth = 2\n",
-            tmp.0.to_str().unwrap()
-        ));
+        let deep = folder_def(&format!("dir = {:?}\ndepth = 2\n", tmp.0.to_str().unwrap()));
         let titles: Vec<String> = collect(&deep, Path::new("/nonexistent"))
             .unwrap()
             .rows
@@ -352,7 +358,7 @@ mod tests {
         tmp.file("skip.md", "x");
 
         let def = folder_def(&format!(
-            "root = {:?}\nmatch = [\"*.md\"]\nexclude = [\"skip.*\"]\n",
+            "dir = {:?}\nmatch = [\"*.md\"]\nexclude = [\"skip.*\"]\n",
             tmp.0.to_str().unwrap()
         ));
         let titles: Vec<String> = collect(&def, Path::new("/nonexistent"))
@@ -370,7 +376,7 @@ mod tests {
         tmp.dir(".git");
         tmp.dir("visible");
 
-        let def = folder_def(&format!("root = {:?}\n", tmp.0.to_str().unwrap()));
+        let def = folder_def(&format!("dir = {:?}\n", tmp.0.to_str().unwrap()));
         let titles: Vec<String> = collect(&def, Path::new("/nonexistent"))
             .unwrap()
             .rows
@@ -389,7 +395,7 @@ mod tests {
         fs::create_dir_all(work.join("atlas")).expect("dir");
 
         let def = folder_def(&format!(
-            "roots = [{:?}, {:?}]\nonly = \"dirs\"\n",
+            "dirs = [{:?}, {:?}]\nonly = \"dirs\"\n",
             dev.to_str().unwrap(),
             work.to_str().unwrap()
         ));
@@ -409,7 +415,7 @@ mod tests {
         fs::create_dir_all(work.join("atlas")).expect("dir");
 
         let def = folder_def(&format!(
-            "root = {:?}\nroots = [{:?}]\nonly = \"dirs\"\n",
+            "dir = {:?}\ndirs = [{:?}]\nonly = \"dirs\"\n",
             dev.to_str().unwrap(),
             work.to_str().unwrap()
         ));
@@ -431,7 +437,7 @@ mod tests {
         fs::create_dir_all(dev.join("look")).expect("dir");
 
         let def = folder_def(&format!(
-            "roots = [{:?}, \"/definitely/not/here\"]\nonly = \"dirs\"\n",
+            "dirs = [{:?}, \"/definitely/not/here\"]\nonly = \"dirs\"\n",
             dev.to_str().unwrap()
         ));
         let collected = collect(&def, Path::new("/nonexistent")).unwrap();
@@ -442,7 +448,7 @@ mod tests {
 
     #[test]
     fn a_missing_root_is_an_error_the_user_can_read() {
-        let def = folder_def("root = \"/definitely/not/here\"\n");
+        let def = folder_def("dir = \"/definitely/not/here\"\n");
         match collect(&def, Path::new("/nonexistent")) {
             Err(CollectError::Io(message)) => assert!(message.contains("/definitely/not/here")),
             other => panic!("expected an io error, got {other:?}"),
@@ -454,12 +460,7 @@ mod tests {
         let tmp = TempDir::new("list");
         let file = tmp.file("hosts.txt", "web1\tProduction web\tServers\ndb1\n\n");
 
-        let def = parse(
-            "hosts",
-            &format!("file = {:?}\n", file.to_str().unwrap()),
-            None,
-        )
-        .unwrap();
+        let def = folder_def(&format!("file = {:?}\n", file.to_str().unwrap()));
         let collected = collect(&def, Path::new("/nonexistent")).unwrap();
 
         assert_eq!(collected.rows.len(), 2);
@@ -474,7 +475,7 @@ mod tests {
         let tmp = TempDir::new("order");
         let file = tmp.file("ordered.txt", "zeta\nalpha\nmiddle\n");
 
-        let def = parse("o", &format!("file = {:?}\n", file.to_str().unwrap()), None).unwrap();
+        let def = folder_def(&format!("file = {:?}\n", file.to_str().unwrap()));
         let titles: Vec<String> = collect(&def, Path::new("/nonexistent"))
             .unwrap()
             .rows
@@ -486,7 +487,7 @@ mod tests {
 
     #[test]
     fn a_command_source_is_left_to_the_shell() {
-        let def = parse("c", "command = \"ls\"\n", None).unwrap();
+        let def = folder_def("run = \"ls\"\n");
         assert_eq!(
             collect(&def, Path::new("/nonexistent")),
             Err(CollectError::NeedsRunner)
