@@ -3,6 +3,7 @@ use crate::config::RuntimeConfig;
 mod apps;
 mod files;
 mod settings;
+mod sources;
 
 use look_indexing::{Candidate, CandidateIdKind};
 use std::collections::HashSet;
@@ -50,6 +51,9 @@ pub fn discover_candidates_stream_scoped(
         }
         if scope.settings {
             settings::discover_system_settings_entries(config.localized_app_names, tx.clone());
+        }
+        if scope.sources {
+            sources::discover_user_sources(tx.clone());
         }
         drop(tx);
 

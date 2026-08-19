@@ -10,6 +10,7 @@ version = "0.1.0"
 look-indexing = { path = "../indexing" }
 look-matching = { path = "../matching" }
 look-ranking = { path = "../ranking" }
+look-sources = { path = "../sources" }
 look-storage = { path = "../storage" }
 ignore = "0.4"
 regex = "1"

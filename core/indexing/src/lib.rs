@@ -16,6 +16,10 @@ pub enum CandidateIdKind {
     File,
     Folder,
     Setting,
+    /// A row from a user-declared source. Its own namespace so a source refresh
+    /// prunes only its own rows, and so a row can be told apart from an
+    /// identically-shaped one the file walker produced.
+    Source,
 }
 
 impl CandidateIdKind {
@@ -23,6 +27,7 @@ impl CandidateIdKind {
     pub const PREFIX_FILE: &'static str = "file:";
     pub const PREFIX_FOLDER: &'static str = "folder:";
     pub const PREFIX_SETTING: &'static str = "setting:";
+    pub const PREFIX_SOURCE: &'static str = "src:";
 
     pub fn as_prefix(&self) -> &'static str {
         match self {
@@ -30,6 +35,7 @@ impl CandidateIdKind {
             CandidateIdKind::File => Self::PREFIX_FILE,
             CandidateIdKind::Folder => Self::PREFIX_FOLDER,
             CandidateIdKind::Setting => Self::PREFIX_SETTING,
+            CandidateIdKind::Source => Self::PREFIX_SOURCE,
         }
     }
 
@@ -42,9 +48,24 @@ impl CandidateIdKind {
             Some(Self::Folder)
         } else if id.starts_with(Self::PREFIX_SETTING) {
             Some(Self::Setting)
+        } else if id.starts_with(Self::PREFIX_SOURCE) {
+            Some(Self::Source)
         } else {
             None
         }
+    }
+
+    /// The source id inside a source row id (`src:<source>:<row>`).
+    pub fn source_id_of(candidate_id: &str) -> Option<&str> {
+        candidate_id
+            .strip_prefix(Self::PREFIX_SOURCE)?
+            .split_once(':')
+            .map(|(source, _)| source)
+    }
+
+    /// The id-prefix that scoped pruning uses for one source's rows.
+    pub fn source_row_prefix(source_id: &str) -> String {
+        format!("{}{source_id}:", Self::PREFIX_SOURCE)
     }
 }
 

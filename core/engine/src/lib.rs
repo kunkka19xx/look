@@ -111,7 +111,8 @@ impl QueryEngine {
                 }
             }
         }
-        let results = indices
+        let results = self
+            .drop_source_shadowed(indices)
             .into_iter()
             .map(|(idx, score)| {
                 LaunchResult::from((&self.candidates[idx as usize].candidate, score))
@@ -338,6 +339,7 @@ pub struct BootstrapScope {
     pub apps: bool,
     pub files: bool,
     pub settings: bool,
+    pub sources: bool,
 }
 
 impl BootstrapScope {
@@ -345,24 +347,33 @@ impl BootstrapScope {
         apps: true,
         files: true,
         settings: true,
+        sources: true,
     };
     pub const APPS_ONLY: Self = Self {
         apps: true,
         files: false,
         settings: false,
+        sources: false,
     };
     pub const FILES_ONLY: Self = Self {
         apps: false,
         files: true,
         settings: false,
+        sources: false,
+    };
+    pub const SOURCES_ONLY: Self = Self {
+        apps: false,
+        files: false,
+        settings: false,
+        sources: true,
     };
 
     pub fn is_all(&self) -> bool {
-        self.apps && self.files && self.settings
+        self.apps && self.files && self.settings && self.sources
     }
 
     pub fn is_empty(&self) -> bool {
-        !(self.apps || self.files || self.settings)
+        !(self.apps || self.files || self.settings || self.sources)
     }
 
     pub(crate) fn id_prefixes(&self) -> Vec<&'static str> {
@@ -377,6 +388,9 @@ impl BootstrapScope {
         }
         if self.settings {
             out.push(CandidateIdKind::PREFIX_SETTING);
+        }
+        if self.sources {
+            out.push(CandidateIdKind::PREFIX_SOURCE);
         }
         out
     }
@@ -580,7 +594,7 @@ mod tests {
         let s = BootstrapScope::ALL;
         assert!(s.is_all());
         assert!(!s.is_empty());
-        assert!(s.apps && s.files && s.settings);
+        assert!(s.apps && s.files && s.settings && s.sources);
     }
 
     #[test]
@@ -604,7 +618,7 @@ mod tests {
     }
 
     #[test]
-    fn bootstrap_scope_all_yields_all_four_prefixes() {
+    fn bootstrap_scope_all_yields_every_prefix() {
         let prefixes = BootstrapScope::ALL.id_prefixes();
         assert_eq!(
             prefixes,
@@ -613,7 +627,23 @@ mod tests {
                 CandidateIdKind::PREFIX_FILE,
                 CandidateIdKind::PREFIX_FOLDER,
                 CandidateIdKind::PREFIX_SETTING,
+                CandidateIdKind::PREFIX_SOURCE,
             ]
+        );
+    }
+
+    #[test]
+    fn bootstrap_scope_sources_only_sweeps_only_source_rows() {
+        // A source refresh must never prune an app, a file, or a setting, and a
+        // file refresh must never prune a source's rows.
+        assert_eq!(
+            BootstrapScope::SOURCES_ONLY.id_prefixes(),
+            vec![CandidateIdKind::PREFIX_SOURCE]
+        );
+        assert!(
+            !BootstrapScope::FILES_ONLY
+                .id_prefixes()
+                .contains(&CandidateIdKind::PREFIX_SOURCE)
         );
     }
 
@@ -623,6 +653,7 @@ mod tests {
             apps: false,
             files: false,
             settings: false,
+            sources: false,
         };
         assert!(s.is_empty());
         assert!(!s.is_all());

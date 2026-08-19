@@ -608,7 +608,7 @@ fn default_file_scan_roots() -> Vec<String> {
 }
 
 #[cfg(target_os = "windows")]
-fn user_home_dir() -> Option<String> {
+pub(crate) fn user_home_dir() -> Option<String> {
     env::var("USERPROFILE")
         .ok()
         .filter(|value| !value.trim().is_empty())
@@ -620,7 +620,7 @@ fn user_home_dir() -> Option<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn user_home_dir() -> Option<String> {
+pub(crate) fn user_home_dir() -> Option<String> {
     env::var("HOME")
         .ok()
         .filter(|value| !value.trim().is_empty())

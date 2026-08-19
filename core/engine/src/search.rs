@@ -6,11 +6,11 @@ use crate::scoring::{
     is_system_settings_candidate, kind_bias, looks_like_settings_query, path_depth_penalty,
     path_match_score, push_top_k, query_kind_penalty_with_settings_flag,
 };
-use look_indexing::{Candidate, CandidateKind};
+use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
 use look_matching::{fuzzy_quality_bonus_prepared, fuzzy_score_prepared, prepare_query};
 use look_ranking::rank_score;
 use regex::RegexBuilder;
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const RERANK_POOL_MULTIPLIER: usize = 4;
@@ -443,10 +443,39 @@ impl QueryEngine {
 
         // Materialize Candidates only for the final top-K - the hot scoring loop
         // kept everything as (index, score) pairs to avoid per-push clones.
-        indices
+        self.drop_source_shadowed(indices)
             .into_iter()
             .map(|(idx, score)| (self.candidates[idx as usize].candidate.clone(), score))
             .collect()
+    }
+
+    /// A folder source pointed inside a scan root produces a row for a path the
+    /// file walker already indexed. Both are the same thing to the user, so only
+    /// one may appear, and the source's row is the one that carries the source's
+    /// name and its actions.
+    pub(crate) fn drop_source_shadowed(&self, ranked: Vec<(u32, i64)>) -> Vec<(u32, i64)> {
+        let source_paths: HashSet<&str> = ranked
+            .iter()
+            .map(|(idx, _)| &self.candidates[*idx as usize].candidate)
+            .filter(|candidate| Self::is_source_row(candidate))
+            .map(|candidate| candidate.path.as_ref())
+            .collect();
+
+        if source_paths.is_empty() {
+            return ranked;
+        }
+
+        ranked
+            .into_iter()
+            .filter(|(idx, _)| {
+                let candidate = &self.candidates[*idx as usize].candidate;
+                Self::is_source_row(candidate) || !source_paths.contains(candidate.path.as_ref())
+            })
+            .collect()
+    }
+
+    fn is_source_row(candidate: &Candidate) -> bool {
+        candidate.id.starts_with(CandidateIdKind::PREFIX_SOURCE)
     }
 }
 
@@ -493,6 +522,67 @@ fn location_folder(loc: &str) -> Option<&'static str> {
 mod tests {
     use super::QueryEngine;
     use look_indexing::{Candidate, CandidateKind};
+
+    #[test]
+    fn a_source_row_hides_the_file_walker_row_for_the_same_path() {
+        // A folder source pointed inside a scan root indexes paths the file
+        // walker already has. The user sees one project, not two, and the row
+        // they get is the source's, which knows its name and its actions.
+        let walked = Candidate::new(
+            "folder:/u/dev/look",
+            CandidateKind::Folder,
+            "look",
+            "/u/dev/look",
+        );
+        let from_source = Candidate::new(
+            "src:projects:/u/dev/look",
+            CandidateKind::Folder,
+            "look",
+            "/u/dev/look",
+        );
+        let unrelated = Candidate::new(
+            "folder:/u/dev/other",
+            CandidateKind::Folder,
+            "look-alike",
+            "/u/dev/other",
+        );
+        let engine = QueryEngine::new(vec![walked, from_source, unrelated]);
+
+        let ids: Vec<String> = engine
+            .search_scored("look", 10)
+            .into_iter()
+            .map(|(candidate, _)| candidate.id.to_string())
+            .collect();
+
+        assert!(ids.contains(&"src:projects:/u/dev/look".to_string()));
+        assert!(
+            !ids.contains(&"folder:/u/dev/look".to_string()),
+            "the walker row is shadowed by the source row: {ids:?}"
+        );
+        assert!(
+            ids.contains(&"folder:/u/dev/other".to_string()),
+            "a different path is untouched: {ids:?}"
+        );
+    }
+
+    #[test]
+    fn without_a_source_row_nothing_is_dropped() {
+        let engine = QueryEngine::new(vec![
+            Candidate::new(
+                "folder:/u/dev/look",
+                CandidateKind::Folder,
+                "look",
+                "/u/dev/look",
+            ),
+            Candidate::new(
+                "file:/u/dev/look.md",
+                CandidateKind::File,
+                "look.md",
+                "/u/dev/look.md",
+            ),
+        ]);
+        assert_eq!(engine.search_scored("look", 10).len(), 2);
+    }
 
     fn recent_engine() -> QueryEngine {
         let mut older = Candidate::new("file:old", CandidateKind::File, "old.txt", "/x/old.txt");
