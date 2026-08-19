@@ -276,6 +276,15 @@ pub extern "C" fn look_source_block_json(candidate_id: *const c_char) -> *mut c_
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// Every declared block as `{id, name, icon}`, for the shell's row-icon cache.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_blocks_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        sources_api::look_source_blocks_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// Performs every step of that block, detached, through the user's login shell.
 /// Returns `{performed, errors}`.
 #[unsafe(no_mangle)]

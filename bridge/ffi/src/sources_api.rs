@@ -27,6 +27,15 @@ struct BlockDetail {
     file: Option<String>,
 }
 
+/// One row of the block index the shell caches: enough to render a row without
+/// re-reading the directory for every one of them.
+#[derive(Serialize)]
+struct BlockSummary {
+    id: String,
+    name: String,
+    icon: Option<String>,
+}
+
 #[derive(Serialize)]
 struct PerformOutcome {
     performed: usize,
@@ -53,6 +62,25 @@ pub(crate) fn look_source_block_json_impl(candidate_id: *const c_char) -> *mut c
             })
             .and_then(|detail| serde_json::to_string(&detail).ok()),
     )
+}
+
+/// Every declared block as `{id, name, icon}`. The shell caches this once per
+/// launcher open so a row can show its declared icon without a disk read each
+/// time it renders.
+pub(crate) fn look_source_blocks_json_impl() -> *mut c_char {
+    let Some(home) = home_dir() else {
+        return json_cstring_or_null(Some("[]".to_string()));
+    };
+    let summaries: Vec<BlockSummary> = load_dir(&sources_dir(&home))
+        .blocks
+        .into_iter()
+        .map(|block| BlockSummary {
+            id: block.id,
+            name: block.name,
+            icon: block.icon,
+        })
+        .collect();
+    json_cstring_or_null(serde_json::to_string(&summaries).ok())
 }
 
 /// Performs every step of the block a candidate id belongs to. Returns

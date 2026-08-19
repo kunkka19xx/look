@@ -224,6 +224,10 @@ private func look_todo_save_json(_ json: UnsafePointer<CChar>?) -> Bool
 nonisolated
 private func look_lunar_date_json(_ year: Int64, _ month: Int64, _ day: Int64, _ tz: Double) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_source_blocks_json")
+nonisolated
+private func look_source_blocks_json() -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_source_block_json")
 nonisolated
 private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -1003,6 +1007,15 @@ final class EngineBridge: @unchecked Sendable {
         return try? JSONDecoder().decode(SourceBlock.self, from: data)
     }
 
+    /// Every declared block, for the row-icon cache. Reads the sources
+    /// directory, so call it off the main thread.
+    nonisolated func sourceBlocks() -> [SourceBlockSummary] {
+        guard let ptr = look_source_blocks_json() else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([SourceBlockSummary].self, from: data)) ?? []
+    }
+
     /// Performs every step of that block, detached, through the user's login
     /// shell. Spawns processes - call off the main thread.
     nonisolated func performBlock(candidateID: String) -> PerformBlockOutcome {
@@ -1213,6 +1226,14 @@ nonisolated struct SourceBlock: Decodable {
     let steps: [String]
     /// The `.toml` (or script) that declared it, for showing and revealing.
     let file: String?
+}
+
+/// A declared block as the row layer needs it: what to call it and what icon it
+/// asked for. Cached per launcher open so rendering a row never touches disk.
+nonisolated struct SourceBlockSummary: Decodable {
+    let id: String
+    let name: String
+    let icon: String?
 }
 
 /// How performing a block went. `errors` is empty when every step was spawned;

@@ -469,6 +469,20 @@ struct ResultPreviewView: View {
                 Spacer()
             }
 
+            let appIcons = SourceBlockIcons.appIcons(forSteps: blockSteps, limit: 8)
+            if !appIcons.isEmpty {
+                // What the steps will actually bring up. Only steps that name an
+                // app contribute, so the strip never implies more than the block
+                // does.
+                HStack(spacing: 6) {
+                    ForEach(Array(appIcons.enumerated()), id: \.offset) { _, icon in
+                        Image(nsImage: icon)
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                    }
+                }
+            }
+
             Text("Enter runs")
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
                 .foregroundStyle(themeStore.secondaryTextColor())

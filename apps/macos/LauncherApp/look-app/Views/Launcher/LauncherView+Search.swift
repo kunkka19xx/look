@@ -347,6 +347,9 @@ extension LauncherView {
         let result = themeStore.reloadFromConfig()
         let backendReloaded = bridge.reloadConfig()
         clipboardStore.reloadFromConfig()
+        // Declared block icons are cached for the process, so a reload is the
+        // point where an edited `icon = …` should start showing.
+        SourceBlockCatalog.invalidate()
 
         // Sync settings blur multiplier to AppUIState
         if let blurMultiplier = result.settingsBlurMultiplier {

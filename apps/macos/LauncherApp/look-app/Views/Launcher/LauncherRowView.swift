@@ -82,8 +82,14 @@ struct LauncherRowView: View {
         }
 
         // A declared block has no file to take an icon from, and must not look
-        // like one: Enter performs steps rather than opening anything.
+        // like one: Enter performs steps rather than opening anything. What the
+        // block declared wins; the bolt is the fallback.
         if result.kind == .action {
+            if let declared = SourceBlockIcons.declaredIcon(
+                SourceBlockCatalog.icon(forCandidateID: result.id)
+            ) {
+                return declared
+            }
             return RowIconCache.image(key: "symbol:bolt") {
                 NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil)
                     ?? NSWorkspace.shared.icon(for: .plainText)
