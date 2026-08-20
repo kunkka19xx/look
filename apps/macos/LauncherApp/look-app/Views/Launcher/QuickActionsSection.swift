@@ -24,6 +24,10 @@ struct QuickActionsSection: View {
     var onRun: (QuickActionDescriptor, ActionIntent) -> Void = { _, _ in }
     /// A list item (e.g. a device row) was clicked to connect/disconnect.
     var onActivateItem: (QuickActionDescriptor, QuickActionListItem) -> Void = { _, _ in }
+    /// Information belongs in the panel and verbs belong in the Cmd+K menu, so
+    /// the panel renders this with the control row suppressed: Bluetooth's
+    /// paired devices stay visible without its switch taking the space.
+    var controlHidden: Bool = false
 
     private enum Layout {
         static let rowSpacing: CGFloat = 6
@@ -40,7 +44,8 @@ struct QuickActionsSection: View {
                     isBusy: busyActionIds.contains(descriptor.actionId),
                     themeStore: themeStore,
                     onRun: { intent in onRun(descriptor, intent) },
-                    onActivateItem: { item in onActivateItem(descriptor, item) }
+                    onActivateItem: { item in onActivateItem(descriptor, item) },
+                    controlHidden: controlHidden
                 )
                 .spawnReveal(index: index, token: revealToken)
             }
@@ -59,6 +64,10 @@ private struct QuickActionControl: View {
     let themeStore: ThemeStore
     let onRun: (ActionIntent) -> Void
     let onActivateItem: (QuickActionListItem) -> Void
+    /// Information belongs in the panel and verbs belong in the Cmd+K menu, so
+    /// the panel renders this with the control row suppressed: Bluetooth's
+    /// paired devices stay visible without its switch taking the space.
+    var controlHidden: Bool = false
 
     private enum Layout {
         static let sectionSpacing: CGFloat = 4
@@ -79,7 +88,9 @@ private struct QuickActionControl: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
-            controlRow
+            if !controlHidden {
+                controlRow
+            }
             infoFields
         }
     }

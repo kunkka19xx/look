@@ -71,6 +71,7 @@ extension LauncherView {
         quickActionTask?.cancel()
 
         guard let result = selectedResultForActions else {
+            closeActionMenu()
             if !quickActionDescriptors.isEmpty { quickActionDescriptors = [] }
             if !quickActionStates.isEmpty { quickActionStates = [:] }
             if !quickActionInfo.isEmpty { quickActionInfo = [:] }
@@ -79,10 +80,9 @@ extension LauncherView {
         }
 
         var descriptors = bridge.quickActions(forResultID: result.id, kind: result.kind.rawValue)
-        // A block's `then` targets are actions on this row, so they belong in
-        // the same panel and on the same Cmd+J/K + Enter as the compiled ones.
-        // They are declared at parse time rather than build time; that is the
-        // only difference.
+        // A block's `then` targets are actions on this row, so they join the
+        // same Cmd+K menu as the compiled controls. They are declared at parse
+        // time rather than build time; that is the only difference.
         descriptors.append(contentsOf: sourceBlockTargets(for: result))
         quickActionDescriptors = descriptors
 
@@ -98,6 +98,10 @@ extension LauncherView {
             quickActionStates = [:]
             quickActionInfo = [:]
             quickActionsLoadedResultID = result.id
+            // The menu lists the SELECTED row's verbs, so it must not survive a
+            // move to another row and offer the previous one's. Re-reading the
+            // same result (a window show, a re-render) leaves it alone.
+            closeActionMenu()
         }
 
         guard !descriptors.isEmpty else { return }

@@ -318,6 +318,21 @@ enum AppConstants {
             static let cannotRevealBanner = "Cannot reveal this target in Finder"
         }
 
+        /// The Cmd+K action menu: everything you can do to the selected row,
+        /// in one place, instead of scattered across Cmd+F / Cmd+C / Cmd+P.
+        enum ActionMenu {
+            static let openHint = "⌘K actions"
+            static let runHint = "↵"
+            static let maxHeight: CGFloat = 240
+            /// Over the launchpad the menu has no panel to fill, so it takes a
+            /// readable column instead of the whole window width.
+            static let launchpadWidth: CGFloat = 320
+            static let cornerRadius: CGFloat = 10
+            static let rowVerticalPadding: CGFloat = 7
+            static let rowHorizontalPadding: CGFloat = 10
+            static let shadowRadius: CGFloat = 14
+        }
+
         /// Rows from a user-declared block in `~/.look/sources`.
         enum SourceBlock {
             static let idPrefix = "src:"
@@ -393,6 +408,8 @@ enum AppConstants {
             static let f: UInt16 = 3
             static let h: UInt16 = 4
             static let c: UInt16 = 8
+            static let j: UInt16 = 38
+            static let k: UInt16 = 40
             static let p: UInt16 = 35
             static let returnKey: UInt16 = 36
             static let tab: UInt16 = 48

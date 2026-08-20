@@ -23,6 +23,13 @@ struct ResultPreviewView: View {
     var processDetail: ProcessDetail? = nil
     var processCPU: Double? = nil
     var isMeasuringProcessCPU: Bool = false
+    /// The Cmd+K action menu, floated under the header rather than laid out, so
+    /// a row's verbs cost the preview nothing until they are asked for.
+    var isActionMenuOpen: Bool = false
+    var actionMenuIndex: Int = 0
+    /// What the menu lists. Not always `quickActions`: with an empty query the
+    /// launchpad's own controls take its place.
+    var actionMenuDescriptors: [QuickActionDescriptor] = []
 
     @State private var folderListing: FolderListing?
     @State private var trashItemCount: Int?
@@ -30,6 +37,26 @@ struct ResultPreviewView: View {
     /// with the file that declared it.
     @State private var blockSteps: [String] = []
     @State private var blockFile: String?
+
+    /// The Cmd+K popup, pinned to the top of the content area so it opens flush
+    /// under the header and floats over whatever the preview is showing.
+    private var actionMenu: some View {
+        ActionMenuView(
+            descriptors: actionMenuDescriptors,
+            states: quickActionStates,
+            focusedIndex: actionMenuIndex,
+            themeStore: themeStore,
+            onRun: { onRunQuickAction($0, $0.control == .toggle ? .toggle : .run) }
+        )
+        .transition(.opacity.combined(with: .move(edge: .top)))
+        .zIndex(1)
+    }
+
+    /// Actions with live details worth reading (Bluetooth's paired devices).
+    /// Their verbs live in the Cmd+K menu; only what they know stays here.
+    private var infoOnlyQuickActions: [QuickActionDescriptor] {
+        quickActions.filter { !$0.info.isEmpty }
+    }
 
     /// A System Settings pane result (its "path" is a URL scheme, not a file).
     private var isSetting: Bool {
@@ -366,17 +393,22 @@ struct ResultPreviewView: View {
                     Spacer()
                 }
 
-                if !quickActions.isEmpty {
+                ZStack(alignment: .topLeading) {
+                    VStack(alignment: .leading, spacing: 12) {
+                // Info only: an action's live details (Bluetooth's paired
+                // devices) are what the panel is for. Its verbs are in Cmd+K.
+                if !infoOnlyQuickActions.isEmpty {
                     QuickActionsSection(
-                        descriptors: quickActions,
+                        descriptors: infoOnlyQuickActions,
                         states: quickActionStates,
                         info: quickActionInfo,
                         pendingItems: pendingQuickActionItems,
                         busyActionIds: busyQuickActionIds,
                         themeStore: themeStore,
                         revealToken: quickActionsRevealToken,
-                        onRun: onRunQuickAction,
-                        onActivateItem: onActivateQuickActionItem
+                        onRun: { _, _ in },
+                        onActivateItem: onActivateQuickActionItem,
+                        controlHidden: true
                     )
                 }
 
@@ -418,6 +450,12 @@ struct ResultPreviewView: View {
 
                 if result.kind != .file && result.kind != .folder {
                     Spacer()
+                }
+                    }
+
+                    if isActionMenuOpen {
+                        actionMenu
+                    }
                 }
             }
             .padding(12)
@@ -494,22 +532,6 @@ struct ResultPreviewView: View {
                     code: blockSteps.joined(separator: "\n"),
                     language: "sh",
                     themeStore: themeStore
-                )
-            }
-
-            if !quickActions.isEmpty {
-                // A bundle can have `then` targets too, and they belong on the
-                // same Cmd+J/K + Enter as everywhere else.
-                QuickActionsSection(
-                    descriptors: quickActions,
-                    states: quickActionStates,
-                    info: quickActionInfo,
-                    pendingItems: pendingQuickActionItems,
-                    busyActionIds: busyQuickActionIds,
-                    themeStore: themeStore,
-                    revealToken: quickActionsRevealToken,
-                    onRun: onRunQuickAction,
-                    onActivateItem: onActivateQuickActionItem
                 )
             }
 

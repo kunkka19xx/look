@@ -93,6 +93,10 @@ struct LauncherView: View {
     @State var recentURLTask: Task<Void, Never>?
     // Quick Actions for the selected result (see docs/writing-controls.md).
     @State var quickActionDescriptors: [QuickActionDescriptor] = []
+    // The Cmd+K action menu. Closed by default, so a row's verbs cost the
+    // preview no space until asked for.
+    @State var isActionMenuOpen = false
+    @State var actionMenuIndex = 0
     @State var quickActionStates: [String: ActionState] = [:]
     // The result `quickActionStates`/`quickActionInfo` were read for. Lets a refresh
     // of the SAME result keep showing what it already resolved, instead of blanking
@@ -540,6 +544,19 @@ struct LauncherView: View {
         )
     }
 
+    /// Query shapes that render their OWN panel instead of backend results:
+    /// clipboard history, the `"` prefix menu, the `:` command menu,
+    /// translation, the process finder.
+    ///
+    /// One list because every consumer needs the same answer - skip the search,
+    /// skip the AI card, skip the home hint bar. Each call site used to spell
+    /// the disjunction out by hand, and they had already drifted apart. A new
+    /// mode belongs HERE, not in each caller.
+    var usesOwnResultPanel: Bool {
+        isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery
+            || isTranslationQuery || isProcessQuery
+    }
+
     var isTranslationQuery: Bool {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return extractTranslationQuery(from: trimmed) != nil
@@ -582,6 +599,7 @@ struct LauncherView: View {
                 "Cmd+/ command mode",
                 "Cmd+Shift+, close settings",
                 "Cmd+Shift+; apply config",
+                AppConstants.Launcher.ActionMenu.openHint,
             ]
         }
 
@@ -661,10 +679,7 @@ struct LauncherView: View {
     /// view is shown in place of the command-mode hint.
     var isHomeHintScreen: Bool {
         guard isLauncherIdle else { return false }
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if extractTranslationQuery(from: trimmed) != nil { return false }
-        if isPrefixSuggestionQuery || isCommandSuggestionQuery || isClipboardQuery || isProcessQuery { return false }
-        return true
+        return !usesOwnResultPanel
     }
 
     /// Today's done/total quick view for the home hint bar, or nil when
@@ -1085,7 +1100,7 @@ struct LauncherView: View {
                 if showsHelpScreen {
                     showsHelpScreen = false
                 }
-                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery || isTranslationQuery || isProcessQuery {
+                if usesOwnResultPanel {
                     // These render their own panels (clip history / prefix menu /
                     // command menu / translation / process finder), not backend
                     // results. Skip the search + AI answer entirely - otherwise a
@@ -1276,6 +1291,22 @@ struct LauncherView: View {
                         themeStore: themeStore,
                         revealToken: appearanceRevealToken
                     )
+                    // The preview panel is not on screen here, so the empty
+                    // state renders the Cmd+K menu itself: the launchpad's
+                    // controls are actions like any other row's.
+                    .overlay(alignment: .top) {
+                        if isActionMenuOpen {
+                            ActionMenuView(
+                                descriptors: actionMenuDescriptors,
+                                states: quickActionStates,
+                                focusedIndex: actionMenuIndex,
+                                themeStore: themeStore,
+                                onRun: { runQuickAction($0, intent: $0.control == .toggle ? .toggle : .run) }
+                            )
+                            .frame(maxWidth: AppConstants.Launcher.ActionMenu.launchpadWidth)
+                            .padding(.top, 8)
+                        }
+                    }
                 }
                 Spacer(minLength: 0)
             } else {
@@ -2020,7 +2051,10 @@ struct LauncherView: View {
                         : nil,
                     processDetail: processDetail(for: selectedResult),
                     processCPU: processCPU(for: selectedResult),
-                    isMeasuringProcessCPU: isMeasuringCPU(for: selectedResult)
+                    isMeasuringProcessCPU: isMeasuringCPU(for: selectedResult),
+                    isActionMenuOpen: isActionMenuOpen,
+                    actionMenuIndex: actionMenuIndex,
+                    actionMenuDescriptors: actionMenuDescriptors
                 )
                 // Arrow-key nav assigns `selectedResultID` inside a global
                 // `withAnimation` so the pill can glide (see LauncherView+
