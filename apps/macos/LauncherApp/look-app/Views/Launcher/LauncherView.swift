@@ -673,7 +673,17 @@ struct LauncherView: View {
         // The home screen replaces the "Cmd+/ command mode" hint with a
         // clickable today done/total quick view (see todoQuickView), so it
         // is intentionally omitted here.
-        return ["Enter open", "Cmd+H help"]
+        return [enterHint, AppConstants.Launcher.ActionMenu.openHint, "Cmd+H help"]
+    }
+
+    /// What Enter does to the selected row. A declared block performs steps or
+    /// runs its own command, so claiming "open" there is simply wrong.
+    private var enterHint: String {
+        guard let id = selectedResultID,
+              let selected = displayedResults.first(where: { $0.id == id }),
+              selected.kind == .action
+        else { return "Enter open" }
+        return "Enter run"
     }
 
     /// True when the launcher is on its default/home screen (the state

@@ -32,6 +32,11 @@ struct LauncherRowView: View {
         SyntheticRow.classify(resultID: result.id)
     }
 
+    /// A row a user-declared block produced (`specs/user-sources.md`).
+    private var isSourceRow: Bool {
+        result.id.hasPrefix(AppConstants.Launcher.SourceBlock.idPrefix)
+    }
+
     /// Cached: this runs inside `body`, and a fresh `NSImage` per redraw makes
     /// every icon in the list flicker. See `RowIconCache`.
     private var rowIcon: NSImage {
@@ -165,6 +170,12 @@ struct LauncherRowView: View {
             return [kindLabel, result.subtitle]
                 .compactMap { $0 }
                 .joined(separator: "  •  ")
+        }
+        // A row a user's block produced says WHICH block, not "Folder". The kind
+        // is already on the icon, and where the row came from is the thing the
+        // list cannot otherwise tell you.
+        if isSourceRow, let block = result.subtitle {
+            return "\(block)  •  \(pathInfo)"
         }
         return "\(kindLabel)  •  \(pathInfo)"
     }
