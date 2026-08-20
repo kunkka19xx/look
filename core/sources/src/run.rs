@@ -10,10 +10,15 @@
 //! after Enter, and an app it launched must outlive it.
 
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 /// Used when `$SHELL` is unset, which happens for processes the window server
 /// starts without a user session environment.
 const FALLBACK_SHELL: &str = "/bin/sh";
+
+/// How often a captured command is checked for having finished. Short enough
+/// that a fast command is not held up, long enough not to spin.
+const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Environment the step can read to know which row it was performed on.
 pub const ENV_ID: &str = "LOOK_ID";
@@ -122,6 +127,65 @@ fn spawn(step: &str, row: Option<&RowContext>) -> Result<(), String> {
         .map_err(|err| format!("{shell}: {err}"))
 }
 
+/// Runs `command` and returns its stdout, for the producers whose output IS the
+/// answer (a `run` block's rows, a `preview`).
+///
+/// Bounded three ways, because this is arbitrary user code on a path the user is
+/// waiting on: a timeout, a byte cap, and no stdin. Unlike `perform`, this waits
+/// - the caller is asking for the output, so there is nothing to detach from.
+pub fn capture(
+    command: &str,
+    cwd: Option<&str>,
+    timeout: Duration,
+    max_bytes: usize,
+) -> Result<String, String> {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| FALLBACK_SHELL.to_string());
+    let mut spawned = Command::new(&shell)
+        .arg("-lc")
+        .arg(command)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .current_dir(cwd.filter(|dir| !dir.is_empty()).unwrap_or("/"))
+        .spawn()
+        .map_err(|err| format!("{shell}: {err}"))?;
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        match spawned.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = spawned.kill();
+                    let _ = spawned.wait();
+                    return Err(format!("timed out after {}s", timeout.as_secs()));
+                }
+                std::thread::sleep(POLL_INTERVAL);
+            }
+            Err(err) => return Err(err.to_string()),
+        }
+    }
+
+    let output = spawned.wait_with_output().map_err(|err| err.to_string())?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let reason = stderr.lines().next().unwrap_or("exited non-zero").trim();
+        return Err(reason.to_string());
+    }
+
+    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    if text.len() > max_bytes {
+        // Cut on a char boundary so a multi-byte glyph at the cap does not
+        // produce a panic or a replacement character.
+        let mut cut = max_bytes;
+        while cut > 0 && !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        text.truncate(cut);
+    }
+    Ok(text)
+}
+
 /// Its own process group, so closing the launcher never signals what it started.
 #[cfg(unix)]
 fn detach(command: &mut Command) {
@@ -208,6 +272,38 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn capture_returns_what_the_command_printed() {
+        let out = capture("printf 'a\nb\n'", None, Duration::from_secs(5), 1024).unwrap();
+        assert_eq!(out, "a\nb\n");
+    }
+
+    #[test]
+    fn a_command_that_fails_reports_its_first_stderr_line() {
+        let err = capture("echo boom >&2; exit 1", None, Duration::from_secs(5), 1024).unwrap_err();
+        assert_eq!(err, "boom");
+    }
+
+    #[test]
+    fn a_hung_command_is_killed_rather_than_waited_on() {
+        let err = capture("sleep 30", None, Duration::from_millis(150), 1024).unwrap_err();
+        assert!(err.contains("timed out"), "{err}");
+    }
+
+    #[test]
+    fn output_past_the_cap_is_cut_on_a_char_boundary() {
+        // A multi-byte glyph straddling the cap must not panic or corrupt.
+        let out = capture(
+            "printf 'é%.0s' $(seq 1 100)",
+            None,
+            Duration::from_secs(5),
+            15,
+        )
+        .unwrap();
+        assert!(out.len() <= 15);
+        assert!(out.chars().all(|c| c == 'é'), "{out:?}");
     }
 
     #[test]

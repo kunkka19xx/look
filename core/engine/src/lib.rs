@@ -67,6 +67,11 @@ struct IndexedCandidate {
 pub struct QueryEngine {
     candidates: Vec<IndexedCandidate>,
     search_aliases: HashMap<String, Vec<String>>,
+    /// Per-block score offset from a declared `bias`, keyed by block id. Kept
+    /// beside the candidates rather than on them: the bias belongs to the
+    /// declaration, so editing it must take effect without reindexing every row
+    /// the block produced.
+    source_biases: HashMap<String, i64>,
 }
 
 impl QueryEngine {
@@ -78,10 +83,44 @@ impl QueryEngine {
     pub fn new_with_config(candidates: Vec<Candidate>, config: &RuntimeConfig) -> Self {
         // Build an in-memory search index up front (hot path reads only).
         let candidates = candidates.into_iter().map(IndexedCandidate::new).collect();
+        let declared = index::declared_blocks();
+        let mut search_aliases = config.search_aliases.clone();
+        // A block's `aliases` are extra words that should find its rows. Its
+        // rows carry the block name as their subtitle, so pointing the alias at
+        // that name reuses the existing alias matcher unchanged.
+        for block in &declared {
+            for alias in &block.aliases {
+                let key = normalize_for_search(alias);
+                if key.is_empty() {
+                    continue;
+                }
+                search_aliases
+                    .entry(key)
+                    .or_default()
+                    .push(normalize_for_search(&block.name));
+            }
+        }
+
         Self {
             candidates,
-            search_aliases: config.search_aliases.clone(),
+            search_aliases,
+            source_biases: declared
+                .into_iter()
+                .filter(|block| block.bias != 0)
+                .map(|block| (block.id, block.bias))
+                .collect(),
         }
+    }
+
+    /// The declared bias for the block that produced `candidate`, or 0.
+    pub(crate) fn source_bias(&self, candidate: &Candidate) -> i64 {
+        if self.source_biases.is_empty() {
+            return 0;
+        }
+        CandidateIdKind::source_id_of(&candidate.id)
+            .and_then(|id| self.source_biases.get(id))
+            .copied()
+            .unwrap_or(0)
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Vec<LaunchResult> {

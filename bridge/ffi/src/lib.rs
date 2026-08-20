@@ -269,9 +269,14 @@ pub extern "C" fn look_instant_answer_json(query: *const c_char) -> *mut c_char 
 /// so the panel can show what Enter will perform. `null` when the row is not a
 /// block row.
 #[unsafe(no_mangle)]
-pub extern "C" fn look_source_block_json(candidate_id: *const c_char) -> *mut c_char {
+pub extern "C" fn look_source_block_json(
+    candidate_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        sources_api::look_source_block_json_impl(candidate_id)
+        sources_api::look_source_block_json_impl(candidate_id, row_id, row_title, row_path)
     }))
     .unwrap_or(std::ptr::null_mut())
 }
@@ -282,6 +287,31 @@ pub extern "C" fn look_source_blocks_json() -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(
         sources_api::look_source_blocks_json_impl,
     ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Re-runs every enabled `run` block and stores its rows for the next index
+/// pass. Blocks while commands run - call off the main thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_refresh_run_blocks_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        sources_api::look_refresh_run_blocks_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// A block's declared `preview`, run against the selected row. `null` when the
+/// block declares none.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_preview_json(
+    candidate_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_source_preview_json_impl(candidate_id, row_id, row_title, row_path)
+    }))
     .unwrap_or(std::ptr::null_mut())
 }
 

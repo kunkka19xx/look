@@ -6,10 +6,9 @@
 //! refresh prunes its own rows and nothing else.
 //!
 //! A `dir` block's rows are real files and folders, so they keep the file kinds
-//! and everything those give (preview, reveal, open). A `do` bundle has no
-//! filesystem target at all: it is one `Action` row whose steps are performed.
-//! `file` and `run` blocks need a process or a reader the shell owns, so they
-//! are loaded here but not yet indexed.
+//! and everything those give (preview, reveal, open). A `do` bundle and the rows
+//! of a `file` or `run` block have no filesystem target, so they are `Action`
+//! rows: performed, never opened.
 
 use std::fs;
 use std::path::Path;
@@ -17,11 +16,23 @@ use std::sync::mpsc::SyncSender;
 use std::time::UNIX_EPOCH;
 
 use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
-use look_sources::{Block, Producer, collect, load_dir, sources_dir};
+use look_sources::{Block, Producer, SourceRow, collect, load_dir, sources_dir};
+
+use crate::index::run_cache;
 
 /// Shown as the subtitle of a bundle row, so a row with no path still says what
 /// it is rather than borrowing a file's look.
 const BUNDLE_STEP_LABEL: &str = "step";
+
+/// Every declared block, for callers that need the declarations rather than the
+/// rows (scoring bias, search aliases). Problems are reported by the indexing
+/// pass, so this stays quiet.
+pub fn declared_blocks() -> Vec<Block> {
+    let Some(home) = crate::config::user_home_dir() else {
+        return Vec::new();
+    };
+    load_dir(&sources_dir(Path::new(&home))).blocks
+}
 
 pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
     let Some(home) = crate::config::user_home_dir() else {
@@ -50,8 +61,11 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
                 let _ = tx.send(bundle_candidate(block, steps.len()));
             }
             Producer::Dir { .. } => emit_dir(block, home, &tx),
-            // Rows from a file or a command still need the shell's reader.
-            Producer::File { .. } | Producer::Run { .. } => {}
+            Producer::File { .. } => emit_rows(block, home, &tx),
+            // A `run` block needs a process, and spawning one per index pass
+            // would put arbitrary user commands on the indexing thread. The
+            // shell runs it and hands the rows back (see `run_cache`).
+            Producer::Run { .. } => emit_cached_rows(block, &tx),
         }
     }
 }
@@ -95,6 +109,60 @@ fn emit_dir(block: &Block, home: &Path, tx: &SyncSender<Candidate>) {
             return;
         }
     }
+}
+
+/// Rows a `file` block read, or a `run` block's cached output: text, not
+/// filesystem entries, so each becomes an `Action` row whose id is what the
+/// block's verbs and `then` targets receive.
+fn emit_rows(block: &Block, home: &Path, tx: &SyncSender<Candidate>) {
+    let collected = match collect(block, home) {
+        Ok(collected) => collected,
+        Err(err) => {
+            eprintln!("look sources: [{}] produced no rows: {err}", block.id);
+            return;
+        }
+    };
+    if collected.truncated {
+        eprintln!(
+            "look sources: [{}] hit the row cap; some rows are not indexed",
+            block.id
+        );
+    }
+    send_rows(block, &collected.rows, tx);
+}
+
+/// A `run` block's rows come from the last refresh the shell performed. No cache
+/// means the block has not been run yet, which is silent: a first launcher open
+/// should not look like a broken source.
+fn emit_cached_rows(block: &Block, tx: &SyncSender<Candidate>) {
+    let rows = run_cache::read(&block.id);
+    send_rows(block, &rows, tx);
+}
+
+fn send_rows(block: &Block, rows: &[SourceRow], tx: &SyncSender<Candidate>) {
+    for row in rows {
+        if tx.send(row_candidate(block, row)).is_err() {
+            return;
+        }
+    }
+}
+
+fn row_candidate(block: &Block, row: &SourceRow) -> Candidate {
+    let id = format!(
+        "{}{}",
+        CandidateIdKind::source_row_prefix(&block.id),
+        row.id
+    );
+    let mut candidate = Candidate::new(
+        &id,
+        CandidateKind::Action,
+        &row.title,
+        row.path.as_deref().unwrap_or_default(),
+    );
+    // The group when the row named one, else the block: either way the row says
+    // where it came from, and typing that word lists the block.
+    candidate.subtitle = Some(row.group.as_deref().unwrap_or(block.name.as_str()).into());
+    candidate
 }
 
 fn dir_candidate(block: &Block, row_id: &str, title: &str, path: &str) -> Candidate {

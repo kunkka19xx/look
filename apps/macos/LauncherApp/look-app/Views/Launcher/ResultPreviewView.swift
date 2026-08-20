@@ -37,6 +37,19 @@ struct ResultPreviewView: View {
     /// with the file that declared it.
     @State private var blockSteps: [String] = []
     @State private var blockFile: String?
+    /// Output of the block's declared `preview`, for rows that have one.
+    @State private var blockPreview: SourcePreview?
+
+    /// The menu for a preview that has no content area to pin it into. Padded
+    /// clear of the header so it still reads as attached to the row above it.
+    @ViewBuilder
+    private var floatingActionMenu: some View {
+        if isActionMenuOpen {
+            actionMenu
+                .padding(.horizontal, 16)
+                .padding(.top, 84)
+        }
+    }
 
     /// The Cmd+K popup, pinned to the top of the content area so it opens flush
     /// under the header and floats over whatever the preview is showing.
@@ -341,7 +354,7 @@ struct ResultPreviewView: View {
 
     var body: some View {
         if result.kind == .action {
-            actionPreview
+            actionPreview.overlay(alignment: .top) { floatingActionMenu }
         } else if result.kind == .process {
             processPreview
         } else if result.kind == .clipboard {
@@ -521,18 +534,27 @@ struct ResultPreviewView: View {
                 }
             }
 
-            Text("Enter runs")
-                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
-                .foregroundStyle(themeStore.secondaryTextColor())
+            if !blockSteps.isEmpty {
+                Text("Enter runs")
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
+                    .foregroundStyle(themeStore.secondaryTextColor())
+            }
 
             // The steps ARE shell, so they get the same block an AI answer's
             // code gets: highlighted, selectable, and copyable in one press.
             ScrollView {
-                AICodeBlockView(
-                    code: blockSteps.joined(separator: "\n"),
-                    language: "sh",
-                    themeStore: themeStore
-                )
+                VStack(alignment: .leading, spacing: 10) {
+                    if !blockSteps.isEmpty {
+                        AICodeBlockView(
+                            code: blockSteps.joined(separator: "\n"),
+                            language: "sh",
+                            themeStore: themeStore
+                        )
+                    }
+                    if let preview = blockPreview {
+                        blockPreviewBody(preview)
+                    }
+                }
             }
 
             Spacer(minLength: 0)
@@ -555,6 +577,39 @@ struct ResultPreviewView: View {
             if Task.isCancelled { return }
             blockSteps = block?.steps ?? []
             blockFile = block?.file
+
+            // The declared `preview` runs a command, so it is read separately
+            // and only after the cheap details are on screen.
+            blockPreview = nil
+            let row = (id: result.id, title: result.title, path: result.path)
+            let preview = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.sourcePreview(
+                    candidateID: candidateID,
+                    rowID: row.id,
+                    rowTitle: row.title,
+                    rowPath: row.path
+                )
+            }.value
+            if Task.isCancelled { return }
+            blockPreview = preview
+        }
+    }
+
+    /// A block's `preview` output, or the reason it could not run. A failure is
+    /// shown rather than swallowed: a preview that silently does nothing reads
+    /// as the feature being broken.
+    @ViewBuilder
+    private func blockPreviewBody(_ preview: SourcePreview) -> some View {
+        if let error = preview.error {
+            Text(error)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                .foregroundStyle(themeStore.mutedTextColor())
+        } else if !preview.text.isEmpty {
+            Text(preview.text)
+                .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
+                .foregroundStyle(themeStore.secondaryTextColor())
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

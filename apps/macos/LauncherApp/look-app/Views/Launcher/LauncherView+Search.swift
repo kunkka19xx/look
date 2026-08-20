@@ -345,11 +345,17 @@ extension LauncherView {
         successDuration: Double = 2.0
     ) -> Bool {
         let result = themeStore.reloadFromConfig()
+        // `run` blocks produce their rows by executing a command, so they must
+        // run BEFORE the reindex that reads what they produced.
+        let runBlocks = bridge.refreshRunBlocks()
         let backendReloaded = bridge.reloadConfig()
         clipboardStore.reloadFromConfig()
-        // Declared block icons are cached for the process, so a reload is the
-        // point where an edited `icon = …` should start showing.
+        // Declared block icons and `then` targets are cached for the process, so
+        // a reload is the point where an edited file should start showing.
         SourceBlockCatalog.invalidate()
+        for failure in runBlocks.errors {
+            showBanner(failure, style: .error, duration: 3.0)
+        }
 
         // Sync settings blur multiplier to AppUIState
         if let blurMultiplier = result.settingsBlurMultiplier {

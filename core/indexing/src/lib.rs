@@ -70,6 +70,47 @@ impl CandidateIdKind {
     pub fn source_row_prefix(source_id: &str) -> String {
         format!("{}{source_id}:", Self::PREFIX_SOURCE)
     }
+
+    /// The ROW's own id inside a source row id (`src:<source>:<row>`), which is
+    /// what a user's command expects `{id}` to be. Anything not namespaced is
+    /// returned as-is, so a caller can pass either shape.
+    pub fn source_row_id_of(candidate_id: &str) -> &str {
+        candidate_id
+            .strip_prefix(Self::PREFIX_SOURCE)
+            .and_then(|rest| rest.split_once(':'))
+            .map(|(_, row)| row)
+            .unwrap_or(candidate_id)
+    }
+}
+
+#[cfg(test)]
+mod id_tests {
+    use super::CandidateIdKind;
+
+    #[test]
+    fn a_row_id_is_what_a_users_command_sees() {
+        // Handing git the whole candidate id makes it read `src:branches:main`
+        // as rev:path and fail with "invalid object name 'src'".
+        let id = "src:branches:326-bug-battery-on-macos";
+        assert_eq!(CandidateIdKind::source_id_of(id), Some("branches"));
+        assert_eq!(
+            CandidateIdKind::source_row_id_of(id),
+            "326-bug-battery-on-macos"
+        );
+    }
+
+    #[test]
+    fn a_row_id_containing_colons_keeps_them() {
+        assert_eq!(
+            CandidateIdKind::source_row_id_of("src:hosts:user@host:22"),
+            "user@host:22"
+        );
+    }
+
+    #[test]
+    fn an_unnamespaced_id_passes_through() {
+        assert_eq!(CandidateIdKind::source_row_id_of("main"), "main");
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

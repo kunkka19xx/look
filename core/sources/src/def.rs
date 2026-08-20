@@ -188,6 +188,9 @@ pub struct Block {
     pub icon: Option<String>,
     pub enabled: bool,
     pub preview: Option<String>,
+    /// A yes/no question asked before this block performs anything. Destructive
+    /// steps get one, because a launcher makes Enter on the wrong row cheap.
+    pub confirm: Option<String>,
     /// The file this block was declared in, so the app can show it and reveal
     /// it. Set by the loader; parsing a string alone has no file to name.
     pub source_file: Option<String>,
@@ -232,6 +235,7 @@ struct RawBlock {
     icon: Option<String>,
     enabled: Option<bool>,
     preview: Option<String>,
+    confirm: Option<String>,
 
     #[serde(rename = "do")]
     steps: Option<Vec<String>>,
@@ -347,6 +351,7 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
         icon: raw.icon,
         enabled: raw.enabled.unwrap_or(true),
         preview: raw.preview,
+        confirm: raw.confirm.filter(|question| !question.trim().is_empty()),
         source_file: None,
         unknown_keys: raw.extra.keys().cloned().collect(),
     })
@@ -576,6 +581,23 @@ dir = "~/notes"
     }
 
     #[test]
+    fn a_destructive_block_can_ask_before_it_acts() {
+        let block = one("[drop]\nconfirm = \"Delete {id}?\"\ndo = [\"git branch -D {id}\"]\n");
+        assert_eq!(block.confirm.as_deref(), Some("Delete {id}?"));
+        assert!(block.needs_row());
+    }
+
+    #[test]
+    fn a_blank_confirm_is_no_confirm() {
+        // An empty string would otherwise mean "ask", with nothing to read.
+        assert!(
+            one("[a]\nconfirm = \"  \"\ndo = [\"true\"]\n")
+                .confirm
+                .is_none()
+        );
+    }
+
+    #[test]
     fn the_shipped_example_parses_with_nothing_left_unexplained() {
         // example.toml is what users copy, so a key renamed here without
         // updating it would hand everyone a file full of ignored settings.
@@ -583,7 +605,38 @@ dir = "~/notes"
         assert!(parsed.problems.is_empty(), "{:?}", parsed.problems);
 
         let ids: Vec<&str> = parsed.blocks.iter().map(|b| b.id.as_str()).collect();
-        assert_eq!(ids, ["branches", "hosts", "projects", "work"]);
+        assert_eq!(
+            ids,
+            [
+                "branches",
+                "drop-branch",
+                "ghostty",
+                "hosts",
+                "projects",
+                "work"
+            ]
+        );
+
+        // Anything the example shows as destructive must ask first, or it
+        // teaches the wrong habit to everyone who copies it.
+        let destructive = parsed
+            .blocks
+            .iter()
+            .find(|block| block.id == "drop-branch")
+            .expect("the delete example");
+        assert!(destructive.confirm.is_some());
+
+        // Every `then` target the example names must exist, or the file it
+        // hands new users would load with a reported error.
+        for block in &parsed.blocks {
+            for target in &block.then {
+                assert!(
+                    parsed.blocks.iter().any(|other| &other.id == target),
+                    "[{}] then names unknown block \"{target}\"",
+                    block.id
+                );
+            }
+        }
 
         for block in &parsed.blocks {
             assert!(

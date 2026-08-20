@@ -28,7 +28,7 @@ extension LauncherView {
     func sourceBlockTargets(for result: LauncherResult) -> [QuickActionDescriptor] {
         guard result.id.hasPrefix(AppConstants.Launcher.SourceBlock.idPrefix) else { return [] }
 
-        return SourceBlockCatalog.targets(forCandidateID: result.id).map { target in
+        return SourceBlockCatalog.targets(for: result).map { target in
             QuickActionDescriptor(
                 actionId: SourceBlockAction.actionID(forBlockID: target.id),
                 title: target.performs ? target.name : "\(target.name)…",

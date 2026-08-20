@@ -9,25 +9,30 @@ import AppKit
 @MainActor
 enum SourceBlockCatalog {
     private static var iconsByBlockID: [String: String]?
-    private static var targetsByBlockID: [String: [SourceBlockTarget]] = [:]
+    private static var targetsByCandidateID: [String: [SourceBlockTarget]] = [:]
 
     static func invalidate() {
         iconsByBlockID = nil
-        targetsByBlockID = [:]
+        targetsByCandidateID = [:]
     }
 
-    /// The `then` targets of the block a candidate id belongs to.
+    /// The `then` targets for one row.
     ///
-    /// Memoised per block: this is read while building the panel on every
-    /// selection change, and arrow-keying down a list of projects should not
-    /// re-read the sources directory once per row. `invalidate()` on config
-    /// reload is what picks up an edited `then`.
-    static func targets(forCandidateID candidateID: String) -> [SourceBlockTarget] {
-        guard let blockID = blockID(fromCandidateID: candidateID) else { return [] }
-        if let cached = targetsByBlockID[blockID] { return cached }
+    /// Keyed on the candidate rather than the block, because a target's confirm
+    /// question is expanded against the row ("Delete main?"). Memoised because
+    /// this is read while building the panel on every selection change, and
+    /// arrow-keying down a list should not re-read the sources directory once
+    /// per row. `invalidate()` on config reload picks up an edited `then`.
+    static func targets(for result: LauncherResult) -> [SourceBlockTarget] {
+        if let cached = targetsByCandidateID[result.id] { return cached }
 
-        let targets = EngineBridge.shared.sourceBlock(candidateID: candidateID)?.then ?? []
-        targetsByBlockID[blockID] = targets
+        let targets = EngineBridge.shared.sourceBlock(
+            candidateID: result.id,
+            rowID: result.id,
+            rowTitle: result.title,
+            rowPath: result.path
+        )?.then ?? []
+        targetsByCandidateID[result.id] = targets
         return targets
     }
 

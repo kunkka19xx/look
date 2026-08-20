@@ -22,4 +22,4 @@ pub use def::{
 };
 pub use load::{Loaded, Problem, SOURCES_DIR_ENV, load_dir, sources_dir};
 pub use rows::{SourceRow, parse_line, parse_lines};
-pub use run::{ENV_ID, ENV_PATH, ENV_TITLE, RowContext, StepOutcome, perform};
+pub use run::{ENV_ID, ENV_PATH, ENV_TITLE, RowContext, StepOutcome, capture, expand, perform};

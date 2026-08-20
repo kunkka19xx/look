@@ -12,6 +12,7 @@ use look_indexing::CandidateIdKind;
 use look_sources::{Block, Producer, RowContext, load_dir, sources_dir};
 use serde::Serialize;
 use std::os::raw::c_char;
+use std::time::Duration;
 
 use crate::state::{cstr_to_string, json_cstring_or_null};
 
@@ -23,6 +24,9 @@ struct ThenTarget {
     name: String,
     icon: Option<String>,
     performs: bool,
+    /// The question to ask before running it, already expanded against the row,
+    /// or null when it needs no confirmation.
+    confirm: Option<String>,
 }
 
 /// What the panel shows for a block row: its name, the exact steps Enter will
@@ -55,8 +59,14 @@ struct PerformOutcome {
 
 /// `{id, name, steps, file, then}` for the block a candidate id belongs to, or
 /// the JSON literal `null` when it is not a block row or no longer exists.
-pub(crate) fn look_source_block_json_impl(candidate_id: *const c_char) -> *mut c_char {
+pub(crate) fn look_source_block_json_impl(
+    candidate_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+) -> *mut c_char {
     let candidate_id = cstr_to_string(candidate_id);
+    let row = row_context(row_id, row_title, row_path, "");
     let Some(block_id) = CandidateIdKind::source_id_of(&candidate_id) else {
         return json_cstring_or_null(None);
     };
@@ -78,6 +88,12 @@ pub(crate) fn look_source_block_json_impl(candidate_id: *const c_char) -> *mut c
             name: target.name.clone(),
             icon: target.icon.clone(),
             performs: target.is_bundle(),
+            // Expanded here so the question names the row the user is looking
+            // at ("Delete main?"), not the template.
+            confirm: target
+                .confirm
+                .as_deref()
+                .map(|question| look_sources::expand(question, &row)),
         })
         .collect();
 
@@ -123,21 +139,28 @@ pub(crate) fn look_perform_block_json_impl(
     query: *const c_char,
 ) -> *mut c_char {
     let block_id = cstr_to_string(block_id);
-    let row = RowContext {
-        id: cstr_to_string(row_id),
-        title: cstr_to_string(row_title),
-        path: cstr_to_string(row_path),
-        query: cstr_to_string(query),
-    };
+    let row = row_context(row_id, row_title, row_path, &cstr_to_string(query));
 
     let Some(block) = find_block(&block_id) else {
         return outcome(0, vec!["that block no longer exists".into()]);
     };
-    let Producer::Bundle { steps } = &block.producer else {
-        return outcome(0, vec![format!("[{}] has no steps to perform", block.id)]);
+
+    // A bundle IS its steps. Any other producer makes rows, so what Enter does
+    // to one of them is the block's `open` verb.
+    let steps: Vec<String> = match &block.producer {
+        Producer::Bundle { steps } => steps.clone(),
+        _ => match block.verbs.open.as_deref() {
+            Some(command) => vec![command.to_string()],
+            None => {
+                return outcome(
+                    0,
+                    vec![format!("[{}] declares no `open` for its rows", block.id)],
+                );
+            }
+        },
     };
 
-    let outcomes = look_sources::perform(steps, Some(&row));
+    let outcomes = look_sources::perform(&steps, Some(&row));
     let errors: Vec<String> = outcomes
         .iter()
         .filter_map(|step| {
@@ -149,10 +172,124 @@ pub(crate) fn look_perform_block_json_impl(
     outcome(outcomes.len() - errors.len(), errors)
 }
 
+/// Fallback limits for a captured command, when the block names none. A source
+/// refresh happens while the user waits, so the ceiling is low on purpose.
+const DEFAULT_CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_CAPTURE_BYTES: usize = 256 * 1024;
+
+/// Re-runs every enabled `run` block and stores its rows, so the next index pass
+/// picks them up. Returns `{refreshed, errors}`.
+///
+/// A block that fails keeps the rows it had: losing them would also drop the
+/// usage history keyed to their ids, which is a worse outcome than stale rows.
+pub(crate) fn look_refresh_run_blocks_json_impl() -> *mut c_char {
+    let Some(home) = home_dir() else {
+        return json_cstring_or_null(Some("{\"refreshed\":0,\"errors\":[]}".into()));
+    };
+
+    let mut refreshed = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+    for block in load_dir(&sources_dir(&home)).blocks {
+        let Producer::Run {
+            command,
+            cwd,
+            timeout,
+            ..
+        } = &block.producer
+        else {
+            continue;
+        };
+        if !block.enabled {
+            look_engine::index::clear_run_rows(&block.id);
+            continue;
+        }
+
+        let outcome = look_sources::capture(
+            command,
+            cwd.as_deref(),
+            timeout.unwrap_or(DEFAULT_CAPTURE_TIMEOUT),
+            MAX_CAPTURE_BYTES,
+        )
+        .and_then(|output| look_engine::index::store_run_rows(&block.id, &output));
+
+        match outcome {
+            Ok(rows) => refreshed += rows,
+            Err(message) => errors.push(format!("[{}] {message}", block.id)),
+        }
+    }
+
+    json_cstring_or_null(
+        serde_json::to_string(&serde_json::json!({
+            "refreshed": refreshed,
+            "errors": errors,
+        }))
+        .ok(),
+    )
+}
+
+/// Runs a block's declared `preview` against the selected row and returns its
+/// output as `{rows, error}`-shaped text, or `null` when it declares none.
+pub(crate) fn look_source_preview_json_impl(
+    candidate_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+) -> *mut c_char {
+    let candidate_id = cstr_to_string(candidate_id);
+    let Some(block_id) = CandidateIdKind::source_id_of(&candidate_id) else {
+        return json_cstring_or_null(None);
+    };
+    let Some(block) = find_block(block_id) else {
+        return json_cstring_or_null(None);
+    };
+    let Some(preview) = block.preview.as_deref() else {
+        return json_cstring_or_null(None);
+    };
+
+    let row = row_context(row_id, row_title, row_path, "");
+    let command = look_sources::expand(preview, &row);
+    let text = look_sources::capture(
+        &command,
+        Some(&row.path),
+        DEFAULT_CAPTURE_TIMEOUT,
+        MAX_CAPTURE_BYTES,
+    );
+
+    json_cstring_or_null(
+        serde_json::to_string(&match text {
+            Ok(text) => serde_json::json!({ "text": text, "error": serde_json::Value::Null }),
+            Err(message) => serde_json::json!({ "text": "", "error": message }),
+        })
+        .ok(),
+    )
+}
+
+/// What Enter will run: a bundle's steps, or the `open` verb that acts on a
+/// row the block produced. Either way the panel shows the real commands.
+/// The selected row as a user's command sees it.
+///
+/// `{id}` is the row's OWN id, never the namespaced candidate id: a script
+/// asking for a branch expects `main`, and handing it `src:branches:main` makes
+/// git read the whole thing as `rev:path`.
+fn row_context(
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+    query: &str,
+) -> RowContext {
+    let candidate_id = cstr_to_string(row_id);
+    RowContext {
+        id: CandidateIdKind::source_row_id_of(&candidate_id).to_string(),
+        title: cstr_to_string(row_title),
+        path: cstr_to_string(row_path),
+        query: query.to_string(),
+    }
+}
+
 fn steps_of(block: &Block) -> Vec<String> {
     match &block.producer {
         Producer::Bundle { steps } => steps.clone(),
-        _ => Vec::new(),
+        _ => block.verbs.open.iter().cloned().collect(),
     }
 }
 

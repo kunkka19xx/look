@@ -224,13 +224,21 @@ private func look_todo_save_json(_ json: UnsafePointer<CChar>?) -> Bool
 nonisolated
 private func look_lunar_date_json(_ year: Int64, _ month: Int64, _ day: Int64, _ tz: Double) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_refresh_run_blocks_json")
+nonisolated
+private func look_refresh_run_blocks_json() -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_source_preview_json")
+nonisolated
+private func look_source_preview_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_source_blocks_json")
 nonisolated
 private func look_source_blocks_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_block_json")
 nonisolated
-private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_perform_block_json")
 nonisolated
@@ -999,12 +1007,57 @@ final class EngineBridge: @unchecked Sendable {
 
     /// The user-declared block a row belongs to, with the exact steps Enter will
     /// perform. Reads the sources directory, so call it off the main thread.
-    nonisolated func sourceBlock(candidateID: String) -> SourceBlock? {
-        let ptr = candidateID.withCString { look_source_block_json($0) }
+    nonisolated func sourceBlock(
+        candidateID: String, rowID: String = "", rowTitle: String = "", rowPath: String = ""
+    ) -> SourceBlock? {
+        let ptr = candidateID.withCString { candidate in
+            rowID.withCString { id in
+                rowTitle.withCString { title in
+                    rowPath.withCString { path in
+                        look_source_block_json(candidate, id, title, path)
+                    }
+                }
+            }
+        }
         guard let ptr else { return nil }
         defer { look_free_cstring(ptr) }
         guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(SourceBlock.self, from: data)
+    }
+
+    /// Re-runs every `run` block and stores its rows for the next index pass.
+    /// Spawns the user's commands and waits for them - call off the main thread.
+    nonisolated func refreshRunBlocks() -> RunBlockRefreshOutcome {
+        guard let ptr = look_refresh_run_blocks_json() else {
+            return RunBlockRefreshOutcome(refreshed: 0, errors: [])
+        }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8),
+              let outcome = try? JSONDecoder().decode(RunBlockRefreshOutcome.self, from: data)
+        else {
+            return RunBlockRefreshOutcome(refreshed: 0, errors: [])
+        }
+        return outcome
+    }
+
+    /// A block's declared `preview`, run against the selected row. Nil when the
+    /// block declares none. Runs a command - call off the main thread.
+    nonisolated func sourcePreview(
+        candidateID: String, rowID: String, rowTitle: String, rowPath: String
+    ) -> SourcePreview? {
+        let ptr = candidateID.withCString { candidate in
+            rowID.withCString { id in
+                rowTitle.withCString { title in
+                    rowPath.withCString { path in
+                        look_source_preview_json(candidate, id, title, path)
+                    }
+                }
+            }
+        }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(SourcePreview.self, from: data)
     }
 
     /// Every declared block, for the row-icon cache. Reads the sources
@@ -1253,6 +1306,8 @@ nonisolated struct SourceBlockTarget: Decodable, Identifiable {
     let name: String
     let icon: String?
     let performs: Bool
+    /// Already expanded against the row, so it names what will actually happen.
+    let confirm: String?
 }
 
 /// A declared block as the row layer needs it: what to call it and what icon it
@@ -1261,6 +1316,18 @@ nonisolated struct SourceBlockSummary: Decodable {
     let id: String
     let name: String
     let icon: String?
+}
+
+/// How a `run`-block refresh went. A block that failed kept the rows it had.
+nonisolated struct RunBlockRefreshOutcome: Decodable {
+    let refreshed: Int
+    let errors: [String]
+}
+
+/// A block's `preview` output, or why it could not run.
+nonisolated struct SourcePreview: Decodable {
+    let text: String
+    let error: String?
 }
 
 /// How performing a block went. `errors` is empty when every step was spawned;

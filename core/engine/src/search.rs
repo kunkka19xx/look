@@ -302,6 +302,7 @@ impl QueryEngine {
 
             let final_score = regex_score
                 + kind_bias(&candidate.candidate)
+                + self.source_bias(&candidate.candidate)
                 + path_depth_penalty(&candidate.candidate);
             push_top_k(
                 &mut top,
@@ -386,6 +387,7 @@ impl QueryEngine {
                 &candidate.candidate,
                 &candidate.title_search,
             ) + kind_bias(&candidate.candidate)
+                + self.source_bias(&candidate.candidate)
                 // Reuse precomputed query kind to keep this hot loop allocation-free.
                 + query_kind_penalty_with_settings_flag(settings_query, &candidate.candidate)
                 + path_depth_penalty(&candidate.candidate);

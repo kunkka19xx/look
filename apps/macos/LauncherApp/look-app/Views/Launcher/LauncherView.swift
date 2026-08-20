@@ -97,6 +97,8 @@ struct LauncherView: View {
     // preview no space until asked for.
     @State var isActionMenuOpen = false
     @State var actionMenuIndex = 0
+    /// A destructive `then` target waiting for a yes/no answer in the menu.
+    @State var pendingActionConfirm: (blockID: String, title: String, question: String)?
     @State var quickActionStates: [String: ActionState] = [:]
     // The result `quickActionStates`/`quickActionInfo` were read for. Lets a refresh
     // of the SAME result keep showing what it already resolved, instead of blanking
@@ -1297,7 +1299,7 @@ struct LauncherView: View {
                     .overlay(alignment: .top) {
                         if isActionMenuOpen {
                             ActionMenuView(
-                                descriptors: actionMenuDescriptors,
+                                descriptors: actionMenuRows,
                                 states: quickActionStates,
                                 focusedIndex: actionMenuIndex,
                                 themeStore: themeStore,
@@ -2054,7 +2056,7 @@ struct LauncherView: View {
                     isMeasuringProcessCPU: isMeasuringCPU(for: selectedResult),
                     isActionMenuOpen: isActionMenuOpen,
                     actionMenuIndex: actionMenuIndex,
-                    actionMenuDescriptors: actionMenuDescriptors
+                    actionMenuDescriptors: actionMenuRows
                 )
                 // Arrow-key nav assigns `selectedResultID` inside a global
                 // `withAnimation` so the pill can glide (see LauncherView+
