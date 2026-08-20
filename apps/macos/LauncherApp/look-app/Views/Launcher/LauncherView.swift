@@ -834,6 +834,9 @@ struct LauncherView: View {
             refreshSearchResults()
             configureLaunchpadIfNeeded()
             refreshLaunchpadState()
+            // Warms the block catalog off the main actor, so a row that has one
+            // renders its declared icon rather than the generic bolt.
+            SourceBlockCatalog.prefill()
             startKeyboardNavigationIfNeeded()
             focusActiveInput()
             refreshClipboardMonitoringMode()
@@ -985,6 +988,9 @@ struct LauncherView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in
             reloadConfig()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .lookSourceTargetsLoaded)) { _ in
+            refreshQuickActions()
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookRefocusInputRequested)) { _ in
             DispatchQueue.main.async {
@@ -1313,7 +1319,7 @@ struct LauncherView: View {
                                 states: quickActionStates,
                                 focusedIndex: actionMenuIndex,
                                 themeStore: themeStore,
-                                onRun: { runQuickAction($0, intent: $0.control == .toggle ? .toggle : .run) }
+                                onActivate: { activateActionMenuRow($0) }
                             )
                             .frame(maxWidth: AppConstants.Launcher.ActionMenu.launchpadWidth)
                             .padding(.top, 8)
@@ -2066,7 +2072,8 @@ struct LauncherView: View {
                     isMeasuringProcessCPU: isMeasuringCPU(for: selectedResult),
                     isActionMenuOpen: isActionMenuOpen,
                     actionMenuIndex: actionMenuIndex,
-                    actionMenuDescriptors: actionMenuRows
+                    actionMenuDescriptors: actionMenuRows,
+                    onActivateActionMenuRow: { activateActionMenuRow($0) }
                 )
                 // Arrow-key nav assigns `selectedResultID` inside a global
                 // `withAnimation` so the pill can glide (see LauncherView+

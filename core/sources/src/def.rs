@@ -294,6 +294,12 @@ pub fn inferred(id: &str, command: &str) -> Block {
 }
 
 fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
+    // Row ids are `src:<block>:<row>` and split on the first colon, so a block
+    // id carrying one would resolve to a different block than it names. TOML
+    // allows it through a quoted header, so it has to be refused here.
+    if id.contains(':') {
+        return Err("a block id cannot contain \":\"".into());
+    }
     let producer = producer_from(&raw)?;
 
     let verbs = Verbs {
@@ -551,6 +557,15 @@ dir = "~/notes"
         let block = one("[drop]\nconfirm = \"Delete {id}?\"\ndo = [\"git branch -D {id}\"]\n");
         assert_eq!(block.confirm.as_deref(), Some("Delete {id}?"));
         assert!(block.needs_row());
+    }
+
+    #[test]
+    fn a_block_id_with_a_colon_is_refused() {
+        // `["team:prod"]` is valid TOML, and its rows would be `src:team:prod:x`,
+        // which reads back as block `team` and row `prod:x`.
+        let parsed = parse_file("[\"team:prod\"]\ndir = \"~/dev\"\n").unwrap();
+        assert!(parsed.blocks.is_empty());
+        assert!(parsed.problems[0].contains(':'), "{:?}", parsed.problems);
     }
 
     #[test]

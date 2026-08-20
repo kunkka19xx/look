@@ -9,7 +9,9 @@
 //! Steps are detached and not waited on: the launcher window closes immediately
 //! after Enter, and an app it launched must outlive it.
 
+use std::io::Read;
 use std::process::{Command, Stdio};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 /// Used when `$SHELL` is unset, which happens for processes the window server
@@ -19,6 +21,12 @@ const FALLBACK_SHELL: &str = "/bin/sh";
 /// How often a captured command is checked for having finished. Short enough
 /// that a fast command is not held up, long enough not to spin.
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+/// Only the first line of stderr is ever shown, so there is no reason to hold
+/// a failing command's whole diagnostic output in memory.
+const MAX_STDERR_BYTES: usize = 8 * 1024;
+
+const DRAIN_CHUNK_BYTES: usize = 8 * 1024;
 
 /// Environment the step can read to know which row it was performed on.
 pub const ENV_ID: &str = "LOOK_ID";
@@ -115,8 +123,12 @@ fn spawn(step: &str, row: Option<&RowContext>) -> Result<(), String> {
             .env(ENV_ID, &row.id)
             .env(ENV_TITLE, &row.title)
             .env(ENV_PATH, &row.path);
-        if !row.path.is_empty() {
-            command.current_dir(&row.path);
+        // The row's FOLDER, never the row itself: `path` is a file for most
+        // rows, and `current_dir` on a file makes every spawn fail with
+        // ENOTDIR. Same rule as `{dir}`.
+        let dir = parent_dir(&row.path);
+        if !dir.is_empty() {
+            command.current_dir(&dir);
         }
     }
 
@@ -150,10 +162,20 @@ pub fn capture(
         .spawn()
         .map_err(|err| format!("{shell}: {err}"))?;
 
+    // Both pipes are drained on their own threads for the whole run. Polling
+    // `try_wait` and reading afterwards deadlocks the moment a command writes
+    // more than the OS pipe buffer (~64 KiB): the child blocks on write, never
+    // exits, and the deadline then reports a timeout for a healthy command.
+    let stdout = spawned.stdout.take().map(|pipe| drain(pipe, max_bytes));
+    let stderr = spawned
+        .stderr
+        .take()
+        .map(|pipe| drain(pipe, MAX_STDERR_BYTES));
+
     let deadline = Instant::now() + timeout;
-    loop {
+    let status = loop {
         match spawned.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => break status,
             Ok(None) => {
                 if Instant::now() >= deadline {
                     let _ = spawned.kill();
@@ -164,26 +186,57 @@ pub fn capture(
             }
             Err(err) => return Err(err.to_string()),
         }
-    }
+    };
 
-    let output = spawned.wait_with_output().map_err(|err| err.to_string())?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let reason = stderr.lines().next().unwrap_or("exited non-zero").trim();
-        return Err(reason.to_string());
+    let out = stdout.map(join_drained).unwrap_or_default();
+    if !status.success() {
+        let errors = stderr.map(join_drained).unwrap_or_default();
+        let reason = errors.lines().next().unwrap_or("exited non-zero").trim();
+        return Err(if reason.is_empty() {
+            "exited non-zero".to_string()
+        } else {
+            reason.to_string()
+        });
     }
+    Ok(out)
+}
 
-    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
-    if text.len() > max_bytes {
-        // Cut on a char boundary so a multi-byte glyph at the cap does not
-        // produce a panic or a replacement character.
-        let mut cut = max_bytes;
-        while cut > 0 && !text.is_char_boundary(cut) {
-            cut -= 1;
+/// Reads a pipe to its end on its own thread, keeping at most `max_bytes`.
+///
+/// It keeps reading past the cap rather than stopping, because closing the pipe
+/// early would hand the child a SIGPIPE and turn "your output was long" into
+/// "your command failed".
+fn drain<R: Read + Send + 'static>(mut pipe: R, max_bytes: usize) -> JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        let mut kept: Vec<u8> = Vec::new();
+        let mut chunk = [0u8; DRAIN_CHUNK_BYTES];
+        while let Ok(read) = pipe.read(&mut chunk) {
+            if read == 0 {
+                break;
+            }
+            let room = max_bytes.saturating_sub(kept.len());
+            if room > 0 {
+                kept.extend_from_slice(&chunk[..read.min(room)]);
+            }
         }
-        text.truncate(cut);
+        kept
+    })
+}
+
+/// The drained bytes as text, ending on a whole character.
+///
+/// Mid-stream invalid bytes still decode lossily, since genuinely non-UTF8
+/// output is worth showing. Only a trailing replacement character is dropped:
+/// there it is not the command's data but an artifact of the byte cap landing
+/// inside a multi-byte glyph.
+fn join_drained(handle: JoinHandle<Vec<u8>>) -> String {
+    let bytes = handle.join().unwrap_or_default();
+    let mut text = String::from_utf8_lossy(&bytes).into_owned();
+    let cut_a_glyph = std::str::from_utf8(&bytes).is_err();
+    if cut_a_glyph && text.ends_with(char::REPLACEMENT_CHARACTER) {
+        text.pop();
     }
-    Ok(text)
+    text
 }
 
 /// Its own process group, so closing the launcher never signals what it started.
@@ -293,6 +346,21 @@ mod tests {
     }
 
     #[test]
+    fn output_larger_than_the_pipe_buffer_does_not_deadlock() {
+        // The OS pipe buffer is ~64 KiB. Reading only after the child exits
+        // means it blocks on write and never exits, and the deadline then
+        // reports a timeout for a command that was working fine.
+        let out = capture(
+            "head -c 200000 /dev/zero | tr '\\0' 'a'",
+            None,
+            Duration::from_secs(10),
+            256 * 1024,
+        )
+        .expect("a long-output command must finish");
+        assert_eq!(out.len(), 200_000);
+    }
+
+    #[test]
     fn output_past_the_cap_is_cut_on_a_char_boundary() {
         // A multi-byte glyph straddling the cap must not panic or corrupt.
         let out = capture(
@@ -304,6 +372,23 @@ mod tests {
         .unwrap();
         assert!(out.len() <= 15);
         assert!(out.chars().all(|c| c == 'é'), "{out:?}");
+    }
+
+    #[test]
+    fn a_step_on_a_file_row_runs_in_the_files_folder() {
+        // `current_dir` on a file path fails the spawn outright, so this is the
+        // difference between file rows working and every one of them erroring.
+        let dir = std::env::temp_dir().join(format!("look-run-cwd-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("probe dir");
+        let file = dir.join("row.txt");
+        std::fs::write(&file, "x").expect("probe file");
+
+        let mut context = row("");
+        context.path = file.to_string_lossy().into_owned();
+        let outcomes = perform(&["true".to_string()], Some(&context));
+
+        assert_eq!(outcomes[0].error, None, "a file row must not fail to spawn");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

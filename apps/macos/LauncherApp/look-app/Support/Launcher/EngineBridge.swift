@@ -1089,12 +1089,17 @@ final class EngineBridge: @unchecked Sendable {
                 }
             }
         }
-        guard let ptr else { return PerformBlockOutcome(performed: 0, errors: []) }
+        // A failure carries a reason. An empty `errors` with nothing performed
+        // means something else entirely (a block that produces rows), and the
+        // caller keys on that, so the two must not share a value.
+        guard let ptr else {
+            return PerformBlockOutcome(performed: 0, errors: ["the core did not answer"])
+        }
         defer { look_free_cstring(ptr) }
         guard let data = String(cString: ptr).data(using: .utf8),
               let outcome = try? JSONDecoder().decode(PerformBlockOutcome.self, from: data)
         else {
-            return PerformBlockOutcome(performed: 0, errors: [])
+            return PerformBlockOutcome(performed: 0, errors: ["the core's answer could not be read"])
         }
         return outcome
     }

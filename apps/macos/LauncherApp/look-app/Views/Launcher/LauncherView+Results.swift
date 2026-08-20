@@ -188,10 +188,16 @@ extension LauncherView {
     /// Performs a declared block's steps. Usage is recorded on intent, like an
     /// open, so a routine you run every morning ranks like one.
     private func performSourceBlock(_ selected: LauncherResult) {
+        // Resolve BEFORE recording usage or hiding: an unparseable id would
+        // otherwise rank the row up, close the window, and do nothing, with no
+        // way for the user to tell that it failed.
+        guard let blockID = SourceBlockCatalog.blockID(fromCandidateID: selected.id) else {
+            showBanner("Couldn't tell which block this row belongs to", style: .error, duration: 2.0)
+            return
+        }
         recordOpen(selected, action: AppConstants.Launcher.SourceBlock.usageAction)
         hideLauncherWindow(restorePreviousApp: false)
 
-        guard let blockID = SourceBlockCatalog.blockID(fromCandidateID: selected.id) else { return }
         let name = selected.title
         let row = (id: selected.id, title: selected.title, path: selected.path, query: query)
         Task {

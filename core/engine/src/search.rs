@@ -19,6 +19,11 @@ const RERANK_MIN_QUERY_CHARS: usize = 3;
 const REGEX_SIZE_LIMIT_BYTES: usize = 1024 * 1024;
 const SCORE_ALIAS_TITLE_MATCH: i64 = 1_520;
 const SCORE_ALIAS_SUBTITLE_MATCH: i64 = 1_260;
+/// How much wider than `limit` to search when source rows may shadow walker
+/// rows. Only source blocks pointed inside a scan root can shadow anything, so
+/// every row being a duplicate is not a real shape; 2x absorbs it and costs one
+/// extra pass over an already-bounded heap.
+const SHADOW_OVERFETCH: usize = 2;
 
 fn top_limit(mut ranked: Vec<(u32, i64)>, limit: usize) -> Vec<(u32, i64)> {
     ranked.truncate(limit);
@@ -433,19 +438,25 @@ impl QueryEngine {
 
         let parsed_query = ParsedQuery::from_input(query);
         let kind_filter = parsed_query.kind_filter.as_ref();
+
+        // Shadowed rows are dropped AFTER ranking, so asking for exactly `limit`
+        // and then filtering would return fewer rows than the caller asked for
+        // and leave matches below the cutoff unshown. Over-fetch enough to
+        // absorb the drops, filter, then truncate.
+        let fetch = limit.saturating_mul(SHADOW_OVERFETCH).max(limit);
         let indices = if parsed_query.is_recent {
-            self.search_recent_query(&parsed_query.normalized_query, limit)
+            self.search_recent_query(&parsed_query.normalized_query, fetch)
         } else if parsed_query.normalized_query.is_empty() && !parsed_query.is_regex {
-            self.search_empty_query(kind_filter, limit)
+            self.search_empty_query(kind_filter, fetch)
         } else if parsed_query.is_regex {
-            self.search_regex_query(parsed_query.raw_query.as_ref(), kind_filter, limit)
+            self.search_regex_query(parsed_query.raw_query.as_ref(), kind_filter, fetch)
         } else {
-            self.search_text_query(&parsed_query.normalized_query, kind_filter, limit)
+            self.search_text_query(&parsed_query.normalized_query, kind_filter, fetch)
         };
 
         // Materialize Candidates only for the final top-K - the hot scoring loop
         // kept everything as (index, score) pairs to avoid per-push clones.
-        self.drop_source_shadowed(indices)
+        top_limit(self.drop_source_shadowed(indices), limit)
             .into_iter()
             .map(|(idx, score)| (self.candidates[idx as usize].candidate.clone(), score))
             .collect()
@@ -565,6 +576,42 @@ mod tests {
             ids.contains(&"folder:/u/dev/other".to_string()),
             "a different path is untouched: {ids:?}"
         );
+    }
+
+    #[test]
+    fn a_shadowed_pair_does_not_cost_the_caller_a_row() {
+        // Filtering after the limit would return 1 row for limit=2, hiding a
+        // match that was ranked below the cutoff.
+        let engine = QueryEngine::new(vec![
+            Candidate::new(
+                "folder:/u/dev/look",
+                CandidateKind::Folder,
+                "look",
+                "/u/dev/look",
+            ),
+            Candidate::new(
+                "src:projects:/u/dev/look",
+                CandidateKind::Folder,
+                "look",
+                "/u/dev/look",
+            ),
+            Candidate::new(
+                "folder:/u/dev/look-alike",
+                CandidateKind::Folder,
+                "look-alike",
+                "/u/dev/look-alike",
+            ),
+        ]);
+
+        let ids: Vec<String> = engine
+            .search_scored("look", 2)
+            .into_iter()
+            .map(|(candidate, _)| candidate.id.to_string())
+            .collect();
+
+        assert_eq!(ids.len(), 2, "the limit is still filled: {ids:?}");
+        assert!(ids.contains(&"src:projects:/u/dev/look".to_string()));
+        assert!(ids.contains(&"folder:/u/dev/look-alike".to_string()));
     }
 
     #[test]

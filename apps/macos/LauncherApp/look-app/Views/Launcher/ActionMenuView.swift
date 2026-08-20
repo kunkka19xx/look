@@ -11,7 +11,9 @@ struct ActionMenuView: View {
     let states: [String: ActionState]
     let focusedIndex: Int
     let themeStore: ThemeStore
-    let onRun: (QuickActionDescriptor) -> Void
+    /// Activate one row. The menu never runs anything itself: confirmation and
+    /// closing live with the coordinator that owns the pending question.
+    let onActivate: (QuickActionDescriptor) -> Void
 
     private typealias Layout = AppConstants.Launcher.ActionMenu
 
@@ -78,7 +80,7 @@ struct ActionMenuView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(rowBackground(isFocused: isFocused))
         .contentShape(Rectangle())
-        .onTapGesture { onRun(descriptor) }
+        .onTapGesture { onActivate(descriptor) }
     }
 
     private func rowBackground(isFocused: Bool) -> some View {

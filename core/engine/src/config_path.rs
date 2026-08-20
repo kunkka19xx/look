@@ -65,7 +65,7 @@ pub fn resolve_home(home: &Path) -> ResolvedConfig {
 pub fn resolve_home_variant(home: &Path, dev: bool) -> ResolvedConfig {
     if dev {
         return ResolvedConfig {
-            path: home.join(CONFIG_DIR).join(DEV_CONFIG_NAME),
+            path: ensured(home.join(CONFIG_DIR).join(DEV_CONFIG_NAME)),
             migrated: false,
         };
     }
@@ -80,8 +80,12 @@ pub fn resolve_home_variant(home: &Path, dev: bool) -> ResolvedConfig {
 
     let legacy = home.join(LEGACY_CONFIG_NAME);
     if !legacy.exists() {
+        // A fresh install: nothing to migrate, and `~/.look/` may not exist
+        // yet. Every caller here goes on to WRITE this path, so the directory
+        // has to be there or the default config is silently never created and
+        // settings never persist.
         return ResolvedConfig {
-            path: current,
+            path: ensured(current),
             migrated: false,
         };
     }
@@ -108,6 +112,15 @@ pub fn resolve_home_variant(home: &Path, dev: bool) -> ResolvedConfig {
             migrated: false,
         },
     }
+}
+
+/// Makes sure the returned path is writable by creating its parent. Failure is
+/// left to the caller's own write, which reports it in context.
+fn ensured(path: PathBuf) -> PathBuf {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    path
 }
 
 /// Copies the legacy file across and marks it, leaving the original in place so
@@ -162,11 +175,23 @@ mod tests {
     }
 
     #[test]
-    fn a_new_install_gets_the_folder_path() {
+    fn a_new_install_gets_a_folder_path_it_can_actually_write() {
+        // Every caller writes the resolved path. Without the directory the
+        // default config is never created, and the user's settings silently
+        // fail to persist on every launch.
         let home = TempHome::new("fresh");
         let resolved = resolve_home(&home.0);
         assert_eq!(resolved.path, home.current());
         assert!(!resolved.migrated);
+        assert!(resolved.path.parent().is_some_and(Path::exists));
+        fs::write(&resolved.path, "ui_theme=x\n").expect("the path must be writable");
+    }
+
+    #[test]
+    fn a_dev_path_is_writable_too() {
+        let home = TempHome::new("devwrite");
+        let resolved = resolve_home_variant(&home.0, true);
+        fs::write(&resolved.path, "ui_theme=x\n").expect("the path must be writable");
     }
 
     #[test]

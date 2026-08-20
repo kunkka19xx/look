@@ -88,8 +88,15 @@ extension LauncherView {
     func runFocusedAction() {
         let rows = actionMenuRows
         guard rows.indices.contains(actionMenuIndex) else { return }
-        let descriptor = rows[actionMenuIndex]
+        activateActionMenuRow(rows[actionMenuIndex])
+    }
 
+    /// Activating one row of the menu, by key or by click.
+    ///
+    /// The single entry point on purpose: a click that bypassed this would skip
+    /// the confirmation, so a `confirm` target would ask when reached with Enter
+    /// and delete silently when reached with the mouse.
+    func activateActionMenuRow(_ descriptor: QuickActionDescriptor) {
         // Answering a pending question.
         if let pending = pendingActionConfirm {
             pendingActionConfirm = nil

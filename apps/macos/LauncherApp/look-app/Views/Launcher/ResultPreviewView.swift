@@ -30,6 +30,9 @@ struct ResultPreviewView: View {
     /// What the menu lists. Not always `quickActions`: with an empty query the
     /// launchpad's own controls take its place.
     var actionMenuDescriptors: [QuickActionDescriptor] = []
+    /// Activating a row of the Cmd+K menu, which is not the same as running it:
+    /// a target with a `confirm` asks first.
+    var onActivateActionMenuRow: (QuickActionDescriptor) -> Void = { _ in }
 
     @State private var folderListing: FolderListing?
     @State private var trashItemCount: Int?
@@ -59,7 +62,7 @@ struct ResultPreviewView: View {
             states: quickActionStates,
             focusedIndex: actionMenuIndex,
             themeStore: themeStore,
-            onRun: { onRunQuickAction($0, $0.control == .toggle ? .toggle : .run) }
+            onActivate: onActivateActionMenuRow
         )
         .transition(.opacity.combined(with: .move(edge: .top)))
         .zIndex(1)

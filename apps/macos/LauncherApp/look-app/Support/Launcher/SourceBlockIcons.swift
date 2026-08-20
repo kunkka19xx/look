@@ -10,10 +10,13 @@ import AppKit
 enum SourceBlockCatalog {
     private static var iconsByBlockID: [String: String]?
     private static var targetsByCandidateID: [String: [SourceBlockTarget]] = [:]
+    private static var targetsInFlight: Set<String> = []
 
     static func invalidate() {
         iconsByBlockID = nil
         targetsByCandidateID = [:]
+        targetsInFlight = []
+        prefill()
     }
 
     /// The `then` targets for one row.
@@ -24,30 +27,69 @@ enum SourceBlockCatalog {
     /// arrow-keying down a list should not re-read the sources directory once
     /// per row. `invalidate()` on config reload picks up an edited `then`.
     static func targets(for result: LauncherResult) -> [SourceBlockTarget] {
-        if let cached = targetsByCandidateID[result.id] { return cached }
+        if let cached = targetsByCandidateID[cacheKey(for: result)] { return cached }
+        loadTargets(for: result)
+        return []
+    }
 
-        let targets = EngineBridge.shared.sourceBlock(
-            candidateID: result.id,
-            rowID: result.id,
-            rowTitle: result.title,
-            rowPath: result.path
-        )?.then ?? []
-        targetsByCandidateID[result.id] = targets
-        return targets
+    /// Reads one row's targets off the main actor and caches them. The panel
+    /// re-reads on the next selection change, so an empty first answer costs a
+    /// moment rather than an action.
+    private static func loadTargets(for result: LauncherResult) {
+        let key = cacheKey(for: result)
+        guard !targetsInFlight.contains(key) else { return }
+        targetsInFlight.insert(key)
+
+        Task {
+            let targets = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.sourceBlock(
+                    candidateID: result.id,
+                    rowID: result.id,
+                    rowTitle: result.title,
+                    rowPath: result.path
+                )?.then ?? []
+            }.value
+            await MainActor.run {
+                targetsByCandidateID[key] = targets
+                targetsInFlight.remove(key)
+                NotificationCenter.default.post(name: .lookSourceTargetsLoaded, object: nil)
+            }
+        }
+    }
+
+    /// A target's `confirm` text is expanded against the row, so two rows that
+    /// share an id but differ in title or path must not share a cache entry.
+    private static func cacheKey(for result: LauncherResult) -> String {
+        "\(result.id)\u{1}\(result.title)\u{1}\(result.path)"
     }
 
     /// The declared icon for the block a candidate id belongs to.
+    ///
+    /// Never reads from disk: rows render synchronously and there are many of
+    /// them, so a cache miss returns nil and the row falls back to the generic
+    /// glyph until `prefill()` lands. A momentarily generic icon is a far
+    /// smaller cost than a directory walk on the main actor mid-render.
     static func icon(forCandidateID candidateID: String) -> String? {
         guard let blockID = blockID(fromCandidateID: candidateID) else { return nil }
-        if iconsByBlockID == nil {
-            iconsByBlockID = Dictionary(
-                EngineBridge.shared.sourceBlocks().compactMap { summary in
-                    summary.icon.map { (summary.id, $0) }
-                },
-                uniquingKeysWith: { first, _ in first }
-            )
-        }
         return iconsByBlockID?[blockID]
+    }
+
+    /// Loads the block catalog off the main actor. Called on launcher open and
+    /// after a config reload, so the caches are warm before anything renders.
+    static func prefill() {
+        Task {
+            let summaries = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.sourceBlocks()
+            }.value
+            await MainActor.run {
+                iconsByBlockID = Dictionary(
+                    summaries.compactMap { summary in
+                        summary.icon.map { (summary.id, $0) }
+                    },
+                    uniquingKeysWith: { first, _ in first }
+                )
+            }
+        }
     }
 
     /// `src:<block>:<row>` -> `<block>`.
