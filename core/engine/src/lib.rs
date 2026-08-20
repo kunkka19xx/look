@@ -171,12 +171,21 @@ impl QueryEngine {
     /// only after that: an unrecognized glue word the parser didn't strip
     /// ("files added to ...") lands in terms and would otherwise filter
     /// everything out. Type and location filters are never relaxed.
+    ///
+    /// Terms are kept when they are the ONLY filter: dropping them leaves a
+    /// query with no constraint at all, which matches the entire index. That
+    /// is not a near miss, it is every file the user owns, and it lets a
+    /// misread query ("bitcoin price") claim the panel with unrelated rows.
     fn relaxations(filter: &FileFilter) -> Vec<(FileFilter, FileSearchRelaxation)> {
         let widened_window = match (filter.start, filter.end) {
             (Some(start), Some(end)) if end > start => Some((start - (end - start), end)),
             _ => None,
         };
         let has_terms = !filter.terms.trim().is_empty();
+        let has_other_filter = !filter.categories.is_empty()
+            || !filter.locations.is_empty()
+            || filter.start.is_some()
+            || filter.end.is_some();
 
         let build = |terms: &str, window: Option<(i64, i64)>| FileFilter {
             terms: terms.into(),
@@ -193,7 +202,7 @@ impl QueryEngine {
                 FileSearchRelaxation::WidenedWindow,
             ));
         }
-        if has_terms {
+        if has_terms && has_other_filter {
             steps.push((build("", None), FileSearchRelaxation::DroppedTerms));
             if let Some(window) = widened_window {
                 steps.push((
@@ -537,6 +546,25 @@ mod tests {
         assert_eq!(outcome.results.len(), 1);
         assert_eq!(outcome.results[0].title, "notes.md");
         assert_eq!(outcome.relaxation, Some(FileSearchRelaxation::DroppedTerms));
+    }
+
+    #[test]
+    fn terms_only_recall_never_degrades_to_the_whole_index() {
+        // "bitcoin price" reaches file recall as terms with nothing else.
+        // Dropping them would leave no filter at all and return every file,
+        // which reads as an answer and hides the real one.
+        let now = 1_754_000_000;
+        let engine = QueryEngine::new(vec![
+            file_candidate("file:a", "clip.mp4", "/Users/u/Documents/clip.mp4", now),
+            file_candidate("file:b", "notes.md", "/Users/u/Desktop/notes.md", now),
+        ]);
+        let filter = FileFilter {
+            terms: "bitcoin price".into(),
+            ..Default::default()
+        };
+        let outcome = engine.search_files(&filter, 10);
+        assert!(outcome.results.is_empty());
+        assert_eq!(outcome.relaxation, None);
     }
 
     #[test]
