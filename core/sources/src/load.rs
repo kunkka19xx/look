@@ -130,6 +130,33 @@ pub fn load_dir(dir: &Path) -> Loaded {
         false
     });
 
+    // `then` names are checked once every block is known, so a reference to a
+    // block declared in another file is fine and only a genuine typo reports.
+    let known: BTreeMap<&str, ()> = loaded
+        .blocks
+        .iter()
+        .map(|block| (block.id.as_str(), ()))
+        .collect();
+    let unknown: Vec<Problem> = loaded
+        .blocks
+        .iter()
+        .flat_map(|block| {
+            block
+                .then
+                .iter()
+                .filter(|target| !known.contains_key(target.as_str()))
+                .map(|target| Problem {
+                    file: block
+                        .source_file
+                        .as_ref()
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| dir.join(&block.id)),
+                    message: format!("[{}] then names unknown block \"{target}\"", block.id),
+                })
+        })
+        .collect();
+    loaded.problems.extend(unknown);
+
     for path in ignored {
         // Not an error, but silence here reads as "my block is broken" when the
         // real answer is that the file is neither executable nor a declaration.
@@ -262,6 +289,32 @@ mod tests {
         assert_eq!(loaded.blocks.len(), 1);
         assert_eq!(loaded.problems.len(), 1);
         assert!(loaded.problems[0].message.contains("[bad]"));
+    }
+
+    #[test]
+    fn then_may_name_a_block_from_another_file() {
+        let tmp = TempDir::new("thencross");
+        tmp.write(
+            "a.toml",
+            "[projects]\ndir = \"~/dev\"\nthen = [\"deploy\"]\n",
+        );
+        tmp.write("b.toml", "[deploy]\ndo = [\"make -C {path} deploy\"]\n");
+
+        let loaded = load_dir(&tmp.0);
+        assert_eq!(loaded.blocks.len(), 2);
+        assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
+    }
+
+    #[test]
+    fn a_then_typo_is_reported_against_the_file_that_wrote_it() {
+        let tmp = TempDir::new("thentypo");
+        tmp.write("a.toml", "[projects]\ndir = \"~/dev\"\nthen = [\"edt\"]\n");
+
+        let loaded = load_dir(&tmp.0);
+        assert_eq!(loaded.blocks.len(), 1, "the block still loads");
+        assert_eq!(loaded.problems.len(), 1);
+        assert!(loaded.problems[0].message.contains("unknown block \"edt\""));
+        assert!(loaded.problems[0].file.ends_with("a.toml"));
     }
 
     #[test]

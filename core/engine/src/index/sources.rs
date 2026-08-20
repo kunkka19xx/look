@@ -39,7 +39,10 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
     }
 
     for block in &loaded.blocks {
-        if !block.enabled {
+        // A block whose producer refers to a row (`make -C {path} deploy`) is
+        // only reachable through another block's `then`. Indexing it as a
+        // top-level row would offer to run it against nothing.
+        if !block.enabled || block.needs_row() {
             continue;
         }
         match &block.producer {

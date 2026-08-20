@@ -497,6 +497,22 @@ struct ResultPreviewView: View {
                 )
             }
 
+            if !quickActions.isEmpty {
+                // A bundle can have `then` targets too, and they belong on the
+                // same Cmd+J/K + Enter as everywhere else.
+                QuickActionsSection(
+                    descriptors: quickActions,
+                    states: quickActionStates,
+                    info: quickActionInfo,
+                    pendingItems: pendingQuickActionItems,
+                    busyActionIds: busyQuickActionIds,
+                    themeStore: themeStore,
+                    revealToken: quickActionsRevealToken,
+                    onRun: onRunQuickAction,
+                    onActivateItem: onActivateQuickActionItem
+                )
+            }
+
             Spacer(minLength: 0)
 
             if let file = blockFile {

@@ -178,6 +178,11 @@ pub struct Block {
     pub name: String,
     pub producer: Producer,
     pub verbs: Verbs,
+    /// Other blocks reachable from a row of this one. A target that performs
+    /// steps (`do`) is an action; a target that produces rows is a drill-down.
+    /// The target's own producer decides which, so `then` stays a plain list of
+    /// names with no mode to declare.
+    pub then: Vec<String>,
     pub aliases: Vec<String>,
     pub bias: i64,
     pub icon: Option<String>,
@@ -195,7 +200,29 @@ impl Block {
     pub fn is_bundle(&self) -> bool {
         matches!(self.producer, Producer::Bundle { .. })
     }
+
+    /// True when this block only makes sense against a selected row, because
+    /// what it produces refers to one. Such a block is reachable through another
+    /// block's `then`, never as a top-level row: running `make -C {path} deploy`
+    /// with nothing selected would substitute an empty path.
+    pub fn needs_row(&self) -> bool {
+        self.producer_text()
+            .iter()
+            .any(|text| text.contains(PLACEHOLDER_OPEN))
+    }
+
+    fn producer_text(&self) -> Vec<&str> {
+        match &self.producer {
+            Producer::Bundle { steps } => steps.iter().map(String::as_str).collect(),
+            Producer::Dir { roots, .. } => roots.iter().map(String::as_str).collect(),
+            Producer::File { path, .. } => vec![path.as_str()],
+            Producer::Run { command, .. } => vec![command.as_str()],
+        }
+    }
 }
+
+/// Opens a row placeholder such as `{path}`.
+const PLACEHOLDER_OPEN: char = '{';
 
 #[derive(Debug, Default, Deserialize)]
 struct RawBlock {
@@ -208,6 +235,7 @@ struct RawBlock {
 
     #[serde(rename = "do")]
     steps: Option<Vec<String>>,
+    then: Option<Vec<String>>,
 
     dir: Option<String>,
     dirs: Option<Vec<String>>,
@@ -308,6 +336,12 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
         name: raw.name.unwrap_or_else(|| id.to_string()),
         producer,
         verbs,
+        then: raw
+            .then
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|name| !name.trim().is_empty())
+            .collect(),
         aliases: raw.aliases.unwrap_or_default(),
         bias: raw.bias.unwrap_or_default(),
         icon: raw.icon,
@@ -559,6 +593,48 @@ dir = "~/notes"
                 block.unknown_keys
             );
         }
+    }
+
+    #[test]
+    fn then_names_the_blocks_a_row_can_reach() {
+        let block = one("[projects]\ndir = \"~/dev\"\nthen = [\"deploy\", \"branches\"]\n");
+        assert_eq!(block.then, ["deploy", "branches"]);
+    }
+
+    #[test]
+    fn the_target_producer_decides_action_or_drill_down() {
+        // `then` carries no mode: a target that performs steps is an action, a
+        // target that produces rows is a level to descend into.
+        let parsed = parse_file(
+            r#"
+[projects]
+dir  = "~/dev"
+then = ["deploy", "branches"]
+
+[deploy]
+do = ["make -C {path} deploy"]
+
+[branches]
+run = "git -C {path} branch"
+"#,
+        )
+        .unwrap();
+        assert!(parsed.problems.is_empty());
+        let deploy = parsed.blocks.iter().find(|b| b.id == "deploy").unwrap();
+        let branches = parsed.blocks.iter().find(|b| b.id == "branches").unwrap();
+        assert!(deploy.is_bundle(), "performs its steps");
+        assert!(!branches.is_bundle(), "produces rows");
+    }
+
+    #[test]
+    fn a_block_that_refers_to_a_row_cannot_stand_alone() {
+        // Running `make -C {path} deploy` with nothing selected would substitute
+        // an empty path, so it is reachable only through `then`.
+        let deploy = one("[deploy]\ndo = [\"make -C {path} deploy\"]\n");
+        assert!(deploy.needs_row());
+
+        let work = one("[work]\ndo = [\"open -a Slack\"]\n");
+        assert!(!work.needs_row(), "names no row, so it is a top-level row");
     }
 
     #[test]

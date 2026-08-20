@@ -191,11 +191,18 @@ extension LauncherView {
         recordOpen(selected, action: AppConstants.Launcher.SourceBlock.usageAction)
         hideLauncherWindow(restorePreviousApp: false)
 
-        let candidateID = selected.id
+        guard let blockID = SourceBlockCatalog.blockID(fromCandidateID: selected.id) else { return }
         let name = selected.title
+        let row = (id: selected.id, title: selected.title, path: selected.path, query: query)
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
-                EngineBridge.shared.performBlock(candidateID: candidateID)
+                EngineBridge.shared.performBlock(
+                    blockID: blockID,
+                    rowID: row.id,
+                    rowTitle: row.title,
+                    rowPath: row.path,
+                    query: row.query
+                )
             }.value
             await MainActor.run {
                 guard let failure = outcome.errors.first else { return }

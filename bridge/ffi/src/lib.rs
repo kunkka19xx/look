@@ -288,9 +288,15 @@ pub extern "C" fn look_source_blocks_json() -> *mut c_char {
 /// Performs every step of that block, detached, through the user's login shell.
 /// Returns `{performed, errors}`.
 #[unsafe(no_mangle)]
-pub extern "C" fn look_perform_block_json(candidate_id: *const c_char) -> *mut c_char {
+pub extern "C" fn look_perform_block_json(
+    block_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+    query: *const c_char,
+) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        sources_api::look_perform_block_json_impl(candidate_id)
+        sources_api::look_perform_block_json_impl(block_id, row_id, row_title, row_path, query)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

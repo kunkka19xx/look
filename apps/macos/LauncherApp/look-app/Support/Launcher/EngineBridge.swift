@@ -234,7 +234,7 @@ private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?) -> Uns
 
 @_silgen_name("look_perform_block_json")
 nonisolated
-private func look_perform_block_json(_ candidateID: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private func look_perform_block_json(_ blockID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_netspeed_run_json")
 nonisolated
@@ -1018,8 +1018,24 @@ final class EngineBridge: @unchecked Sendable {
 
     /// Performs every step of that block, detached, through the user's login
     /// shell. Spawns processes - call off the main thread.
-    nonisolated func performBlock(candidateID: String) -> PerformBlockOutcome {
-        let ptr = candidateID.withCString { look_perform_block_json($0) }
+    nonisolated func performBlock(
+        blockID: String,
+        rowID: String = "",
+        rowTitle: String = "",
+        rowPath: String = "",
+        query: String = ""
+    ) -> PerformBlockOutcome {
+        let ptr = blockID.withCString { block in
+            rowID.withCString { id in
+                rowTitle.withCString { title in
+                    rowPath.withCString { path in
+                        query.withCString { query in
+                            look_perform_block_json(block, id, title, path, query)
+                        }
+                    }
+                }
+            }
+        }
         guard let ptr else { return PerformBlockOutcome(performed: 0, errors: []) }
         defer { look_free_cstring(ptr) }
         guard let data = String(cString: ptr).data(using: .utf8),
@@ -1226,6 +1242,17 @@ nonisolated struct SourceBlock: Decodable {
     let steps: [String]
     /// The `.toml` (or script) that declared it, for showing and revealing.
     let file: String?
+    /// Where a row of this block can go next.
+    let then: [SourceBlockTarget]
+}
+
+/// One `then` target. `performs` says what the target's own producer decided:
+/// steps to run now, or rows to descend into.
+nonisolated struct SourceBlockTarget: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let icon: String?
+    let performs: Bool
 }
 
 /// A declared block as the row layer needs it: what to call it and what icon it

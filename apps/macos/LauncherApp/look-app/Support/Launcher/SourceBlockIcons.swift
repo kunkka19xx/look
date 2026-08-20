@@ -9,9 +9,26 @@ import AppKit
 @MainActor
 enum SourceBlockCatalog {
     private static var iconsByBlockID: [String: String]?
+    private static var targetsByBlockID: [String: [SourceBlockTarget]] = [:]
 
     static func invalidate() {
         iconsByBlockID = nil
+        targetsByBlockID = [:]
+    }
+
+    /// The `then` targets of the block a candidate id belongs to.
+    ///
+    /// Memoised per block: this is read while building the panel on every
+    /// selection change, and arrow-keying down a list of projects should not
+    /// re-read the sources directory once per row. `invalidate()` on config
+    /// reload is what picks up an edited `then`.
+    static func targets(forCandidateID candidateID: String) -> [SourceBlockTarget] {
+        guard let blockID = blockID(fromCandidateID: candidateID) else { return [] }
+        if let cached = targetsByBlockID[blockID] { return cached }
+
+        let targets = EngineBridge.shared.sourceBlock(candidateID: candidateID)?.then ?? []
+        targetsByBlockID[blockID] = targets
+        return targets
     }
 
     /// The declared icon for the block a candidate id belongs to.
@@ -29,7 +46,7 @@ enum SourceBlockCatalog {
     }
 
     /// `src:<block>:<row>` -> `<block>`.
-    private static func blockID(fromCandidateID candidateID: String) -> String? {
+    static func blockID(fromCandidateID candidateID: String) -> String? {
         let prefix = AppConstants.Launcher.SourceBlock.idPrefix
         guard candidateID.hasPrefix(prefix) else { return nil }
         let rest = candidateID.dropFirst(prefix.count)
