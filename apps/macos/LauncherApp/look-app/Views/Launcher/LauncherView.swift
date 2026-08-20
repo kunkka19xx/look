@@ -257,7 +257,7 @@ struct LauncherView: View {
         }
 
         if let configPath = env["LOOK_CONFIG_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-            configPath.lowercased().contains(".look.dev.config")
+            configPath.lowercased().hasSuffix("config.dev")
         {
             return true
         }

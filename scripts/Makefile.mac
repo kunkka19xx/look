@@ -31,7 +31,9 @@ DEV_APP_INSTALL_BUNDLE := /Applications/$(DEV_APP_NAME).app
 LOG_PREDICATE ?= subsystem == "noah-code.Look"
 
 REAL_DB_PATH := $(HOME)/Library/Application Support/look/look.db
-DEV_CONFIG_PATH ?= $(HOME)/.look.dev.config
+# The dev file Look itself names (core/engine/src/config_path.rs). Never
+# migrated: a dev who had ~/.look.dev.config moves it across themselves.
+DEV_CONFIG_PATH ?= $(HOME)/.look/config.dev
 DEV_OPEN_ENV = env -u LOOK_DB_PATH LOOK_CONFIG_PATH="$(DEV_CONFIG_PATH)" LOOK_DEV_HINT=1 LOOK_LOG_LEVEL=debug LOOK_UI_DEBUG_EVENTS=1
 
 .PHONY: help core-check ffi-check ffi-build ffi-build-release ffi-unstale app-build app-ensure-bundle app-stop app-run app-open app-install-dev app-run-dev app-uninstall-dev app-logs app-logs-all symbols db-path db-status db-shell db-reset db-refresh ffi-run
@@ -55,7 +57,7 @@ help:
 	@printf "  make app-uninstall-dev - remove side-by-side dev app from /Applications\n"
 	@printf "  make app-logs     - stream app logs (predicate: $(LOG_PREDICATE))\n"
 	@printf "  make app-logs-all - stream all logs for process Look\n"
-	@printf "  (override config) make app-run DEV_CONFIG_PATH=\"$$HOME/.look.dev.config\"\n\n"
+	@printf "  (override config) make app-run DEV_CONFIG_PATH=\"$$HOME/.look/config.dev\"\n\n"
 	@printf "database\n"
 	@printf "  make db-path      - print real db path\n"
 	@printf "  make db-status    - inspect candidates/usage tables\n"
@@ -102,6 +104,7 @@ app-stop:
 
 app-run: app-build app-stop app-ensure-bundle
 	@echo "Opening local app with config: $(DEV_CONFIG_PATH)"
+	@mkdir -p "$(dir $(DEV_CONFIG_PATH))"
 	@$(DEV_OPEN_ENV) open -n "$(APP_BUNDLE)"
 
 app-open: app-build app-ensure-bundle
@@ -129,6 +132,7 @@ app-install-dev: app-build app-ensure-bundle
 
 app-run-dev: app-install-dev app-stop
 	@echo "Opening side-by-side dev app with config: $(DEV_CONFIG_PATH)"
+	@mkdir -p "$(dir $(DEV_CONFIG_PATH))"
 	@$(DEV_OPEN_ENV) open -a "$(DEV_APP_INSTALL_BUNDLE)"
 
 app-uninstall-dev:

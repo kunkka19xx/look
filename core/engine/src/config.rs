@@ -337,7 +337,7 @@ impl RuntimeConfig {
 /// Where the config lives, migrating a legacy `~/.look.config` into `~/.look/`
 /// the first time. One resolver for every caller: see `crate::config_path`.
 fn config_path() -> Option<PathBuf> {
-    user_home_dir().map(|home| crate::config_path::resolve(Path::new(&home)).path)
+    crate::config_path::current().map(|resolved| resolved.path)
 }
 
 fn ensure_default_config_file(path: &Path) {

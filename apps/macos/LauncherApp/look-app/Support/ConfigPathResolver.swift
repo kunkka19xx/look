@@ -32,7 +32,7 @@ enum ConfigPathResolver {
             // The core could not answer (no HOME). Fall back to the legacy path
             // rather than losing the user's settings.
             return (home as NSString).appendingPathComponent(
-                isDevBuild ? ".look.dev.config" : ".look.config")
+                isDevBuild ? ".look/config.dev" : ".look.config")
         }
         defer { look_free_config_cstring(ptr) }
         return String(cString: ptr)

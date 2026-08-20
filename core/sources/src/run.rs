@@ -10,9 +10,9 @@
 //! after Enter, and an app it launched must outlive it.
 //!
 //! A step is POSIX shell text down to its punctuation - `&&`, `>`, and the
-//! single quotes `expand` wraps every placeholder in. Windows has no shell that
-//! reads it, and handing it to `cmd` would run the command with mangled
-//! arguments rather than not run it, so there the step is refused outright.
+//! single quotes `expand` wraps every placeholder in. A `$SHELL` reading
+//! another language is passed over for `/bin/sh`; Windows, having none, refuses
+//! the step rather than hand `cmd` arguments it would mangle.
 
 use std::io::Read;
 use std::process::{Command, Stdio};
@@ -20,12 +20,20 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 /// Used when `$SHELL` is unset, which happens for processes the window server
-/// starts without a user session environment.
+/// starts without a user session environment, and when it names a shell that
+/// cannot read a POSIX step.
 #[cfg(unix)]
 const FALLBACK_SHELL: &str = "/bin/sh";
 
-/// Said instead of running anything, so a source that cannot work on this
-/// platform reports why rather than failing as a missing program.
+/// `$SHELL` is honoured only when it is one of these. `fish` and `nu` take
+/// `-lc` too, so the spawn succeeds and the script is then rejected whole.
+#[cfg(unix)]
+const POSIX_SHELLS: [&str; 9] = [
+    "sh", "bash", "dash", "ash", "zsh", "ksh", "ksh93", "mksh", "yash",
+];
+
+/// Said instead of running anything, so the step reads as unsupported rather
+/// than as a missing program.
 #[cfg(not(unix))]
 const NO_POSIX_SHELL: &str = "steps are POSIX shell commands, which this platform has no shell for";
 
@@ -119,12 +127,28 @@ fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-/// The one place a step becomes a process: `$SHELL -lc <step>`, or nothing at
+/// The login shell to run a step with: the user's own where it speaks POSIX,
+/// the system one otherwise. Set-but-empty reads as `Ok("")`, so it falls here
+/// too.
+#[cfg(unix)]
+fn posix_shell(configured: &str) -> &str {
+    let name = std::path::Path::new(configured)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    if POSIX_SHELLS.contains(&name) {
+        configured
+    } else {
+        FALLBACK_SHELL
+    }
+}
+
+/// The one place a step becomes a process: `<shell> -lc <step>`, or nothing at
 /// all where there is no POSIX shell to read it.
 #[cfg(unix)]
 fn shell_command(step: &str) -> Result<Command, String> {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| FALLBACK_SHELL.to_string());
-    let mut command = Command::new(shell);
+    let configured = std::env::var("SHELL").unwrap_or_default();
+    let mut command = Command::new(posix_shell(&configured));
     command.arg("-lc").arg(step);
     Ok(command)
 }
@@ -134,8 +158,8 @@ fn shell_command(_step: &str) -> Result<Command, String> {
     Err(NO_POSIX_SHELL.to_string())
 }
 
-/// What a failed spawn is reported as: the shell that could not start, since
-/// "no such file or directory" alone names nothing the user can act on.
+/// Names the shell that could not start: "no such file or directory" alone
+/// names nothing the user can act on.
 fn spawn_failure(command: &Command, err: std::io::Error) -> String {
     format!("{}: {err}", command.get_program().to_string_lossy())
 }
@@ -353,8 +377,26 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Everything below performs a real command, so it exists only where there
-    /// is a shell to perform it with.
+    #[cfg(unix)]
+    #[test]
+    fn a_shell_that_cannot_read_a_posix_step_is_not_the_one_used() {
+        // What the user logs in with is kept wherever it can read the step:
+        // that is where `$PATH` comes from.
+        assert_eq!(
+            posix_shell("/opt/homebrew/bin/bash"),
+            "/opt/homebrew/bin/bash"
+        );
+        assert_eq!(posix_shell("/bin/zsh"), "/bin/zsh");
+        assert_eq!(posix_shell("/usr/bin/fish"), FALLBACK_SHELL);
+        assert_eq!(posix_shell("/usr/local/bin/nu"), FALLBACK_SHELL);
+        assert_eq!(
+            posix_shell(""),
+            FALLBACK_SHELL,
+            "set but empty is not a shell"
+        );
+    }
+
+    /// Everything below performs a real command.
     #[cfg(unix)]
     mod shell {
         use super::*;
@@ -445,10 +487,8 @@ mod tests {
             let outcomes = perform(&steps, None);
             assert!(outcomes[0].error.is_none());
 
-            // The step is detached, so it is waited for rather than assumed
-            // done. A login shell reads the user's profile before it runs
-            // anything, which on a loaded machine is not instant, so the
-            // deadline is long and the loop leaves the moment the file lands.
+            // Detached, so waited for: a login shell reads the profile first,
+            // which on a loaded machine is not instant.
             let deadline = Instant::now() + Duration::from_secs(10);
             while !path.exists() && Instant::now() < deadline {
                 std::thread::sleep(POLL_INTERVAL);
@@ -461,8 +501,7 @@ mod tests {
         }
     }
 
-    /// Off Unix the step is refused, and the refusal says why: a source that
-    /// cannot run here must read as unsupported, not as a broken command.
+    /// Off Unix the step is refused by name, not run wrongly.
     #[cfg(not(unix))]
     #[test]
     fn a_step_without_a_posix_shell_is_refused_by_name() {

@@ -34,19 +34,49 @@ pub struct ResolvedConfig {
     pub migrated: bool,
 }
 
+/// The home Look resolves its paths against, for callers needing one for
+/// something other than the config. Same answer as `current`.
+pub fn home() -> Option<String> {
+    crate::config::user_home_dir()
+}
+
+/// The config file for the user running this process, home directory and all.
+///
+/// Deriving the home is where implementations drift apart: `$HOME` and
+/// `$USERPROFILE` can name different directories on Windows, so callers
+/// ordering them differently resolve different files. `None` means no home and
+/// no override.
+pub fn current() -> Option<ResolvedConfig> {
+    if let Some(path) = overridden() {
+        return Some(ResolvedConfig {
+            path,
+            migrated: false,
+        });
+    }
+    crate::config::user_home_dir().map(|home| resolve_home(Path::new(&home)))
+}
+
 /// The config file to read and write. `$LOOK_CONFIG_PATH` overrides everything;
 /// otherwise this is `resolve_home`.
 pub fn resolve(home: &Path) -> ResolvedConfig {
-    if let Ok(custom) = std::env::var(ENV_CONFIG_PATH) {
-        let trimmed = custom.trim();
-        if !trimmed.is_empty() {
-            return ResolvedConfig {
-                path: PathBuf::from(trimmed),
-                migrated: false,
-            };
-        }
+    match overridden() {
+        Some(path) => ResolvedConfig {
+            path,
+            migrated: false,
+        },
+        None => resolve_home(home),
     }
-    resolve_home(home)
+}
+
+/// `$LOOK_CONFIG_PATH`, when it names anything. Set but empty would resolve to
+/// wherever the app was launched from.
+fn overridden() -> Option<PathBuf> {
+    let custom = std::env::var(ENV_CONFIG_PATH).ok()?;
+    let trimmed = custom.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(trimmed))
 }
 
 /// Resolution against a home directory, ignoring the environment. Split out so

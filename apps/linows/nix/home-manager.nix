@@ -101,12 +101,16 @@ let
 
   stateFile = "${config.xdg.stateHome}/lookapp/home-manager-keys";
 
-  # Look merges its own writes into ~/.look.config line by line and keeps keys
+  # Look merges its own writes into its config file line by line and keeps keys
   # it does not know about (set_config in src-tauri/src/config.rs), so replacing
   # the whole file on activation would throw away everything the user changed
   # in-app. Merge the same way instead: managed keys win, everything else is
   # left alone, and keys dropped from the Nix config since the last generation
   # are removed so the file cannot go stale.
+  #
+  # Target whichever file Look reads (core/engine/src/config_path.rs): the
+  # legacy ~/.look.config until Look copies it into ~/.look/ on its next launch,
+  # which carries these keys across. Writing to it after that applies nothing.
   mergeScript = pkgs.writeShellScript "lookapp-merge-config" ''
     set -eu
     export PATH=${lib.makeBinPath [ pkgs.coreutils ]}
@@ -115,6 +119,14 @@ let
     managed_keys=$2
     prev_keys_file=$3
     target=$4
+    legacy=$5
+
+    if [ ! -e "$target" ] && [ -e "$legacy" ]; then
+      case "$(head -n 1 "$legacy")" in
+        '# Moved to '*) ;;
+        *) target=$legacy ;;
+      esac
+    fi
 
     keys=" "
     while IFS= read -r key; do
@@ -139,6 +151,7 @@ let
       if [ "$keys" = " " ]; then
         exit 0
       fi
+      mkdir -p "$(dirname "$target")"
       {
         printf '# look configuration\n'
         printf '# Keys below are managed by Home Manager. Edit your Nix config, not this file.\n\n'
@@ -234,7 +247,7 @@ in
       defaultText = lib.literalExpression "inputs.look.packages.\${pkgs.stdenv.hostPlatform.system}.default";
       description = ''
         The Look package to install. `null` installs nothing and manages only
-        `~/.look.config`, for when Look is already installed system-wide.
+        `~/.look/config`, for when Look is already installed system-wide.
       '';
     };
 
@@ -269,7 +282,7 @@ in
         }
       '';
       description = ''
-        Settings written to ~/.look.config. Attribute names map directly to
+        Settings written to ~/.look/config. Attribute names map directly to
         Look config keys, for example `ui_theme` becomes `ui_theme=...`.
         Lists are serialized as comma-separated values, except for
         `ignored_patterns_*` and `alias_*` keys, which Look parses as
@@ -303,11 +316,11 @@ in
 
     home.packages = lib.optional (cfg.package != null) cfg.package;
 
-    # Look writes ~/.look.config itself on every settings change, so a home.file
+    # Look writes its config itself on every settings change, so a home.file
     # symlink into the read-only store makes those writes fail and the frontend
     # only logs the error. Merge into a mutable file instead.
     home.activation.lookappConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      run ${mergeScript} ${managedFile} ${managedKeysFile} ${lib.escapeShellArg stateFile} "$HOME/.look.config"
+      run ${mergeScript} ${managedFile} ${managedKeysFile} ${lib.escapeShellArg stateFile} "$HOME/.look/config" "$HOME/.look.config"
       run install -Dm0644 ${managedKeysFile} ${lib.escapeShellArg stateFile}
     '';
   };

@@ -144,18 +144,23 @@ derived from the preset at startup, so the module only writes `ui_theme`, plus
 the opacity values for `kindle` and `liquid` because those two own them. Use
 `custom` to drive every `ui_*` value from `settings` instead.
 
-`settings` keys map directly to `~/.look.config` keys and override values
+`settings` keys map directly to `~/.look/config` keys and override values
 derived from `theme`. Lists are written as comma-separated values, except
 `ignored_patterns_*` and `alias_*`, which Look parses as pipe-separated.
 `aliases` is the same thing with the prefix filled in, so declaring
 `aliases.note` and `settings.alias_note` together is an error.
 
-Activation merges the managed keys into `~/.look.config` rather than replacing
+Activation merges the managed keys into `~/.look/config` rather than replacing
 it: keys you set in Nix win, anything you changed in-app is kept, and keys you
 remove from the Nix config are cleaned up on the next rebuild. The file stays
 writable so the app can keep saving to it, but Nix wins again on every
 activation, so treat Nix as the source of truth for the keys it manages. The
-first activation copies the pre-Nix file to `~/.look.config.hm-backup`.
+first activation copies the pre-Nix file to `<config>.hm-backup`.
+
+Upgrading from a Look that kept its config at `~/.look.config`: activation
+merges into that file until Look has copied it into `~/.look/`, which it does on
+its next launch and which carries the managed keys across. Nothing needs doing
+by hand, and the old file is left where it is.
 
 ### Windows
 
@@ -190,7 +195,7 @@ scripts\windows\with-vcvars.bat cargo fmt --manifest-path apps\linows\src-tauri\
 scripts\windows\with-vcvars.bat cargo clippy --manifest-path apps\linows\src-tauri\Cargo.toml -- -D warnings
 ```
 
-**Dev paths:** in dev mode, Look writes to `%LOCALAPPDATA%\look\look.dev.db` and `%USERPROFILE%\.look.dev.config`. Production builds use `%LOCALAPPDATA%\look\` for both.
+**Dev paths:** in dev mode, Look writes to `%LOCALAPPDATA%\look\look.dev.db` and `%USERPROFILE%\.look\config.dev`. Production builds use `%LOCALAPPDATA%\look\` for both.
 
 **Hot reload caveats:**
 

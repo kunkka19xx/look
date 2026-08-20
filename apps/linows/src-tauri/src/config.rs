@@ -153,7 +153,8 @@ fn default_config_contents() -> String {
     out
 }
 
-pub const ENV_CONFIG_PATH: &str = "LOOK_CONFIG_PATH";
+/// Re-exported, not repeated: a second name is a second file.
+pub use look_engine::config_path::ENV_CONFIG_PATH;
 
 const CLIPBOARD_HISTORY_LIMIT_KEY: &str = "clipboard_history_limit";
 pub const CLIPBOARD_HISTORY_LIMIT_DEFAULT: usize = 10;
@@ -222,20 +223,13 @@ fn parse_clipboard_history_limit(contents: &str) -> usize {
 /// The config file to read and write, migrating a legacy `~/.look.config` into
 /// `~/.look/` the first time.
 ///
-/// Delegates to the shared resolver rather than re-deriving the path: the app
-/// writes this file as well as reading it, so a second implementation that
-/// disagreed would read one file and save to another.
+/// Delegates to the shared resolver, home directory included: the app writes
+/// this file as well as reading it, so a second answer would read one file and
+/// save to another.
 pub fn config_file_path() -> std::path::PathBuf {
-    if let Ok(custom) = std::env::var(ENV_CONFIG_PATH) {
-        let trimmed = custom.trim();
-        if !trimmed.is_empty() {
-            return std::path::PathBuf::from(trimmed);
-        }
-    }
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .unwrap_or_else(|_| ".".to_string());
-    look_engine::config_path::resolve_home(std::path::Path::new(&home)).path
+    look_engine::config_path::current()
+        .unwrap_or_else(|| look_engine::config_path::resolve_home(std::path::Path::new(".")))
+        .path
 }
 
 #[cfg(test)]
