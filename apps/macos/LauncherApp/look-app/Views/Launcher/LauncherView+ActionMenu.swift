@@ -109,7 +109,7 @@ extension LauncherView {
         // Asking one. The menu stays open and swaps to the question, so the
         // answer happens where the user's eyes already are.
         if let blockID = SourceBlockAction.blockID(fromActionID: descriptor.actionId),
-           let question = confirmQuestion(forBlockID: blockID) {
+           let question = descriptor.confirm {
             pendingActionConfirm = (blockID: blockID, title: descriptor.title, question: question)
             // Start on Cancel: a destructive action should cost one more press
             // than an accidental double-Enter.
@@ -119,14 +119,6 @@ extension LauncherView {
 
         closeActionMenu()
         runQuickAction(descriptor, intent: descriptor.control == .toggle ? .toggle : .run)
-    }
-
-    /// The question a `then` target declared, already expanded against the row.
-    private func confirmQuestion(forBlockID blockID: String) -> String? {
-        guard let result = actionableSelectedResult() else { return nil }
-        return SourceBlockCatalog.targets(for: result)
-            .first(where: { $0.id == blockID })?
-            .confirm
     }
 
     /// Keeps the focused row inside the list when the offered actions change

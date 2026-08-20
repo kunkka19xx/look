@@ -35,7 +35,8 @@ extension LauncherView {
                 control: .button,
                 onLabel: nil,
                 offLabel: nil,
-                info: []
+                info: [],
+                confirm: target.confirm
             )
         }
     }
@@ -53,7 +54,8 @@ extension LauncherView {
                     rowID: row.id,
                     rowTitle: row.title,
                     rowPath: row.path,
-                    query: row.query
+                    query: row.query,
+                    asTarget: true
                 )
             }.value
 
@@ -62,10 +64,10 @@ extension LauncherView {
                     showBanner("\(title): \(failure)", style: .error, duration: 4.0)
                     return
                 }
-                if outcome.performed == 0 {
-                    // A target that produces rows rather than performing steps.
-                    // Descending into it needs the level stack, which does not
-                    // exist yet, so say so rather than appearing to do nothing.
+                if outcome.producesRows {
+                    // Descending needs the level stack, which does not exist
+                    // yet. Said plainly rather than inferred from a zero count,
+                    // which is also what a failure looks like.
                     showBanner("\(title) produces rows; drill-down is not built yet", style: .info, duration: 2.4)
                     return
                 }

@@ -335,9 +335,12 @@ pub extern "C" fn look_perform_block_json(
     row_title: *const c_char,
     row_path: *const c_char,
     query: *const c_char,
+    as_target: bool,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        sources_api::look_perform_block_json_impl(block_id, row_id, row_title, row_path, query)
+        sources_api::look_perform_block_json_impl(
+            block_id, row_id, row_title, row_path, query, as_target,
+        )
     }))
     .unwrap_or(std::ptr::null_mut())
 }

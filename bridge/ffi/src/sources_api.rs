@@ -55,6 +55,10 @@ struct BlockSummary {
 struct PerformOutcome {
     performed: usize,
     errors: Vec<String>,
+    /// The target makes rows to pick from rather than steps to run, so the
+    /// caller should descend into it. An explicit signal, because "nothing was
+    /// performed" is also what a failure looks like.
+    produces_rows: bool,
 }
 
 /// `{id, name, steps, file, then}` for the block a candidate id belongs to, or
@@ -128,15 +132,21 @@ pub(crate) fn look_source_blocks_json_impl() -> *mut c_char {
     json_cstring_or_null(serde_json::to_string(&summaries).ok())
 }
 
-/// Performs `block_id`'s steps against the selected row, which is what its
-/// placeholders expand to. Returns `{performed, errors}`; an empty `errors`
-/// means every step was spawned.
+/// Performs `block_id` against the selected row, which is what its placeholders
+/// expand to. Returns `{performed, errors, produces_rows}`.
+///
+/// `as_target` is the caller's intent, and only the caller knows it. Enter on a
+/// row means "do what this block's `open` says", so a row-producing block runs
+/// its verb. A `then` target means "go to this block", so a row-producing one is
+/// a level to descend into and running its `open` would act on the WRONG row -
+/// the one currently selected, not one of the rows the target would list.
 pub(crate) fn look_perform_block_json_impl(
     block_id: *const c_char,
     row_id: *const c_char,
     row_title: *const c_char,
     row_path: *const c_char,
     query: *const c_char,
+    as_target: bool,
 ) -> *mut c_char {
     let block_id = cstr_to_string(block_id);
     let row = row_context(row_id, row_title, row_path, &cstr_to_string(query));
@@ -145,10 +155,11 @@ pub(crate) fn look_perform_block_json_impl(
         return outcome(0, vec!["that block no longer exists".into()]);
     };
 
-    // A bundle IS its steps. Any other producer makes rows, so what Enter does
-    // to one of them is the block's `open` verb.
+    // A bundle IS its steps. Any other producer makes rows: reached as a target
+    // that means descend, reached by Enter it means run the block's `open`.
     let steps: Vec<String> = match &block.producer {
         Producer::Bundle { steps } => steps.clone(),
+        _ if as_target => return produces_rows(),
         _ => match block.verbs.open.as_deref() {
             Some(command) => vec![command.to_string()],
             None => {
@@ -295,7 +306,25 @@ fn steps_of(block: &Block) -> Vec<String> {
 }
 
 fn outcome(performed: usize, errors: Vec<String>) -> *mut c_char {
-    json_cstring_or_null(serde_json::to_string(&PerformOutcome { performed, errors }).ok())
+    json_cstring_or_null(
+        serde_json::to_string(&PerformOutcome {
+            performed,
+            errors,
+            produces_rows: false,
+        })
+        .ok(),
+    )
+}
+
+fn produces_rows() -> *mut c_char {
+    json_cstring_or_null(
+        serde_json::to_string(&PerformOutcome {
+            performed: 0,
+            errors: Vec::new(),
+            produces_rows: true,
+        })
+        .ok(),
+    )
 }
 
 fn find_block(block_id: &str) -> Option<Block> {

@@ -242,7 +242,7 @@ private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?, _ rowI
 
 @_silgen_name("look_perform_block_json")
 nonisolated
-private func look_perform_block_json(_ blockID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private func look_perform_block_json(_ blockID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ asTarget: Bool) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_netspeed_run_json")
 nonisolated
@@ -1071,19 +1071,23 @@ final class EngineBridge: @unchecked Sendable {
 
     /// Performs every step of that block, detached, through the user's login
     /// shell. Spawns processes - call off the main thread.
+    /// `asTarget` is the caller's intent, and only the caller knows it: Enter on
+    /// a row runs that block's `open`, while a `then` target that produces rows
+    /// is a level to descend into rather than something to run.
     nonisolated func performBlock(
         blockID: String,
         rowID: String = "",
         rowTitle: String = "",
         rowPath: String = "",
-        query: String = ""
+        query: String = "",
+        asTarget: Bool = false
     ) -> PerformBlockOutcome {
         let ptr = blockID.withCString { block in
             rowID.withCString { id in
                 rowTitle.withCString { title in
                     rowPath.withCString { path in
                         query.withCString { query in
-                            look_perform_block_json(block, id, title, path, query)
+                            look_perform_block_json(block, id, title, path, query, asTarget)
                         }
                     }
                 }
@@ -1093,13 +1097,19 @@ final class EngineBridge: @unchecked Sendable {
         // means something else entirely (a block that produces rows), and the
         // caller keys on that, so the two must not share a value.
         guard let ptr else {
-            return PerformBlockOutcome(performed: 0, errors: ["the core did not answer"])
+            return PerformBlockOutcome(
+                performed: 0, errors: ["the core did not answer"], producesRows: false)
         }
         defer { look_free_cstring(ptr) }
+        // The core sends snake_case, so `produces_rows` only reaches
+        // `producesRows` with the conversion strategy set.
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
         guard let data = String(cString: ptr).data(using: .utf8),
-              let outcome = try? JSONDecoder().decode(PerformBlockOutcome.self, from: data)
+              let outcome = try? decoder.decode(PerformBlockOutcome.self, from: data)
         else {
-            return PerformBlockOutcome(performed: 0, errors: ["the core's answer could not be read"])
+            return PerformBlockOutcome(
+                performed: 0, errors: ["the core's answer could not be read"], producesRows: false)
         }
         return outcome
     }
@@ -1340,6 +1350,9 @@ nonisolated struct SourcePreview: Decodable {
 nonisolated struct PerformBlockOutcome: Decodable {
     let performed: Int
     let errors: [String]
+    /// The target lists rows to pick from rather than steps to run. An explicit
+    /// flag, because "nothing performed" is also what a failure looks like.
+    let producesRows: Bool
 }
 
 /// Wire shape of a `url_history` row (see url-history spec), decoded with
