@@ -199,6 +199,7 @@ pub(crate) fn look_refresh_run_blocks_json_impl() -> *mut c_char {
         else {
             continue;
         };
+
         if !block.enabled {
             look_engine::index::clear_run_rows(&block.id);
             continue;

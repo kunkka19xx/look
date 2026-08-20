@@ -25,10 +25,6 @@ const SECONDS_PER_MINUTE: u64 = 60;
 const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE;
 const SECONDS_PER_DAY: u64 = 24 * SECONDS_PER_HOUR;
 
-const REFRESH_STARTUP: &str = "startup";
-const REFRESH_OPEN: &str = "open";
-const REFRESH_MANUAL: &str = "manual";
-
 /// Which entries a `dir` block keeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -48,46 +44,27 @@ pub enum RowFormat {
     Json,
 }
 
-/// When a `run` block re-runs. Never per keystroke.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Refresh {
-    #[default]
-    Startup,
-    Open,
-    Manual,
-    Interval(Duration),
-}
-
-impl Refresh {
-    /// `startup` | `open` | `manual` | a duration such as `30s`, `5m`, `1h`, `2d`.
-    pub fn parse(value: &str) -> Result<Self, String> {
-        let trimmed = value.trim();
-        match trimmed {
-            REFRESH_STARTUP => return Ok(Self::Startup),
-            REFRESH_OPEN => return Ok(Self::Open),
-            REFRESH_MANUAL => return Ok(Self::Manual),
-            _ => {}
-        }
-
-        let split = trimmed
-            .find(|c: char| !c.is_ascii_digit())
-            .ok_or_else(|| format!("refresh \"{trimmed}\" has no unit, try \"5m\""))?;
-        let (digits, unit) = trimmed.split_at(split);
-        let amount: u64 = digits
-            .parse()
-            .map_err(|_| format!("refresh \"{trimmed}\" is not a duration"))?;
-        let seconds = match unit {
-            "s" => amount,
-            "m" => amount * SECONDS_PER_MINUTE,
-            "h" => amount * SECONDS_PER_HOUR,
-            "d" => amount * SECONDS_PER_DAY,
-            other => return Err(format!("refresh unit \"{other}\" is not one of s, m, h, d")),
-        };
-        if seconds == 0 {
-            return Err("refresh interval must be greater than zero".into());
-        }
-        Ok(Self::Interval(Duration::from_secs(seconds)))
+/// Parses a duration such as `30s`, `5m`, `1h`, `2d`.
+pub fn parse_duration(value: &str) -> Result<Duration, String> {
+    let trimmed = value.trim();
+    let split = trimmed
+        .find(|c: char| !c.is_ascii_digit())
+        .ok_or_else(|| format!("\"{trimmed}\" has no unit, try \"5s\""))?;
+    let (digits, unit) = trimmed.split_at(split);
+    let amount: u64 = digits
+        .parse()
+        .map_err(|_| format!("\"{trimmed}\" is not a duration"))?;
+    let seconds = match unit {
+        "s" => amount,
+        "m" => amount * SECONDS_PER_MINUTE,
+        "h" => amount * SECONDS_PER_HOUR,
+        "d" => amount * SECONDS_PER_DAY,
+        other => return Err(format!("unit \"{other}\" is not one of s, m, h, d")),
+    };
+    if seconds == 0 {
+        return Err("a duration must be greater than zero".into());
     }
+    Ok(Duration::from_secs(seconds))
 }
 
 /// What a block produces.
@@ -109,7 +86,6 @@ pub enum Producer {
     Run {
         command: String,
         cwd: Option<String>,
-        refresh: Refresh,
         timeout: Option<Duration>,
         format: RowFormat,
     },
@@ -253,7 +229,6 @@ struct RawBlock {
 
     run: Option<String>,
     cwd: Option<String>,
-    refresh: Option<String>,
     timeout: Option<String>,
     format: Option<RowFormat>,
 
@@ -399,19 +374,10 @@ fn producer_from(raw: &RawBlock) -> Result<Producer, String> {
         [KEY_RUN] => Ok(Producer::Run {
             command: raw.run.clone().unwrap_or_default(),
             cwd: raw.cwd.clone(),
-            refresh: raw
-                .refresh
-                .as_deref()
-                .map(Refresh::parse)
-                .transpose()?
-                .unwrap_or_default(),
             timeout: raw
                 .timeout
                 .as_deref()
-                .map(|value| match Refresh::parse(value)? {
-                    Refresh::Interval(duration) => Ok(duration),
-                    _ => Err(format!("timeout \"{value}\" must be a duration")),
-                })
+                .map(|value| parse_duration(value).map_err(|err| format!("timeout {err}")))
                 .transpose()?,
             format: raw.format.unwrap_or_default(),
         }),
@@ -691,14 +657,22 @@ run = "git -C {path} branch"
     }
 
     #[test]
-    fn refresh_accepts_keywords_and_durations() {
-        assert_eq!(Refresh::parse("startup").unwrap(), Refresh::Startup);
-        assert_eq!(Refresh::parse("open").unwrap(), Refresh::Open);
+    fn timeout_takes_a_duration_and_nothing_else() {
+        assert_eq!(parse_duration("90s").unwrap(), Duration::from_secs(90));
         assert_eq!(
-            Refresh::parse("90s").unwrap(),
-            Refresh::Interval(Duration::from_secs(90))
+            parse_duration("2h").unwrap(),
+            Duration::from_secs(2 * SECONDS_PER_HOUR)
         );
-        assert!(Refresh::parse("1w").is_err());
-        assert!(Refresh::parse("0m").is_err());
+        assert!(parse_duration("1w").is_err());
+        assert!(parse_duration("0m").is_err());
+        assert!(parse_duration("soon").is_err());
+    }
+
+    #[test]
+    fn refresh_is_no_longer_a_key() {
+        // `run` blocks refresh on reload, one gesture for everything. A leftover
+        // `refresh = ...` is reported as unknown rather than silently ignored.
+        let block = one("[a]\nrun = \"ls\"\nrefresh = \"open\"\n");
+        assert_eq!(block.unknown_keys, ["refresh"]);
     }
 }
