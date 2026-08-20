@@ -8,6 +8,11 @@
 //!
 //! Steps are detached and not waited on: the launcher window closes immediately
 //! after Enter, and an app it launched must outlive it.
+//!
+//! A step is POSIX shell text down to its punctuation - `&&`, `>`, and the
+//! single quotes `expand` wraps every placeholder in. Windows has no shell that
+//! reads it, and handing it to `cmd` would run the command with mangled
+//! arguments rather than not run it, so there the step is refused outright.
 
 use std::io::Read;
 use std::process::{Command, Stdio};
@@ -16,7 +21,13 @@ use std::time::{Duration, Instant};
 
 /// Used when `$SHELL` is unset, which happens for processes the window server
 /// starts without a user session environment.
+#[cfg(unix)]
 const FALLBACK_SHELL: &str = "/bin/sh";
+
+/// Said instead of running anything, so a source that cannot work on this
+/// platform reports why rather than failing as a missing program.
+#[cfg(not(unix))]
+const NO_POSIX_SHELL: &str = "steps are POSIX shell commands, which this platform has no shell for";
 
 /// How often a captured command is checked for having finished. Short enough
 /// that a fast command is not held up, long enough not to spin.
@@ -108,12 +119,30 @@ fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-fn spawn(step: &str, row: Option<&RowContext>) -> Result<(), String> {
+/// The one place a step becomes a process: `$SHELL -lc <step>`, or nothing at
+/// all where there is no POSIX shell to read it.
+#[cfg(unix)]
+fn shell_command(step: &str) -> Result<Command, String> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| FALLBACK_SHELL.to_string());
-    let mut command = Command::new(&shell);
+    let mut command = Command::new(shell);
+    command.arg("-lc").arg(step);
+    Ok(command)
+}
+
+#[cfg(not(unix))]
+fn shell_command(_step: &str) -> Result<Command, String> {
+    Err(NO_POSIX_SHELL.to_string())
+}
+
+/// What a failed spawn is reported as: the shell that could not start, since
+/// "no such file or directory" alone names nothing the user can act on.
+fn spawn_failure(command: &Command, err: std::io::Error) -> String {
+    format!("{}: {err}", command.get_program().to_string_lossy())
+}
+
+fn spawn(step: &str, row: Option<&RowContext>) -> Result<(), String> {
+    let mut command = shell_command(step)?;
     command
-        .arg("-lc")
-        .arg(step)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -133,10 +162,10 @@ fn spawn(step: &str, row: Option<&RowContext>) -> Result<(), String> {
     }
 
     detach(&mut command);
-    command
-        .spawn()
-        .map(|_| ())
-        .map_err(|err| format!("{shell}: {err}"))
+    match command.spawn() {
+        Ok(_) => Ok(()),
+        Err(err) => Err(spawn_failure(&command, err)),
+    }
 }
 
 /// Runs `command` and returns its stdout, for the producers whose output IS the
@@ -151,16 +180,13 @@ pub fn capture(
     timeout: Duration,
     max_bytes: usize,
 ) -> Result<String, String> {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| FALLBACK_SHELL.to_string());
-    let mut spawned = Command::new(&shell)
-        .arg("-lc")
-        .arg(command)
+    let mut shell = shell_command(command)?;
+    shell
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .current_dir(cwd.filter(|dir| !dir.is_empty()).unwrap_or("/"))
-        .spawn()
-        .map_err(|err| format!("{shell}: {err}"))?;
+        .current_dir(cwd.filter(|dir| !dir.is_empty()).unwrap_or("/"));
+    let mut spawned = shell.spawn().map_err(|err| spawn_failure(&shell, err))?;
 
     // Both pipes are drained on their own threads for the whole run. Polling
     // `try_wait` and reading afterwards deadlocks the moment a command writes
@@ -327,102 +353,123 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    #[test]
-    fn capture_returns_what_the_command_printed() {
-        let out = capture("printf 'a\nb\n'", None, Duration::from_secs(5), 1024).unwrap();
-        assert_eq!(out, "a\nb\n");
-    }
+    /// Everything below performs a real command, so it exists only where there
+    /// is a shell to perform it with.
+    #[cfg(unix)]
+    mod shell {
+        use super::*;
 
-    #[test]
-    fn a_command_that_fails_reports_its_first_stderr_line() {
-        let err = capture("echo boom >&2; exit 1", None, Duration::from_secs(5), 1024).unwrap_err();
-        assert_eq!(err, "boom");
-    }
-
-    #[test]
-    fn a_hung_command_is_killed_rather_than_waited_on() {
-        let err = capture("sleep 30", None, Duration::from_millis(150), 1024).unwrap_err();
-        assert!(err.contains("timed out"), "{err}");
-    }
-
-    #[test]
-    fn output_larger_than_the_pipe_buffer_does_not_deadlock() {
-        // The OS pipe buffer is ~64 KiB. Reading only after the child exits
-        // means it blocks on write and never exits, and the deadline then
-        // reports a timeout for a command that was working fine.
-        let out = capture(
-            "head -c 200000 /dev/zero | tr '\\0' 'a'",
-            None,
-            Duration::from_secs(10),
-            256 * 1024,
-        )
-        .expect("a long-output command must finish");
-        assert_eq!(out.len(), 200_000);
-    }
-
-    #[test]
-    fn output_past_the_cap_is_cut_on_a_char_boundary() {
-        // A multi-byte glyph straddling the cap must not panic or corrupt.
-        let out = capture(
-            "printf 'é%.0s' $(seq 1 100)",
-            None,
-            Duration::from_secs(5),
-            15,
-        )
-        .unwrap();
-        assert!(out.len() <= 15);
-        assert!(out.chars().all(|c| c == 'é'), "{out:?}");
-    }
-
-    #[test]
-    fn a_step_on_a_file_row_runs_in_the_files_folder() {
-        // `current_dir` on a file path fails the spawn outright, so this is the
-        // difference between file rows working and every one of them erroring.
-        let dir = std::env::temp_dir().join(format!("look-run-cwd-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("probe dir");
-        let file = dir.join("row.txt");
-        std::fs::write(&file, "x").expect("probe file");
-
-        let mut context = row("");
-        context.path = file.to_string_lossy().into_owned();
-        let outcomes = perform(&["true".to_string()], Some(&context));
-
-        assert_eq!(outcomes[0].error, None, "a file row must not fail to spawn");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn every_step_is_attempted_even_when_one_fails() {
-        // A bundle that opens four apps should open the three that exist, so a
-        // failure is recorded against its own step and the rest still run.
-        let steps = vec!["true".to_string(), "false".to_string(), "true".to_string()];
-        let outcomes = perform(&steps, None);
-        assert_eq!(outcomes.len(), 3);
-        // Spawning succeeds for all three: a nonzero exit is the command's
-        // business, not a spawn failure, and we never wait for it.
-        assert!(outcomes.iter().all(|outcome| outcome.error.is_none()));
-    }
-
-    #[test]
-    fn a_step_runs_through_a_shell_so_shell_syntax_works() {
-        let path = std::env::temp_dir().join(format!("look-run-{}", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let steps = vec![format!("echo hi > {}", path.display())];
-
-        let outcomes = perform(&steps, None);
-        assert!(outcomes[0].error.is_none());
-
-        // The step is detached, so give it a moment before reading.
-        for _ in 0..50 {
-            if path.exists() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
+        #[test]
+        fn capture_returns_what_the_command_printed() {
+            let out = capture("printf 'a\nb\n'", None, Duration::from_secs(5), 1024).unwrap();
+            assert_eq!(out, "a\nb\n");
         }
-        assert!(
-            path.exists(),
-            "redirection is shell syntax, so it needs a shell"
-        );
-        let _ = std::fs::remove_file(&path);
+
+        #[test]
+        fn a_command_that_fails_reports_its_first_stderr_line() {
+            let err =
+                capture("echo boom >&2; exit 1", None, Duration::from_secs(5), 1024).unwrap_err();
+            assert_eq!(err, "boom");
+        }
+
+        #[test]
+        fn a_hung_command_is_killed_rather_than_waited_on() {
+            let err = capture("sleep 30", None, Duration::from_millis(150), 1024).unwrap_err();
+            assert!(err.contains("timed out"), "{err}");
+        }
+
+        #[test]
+        fn output_larger_than_the_pipe_buffer_does_not_deadlock() {
+            // The OS pipe buffer is ~64 KiB. Reading only after the child exits
+            // means it blocks on write and never exits, and the deadline then
+            // reports a timeout for a command that was working fine.
+            let out = capture(
+                "head -c 200000 /dev/zero | tr '\\0' 'a'",
+                None,
+                Duration::from_secs(10),
+                256 * 1024,
+            )
+            .expect("a long-output command must finish");
+            assert_eq!(out.len(), 200_000);
+        }
+
+        #[test]
+        fn output_past_the_cap_is_cut_on_a_char_boundary() {
+            // A multi-byte glyph straddling the cap must not panic or corrupt.
+            let out = capture(
+                "printf 'é%.0s' $(seq 1 100)",
+                None,
+                Duration::from_secs(5),
+                15,
+            )
+            .unwrap();
+            assert!(out.len() <= 15);
+            assert!(out.chars().all(|c| c == 'é'), "{out:?}");
+        }
+
+        #[test]
+        fn a_step_on_a_file_row_runs_in_the_files_folder() {
+            // `current_dir` on a file path fails the spawn outright, so this is the
+            // difference between file rows working and every one of them erroring.
+            let dir = std::env::temp_dir().join(format!("look-run-cwd-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).expect("probe dir");
+            let file = dir.join("row.txt");
+            std::fs::write(&file, "x").expect("probe file");
+
+            let mut context = row("");
+            context.path = file.to_string_lossy().into_owned();
+            let outcomes = perform(&["true".to_string()], Some(&context));
+
+            assert_eq!(outcomes[0].error, None, "a file row must not fail to spawn");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+
+        #[test]
+        fn every_step_is_attempted_even_when_one_fails() {
+            // A bundle that opens four apps should open the three that exist, so a
+            // failure is recorded against its own step and the rest still run.
+            let steps = vec!["true".to_string(), "false".to_string(), "true".to_string()];
+            let outcomes = perform(&steps, None);
+            assert_eq!(outcomes.len(), 3);
+            // Spawning succeeds for all three: a nonzero exit is the command's
+            // business, not a spawn failure, and we never wait for it.
+            assert!(outcomes.iter().all(|outcome| outcome.error.is_none()));
+        }
+
+        #[test]
+        fn a_step_runs_through_a_shell_so_shell_syntax_works() {
+            let path = std::env::temp_dir().join(format!("look-run-{}", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            let steps = vec![format!("echo hi > {}", path.display())];
+
+            let outcomes = perform(&steps, None);
+            assert!(outcomes[0].error.is_none());
+
+            // The step is detached, so it is waited for rather than assumed
+            // done. A login shell reads the user's profile before it runs
+            // anything, which on a loaded machine is not instant, so the
+            // deadline is long and the loop leaves the moment the file lands.
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !path.exists() && Instant::now() < deadline {
+                std::thread::sleep(POLL_INTERVAL);
+            }
+            assert!(
+                path.exists(),
+                "redirection is shell syntax, so it needs a shell"
+            );
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+
+    /// Off Unix the step is refused, and the refusal says why: a source that
+    /// cannot run here must read as unsupported, not as a broken command.
+    #[cfg(not(unix))]
+    #[test]
+    fn a_step_without_a_posix_shell_is_refused_by_name() {
+        let outcomes = perform(&["true".to_string()], None);
+        assert_eq!(outcomes[0].error.as_deref(), Some(NO_POSIX_SHELL));
+
+        let err = capture("true", None, Duration::from_secs(5), 1024).unwrap_err();
+        assert_eq!(err, NO_POSIX_SHELL);
     }
 }
