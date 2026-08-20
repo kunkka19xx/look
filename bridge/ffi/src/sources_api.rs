@@ -306,6 +306,19 @@ fn find_block(block_id: &str) -> Option<Block> {
         .find(|block| block.id == block_id)
 }
 
+/// The config file this build reads and writes, migrating a legacy
+/// `~/.look.config` into `~/.look/` the first time.
+///
+/// The shell asks Rust rather than deciding for itself, so the two can never
+/// resolve differently and end up reading one file while saving to another.
+pub(crate) fn look_config_path_impl(dev: bool) -> *mut c_char {
+    let Some(home) = home_dir() else {
+        return json_cstring_or_null(None);
+    };
+    let resolved = look_engine::config_path::resolve_home_variant(&home, dev);
+    json_cstring_or_null(Some(resolved.path.to_string_lossy().into_owned()))
+}
+
 fn home_dir() -> Option<PathBuf> {
     std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))

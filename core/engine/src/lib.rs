@@ -1,5 +1,6 @@
 pub mod action;
 pub mod config;
+pub mod config_path;
 pub mod index;
 mod normalize;
 mod platform;

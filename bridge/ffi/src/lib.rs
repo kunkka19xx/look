@@ -290,6 +290,17 @@ pub extern "C" fn look_source_blocks_json() -> *mut c_char {
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// The config file to read and write. Pass `dev` for a development build, which
+/// keeps its own pair so it never edits the installed copy's settings. Plain
+/// path string, not JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_config_path(dev: bool) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_config_path_impl(dev)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// Re-runs every enabled `run` block and stores its rows for the next index
 /// pass. Blocks while commands run - call off the main thread.
 #[unsafe(no_mangle)]
