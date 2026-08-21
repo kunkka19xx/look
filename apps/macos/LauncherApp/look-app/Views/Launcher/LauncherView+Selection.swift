@@ -230,6 +230,12 @@ extension LauncherView {
             onRevealInFinder: {
                 revealSelectedInFinder()
             },
+            onEditSelection: {
+                editSelectedResult()
+            },
+            onOpenTerminalForSelection: {
+                openTerminalForSelectedResult()
+            },
             onCopySelection: {
                 copySelectedResultToPasteboard()
             },

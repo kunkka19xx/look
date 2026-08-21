@@ -244,6 +244,14 @@ private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?, _ rowI
 nonisolated
 private func look_perform_block_json(_ blockID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ asTarget: Bool) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_tool_action_json")
+nonisolated
+private func look_tool_action_json(_ action: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_perform_tool_action_json")
+nonisolated
+private func look_perform_tool_action_json(_ action: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_netspeed_run_json")
 nonisolated
 private func look_netspeed_run_json() -> UnsafeMutablePointer<CChar>?
@@ -1025,6 +1033,36 @@ final class EngineBridge: @unchecked Sendable {
         return try? JSONDecoder().decode(SourceBlock.self, from: data)
     }
 
+    /// What `action` would do to a row, without doing it: the tool it would
+    /// start, or why it cannot. For labels and availability.
+    nonisolated func toolAction(_ action: String, path: String, isDirectory: Bool) -> ToolAction? {
+        let ptr = action.withCString { action in
+            path.withCString { path in
+                look_tool_action_json(action, path, isDirectory)
+            }
+        }
+        return Self.decodeToolAction(ptr)
+    }
+
+    /// Runs `action` on a row. Shell actions are spawned detached inside core;
+    /// an `application` result is handed back for `NSWorkspace` to launch.
+    /// Spawns a process, so call it off the main thread.
+    nonisolated func performToolAction(_ action: String, path: String, isDirectory: Bool) -> ToolAction? {
+        let ptr = action.withCString { action in
+            path.withCString { path in
+                look_perform_tool_action_json(action, path, isDirectory)
+            }
+        }
+        return Self.decodeToolAction(ptr)
+    }
+
+    private nonisolated static func decodeToolAction(_ ptr: UnsafeMutablePointer<CChar>?) -> ToolAction? {
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(ToolAction.self, from: data)
+    }
+
     /// Re-runs every `run` block and stores its rows for the next index pass.
     /// Spawns the user's commands and waits for them - call off the main thread.
     nonisolated func refreshRunBlocks() -> RunBlockRefreshOutcome {
@@ -1304,6 +1342,34 @@ nonisolated struct URLMatch: Decodable {
 
 /// A user-declared block and the steps performing it will run, so the panel can
 /// show exactly what Enter is about to do.
+/// One preferred-tool action resolved against a row. `kind` says which of the
+/// other fields are filled; see `specs/preferred-tools.md`.
+nonisolated struct ToolAction: Decodable {
+    enum Kind: String, Decodable {
+        /// Composed shell text. Only `look_tool_action_json` returns this;
+        /// performing runs it in core and reports `performed` or `failed`.
+        case shell
+        /// The native side launches `tool` with `path`.
+        case application
+        /// Nothing declared, so the platform's own handler does it.
+        case systemDefault = "system_default"
+        /// Core spawned it.
+        case performed
+        case failed
+        /// No tool declared, or one that cannot do this.
+        case unavailable
+    }
+
+    let kind: Kind
+    let tool: String?
+    let command: String?
+    let path: String?
+    /// Shown as-is when `kind` is `unavailable` or `failed`.
+    let reason: String?
+    /// The config key that would fix an `unavailable` action.
+    let key: String?
+}
+
 nonisolated struct SourceBlock: Decodable {
     let id: String
     let name: String

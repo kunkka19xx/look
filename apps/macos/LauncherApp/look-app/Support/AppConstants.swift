@@ -330,6 +330,24 @@ enum AppConstants {
             static let shadowRadius: CGFloat = 14
         }
 
+        /// Preferred tools: Cmd+E and Cmd+T act through the tools a user named
+        /// in their config. See `specs/preferred-tools.md`.
+        enum Tools {
+            static let editAction = "edit"
+            static let terminalAction = "terminal"
+            static let revealAction = "reveal"
+            static let launchFailedBanner = "Could not start"
+            /// Shown when no `file_manager` is declared, which is the default.
+            static let systemFileManagerName = "Finder"
+            static let bannerDuration: TimeInterval = 2.4
+            /// Long enough for the terminal to have made its new window, so
+            /// activating raises that one and not the window it already had.
+            static let activationSettleNanoseconds: UInt64 = 350_000_000
+            /// A terminal that was not running yet has to start first.
+            static let activationPollNanoseconds: UInt64 = 200_000_000
+            static let activationPollAttempts = 8
+        }
+
         /// Rows from a user-declared block in `~/.look/sources`.
         enum SourceBlock {
             static let idPrefix = "src:"
@@ -405,6 +423,8 @@ enum AppConstants {
             static let f: UInt16 = 3
             static let h: UInt16 = 4
             static let c: UInt16 = 8
+            static let e: UInt16 = 14
+            static let t: UInt16 = 17
             static let j: UInt16 = 38
             static let k: UInt16 = 40
             static let p: UInt16 = 35

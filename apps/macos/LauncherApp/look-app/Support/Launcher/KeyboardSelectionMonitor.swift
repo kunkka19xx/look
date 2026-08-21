@@ -43,6 +43,11 @@ final class KeyboardSelectionMonitor {
         onActionMenuRun: @escaping @MainActor () -> Void = {},
         onActionMenuClose: @escaping @MainActor () -> Void = {},
         onRevealInFinder: @escaping @MainActor () -> Void,
+        /// Cmd+E / Cmd+T act through the user's declared tools. They sit with
+        /// the other result chords, below the launchpad mnemonics, so the strip
+        /// keeps Cmd+T for the theme while a row is not selected.
+        onEditSelection: @escaping @MainActor () -> Void = {},
+        onOpenTerminalForSelection: @escaping @MainActor () -> Void = {},
         onCopySelection: @escaping @MainActor () -> Bool,
         onTogglePick: @escaping @MainActor () -> Void,
         onClearPicked: @escaping @MainActor () -> Void,
@@ -190,6 +195,20 @@ final class KeyboardSelectionMonitor {
                 && flags == [.command]
             {
                 onRevealInFinder()
+                return nil
+            }
+
+            if (event.keyCode == KeyCode.e || event.charactersIgnoringModifiers?.lowercased() == "e")
+                && flags == [.command]
+            {
+                onEditSelection()
+                return nil
+            }
+
+            if (event.keyCode == KeyCode.t || event.charactersIgnoringModifiers?.lowercased() == "t")
+                && flags == [.command]
+            {
+                onOpenTerminalForSelection()
                 return nil
             }
 

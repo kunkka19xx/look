@@ -16,6 +16,7 @@ mod seed_api;
 mod sources_api;
 mod state;
 mod todo_api;
+mod tools_api;
 mod translate_api;
 mod url_history_api;
 mod usage_api;
@@ -286,6 +287,49 @@ pub extern "C" fn look_source_block_json(
 pub extern "C" fn look_source_blocks_json() -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(
         sources_api::look_source_blocks_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// What `action` ("edit", "terminal", "reveal") does to the row at `path`, as
+/// `{kind, tool, command, path, reason, key}` where `kind` is "shell",
+/// "application", "system_default", or "unavailable". Null for an unknown
+/// action or empty path.
+///
+/// Reads the declared tools from the cached config, so Cmd+Shift+; is all a
+/// user needs after editing them.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_tool_action_json(
+    action: *const c_char,
+    path: *const c_char,
+    is_dir: bool,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        tools_api::look_tool_action_json_impl(action, path, is_dir)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Runs `action` on the row at `path`. Shell actions are performed here,
+/// detached, and come back as `{"kind":"performed"}` or `{"kind":"failed"}`; an
+/// `application` result is handed back for the shell to launch itself.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_perform_tool_action_json(
+    action: *const c_char,
+    path: *const c_char,
+    is_dir: bool,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        tools_api::look_perform_tool_action_json_impl(action, path, is_dir)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Every action id `look_tool_action_json` accepts, as a JSON array.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_tool_actions_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        tools_api::look_tool_actions_json_impl,
     ))
     .unwrap_or(std::ptr::null_mut())
 }

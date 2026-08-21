@@ -24,6 +24,7 @@ look-qactions = { path = "../../core/qactions" }
 look-ranking = { path = "../../core/ranking" }
 look-storage = { path = "../../core/storage" }
 look-todo = { path = "../../core/todo" }
+look-tools = { path = "../../core/tools" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 notify = "8"

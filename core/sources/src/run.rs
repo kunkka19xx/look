@@ -16,6 +16,8 @@
 
 use std::io::Read;
 use std::process::{Command, Stdio};
+
+use look_tools::shell_quote as quote;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -119,12 +121,6 @@ fn parent_dir(path: &str) -> String {
         .parent()
         .map(|parent| parent.to_string_lossy().into_owned())
         .unwrap_or_default()
-}
-
-/// POSIX single-quoting: everything inside is literal, and an embedded quote is
-/// closed, escaped, and reopened.
-fn quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 /// The login shell to run a step with: the user's own where it speaks POSIX,

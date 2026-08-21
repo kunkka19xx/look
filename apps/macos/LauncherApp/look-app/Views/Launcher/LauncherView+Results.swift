@@ -268,19 +268,7 @@ extension LauncherView {
 
         switch selected.kind {
         case .app, .file, .folder:
-            if selected.path.contains(":") && !selected.path.hasPrefix("/") {
-                if let url = URL(string: selected.path) {
-                    NSWorkspace.shared.open(url)
-                } else {
-                    showBanner(
-                        AppConstants.Launcher.Finder.cannotRevealBanner,
-                        style: .info,
-                        duration: AppConstants.Launcher.Clipboard.infoBannerDuration
-                    )
-                }
-            } else {
-                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: selected.path)])
-            }
+            revealPathInFinder(selected.path)
         case .clipboard:
             showBanner(
                 AppConstants.Launcher.Clipboard.nonFileBanner,
@@ -294,6 +282,33 @@ extension LauncherView {
             // file and is the thing the user wants to get to from here.
             revealDeclaringFile(for: selected)
         }
+    }
+
+    /// Takes a path, not the selection: an action resolved off the main thread
+    /// must reveal the row it was resolved for.
+    func revealPathInFinder(_ path: String) {
+        switch RevealTargetLogic.plan(
+            for: path, exists: FileManager.default.fileExists(atPath: path)
+        ) {
+        case .selectInFileViewer:
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+        case .openURL:
+            // An unhandled scheme returns false, and ignoring it is silence.
+            guard let url = URL(string: path), NSWorkspace.shared.open(url) else {
+                showCannotReveal()
+                return
+            }
+        case .unavailable:
+            showCannotReveal()
+        }
+    }
+
+    private func showCannotReveal() {
+        showBanner(
+            AppConstants.Launcher.Finder.cannotRevealBanner,
+            style: .info,
+            duration: AppConstants.Launcher.Clipboard.infoBannerDuration
+        )
     }
 
     func togglePickForSelectedResult() {
