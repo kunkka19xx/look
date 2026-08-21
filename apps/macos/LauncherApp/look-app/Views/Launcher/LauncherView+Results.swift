@@ -78,6 +78,11 @@ extension LauncherView {
                 recordOpen(selected, action: "open_folder")
             }
             hideLauncherWindow(restorePreviousApp: false)
+        case .action:
+            // A declared block: there is nothing to open, so Enter performs its
+            // steps. The window goes away first, since the steps usually launch
+            // something that wants the focus.
+            performSourceBlock(selected)
         case .clipboard:
             // Labeled entries (e.g. calculator results) paste their value, not
             // the label shown in the list.
@@ -162,6 +167,58 @@ extension LauncherView {
         DeleteTargetLogic.isURLScheme(target)
     }
 
+    /// Reveals the `.toml` (or script) a block was declared in. Reading the
+    /// sources directory touches disk, so it happens off the main thread.
+    private func revealDeclaringFile(for selected: LauncherResult) {
+        let candidateID = selected.id
+        Task {
+            let block = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.sourceBlock(candidateID: candidateID)
+            }.value
+            await MainActor.run {
+                guard let file = block?.file, FileManager.default.fileExists(atPath: file) else {
+                    showBanner("Couldn't find the file that declares this", style: .info, duration: 1.6)
+                    return
+                }
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: file)])
+            }
+        }
+    }
+
+    /// Performs a declared block's steps. Usage is recorded on intent, like an
+    /// open, so a routine you run every morning ranks like one.
+    private func performSourceBlock(_ selected: LauncherResult) {
+        // Resolve BEFORE recording usage or hiding: an unparseable id would
+        // otherwise rank the row up, close the window, and do nothing, with no
+        // way for the user to tell that it failed.
+        guard let blockID = SourceBlockCatalog.blockID(fromCandidateID: selected.id) else {
+            showBanner("Couldn't tell which block this row belongs to", style: .error, duration: 2.0)
+            return
+        }
+        recordOpen(selected, action: AppConstants.Launcher.SourceBlock.usageAction)
+        hideLauncherWindow(restorePreviousApp: false)
+
+        let name = selected.title
+        let row = (id: selected.id, title: selected.title, path: selected.path, query: query)
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.performBlock(
+                    blockID: blockID,
+                    rowID: row.id,
+                    rowTitle: row.title,
+                    rowPath: row.path,
+                    query: row.query
+                )
+            }.value
+            await MainActor.run {
+                guard let failure = outcome.errors.first else { return }
+                // Steps are detached, so this only fires when one could not be
+                // started at all. A step's own exit code is its business.
+                showBanner("\(name): \(failure)", style: .error, duration: 4.0)
+            }
+        }
+    }
+
     private func recordOpen(_ selected: LauncherResult, action: String) {
         if let error = bridge.recordUsage(candidateID: selected.id, action: action) {
             showBanner(error.userFacingMessage, style: .info, duration: 1.4)
@@ -232,6 +289,10 @@ extension LauncherView {
             )
         case .process:
             showBanner("Processes can't be revealed in Finder", style: .info, duration: 1.2)
+        case .action:
+            // No file of its own, but the declaration that created it is a real
+            // file and is the thing the user wants to get to from here.
+            revealDeclaringFile(for: selected)
         }
     }
 

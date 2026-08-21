@@ -16,6 +16,7 @@ look-answers = { path = "../../core/answers" }
 look-calc = { path = "../../core/calc" }
 look-engine = { path = "../../core/engine" }
 look-indexing = { path = "../../core/indexing" }
+look-sources = { path = "../../core/sources" }
 look-lunar = { path = "../../core/lunar" }
 look-matching = { path = "../../core/matching" }
 look-netspeed = { path = "../../core/netspeed" }

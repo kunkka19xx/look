@@ -112,7 +112,7 @@ unsafe fn hbitmap_to_png(hbitmap: HBITMAP) -> Option<Vec<u8>> {
     }
 
     // GetDIBits returns BGRA; PNG wants RGBA.
-    for chunk in pixels.chunks_exact_mut(4) {
+    for chunk in pixels.as_chunks_mut::<4>().0 {
         chunk.swap(0, 2);
     }
 

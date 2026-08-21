@@ -8,6 +8,9 @@ pub enum CandidateKind {
     App,
     File,
     Folder,
+    /// A row with no filesystem target: a bundle of steps, or a row a user's
+    /// list or command produced. It is performed, never opened.
+    Action,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -16,6 +19,10 @@ pub enum CandidateIdKind {
     File,
     Folder,
     Setting,
+    /// A row from a user-declared source. Its own namespace so a source refresh
+    /// prunes only its own rows, and so a row can be told apart from an
+    /// identically-shaped one the file walker produced.
+    Source,
 }
 
 impl CandidateIdKind {
@@ -23,6 +30,7 @@ impl CandidateIdKind {
     pub const PREFIX_FILE: &'static str = "file:";
     pub const PREFIX_FOLDER: &'static str = "folder:";
     pub const PREFIX_SETTING: &'static str = "setting:";
+    pub const PREFIX_SOURCE: &'static str = "src:";
 
     pub fn as_prefix(&self) -> &'static str {
         match self {
@@ -30,6 +38,7 @@ impl CandidateIdKind {
             CandidateIdKind::File => Self::PREFIX_FILE,
             CandidateIdKind::Folder => Self::PREFIX_FOLDER,
             CandidateIdKind::Setting => Self::PREFIX_SETTING,
+            CandidateIdKind::Source => Self::PREFIX_SOURCE,
         }
     }
 
@@ -42,9 +51,65 @@ impl CandidateIdKind {
             Some(Self::Folder)
         } else if id.starts_with(Self::PREFIX_SETTING) {
             Some(Self::Setting)
+        } else if id.starts_with(Self::PREFIX_SOURCE) {
+            Some(Self::Source)
         } else {
             None
         }
+    }
+
+    /// The source id inside a source row id (`src:<source>:<row>`).
+    pub fn source_id_of(candidate_id: &str) -> Option<&str> {
+        candidate_id
+            .strip_prefix(Self::PREFIX_SOURCE)?
+            .split_once(':')
+            .map(|(source, _)| source)
+    }
+
+    /// The id-prefix that scoped pruning uses for one source's rows.
+    pub fn source_row_prefix(source_id: &str) -> String {
+        format!("{}{source_id}:", Self::PREFIX_SOURCE)
+    }
+
+    /// The ROW's own id inside a source row id (`src:<source>:<row>`), which is
+    /// what a user's command expects `{id}` to be. Anything not namespaced is
+    /// returned as-is, so a caller can pass either shape.
+    pub fn source_row_id_of(candidate_id: &str) -> &str {
+        candidate_id
+            .strip_prefix(Self::PREFIX_SOURCE)
+            .and_then(|rest| rest.split_once(':'))
+            .map(|(_, row)| row)
+            .unwrap_or(candidate_id)
+    }
+}
+
+#[cfg(test)]
+mod id_tests {
+    use super::CandidateIdKind;
+
+    #[test]
+    fn a_row_id_is_what_a_users_command_sees() {
+        // Handing git the whole candidate id makes it read `src:branches:main`
+        // as rev:path and fail with "invalid object name 'src'".
+        let id = "src:branches:326-bug-battery-on-macos";
+        assert_eq!(CandidateIdKind::source_id_of(id), Some("branches"));
+        assert_eq!(
+            CandidateIdKind::source_row_id_of(id),
+            "326-bug-battery-on-macos"
+        );
+    }
+
+    #[test]
+    fn a_row_id_containing_colons_keeps_them() {
+        assert_eq!(
+            CandidateIdKind::source_row_id_of("src:hosts:user@host:22"),
+            "user@host:22"
+        );
+    }
+
+    #[test]
+    fn an_unnamespaced_id_passes_through() {
+        assert_eq!(CandidateIdKind::source_row_id_of("main"), "main");
     }
 }
 
@@ -102,12 +167,14 @@ impl CandidateKind {
     pub const APP_KEY: &'static str = "app";
     pub const FILE_KEY: &'static str = "file";
     pub const FOLDER_KEY: &'static str = "folder";
+    pub const ACTION_KEY: &'static str = "action";
 
     pub fn as_str(&self) -> &'static str {
         match self {
             CandidateKind::App => Self::APP_KEY,
             CandidateKind::File => Self::FILE_KEY,
             CandidateKind::Folder => Self::FOLDER_KEY,
+            CandidateKind::Action => Self::ACTION_KEY,
         }
     }
 
@@ -116,6 +183,7 @@ impl CandidateKind {
             Self::APP_KEY => Some(CandidateKind::App),
             Self::FILE_KEY => Some(CandidateKind::File),
             Self::FOLDER_KEY => Some(CandidateKind::Folder),
+            Self::ACTION_KEY => Some(CandidateKind::Action),
             _ => None,
         }
     }

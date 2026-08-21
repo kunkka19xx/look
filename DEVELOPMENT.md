@@ -78,7 +78,7 @@ make app-run
 
 - builds a local Debug app bundle with Xcode
 - stops any running `Look` process (including a Homebrew-installed instance)
-- launches with `LOOK_CONFIG_PATH=$HOME/.look.dev.config`
+- launches with `LOOK_CONFIG_PATH=$HOME/.look/config.dev`
 - shows a red `TEST APP` badge so the dev run is visually distinct
 
 `make app-run` behavior (Windows):
@@ -93,7 +93,7 @@ Install a side-by-side test build (`Look Dev`) without replacing the normal inst
 make app-run-dev
 ```
 
-`make app-run-dev` (macOS) builds a local Debug bundle, installs `/Applications/Look Dev.app` with bundle id `noah-code.Look.Dev`, leaves the Homebrew `/Applications/Look.app` untouched, then launches `Look Dev` with `LOOK_CONFIG_PATH=$HOME/.look.dev.config`. On Windows there is no separate dev install; use `make app-run` (hot reload) or `make app-run-release`.
+`make app-run-dev` (macOS) builds a local Debug bundle, installs `/Applications/Look Dev.app` with bundle id `noah-code.Look.Dev`, leaves the Homebrew `/Applications/Look.app` untouched, then launches `Look Dev` with `LOOK_CONFIG_PATH=$HOME/.look/config.dev`. On Windows there is no separate dev install; use `make app-run` (hot reload) or `make app-run-release`.
 
 Override the macOS dev config path:
 

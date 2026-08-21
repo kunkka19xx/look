@@ -1,0 +1,112 @@
+# Look sources: the whole format in one file.
+# Copy to ~/.look/sources/<anything>.toml and edit.
+#
+# A file is a set of blocks. Every block has a `name` you can type, and ONE
+# producer key that says what it is:
+#
+#   do    one row; Enter performs its steps
+#   dir   rows from the children of a directory
+#   file  rows from a text file
+#   run   rows from a command's stdout
+#
+# Nothing is file-wide. Each block stands alone.
+#
+# Reload after editing: Cmd+Shift+;
+
+
+# ------------------------------------------------------------------ bundle --
+# One name, several things happen. No rows to pick, no placeholders needed.
+
+[work]
+name = "Work setup"
+icon = "🚀"                        # emoji, SF Symbol name, or an image path
+do = [
+  "open -a Slack",
+  "open -a Ghostty",
+  "open -a Safari https://github.com",
+]
+
+
+# --------------------------------------------------------------------- dir --
+# Rows are the children of one or more directories. They stay real files and
+# folders, so preview, reveal, and open keep working on them.
+
+[projects]
+name  = "Projects"
+dir   = "~/dev"                   # or: dirs = ["~/dev", "~/work"]
+depth = 1                         # 1 = immediate children
+only  = "dirs"                    # dirs | files | all
+# match   = ["*.md"]              # keep only these names
+# exclude = ["archive*"]          # drop these
+# enabled = false                 # keep the file, stop loading it
+
+aliases = ["repo", "code"]        # extra words that find this block's rows
+bias    = 0                       # score offset: negative sits below apps/files
+
+# Other blocks a picked row can go to. Cmd+K opens the menu, Cmd+J / Cmd+K move,
+# Enter runs. A target that performs steps is an action; one that produces rows
+# is a level to descend into.
+then = ["ghostty"]
+
+# What the standard keys do to a picked row. Each verb has one key across the
+# whole app, so Cmd+E always edits. Declare only what differs from your global
+# default in ~/.look.config (see specs/preferred-tools.md).
+open     = "open {path}"
+edit     = "nvim {path}"
+terminal = "tmux new-session -As {title} -c {path}"
+
+
+# Reached through `then`. It mentions {path}, so it never appears as a row of
+# its own: it only means something against a selected project.
+[ghostty]
+name = "Open in Ghostty"
+do   = ["open -a Ghostty {path}"]
+
+
+# -------------------------------------------------------------------- file --
+# Rows from a text file, one per line: id<TAB>title<TAB>group
+# A bare line is both id and title. The id is what verbs and `then` receive, so
+# a row can show one thing and act on another.
+
+[hosts]
+name = "SSH hosts"
+file = "~/.look/hosts.txt"
+open = "ssh {id}"
+
+
+# --------------------------------------------------------------------- run --
+# Rows from a command's stdout, same line format as a file block.
+#
+# The command runs on reload (Cmd+Shift+;), not on every keystroke. If it fails,
+# times out, or prints nothing, the rows it produced last time are KEPT: losing
+# them would also lose the usage ranking those rows had earned.
+
+[branches]
+name    = "Git branches"
+run     = "git -C ~/dev/look for-each-ref --format='%(refname:short)' refs/heads"
+# cwd     = "~/dev/look"          # where the command runs
+# timeout = "5s"                  # give up after this long
+
+# Runs for the SELECTED row only and shows its output in the right panel.
+preview = "git -C ~/dev/look log -10 --date=short --format='%h  %ad  %an  %s' {id}"
+
+open    = "git -C ~/dev/look checkout {id}"
+then    = ["drop-branch"]
+
+
+# `confirm` asks before the block does anything. Anything destructive should
+# have one: a launcher makes Enter on the wrong row cheap.
+[drop-branch]
+name    = "Delete local branch"
+confirm = "Delete local branch {id}?"
+do      = ["git -C ~/dev/look branch -d {id}"]
+
+
+# Placeholders usable in do/verbs/preview:
+#   {id} {title} {path} {dir} {query}
+# {dir} is the row itself when it is a folder, its parent when it is a file.
+# They are shell-escaped on substitution, so they never need quoting and a row
+# named "; rm -rf ~" is inert.
+#
+# Every command runs through your login shell, so $EDITOR, $PATH, and shell
+# functions work exactly as they do in a terminal.

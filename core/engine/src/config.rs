@@ -33,6 +33,12 @@ pub const SCORE_REGEX_SUBTITLE_ONLY: i64 = 1000;
 pub const BIAS_APP: i64 = 220;
 pub const BIAS_FOLDER: i64 = 0;
 pub const BIAS_FILE: i64 = -20;
+/// A user declared this row by hand and named it, so a match on that name is
+/// deliberate in a way a file path match is not. Sits with apps, not below them.
+pub const BIAS_ACTION: i64 = 200;
+/// On an empty query the launchpad already covers routines, so bundles sit
+/// between apps and folders rather than leading the browse list.
+pub const BROWSE_BOOST_ACTION: i64 = 300;
 
 pub const BIAS_SETTINGS_MATCH: i64 = 420;
 pub const BIAS_APP_ON_SETTINGS_QUERY: i64 = 120;
@@ -328,15 +334,10 @@ impl RuntimeConfig {
     }
 }
 
+/// Where the config lives, migrating a legacy `~/.look.config` into `~/.look/`
+/// the first time. One resolver for every caller: see `crate::config_path`.
 fn config_path() -> Option<PathBuf> {
-    if let Ok(custom) = env::var("LOOK_CONFIG_PATH") {
-        let trimmed = custom.trim();
-        if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed));
-        }
-    }
-
-    user_home_dir().map(|home| PathBuf::from(home).join(".look.config"))
+    crate::config_path::current().map(|resolved| resolved.path)
 }
 
 fn ensure_default_config_file(path: &Path) {
@@ -608,7 +609,7 @@ fn default_file_scan_roots() -> Vec<String> {
 }
 
 #[cfg(target_os = "windows")]
-fn user_home_dir() -> Option<String> {
+pub(crate) fn user_home_dir() -> Option<String> {
     env::var("USERPROFILE")
         .ok()
         .filter(|value| !value.trim().is_empty())
@@ -620,7 +621,7 @@ fn user_home_dir() -> Option<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn user_home_dir() -> Option<String> {
+pub(crate) fn user_home_dir() -> Option<String> {
     env::var("HOME")
         .ok()
         .filter(|value| !value.trim().is_empty())

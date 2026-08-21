@@ -2474,6 +2474,7 @@ dependencies = [
  "look-indexing",
  "look-matching",
  "look-ranking",
+ "look-sources",
  "look-storage",
  "objc2",
  "objc2-foundation",
@@ -2525,6 +2526,15 @@ name = "look-ranking"
 version = "0.1.0"
 dependencies = [
  "look-indexing",
+]
+
+[[package]]
+name = "look-sources"
+version = "0.1.0"
+dependencies = [
+ "globset",
+ "serde",
+ "toml 0.9.12+spec-1.1.0",
 ]
 
 [[package]]
