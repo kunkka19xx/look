@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::catalog::{AppleScript, CommandStyle, Surface, command_style, surface};
+use crate::catalog::{AppleScript, CommandStyle, Surface, command_style, entry, surface};
 use crate::quote::{applescript_quote, shell_quote};
 use crate::{Tools, key};
 
@@ -13,6 +13,15 @@ const LOGIN_COMMAND_FLAGS: &str = "-lc";
 const INTERACTIVE_TAIL: &str = "exec \"$SHELL\" -l";
 const OSASCRIPT: &str = "osascript";
 const OSASCRIPT_EXPRESSION: &str = "-e";
+/// `-n` is what makes this work at all: plain `open -a` only focuses an app that
+/// is already running and drops the arguments.
+const MACOS_OPEN: &str = "open -na";
+const MACOS_OPEN_ARGS: &str = "--args";
+
+#[cfg(target_os = "macos")]
+const IS_MACOS: bool = true;
+#[cfg(not(target_os = "macos"))]
+const IS_MACOS: bool = false;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Target {
@@ -70,6 +79,64 @@ pub enum Unavailable {
     TerminalRequired { tool: String, key: &'static str },
     CannotRunCommand { tool: String },
     UnsupportedPlatform,
+}
+
+impl Unavailable {
+    /// Shown as-is, so both shells word it the same way.
+    pub fn message(&self) -> String {
+        match self {
+            Unavailable::NotDeclared { key } => format!("Set {key} in your Look config"),
+            Unavailable::TerminalRequired { tool, key } => {
+                format!("{tool} runs in a terminal; set {key} in your Look config")
+            }
+            Unavailable::CannotRunCommand { tool } => {
+                format!("{tool} cannot be told to run a command")
+            }
+            Unavailable::UnsupportedPlatform => {
+                "This platform has no POSIX shell to run actions through".to_string()
+            }
+        }
+    }
+
+    /// The config key that would fix this, when one would.
+    pub fn key(&self) -> Option<&'static str> {
+        match self {
+            Unavailable::NotDeclared { key } | Unavailable::TerminalRequired { key, .. } => {
+                Some(key)
+            }
+            Unavailable::CannotRunCommand { .. } | Unavailable::UnsupportedPlatform => None,
+        }
+    }
+}
+
+/// What Look can do to a row through a declared tool. Ids are shared so every
+/// shell names the same action the same way.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Action {
+    Edit,
+    TerminalHere,
+}
+
+impl Action {
+    pub const ALL: &'static [Action] = &[Action::Edit, Action::TerminalHere];
+
+    pub const fn id(self) -> &'static str {
+        match self {
+            Action::Edit => "edit",
+            Action::TerminalHere => "terminal",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|action| action.id() == id)
+    }
+
+    pub fn resolve(self, tools: &Tools, target: &Target) -> Result<Launch, Unavailable> {
+        match self {
+            Action::Edit => edit(tools, target),
+            Action::TerminalHere => terminal_here(tools, target),
+        }
+    }
 }
 
 /// Composition emits POSIX shell text down to its quoting, so a platform without
@@ -133,7 +200,10 @@ fn in_terminal(tools: &Tools, inner: &str, requester: &str) -> Result<Launch, Un
         })?;
 
     let command = match command_style(terminal) {
-        CommandStyle::Argv(prefix) => argv_command(terminal, prefix, inner),
+        CommandStyle::Argv(prefix) => match macos_app(terminal) {
+            Some(app) => open_command(app, prefix, inner),
+            None => argv_command(terminal, prefix, inner),
+        },
         CommandStyle::Script(dialect) => applescript_command(dialect, inner),
         CommandStyle::Unsupported => {
             return Err(Unavailable::CannotRunCommand {
@@ -151,12 +221,34 @@ fn in_terminal(tools: &Tools, inner: &str, requester: &str) -> Result<Launch, Un
 /// `<terminal> <prefix...> "$SHELL" -lc '<inner>'`. The inner login shell is what
 /// makes `nvim` and Homebrew resolve from a window-server-launched app.
 fn argv_command(terminal: &str, prefix: &[&str], inner: &str) -> String {
-    let mut parts = vec![shell_quote(terminal)];
+    command_line(&shell_quote(terminal), prefix, inner)
+}
+
+/// The same argv, handed to a single-instance macOS app through `open -na`.
+fn open_command(app: &str, prefix: &[&str], inner: &str) -> String {
+    command_line(
+        &format!("{MACOS_OPEN} {} {MACOS_OPEN_ARGS}", shell_quote(app)),
+        prefix,
+        inner,
+    )
+}
+
+fn command_line(launcher: &str, prefix: &[&str], inner: &str) -> String {
+    let mut parts = vec![launcher.to_string()];
     parts.extend(prefix.iter().map(|argument| (*argument).to_string()));
     parts.push(SHELL_VAR.to_string());
     parts.push(LOGIN_COMMAND_FLAGS.to_string());
     parts.push(shell_quote(inner));
     parts.join(" ")
+}
+
+/// The app name to hand `open -na`, when this terminal needs it and we are on
+/// the platform where that matters.
+fn macos_app(terminal: &str) -> Option<&'static str> {
+    if !IS_MACOS {
+        return None;
+    }
+    entry(terminal).and_then(|found| found.macos_app)
 }
 
 /// The second expression raises the window, which neither dialect does itself.
@@ -261,17 +353,52 @@ mod tests {
 
     #[test]
     fn a_tty_editor_is_hosted_by_the_declared_terminal() {
-        let declared = tools(Some("nvim"), None, Some("ghostty"));
+        let declared = tools(Some("nvim"), None, Some("alacritty"));
         let Ok(Launch::Shell { tool, command }) =
             edit(&declared, &Target::File("/tmp/a.txt".into()))
         else {
             panic!("expected a shell launch");
         };
-        assert_eq!(tool, "ghostty");
+        assert_eq!(tool, "alacritty");
         assert_eq!(
             command,
-            "'ghostty' -e \"$SHELL\" -lc 'nvim '\\''/tmp/a.txt'\\'''"
+            "'alacritty' -e \"$SHELL\" -lc 'nvim '\\''/tmp/a.txt'\\'''"
         );
+    }
+
+    /// Ghostty is single-instance on macOS: invoking its CLI while the app is
+    /// already up exits without ever making a window, so the key looks dead.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_single_instance_mac_app_goes_through_open() {
+        let declared = tools(None, None, Some("ghostty"));
+        let Ok(Launch::Shell { tool, command }) =
+            terminal_here(&declared, &Target::Folder("/tmp".into()))
+        else {
+            panic!("expected a shell launch");
+        };
+
+        assert_eq!(tool, "ghostty");
+        assert!(
+            command.starts_with("open -na 'Ghostty' --args -e \"$SHELL\" -lc "),
+            "got: {command}"
+        );
+    }
+
+    /// Only the terminals that need it: adding `open -na` everywhere would spawn
+    /// a second instance of terminals that are perfectly happy without one.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn terminals_without_the_override_still_launch_directly() {
+        for terminal in ["alacritty", "kitty", "wezterm"] {
+            let declared = tools(None, None, Some(terminal));
+            let Ok(Launch::Shell { command, .. }) =
+                terminal_here(&declared, &Target::Folder("/tmp".into()))
+            else {
+                panic!("expected a shell launch");
+            };
+            assert!(!command.starts_with("open"), "{terminal} got: {command}");
+        }
     }
 
     #[test]
@@ -381,6 +508,51 @@ mod tests {
                 key: key::TEXT_EDITOR
             })
         );
+    }
+
+    #[test]
+    fn action_ids_round_trip_and_reject_the_unknown() {
+        for action in Action::ALL {
+            assert_eq!(Action::from_id(action.id()), Some(*action));
+        }
+        assert_eq!(Action::from_id("frobnicate"), None);
+    }
+
+    #[test]
+    fn resolve_dispatches_to_the_same_result_as_the_direct_call() {
+        let declared = tools(None, Some("zed"), Some("ghostty"));
+        let target = Target::Folder("/tmp/look".into());
+
+        assert_eq!(
+            Action::Edit.resolve(&declared, &target),
+            edit(&declared, &target)
+        );
+        assert_eq!(
+            Action::TerminalHere.resolve(&declared, &target),
+            terminal_here(&declared, &target)
+        );
+    }
+
+    #[test]
+    fn a_reason_names_the_key_that_would_fix_it() {
+        let missing = Unavailable::NotDeclared {
+            key: key::TEXT_EDITOR,
+        };
+        assert_eq!(missing.key(), Some(key::TEXT_EDITOR));
+        assert!(missing.message().contains(key::TEXT_EDITOR));
+
+        let hosted = Unavailable::TerminalRequired {
+            tool: "nvim".into(),
+            key: key::TERMINAL,
+        };
+        assert_eq!(hosted.key(), Some(key::TERMINAL));
+        assert!(hosted.message().contains("nvim"));
+
+        let unsupported = Unavailable::CannotRunCommand {
+            tool: "warp".into(),
+        };
+        assert_eq!(unsupported.key(), None);
+        assert!(unsupported.message().contains("warp"));
     }
 
     #[test]

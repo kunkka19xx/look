@@ -423,6 +423,7 @@ dependencies = [
  "look-sources",
  "look-storage",
  "look-todo",
+ "look-tools",
  "notify",
  "serde",
  "serde_json",

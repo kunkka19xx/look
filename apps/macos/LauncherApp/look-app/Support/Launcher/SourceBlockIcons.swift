@@ -162,26 +162,8 @@ enum SourceBlockIcons {
         return icons
     }
 
-    /// Where `open -a Name` would find the bundle. The same roots `open` itself
-    /// searches, plus a bundle-id lookup for a step that names one.
     private static func bundlePath(forAppNamed name: String) -> String? {
-        let roots = [
-            "/Applications",
-            "/System/Applications",
-            "/System/Applications/Utilities",
-            "/Applications/Utilities",
-            NSHomeDirectory() + "/Applications",
-        ]
-        let bundleName = name.hasSuffix(".app") ? name : name + ".app"
-        for root in roots {
-            let candidate = root + "/" + bundleName
-            if FileManager.default.fileExists(atPath: candidate) {
-                return candidate
-            }
-        }
-        return NSWorkspace.shared
-            .urlForApplication(withBundleIdentifier: name)?
-            .path
+        AppBundleLocator.bundlePath(forAppNamed: name)
     }
 
     /// The first argument after `-a`, honouring quotes so a two-word app name

@@ -330,6 +330,15 @@ enum AppConstants {
             static let shadowRadius: CGFloat = 14
         }
 
+        /// Preferred tools: Cmd+E and Cmd+T act through the tools a user named
+        /// in their config. See `specs/preferred-tools.md`.
+        enum Tools {
+            static let editAction = "edit"
+            static let terminalAction = "terminal"
+            static let launchFailedBanner = "Could not start"
+            static let bannerDuration: TimeInterval = 2.4
+        }
+
         /// Rows from a user-declared block in `~/.look/sources`.
         enum SourceBlock {
             static let idPrefix = "src:"
@@ -405,6 +414,8 @@ enum AppConstants {
             static let f: UInt16 = 3
             static let h: UInt16 = 4
             static let c: UInt16 = 8
+            static let e: UInt16 = 14
+            static let t: UInt16 = 17
             static let j: UInt16 = 38
             static let k: UInt16 = 40
             static let p: UInt16 = 35

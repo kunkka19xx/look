@@ -46,6 +46,11 @@ pub struct Terminal {
     /// Every name selecting this row, already normalized.
     pub names: &'static [&'static str],
     pub style: CommandStyle,
+    /// A single-instance macOS `.app` that has to be started through
+    /// `open -na <app> --args`. Running its CLI directly works only while the
+    /// app is not already up; afterwards the process exits without ever making
+    /// a window, which reads as the key doing nothing.
+    pub macos_app: Option<&'static str>,
     /// Where `style` was verified.
     pub source: &'static str,
     /// Why the row exists.
@@ -54,50 +59,66 @@ pub struct Terminal {
 
 pub const TERMINALS: &[Terminal] = &[
     Terminal {
+        names: &["ghostty"],
+        style: CommandStyle::Argv(DASH_E),
+        macos_app: Some("Ghostty"),
+        source: "https://github.com/ghostty-org/ghostty/discussions/9221",
+        note: "honors -e, but on macOS it is single-instance: running the CLI while the \
+               app is already up exits without ever making a window",
+    },
+    Terminal {
         names: &["kitty"],
         style: CommandStyle::Argv(POSITIONAL),
+        macos_app: None,
         source: "https://sw.kovidgoyal.net/kitty/invocation/",
         note: "\"kitty [options] [program-to-run ...]\": positional, no -e exists",
     },
     Terminal {
         names: &["foot"],
         style: CommandStyle::Argv(POSITIONAL),
+        macos_app: None,
         source: "https://man.archlinux.org/man/foot.1.en",
         note: "\"All trailing (non-option) arguments are treated as a command\"",
     },
     Terminal {
         names: &["wezterm"],
         style: CommandStyle::Argv(WEZTERM_START),
+        macos_app: None,
         source: "https://wezterm.org/cli/start.html",
         note: "\"wezterm start [OPTIONS] [PROG]...\", e.g. `wezterm start -- bash -l`",
     },
     Terminal {
         names: &["gnome-terminal"],
         style: CommandStyle::Argv(DASH_DASH),
+        macos_app: None,
         source: "https://bugs.launchpad.net/ubuntu/+source/gnome-terminal/+bug/1726380",
         note: "-e is deprecated upstream and warns; -- is the supported spelling",
     },
     Terminal {
         names: &["ptyxis"],
         style: CommandStyle::Argv(DASH_DASH),
+        macos_app: None,
         source: "https://man.archlinux.org/man/ptyxis.1.en",
         note: "\"In general, you should use -- instead of\" --execute",
     },
     Terminal {
         names: &["terminal", "apple terminal"],
         style: CommandStyle::Script(AppleScript::TerminalApp),
+        macos_app: None,
         source: "https://support.apple.com/guide/terminal/welcome/mac",
         note: "an application rather than a CLI",
     },
     Terminal {
         names: &["iterm", "iterm2"],
         style: CommandStyle::Script(AppleScript::ITerm2),
+        macos_app: None,
         source: "https://iterm2.com/documentation-scripting.html",
         note: "an application rather than a CLI; its AppleScript name is still iTerm",
     },
     Terminal {
         names: &["warp", "hyper"],
         style: CommandStyle::Unsupported,
+        macos_app: None,
         source: "https://docs.warp.dev/",
         note: "neither documents a way to open a window running a given command",
     },
