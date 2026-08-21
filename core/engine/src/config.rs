@@ -448,13 +448,13 @@ clipboard_history_limit=10\n\
 \n\
 # Preferred tools. Name the tool, not a command: Look knows how to drive it,\n\
 # including running a terminal editor inside your terminal. Declare nothing and\n\
-# nothing changes. Cmd+E edits the selected row, Cmd+T opens a terminal there.\n\
-# Edit uses text_editor on a file and code_editor on a folder; declaring only\n\
-# one of the two covers both.\n\
+# nothing changes. Editing uses text_editor on a file and code_editor on a\n\
+# folder; declaring only one of the two covers both.\n\
+# Acted on from the row's action menu (macOS also binds Cmd+E and Cmd+T).\n\
 # text_editor=nvim\n\
 # code_editor=zed\n\
 # terminal=ghostty\n\
-# file_manager=finder\n\
+# file_manager=nautilus\n\
 \n\
 # UI theme\n\
 ui_tint_red=0.08\n\

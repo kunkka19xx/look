@@ -74,7 +74,9 @@ extension LauncherView {
         case .application:
             launchApplication(tool: outcome.tool, path: outcome.path ?? path)
         case .systemDefault:
-            revealSelectedInFinder()
+            // The path this action resolved for, not the current selection: the
+            // user may have moved on while the resolve was in flight.
+            revealPathInFinder(outcome.path ?? path)
         case .unavailable, .failed:
             showToolBanner(outcome.reason)
         case .shell:

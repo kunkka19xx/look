@@ -291,9 +291,10 @@ pub extern "C" fn look_source_blocks_json() -> *mut c_char {
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// What `action` ("edit", "terminal") does to the row at `path`, as
+/// What `action` ("edit", "terminal", "reveal") does to the row at `path`, as
 /// `{kind, tool, command, path, reason, key}` where `kind` is "shell",
-/// "application", or "unavailable". Null for an unknown action or empty path.
+/// "application", "system_default", or "unavailable". Null for an unknown
+/// action or empty path.
 ///
 /// Reads the declared tools from the cached config, so Cmd+Shift+; is all a
 /// user needs after editing them.

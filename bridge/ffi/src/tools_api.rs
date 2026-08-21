@@ -79,8 +79,8 @@ impl ResolvedAction {
     }
 }
 
-/// Resolves `action` ("edit", "terminal") against a row, or the JSON literal
-/// `null` when the action is unknown or the path is empty.
+/// Resolves `action` ("edit", "terminal", "reveal") against a row, or the JSON
+/// literal `null` when the action is unknown or the path is empty.
 pub(crate) fn look_tool_action_json_impl(
     action: *const c_char,
     path: *const c_char,

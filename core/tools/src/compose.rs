@@ -13,6 +13,8 @@ const LOGIN_COMMAND_FLAGS: &str = "-lc";
 const INTERACTIVE_TAIL: &str = "exec \"$SHELL\" -l";
 const OSASCRIPT: &str = "osascript";
 const OSASCRIPT_EXPRESSION: &str = "-e";
+/// Where a path with no directory of its own lives.
+const CURRENT_DIR: &str = ".";
 /// `-n` is what makes this work at all: plain `open -a` only focuses an app that
 /// is already running and drops the arguments.
 const MACOS_OPEN: &str = "open -na";
@@ -41,10 +43,13 @@ impl Target {
     pub fn dir(&self) -> String {
         match self {
             Target::Folder(path) => path.clone(),
+            // A bare filename has an empty parent and a root path has none.
+            // Either would compose `cd ''`, which fails in the new window.
             Target::File(path) => Path::new(path)
                 .parent()
                 .map(|parent| parent.to_string_lossy().into_owned())
-                .unwrap_or_default(),
+                .filter(|parent| !parent.is_empty())
+                .unwrap_or_else(|| CURRENT_DIR.to_string()),
         }
     }
 }
@@ -152,11 +157,7 @@ impl Action {
 /// is what the launcher does today, so this never fails.
 pub fn reveal(tools: &Tools, target: &Target) -> Launch {
     let path = target.path().to_string();
-    match tools
-        .file_manager
-        .as_deref()
-        .filter(|name| !name.trim().is_empty())
-    {
+    match declared(&tools.file_manager) {
         // A custom manager is opened at the containing folder: only the
         // platform's own can select the file inside it.
         Some(manager) => Launch::Application {
@@ -182,10 +183,10 @@ pub fn edit(tools: &Tools, target: &Target) -> Result<Launch, Unavailable> {
         Target::Folder(_) => (&tools.code_editor, &tools.text_editor, key::CODE_EDITOR),
     };
 
-    let editor = preferred
-        .as_deref()
-        .or(fallback.as_deref())
-        .filter(|name| !name.trim().is_empty())
+    // Filtered before the choice, not after: a blank preferred key must fall
+    // through to the other editor rather than swallow it.
+    let editor = declared(preferred)
+        .or_else(|| declared(fallback))
         .ok_or(Unavailable::NotDeclared { key: missing })?;
 
     match surface(editor) {
@@ -194,10 +195,20 @@ pub fn edit(tools: &Tools, target: &Target) -> Result<Launch, Unavailable> {
             path: target.path().to_string(),
         }),
         Surface::Tty => {
-            let inner = format!("{} {}", editor, shell_quote(target.path()));
+            // Quoted like the path: a tool declared as `/opt/my tools/nvim` is
+            // one word. A tool is a name, never a command with its own args.
+            let inner = format!("{} {}", shell_quote(editor), shell_quote(target.path()));
             in_terminal(tools, &inner, editor)
         }
     }
+}
+
+/// A declared name, trimmed, or `None` when the key is absent or blank.
+fn declared(value: &Option<String>) -> Option<&str> {
+    value
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
 }
 
 pub fn terminal_here(tools: &Tools, target: &Target) -> Result<Launch, Unavailable> {
@@ -212,20 +223,16 @@ fn in_terminal(tools: &Tools, inner: &str, requester: &str) -> Result<Launch, Un
         return Err(Unavailable::UnsupportedPlatform);
     }
 
-    let terminal = tools
-        .terminal
-        .as_deref()
-        .filter(|name| !name.trim().is_empty())
-        .ok_or_else(|| {
-            if requester.is_empty() {
-                Unavailable::NotDeclared { key: key::TERMINAL }
-            } else {
-                Unavailable::TerminalRequired {
-                    tool: requester.to_string(),
-                    key: key::TERMINAL,
-                }
+    let terminal = declared(&tools.terminal).ok_or_else(|| {
+        if requester.is_empty() {
+            Unavailable::NotDeclared { key: key::TERMINAL }
+        } else {
+            Unavailable::TerminalRequired {
+                tool: requester.to_string(),
+                key: key::TERMINAL,
             }
-        })?;
+        }
+    })?;
 
     let command = match command_style(terminal) {
         CommandStyle::Argv(prefix) => match macos_app(terminal) {
@@ -315,32 +322,140 @@ mod tests {
         }
     }
 
+    /// Only a POSIX platform composes shell text, so every caller is gated.
+    #[cfg(unix)]
+    fn shell_command(outcome: Result<Launch, Unavailable>) -> String {
+        match outcome {
+            Ok(Launch::Shell { command, .. }) => command,
+            other => panic!("expected a shell launch, got {other:?}"),
+        }
+    }
+
+    fn file() -> Target {
+        Target::File("/tmp/a.txt".into())
+    }
+
+    fn folder() -> Target {
+        Target::Folder("/tmp".into())
+    }
+
     #[test]
     fn nothing_declared_names_the_key_to_set() {
-        let empty = Tools::default();
+        let none = Tools::default();
         assert_eq!(
-            edit(&empty, &Target::File("/tmp/a.txt".into())),
+            edit(&none, &file()),
             Err(Unavailable::NotDeclared {
                 key: key::TEXT_EDITOR
             })
         );
         assert_eq!(
-            edit(&empty, &Target::Folder("/tmp".into())),
+            edit(&none, &folder()),
             Err(Unavailable::NotDeclared {
                 key: key::CODE_EDITOR
             })
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_terminal_with_nothing_declared_names_the_terminal_key() {
         assert_eq!(
-            terminal_here(&empty, &Target::Folder("/tmp".into())),
+            terminal_here(&Tools::default(), &folder()),
             Err(Unavailable::NotDeclared { key: key::TERMINAL })
         );
     }
 
+    /// Composition emits POSIX shell text down to its quoting, so a platform
+    /// without a POSIX shell is refused outright rather than handed something
+    /// `cmd` would mangle. Windows needs its own composition path, not a few
+    /// catalog rows.
+    #[cfg(not(unix))]
+    #[test]
+    fn a_platform_without_a_posix_shell_is_refused() {
+        assert_eq!(
+            terminal_here(&tools(None, None, Some("wt")), &folder()),
+            Err(Unavailable::UnsupportedPlatform)
+        );
+        assert_eq!(
+            edit(&tools(Some("nvim"), None, Some("wt")), &file()),
+            Err(Unavailable::UnsupportedPlatform)
+        );
+    }
+
+    #[test]
+    fn edit_prefers_the_editor_for_the_row_kind() {
+        let both = tools(Some("zed"), Some("cursor"), None);
+        assert_eq!(edit(&both, &file()).unwrap().tool(), Some("zed"));
+        assert_eq!(edit(&both, &folder()).unwrap().tool(), Some("cursor"));
+    }
+
+    #[test]
+    fn one_editor_declared_serves_both_row_kinds() {
+        assert_eq!(
+            edit(&tools(None, Some("zed"), None), &file())
+                .unwrap()
+                .tool(),
+            Some("zed")
+        );
+        assert_eq!(
+            edit(&tools(Some("zed"), None, None), &folder())
+                .unwrap()
+                .tool(),
+            Some("zed")
+        );
+    }
+
+    /// `Option::or` would keep the blank and never consult the fallback, so a
+    /// usable editor would be reported as undeclared.
+    #[test]
+    fn a_blank_key_falls_through_to_the_other_editor() {
+        assert_eq!(
+            edit(&tools(Some("   "), Some("zed"), None), &file())
+                .unwrap()
+                .tool(),
+            Some("zed")
+        );
+        assert_eq!(
+            edit(&tools(Some("zed"), Some(""), None), &folder())
+                .unwrap()
+                .tool(),
+            Some("zed")
+        );
+        assert_eq!(
+            edit(&tools(Some("   "), None, None), &file()),
+            Err(Unavailable::NotDeclared {
+                key: key::TEXT_EDITOR
+            })
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_tty_editor_needs_a_terminal_and_then_runs_inside_it() {
+        assert_eq!(
+            edit(&tools(Some("nvim"), None, None), &file()),
+            Err(Unavailable::TerminalRequired {
+                tool: "nvim".into(),
+                key: key::TERMINAL
+            })
+        );
+        assert_eq!(
+            edit(&tools(Some("nvim"), None, Some("alacritty")), &file())
+                .unwrap()
+                .tool(),
+            Some("alacritty")
+        );
+    }
+
+    /// A GUI editor is handed to the platform launcher with the path, since only
+    /// native code can find and start a bundle.
     #[test]
     fn a_gui_editor_goes_to_the_application_launcher() {
-        let declared = tools(None, Some("zed"), None);
         assert_eq!(
-            edit(&declared, &Target::Folder("/tmp/look".into())),
+            edit(
+                &tools(None, Some("zed"), None),
+                &Target::Folder("/tmp/look".into())
+            ),
             Ok(Launch::Application {
                 tool: "zed".into(),
                 path: "/tmp/look".into()
@@ -348,192 +463,211 @@ mod tests {
         );
     }
 
+    /// (terminal, command prefix, must contain, must not contain).
+    ///
+    /// The prefixes are the contract with the catalog, so a changed flag fails
+    /// here rather than at a keypress. Ghostty is absent: its expected output
+    /// differs by platform, so it has its own test below.
+    #[cfg(unix)]
     #[test]
-    fn one_editor_declared_serves_both_row_kinds() {
-        let only_code = tools(None, Some("zed"), None);
-        assert_eq!(
-            edit(&only_code, &Target::File("/tmp/a.txt".into()))
-                .unwrap()
-                .tool(),
-            Some("zed")
-        );
+    fn each_terminal_is_handed_the_command_its_own_way() {
+        let cases: &[(&str, &str, &[&str], &[&str])] = &[
+            ("alacritty", "'alacritty' -e \"$SHELL\" -lc ", &[], &[]),
+            ("kitty", "'kitty' \"$SHELL\" -lc ", &[], &[" -e "]),
+            ("wezterm", "'wezterm' start -- \"$SHELL\" -lc ", &[], &[]),
+            (
+                "gnome-terminal",
+                "'gnome-terminal' -- \"$SHELL\" -lc ",
+                &[],
+                &[],
+            ),
+            ("ptyxis", "'ptyxis' -- \"$SHELL\" -lc ", &[], &[]),
+            (
+                "Terminal.app",
+                "osascript -e ",
+                &["do script", "to activate"],
+                &[],
+            ),
+            (
+                "iterm",
+                "osascript -e ",
+                &[
+                    "create window with default profile command",
+                    r#"application "iTerm""#,
+                ],
+                &[],
+            ),
+        ];
 
-        let only_text = tools(Some("zed"), None, None);
-        assert_eq!(
-            edit(&only_text, &Target::Folder("/tmp".into()))
-                .unwrap()
-                .tool(),
-            Some("zed")
-        );
-    }
-
-    #[test]
-    fn a_tty_editor_without_a_terminal_says_which_key_is_missing() {
-        let declared = tools(Some("nvim"), None, None);
-        assert_eq!(
-            edit(&declared, &Target::File("/tmp/a.txt".into())),
-            Err(Unavailable::TerminalRequired {
-                tool: "nvim".into(),
-                key: key::TERMINAL
-            })
-        );
-    }
-
-    #[test]
-    fn a_tty_editor_is_hosted_by_the_declared_terminal() {
-        let declared = tools(Some("nvim"), None, Some("alacritty"));
-        let Ok(Launch::Shell { tool, command }) =
-            edit(&declared, &Target::File("/tmp/a.txt".into()))
-        else {
-            panic!("expected a shell launch");
-        };
-        assert_eq!(tool, "alacritty");
-        assert_eq!(
-            command,
-            "'alacritty' -e \"$SHELL\" -lc 'nvim '\\''/tmp/a.txt'\\'''"
-        );
-    }
-
-    /// Ghostty is single-instance on macOS: invoking its CLI while the app is
-    /// already up exits without ever making a window, so the key looks dead.
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn a_single_instance_mac_app_goes_through_open() {
-        let declared = tools(None, None, Some("ghostty"));
-        let Ok(Launch::Shell { tool, command }) =
-            terminal_here(&declared, &Target::Folder("/tmp".into()))
-        else {
-            panic!("expected a shell launch");
-        };
-
-        assert_eq!(tool, "ghostty");
-        assert!(
-            command.starts_with("open -na 'Ghostty' --args -e \"$SHELL\" -lc "),
-            "got: {command}"
-        );
-    }
-
-    /// Only the terminals that need it: adding `open -na` everywhere would spawn
-    /// a second instance of terminals that are perfectly happy without one.
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn terminals_without_the_override_still_launch_directly() {
-        for terminal in ["alacritty", "kitty", "wezterm"] {
-            let declared = tools(None, None, Some(terminal));
-            let Ok(Launch::Shell { command, .. }) =
-                terminal_here(&declared, &Target::Folder("/tmp".into()))
-            else {
-                panic!("expected a shell launch");
-            };
-            assert!(!command.starts_with("open"), "{terminal} got: {command}");
+        for (terminal, prefix, present, absent) in cases {
+            let command =
+                shell_command(terminal_here(&tools(None, None, Some(terminal)), &folder()));
+            assert!(command.starts_with(prefix), "{terminal}: got {command}");
+            for needle in *present {
+                assert!(
+                    command.contains(needle),
+                    "{terminal}: missing {needle:?} in {command}"
+                );
+            }
+            for needle in *absent {
+                assert!(
+                    !command.contains(needle),
+                    "{terminal}: unexpected {needle:?} in {command}"
+                );
+            }
         }
     }
 
+    /// An empty `cd ''` fails inside the new window, so every target has to
+    /// resolve to a directory something can change into.
     #[test]
-    fn kitty_takes_the_command_positionally() {
-        let declared = tools(None, None, Some("kitty"));
-        let Ok(Launch::Shell { command, .. }) =
-            terminal_here(&declared, &Target::Folder("/tmp".into()))
-        else {
-            panic!("expected a shell launch");
+    fn every_target_resolves_to_a_usable_directory() {
+        let cases = [
+            (Target::Folder("/tmp/look".into()), "/tmp/look"),
+            (Target::File("/tmp/look/a.txt".into()), "/tmp/look"),
+            (Target::File("a.txt".into()), CURRENT_DIR),
+            (Target::File("/".into()), CURRENT_DIR),
+        ];
+
+        for (target, expected) in cases {
+            assert_eq!(target.dir(), expected, "{target:?}");
+        }
+    }
+
+    /// (label, file_manager, target, expected). Only the platform's own manager
+    /// can select a file inside its folder, so a declared one is opened at the
+    /// containing directory instead.
+    #[test]
+    fn reveal_uses_the_declared_manager_or_the_platform() {
+        let platform = |path: &str| Launch::SystemDefault { path: path.into() };
+        let app = |path: &str| Launch::Application {
+            tool: "nautilus".into(),
+            path: path.into(),
         };
-        assert!(
-            !command.contains(" -e "),
-            "kitty has no -e flag, got: {command}"
-        );
-        assert!(
-            command.starts_with("'kitty' \"$SHELL\" -lc "),
-            "got: {command}"
+        let cases: &[(&str, Option<&str>, Target, Launch)] = &[
+            ("nothing declared", None, file(), platform("/tmp/a.txt")),
+            (
+                "a blank declaration",
+                Some("  "),
+                file(),
+                platform("/tmp/a.txt"),
+            ),
+            (
+                "a file opens its folder",
+                Some("nautilus"),
+                Target::File("/tmp/look/a.txt".into()),
+                app("/tmp/look"),
+            ),
+            (
+                "a folder is its own",
+                Some("nautilus"),
+                Target::Folder("/tmp/look".into()),
+                app("/tmp/look"),
+            ),
+        ];
+
+        for (label, manager, target, expected) in cases {
+            let declared = Tools {
+                file_manager: manager.map(str::to_string),
+                ..Tools::default()
+            };
+            assert_eq!(&reveal(&declared, target), expected, "{label}");
+        }
+    }
+
+    /// (reason, key that would fix it, what the message must name).
+    #[test]
+    fn a_reason_names_what_would_fix_it() {
+        let cases: &[(Unavailable, Option<&str>, &str)] = &[
+            (
+                Unavailable::NotDeclared {
+                    key: key::TEXT_EDITOR,
+                },
+                Some(key::TEXT_EDITOR),
+                key::TEXT_EDITOR,
+            ),
+            (
+                Unavailable::TerminalRequired {
+                    tool: "nvim".into(),
+                    key: key::TERMINAL,
+                },
+                Some(key::TERMINAL),
+                "nvim",
+            ),
+            (
+                Unavailable::CannotRunCommand {
+                    tool: "warp".into(),
+                },
+                None,
+                "warp",
+            ),
+            (Unavailable::UnsupportedPlatform, None, "POSIX"),
+        ];
+
+        for (reason, expected_key, mentions) in cases {
+            assert_eq!(reason.key(), *expected_key, "{reason:?}");
+            let message = reason.message();
+            assert!(
+                message.contains(mentions),
+                "{reason:?} should name {mentions:?}: {message}"
+            );
+        }
+    }
+
+    /// The exact composition, kept as a golden string: the nesting of a quoted
+    /// command inside a quoted command is what breaks first when this changes.
+    #[cfg(unix)]
+    #[test]
+    fn a_hosted_editor_composes_exactly() {
+        let declared = tools(Some("nvim"), None, Some("alacritty"));
+        assert_eq!(
+            shell_command(edit(&declared, &file())),
+            "'alacritty' -e \"$SHELL\" -lc ''\\''nvim'\\'' '\\''/tmp/a.txt'\\'''"
         );
     }
 
+    /// A tool is a name, so one living under a path with a space stays one word.
+    #[cfg(unix)]
     #[test]
-    fn wezterm_goes_through_its_start_subcommand() {
-        let declared = tools(None, None, Some("wezterm"));
-        let Ok(Launch::Shell { command, .. }) =
-            terminal_here(&declared, &Target::Folder("/tmp".into()))
-        else {
-            panic!("expected a shell launch");
-        };
-        assert!(
-            command.starts_with("'wezterm' start -- \"$SHELL\" -lc "),
-            "got: {command}"
-        );
+    fn an_editor_path_with_a_space_stays_one_word() {
+        let declared = tools(Some("/opt/my tools/nvim"), None, Some("alacritty"));
+        let command = shell_command(edit(&declared, &file()));
+
+        assert!(command.contains("/opt/my tools/nvim"), "got: {command}");
+        assert!(!command.contains("tools/nvim '"), "got: {command}");
     }
 
-    #[test]
-    fn a_terminal_on_a_file_row_opens_its_parent() {
-        let declared = tools(None, None, Some("ghostty"));
-        let Ok(Launch::Shell { command, .. }) =
-            terminal_here(&declared, &Target::File("/tmp/look/a.txt".into()))
-        else {
-            panic!("expected a shell launch");
-        };
-        assert!(command.contains("/tmp/look"), "got: {command}");
-        assert!(!command.contains("a.txt"), "got: {command}");
-    }
-
+    #[cfg(unix)]
     #[test]
     fn a_directory_with_spaces_stays_one_argument() {
-        let declared = tools(None, None, Some("ghostty"));
-        let Ok(Launch::Shell { command, .. }) =
-            terminal_here(&declared, &Target::Folder("/tmp/my project".into()))
-        else {
-            panic!("expected a shell launch");
-        };
+        let declared = tools(None, None, Some("alacritty"));
+        let target = Target::Folder("/tmp/my project".into());
+        let command = shell_command(terminal_here(&declared, &target));
+
         assert!(
             command.contains("cd '\\''/tmp/my project'\\''"),
             "got: {command}"
         );
     }
 
+    #[cfg(unix)]
     #[test]
-    fn terminal_app_is_driven_through_osascript() {
-        let declared = tools(None, None, Some("Terminal.app"));
-        let Ok(Launch::Shell { tool, command }) =
-            terminal_here(&declared, &Target::Folder("/tmp".into()))
-        else {
-            panic!("expected a shell launch");
-        };
-        assert_eq!(tool, "Terminal.app");
-        assert!(command.starts_with("osascript -e "), "got: {command}");
-        assert!(command.contains("do script"), "got: {command}");
-        assert!(command.contains("to activate"), "got: {command}");
+    fn a_terminal_on_a_file_row_opens_its_parent() {
+        let declared = tools(None, None, Some("alacritty"));
+        let target = Target::File("/tmp/look/a.txt".into());
+        let command = shell_command(terminal_here(&declared, &target));
+
+        assert!(command.contains("/tmp/look"), "got: {command}");
+        assert!(!command.contains("a.txt"), "got: {command}");
     }
 
-    #[test]
-    fn iterm_creates_a_window_with_the_command() {
-        let declared = tools(None, None, Some("iterm"));
-        let Ok(Launch::Shell { command, .. }) =
-            terminal_here(&declared, &Target::Folder("/tmp".into()))
-        else {
-            panic!("expected a shell launch");
-        };
-        assert!(
-            command.contains("create window with default profile command"),
-            "got: {command}"
-        );
-        assert!(command.contains(r#"application "iTerm""#), "got: {command}");
-    }
-
+    #[cfg(unix)]
     #[test]
     fn a_terminal_that_cannot_run_commands_says_so() {
-        let declared = tools(None, None, Some("warp"));
         assert_eq!(
-            terminal_here(&declared, &Target::Folder("/tmp".into())),
+            terminal_here(&tools(None, None, Some("warp")), &folder()),
             Err(Unavailable::CannotRunCommand {
                 tool: "warp".into()
-            })
-        );
-    }
-
-    #[test]
-    fn a_blank_declaration_reads_as_undeclared() {
-        let blank = tools(Some("   "), None, None);
-        assert_eq!(
-            edit(&blank, &Target::File("/tmp/a.txt".into())),
-            Err(Unavailable::NotDeclared {
-                key: key::TEXT_EDITOR
             })
         );
     }
@@ -548,7 +682,7 @@ mod tests {
 
     #[test]
     fn resolve_dispatches_to_the_same_result_as_the_direct_call() {
-        let declared = tools(None, Some("zed"), Some("ghostty"));
+        let declared = tools(None, Some("zed"), Some("alacritty"));
         let target = Target::Folder("/tmp/look".into());
 
         assert_eq!(
@@ -559,60 +693,32 @@ mod tests {
             Action::TerminalHere.resolve(&declared, &target),
             terminal_here(&declared, &target)
         );
-    }
-
-    #[test]
-    fn a_reason_names_the_key_that_would_fix_it() {
-        let missing = Unavailable::NotDeclared {
-            key: key::TEXT_EDITOR,
-        };
-        assert_eq!(missing.key(), Some(key::TEXT_EDITOR));
-        assert!(missing.message().contains(key::TEXT_EDITOR));
-
-        let hosted = Unavailable::TerminalRequired {
-            tool: "nvim".into(),
-            key: key::TERMINAL,
-        };
-        assert_eq!(hosted.key(), Some(key::TERMINAL));
-        assert!(hosted.message().contains("nvim"));
-
-        let unsupported = Unavailable::CannotRunCommand {
-            tool: "warp".into(),
-        };
-        assert_eq!(unsupported.key(), None);
-        assert!(unsupported.message().contains("warp"));
-    }
-
-    #[test]
-    fn reveal_falls_back_to_the_platform_when_nothing_is_declared() {
         assert_eq!(
-            reveal(&Tools::default(), &Target::File("/tmp/a.txt".into())),
-            Launch::SystemDefault {
-                path: "/tmp/a.txt".into()
-            }
+            Action::Reveal.resolve(&declared, &target),
+            Ok(reveal(&declared, &target))
         );
     }
 
-    /// Only the platform's own manager can select a file inside its folder, so a
-    /// declared one is opened at the containing directory instead.
+    /// Ghostty is single-instance on macOS: invoking its CLI while the app is
+    /// already up exits without ever making a window, so the key looks dead.
+    /// Only the terminals that need it get this, or every other terminal would
+    /// spawn a redundant second instance.
+    #[cfg(target_os = "macos")]
     #[test]
-    fn a_declared_file_manager_opens_the_containing_folder() {
-        let declared = Tools {
-            file_manager: Some("nautilus".into()),
-            ..Tools::default()
-        };
-        assert_eq!(
-            reveal(&declared, &Target::File("/tmp/look/a.txt".into())),
-            Launch::Application {
-                tool: "nautilus".into(),
-                path: "/tmp/look".into()
-            }
+    fn only_a_single_instance_mac_app_goes_through_open() {
+        let ghostty = shell_command(terminal_here(
+            &tools(None, None, Some("ghostty")),
+            &folder(),
+        ));
+        assert!(
+            ghostty.starts_with("open -na 'Ghostty' --args -e \"$SHELL\" -lc "),
+            "got: {ghostty}"
         );
-    }
 
-    #[test]
-    fn a_folder_is_its_own_directory() {
-        assert_eq!(Target::Folder("/tmp/look".into()).dir(), "/tmp/look");
-        assert_eq!(Target::File("/tmp/look/a.txt".into()).dir(), "/tmp/look");
+        for terminal in ["alacritty", "kitty", "wezterm"] {
+            let command =
+                shell_command(terminal_here(&tools(None, None, Some(terminal)), &folder()));
+            assert!(!command.starts_with("open"), "{terminal} got: {command}");
+        }
     }
 }

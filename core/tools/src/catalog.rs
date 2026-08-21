@@ -159,14 +159,22 @@ pub fn surface(tool: &str) -> Surface {
     }
 }
 
+/// A declared name reduced to a catalog key. Case, a trailing `.app`, and a
+/// leading directory are things a user should not have to get right: naming a
+/// specific build (`/opt/homebrew/bin/nvim`) still means nvim.
 fn normalize(tool: &str) -> String {
-    let lowered = tool.trim().to_ascii_lowercase();
+    let trimmed = tool.trim();
+    let name = trimmed.rsplit('/').next().unwrap_or(trimmed);
+    let lowered = name.to_ascii_lowercase();
     lowered.strip_suffix(".app").unwrap_or(&lowered).to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // These three police contributions to the tables, so a bad new row fails the
+    // build rather than failing quietly on someone's machine.
 
     #[test]
     fn every_entry_cites_its_source() {
@@ -211,82 +219,82 @@ mod tests {
         }
     }
 
+    /// (declared name, expected style, why this row exists).
+    ///
+    /// The fallback rows are the load-bearing ones: every terminal riding `-e`
+    /// works with no catalog entry at all, which is what keeps the table an
+    /// exceptions list. `kgx` honors it too, per its Debian man page.
     #[test]
-    fn unknown_terminal_falls_back_to_dash_e() {
-        assert_eq!(command_style("rio"), CommandStyle::Argv(DASH_E));
+    fn a_declared_name_resolves_to_its_style() {
+        const FALLBACK: CommandStyle = DEFAULT_COMMAND_STYLE;
+        const POSITIONAL_STYLE: CommandStyle = CommandStyle::Argv(POSITIONAL);
+        const DASHDASH: CommandStyle = CommandStyle::Argv(DASH_DASH);
+        const WEZ: CommandStyle = CommandStyle::Argv(WEZTERM_START);
+        const TERM_APP: CommandStyle = CommandStyle::Script(AppleScript::TerminalApp);
+        const ITERM: CommandStyle = CommandStyle::Script(AppleScript::ITerm2);
+        const NONE: CommandStyle = CommandStyle::Unsupported;
+
+        let cases: &[(&str, CommandStyle, &str)] = &[
+            ("rio", FALLBACK, "unknown rides the fallback"),
+            ("alacritty", FALLBACK, "honors -e"),
+            ("konsole", FALLBACK, "honors -e"),
+            ("xterm", FALLBACK, "honors -e"),
+            ("st", FALLBACK, "honors -e"),
+            ("urxvt", FALLBACK, "honors -e"),
+            ("kgx", FALLBACK, "honors -e"),
+            ("xfce4-terminal", FALLBACK, "honors -e"),
+            ("tilix", FALLBACK, "honors -e"),
+            ("terminator", FALLBACK, "honors -e"),
+            ("kitty", POSITIONAL_STYLE, "positional, no -e exists"),
+            ("foot", POSITIONAL_STYLE, "trailing args are the command"),
+            ("wezterm", WEZ, "runs through its start subcommand"),
+            ("gnome-terminal", DASHDASH, "-e is deprecated upstream"),
+            ("ptyxis", DASHDASH, "-- is the supported spelling"),
+            ("Terminal.app", TERM_APP, "an app, not a CLI"),
+            ("apple terminal", TERM_APP, "alias of the same row"),
+            ("iterm", ITERM, "an app, not a CLI"),
+            ("iTerm2", ITERM, "alias of the same row"),
+            ("Warp", NONE, "cannot be told to run a command"),
+            ("hyper", NONE, "cannot be told to run a command"),
+            ("KITTY", POSITIONAL_STYLE, "case is normalized"),
+            ("  WezTerm.app  ", WEZ, "whitespace and .app are normalized"),
+            (
+                "/opt/homebrew/bin/kitty",
+                POSITIONAL_STYLE,
+                "a leading path is normalized",
+            ),
+        ];
+
+        for (declared, want, why) in cases {
+            assert_eq!(command_style(declared), *want, "{declared:?} ({why})");
+        }
+    }
+
+    #[test]
+    fn a_terminal_riding_the_fallback_has_no_row() {
         assert!(entry("rio").is_none());
+        assert!(entry("alacritty").is_none());
+        assert!(entry("kitty").is_some());
     }
 
+    /// Every GUI editor rides the fallback, including ones that did not exist
+    /// when this was written: a new editor ships and Look supports it without a
+    /// release. `emacs` is deliberately GUI, since `emacs <path>` starts the GUI
+    /// build and wanting `emacs -nw` is declaring a command, not a tool.
     #[test]
-    fn convention_followers_need_no_entry() {
-        for terminal in [
-            "ghostty",
-            "alacritty",
-            "konsole",
-            "xterm",
-            "st",
-            "urxvt",
-            // kgx honors -e: https://manpages.debian.org/testing/gnome-console/kgx.1.en.html
-            "kgx",
-            "xfce4-terminal",
-            "tilix",
-            "terminator",
-        ] {
-            assert_eq!(
-                command_style(terminal),
-                DEFAULT_COMMAND_STYLE,
-                "{terminal} should ride the fallback rather than carry an entry"
-            );
-        }
-    }
-
-    #[test]
-    fn deviating_terminals_are_stored() {
-        assert_eq!(command_style("kitty"), CommandStyle::Argv(POSITIONAL));
-        assert_eq!(command_style("foot"), CommandStyle::Argv(POSITIONAL));
-        assert_eq!(command_style("wezterm"), CommandStyle::Argv(WEZTERM_START));
-        assert_eq!(
-            command_style("gnome-terminal"),
-            CommandStyle::Argv(DASH_DASH)
-        );
-        assert_eq!(command_style("ptyxis"), CommandStyle::Argv(DASH_DASH));
-    }
-
-    #[test]
-    fn macos_apps_use_applescript() {
-        assert_eq!(
-            command_style("Terminal.app"),
-            CommandStyle::Script(AppleScript::TerminalApp)
-        );
-        assert_eq!(
-            command_style("iTerm2"),
-            CommandStyle::Script(AppleScript::ITerm2)
-        );
-        assert_eq!(AppleScript::ITerm2.app_name(), "iTerm");
-    }
-
-    #[test]
-    fn terminals_without_command_support_are_named() {
-        assert_eq!(command_style("Warp"), CommandStyle::Unsupported);
-        assert_eq!(command_style("hyper"), CommandStyle::Unsupported);
-    }
-
-    #[test]
-    fn an_alias_reaches_the_same_row() {
-        assert_eq!(command_style("iterm"), command_style("iterm2"));
-        assert_eq!(command_style("terminal"), command_style("apple terminal"));
-    }
-
-    #[test]
-    fn tty_editors_are_known() {
-        for editor in ["vim", "nvim", "Helix", "hx", "kak", "nano", "micro"] {
-            assert_eq!(surface(editor), Surface::Tty, "{editor} needs a terminal");
-        }
-    }
-
-    #[test]
-    fn gui_editors_need_no_entry() {
-        for editor in [
+    fn a_tool_is_tty_only_when_the_catalog_says_so() {
+        let tty = [
+            "vim",
+            "nvim",
+            "Helix",
+            "hx",
+            "kak",
+            "nano",
+            "micro",
+            "/opt/homebrew/bin/nvim",
+            "/opt/my tools/nvim",
+        ];
+        let gui = [
             "zed",
             "vscode",
             "code",
@@ -297,21 +305,19 @@ mod tests {
             "textmate",
             "emacs",
             "something-nobody-has-shipped-yet",
-        ] {
-            assert_eq!(
-                surface(editor),
-                Surface::Gui,
-                "{editor} draws its own window"
-            );
+        ];
+
+        for tool in tty {
+            assert_eq!(surface(tool), Surface::Tty, "{tool:?} needs a terminal");
+        }
+        for tool in gui {
+            assert_eq!(surface(tool), Surface::Gui, "{tool:?} draws its own window");
         }
     }
 
     #[test]
-    fn names_normalize_on_case_and_app_suffix() {
-        assert_eq!(command_style("KITTY"), CommandStyle::Argv(POSITIONAL));
-        assert_eq!(
-            command_style("  WezTerm.app  "),
-            CommandStyle::Argv(WEZTERM_START)
-        );
+    fn an_applescript_dialect_knows_its_app_name() {
+        assert_eq!(AppleScript::TerminalApp.app_name(), "Terminal");
+        assert_eq!(AppleScript::ITerm2.app_name(), "iTerm");
     }
 }
