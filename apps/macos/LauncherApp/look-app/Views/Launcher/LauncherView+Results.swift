@@ -284,23 +284,31 @@ extension LauncherView {
         }
     }
 
-    /// Reveals one path rather than whatever happens to be selected now. An
-    /// action resolved off the main thread must reveal the row it was resolved
-    /// for, even if the user has since moved the selection.
+    /// Takes a path, not the selection: an action resolved off the main thread
+    /// must reveal the row it was resolved for.
     func revealPathInFinder(_ path: String) {
-        guard path.contains(":"), !path.hasPrefix("/") else {
+        switch RevealTargetLogic.plan(
+            for: path, exists: FileManager.default.fileExists(atPath: path)
+        ) {
+        case .selectInFileViewer:
             NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
-            return
+        case .openURL:
+            // An unhandled scheme returns false, and ignoring it is silence.
+            guard let url = URL(string: path), NSWorkspace.shared.open(url) else {
+                showCannotReveal()
+                return
+            }
+        case .unavailable:
+            showCannotReveal()
         }
-        guard let url = URL(string: path) else {
-            showBanner(
-                AppConstants.Launcher.Finder.cannotRevealBanner,
-                style: .info,
-                duration: AppConstants.Launcher.Clipboard.infoBannerDuration
-            )
-            return
-        }
-        NSWorkspace.shared.open(url)
+    }
+
+    private func showCannotReveal() {
+        showBanner(
+            AppConstants.Launcher.Finder.cannotRevealBanner,
+            style: .info,
+            duration: AppConstants.Launcher.Clipboard.infoBannerDuration
+        )
     }
 
     func togglePickForSelectedResult() {
