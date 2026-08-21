@@ -198,13 +198,10 @@ pub fn surface(tool: &str) -> Surface {
     }
 }
 
-/// Whether `name`, already normalized, is a terminal: one with a row because
-/// its command style deviates, or one riding the fallback.
+/// Whether `name` is a terminal: one with a row because its command style
+/// deviates, or one riding the fallback.
 fn is_terminal(name: &str) -> bool {
-    TERMINAL_NAMES.contains(&name)
-        || TERMINALS
-            .iter()
-            .any(|terminal| terminal.names.contains(&name))
+    TERMINAL_NAMES.contains(&name) || entry(name).is_some()
 }
 
 /// A declared name reduced to a catalog key. Case, a trailing `.app`, and a

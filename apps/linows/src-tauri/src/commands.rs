@@ -221,7 +221,9 @@ pub fn open_path(
                     .spawn();
                 // Give the browser a beat to receive the URL and surface its
                 // new tab; the focus attempt below races the spawn otherwise.
-                std::thread::sleep(std::time::Duration::from_millis(HANDLER_FOCUS_DELAY_MS));
+                std::thread::sleep(std::time::Duration::from_millis(
+                    crate::consts::HANDLER_FOCUS_DELAY_MS,
+                ));
                 focus_default_browser();
             }
             #[cfg(not(target_os = "linux"))]
@@ -266,7 +268,9 @@ pub fn open_path(
                 // the handler on xdg-open activation. Resolves the handler via
                 // the file's MIME type so a PNG opened in Brave focuses Brave,
                 // a PDF opened in Zathura focuses Zathura, etc.
-                std::thread::sleep(std::time::Duration::from_millis(HANDLER_FOCUS_DELAY_MS));
+                std::thread::sleep(std::time::Duration::from_millis(
+                    crate::consts::HANDLER_FOCUS_DELAY_MS,
+                ));
                 focus_file_handler(&path);
             }
             #[cfg(not(target_os = "linux"))]
@@ -564,12 +568,6 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-/// Delay between handing a file/URL to xdg-open and trying to focus the
-/// resulting handler window - gives the app time to receive the input and
-/// surface its window so the focus call below sees a matching client.
-#[cfg(target_os = "linux")]
-pub(crate) const HANDLER_FOCUS_DELAY_MS: u64 = 150;
-
 /// Focus the window of a handler identified by its .desktop id. Tries the
 /// GNOME Shell extension first (works on GNOME Wayland), then falls back to
 /// WM_CLASS / app_id matching via try_focus_window which knows about Sway,
@@ -652,7 +650,7 @@ fn focus_file_handler(path: &str) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn try_focus_window(wm_class: &str) -> bool {
+fn try_focus_window(wm_class: &str) -> bool {
     // Sway (Wayland): SWAYSOCK is set, swaymsg shares i3's IPC and CLI but
     // Wayland-native clients identify by `app_id`, not WM_CLASS. XWayland
     // clients still fall back to class/instance. The x11rb path below can't

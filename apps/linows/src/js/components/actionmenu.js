@@ -9,7 +9,6 @@
 // row's verbs cost nothing until somebody looks at them.
 
 import * as rowactions from './rowactions.js';
-import * as results from './results.js';
 import * as banner from './banner.js';
 
 const EMPTY_BANNER = 'Nothing to do here';
@@ -31,8 +30,19 @@ export function init(panelEl) {
     panel = panelEl;
 }
 
-export function isOpen() {
+function isOpen() {
     return menuEl != null;
+}
+
+/**
+ * The vim half of the menu's bindings, shared with keyboard.js so the chord
+ * that opens the menu and the chord that moves in it cannot drift apart.
+ * Returns 'j', 'k', or null.
+ */
+export function vimKey(e) {
+    if (!e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return null;
+    const key = e.key.toLowerCase();
+    return key === 'j' || key === 'k' ? key : null;
 }
 
 export function close() {
@@ -54,7 +64,7 @@ export async function open() {
 
     token += 1;
     const myToken = token;
-    const descriptors = await descriptorsForSelection();
+    const descriptors = await rowactions.descriptorsFor();
     if (token !== myToken) return;
 
     if (descriptors.length === 0) {
@@ -73,7 +83,7 @@ export function handleKey(e) {
 
     // Ctrl+J / Ctrl+K move the way they do in every other list that takes vim
     // keys; the arrows do the same for everyone else.
-    const vim = e.ctrlKey && !e.shiftKey && !e.altKey ? e.key.toLowerCase() : null;
+    const vim = vimKey(e);
     if (e.key === 'ArrowDown' || vim === 'j') {
         move(1);
     } else if (e.key === 'ArrowUp' || vim === 'k') {
@@ -88,11 +98,6 @@ export function handleKey(e) {
 
     e.preventDefault();
     return true;
-}
-
-async function descriptorsForSelection() {
-    const selected = results.getSelected();
-    return selected ? rowactions.descriptorsFor(selected) : [];
 }
 
 function mount(descriptors) {
@@ -118,7 +123,8 @@ function mount(descriptors) {
 
         row.addEventListener('click', () => activate(index));
         menuEl.appendChild(row);
-        return { descriptor, el: row };
+        // Only the id is read after this; the label and chord are in the DOM.
+        return { id: descriptor.id, el: row };
     });
 
     focusedIndex = 0;
@@ -157,5 +163,5 @@ function activate(index) {
     if (!row) return;
 
     close();
-    rowactions.activate(row.descriptor.id);
+    rowactions.activate(row.id);
 }

@@ -45,7 +45,10 @@ pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
         return Ok(());
     }
 
-    let uris: Vec<String> = paths.iter().map(|path| file_uri(path)).collect();
+    let uris: Vec<String> = paths
+        .iter()
+        .map(|path| crate::platform::shared::file_uri(path))
+        .collect();
     let gnome = format!("{COPY_VERB}\n{}", uris.join("\n"));
 
     if own_clipboard(gnome.clone(), uris.join("\r\n"), paths.join("\n")) {
@@ -113,19 +116,6 @@ fn allow_manager_to_store(clipboard: &gtk::Clipboard) {
     clipboard.store();
 }
 
-/// `file://` with every byte outside the unreserved set percent-encoded.
-fn file_uri(path: &str) -> String {
-    let mut encoded = String::from("file://");
-    for byte in path.as_bytes() {
-        match byte {
-            b'/' | b'-' | b'.' | b'_' | b'~' => encoded.push(*byte as char),
-            _ if byte.is_ascii_alphanumeric() => encoded.push(*byte as char),
-            _ => encoded.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    encoded
-}
-
 /// wl-copy (Wayland) then xclip (X11), neither a hard runtime dependency. Only
 /// the file-manager type: one invocation advertises one MIME type, which is the
 /// whole reason the GTK path above exists.
@@ -167,16 +157,6 @@ fn shell_out(payload: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A path with a space is what breaks a naive `file://` + path.
-    #[test]
-    fn a_uri_encodes_everything_outside_the_unreserved_set() {
-        assert_eq!(
-            file_uri("/tmp/my project/a b.txt"),
-            "file:///tmp/my%20project/a%20b.txt"
-        );
-        assert_eq!(file_uri("/tmp/a~b-c_d.txt"), "file:///tmp/a~b-c_d.txt");
-    }
 
     /// Each payload has to reach the getter under its own number, or a paste
     /// gets a form its asker cannot read.

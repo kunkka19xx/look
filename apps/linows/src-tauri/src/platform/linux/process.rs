@@ -702,7 +702,7 @@ fn normalize_proc_name(proc_name: &str) -> Vec<String> {
     out
 }
 
-fn xdg_app_dirs() -> Vec<String> {
+pub(crate) fn xdg_app_dirs() -> Vec<String> {
     let mut dirs = Vec::new();
     let home = std::env::var("HOME").unwrap_or_default();
 

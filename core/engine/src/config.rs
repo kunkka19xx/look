@@ -194,6 +194,22 @@ impl RuntimeConfig {
         fresh
     }
 
+    /// The declared tools alone, without cloning everything else.
+    ///
+    /// `load_cached` clones ~120 strings and rebuilds the alias map; resolving
+    /// one row action needs three `Option<String>` and nothing else, and both
+    /// shells do it once per action per menu.
+    pub fn tools_cached() -> Tools {
+        let slot = cached_config_slot();
+        {
+            let guard = slot.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some(cfg) = guard.as_ref() {
+                return cfg.tools.clone();
+            }
+        }
+        Self::load_cached().tools
+    }
+
     /// Drops the cached config. Call after `~/.look.config` is edited so the
     /// next `load_cached()` re-reads from disk.
     pub fn invalidate_cache() {

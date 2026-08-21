@@ -232,7 +232,7 @@ function handleKeyDown(e) {
     // Ctrl+K open it, and once it is open the same two chords move in it.
     if (actionmenu.handleKey(e)) return;
 
-    if (e.ctrlKey && !e.shiftKey && !e.altKey && /^[jk]$/i.test(e.key)) {
+    if (actionmenu.vimKey(e)) {
         e.preventDefault();
         if (!isDiscoveryMode()) actionmenu.open();
         return;

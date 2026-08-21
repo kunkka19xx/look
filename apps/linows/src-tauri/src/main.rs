@@ -667,7 +667,7 @@ fn main() {
             shell::run_shell_command,
             // Preferred tools (shared look-tools composition; the native half
             // lives in platform::{linux,windows}::tools)
-            tools::tool_action,
+            tools::tool_actions,
             tools::perform_tool_action,
             // Platform: icons, detection, window effects
             platform::get_icon,

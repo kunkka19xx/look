@@ -12,8 +12,6 @@ use std::process::Stdio;
 
 use super::{host_binary_path, host_command, user_session_command};
 
-/// Every `.desktop` entry naming this tool would be under one of these.
-const DESKTOP_SUBDIR: &str = "applications";
 const DESKTOP_SUFFIX: &str = ".desktop";
 
 /// The file manager interface every desktop file manager implements, and the
@@ -22,6 +20,9 @@ const FILE_MANAGER_NAME: &str = "org.freedesktop.FileManager1";
 const FILE_MANAGER_PATH: &str = "/org/freedesktop/FileManager1";
 /// Startup id, which we have none of; every implementation accepts an empty one.
 const NO_STARTUP_ID: &str = "";
+/// Long enough for a file manager that has to start first, short enough that a
+/// desktop with no file manager at all falls through to `xdg-open` promptly.
+const SHOW_ITEMS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Start `tool` on `path`.
 ///
@@ -29,7 +30,7 @@ const NO_STARTUP_ID: &str = "";
 /// something a user can act on, where a failed `gio launch` is not.
 pub fn launch(tool: &str, path: &str) -> Result<(), String> {
     if let Some(program) = program_for(tool) {
-        return spawn(user_session_command(&program).arg(path));
+        return spawn(user_session_command(program).arg(path));
     }
 
     if let Some(entry) = desktop_entry_for(tool) {
@@ -64,12 +65,18 @@ pub fn launch(tool: &str, path: &str) -> Result<(), String> {
 /// which reads as the key having done nothing. A terminal spawned through a
 /// composed shell command makes a *new* window, which every compositor focuses
 /// on its own, so that path deliberately does not come through here.
+///
+/// Detached, like every other post-launch focus in the app: the caller is a
+/// command the frontend awaits, and nothing there consumes the outcome, so the
+/// settle delay must not be spent holding that promise open.
 pub fn activate(tool: &str) {
     let name = window_name(tool);
-    std::thread::sleep(std::time::Duration::from_millis(
-        crate::commands::HANDLER_FOCUS_DELAY_MS,
-    ));
-    crate::commands::try_focus_window(&name);
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(
+            crate::consts::HANDLER_FOCUS_DELAY_MS,
+        ));
+        crate::commands::try_focus_window_pub(&name);
+    });
 }
 
 /// Show `path` in the desktop's own file manager with the file selected.
@@ -92,115 +99,82 @@ pub fn reveal(path: &str) -> Result<(), String> {
 }
 
 fn show_items(path: &str) -> bool {
-    let Ok(uri) = url_from_path(path) else {
+    // A relative path has no URI, which is what the interface takes.
+    if !Path::new(path).is_absolute() {
         return false;
-    };
+    }
+    let uri = crate::platform::shared::file_uri(path);
     let Some(connection) = super::dbus::session() else {
         return false;
     };
 
     super::dbus::runtime().block_on(async {
-        connection
-            .call_method(
+        // Bounded: an unowned but D-Bus-activatable name would otherwise hold
+        // the user's reveal for zbus's default 25s before the fallback runs.
+        tokio::time::timeout(
+            SHOW_ITEMS_TIMEOUT,
+            connection.call_method(
                 Some(FILE_MANAGER_NAME),
                 FILE_MANAGER_PATH,
                 Some(FILE_MANAGER_NAME),
                 "ShowItems",
                 &(vec![uri], NO_STARTUP_ID),
-            )
-            .await
-            .is_ok()
+            ),
+        )
+        .await
+        .is_ok_and(|reply| reply.is_ok())
     })
 }
 
-/// `file://` with every byte outside the unreserved set percent-encoded, which
-/// is what the interface takes. Fails for a relative path, which has no URI.
-fn url_from_path(path: &str) -> Result<String, ()> {
-    let absolute = Path::new(path);
-    if !absolute.is_absolute() {
-        return Err(());
-    }
-
-    let mut encoded = String::from("file://");
-    for byte in path.as_bytes() {
-        match byte {
-            b'/' | b'-' | b'_' | b'.' | b'~' => encoded.push(*byte as char),
-            _ if byte.is_ascii_alphanumeric() => encoded.push(*byte as char),
-            _ => encoded.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    Ok(encoded)
-}
-
 /// The program to run for `tool`: a path the user spelled out, or a name on
-/// `$PATH`.
-fn program_for(tool: &str) -> Option<String> {
+/// `$PATH`. The resolved location is discarded on purpose - the name is what
+/// gets spawned, so the lookup only answers whether it would resolve.
+fn program_for(tool: &str) -> Option<&str> {
     let tool = tool.trim();
     if tool.is_empty() {
         return None;
     }
     if tool.contains('/') {
-        return Path::new(tool).is_file().then(|| tool.to_string());
+        return Path::new(tool).is_file().then_some(tool);
     }
-    host_binary_path(tool).map(|_| tool.to_string())
+    host_binary_path(tool).is_some().then_some(tool)
 }
 
 /// The `.desktop` file declaring `tool`, matched on its id rather than its
 /// `Name=`: a user naming a tool means the thing they would type, and an id is
 /// the closest thing a desktop entry has to that.
 fn desktop_entry_for(tool: &str) -> Option<PathBuf> {
-    let wanted = tool.trim().to_ascii_lowercase();
+    let lowered = tool.trim().to_ascii_lowercase();
+    let wanted = lowered.strip_suffix(DESKTOP_SUFFIX).unwrap_or(&lowered);
     if wanted.is_empty() {
         return None;
     }
-    let wanted = wanted
-        .strip_suffix(DESKTOP_SUFFIX)
-        .unwrap_or(&wanted)
-        .to_string();
 
-    for dir in desktop_dirs() {
+    // The app finder's own roots, which cover the `/usr/share` fallback and the
+    // NixOS profile paths a bare XDG_DATA_DIRS walk misses.
+    for dir in super::process::xdg_app_dirs() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
         };
         for entry in entries.flatten() {
-            let path = entry.path();
-            let Some(id) = path
-                .file_name()
-                .and_then(|name| name.to_str())
+            // Compared on the borrowed name; the path is built only on a match,
+            // since this walks every desktop entry on the system.
+            let name = entry.file_name();
+            let Some(id) = name
+                .to_str()
                 .and_then(|name| name.strip_suffix(DESKTOP_SUFFIX))
             else {
                 continue;
             };
-            let id = id.to_ascii_lowercase();
             // A reverse-DNS id (org.gnome.Nautilus) is still "nautilus" to the
             // user, so its last segment counts as the name too.
-            if id == wanted || id.rsplit('.').next() == Some(wanted.as_str()) {
-                return Some(path);
+            let tail = id.rsplit('.').next().unwrap_or(id);
+            if id.eq_ignore_ascii_case(wanted) || tail.eq_ignore_ascii_case(wanted) {
+                return Some(entry.path());
             }
         }
     }
     None
-}
-
-/// The XDG directories holding desktop entries, most specific first, so a
-/// user's own override wins over the system copy.
-fn desktop_dirs() -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    let mut push = |dir: PathBuf| {
-        if !dirs.contains(&dir) {
-            dirs.push(dir);
-        }
-    };
-
-    if let Some(home) = dirs::data_local_dir() {
-        push(home.join(DESKTOP_SUBDIR));
-    }
-    if let Ok(data_dirs) = std::env::var("XDG_DATA_DIRS") {
-        for dir in data_dirs.split(':').filter(|dir| !dir.trim().is_empty()) {
-            push(PathBuf::from(dir.trim()).join(DESKTOP_SUBDIR));
-        }
-    }
-    dirs
 }
 
 /// What a tool's window is called to the compositor. GTK apps set their class
@@ -226,20 +200,6 @@ fn spawn(command: &mut std::process::Command) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A path with a space is the case that breaks a naive `file://` + path.
-    #[test]
-    fn a_uri_encodes_everything_outside_the_unreserved_set() {
-        assert_eq!(
-            url_from_path("/tmp/my project/a b.txt"),
-            Ok("file:///tmp/my%20project/a%20b.txt".to_string())
-        );
-        assert_eq!(
-            url_from_path("/tmp/a~b-c_d.txt").unwrap(),
-            "file:///tmp/a~b-c_d.txt"
-        );
-        assert_eq!(url_from_path("relative.txt"), Err(()));
-    }
 
     /// The name a compositor knows, from every form a user might declare.
     #[test]

@@ -145,7 +145,13 @@ fn posix_shell(configured: &str) -> &str {
 fn shell_command(step: &str) -> Result<Command, String> {
     let configured = std::env::var("SHELL").unwrap_or_default();
     let mut command = Command::new(posix_shell(&configured));
-    command.arg("-lc").arg(step);
+    command
+        .arg("-lc")
+        .arg(step)
+        // An AppImage runtime points this at its own bundled libs, and a host
+        // binary resolving against them dies on a symbol lookup. A step is the
+        // user's own command, so it must see the host's loader path, not ours.
+        .env_remove("LD_LIBRARY_PATH");
     Ok(command)
 }
 
@@ -165,11 +171,7 @@ fn spawn(step: &str, row: Option<&RowContext>) -> Result<(), String> {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        // An AppImage runtime points this at its own bundled libs, and a host
-        // binary resolving against them dies on a symbol lookup. A step is the
-        // user's own command, so it must see the host's loader path, not ours.
-        .env_remove("LD_LIBRARY_PATH");
+        .stderr(Stdio::null());
 
     if let Some(row) = row {
         command

@@ -6,7 +6,7 @@
 // wording of an action that cannot run comes back with it - nothing here writes
 // a message about a missing tool.
 
-import { toolAction, performToolAction } from '../ipc.js';
+import { toolActions, performToolAction } from '../ipc.js';
 import * as results from './results.js';
 import * as banner from './banner.js';
 import { isSyntheticResultId } from '../catalog.js';
@@ -17,43 +17,38 @@ export const EDIT = 'edit';
 export const TERMINAL = 'terminal';
 export const REVEAL = 'reveal';
 
+// Namespaces the menu ids so they cannot be confused with the core action ids
+// above, which are a different vocabulary living in the same file.
 const PREFIX = 'rowaction:';
-
-export const ID = {
-    open: `${PREFIX}open`,
-    edit: `${PREFIX}edit`,
-    terminal: `${PREFIX}terminal`,
-    reveal: `${PREFIX}reveal`,
-    copyPath: `${PREFIX}copypath`,
-};
 
 const BANNER_SECONDS = 2.4;
 
-// (id, plain wording, wording once a tool resolves, chord, tool action). `named`
-// is what teaches the chord: "Edit" becomes "Edit in Zed".
+// (id, plain wording, wording once a tool resolves, chord, and who runs it:
+// `tool` for a core action, `own` for one of the launcher's own verbs).
+// `named` is what teaches the chord: "Edit" becomes "Edit in Zed".
 //
 // `fallbackTool` stands in for a declared tool where the platform always has an
 // answer. Read lazily: the catalog is built at import time, before the platform
 // has been asked what it is.
 const CATALOG = [
-    { id: ID.open, plain: 'Open', chord: '⏎' },
-    { id: ID.edit, plain: 'Edit', named: 'Edit in', chord: 'Ctrl+E', tool: EDIT },
+    { id: `${PREFIX}open`, plain: 'Open', chord: '⏎', own: 'open' },
+    { id: `${PREFIX}edit`, plain: 'Edit', named: 'Edit in', chord: 'Ctrl+E', tool: EDIT },
     {
-        id: ID.terminal,
+        id: `${PREFIX}terminal`,
         plain: 'Open terminal here',
         named: 'Open in',
         chord: 'Ctrl+T',
         tool: TERMINAL,
     },
     {
-        id: ID.reveal,
+        id: `${PREFIX}reveal`,
         plain: 'Reveal',
         named: 'Reveal in',
         chord: 'Ctrl+F',
         tool: REVEAL,
         fallbackTool: systemFileManager,
     },
-    { id: ID.copyPath, plain: 'Copy path', chord: 'Ctrl+C' },
+    { id: `${PREFIX}copypath`, plain: 'Copy path', chord: 'Ctrl+C', own: 'copyPath' },
 ];
 
 // Open and Copy path are the launcher's own verbs, not core's; keyboard.js owns
@@ -77,34 +72,33 @@ export function applies(action, kind) {
     return action === REVEAL ? fileOrFolder || kind === 'app' : fileOrFolder;
 }
 
-/** The selected row as a target, or null when no action applies to it. */
-function target(action) {
+/** The selected row, or null when it is not something actions apply to. */
+function actionableSelection() {
     const selected = results.getSelected();
     if (!selected?.path || isSyntheticResultId(selected.id)) return null;
-    if (action && !applies(action, selected.kind)) return null;
-    return { path: selected.path, isDir: selected.kind === 'folder' };
+    if (selected.kind === 'clipboard' || selected.kind === 'process') return null;
+    return selected;
 }
 
 /**
- * What the Ctrl+K menu lists for `result`. Resolving is string work in core over
- * the cached config, so the three lookups cost one round trip between them.
+ * What the Ctrl+K menu lists for the selected row. One IPC hop for every entry
+ * that needs a tool name: resolving is string work in core over the cached
+ * config, so asking about them together costs one round trip in total.
  */
-export async function descriptorsFor(result) {
-    if (!result?.path || result.kind === 'clipboard' || result.kind === 'process') return [];
-    if (isSyntheticResultId(result.id)) return [];
+export async function descriptorsFor() {
+    const selected = actionableSelection();
+    if (!selected) return [];
 
-    const offered = CATALOG.filter((entry) => !entry.tool || applies(entry.tool, result.kind));
-    const resolved = await Promise.all(
-        offered.map((entry) =>
-            entry.tool
-                ? toolAction(entry.tool, result.path, result.kind === 'folder')
-                : Promise.resolve(null),
-        ),
-    );
+    const offered = CATALOG.filter((entry) => !entry.tool || applies(entry.tool, selected.kind));
+    const asked = offered.filter((entry) => entry.tool).map((entry) => entry.tool);
+    const resolved = asked.length
+        ? await toolActions(asked, selected.path, selected.kind === 'folder')
+        : [];
+    const tools = new Map(asked.map((action, index) => [action, resolved[index]?.tool]));
 
-    return offered.map((entry, index) => ({
+    return offered.map((entry) => ({
         id: entry.id,
-        title: label(entry, resolved[index]?.tool),
+        title: label(entry, entry.tool && tools.get(entry.tool)),
         // The chord that already performs this, set beside the label rather
         // than trailing it, so the keys line up down one edge.
         chord: entry.chord,
@@ -117,24 +111,14 @@ function label(entry, tool) {
 }
 
 /** Run one entry, by menu click or by its chord. */
-export function activate(actionId) {
-    switch (actionId) {
-        case ID.open:
-            handlers.open?.();
-            break;
-        case ID.edit:
-            run(EDIT);
-            break;
-        case ID.terminal:
-            run(TERMINAL);
-            break;
-        case ID.reveal:
-            run(REVEAL);
-            break;
-        case ID.copyPath:
-            handlers.copyPath?.();
-            break;
+export function activate(id) {
+    const entry = CATALOG.find((candidate) => candidate.id === id);
+    if (!entry) return;
+    if (entry.tool) {
+        run(entry.tool);
+        return;
     }
+    handlers[entry.own]?.();
 }
 
 /**
@@ -143,12 +127,12 @@ export function activate(actionId) {
  * has a window to report itself in.
  */
 export async function run(action) {
-    const row = target(action);
-    if (!row) return;
+    const selected = actionableSelection();
+    if (!selected || !applies(action, selected.kind)) return;
 
     let outcome = null;
     try {
-        outcome = await performToolAction(action, row.path, row.isDir);
+        outcome = await performToolAction(action, selected.path, selected.kind === 'folder');
     } catch (err) {
         console.error('tool action failed', err);
         return;
