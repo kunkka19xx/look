@@ -58,13 +58,14 @@ import {
 // (apps/macos/.../LauncherView.swift:302) so both platforms surface the same
 // shortcuts in the same modes. Style stays per-platform: linows uses the
 // colon + bold-bullet format, macOS keeps its space-separated form.
-// "Ctrl+F: Reveal" was dropped from the home hint (still works, still listed
-// in Settings > Shortcuts); the clipboard hint keeps only its first two items
-// so it fits one line in the left card footer when the panes float.
-const HINT_MAIN =
-    'Enter: Open \u2022 Ctrl+K: Actions \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
-const HINT_TRANSLATE =
-    'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+//
+// Every line here has to fit the left card footer in one row when the panes
+// float, which is the narrowest place a hint is shown. That budget is what
+// dropped "Ctrl+F: Reveal" and "Ctrl+/: Command mode" from the home hints, and
+// what keeps the clipboard hint to its first two items - all three still work
+// and are still listed in Settings > Shortcuts.
+const HINT_MAIN = 'Enter: Open \u2022 Ctrl+K: Actions \u2022 Ctrl+H: Help';
+const HINT_TRANSLATE = 'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help';
 const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Ctrl+D: Remove clip';
 const HINT_PROCESS = 'Enter: CPU \u2022 Ctrl+D: Kill \u2022 Ctrl+C: Copy PID';
 // Discovery-menu hints \u2014 mirror macOS prefixSuggestion / commandSuggestion
@@ -178,9 +179,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Todo quick view: when today has tasks, the last main-hint item
-    // ("Ctrl+/: Command mode") is swapped for a clickable "Todo X/Y" stat with
-    // an "Unfinished today" hover bubble. Mirrors macOS HintBar.TodoQuickView:
-    // home screen only, hidden when today is empty.
+    // ("Ctrl+H: Help") is swapped for a clickable "Todo X/Y" stat with an
+    // "Unfinished today" hover bubble, so the line stays one row. Mirrors macOS
+    // HintBar.TodoQuickView: home screen only, hidden when today is empty.
     let todoQuick = null;
 
     function renderMainHint() {
