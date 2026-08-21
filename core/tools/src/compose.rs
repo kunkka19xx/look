@@ -61,12 +61,18 @@ pub enum Launch {
         tool: String,
         path: String,
     },
+    /// No tool declared, so the platform's own handler does it. This is today's
+    /// behavior, and the reason declaring nothing changes nothing.
+    SystemDefault {
+        path: String,
+    },
 }
 
 impl Launch {
-    pub fn tool(&self) -> &str {
+    pub fn tool(&self) -> Option<&str> {
         match self {
-            Launch::Shell { tool, .. } | Launch::Application { tool, .. } => tool,
+            Launch::Shell { tool, .. } | Launch::Application { tool, .. } => Some(tool),
+            Launch::SystemDefault { .. } => None,
         }
     }
 }
@@ -115,15 +121,17 @@ impl Unavailable {
 pub enum Action {
     Edit,
     TerminalHere,
+    Reveal,
 }
 
 impl Action {
-    pub const ALL: &'static [Action] = &[Action::Edit, Action::TerminalHere];
+    pub const ALL: &'static [Action] = &[Action::Edit, Action::TerminalHere, Action::Reveal];
 
     pub const fn id(self) -> &'static str {
         match self {
             Action::Edit => "edit",
             Action::TerminalHere => "terminal",
+            Action::Reveal => "reveal",
         }
     }
 
@@ -135,7 +143,27 @@ impl Action {
         match self {
             Action::Edit => edit(tools, target),
             Action::TerminalHere => terminal_here(tools, target),
+            Action::Reveal => Ok(reveal(tools, target)),
         }
+    }
+}
+
+/// Show the target in a file manager. Undeclared means the platform's own, which
+/// is what the launcher does today, so this never fails.
+pub fn reveal(tools: &Tools, target: &Target) -> Launch {
+    let path = target.path().to_string();
+    match tools
+        .file_manager
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+    {
+        // A custom manager is opened at the containing folder: only the
+        // platform's own can select the file inside it.
+        Some(manager) => Launch::Application {
+            tool: manager.to_string(),
+            path: target.dir(),
+        },
+        None => Launch::SystemDefault { path },
     }
 }
 
@@ -327,7 +355,7 @@ mod tests {
             edit(&only_code, &Target::File("/tmp/a.txt".into()))
                 .unwrap()
                 .tool(),
-            "zed"
+            Some("zed")
         );
 
         let only_text = tools(Some("zed"), None, None);
@@ -335,7 +363,7 @@ mod tests {
             edit(&only_text, &Target::Folder("/tmp".into()))
                 .unwrap()
                 .tool(),
-            "zed"
+            Some("zed")
         );
     }
 
@@ -553,6 +581,33 @@ mod tests {
         };
         assert_eq!(unsupported.key(), None);
         assert!(unsupported.message().contains("warp"));
+    }
+
+    #[test]
+    fn reveal_falls_back_to_the_platform_when_nothing_is_declared() {
+        assert_eq!(
+            reveal(&Tools::default(), &Target::File("/tmp/a.txt".into())),
+            Launch::SystemDefault {
+                path: "/tmp/a.txt".into()
+            }
+        );
+    }
+
+    /// Only the platform's own manager can select a file inside its folder, so a
+    /// declared one is opened at the containing directory instead.
+    #[test]
+    fn a_declared_file_manager_opens_the_containing_folder() {
+        let declared = Tools {
+            file_manager: Some("nautilus".into()),
+            ..Tools::default()
+        };
+        assert_eq!(
+            reveal(&declared, &Target::File("/tmp/look/a.txt".into())),
+            Launch::Application {
+                tool: "nautilus".into(),
+                path: "/tmp/look".into()
+            }
+        );
     }
 
     #[test]

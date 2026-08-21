@@ -335,8 +335,17 @@ enum AppConstants {
         enum Tools {
             static let editAction = "edit"
             static let terminalAction = "terminal"
+            static let revealAction = "reveal"
             static let launchFailedBanner = "Could not start"
+            /// Shown when no `file_manager` is declared, which is the default.
+            static let systemFileManagerName = "Finder"
             static let bannerDuration: TimeInterval = 2.4
+            /// Long enough for the terminal to have made its new window, so
+            /// activating raises that one and not the window it already had.
+            static let activationSettleNanoseconds: UInt64 = 350_000_000
+            /// A terminal that was not running yet has to start first.
+            static let activationPollNanoseconds: UInt64 = 200_000_000
+            static let activationPollAttempts = 8
         }
 
         /// Rows from a user-declared block in `~/.look/sources`.

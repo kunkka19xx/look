@@ -13,6 +13,8 @@ use crate::state::{cstr_to_string, json_cstring_or_null};
 
 const KIND_SHELL: &str = "shell";
 const KIND_APPLICATION: &str = "application";
+/// Nothing declared, so the platform's own handler does it.
+const KIND_SYSTEM_DEFAULT: &str = "system_default";
 const KIND_UNAVAILABLE: &str = "unavailable";
 /// Core already ran it; the shell has nothing left to do.
 const KIND_PERFORMED: &str = "performed";
@@ -52,6 +54,14 @@ impl ResolvedAction {
             Ok(Launch::Application { tool, path }) => Self {
                 kind: KIND_APPLICATION,
                 tool: Some(tool),
+                command: None,
+                path: Some(path),
+                reason: None,
+                key: None,
+            },
+            Ok(Launch::SystemDefault { path }) => Self {
+                kind: KIND_SYSTEM_DEFAULT,
+                tool: None,
                 command: None,
                 path: Some(path),
                 reason: None,
@@ -193,6 +203,18 @@ mod tests {
         assert_eq!(json["tool"], "zed");
         assert_eq!(json["path"], "/tmp/look");
         assert!(json["command"].is_null());
+    }
+
+    #[test]
+    fn a_system_default_carries_only_the_path() {
+        let json = json_of(Ok(Launch::SystemDefault {
+            path: "/tmp/look".into(),
+        }));
+
+        assert_eq!(json["kind"], KIND_SYSTEM_DEFAULT);
+        assert_eq!(json["path"], "/tmp/look");
+        assert!(json["tool"].is_null());
+        assert!(json["reason"].is_null());
     }
 
     #[test]

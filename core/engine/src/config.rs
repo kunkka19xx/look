@@ -454,7 +454,6 @@ clipboard_history_limit=10\n\
 # text_editor=nvim\n\
 # code_editor=zed\n\
 # terminal=ghostty\n\
-# browser=firefox\n\
 # file_manager=finder\n\
 \n\
 # UI theme\n\
@@ -1049,13 +1048,12 @@ mod tests {
         assert!(tools.text_editor.is_none());
     }
 
-    /// The keys ship commented out: an existing config is not grown by five
-    /// lines it did not ask for, and Cmd+E names the key to set at the point of
-    /// use instead.
+    /// The keys ship commented out: an existing config is not grown by lines it
+    /// did not ask for, and Cmd+E names the key to set at the point of use.
     #[test]
     fn tool_keys_are_documented_but_not_enabled_by_default() {
         let defaults = default_config_contents();
-        for key in look_tools::key::ALL {
+        for key in ADVERTISED_TOOL_KEYS {
             assert!(
                 defaults.contains(&format!("# {key}=")),
                 "{key} should appear commented out in the generated config"
@@ -1066,6 +1064,36 @@ mod tests {
             );
         }
     }
+
+    /// `browser` parses, but no action reads it yet: Look has no URL row for it
+    /// to act on. Advertising it would make it a key a user can set and get
+    /// silence from, which is the trap `specs/preferred-tools.md` §6 calls out.
+    /// Document it here when something consumes it.
+    #[test]
+    fn unconsumed_tool_keys_are_not_advertised() {
+        // The assignment form, not the bare word: `ignored_patterns_browser=`
+        // is a different key that legitimately contains it.
+        let defaults = default_config_contents();
+        for form in ["# browser=", "\nbrowser="] {
+            assert!(
+                !defaults.contains(form),
+                "{form:?} should not be advertised"
+            );
+        }
+
+        let unadvertised: Vec<_> = look_tools::key::ALL
+            .iter()
+            .filter(|key| !ADVERTISED_TOOL_KEYS.contains(key))
+            .collect();
+        assert_eq!(unadvertised, vec![&look_tools::key::BROWSER]);
+    }
+
+    const ADVERTISED_TOOL_KEYS: &[&str] = &[
+        look_tools::key::TEXT_EDITOR,
+        look_tools::key::CODE_EDITOR,
+        look_tools::key::TERMINAL,
+        look_tools::key::FILE_MANAGER,
+    ];
 
     #[test]
     fn localized_app_names_defaults_to_false_and_loads_from_config() {

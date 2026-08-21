@@ -99,6 +99,12 @@ extension LauncherView {
             return
         }
 
+        if RowAction.isOne(descriptor.actionId) {
+            closeActionMenu()
+            activateRowAction(descriptor.actionId)
+            return
+        }
+
         closeActionMenu()
         runQuickAction(descriptor, intent: descriptor.control == .toggle ? .toggle : .run)
     }

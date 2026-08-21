@@ -1351,6 +1351,8 @@ nonisolated struct ToolAction: Decodable {
         case shell
         /// The native side launches `tool` with `path`.
         case application
+        /// Nothing declared, so the platform's own handler does it.
+        case systemDefault = "system_default"
         /// Core spawned it.
         case performed
         case failed

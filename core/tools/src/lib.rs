@@ -13,7 +13,7 @@ pub use catalog::{
     AppleScript, CommandStyle, DEFAULT_COMMAND_STYLE, Surface, TERMINALS, TTY_TOOLS, Terminal,
     command_style, entry, surface,
 };
-pub use compose::{Action, Launch, Target, Unavailable, edit, terminal_here};
+pub use compose::{Action, Launch, Target, Unavailable, edit, reveal, terminal_here};
 pub use quote::{applescript_quote, shell_quote};
 
 /// The tool keys read from `~/.look/config`, as constants so the config parser,
