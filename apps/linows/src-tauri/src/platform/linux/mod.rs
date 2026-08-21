@@ -74,6 +74,24 @@ pub fn user_session_command(prog: &str) -> std::process::Command {
     }
 }
 
+/// `file://` with every byte outside the RFC 3986 unreserved set percent-encoded.
+/// `/` stays literal: it separates path segments rather than belonging to one.
+///
+/// Wanted by anything handing a path to a desktop service - the clipboard's
+/// URI payloads and the file manager's `ShowItems` - which is why it does not
+/// live in either.
+pub fn file_uri(path: &str) -> String {
+    let mut encoded = String::from("file://");
+    for byte in path.as_bytes() {
+        match byte {
+            b'/' | b'-' | b'.' | b'_' | b'~' => encoded.push(*byte as char),
+            _ if byte.is_ascii_alphanumeric() => encoded.push(*byte as char),
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
+}
+
 /// Owner, group and other execute bits.
 const EXEC_BITS: u32 = 0o111;
 
@@ -99,6 +117,16 @@ pub fn host_binary_path(program: &str) -> Option<std::path::PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A path with a space is what breaks a naive `file://` + path.
+    #[test]
+    fn a_uri_encodes_everything_outside_the_unreserved_set() {
+        assert_eq!(
+            file_uri("/tmp/my project/a b.txt"),
+            "file:///tmp/my%20project/a%20b.txt"
+        );
+        assert_eq!(file_uri("/tmp/a~b-c_d.txt"), "file:///tmp/a~b-c_d.txt");
+    }
 
     #[test]
     fn finds_an_executable_on_path() {

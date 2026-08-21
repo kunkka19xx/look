@@ -103,7 +103,7 @@ fn show_items(path: &str) -> bool {
     if !Path::new(path).is_absolute() {
         return false;
     }
-    let uri = crate::platform::shared::file_uri(path);
+    let uri = super::file_uri(path);
     let Some(connection) = super::dbus::session() else {
         return false;
     };

@@ -45,10 +45,7 @@ pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
         return Ok(());
     }
 
-    let uris: Vec<String> = paths
-        .iter()
-        .map(|path| crate::platform::shared::file_uri(path))
-        .collect();
+    let uris: Vec<String> = paths.iter().map(|path| super::file_uri(path)).collect();
     let gnome = format!("{COPY_VERB}\n{}", uris.join("\n"));
 
     if own_clipboard(gnome.clone(), uris.join("\r\n"), paths.join("\n")) {
