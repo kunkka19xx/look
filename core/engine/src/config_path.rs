@@ -8,6 +8,7 @@
 //! exists to prevent: resolve once, hand back the path, read and write there.
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// Overrides everything, for tests and for people who keep dotfiles elsewhere.
@@ -69,14 +70,15 @@ pub fn resolve(home: &Path) -> ResolvedConfig {
 }
 
 /// `$LOOK_CONFIG_PATH`, when it names anything. Set but empty would resolve to
-/// wherever the app was launched from.
+/// wherever the app was launched from. Ensured like every other answer: an
+/// override into a folder that does not exist yet is a path Look cannot write.
 fn overridden() -> Option<PathBuf> {
     let custom = std::env::var(ENV_CONFIG_PATH).ok()?;
     let trimmed = custom.trim();
     if trimmed.is_empty() {
         return None;
     }
-    Some(PathBuf::from(trimmed))
+    Some(ensured(PathBuf::from(trimmed)))
 }
 
 /// Resolution against a home directory, ignoring the environment. Split out so
@@ -135,13 +137,27 @@ pub fn resolve_home_variant(home: &Path, dev: bool) -> ResolvedConfig {
             path: current,
             migrated: true,
         },
-        // A failed copy must not lose the user's settings: keep reading the
-        // file that definitely has them.
-        Err(_) => ResolvedConfig {
+        // Another process copied it while this one was resolving. Its file is
+        // the one to read, the same as if it had been there all along.
+        Err(NotMigrated::AlreadyThere) => ResolvedConfig {
+            path: current,
+            migrated: false,
+        },
+        // Moved once already, or the copy failed. Both files are kept and the
+        // folder one wins, so with none there the old file is what there is.
+        Err(NotMigrated::KeepLegacy) => ResolvedConfig {
             path: legacy,
             migrated: false,
         },
     }
+}
+
+/// Why a legacy file was not copied across.
+enum NotMigrated {
+    /// A concurrent resolve got there first.
+    AlreadyThere,
+    /// Moved once before, or the copy itself failed.
+    KeepLegacy,
 }
 
 /// Makes sure the returned path is writable by creating its parent. Failure is
@@ -155,20 +171,30 @@ fn ensured(path: PathBuf) -> PathBuf {
 
 /// Copies the legacy file across and marks it, leaving the original in place so
 /// nothing is destroyed and a downgrade still finds its settings.
-fn migrate(legacy: &Path, current: &Path, name: &str) -> std::io::Result<()> {
-    let contents = fs::read_to_string(legacy)?;
+fn migrate(legacy: &Path, current: &Path, name: &str) -> Result<(), NotMigrated> {
+    let contents = fs::read_to_string(legacy).map_err(|_| NotMigrated::KeepLegacy)?;
     if contents.starts_with(MOVED_NOTICE_PREFIX) {
-        // Already moved once, and the new file has since been deleted. Honour
-        // that rather than copying the stale contents back.
-        return Err(std::io::Error::other("already migrated"));
+        return Err(NotMigrated::KeepLegacy);
     }
 
     if let Some(parent) = current.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent).map_err(|_| NotMigrated::KeepLegacy)?;
     }
-    fs::write(current, &contents)?;
+    // Create-new rather than write: two Look processes can resolve at the same
+    // moment, and the loser must not land a half-read copy on top of the
+    // winner's whole one.
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(current)
+        .map_err(|err| match err.kind() {
+            std::io::ErrorKind::AlreadyExists => NotMigrated::AlreadyThere,
+            _ => NotMigrated::KeepLegacy,
+        })?;
+    file.write_all(contents.as_bytes())
+        .map_err(|_| NotMigrated::KeepLegacy)?;
     let notice = format!("{MOVED_NOTICE_PREFIX}{name} - Look no longer reads this file.");
-    fs::write(legacy, format!("{notice}\n\n{contents}"))
+    fs::write(legacy, format!("{notice}\n\n{contents}")).map_err(|_| NotMigrated::KeepLegacy)
 }
 
 #[cfg(test)]
@@ -292,6 +318,25 @@ mod tests {
     }
 
     #[test]
+    fn a_second_process_mid_move_does_not_overwrite_the_first_ones_copy() {
+        // Both resolve before either writes: the loser reads a legacy file the
+        // winner is busy rewriting, so its copy must not be the one that lands.
+        let home = TempHome::new("racing");
+        fs::write(home.legacy(), "ui_theme=dracula\n").unwrap();
+        fs::create_dir_all(home.current().parent().unwrap()).unwrap();
+        fs::write(home.current(), "ui_theme=whole\n").unwrap();
+
+        assert!(matches!(
+            migrate(&home.legacy(), &home.current(), CONFIG_NAME),
+            Err(NotMigrated::AlreadyThere)
+        ));
+        assert_eq!(
+            fs::read_to_string(home.current()).unwrap(),
+            "ui_theme=whole\n"
+        );
+    }
+
+    #[test]
     fn a_deleted_new_file_is_not_silently_recreated_from_the_old_one() {
         let home = TempHome::new("deleted");
         fs::write(home.legacy(), "ui_theme=dracula\n").unwrap();
@@ -299,10 +344,11 @@ mod tests {
         assert!(resolve_home(&home.0).migrated);
         fs::remove_file(home.current()).unwrap();
 
-        // The marker says the move already happened, so the stale contents do
-        // not come back.
+        // Both files are kept and the folder one wins. With it gone, the old
+        // file is read where it lies rather than copied across again.
         let again = resolve_home(&home.0);
         assert_eq!(again.path, home.legacy());
         assert!(!again.migrated);
+        assert!(!home.current().exists(), "nothing was copied back");
     }
 }

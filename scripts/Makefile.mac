@@ -104,7 +104,6 @@ app-stop:
 
 app-run: app-build app-stop app-ensure-bundle
 	@echo "Opening local app with config: $(DEV_CONFIG_PATH)"
-	@mkdir -p "$(dir $(DEV_CONFIG_PATH))"
 	@$(DEV_OPEN_ENV) open -n "$(APP_BUNDLE)"
 
 app-open: app-build app-ensure-bundle
@@ -132,7 +131,6 @@ app-install-dev: app-build app-ensure-bundle
 
 app-run-dev: app-install-dev app-stop
 	@echo "Opening side-by-side dev app with config: $(DEV_CONFIG_PATH)"
-	@mkdir -p "$(dir $(DEV_CONFIG_PATH))"
 	@$(DEV_OPEN_ENV) open -a "$(DEV_APP_INSTALL_BUNDLE)"
 
 app-uninstall-dev:

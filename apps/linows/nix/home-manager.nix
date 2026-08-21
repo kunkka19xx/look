@@ -108,9 +108,8 @@ let
   # left alone, and keys dropped from the Nix config since the last generation
   # are removed so the file cannot go stale.
   #
-  # Target whichever file Look reads (core/engine/src/config_path.rs): the
-  # legacy ~/.look.config until Look copies it into ~/.look/ on its next launch,
-  # which carries these keys across. Writing to it after that applies nothing.
+  # Target whichever file Look reads (core/engine/src/config_path.rs): both are
+  # kept and ~/.look/config wins, so this follows the same order.
   mergeScript = pkgs.writeShellScript "lookapp-merge-config" ''
     set -eu
     export PATH=${lib.makeBinPath [ pkgs.coreutils ]}
@@ -122,10 +121,7 @@ let
     legacy=$5
 
     if [ ! -e "$target" ] && [ -e "$legacy" ]; then
-      case "$(head -n 1 "$legacy")" in
-        '# Moved to '*) ;;
-        *) target=$legacy ;;
-      esac
+      target=$legacy
     fi
 
     keys=" "

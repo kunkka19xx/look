@@ -158,9 +158,9 @@ activation, so treat Nix as the source of truth for the keys it manages. The
 first activation copies the pre-Nix file to `<config>.hm-backup`.
 
 Upgrading from a Look that kept its config at `~/.look.config`: activation
-merges into that file until Look has copied it into `~/.look/`, which it does on
-its next launch and which carries the managed keys across. Nothing needs doing
-by hand, and the old file is left where it is.
+merges into whichever file Look reads, the old one until Look copies it into
+`~/.look/` on its next launch, which carries the managed keys across. Nothing
+needs doing by hand, and the old file is left where it is.
 
 ### Windows
 

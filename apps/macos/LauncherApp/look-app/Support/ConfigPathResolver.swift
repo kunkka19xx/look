@@ -24,6 +24,11 @@ enum ConfigPathResolver {
         if let custom = env["LOOK_CONFIG_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines),
             !custom.isEmpty
         {
+            // Ensured like every answer the core gives: an override into a
+            // folder that does not exist yet is a path nothing can write.
+            try? FileManager.default.createDirectory(
+                atPath: (custom as NSString).deletingLastPathComponent,
+                withIntermediateDirectories: true)
             return custom
         }
 
