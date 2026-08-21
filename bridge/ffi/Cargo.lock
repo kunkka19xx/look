@@ -396,6 +396,7 @@ dependencies = [
  "look-ranking",
  "look-sources",
  "look-storage",
+ "look-tools",
  "objc2",
  "objc2-foundation",
  "regex",
@@ -475,6 +476,7 @@ name = "look-sources"
 version = "0.1.0"
 dependencies = [
  "globset",
+ "look-tools",
  "serde",
  "toml",
 ]
@@ -494,6 +496,10 @@ dependencies = [
  "rusqlite",
  "serde",
 ]
+
+[[package]]
+name = "look-tools"
+version = "0.1.0"
 
 [[package]]
 name = "memchr"

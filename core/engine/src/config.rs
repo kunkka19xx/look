@@ -4,6 +4,7 @@ use crate::platform;
 use crate::platform::paths::compile_ignore_matcher;
 use crate::platform::paths::expand_with_home;
 use globset::GlobBuilder;
+use look_tools::Tools;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -94,6 +95,7 @@ pub struct RuntimeConfig {
     pub lazy_indexing_enabled: bool,
     pub localized_app_names: bool,
     pub search_aliases: HashMap<String, Vec<String>>,
+    pub tools: Tools,
 }
 
 impl Default for RuntimeConfig {
@@ -125,6 +127,7 @@ impl Default for RuntimeConfig {
             lazy_indexing_enabled: LAZY_INDEXING_ENABLED,
             localized_app_names: false,
             search_aliases: default_search_aliases(),
+            tools: Tools::default(),
         }
     }
 }
@@ -328,6 +331,7 @@ impl RuntimeConfig {
                         apply_alias_override(alias_key, value, &mut self.search_aliases);
                     }
                 }
+                _ if look_tools::key::ALL.contains(&key) => self.tools.set(key, value),
                 _ => {}
             }
         }
@@ -441,6 +445,17 @@ skip_dir_names=node_modules,target,build,dist,library,applications,old firefox d
 \n\
 # Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
 clipboard_history_limit=10\n\
+\n\
+# Preferred tools. Name the tool, not a command: Look knows how to drive it,\n\
+# including running a terminal editor inside your terminal. Declare nothing and\n\
+# nothing changes. Cmd+E edits the selected row, Cmd+T opens a terminal there.\n\
+# Edit uses text_editor on a file and code_editor on a folder; declaring only\n\
+# one of the two covers both.\n\
+# text_editor=nvim\n\
+# code_editor=zed\n\
+# terminal=ghostty\n\
+# browser=firefox\n\
+# file_manager=finder\n\
 \n\
 # UI theme\n\
 ui_tint_red=0.08\n\
@@ -976,6 +991,80 @@ mod tests {
     #[test]
     fn default_config_contents_include_lazy_indexing_enabled() {
         assert!(default_config_contents().contains("lazy_indexing_enabled=true"));
+    }
+
+    fn config_from(contents: &str, label: &str) -> RuntimeConfig {
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+        std::fs::write(&tmp, contents).expect("write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        config.apply_from_file(&tmp);
+
+        let _ = std::fs::remove_file(&tmp);
+        config
+    }
+
+    #[test]
+    fn tools_are_unset_until_declared() {
+        assert!(RuntimeConfig::default().tools.is_empty());
+        assert!(
+            config_from("file_scan_depth=4\n", "tools-absent")
+                .tools
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn every_tool_key_loads_from_config() {
+        let declared = look_tools::key::ALL
+            .iter()
+            .map(|key| format!("{key}=ghostty\n"))
+            .collect::<String>();
+
+        let tools = config_from(&declared, "tools-all").tools;
+
+        assert_eq!(tools.text_editor.as_deref(), Some("ghostty"));
+        assert_eq!(tools.code_editor.as_deref(), Some("ghostty"));
+        assert_eq!(tools.terminal.as_deref(), Some("ghostty"));
+        assert_eq!(tools.browser.as_deref(), Some("ghostty"));
+        assert_eq!(tools.file_manager.as_deref(), Some("ghostty"));
+    }
+
+    #[test]
+    fn tool_keys_survive_comments_and_whitespace() {
+        let tools = config_from(
+            "  terminal = ghostty   # my terminal\ntext_editor=\n",
+            "tools-trim",
+        )
+        .tools;
+
+        assert_eq!(tools.terminal.as_deref(), Some("ghostty"));
+        assert!(tools.text_editor.is_none());
+    }
+
+    /// The keys ship commented out: an existing config is not grown by five
+    /// lines it did not ask for, and Cmd+E names the key to set at the point of
+    /// use instead.
+    #[test]
+    fn tool_keys_are_documented_but_not_enabled_by_default() {
+        let defaults = default_config_contents();
+        for key in look_tools::key::ALL {
+            assert!(
+                defaults.contains(&format!("# {key}=")),
+                "{key} should appear commented out in the generated config"
+            );
+            assert!(
+                !defaults.contains(&format!("\n{key}=")),
+                "{key} should not be live in the generated config"
+            );
+        }
     }
 
     #[test]
