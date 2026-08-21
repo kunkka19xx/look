@@ -1,33 +1,15 @@
 import SwiftUI
 
 extension LauncherView {
-    /// Actions offered right now: for a selected row, its compiled controls plus
-    /// any `then` targets its block declared. With an empty query there is no
-    /// row, but the launchpad is on screen and its tiles are actions too, so the
-    /// menu offers those instead of refusing.
+    /// Actions offered for the selected row: its compiled controls plus any
+    /// `then` targets its block declared.
+    ///
+    /// The launchpad deliberately has none. Its tiles are already the actions,
+    /// each with its own mnemonic (⌘B, ⌘W, ⌘T...), so a menu there would list
+    /// what is on screen and cover it - and ⌘K is Keep Awake, so opening one
+    /// would shadow the key the user meant.
     var actionMenuDescriptors: [QuickActionDescriptor] {
-        if selectedResultID != nil, !quickActionDescriptors.isEmpty {
-            return quickActionDescriptors
-        }
-        return isLaunchpadActive ? launchpadActionDescriptors : quickActionDescriptors
-    }
-
-    /// The launchpad's own controls, as menu rows. Display-only tiles (weather,
-    /// battery, now playing, the L slot) are things to read, not to do, so they
-    /// stay out of a list of verbs.
-    private var launchpadActionDescriptors: [QuickActionDescriptor] {
-        launchpadTiles
-            .filter { $0.role == .toggle || $0.role == .action }
-            .map { tile in
-                QuickActionDescriptor(
-                    actionId: tile.actionId,
-                    title: tile.title,
-                    control: tile.role == .toggle ? .toggle : .button,
-                    onLabel: tile.onLabel,
-                    offLabel: tile.offLabel,
-                    info: []
-                )
-            }
+        quickActionDescriptors
     }
 
     /// Ids of the two rows the menu shows in place of the action list while a

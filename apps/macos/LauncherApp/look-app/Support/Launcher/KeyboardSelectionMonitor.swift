@@ -139,7 +139,13 @@ final class KeyboardSelectionMonitor {
 
             // Cmd+K opens it. Cmd+J opens it too and starts on the first row,
             // so either half of the pair gets you in.
+            //
+            // Never on the launchpad: its tiles ARE the actions, each with its
+            // own mnemonic, and ⌘K is already Keep Awake there. Opening a menu
+            // of the same tiles would both duplicate what is on screen and
+            // shadow the key the user meant.
             if flags == [.command],
+                !isLaunchpadActive(),
                 event.keyCode == KeyCode.k || event.keyCode == KeyCode.j
                     || event.charactersIgnoringModifiers?.lowercased() == "k"
                     || event.charactersIgnoringModifiers?.lowercased() == "j"

@@ -324,9 +324,6 @@ enum AppConstants {
             static let openHint = "⌘K actions"
             static let runHint = "↵"
             static let maxHeight: CGFloat = 240
-            /// Over the launchpad the menu has no panel to fill, so it takes a
-            /// readable column instead of the whole window width.
-            static let launchpadWidth: CGFloat = 320
             static let cornerRadius: CGFloat = 10
             static let rowVerticalPadding: CGFloat = 7
             static let rowHorizontalPadding: CGFloat = 10

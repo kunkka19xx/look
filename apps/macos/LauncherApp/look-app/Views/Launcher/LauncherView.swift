@@ -601,7 +601,6 @@ struct LauncherView: View {
                 "Cmd+/ command mode",
                 "Cmd+Shift+, close settings",
                 "Cmd+Shift+; apply config",
-                AppConstants.Launcher.ActionMenu.openHint,
             ]
         }
 
@@ -673,7 +672,12 @@ struct LauncherView: View {
         // The home screen replaces the "Cmd+/ command mode" hint with a
         // clickable today done/total quick view (see todoQuickView), so it
         // is intentionally omitted here.
-        return [enterHint, AppConstants.Launcher.ActionMenu.openHint, "Cmd+H help"]
+        var hints = [enterHint]
+        if !isLaunchpadActive {
+            hints.append(AppConstants.Launcher.ActionMenu.openHint)
+        }
+        hints.append("Cmd+H help")
+        return hints
     }
 
     /// What Enter does to the selected row. A declared block performs steps or
@@ -1309,22 +1313,6 @@ struct LauncherView: View {
                         themeStore: themeStore,
                         revealToken: appearanceRevealToken
                     )
-                    // The preview panel is not on screen here, so the empty
-                    // state renders the Cmd+K menu itself: the launchpad's
-                    // controls are actions like any other row's.
-                    .overlay(alignment: .top) {
-                        if isActionMenuOpen {
-                            ActionMenuView(
-                                descriptors: actionMenuRows,
-                                states: quickActionStates,
-                                focusedIndex: actionMenuIndex,
-                                themeStore: themeStore,
-                                onActivate: { activateActionMenuRow($0) }
-                            )
-                            .frame(maxWidth: AppConstants.Launcher.ActionMenu.launchpadWidth)
-                            .padding(.top, 8)
-                        }
-                    }
                 }
                 Spacer(minLength: 0)
             } else {
