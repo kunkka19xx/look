@@ -27,7 +27,7 @@ extension LauncherView {
     ///
     /// Editing and opening a terminal are about a place you work in. An app is a
     /// thing you launch, and the folder holding it is `/Applications`, which is
-    /// never "here" — so both are absent for app rows rather than quietly acting
+    /// never "here", so both are absent for app rows rather than quietly acting
     /// on the wrong directory. Revealing an app is genuinely useful and stays.
     static func toolActionApplies(_ action: String, to kind: LauncherResultKind) -> Bool {
         switch action {

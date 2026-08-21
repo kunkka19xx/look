@@ -21,23 +21,50 @@ extension LauncherView {
         }
     }
 
-    /// Which tool each action would start, so a label can name it instead of
-    /// saying "Edit" and hoping. Cheap after the first call: the tools come from
-    /// the process-wide config cache and resolving is string work.
-    private func resolvedTools(for result: LauncherResult) -> [String: ToolAction] {
-        var resolved: [String: ToolAction] = [:]
-        for action in [
-            AppConstants.Launcher.Tools.editAction,
-            AppConstants.Launcher.Tools.terminalAction,
-            AppConstants.Launcher.Tools.revealAction,
-        ] where Self.toolActionApplies(action, to: result.kind) {
-            if let outcome = EngineBridge.shared.toolAction(
-                action, path: result.path, isDirectory: result.kind == .folder
-            ) {
-                resolved[action] = outcome
-            }
+    /// One panel entry. `named` is the wording used once a tool resolves, so
+    /// "Edit" becomes "Edit in Zed" and the menu teaches what the chord opens.
+    private struct RowActionEntry {
+        let id: String
+        let plain: String
+        let named: String?
+        let chord: String
+        /// The tool action whose resolved name fills `named`, when there is one.
+        let tool: String?
+        /// Used in place of a declared tool, for an action the platform always
+        /// has an answer for.
+        let fallbackTool: String?
+
+        init(
+            id: String, plain: String, named: String? = nil, chord: String,
+            tool: String? = nil, fallbackTool: String? = nil
+        ) {
+            self.id = id
+            self.plain = plain
+            self.named = named
+            self.chord = chord
+            self.tool = tool
+            self.fallbackTool = fallbackTool
         }
-        return resolved
+    }
+
+    /// Separates a label from the chord that already performs it.
+    private static let chordGap = "  "
+
+    private static var rowActionCatalog: [RowActionEntry] {
+        [
+            RowActionEntry(id: RowAction.open, plain: "Open", chord: "⏎"),
+            RowActionEntry(
+                id: RowAction.edit, plain: "Edit", named: "Edit in", chord: "⌘E",
+                tool: AppConstants.Launcher.Tools.editAction),
+            RowActionEntry(
+                id: RowAction.terminal, plain: "Open terminal here", named: "Open in",
+                chord: "⌘T", tool: AppConstants.Launcher.Tools.terminalAction),
+            RowActionEntry(
+                id: RowAction.reveal, plain: "Reveal", named: "Reveal in", chord: "⌘F",
+                tool: AppConstants.Launcher.Tools.revealAction,
+                fallbackTool: AppConstants.Launcher.Tools.systemFileManagerName),
+            RowActionEntry(id: RowAction.copyPath, plain: "Copy path", chord: "⌘C"),
+        ]
     }
 
     func rowActionDescriptors(for result: LauncherResult) -> [QuickActionDescriptor] {
@@ -45,34 +72,16 @@ extension LauncherView {
             return []
         }
 
-        let tools = resolvedTools(for: result)
-        let applies = { Self.toolActionApplies($0, to: result.kind) }
-        var entries: [(id: String, title: String)] = [(RowAction.open, "Open  ⏎")]
+        let offered = Self.rowActionCatalog.filter { entry in
+            guard let action = entry.tool else { return true }
+            return Self.toolActionApplies(action, to: result.kind)
+        }
+        let tools = resolvedTools(for: result, entries: offered)
 
-        if applies(AppConstants.Launcher.Tools.editAction) {
-            entries.append((
-                RowAction.edit,
-                "\(title("Edit", "Edit in", tools, AppConstants.Launcher.Tools.editAction))  ⌘E"
-            ))
-        }
-        if applies(AppConstants.Launcher.Tools.terminalAction) {
-            entries.append((
-                RowAction.terminal,
-                "\(title("Open terminal here", "Open in", tools, AppConstants.Launcher.Tools.terminalAction))  ⌘T"
-            ))
-        }
-        if applies(AppConstants.Launcher.Tools.revealAction) {
-            entries.append((
-                RowAction.reveal,
-                "Reveal in \(tools[AppConstants.Launcher.Tools.revealAction]?.tool ?? AppConstants.Launcher.Tools.systemFileManagerName)  ⌘F"
-            ))
-        }
-        entries.append((RowAction.copyPath, "Copy path  ⌘C"))
-
-        return entries.map { entry in
+        return offered.map { entry in
             QuickActionDescriptor(
                 actionId: entry.id,
-                title: entry.title,
+                title: Self.label(for: entry, tools: tools),
                 control: .button,
                 onLabel: nil,
                 offLabel: nil,
@@ -81,12 +90,28 @@ extension LauncherView {
         }
     }
 
-    /// `<named> <tool>` when a tool resolved, the plain wording otherwise.
-    private func title(
-        _ plain: String, _ named: String, _ tools: [String: ToolAction], _ action: String
-    ) -> String {
-        guard let tool = tools[action]?.tool else { return plain }
-        return "\(named) \(tool)"
+    private static func label(for entry: RowActionEntry, tools: [String: ToolAction]) -> String {
+        let resolved = entry.tool.flatMap { tools[$0]?.tool } ?? entry.fallbackTool
+        let wording =
+            if let named = entry.named, let resolved { "\(named) \(resolved)" } else { entry.plain }
+        return "\(wording)\(chordGap)\(entry.chord)"
+    }
+
+    /// Which tool each offered action would start. Cheap after the first call:
+    /// the tools come from the process-wide config cache and resolving is string
+    /// work.
+    private func resolvedTools(
+        for result: LauncherResult, entries: [RowActionEntry]
+    ) -> [String: ToolAction] {
+        var resolved: [String: ToolAction] = [:]
+        for action in entries.compactMap(\.tool) {
+            if let outcome = EngineBridge.shared.toolAction(
+                action, path: result.path, isDirectory: result.kind == .folder
+            ) {
+                resolved[action] = outcome
+            }
+        }
+        return resolved
     }
 
     func activateRowAction(_ actionID: String) {
