@@ -417,7 +417,8 @@ fn default_config_contents() -> String {
     };
     format!(
         "# look configuration\n\
-# Generated on first launch. Edit values and press Cmd+Shift+; to reload.\n\
+# Generated on first launch. Edit values, then reload with Cmd+Shift+;\n\
+# (Ctrl+Shift+; on Linux and Windows).\n\
 \n\
 # Backend indexing (file_scan_depth: 1-12, file_scan_limit: 500-50000)\n\
 app_scan_roots={app_roots}\n\

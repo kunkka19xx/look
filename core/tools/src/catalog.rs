@@ -4,9 +4,9 @@
 //! the xterm convention and the fallback, and a working directory is composed
 //! into the command, so only deviating tools need a row.
 //!
-//! To add a tool, append to [`TERMINALS`] or [`TTY_TOOLS`]. Nothing else reads
-//! anything but these tables. Cite the tool's own docs in `source`, and store
-//! names lowercased without `.app`; tests enforce both.
+//! To add a tool, append to [`TERMINALS`], [`TTY_TOOLS`], or [`TERMINAL_NAMES`].
+//! Nothing else reads anything but these tables. Cite the tool's own docs in
+//! `source`, and store names lowercased without `.app`; tests enforce both.
 
 /// How a terminal accepts the command it should run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -142,6 +142,9 @@ pub fn entry(terminal: &str) -> Option<&'static Terminal> {
 pub enum Surface {
     Gui,
     Tty,
+    /// A terminal, which hosts an editor rather than being one. Only ever
+    /// reached by a tool declared under the wrong key.
+    Terminal,
 }
 
 /// Editors needing a terminal. `emacs` is absent on purpose: `emacs <path>`
@@ -151,12 +154,57 @@ pub const TTY_TOOLS: &[&str] = &[
     "vi", "vim", "nvim", "neovim", "hx", "helix", "kak", "kakoune", "nano", "micro", "pico", "ed",
 ];
 
+/// Terminals that ride the `-e` fallback, and so have no [`TERMINALS`] row.
+///
+/// A different question from command style, and the only reason to ask it: a
+/// terminal named as an editor is handed a path it has no way to open, which
+/// looks exactly like the action doing nothing. This list cannot be complete
+/// and does not need to be - a terminal nobody listed simply is not caught.
+pub const TERMINAL_NAMES: &[&str] = &[
+    "alacritty",
+    "konsole",
+    "xterm",
+    "urxvt",
+    "rxvt",
+    "st",
+    "kgx",
+    "xfce4-terminal",
+    "tilix",
+    "terminator",
+    "rio",
+    "contour",
+    "zutty",
+    "tabby",
+    "guake",
+    "yakuake",
+    "sakura",
+    "lxterminal",
+    "mate-terminal",
+    "qterminal",
+    "deepin-terminal",
+    "cool-retro-term",
+    "wt",
+    "windows terminal",
+];
+
 pub fn surface(tool: &str) -> Surface {
-    if TTY_TOOLS.contains(&normalize(tool).as_str()) {
+    let name = normalize(tool);
+    if TTY_TOOLS.contains(&name.as_str()) {
         Surface::Tty
+    } else if is_terminal(&name) {
+        Surface::Terminal
     } else {
         Surface::Gui
     }
+}
+
+/// Whether `name`, already normalized, is a terminal: one with a row because
+/// its command style deviates, or one riding the fallback.
+fn is_terminal(name: &str) -> bool {
+    TERMINAL_NAMES.contains(&name)
+        || TERMINALS
+            .iter()
+            .any(|terminal| terminal.names.contains(&name))
 }
 
 /// A declared name reduced to a catalog key. Case, a trailing `.app`, and a
@@ -197,12 +245,28 @@ mod tests {
         let stored = TERMINALS
             .iter()
             .flat_map(|terminal| terminal.names.iter())
-            .chain(TTY_TOOLS.iter());
+            .chain(TTY_TOOLS.iter())
+            .chain(TERMINAL_NAMES.iter());
         for name in stored {
             assert_eq!(
                 &normalize(name),
                 name,
                 "{name:?} is stored in a form lookup can never match"
+            );
+        }
+    }
+
+    /// A name in both tables would make `surface` answer by table order rather
+    /// than by what the name is.
+    #[test]
+    fn no_name_is_both_a_terminal_and_an_editor() {
+        for name in TERMINAL_NAMES {
+            assert!(!TTY_TOOLS.contains(name), "{name:?} cannot be both");
+        }
+        for name in TERMINALS.iter().flat_map(|terminal| terminal.names.iter()) {
+            assert!(
+                !TERMINAL_NAMES.contains(name),
+                "{name:?} has a row already, so listing it again is dead weight"
             );
         }
     }
@@ -275,6 +339,31 @@ mod tests {
         assert!(entry("rio").is_none());
         assert!(entry("alacritty").is_none());
         assert!(entry("kitty").is_some());
+    }
+
+    /// A terminal is neither: it hosts an editor rather than being one, and a
+    /// name reaching `edit` under an editor key is a misconfiguration Look can
+    /// name instead of launching something that exits on its own argument.
+    #[test]
+    fn a_terminal_is_told_apart_from_both_kinds_of_editor() {
+        let terminals = [
+            "alacritty",
+            "Alacritty",
+            "/run/current-system/sw/bin/alacritty",
+            "konsole",
+            "xterm",
+            // Rows exist for these because their command style deviates; they
+            // are still terminals.
+            "ghostty",
+            "kitty",
+            "wezterm",
+            "iTerm2",
+            "Terminal.app",
+            "warp",
+        ];
+        for tool in terminals {
+            assert_eq!(surface(tool), Surface::Terminal, "{tool:?} is a terminal");
+        }
     }
 
     /// Every GUI editor rides the fallback, including ones that did not exist

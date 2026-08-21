@@ -86,9 +86,23 @@ impl Launch {
 /// absent reads as the feature being broken.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Unavailable {
-    NotDeclared { key: &'static str },
-    TerminalRequired { tool: String, key: &'static str },
-    CannotRunCommand { tool: String },
+    NotDeclared {
+        key: &'static str,
+    },
+    TerminalRequired {
+        tool: String,
+        key: &'static str,
+    },
+    /// A terminal declared where an editor was meant. Named rather than tried:
+    /// a terminal handed a path exits on the argument it cannot read, which
+    /// reads as the action doing nothing at all.
+    NotAnEditor {
+        tool: String,
+        key: &'static str,
+    },
+    CannotRunCommand {
+        tool: String,
+    },
     UnsupportedPlatform,
 }
 
@@ -99,6 +113,9 @@ impl Unavailable {
             Unavailable::NotDeclared { key } => format!("Set {key} in your Look config"),
             Unavailable::TerminalRequired { tool, key } => {
                 format!("{tool} runs in a terminal; set {key} in your Look config")
+            }
+            Unavailable::NotAnEditor { tool, key } => {
+                format!("{tool} is a terminal; set {key} to the editor it should run")
             }
             Unavailable::CannotRunCommand { tool } => {
                 format!("{tool} cannot be told to run a command")
@@ -112,9 +129,9 @@ impl Unavailable {
     /// The config key that would fix this, when one would.
     pub fn key(&self) -> Option<&'static str> {
         match self {
-            Unavailable::NotDeclared { key } | Unavailable::TerminalRequired { key, .. } => {
-                Some(key)
-            }
+            Unavailable::NotDeclared { key }
+            | Unavailable::TerminalRequired { key, .. }
+            | Unavailable::NotAnEditor { key, .. } => Some(key),
             Unavailable::CannotRunCommand { .. } | Unavailable::UnsupportedPlatform => None,
         }
     }
@@ -190,6 +207,10 @@ pub fn edit(tools: &Tools, target: &Target) -> Result<Launch, Unavailable> {
         .ok_or(Unavailable::NotDeclared { key: missing })?;
 
     match surface(editor) {
+        Surface::Terminal => Err(Unavailable::NotAnEditor {
+            tool: editor.to_string(),
+            key: missing,
+        }),
         Surface::Gui => Ok(Launch::Application {
             tool: editor.to_string(),
             path: target.path().to_string(),
@@ -449,6 +470,43 @@ mod tests {
 
     /// A GUI editor is handed to the platform launcher with the path, since only
     /// native code can find and start a bundle.
+    /// The trap this exists for: a terminal handed a path exits on the argument
+    /// it cannot read, so the row reads as doing nothing at all.
+    #[test]
+    fn a_terminal_named_as_an_editor_says_which_key_to_fix() {
+        for terminal in ["alacritty", "ghostty", "konsole", "iTerm2"] {
+            assert_eq!(
+                edit(&tools(Some(terminal), None, Some("ghostty")), &file()),
+                Err(Unavailable::NotAnEditor {
+                    tool: terminal.into(),
+                    key: key::TEXT_EDITOR
+                }),
+                "{terminal:?} on a file row"
+            );
+            assert_eq!(
+                edit(&tools(None, Some(terminal), None), &folder()),
+                Err(Unavailable::NotAnEditor {
+                    tool: terminal.into(),
+                    key: key::CODE_EDITOR
+                }),
+                "{terminal:?} on a folder row"
+            );
+        }
+    }
+
+    /// Naming a terminal under `terminal` is the whole point of that key, so it
+    /// must not be caught by the check above.
+    #[cfg(unix)]
+    #[test]
+    fn the_terminal_key_still_takes_a_terminal() {
+        assert_eq!(
+            terminal_here(&tools(None, None, Some("alacritty")), &folder())
+                .unwrap()
+                .tool(),
+            Some("alacritty")
+        );
+    }
+
     #[test]
     fn a_gui_editor_goes_to_the_application_launcher() {
         assert_eq!(
@@ -593,6 +651,14 @@ mod tests {
                 },
                 Some(key::TERMINAL),
                 "nvim",
+            ),
+            (
+                Unavailable::NotAnEditor {
+                    tool: "alacritty".into(),
+                    key: key::TEXT_EDITOR,
+                },
+                Some(key::TEXT_EDITOR),
+                "alacritty",
             ),
             (
                 Unavailable::CannotRunCommand {
