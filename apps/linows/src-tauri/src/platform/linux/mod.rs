@@ -11,6 +11,7 @@ pub mod kde_focus;
 pub mod niri;
 pub mod process;
 pub mod sysinfo;
+pub mod tools;
 pub mod transparency;
 pub mod version;
 pub mod wayland_shortcut;
@@ -26,6 +27,51 @@ pub fn host_command(program: &str) -> std::process::Command {
     let mut cmd = std::process::Command::new(program);
     cmd.env_remove("LD_LIBRARY_PATH");
     cmd
+}
+
+/// Build a Command that runs `prog` inside the user's systemd session, so
+/// the child sees the user manager's environment (current XAUTHORITY for
+/// XWayland, DBUS_SESSION_BUS_ADDRESS, etc.) rather than whatever Look
+/// inherited. Falls back to a plain spawn when systemd-run isn't available.
+///
+/// Without this, a dev-mode Look launched from a long-lived `nix develop` /
+/// terminal shell carries the X11 cookie path it picked up at shell start -
+/// stale after the next mutter/XWayland restart - so spawned GUI children
+/// (firefox, etc.) fail with "cannot open display: :0" while gtk-launch
+/// itself still reports success.
+///
+/// `KillMode=process` keeps the actual GUI app alive after gtk-launch / gio
+/// launch (the unit's main process) exits.
+pub fn user_session_command(prog: &str) -> std::process::Command {
+    use std::sync::OnceLock;
+    static SYSTEMD_RUN: OnceLock<bool> = OnceLock::new();
+    let available = *SYSTEMD_RUN.get_or_init(|| {
+        // Exercise the actual `--user` path (a no-op transient unit) - checking
+        // only `systemd-run --version` succeeds on systems that have the binary
+        // but no usable per-user manager (containers, minimal installs), and
+        // would route every launch through a wrapper that then fails.
+        host_command("systemd-run")
+            .args(["--user", "--quiet", "--wait", "--collect", "--", "true"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    });
+    if available {
+        let mut cmd = host_command("systemd-run");
+        cmd.args([
+            "--user",
+            "--collect",
+            "--quiet",
+            "--property=KillMode=process",
+            "--",
+            prog,
+        ]);
+        cmd
+    } else {
+        host_command(prog)
+    }
 }
 
 /// Owner, group and other execute bits.

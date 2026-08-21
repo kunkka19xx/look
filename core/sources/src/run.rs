@@ -165,7 +165,11 @@ fn spawn(step: &str, row: Option<&RowContext>) -> Result<(), String> {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::null())
+        // An AppImage runtime points this at its own bundled libs, and a host
+        // binary resolving against them dies on a symbol lookup. A step is the
+        // user's own command, so it must see the host's loader path, not ours.
+        .env_remove("LD_LIBRARY_PATH");
 
     if let Some(row) = row {
         command

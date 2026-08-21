@@ -25,6 +25,8 @@ import * as preview from './components/preview.js';
 import * as banner from './components/banner.js';
 import * as confirm from './components/confirm.js';
 import * as qactions from './components/qactions.js';
+import * as actionmenu from './components/actionmenu.js';
+import * as rowactions from './components/rowactions.js';
 import * as superactions from './components/superactions.js';
 import * as runningApps from './components/running-apps.js';
 import { canRunElevated } from './platform.js';
@@ -76,6 +78,14 @@ export function init(inputEl) {
     );
 
     document.addEventListener('keydown', handleKeyDown, true);
+
+    // Open and Copy path are the launcher's own verbs; the rest of the row's
+    // actions go through core. Registering them keeps the Ctrl+K menu and the
+    // chords running one implementation each.
+    rowactions.setHandlers({
+        open: () => openSelected(),
+        copyPath: copySelectedPath,
+    });
 }
 
 export function setCommandMode(cmdModule) {
@@ -217,6 +227,17 @@ function handleKeyDown(e) {
         return;
     }
 
+    // While the actions menu is up it owns movement, Enter and Escape, so the
+    // launcher's own bindings stay out of its way. Ordered first: Ctrl+J and
+    // Ctrl+K open it, and once it is open the same two chords move in it.
+    if (actionmenu.handleKey(e)) return;
+
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && /^[jk]$/i.test(e.key)) {
+        e.preventDefault();
+        if (!isDiscoveryMode()) actionmenu.open();
+        return;
+    }
+
     // Alt+1-9 on home screen → activate running app
     if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key >= '1' && e.key <= '9') {
         const num = parseInt(e.key);
@@ -313,6 +334,22 @@ function handleKeyDown(e) {
                 // Arm here: Rust's window-hidden can lose the race with hide().
                 superactions.armEntrance();
                 hideWindow();
+            }
+            break;
+
+        case 'e':
+            if (e.ctrlKey) {
+                e.preventDefault();
+                if (isDiscoveryMode()) break;
+                rowactions.run(rowactions.EDIT);
+            }
+            break;
+
+        case 't':
+            if (e.ctrlKey) {
+                e.preventDefault();
+                if (isDiscoveryMode()) break;
+                rowactions.run(rowactions.TERMINAL);
             }
             break;
 
@@ -642,9 +679,17 @@ async function copySelectedPath() {
     }
 }
 
+// Reveal through the declared `file_manager`, or the platform's own when none
+// is set. Core answers which, so linows and macOS reveal the same way. Rows the
+// action does not apply to (a settings pane) keep the plain reveal.
 async function revealSelected() {
     const item = results.getSelected();
     if (!item) return;
+
+    if (rowactions.applies(rowactions.REVEAL, item.kind)) {
+        rowactions.run(rowactions.REVEAL);
+        return;
+    }
 
     try {
         await revealPath(item.path);

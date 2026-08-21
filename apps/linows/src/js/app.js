@@ -2,6 +2,7 @@ import * as results from './components/results.js';
 import * as search from './search.js';
 import * as keyboard from './keyboard.js';
 import * as preview from './components/preview.js';
+import * as actionmenu from './components/actionmenu.js';
 import * as picked from './components/picked.js';
 import * as banner from './components/banner.js';
 import * as health from './components/health.js';
@@ -60,7 +61,8 @@ import {
 // "Ctrl+F: Reveal" was dropped from the home hint (still works, still listed
 // in Settings > Shortcuts); the clipboard hint keeps only its first two items
 // so it fits one line in the left card footer when the panes float.
-const HINT_MAIN = 'Enter: Open \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+const HINT_MAIN =
+    'Enter: Open \u2022 Ctrl+K: Actions \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
 const HINT_TRANSLATE =
     'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
 const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Ctrl+D: Remove clip';
@@ -273,6 +275,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         smoothcaret.attach(input);
     }
     preview.init(previewPanel);
+    actionmenu.init(previewPanel);
     banner.init(document.getElementById('banner'));
     health.init();
     confirm.init(document.getElementById('confirm-bar'));
@@ -638,6 +641,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     onWindowHidden((event) => {
         superactions.armEntrance();
         motion.armReveal();
+        // The next summon keeps the query and the selection, but an open menu
+        // is a question the user already walked away from.
+        actionmenu.close();
         // Rust holds the window up until this lands. Two frames: the first
         // callback runs before the armed frame is painted, the second after.
         // The payload keys the dismissal. A failed invoke falls back to Rust's

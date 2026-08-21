@@ -450,8 +450,7 @@ clipboard_history_limit=10\n\
 # including running a terminal editor inside your terminal. Declare nothing and\n\
 # nothing changes. Editing uses text_editor on a file and code_editor on a\n\
 # folder; declaring only one of the two covers both.\n\
-# Acted on from the row's action menu, and from Cmd+E / Cmd+T.\n\
-# macOS only so far: the Linux and Windows shells do not read these yet.\n\
+# Acted on from the row's action menu, and from Cmd+E / Cmd+T (Ctrl elsewhere).\n\
 # text_editor=nvim\n\
 # code_editor=zed\n\
 # terminal=ghostty\n\

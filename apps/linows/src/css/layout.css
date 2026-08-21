@@ -81,7 +81,9 @@ html[data-os="windows"] .launcher-window {
  * covered: applytint() forces a near-opaque --bg-tint in these environments,
  * and the tiles reuse it as their tint layer. */
 [data-compositor="hyprland"] .pane-tile,
-[data-disable-blur] .pane-tile {
+[data-compositor="hyprland"] .action-menu,
+[data-disable-blur] .pane-tile,
+[data-disable-blur] .action-menu {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
 }
@@ -291,6 +293,9 @@ html[data-os="windows"] .launcher-window {
 }
 
 .preview-panel {
+    /* Positioning context for the Ctrl+K action menu, which hangs off the
+     * header rather than taking a place in the flow. */
+    position: relative;
     flex: 1;
     min-width: 0;
     min-height: 0;

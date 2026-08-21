@@ -1,5 +1,5 @@
 #[cfg(target_os = "linux")]
-use crate::platform::linux::host_command;
+use crate::platform::linux::{host_command, user_session_command};
 use crate::state::AppState;
 use look_engine::config::RuntimeConfig;
 use serde::Serialize;
@@ -310,37 +310,17 @@ pub async fn open_elevated(
     }
 }
 
+/// Ctrl+F. The same reveal the `reveal` tool action falls back to when no
+/// `file_manager` is declared, so both spellings select the file rather than
+/// one of them merely opening its folder.
 #[tauri::command]
 pub fn reveal_path(path: String) -> Result<(), String> {
-    let path_ref = std::path::Path::new(&path);
-
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer.exe")
-            .arg("/select,")
-            .arg(path_ref)
-            .spawn()
-            .map_err(|e| format!("Failed to reveal: {e}"))?;
-    }
-
     #[cfg(target_os = "linux")]
-    {
-        let dir = if path_ref.is_file() {
-            path_ref
-                .parent()
-                .unwrap_or(path_ref)
-                .to_string_lossy()
-                .to_string()
-        } else {
-            path.clone()
-        };
-        host_command("xdg-open")
-            .arg(&dir)
-            .spawn()
-            .map_err(|e| format!("Failed to reveal: {e}"))?;
-    }
+    let outcome = crate::platform::linux::tools::reveal(&path);
+    #[cfg(target_os = "windows")]
+    let outcome = crate::platform::windows::tools::reveal(&path);
 
-    Ok(())
+    outcome.map_err(|e| format!("Failed to reveal: {e}"))
 }
 
 #[tauri::command]
@@ -459,52 +439,6 @@ pub fn set_blur_region(
 
 // --- App launching helpers ---
 
-/// Build a Command that runs `prog` inside the user's systemd session, so
-/// the child sees the user manager's environment (current XAUTHORITY for
-/// XWayland, DBUS_SESSION_BUS_ADDRESS, etc.) rather than whatever Look
-/// inherited. Falls back to a plain spawn when systemd-run isn't available.
-///
-/// Without this, a dev-mode Look launched from a long-lived `nix develop` /
-/// terminal shell carries the X11 cookie path it picked up at shell start -
-/// stale after the next mutter/XWayland restart - so spawned GUI children
-/// (firefox, etc.) fail with "cannot open display: :0" while gtk-launch
-/// itself still reports success.
-///
-/// `KillMode=process` keeps the actual GUI app alive after gtk-launch / gio
-/// launch (the unit's main process) exits.
-#[cfg(target_os = "linux")]
-fn user_session_cmd(prog: &str) -> std::process::Command {
-    use std::sync::OnceLock;
-    static SYSTEMD_RUN: OnceLock<bool> = OnceLock::new();
-    let available = *SYSTEMD_RUN.get_or_init(|| {
-        // Exercise the actual `--user` path (a no-op transient unit) - checking
-        // only `systemd-run --version` succeeds on systems that have the binary
-        // but no usable per-user manager (containers, minimal installs), and
-        // would route every launch through a wrapper that then fails.
-        host_command("systemd-run")
-            .args(["--user", "--quiet", "--wait", "--collect", "--", "true"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    });
-    if available {
-        let mut cmd = host_command("systemd-run");
-        cmd.args([
-            "--user",
-            "--collect",
-            "--quiet",
-            "--property=KillMode=process",
-            "--",
-            prog,
-        ]);
-        cmd
-    } else {
-        host_command(prog)
-    }
-}
-
 #[cfg(target_os = "linux")]
 fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
     let desktop_file = id
@@ -551,7 +485,7 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
     std::thread::spawn(move || {
         if needs_steam_warmup {
             eprintln!("[launch] Steam URL exec on cold start; pre-starting steam");
-            let _ = user_session_cmd("steam")
+            let _ = user_session_command("steam")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -570,7 +504,7 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
 
         if let Some(ref name) = desktop_name {
             eprintln!("[launch] trying gtk-launch {name}");
-            let result = user_session_cmd("gtk-launch")
+            let result = user_session_command("gtk-launch")
                 .arg(name)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
@@ -591,7 +525,7 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
 
         if let Some(ref real_path) = desktop_path {
             eprintln!("[launch] trying gio launch {real_path}");
-            let result = user_session_cmd("gio")
+            let result = user_session_command("gio")
                 .args(["launch", real_path])
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
@@ -614,7 +548,7 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
         if let Some(cmd) = parts.next() {
             let args: Vec<&str> = parts.filter(|s| !s.starts_with('%')).collect();
             eprintln!("[launch] trying direct exec: {cmd} {}", args.join(" "));
-            match user_session_cmd(cmd)
+            match user_session_command(cmd)
                 .args(&args)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
@@ -634,7 +568,7 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
 /// resulting handler window - gives the app time to receive the input and
 /// surface its window so the focus call below sees a matching client.
 #[cfg(target_os = "linux")]
-const HANDLER_FOCUS_DELAY_MS: u64 = 150;
+pub(crate) const HANDLER_FOCUS_DELAY_MS: u64 = 150;
 
 /// Focus the window of a handler identified by its .desktop id. Tries the
 /// GNOME Shell extension first (works on GNOME Wayland), then falls back to
@@ -718,7 +652,7 @@ fn focus_file_handler(path: &str) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn try_focus_window(wm_class: &str) -> bool {
+pub(crate) fn try_focus_window(wm_class: &str) -> bool {
     // Sway (Wayland): SWAYSOCK is set, swaymsg shares i3's IPC and CLI but
     // Wayland-native clients identify by `app_id`, not WM_CLASS. XWayland
     // clients still fall back to class/instance. The x11rb path below can't

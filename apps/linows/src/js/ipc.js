@@ -22,6 +22,16 @@ export async function revealPath(path) {
     return invoke('reveal_path', { path });
 }
 
+// Preferred tools (core look-tools). `toolAction` resolves without acting, for
+// the menu label; `performToolAction` resolves and carries it out.
+export async function toolAction(action, path, isDir) {
+    return invoke('tool_action', { action, path, isDir });
+}
+
+export async function performToolAction(action, path, isDir) {
+    return invoke('perform_tool_action', { action, path, isDir });
+}
+
 export async function reloadConfig() {
     return invoke('reload_config');
 }

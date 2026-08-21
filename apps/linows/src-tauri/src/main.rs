@@ -23,6 +23,7 @@ mod shell;
 mod state;
 mod sysinfo;
 mod todo;
+mod tools;
 mod translate;
 mod trash;
 mod weather;
@@ -664,6 +665,10 @@ fn main() {
             files::pick_image,
             // Shell
             shell::run_shell_command,
+            // Preferred tools (shared look-tools composition; the native half
+            // lives in platform::{linux,windows}::tools)
+            tools::tool_action,
+            tools::perform_tool_action,
             // Platform: icons, detection, window effects
             platform::get_icon,
             platform::get_platform,
