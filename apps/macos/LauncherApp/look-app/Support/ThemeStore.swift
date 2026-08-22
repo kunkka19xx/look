@@ -74,7 +74,6 @@ final class ThemeStore: ObservableObject {
     struct ConfigReloadResult {
         let loadedTheme: String
         let warnings: [String]
-        let settingsBlurMultiplier: Double?
     }
 
     func reloadFromConfig() -> ConfigReloadResult {
@@ -159,8 +158,7 @@ final class ThemeStore: ObservableObject {
         _ = applyLaunchAtLoginSetting()
 
         let resultTheme = detectBuiltinTheme(for: settings)
-        let loadedBlurMultiplier = settings.settingsBlurMultiplier
-        return ConfigReloadResult(loadedTheme: resultTheme.title, warnings: warnings, settingsBlurMultiplier: loadedBlurMultiplier)
+        return ConfigReloadResult(loadedTheme: resultTheme.title, warnings: warnings)
     }
 
     func saveCurrentConfigToFile() -> Bool {

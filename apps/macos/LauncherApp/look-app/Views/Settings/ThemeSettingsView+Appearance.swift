@@ -64,7 +64,7 @@ extension ThemeSettingsView {
                 LabeledSlider(title: "Blur Opacity", value: $settings.blurOpacity, range: 0...1)
                     .disabled(settings.blurMaterial.rendersGlass)
                     .opacity(settings.blurMaterial.rendersGlass ? AppConstants.ThemeUI.disabledControlOpacity : 1)
-                LabeledSlider(title: "Settings Blur", value: $appUIState.settingsBlurMultiplier, range: 0.4...1)
+                LabeledSlider(title: "Settings Blur", value: $settings.settingsBlurMultiplier, range: 0.4...1)
 
                 HStack(spacing: 10) {
                     Text("Blur Style")

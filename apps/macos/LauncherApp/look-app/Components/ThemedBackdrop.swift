@@ -10,6 +10,9 @@ struct ThemedBackdrop: View {
     @ObservedObject var themeStore: ThemeStore
     /// Thins the blur only, for the settings overlay.
     var blurOpacityMultiplier: Double = 1
+    /// The window backdrop frosts the desktop. A tile inside the window must
+    /// not: it would sample past the panel it sits on and cut a hole through it.
+    var blendingMode: NSVisualEffectView.BlendingMode = .withinWindow
     /// Corner the glass is cut to. Callers clip this view, but glass draws its
     /// own specular edge and needs the corner up front or it lands outside the
     /// clip. Ignored by the blur path.
@@ -17,6 +20,21 @@ struct ThemedBackdrop: View {
 
     private var tintOpacity: Double {
         clamped(themeStore.settings.tintOpacity * themeStore.settings.blurMaterial.tintOpacityScale)
+    }
+
+    /// Behind-window blur is composited by the window server, and it can only do
+    /// that while the layer is drawn straight through. Any opacity below 1 sends
+    /// SwiftUI down an offscreen pass, and the material collapses to a flat
+    /// translucent wash with nothing blurred behind it. So the window backdrop
+    /// renders at full strength and `Blur Style` is what varies the frost;
+    /// in-window tiles have no backdrop to lose and keep the sliders.
+    private var blurLayerOpacity: Double {
+        guard blendingMode != .behindWindow else { return 1 }
+        return clamped(
+            themeStore.settings.blurOpacity
+                * themeStore.settings.blurMaterial.blurOpacityScale
+                * blurOpacityMultiplier
+        )
     }
 
     var body: some View {
@@ -40,15 +58,10 @@ struct ThemedBackdrop: View {
             } else {
                 VisualEffectBlur(
                     material: themeStore.settings.blurMaterial.material,
+                    blendingMode: blendingMode,
                     appearance: themeStore.themeAppearance()
                 )
-                .opacity(
-                    clamped(
-                        themeStore.settings.blurOpacity
-                            * themeStore.settings.blurMaterial.blurOpacityScale
-                            * blurOpacityMultiplier
-                    )
-                )
+                .opacity(blurLayerOpacity)
 
                 Color(
                     .sRGB,
