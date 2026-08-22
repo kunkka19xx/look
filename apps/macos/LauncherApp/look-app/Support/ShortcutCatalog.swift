@@ -71,6 +71,8 @@ enum ShortcutCatalog {
             ShortcutEntry("main.moveTab", "Tab / Shift+Tab", "Move selection"),
             ShortcutEntry("main.moveArrows", "Up / Down", "Move selection"),
             ShortcutEntry("main.reveal", "Cmd+F", "Reveal selected app/file/folder in Finder"),
+            ShortcutEntry("main.edit", "Cmd+E", "Open selected file/folder in your editor (set text_editor / code_editor)"),
+            ShortcutEntry("main.terminal", "Cmd+T", "Open a terminal there (set terminal); switches theme when no row is selected"),
             ShortcutEntry("main.webSearch", "Cmd+Enter", "Search current query on Google"),
             ShortcutEntry("main.commandMode", "Cmd+/", "Enter command mode"),
             ShortcutEntry("main.commandJump", ":cmd", "Jump to a command from home (e.g. :calc 2+2, :kill chrome)", remappable: false),
@@ -84,7 +86,7 @@ enum ShortcutCatalog {
         // the shared catalog (core/qactions), fired with Cmd.
         ShortcutGroup(title: "Super actions", topic: .main, entries: [
             ShortcutEntry("super.bluetoothWifi", "Cmd+B / Cmd+W", "Toggle Bluetooth / Wi-Fi"),
-            ShortcutEntry("super.themeAwake", "Cmd+T / Cmd+K", "Switch theme / toggle Keep Awake"),
+            ShortcutEntry("super.themeAwake", "Cmd+T / Cmd+K", "Switch theme / toggle Keep Awake (empty query only; Cmd+T opens a terminal once a row is selected)"),
             ShortcutEntry("super.screensaverMic", "Cmd+S / Cmd+M", "Start screensaver / mute mic"),
             ShortcutEntry("super.playPause", "Cmd+P", "Play/pause the current track"),
             ShortcutEntry("super.power", "Cmd+R / Cmd+D", "Restart / Shut Down (press twice, Esc cancels)"),

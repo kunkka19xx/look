@@ -222,8 +222,19 @@ extension LauncherView {
             onWebSearch: {
                 performWebSearchFromQuery()
             },
+            inActionMenu: { isActionMenuOpen },
+            onToggleActionMenu: { toggleActionMenu() },
+            onActionMenuMove: { moveActionMenuFocus(by: $0) },
+            onActionMenuRun: { runFocusedAction() },
+            onActionMenuClose: { closeActionMenu() },
             onRevealInFinder: {
                 revealSelectedInFinder()
+            },
+            onEditSelection: {
+                editSelectedResult()
+            },
+            onOpenTerminalForSelection: {
+                openTerminalForSelectedResult()
             },
             onCopySelection: {
                 copySelectedResultToPasteboard()

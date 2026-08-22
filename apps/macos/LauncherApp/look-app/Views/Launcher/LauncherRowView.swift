@@ -32,6 +32,11 @@ struct LauncherRowView: View {
         SyntheticRow.classify(resultID: result.id)
     }
 
+    /// A row a user-declared block produced (`specs/user-sources.md`).
+    private var isSourceRow: Bool {
+        result.id.hasPrefix(AppConstants.Launcher.SourceBlock.idPrefix)
+    }
+
     /// Cached: this runs inside `body`, and a fresh `NSImage` per redraw makes
     /// every icon in the list flicker. See `RowIconCache`.
     private var rowIcon: NSImage {
@@ -81,6 +86,21 @@ struct LauncherRowView: View {
             }
         }
 
+        // A declared block has no file to take an icon from, and must not look
+        // like one: Enter performs steps rather than opening anything. What the
+        // block declared wins; the bolt is the fallback.
+        if result.kind == .action {
+            if let declared = SourceBlockIcons.declaredIcon(
+                SourceBlockCatalog.icon(forCandidateID: result.id)
+            ) {
+                return declared
+            }
+            return RowIconCache.image(key: "symbol:bolt") {
+                NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil)
+                    ?? NSWorkspace.shared.icon(for: .plainText)
+            }
+        }
+
         // Not cached: a process icon is keyed to a live pid, and pids are reused.
         if result.kind == .process, let pid = result.processPID {
             return LauncherProcessFeature.icon(forPID: pid)
@@ -125,6 +145,8 @@ struct LauncherRowView: View {
             return "Clipboard"
         case .process:
             return "Process"
+        case .action:
+            return "Action"
         }
     }
 
@@ -141,6 +163,19 @@ struct LauncherRowView: View {
         }
         if result.kind == .app {
             return kindLabel
+        }
+        if result.kind == .action {
+            // "Action • 3 steps": there is no path, and the step count says this
+            // will do several things before the user commits to it.
+            return [kindLabel, result.subtitle]
+                .compactMap { $0 }
+                .joined(separator: "  •  ")
+        }
+        // A row a user's block produced says WHICH block, not "Folder". The kind
+        // is already on the icon, and where the row came from is the thing the
+        // list cannot otherwise tell you.
+        if isSourceRow, let block = result.subtitle {
+            return "\(block)  •  \(pathInfo)"
         }
         return "\(kindLabel)  •  \(pathInfo)"
     }

@@ -13,12 +13,21 @@ Guide for building Look locally and contributing to the project.
 │       ├── src-tauri/            #   Rust backend (commands, config, platform, etc.)
 │       ├── src/                  #   Frontend (vanilla HTML/CSS/JS, ES modules)
 │       └── flake.nix             #   NixOS dev shell
-├── core/
-│   ├── engine/                   # Query engine, search pipeline
+├── core/                         # Shared Rust, consumed by every shell
+│   ├── ai/                       # Routing, planning, lexicon
+│   ├── answers/                  # Platform-agnostic "web answer" features
+│   ├── calc/                     # Calculator expression evaluation
+│   ├── engine/                   # Query engine, search pipeline, config
 │   ├── indexing/                 # Candidate model, source traits
+│   ├── lunar/                    # Solar-to-lunar date conversion
 │   ├── matching/                 # Fuzzy matching
+│   ├── netspeed/                 # Bandwidth measurement
+│   ├── qactions/                 # Quick Actions catalog (declarative half)
 │   ├── ranking/                  # Ranking heuristics
-│   └── storage/                  # SQLite-backed storage
+│   ├── sources/                  # User-declared source blocks
+│   ├── storage/                  # SQLite-backed storage
+│   ├── todo/                     # Todo backend
+│   └── tools/                    # Preferred tools: catalog + command composition
 ├── bridge/
 │   └── ffi/                      # Rust FFI bridge (consumed by macOS/Windows native apps)
 ├── tools/
@@ -78,7 +87,7 @@ make app-run
 
 - builds a local Debug app bundle with Xcode
 - stops any running `Look` process (including a Homebrew-installed instance)
-- launches with `LOOK_CONFIG_PATH=$HOME/.look.dev.config`
+- launches with `LOOK_CONFIG_PATH=$HOME/.look/config.dev`
 - shows a red `TEST APP` badge so the dev run is visually distinct
 
 `make app-run` behavior (Windows):
@@ -93,7 +102,7 @@ Install a side-by-side test build (`Look Dev`) without replacing the normal inst
 make app-run-dev
 ```
 
-`make app-run-dev` (macOS) builds a local Debug bundle, installs `/Applications/Look Dev.app` with bundle id `noah-code.Look.Dev`, leaves the Homebrew `/Applications/Look.app` untouched, then launches `Look Dev` with `LOOK_CONFIG_PATH=$HOME/.look.dev.config`. On Windows there is no separate dev install; use `make app-run` (hot reload) or `make app-run-release`.
+`make app-run-dev` (macOS) builds a local Debug bundle, installs `/Applications/Look Dev.app` with bundle id `noah-code.Look.Dev`, leaves the Homebrew `/Applications/Look.app` untouched, then launches `Look Dev` with `LOOK_CONFIG_PATH=$HOME/.look/config.dev`. On Windows there is no separate dev install; use `make app-run` (hot reload) or `make app-run-release`.
 
 Override the macOS dev config path:
 

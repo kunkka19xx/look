@@ -13,8 +13,10 @@ mod qactions_api;
 mod runtime_config;
 mod search_api;
 mod seed_api;
+mod sources_api;
 mod state;
 mod todo_api;
+mod tools_api;
 mod translate_api;
 mod url_history_api;
 mod usage_api;
@@ -260,6 +262,129 @@ pub extern "C" fn look_translate_json(
 pub extern "C" fn look_instant_answer_json(query: *const c_char) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         answers_api::look_instant_answer_json_impl(query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// `{id, name, steps}` for the user-declared block a candidate id belongs to,
+/// so the panel can show what Enter will perform. `null` when the row is not a
+/// block row.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_block_json(
+    candidate_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_source_block_json_impl(candidate_id, row_id, row_title, row_path)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Every declared block as `{id, name, icon}`, for the shell's row-icon cache.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_blocks_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        sources_api::look_source_blocks_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// What `action` ("edit", "terminal", "reveal") does to the row at `path`, as
+/// `{kind, tool, command, path, reason, key}` where `kind` is "shell",
+/// "application", "system_default", or "unavailable". Null for an unknown
+/// action or empty path.
+///
+/// Reads the declared tools from the cached config, so Cmd+Shift+; is all a
+/// user needs after editing them.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_tool_action_json(
+    action: *const c_char,
+    path: *const c_char,
+    is_dir: bool,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        tools_api::look_tool_action_json_impl(action, path, is_dir)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Runs `action` on the row at `path`. Shell actions are performed here,
+/// detached, and come back as `{"kind":"performed"}` or `{"kind":"failed"}`; an
+/// `application` result is handed back for the shell to launch itself.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_perform_tool_action_json(
+    action: *const c_char,
+    path: *const c_char,
+    is_dir: bool,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        tools_api::look_perform_tool_action_json_impl(action, path, is_dir)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Every action id `look_tool_action_json` accepts, as a JSON array.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_tool_actions_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        tools_api::look_tool_actions_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The config file to read and write. Pass `dev` for a development build, which
+/// keeps its own pair so it never edits the installed copy's settings. Plain
+/// path string, not JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_config_path(dev: bool) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_config_path_impl(dev)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Re-runs every enabled `run` block and stores its rows for the next index
+/// pass. Blocks while commands run - call off the main thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_refresh_run_blocks_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        sources_api::look_refresh_run_blocks_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// A block's declared `preview`, run against the selected row. `null` when the
+/// block declares none.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_preview_json(
+    candidate_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_source_preview_json_impl(candidate_id, row_id, row_title, row_path)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Performs every step of that block, detached, through the user's login shell.
+/// Returns `{performed, errors}`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_perform_block_json(
+    block_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+    query: *const c_char,
+    as_target: bool,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_perform_block_json_impl(
+            block_id, row_id, row_title, row_path, query, as_target,
+        )
     }))
     .unwrap_or(std::ptr::null_mut())
 }

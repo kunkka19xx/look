@@ -36,6 +36,9 @@ final class AppUIState: ObservableObject {
 extension Notification.Name {
     static let lookReloadConfigRequested = Notification.Name("look.reloadConfigRequested")
     static let lookRefocusInputRequested = Notification.Name("look.refocusInputRequested")
+    /// A row's `then` targets finished loading off the main actor, so the panel
+    /// that showed none can build its action list now.
+    static let lookSourceTargetsLoaded = Notification.Name("look.sourceTargetsLoaded")
     static let lookFocusSettingsInputRequested = Notification.Name("look.focusSettingsInputRequested")
     static let lookToggleWindowRequested = Notification.Name("look.toggleWindowRequested")
     static let lookActivateLauncherRequested = Notification.Name("look.activateLauncherRequested")

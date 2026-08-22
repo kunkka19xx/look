@@ -8,6 +8,9 @@ enum LauncherResultKind: String, Codable {
     /// A running process row from the `ps"` finder. Carries `processPID` /
     /// `processPorts`; detail (cmdline, memory, …) loads per-selection.
     case process
+    /// A row from a user-declared block that has no filesystem target: Enter
+    /// performs its steps rather than opening anything.
+    case action
 
     /// Filesystem targets - the only kinds `Cmd+D`/`Cmd+P`/pick-to-pasteboard
     /// operate on.
