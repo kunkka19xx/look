@@ -10,7 +10,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use super::{host_binary_path, host_command, user_session_command};
+use super::{
+    host_binary_path, host_command, user_session_command, user_session_command_for_status,
+};
 
 const DESKTOP_SUFFIX: &str = ".desktop";
 
@@ -42,15 +44,19 @@ pub fn launch(tool: &str, path: &str) -> Result<(), String> {
         // gtk-launch before gio launch, for the same reason app launching
         // prefers it: gio goes through D-Bus activation, which can report
         // success without ever making a window.
-        if spawn(user_session_command("gtk-launch").arg(&id).arg(path)).is_ok() {
+        //
+        // Run for their status rather than spawned: an id gtk-launch cannot
+        // start is exactly what the gio attempt is here for, and a spawn only
+        // says the binary exists.
+        let mut gtk_launch = user_session_command_for_status("gtk-launch");
+        gtk_launch.arg(&id).arg(path);
+        if run(&mut gtk_launch).is_ok() {
             return Ok(());
         }
-        return spawn(
-            user_session_command("gio")
-                .arg("launch")
-                .arg(&entry)
-                .arg(path),
-        );
+
+        let mut gio = user_session_command_for_status("gio");
+        gio.arg("launch").arg(&entry).arg(path);
+        return run(&mut gio);
     }
 
     Err(format!(
@@ -75,7 +81,16 @@ pub fn activate(tool: &str) {
         std::thread::sleep(std::time::Duration::from_millis(
             crate::consts::HANDLER_FOCUS_DELAY_MS,
         ));
-        crate::commands::try_focus_window_pub(&name);
+        if crate::commands::try_focus_window_pub(&name) {
+            return;
+        }
+        // The second guess app launching makes: plenty of apps carry a
+        // reverse-DNS desktop id and the short name as their class.
+        if let Some(tail) = name.rsplit('.').next()
+            && tail != name
+        {
+            crate::commands::try_focus_window_pub(tail);
+        }
     });
 }
 
@@ -99,10 +114,6 @@ pub fn reveal(path: &str) -> Result<(), String> {
 }
 
 fn show_items(path: &str) -> bool {
-    // A relative path has no URI, which is what the interface takes.
-    if !Path::new(path).is_absolute() {
-        return false;
-    }
     let uri = super::file_uri(path);
     let Some(connection) = super::dbus::session() else {
         return false;
@@ -152,34 +163,50 @@ fn desktop_entry_for(tool: &str) -> Option<PathBuf> {
 
     // The app finder's own roots, which cover the `/usr/share` fallback and the
     // NixOS profile paths a bare XDG_DATA_DIRS walk misses.
-    for dir in super::process::xdg_app_dirs() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            // Compared on the borrowed name; the path is built only on a match,
-            // since this walks every desktop entry on the system.
-            let name = entry.file_name();
-            let Some(id) = name
-                .to_str()
-                .and_then(|name| name.strip_suffix(DESKTOP_SUFFIX))
-            else {
-                continue;
-            };
-            // A reverse-DNS id (org.gnome.Nautilus) is still "nautilus" to the
-            // user, so its last segment counts as the name too.
-            let tail = id.rsplit('.').next().unwrap_or(id);
-            if id.eq_ignore_ascii_case(wanted) || tail.eq_ignore_ascii_case(wanted) {
-                return Some(entry.path());
-            }
-        }
-    }
-    None
+    super::process::xdg_app_dirs()
+        .iter()
+        .find_map(|dir| entry_named(Path::new(dir), wanted))
 }
 
-/// What a tool's window is called to the compositor. GTK apps set their class
-/// from the desktop id, so a tool named by its path or its reverse-DNS id has
-/// to be reduced to the same short name the WM sees.
+/// The entry called `wanted` under `dir`, subdirectories included: wine and the
+/// KDE families file entries in their own, and the app finder that shares these
+/// roots descends into them, so a tool found by search has to be startable too.
+fn entry_named(dir: &Path, wanted: &str) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut subdirs = Vec::new();
+
+    for entry in entries.flatten() {
+        // Compared on the borrowed name; the path is built only on a match,
+        // since this walks every desktop entry on the system.
+        let name = entry.file_name();
+        let Some(id) = name
+            .to_str()
+            .and_then(|name| name.strip_suffix(DESKTOP_SUFFIX))
+        else {
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                subdirs.push(entry.path());
+            }
+            continue;
+        };
+        // A reverse-DNS id (org.gnome.Nautilus) is still "nautilus" to the
+        // user, so its last segment counts as the name too.
+        let tail = id.rsplit('.').next().unwrap_or(id);
+        if id.eq_ignore_ascii_case(wanted) || tail.eq_ignore_ascii_case(wanted) {
+            return Some(entry.path());
+        }
+    }
+
+    // After the whole directory, so a top-level entry still wins over a nested
+    // one of the same name.
+    subdirs
+        .iter()
+        .find_map(|subdir| entry_named(subdir, wanted))
+}
+
+/// What a tool's window is called to the compositor: the tool's own name, with
+/// a leading path and a `.desktop` suffix taken off. GTK apps set their class
+/// from the desktop id, so a reverse-DNS id stays whole here - [`activate`] is
+/// what tries its last segment as well.
 fn window_name(tool: &str) -> String {
     let name = tool.trim().rsplit('/').next().unwrap_or(tool);
     name.strip_suffix(DESKTOP_SUFFIX)
@@ -187,14 +214,41 @@ fn window_name(tool: &str) -> String {
         .to_string()
 }
 
+/// Start `command` and walk away. The child is reaped on a thread of its own:
+/// dropping a `Child` does not, and under the session wrapper every tool action
+/// would otherwise leave a `systemd-run` zombie behind.
 fn spawn(command: &mut std::process::Command) -> Result<(), String> {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("{}: {e}", command.get_program().to_string_lossy()))
+        .map(|mut child| {
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+        })
+        .map_err(|e| named_failure(command, e.to_string()))
+}
+
+/// Start `command` and report what it made of the request. For a rung with a
+/// fallback behind it, where "the binary is there" is not the question.
+fn run(command: &mut std::process::Command) -> Result<(), String> {
+    let status = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|e| named_failure(command, e.to_string()))?;
+
+    if status.success() {
+        return Ok(());
+    }
+    Err(named_failure(command, format!("exited with {status}")))
+}
+
+fn named_failure(command: &std::process::Command, reason: String) -> String {
+    format!("{}: {reason}", command.get_program().to_string_lossy())
 }
 
 #[cfg(test)]
@@ -220,5 +274,29 @@ mod tests {
     fn a_path_that_is_not_there_resolves_to_nothing() {
         assert_eq!(program_for("/nonexistent/bin/zed"), None);
         assert_eq!(program_for("   "), None);
+    }
+
+    /// Wine and the KDE families file their entries in subdirectories, and the
+    /// app finder sharing these roots descends into them.
+    #[test]
+    fn an_entry_is_found_however_deep_its_directory_is() {
+        let root = std::env::temp_dir().join(format!("look-tools-{}", std::process::id()));
+        let nested = root.join("wine/Programs");
+        std::fs::create_dir_all(&nested).expect("a scratch tree");
+        std::fs::write(root.join("org.gnome.Nautilus.desktop"), "").expect("a top-level entry");
+        std::fs::write(nested.join("notepad.desktop"), "").expect("a nested entry");
+
+        assert_eq!(
+            entry_named(&root, "notepad"),
+            Some(nested.join("notepad.desktop"))
+        );
+        // The last segment of a reverse-DNS id is the name to the user.
+        assert_eq!(
+            entry_named(&root, "nautilus"),
+            Some(root.join("org.gnome.Nautilus.desktop"))
+        );
+        assert_eq!(entry_named(&root, "not-installed"), None);
+
+        std::fs::remove_dir_all(&root).expect("the scratch tree goes away");
     }
 }

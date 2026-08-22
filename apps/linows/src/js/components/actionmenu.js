@@ -12,7 +12,10 @@ import * as rowactions from './rowactions.js';
 import * as banner from './banner.js';
 
 const EMPTY_BANNER = 'Nothing to do here';
-const EMPTY_BANNER_SECONDS = 1.2;
+// Said when the backend cannot answer what the row's verbs resolve to, so the
+// chord does not read as a dead key.
+const FAILED_BANNER = 'Could not read this row';
+const BANNER_SECONDS = 1.2;
 // Clear of the header, so the popup still reads as attached to the row above.
 const HEADER_GAP = 8;
 // Where to hang the menu when the preview has no header to hang it under.
@@ -64,11 +67,19 @@ export async function open() {
 
     token += 1;
     const myToken = token;
-    const descriptors = await rowactions.descriptorsFor();
+
+    let descriptors;
+    try {
+        descriptors = await rowactions.descriptorsFor();
+    } catch (err) {
+        console.error('actionmenu: could not resolve actions', err);
+        if (token === myToken) banner.show(FAILED_BANNER, 'error', BANNER_SECONDS);
+        return;
+    }
     if (token !== myToken) return;
 
     if (descriptors.length === 0) {
-        banner.show(EMPTY_BANNER, 'info', EMPTY_BANNER_SECONDS);
+        banner.show(EMPTY_BANNER, 'info', BANNER_SECONDS);
         return;
     }
     mount(descriptors);

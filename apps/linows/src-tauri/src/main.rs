@@ -570,6 +570,11 @@ fn main() {
             app.state::<AppState>().start_bootstrap();
             clipboard::start_monitor();
 
+            // Probes the user's systemd manager, so the first launch of a
+            // session does not wait on it.
+            #[cfg(target_os = "linux")]
+            platform::linux::prime_user_session();
+
             register_shortcuts(app, use_wayland);
 
             #[cfg(debug_assertions)]

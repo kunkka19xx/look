@@ -40,65 +40,91 @@ const COPY_VERB: &str = "copy";
 /// Bits per unit of the payload: bytes, for every type here.
 const BYTE_FORMAT: i32 = 8;
 
+/// How long a caller off the main thread waits for the grab's answer before
+/// treating it as failed and shelling out.
+const GRAB_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
 pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
     if paths.is_empty() {
         return Ok(());
     }
 
-    let uris: Vec<String> = paths.iter().map(|path| super::file_uri(path)).collect();
-    let gnome = format!("{COPY_VERB}\n{}", uris.join("\n"));
-
-    if own_clipboard(gnome.clone(), uris.join("\r\n"), paths.join("\n")) {
+    let (gnome, uri_list, text) = payloads(paths);
+    if own_clipboard(gnome.clone(), uri_list, text) {
         return Ok(());
     }
-    // No display connection to grab (headless, or GTK not up yet), so fall back
-    // to the one type a file manager needs most.
+    // No display to grab, or the selection went to someone else, so fall back to
+    // the one type a file manager needs most.
     shell_out(&gnome)
 }
 
-/// Hand the payloads to GTK and become the clipboard owner.
+/// The three forms one copy is offered in: [`GNOME_COPIED_FILES`],
+/// [`URI_LIST`], and the plain text a text field pastes.
+fn payloads(paths: &[String]) -> (String, String, String) {
+    let uris: Vec<String> = paths.iter().map(|path| super::file_uri(path)).collect();
+    (
+        format!("{COPY_VERB}\n{}", uris.join("\n")),
+        // text/uri-list is CRLF-delimited, per RFC 2483.
+        uris.join("\r\n"),
+        paths.join("\n"),
+    )
+}
+
+/// Whether the grab took, so a failed one still reaches the shell fallback.
 ///
-/// The work is queued onto the main thread rather than run here: every GTK call
-/// belongs to it, and a Tauri command answers on a worker. Returns false when
-/// that thread cannot be reached at all.
+/// Every GTK call belongs to the main thread. A sync Tauri command already
+/// answers there, so the usual path runs [`grab`] outright; a caller from
+/// anywhere else queues it and waits for the answer.
 fn own_clipboard(gnome: String, uri_list: String, text: String) -> bool {
+    if gtk::is_initialized_main_thread() {
+        return grab(gnome, uri_list, text);
+    }
+
     let Some(app) = crate::state::app_handle() else {
         return false;
     };
+    let (answer, wait) = std::sync::mpsc::sync_channel(1);
+    let queued = app.run_on_main_thread(move || {
+        let _ = answer.send(grab(gnome, uri_list, text));
+    });
+    if queued.is_err() {
+        return false;
+    }
+    wait.recv_timeout(GRAB_TIMEOUT).unwrap_or(false)
+}
 
-    app.run_on_main_thread(move || {
-        let Some(display) = gdk::Display::default() else {
-            return;
+/// Hand the payloads to GTK and become the clipboard owner. Main thread only.
+fn grab(gnome: String, uri_list: String, text: String) -> bool {
+    let Some(display) = gdk::Display::default() else {
+        return false;
+    };
+    let clipboard = gtk::Clipboard::for_display(&display, &gdk::SELECTION_CLIPBOARD);
+
+    let mut targets = vec![
+        TargetEntry::new(GNOME_COPIED_FILES, TargetFlags::empty(), INFO_GNOME),
+        TargetEntry::new(URI_LIST, TargetFlags::empty(), INFO_URI_LIST),
+    ];
+    targets.extend(
+        TEXT_TARGETS
+            .iter()
+            .map(|target| TargetEntry::new(target, TargetFlags::empty(), INFO_TEXT)),
+    );
+
+    // Answered on demand, once per paste, for as long as Look holds the
+    // clipboard, which is why the payloads are moved in rather than borrowed.
+    let owned = clipboard.set_with_data(&targets, move |_, selection, info| {
+        let payload = match info {
+            INFO_GNOME => &gnome,
+            INFO_URI_LIST => &uri_list,
+            _ => &text,
         };
-        let clipboard = gtk::Clipboard::for_display(&display, &gdk::SELECTION_CLIPBOARD);
+        selection.set(&selection.target(), BYTE_FORMAT, payload.as_bytes());
+    });
 
-        let mut targets = vec![
-            TargetEntry::new(GNOME_COPIED_FILES, TargetFlags::empty(), INFO_GNOME),
-            TargetEntry::new(URI_LIST, TargetFlags::empty(), INFO_URI_LIST),
-        ];
-        targets.extend(
-            TEXT_TARGETS
-                .iter()
-                .map(|target| TargetEntry::new(target, TargetFlags::empty(), INFO_TEXT)),
-        );
-
-        // Answered on demand, once per paste, for as long as Look holds the
-        // clipboard, which is why the payloads are moved in rather than
-        // borrowed.
-        let owned = clipboard.set_with_data(&targets, move |_, selection, info| {
-            let payload = match info {
-                INFO_GNOME => &gnome,
-                INFO_URI_LIST => &uri_list,
-                _ => &text,
-            };
-            selection.set(&selection.target(), BYTE_FORMAT, payload.as_bytes());
-        });
-
-        if owned {
-            allow_manager_to_store(&clipboard);
-        }
-    })
-    .is_ok()
+    if owned {
+        allow_manager_to_store(&clipboard);
+    }
+    owned
 }
 
 /// Offer the content to the desktop's clipboard manager, so a copy outlives
@@ -141,8 +167,11 @@ fn shell_out(payload: &str) -> Result<(), String> {
             });
 
         match outcome {
-            Ok(_) => return Ok(()),
-            Err(e) => last = e.to_string(),
+            Ok(status) if status.success() => return Ok(()),
+            // wl-copy on an X11 session finds no display and exits non-zero,
+            // which is exactly when xclip is the one that can do it.
+            Ok(status) => last = format!("{program} exited with {status}"),
+            Err(e) => last = format!("{program}: {e}"),
         }
     }
 
@@ -166,5 +195,27 @@ mod tests {
                 "{number} is claimed twice"
             );
         }
+    }
+
+    /// Each form has its own delimiter and its own idea of what a path is, and
+    /// a pasting app reads whichever one it asked for verbatim.
+    #[test]
+    fn each_form_is_written_the_way_its_asker_reads_it() {
+        let paths = vec!["/tmp/a b.txt".to_string(), "/tmp/c.txt".to_string()];
+        let (gnome, uri_list, text) = payloads(&paths);
+
+        assert_eq!(gnome, "copy\nfile:///tmp/a%20b.txt\nfile:///tmp/c.txt");
+        assert_eq!(uri_list, "file:///tmp/a%20b.txt\r\nfile:///tmp/c.txt");
+        assert_eq!(text, "/tmp/a b.txt\n/tmp/c.txt");
+    }
+
+    /// One path is the common case, and it must not trail a delimiter.
+    #[test]
+    fn a_single_path_carries_no_separator() {
+        let (gnome, uri_list, text) = payloads(&["/tmp/a.txt".to_string()]);
+
+        assert_eq!(gnome, "copy\nfile:///tmp/a.txt");
+        assert_eq!(uri_list, "file:///tmp/a.txt");
+        assert_eq!(text, "/tmp/a.txt");
     }
 }

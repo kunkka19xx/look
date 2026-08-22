@@ -365,6 +365,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // of showing an empty pane (matches macOS LauncherView.swift:872).
     results.setOnSelectionChange((item) => {
         if (results.hasPickedItems()) return;
+        // The menu lists the selected row's verbs, so it cannot outlive the
+        // selection: a click on another row would leave it offering the old
+        // one's actions.
+        actionmenu.close();
         if (
             item &&
             (prefixFromResultId(item.id) != null || commandIdFromResultId(item.id) != null)
@@ -514,6 +518,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     queryInput.addEventListener('input', (e) => {
         const value = e.target.value;
         if (tryCommandPrefix(value)) return;
+
+        // Typing re-renders the list the menu hangs off, and the modes below
+        // take the preview panel away from under it entirely.
+        actionmenu.close();
 
         search.handleQueryInput(value);
         const translating = search.isTranslateMode();
@@ -694,6 +702,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Command mode helpers ---
 
     function enterCommandMode() {
+        // Command mode owns the whole content area, and an open menu would go
+        // on eating the keys it navigates with.
+        actionmenu.close();
         superactions.setVisible(false);
         resultsList.hidden = true;
         previewPanel.hidden = true;

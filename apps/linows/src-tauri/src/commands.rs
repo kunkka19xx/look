@@ -1,5 +1,5 @@
 #[cfg(target_os = "linux")]
-use crate::platform::linux::{host_command, user_session_command};
+use crate::platform::linux::{host_command, user_session_command, user_session_command_for_status};
 use crate::state::AppState;
 use look_engine::config::RuntimeConfig;
 use serde::Serialize;
@@ -324,6 +324,12 @@ pub fn reveal_path(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     let outcome = crate::platform::windows::tools::reveal(&path);
 
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    let outcome: Result<(), String> = {
+        let _ = path;
+        Err("reveal is not supported on this platform".to_string())
+    };
+
     outcome.map_err(|e| format!("Failed to reveal: {e}"))
 }
 
@@ -443,6 +449,39 @@ pub fn set_blur_region(
 
 // --- App launching helpers ---
 
+/// Run one rung of the launch chain and say whether it started the app.
+///
+/// Under the session wrapper the tool's own stderr goes to the journal, so the
+/// exit status is the part that always carries; a message is printed only when
+/// there is one.
+#[cfg(target_os = "linux")]
+fn launch_step(step: &str, command: &mut std::process::Command) -> bool {
+    let result = command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output();
+
+    match result {
+        Ok(output) if output.status.success() => {
+            eprintln!("[launch] {step} succeeded");
+            true
+        }
+        Ok(output) => {
+            let err = String::from_utf8_lossy(&output.stderr);
+            match err.trim() {
+                "" => eprintln!("[launch] {step} failed (exit {})", output.status),
+                detail => eprintln!("[launch] {step} failed (exit {}): {detail}", output.status),
+            }
+            false
+        }
+        Err(e) => {
+            eprintln!("[launch] {step} not available: {e}");
+            false
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
     let desktop_file = id
@@ -508,43 +547,21 @@ fn launch_app(exec: &str, id: Option<&str>) -> Result<(), String> {
 
         if let Some(ref name) = desktop_name {
             eprintln!("[launch] trying gtk-launch {name}");
-            let result = user_session_command("gtk-launch")
-                .arg(name)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::piped())
-                .output();
-            match &result {
-                Ok(output) if output.status.success() => {
-                    eprintln!("[launch] gtk-launch succeeded");
-                    return;
-                }
-                Ok(output) => {
-                    let err = String::from_utf8_lossy(&output.stderr);
-                    eprintln!("[launch] gtk-launch failed (exit {}): {err}", output.status);
-                }
-                Err(e) => eprintln!("[launch] gtk-launch not found: {e}"),
+            if launch_step(
+                "gtk-launch",
+                user_session_command_for_status("gtk-launch").arg(name),
+            ) {
+                return;
             }
         }
 
         if let Some(ref real_path) = desktop_path {
             eprintln!("[launch] trying gio launch {real_path}");
-            let result = user_session_command("gio")
-                .args(["launch", real_path])
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::piped())
-                .output();
-            match &result {
-                Ok(output) if output.status.success() => {
-                    eprintln!("[launch] gio launch succeeded");
-                    return;
-                }
-                Ok(output) => {
-                    let err = String::from_utf8_lossy(&output.stderr);
-                    eprintln!("[launch] gio launch failed (exit {}): {err}", output.status);
-                }
-                Err(e) => eprintln!("[launch] gio not found: {e}"),
+            if launch_step(
+                "gio launch",
+                user_session_command_for_status("gio").args(["launch", real_path]),
+            ) {
+                return;
             }
         }
 
