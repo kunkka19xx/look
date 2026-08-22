@@ -47,9 +47,6 @@ extension LauncherView {
         }
     }
 
-    /// Separates a label from the chord that already performs it.
-    private static let chordGap = "  "
-
     private static var rowActionCatalog: [RowActionEntry] {
         [
             RowActionEntry(id: RowAction.open, plain: "Open", chord: "⏎"),
@@ -85,16 +82,16 @@ extension LauncherView {
                 control: .button,
                 onLabel: nil,
                 offLabel: nil,
-                info: []
+                info: [],
+                shortcut: entry.chord
             )
         }
     }
 
     private static func label(for entry: RowActionEntry, tools: [String: ToolAction]) -> String {
         let resolved = entry.tool.flatMap { tools[$0]?.tool } ?? entry.fallbackTool
-        let wording =
-            if let named = entry.named, let resolved { "\(named) \(resolved)" } else { entry.plain }
-        return "\(wording)\(chordGap)\(entry.chord)"
+        guard let named = entry.named, let resolved else { return entry.plain }
+        return "\(named) \(resolved)"
     }
 
     /// Which tool each offered action would start. Cheap after the first call:

@@ -5,6 +5,10 @@ import SwiftUI
 /// block per source (Calculator / DuckDuckGo / Wikipedia), each appearing as it
 /// resolves, and falls back to a streaming on-device answer when none hit.
 struct AIAnswerCardView: View {
+    /// How much themed floor sits under the card, so a light page behind the
+    /// window cannot bleed through into the answer text.
+    private static let legibilityFloorOpacity = 0.55
+
     @ObservedObject var controller: AIAnswerController
     @ObservedObject var themeStore: ThemeStore
 
@@ -37,8 +41,17 @@ struct AIAnswerCardView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
+            // A themed floor under the fill. The panel behind this card blurs
+            // the desktop, so over a light page the card had nothing to stand
+            // against and its own text washed out (issue #398). The fill alone
+            // is 0.30, which is a tint, not a substrate.
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(themeStore.controlFillColor())
+                .fill(themeStore.commandModeBackgroundColor())
+                .opacity(Self.legibilityFloorOpacity)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(themeStore.controlFillColor())
+                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)

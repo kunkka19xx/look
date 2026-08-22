@@ -236,7 +236,7 @@ struct ThemeSettings: Codable, Equatable {
     /// `0` keeps the classic flat layout with hairline dividers; any value > 0 turns
     /// each pane into its own rounded card separated by empty space. Persisted in
     /// `~/.look.config` under `inner_gap`.
-    var innerGap: Double = 0
+    var innerGap: Double = 7
 
     /// Whether Apple Intelligence / AI-assisted features are enabled. Defaults to
     /// on; users can opt out via Settings → Appearance. Persisted in

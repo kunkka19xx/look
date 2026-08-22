@@ -380,11 +380,6 @@ extension LauncherView {
         SourceBlockCatalog.invalidate()
         refreshRunBlocksInBackground()
 
-        // Sync settings blur multiplier to AppUIState
-        if let blurMultiplier = result.settingsBlurMultiplier {
-            appUIState.settingsBlurMultiplier = blurMultiplier
-        }
-
         var message = successMessage
         var style: BannerStyle = successStyle
         var duration: Double = successDuration

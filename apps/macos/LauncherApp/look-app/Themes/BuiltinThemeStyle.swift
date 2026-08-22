@@ -159,7 +159,12 @@ init(
         settings.tintOpacity = tintOpacity
         settings.blurMaterial = blurMaterial
         settings.blurOpacity = blurOpacity
-        settings.fontName = fontName ?? ThemeSettings.default.fontName
+        // Only a preset that names a font imposes one. Liquid passes nil, and
+        // forcing the default there reset the user's typeface every load, since
+        // `matches` now keeps `ui_theme` in the config across a font change.
+        if let fontName {
+            settings.fontName = fontName
+        }
         settings.fontRed = fontRed
         settings.fontGreen = fontGreen
         settings.fontBlue = fontBlue
@@ -171,9 +176,14 @@ init(
         settings.themeName = self.themeName
     }
 
+    /// Deliberately ignores `fontName`. A preset still SETS one when applied
+    /// (see `apply`), but the typeface is not what makes a theme that theme:
+    /// picking a different font would otherwise drop Liquid Glass to Custom and
+    /// take `ui_theme` out of the config with it. Font *size* has never been
+    /// compared here, so this only makes the two agree. Text colour stays in,
+    /// since that is part of the look.
     func matches(_ settings: ThemeSettings, tolerance: Double = 0.01) -> Bool {
-        settings.fontName == (fontName ?? ThemeSettings.default.fontName)
-            && abs(settings.tintRed - tintRed) <= tolerance
+        abs(settings.tintRed - tintRed) <= tolerance
             && abs(settings.tintGreen - tintGreen) <= tolerance
             && abs(settings.tintBlue - tintBlue) <= tolerance
             && abs(settings.tintOpacity - tintOpacity) <= tolerance
