@@ -866,7 +866,7 @@ ui_border_opacity=0.12
 running_apps_placement=right
 
 # Inner gap (points, 0-24) between the three home panes; 0 = classic flat layout
-inner_gap=0
+inner_gap=7
 
 # Apple Intelligence / AI features. ai_provider: appleIntelligence | ollama
 ai_enabled=true

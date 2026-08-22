@@ -10,7 +10,6 @@ struct VisualEffectBlur: NSViewRepresentable {
     var blendingMode: NSVisualEffectView.BlendingMode = .withinWindow
     /// Pinned per theme: materials otherwise follow the system light/dark setting.
     var appearance: ThemeAppearance = .dark
-
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = material

@@ -580,7 +580,10 @@ private let launchpadAlertBorderOpacity = 0.3
 func frostedTile(
     themeStore: ThemeStore,
     cornerRadius: CGFloat? = nil,
-    blendingMode: NSVisualEffectView.BlendingMode = .withinWindow,
+    /// Floating surfaces sit straight on the desktop with no window backdrop
+    /// behind them, so they have to sample it directly. `.withinWindow` would
+    /// find nothing there and render a flat wash instead of a blur.
+    blendingMode: NSVisualEffectView.BlendingMode = .behindWindow,
     tint: Color? = nil,
     tintOpacity: Double = 0
 ) -> some View {

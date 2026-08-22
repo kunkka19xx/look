@@ -136,7 +136,7 @@ fn default_config_contents() -> String {
          \n\
          # Home-screen inner gap in px (0-24). 0 keeps the classic framed panel;\n\
          # above 0 the home screen splits into floating tiles separated by this gap.\n\
-         inner_gap=0\n\
+         inner_gap=7\n\
          \n\
          # Web answers - inline answer card for question-like queries. Set false to\n\
          # disable all network answer features and run fully offline.\n\

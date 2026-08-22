@@ -2260,7 +2260,8 @@ struct LauncherView: View {
                 frostedTile(
                     themeStore: themeStore,
                     cornerRadius: cornerRadius,
-                    blendingMode: substrate ? .behindWindow : .withinWindow
+                    // Seated is the only case with a window backdrop behind it.
+                    blendingMode: floats ? .behindWindow : .withinWindow
                 )
             }
         }
