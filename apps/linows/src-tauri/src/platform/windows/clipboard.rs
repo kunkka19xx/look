@@ -20,6 +20,10 @@
 //! Allocated with `GMEM_MOVEABLE` because `SetClipboardData` takes ownership -
 //! we must NOT free on success, but MUST free on failure (otherwise the
 //! allocation leaks across the process).
+//!
+//! CF_HDROP is invisible to text targets, so "Copy path" would paste nothing
+//! into an editor. The same paths go on as CF_UNICODETEXT too. macOS gets this
+//! for free: an `NSURL` on the pasteboard carries its own string form.
 
 use windows::Win32::Foundation::{GlobalFree, HANDLE, HWND};
 use windows::Win32::System::DataExchange::{
@@ -32,6 +36,9 @@ use windows::Win32::UI::Shell::DROPFILES;
 // Win32_System_Ole / Win32_System_SystemServices, but it's just a constant -
 // we use the raw value to keep the feature surface tight.
 const CF_HDROP: u32 = 15;
+const CF_UNICODETEXT: u32 = 13;
+// One path per line, the separator every Windows text target expects.
+const TEXT_SEPARATOR: &str = "\r\n";
 
 pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
     if paths.is_empty() {
@@ -41,19 +48,7 @@ pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
     // CF_HDROP wants Win32 paths with backslashes. Frontend hands us forward
     // slashes (engine normalizes paths that way); Explorer paste silently
     // does nothing if any path has a wrong separator.
-    let utf16_paths: Vec<Vec<u16>> = paths
-        .iter()
-        .map(|p| {
-            let mut s: Vec<u16> = p.replace('/', "\\").encode_utf16().collect();
-            s.push(0); // per-path null terminator
-            s
-        })
-        .collect();
-
-    let drop_size = std::mem::size_of::<DROPFILES>();
-    let paths_bytes: usize = utf16_paths.iter().map(|s| s.len() * 2).sum();
-    let trailing_null = 2; // u16 null caps the list
-    let total = drop_size + paths_bytes + trailing_null;
+    let native: Vec<String> = paths.iter().map(|p| p.replace('/', "\\")).collect();
 
     unsafe {
         // HWND::default() = null is a valid clipboard owner (system-wide handoff).
@@ -62,48 +57,98 @@ pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
         // Wrap so we always close, even on early return.
         let result = (|| -> Result<(), String> {
             EmptyClipboard().map_err(|e| format!("EmptyClipboard failed: {e}"))?;
-
-            // GHND = GMEM_MOVEABLE | GMEM_ZEROINIT. Zero-init lets us skip
-            // writing the POINT/BOOL fields of DROPFILES (they're already 0/FALSE).
-            let hmem = GlobalAlloc(GHND, total).map_err(|e| format!("GlobalAlloc failed: {e}"))?;
-            if hmem.is_invalid() {
-                return Err("GlobalAlloc returned null".to_string());
+            set_hdrop(&native)?;
+            // Best-effort: the files are already on the clipboard, and losing
+            // the text form is not worth failing a copy that did happen.
+            if let Err(err) = set_text(&native.join(TEXT_SEPARATOR)) {
+                eprintln!("[clipboard] path text unavailable: {err}");
             }
-
-            let ptr = GlobalLock(hmem);
-            if ptr.is_null() {
-                let _ = GlobalFree(Some(hmem));
-                return Err("GlobalLock returned null".to_string());
-            }
-
-            // Write DROPFILES header. fWide = 1 → paths are UTF-16; pFiles =
-            // offset (bytes) from the start of DROPFILES to the path list.
-            let dropfiles = ptr as *mut DROPFILES;
-            (*dropfiles).pFiles = drop_size as u32;
-            (*dropfiles).fWide = true.into();
-
-            // Write each UTF-16 path immediately after the header. The buffer
-            // is zero-initialized, so the trailing extra-null is already there.
-            let mut cursor = (ptr as *mut u8).add(drop_size) as *mut u16;
-            for path in &utf16_paths {
-                std::ptr::copy_nonoverlapping(path.as_ptr(), cursor, path.len());
-                cursor = cursor.add(path.len());
-            }
-
-            let _ = GlobalUnlock(hmem); // returns BOOL; non-zero failure expected here
-
-            // On success the clipboard owns hmem - DON'T free. On failure we
-            // must free or leak the global handle.
-            match SetClipboardData(CF_HDROP, Some(HANDLE(hmem.0))) {
-                Ok(_) => Ok(()),
-                Err(e) => {
-                    let _ = GlobalFree(Some(hmem));
-                    Err(format!("SetClipboardData failed: {e}"))
-                }
-            }
+            Ok(())
         })();
 
         let _ = CloseClipboard();
         result
+    }
+}
+
+/// The shell's file list: a DROPFILES header followed by null-terminated UTF-16
+/// paths, capped by one more null.
+unsafe fn set_hdrop(paths: &[String]) -> Result<(), String> {
+    let utf16: Vec<Vec<u16>> = paths
+        .iter()
+        .map(|p| {
+            let mut s: Vec<u16> = p.encode_utf16().collect();
+            s.push(0); // per-path null terminator
+            s
+        })
+        .collect();
+
+    let drop_size = std::mem::size_of::<DROPFILES>();
+    let paths_bytes: usize = utf16.iter().map(|s| s.len() * 2).sum();
+    let trailing_null = 2; // u16 null caps the list
+    unsafe {
+        set_clipboard_data(CF_HDROP, drop_size + paths_bytes + trailing_null, |ptr| {
+            // fWide = 1 → paths are UTF-16; pFiles = offset (bytes) from the
+            // start of DROPFILES to the path list. The rest of the header is
+            // POINT/BOOL fields the zero-init already left at 0/FALSE.
+            let dropfiles = ptr as *mut DROPFILES;
+            (*dropfiles).pFiles = drop_size as u32;
+            (*dropfiles).fWide = true.into();
+
+            let mut cursor = ptr.add(drop_size) as *mut u16;
+            for path in &utf16 {
+                std::ptr::copy_nonoverlapping(path.as_ptr(), cursor, path.len());
+                cursor = cursor.add(path.len());
+            }
+        })
+    }
+}
+
+/// The same paths as plain text, for every target that cannot read CF_HDROP.
+unsafe fn set_text(text: &str) -> Result<(), String> {
+    let utf16: Vec<u16> = text.encode_utf16().collect();
+    // Zero-init supplies the terminator the format requires.
+    let terminator = 2;
+    unsafe {
+        set_clipboard_data(CF_UNICODETEXT, utf16.len() * 2 + terminator, |ptr| {
+            std::ptr::copy_nonoverlapping(utf16.as_ptr(), ptr as *mut u16, utf16.len());
+        })
+    }
+}
+
+/// Hands one format to the clipboard, which takes ownership of the allocation
+/// on success. `fill` writes into `size` bytes of zeroed, suitably aligned
+/// memory.
+unsafe fn set_clipboard_data(
+    format: u32,
+    size: usize,
+    fill: impl FnOnce(*mut u8),
+) -> Result<(), String> {
+    unsafe {
+        // GHND = GMEM_MOVEABLE | GMEM_ZEROINIT.
+        let hmem = GlobalAlloc(GHND, size).map_err(|e| format!("GlobalAlloc failed: {e}"))?;
+        if hmem.is_invalid() {
+            return Err("GlobalAlloc returned null".to_string());
+        }
+
+        let ptr = GlobalLock(hmem);
+        if ptr.is_null() {
+            let _ = GlobalFree(Some(hmem));
+            return Err("GlobalLock returned null".to_string());
+        }
+
+        fill(ptr as *mut u8);
+
+        let _ = GlobalUnlock(hmem); // returns BOOL; non-zero failure expected here
+
+        // On success the clipboard owns hmem - DON'T free. On failure we must
+        // free or leak the global handle.
+        match SetClipboardData(format, Some(HANDLE(hmem.0))) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let _ = GlobalFree(Some(hmem));
+                Err(format!("SetClipboardData failed: {e}"))
+            }
+        }
     }
 }

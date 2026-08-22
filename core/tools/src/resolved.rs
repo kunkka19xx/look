@@ -12,6 +12,9 @@ use crate::{Action, Launch, Target, Tools, Unavailable};
 /// Composed shell text. Only a resolve-only call returns this; performing runs
 /// it and reports [`KIND_PERFORMED`] or [`KIND_FAILED`].
 pub const KIND_SHELL: &str = "shell";
+/// The shell starts `tool` with `args` in `cwd`. What a platform with no POSIX
+/// shell to compose through gets instead of [`KIND_SHELL`].
+pub const KIND_ARGV: &str = "argv";
 /// The shell launches `tool` with `path`, since only native code can find and
 /// start an application.
 pub const KIND_APPLICATION: &str = "application";
@@ -33,6 +36,10 @@ pub struct Resolved {
     pub tool: Option<String>,
     /// For `shell`: the line to run through the login shell.
     pub command: Option<String>,
+    /// For `argv`: what to start `tool` with, one argument per entry.
+    pub args: Option<Vec<String>>,
+    /// For `argv`: the directory to start it in.
+    pub cwd: Option<String>,
     /// For `application` and `system_default`: the path to act on.
     pub path: Option<String>,
     /// For `unavailable` and `failed`: what to show the user.
@@ -87,6 +94,13 @@ impl From<Result<Launch, Unavailable>> for Resolved {
                 kind: KIND_SHELL,
                 tool,
                 command: Some(command),
+                ..Self::default()
+            },
+            Launch::Argv { args, cwd, .. } => Self {
+                kind: KIND_ARGV,
+                tool,
+                args: Some(args),
+                cwd: Some(cwd),
                 ..Self::default()
             },
             Launch::Application { path, .. } => Self {

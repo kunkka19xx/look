@@ -64,6 +64,15 @@ pub fn launch(tool: &str, path: &str) -> Result<(), String> {
     ))
 }
 
+/// Start `tool` with `args` in `cwd`. Nothing on Linux resolves to a
+/// `Launch::Argv`; this exists so both shells decode one wire contract.
+pub fn launch_argv(tool: &str, args: &[String], cwd: &str) -> Result<(), String> {
+    let Some(program) = program_for(tool) else {
+        return Err(format!("no binary on PATH named {tool}"));
+    };
+    spawn(user_session_command(program).args(args).current_dir(cwd))
+}
+
 /// Bring `tool` forward once it has had time to draw.
 ///
 /// Only for a tool started with [`launch`]: a GUI editor that was already

@@ -80,6 +80,15 @@ fn perform(launch: Launch) -> Resolved {
                 Some(reason) => Resolved::failed(Some(tool), reason),
             }
         }
+        // No `activate`: a terminal makes a new window, which the desktop
+        // focuses itself. Only an editor reusing an existing window needs it.
+        Launch::Argv { tool, args, cwd } => match platform_tools::launch_argv(&tool, &args, &cwd) {
+            Ok(()) => Resolved::performed(Some(tool)),
+            Err(detail) => {
+                eprintln!("[tools] launching {tool:?} failed: {detail}");
+                Resolved::failed(Some(tool.clone()), format!("{LAUNCH_FAILED} {tool}"))
+            }
+        },
         Launch::Application { tool, path } => match platform_tools::launch(&tool, &path) {
             Ok(()) => {
                 platform_tools::activate(&tool);
