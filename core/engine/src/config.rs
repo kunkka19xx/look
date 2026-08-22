@@ -132,7 +132,7 @@ impl Default for RuntimeConfig {
     }
 }
 
-/// Process-wide cache of the parsed `~/.look.config`. Filled lazily by
+/// Process-wide cache of the parsed `~/.look/config`. Filled lazily by
 /// `RuntimeConfig::load_cached()`, cleared by `RuntimeConfig::invalidate_cache()`.
 /// Reading the config from disk is cheap (< 1 KB file) but happens on every
 /// `bootstrap_sqlite_scoped` / `from_sqlite` - including watcher-triggered
@@ -144,7 +144,7 @@ fn cached_config_slot() -> &'static Mutex<Option<RuntimeConfig>> {
 }
 
 impl RuntimeConfig {
-    /// Reads `~/.look.config` from disk and parses it. Always touches the file.
+    /// Reads `~/.look/config` from disk and parses it. Always touches the file.
     /// Most callers should use [`load_cached`](Self::load_cached) instead.
     pub fn load() -> Self {
         let mut config = Self::default();
@@ -174,7 +174,7 @@ impl RuntimeConfig {
 
     /// Returns the cached `RuntimeConfig`, reading from disk on first call only.
     /// Subsequent calls clone the cached value (cheap - the struct is plain
-    /// data). Callers that mutate `~/.look.config` at runtime must call
+    /// data). Callers that mutate `~/.look/config` at runtime must call
     /// [`invalidate_cache`](Self::invalidate_cache) afterwards.
     pub fn load_cached() -> Self {
         let slot = cached_config_slot();
@@ -210,7 +210,7 @@ impl RuntimeConfig {
         Self::load_cached().tools
     }
 
-    /// Drops the cached config. Call after `~/.look.config` is edited so the
+    /// Drops the cached config. Call after `~/.look/config` is edited so the
     /// next `load_cached()` re-reads from disk.
     pub fn invalidate_cache() {
         let mut guard = cached_config_slot()

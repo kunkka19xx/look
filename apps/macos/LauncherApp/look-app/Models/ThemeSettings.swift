@@ -142,7 +142,7 @@ enum BackgroundImageMode: String, CaseIterable, Codable, Identifiable {
 }
 
 /// On/off state for the in-search-bar running-apps row, stored as a string in
-/// `~/.look.config` under `running_apps_placement`. The setting is now a simple
+/// `~/.look/config` under `running_apps_placement`. The setting is now a simple
 /// toggle (`.none` = off, `.right` = on); the legacy `.top`/`.bottom` cases are
 /// retained only so old config files still decode - they are normalized to
 /// `.right` ("on") on load. See ThemeStore's config parser.
@@ -157,7 +157,7 @@ enum RunningAppsPlacement: String, CaseIterable, Codable, Identifiable {
 
 /// Which AI backend powers query understanding. On-device Apple Intelligence is
 /// the only option today; cloud providers can be added as new cases without
-/// touching the rest of the app. Persisted in `~/.look.config` as `ai_provider`.
+/// touching the rest of the app. Persisted in `~/.look/config` as `ai_provider`.
 enum AIProviderKind: String, CaseIterable, Codable, Identifiable {
     case appleIntelligence
     case ollama
@@ -235,19 +235,19 @@ struct ThemeSettings: Codable, Equatable {
     /// - the top row (search bar + running apps), the results list and the preview.
     /// `0` keeps the classic flat layout with hairline dividers; any value > 0 turns
     /// each pane into its own rounded card separated by empty space. Persisted in
-    /// `~/.look.config` under `inner_gap`.
+    /// `~/.look/config` under `inner_gap`.
     var innerGap: Double = 7
 
     /// Whether Apple Intelligence / AI-assisted features are enabled. Defaults to
     /// on; users can opt out via Settings → Appearance. Persisted in
-    /// `~/.look.config` under `ai_enabled`.
+    /// `~/.look/config` under `ai_enabled`.
     var aiEnabled: Bool = true
 
     /// Which AI backend powers query understanding when `aiEnabled` is on.
     var aiProvider: AIProviderKind = .appleIntelligence
 
     /// Ollama daemon endpoint, used when `aiProvider` is `.ollama`. Persisted in
-    /// `~/.look.config` under `ollama_host`. Kept exactly as typed so the
+    /// `~/.look/config` under `ollama_host`. Kept exactly as typed so the
     /// settings field can show an empty box; call `ollamaEndpoint` to USE it.
     var ollamaHost: String = "http://localhost:11434"
 
@@ -262,7 +262,7 @@ struct ThemeSettings: Codable, Equatable {
     }
 
     /// Ollama model tag, used when `aiProvider` is `.ollama`. Persisted in
-    /// `~/.look.config` under `ollama_model`. The default is the best scorer in
+    /// `~/.look/config` under `ollama_model`. The default is the best scorer in
     /// the planner eval (see docs/ai-architecture.md §9): 97% tool accuracy
     /// at a 2s p50, ahead of both a 7B coder model and a 9B general one.
     var ollamaModel: String = "qwen3.5:4b"
@@ -271,12 +271,12 @@ struct ThemeSettings: Codable, Equatable {
     /// sent to a provider that is NOT on this machine - a remote Ollama host
     /// today, a cloud provider later. Off by default: the answer is simply
     /// computed without that context and says so, rather than quietly shipping
-    /// personal data off-device. Persisted in `~/.look.config` under
+    /// personal data off-device. Persisted in `~/.look/config` under
     /// `ai_allow_remote_context`.
     var aiAllowRemoteContext: Bool = false
 
     /// Whether the empty-state super actions launchpad is shown. Off hides the
-    /// strip and makes its ⌘-mnemonics inert. Persisted in `~/.look.config`
+    /// strip and makes its ⌘-mnemonics inert. Persisted in `~/.look/config`
     /// under `super_actions_enabled`.
     var superActionsEnabled: Bool = true
 

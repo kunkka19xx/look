@@ -6,7 +6,7 @@
 //! unavailable action identically. What is left here is the part only a native
 //! shell can do: find and start a named application, and reveal a path.
 //!
-//! The tools come from the cached config, so an edited `~/.look.config` is
+//! The tools come from the cached config, so an edited `~/.look/config` is
 //! picked up by the same reload every other setting goes through.
 
 use look_engine::config::RuntimeConfig;

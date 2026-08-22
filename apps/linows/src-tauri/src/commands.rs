@@ -335,7 +335,7 @@ pub fn reveal_path(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn reload_config(state: State<'_, AppState>) -> bool {
-    // The engine caches the parsed `~/.look.config` across calls (skips a disk
+    // The engine caches the parsed `~/.look/config` across calls (skips a disk
     // read on every refresh). When the user explicitly reloads, drop the cache
     // so the next bootstrap picks up their edits.
     RuntimeConfig::invalidate_cache();

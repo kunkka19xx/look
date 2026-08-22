@@ -101,7 +101,7 @@ pub extern "C" fn look_record_usage_json(
 #[unsafe(no_mangle)]
 pub extern "C" fn look_reload_config() -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        // Drop the engine's cached `~/.look.config` before anything below reads
+        // Drop the engine's cached `~/.look/config` before anything below reads
         // RuntimeConfig - otherwise the reload would see stale roots/limits.
         look_engine::config::RuntimeConfig::invalidate_cache();
         runtime_config::reload_runtime_config();
@@ -839,7 +839,7 @@ mod tests {
     static TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 
     /// Config the whole binary runs against, so no test reads the developer's
-    /// real `~/.look.config`.
+    /// real `~/.look/config`.
     const TEST_CONFIG: &str =
         "lazy_indexing_enabled=true\nfile_scan_roots=\nfile_scan_extra_roots=\napp_scan_roots=\n";
 

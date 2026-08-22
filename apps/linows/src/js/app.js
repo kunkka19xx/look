@@ -365,17 +365,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     // of showing an empty pane (matches macOS LauncherView.swift:872).
     results.setOnSelectionChange((item) => {
         if (results.hasPickedItems()) return;
-        // The menu lists the selected row's verbs, so it cannot outlive the
-        // selection: a click on another row would leave it offering the old
-        // one's actions.
-        actionmenu.close();
         if (
             item &&
             (prefixFromResultId(item.id) != null || commandIdFromResultId(item.id) != null)
         ) {
+            // Nothing to preview, so preview.update never runs and cannot close
+            // the menu for us.
+            actionmenu.close();
             previewPanel.hidden = true;
             return;
         }
+        // The menu lists the selected row's verbs and cannot outlive that row;
+        // preview.update closes it exactly when the row changes. Closing here
+        // would also fire on a re-render that re-selects the SAME row, which is
+        // every progressive publish (engine, URL rows, web suggestions).
         previewPanel.hidden = false;
         preview.update(item);
     });

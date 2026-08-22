@@ -51,7 +51,7 @@ Two refinements landed after the initial scoped refresh:
 - `SqliteStore::is_demo_seeded()` - one `COUNT(*)` instead of loading every row to
   check if the table is just the demo seed (`core/engine/src/lib.rs:135` previously
   did `load_candidates(None)` for that check).
-- `RuntimeConfig::load_cached()` - skips re-reading `~/.look.config` on every
+- `RuntimeConfig::load_cached()` - skips re-reading `~/.look/config` on every
   refresh; the linows `reload_config` command and FFI `look_reload_config`
   drop the cache so user edits still take effect.
 

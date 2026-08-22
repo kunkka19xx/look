@@ -577,6 +577,8 @@ export function clear() {
         panel.innerHTML = '';
         currentPath = null;
         qactions.clear();
+        // The menu lives in the panel we just wiped.
+        actionmenu.close();
     }
 }
 
@@ -594,6 +596,7 @@ export function showClipboardHelp() {
     if (!panel) return;
     currentPath = null;
     qactions.clear();
+    actionmenu.close();
     panel.hidden = false;
     panel.innerHTML = `
     <div class="preview-clip-help">

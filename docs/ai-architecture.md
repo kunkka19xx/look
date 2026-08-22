@@ -456,7 +456,7 @@ the real ladder (`route_json`, then the real planner body for whatever reaches
 the model) and scores route, tool, and params separately.
 
 ```text
-cargo run -p look-ai --example plan_eval                        # ~/.look.config model
+cargo run -p look-ai --example plan_eval                        # ~/.look/config model
 cargo run -p look-ai --example plan_eval -- --model qwen3.5:9b
 cargo run -p look-ai --example plan_eval -- --routes-only       # no model, instant
 cargo run -p look-ai --example plan_eval -- --min 85            # exit 1 below the bar

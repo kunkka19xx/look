@@ -100,7 +100,7 @@ enum ShortcutCatalog {
 
         ShortcutGroup(title: "View & panels", topic: .main, entries: [
             ShortcutEntry("view.settings", "Cmd+Shift+,", "Open/close settings panel"),
-            ShortcutEntry("view.reloadConfig", "Cmd+Shift+;", "Reload .look.config"),
+            ShortcutEntry("view.reloadConfig", "Cmd+Shift+;", "Reload .look/config"),
             ShortcutEntry("view.zoom", "Cmd+- / Cmd+=", "Zoom UI scale out / in"),
             ShortcutEntry("view.zoomReset", "Cmd+0", "Reset UI scale (opens the tenth session while the AI list is up)"),
         ]),

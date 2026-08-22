@@ -28,7 +28,7 @@ extension LauncherView {
 
         switch appendAppExcludeName(selected.title) {
         case .writeFailed:
-            showBanner("Failed to update .look.config", style: .error, duration: 1.6)
+            showBanner("Failed to update .look/config", style: .error, duration: 1.6)
         case .alreadyExcluded:
             showBanner("\(selected.title) is already hidden", style: .info, duration: 1.6)
         case .added:
@@ -41,7 +41,7 @@ extension LauncherView {
             // until next launch. The bare reload error would read as "nothing saved".
             if !reloaded {
                 showBanner(
-                    "Hid \(selected.title) in .look.config, but the reload failed",
+                    "Hid \(selected.title) in .look/config, but the reload failed",
                     style: .error,
                     duration: 3.0
                 )
