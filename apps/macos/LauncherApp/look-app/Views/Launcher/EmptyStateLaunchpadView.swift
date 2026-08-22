@@ -580,13 +580,14 @@ private let launchpadAlertBorderOpacity = 0.3
 func frostedTile(
     themeStore: ThemeStore,
     cornerRadius: CGFloat? = nil,
+    blendingMode: NSVisualEffectView.BlendingMode = .withinWindow,
     tint: Color? = nil,
     tintOpacity: Double = 0
 ) -> some View {
     let radius = cornerRadius
         ?? themeStore.surfaceCornerRadius(AppConstants.Launcher.Launchpad.cornerRadius)
     return ZStack {
-        ThemedBackdrop(themeStore: themeStore, cornerRadius: radius)
+        ThemedBackdrop(themeStore: themeStore, blendingMode: blendingMode, cornerRadius: radius)
         themeStore.controlFillColor()
         if let tint {
             tint.opacity(tintOpacity)

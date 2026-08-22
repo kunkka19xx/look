@@ -172,10 +172,8 @@ struct LauncherView: View {
 
     static let floatingTileScrimOpacity = 0.30
 
-    /// How much themed floor sits under the search bar's frost. The bar renders
-    /// its material lighter than the launchpad pills do from the same
-    /// `frostedTile`, so this bounds how bright it can get over a white page.
-    /// 0 = pure glass and it goes white; 1 = opaque and the blur is lost.
+    /// 0 = pure glass, and the bar goes white over a light page; 1 = opaque,
+    /// and the blur is lost.
     static let searchBarSubstrateOpacity = 0.55
     /// Legibility floor for surfaces that float on the bare desktop while the
     /// material is Liquid Glass. Tune here: too low and light theme text
@@ -837,7 +835,9 @@ struct LauncherView: View {
         // floating strip that grows the window. The launcher is always a single
         // fixed-size panel regardless of the running-apps toggle.
         borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
-        .rootReveal(token: appearanceRevealToken)
+        // No `.rootReveal`: its opacity rasterized the panel on every show, and
+        // the bar's backdrop must draw straight through. The spawnReveal
+        // cascade still animates the open.
         .ignoresSafeArea()
         .onAppear {
             refreshSearchResults()
@@ -2246,18 +2246,22 @@ struct LauncherView: View {
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         } else {
             ZStack {
-                // Only the search bar asks for this. Its material renders
-                // lighter than the launchpad pills do from the same
-                // `frostedTile`, so a themed floor bounds how bright it can get
-                // over a white page. The panes are large and densely filled, so
-                // the same floor only flattens them.
+                // Bounds how bright the bar can get over a white page. The
+                // panes are dense enough that the same floor only flattens them.
                 if substrate {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .fill(themeStore.commandModeBackgroundColor())
                         .opacity(Self.searchBarSubstrateOpacity)
                 }
 
-                frostedTile(themeStore: themeStore, cornerRadius: cornerRadius)
+                // Window-server composited. The bar hosts an
+                // `NSViewRepresentable`, and a `.withinWindow` material beside
+                // one flips brightness whenever the layer is re-composited.
+                frostedTile(
+                    themeStore: themeStore,
+                    cornerRadius: cornerRadius,
+                    blendingMode: substrate ? .behindWindow : .withinWindow
+                )
             }
         }
     }
@@ -2301,13 +2305,17 @@ struct LauncherView: View {
         // (e.g. typing the first character out of the empty-rest state at gap 0).
         let floats = barFloatsFree
         return content()
+            // Wraps the content, not the chrome: the reveal leaves an opacity
+            // in the tree, which would rasterize the backdrop below.
+            .spawnReveal(index: Self.searchBarRevealIndex, token: appearanceRevealToken, scales: false)
             .background {
                 tileBackground(
                     cornerRadius: themeStore.surfaceCornerRadius(
                         floats ? Self.floatingTileCornerRadius : Self.seatedTileCornerRadius
                     ),
                     floats: floats,
-                    substrate: true
+                    // Seated, the panel's backdrop already backs the bar.
+                    substrate: floats
                 )
             }
             .overlay {
@@ -2317,9 +2325,6 @@ struct LauncherView: View {
             }
             .shadow(color: floats ? .black.opacity(0.25) : .clear,
                     radius: floats ? 7 : 0, x: 0, y: floats ? 3 : 0)
-            // Leads the cascade: the bar lands first, then the launchpad tiles.
-            // No scale, so the search field's text stays crisp (see spawnReveal).
-            .spawnReveal(index: Self.searchBarRevealIndex, token: appearanceRevealToken, scales: false)
     }
 
     /// Wraps a single-panel home state (translation, clipboard/recent empty) in a
