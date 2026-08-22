@@ -405,8 +405,6 @@ final class ThemeStore: ObservableObject {
         UserDefaults.standard.set(data, forKey: defaultsKey)
     }
 
-    /// Value for `ui_theme`. Recorded only while the values still match the
-    /// preset, since reading applies it over the individual keys. Empty = Custom.
     /// The theme the user chose, kept even once they tune values away from it.
     /// Dropping it on divergence left `activeAppearanceStyle()` nil, so one
     /// slider silently re-derived the whole palette. Only Custom clears it.
@@ -842,7 +840,8 @@ skip_dir_names=node_modules,target,build,dist,library,applications,old firefox d
 # UI theme
 # Preset: catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle,
 # liquid (liquid needs macOS 26; it falls back to the classic surface below that).
-# A preset overrides every ui_* value below. Leave it empty to use them as written.
+# A preset supplies base values; the ui_* keys below override it. The name stays
+# recorded as you tune, until you pick Custom. Empty = only the keys below.
 ui_theme=
 ui_tint_red=0.08
 ui_tint_green=0.10
