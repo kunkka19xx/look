@@ -59,12 +59,18 @@ extension ThemeSettingsView {
 
                 sectionHeader("Blur")
 
-                // Glass has no blur to thin, so `ThemedBackdrop` ignores this.
                 // Disabled rather than hidden, to keep the value visible.
                 LabeledSlider(title: "Blur Opacity", value: $settings.blurOpacity, range: 0...1)
                     .disabled(settings.blurMaterial.rendersGlass)
                     .opacity(settings.blurMaterial.rendersGlass ? AppConstants.ThemeUI.disabledControlOpacity : 1)
+                    .help("Thins the frost on floating tiles. The window itself is set by Blur Style: its blur is composited by the window server, and thinning it would flatten it.")
+
+                // Only the glass backdrop can be thinned. Behind the window the
+                // multiplier is ignored, so the control would be writable and
+                // do nothing. See `ThemedBackdrop.blurLayerOpacity`.
                 LabeledSlider(title: "Settings Blur", value: $settings.settingsBlurMultiplier, range: 0.4...1)
+                    .disabled(!settings.blurMaterial.rendersGlass)
+                    .opacity(settings.blurMaterial.rendersGlass ? 1 : AppConstants.ThemeUI.disabledControlOpacity)
 
                 HStack(spacing: 10) {
                     Text("Blur Style")

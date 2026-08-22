@@ -171,10 +171,15 @@ struct LauncherView: View {
     static let panelCoordinateSpace = "launcherPanel"
 
     static let floatingTileScrimOpacity = 0.30
+
+    /// How much themed floor sits under the search bar's frost. The bar renders
+    /// its material lighter than the launchpad pills do from the same
+    /// `frostedTile`, so this bounds how bright it can get over a white page.
+    /// 0 = pure glass and it goes white; 1 = opaque and the blur is lost.
+    static let searchBarSubstrateOpacity = 0.55
     /// Legibility floor for surfaces that float on the bare desktop while the
     /// material is Liquid Glass. Tune here: too low and light theme text
     /// disappears over a white window, too high and the refraction is lost.
-    static let glassLegibilityScrimOpacity = 0.22
     /// Resting corner for a tile that floats free of its neighbours, and for the
     /// seated variant that reads as part of one box. Both are scaled by the
     /// active theme surface (Liquid rounds harder) at each use.
@@ -2227,33 +2232,33 @@ struct LauncherView: View {
     /// so the tiles read as separate windows onto one image. Otherwise it takes the
     /// themed backdrop, at the same blur and tint opacities as the window.
     @ViewBuilder
-    private func tileBackground(cornerRadius: CGFloat, floats: Bool) -> some View {
-        if floats {
+    private func tileBackground(
+        cornerRadius: CGFloat, floats: Bool, substrate: Bool = false
+    ) -> some View {
+        if floats, let image = themeStore.backgroundImage {
             ZStack {
-                if let image = themeStore.backgroundImage {
-                    croppedBackgroundImage(image)
-                    // Only the opaque image needs a scrim; the blur path is
-                    // covered by the tint.
-                    themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
-                } else {
-                    ThemedBackdrop(themeStore: themeStore, cornerRadius: cornerRadius)
-                    // Liquid Glass is transparent to the desktop, and a floating
-                    // surface sits over content we do not control. The launchpad
-                    // tiles get away with it because the panel backs them; this
-                    // bar does not, so over a white window the theme's own light
-                    // text lands on near-white. A scrim guarantees the substrate
-                    // the glass cannot: enough to read against, well under the
-                    // weight that would cancel the refraction.
-                    if themeStore.settings.blurMaterial.rendersGlass {
-                        themeStore.scrimColor(opacity: Self.glassLegibilityScrimOpacity)
-                    }
-                }
+                croppedBackgroundImage(image)
+                // Only the opaque image needs a scrim; the blur path is
+                // covered by the tint.
+                themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
                 themeStore.controlFillColor()
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         } else {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(themeStore.controlFillColor())
+            ZStack {
+                // Only the search bar asks for this. Its material renders
+                // lighter than the launchpad pills do from the same
+                // `frostedTile`, so a themed floor bounds how bright it can get
+                // over a white page. The panes are large and densely filled, so
+                // the same floor only flattens them.
+                if substrate {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(themeStore.commandModeBackgroundColor())
+                        .opacity(Self.searchBarSubstrateOpacity)
+                }
+
+                frostedTile(themeStore: themeStore, cornerRadius: cornerRadius)
+            }
         }
     }
 
@@ -2301,7 +2306,8 @@ struct LauncherView: View {
                     cornerRadius: themeStore.surfaceCornerRadius(
                         floats ? Self.floatingTileCornerRadius : Self.seatedTileCornerRadius
                     ),
-                    floats: floats
+                    floats: floats,
+                    substrate: true
                 )
             }
             .overlay {
