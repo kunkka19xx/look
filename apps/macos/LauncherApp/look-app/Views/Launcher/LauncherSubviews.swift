@@ -383,26 +383,44 @@ struct HintBar: View {
     var todo: TodoQuickView? = nil
     let themeStore: ThemeStore
 
+    private enum Layout {
+        /// How far the hint may shrink before it truncates instead. Enough to
+        /// absorb a long hint or a large font setting, not so much that the bar
+        /// becomes unreadable.
+        static let minimumScale: CGFloat = 0.75
+    }
+
     private var hintFont: Font {
         themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular)
     }
 
     var body: some View {
+        // One line, always. The hint is a reminder, not content: a second line
+        // would reflow the whole bar as the selection changes, and a longer
+        // font or another hint must shrink the text rather than move the layout.
         HStack(spacing: 0) {
             Text(hint)
                 .font(hintFont)
                 .foregroundStyle(themeStore.secondaryTextColor())
+                .lineLimit(1)
+                .minimumScaleFactor(Layout.minimumScale)
+                .truncationMode(.tail)
+                .layoutPriority(1)
 
             if let todo {
                 Text("  •  ")
                     .font(hintFont)
                     .foregroundStyle(themeStore.secondaryTextColor())
+                    .lineLimit(1)
+                    .fixedSize()
                 Button(action: todo.onTap) {
                     HStack(spacing: 5) {
                         Image(systemName: "checklist")
                             .font(.system(size: CGFloat(themeStore.settings.fontSize - 3)))
                         Text("Todo \(todo.done)/\(todo.total)")
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                     .foregroundStyle(themeStore.accentColor())
                     .contentShape(Rectangle())

@@ -6,11 +6,11 @@ use crate::scoring::{
     is_system_settings_candidate, kind_bias, looks_like_settings_query, path_depth_penalty,
     path_match_score, push_top_k, query_kind_penalty_with_settings_flag,
 };
-use look_indexing::{Candidate, CandidateKind};
+use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
 use look_matching::{fuzzy_quality_bonus_prepared, fuzzy_score_prepared, prepare_query};
 use look_ranking::rank_score;
 use regex::RegexBuilder;
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const RERANK_POOL_MULTIPLIER: usize = 4;
@@ -19,6 +19,11 @@ const RERANK_MIN_QUERY_CHARS: usize = 3;
 const REGEX_SIZE_LIMIT_BYTES: usize = 1024 * 1024;
 const SCORE_ALIAS_TITLE_MATCH: i64 = 1_520;
 const SCORE_ALIAS_SUBTITLE_MATCH: i64 = 1_260;
+/// How much wider than `limit` to search when source rows may shadow walker
+/// rows. Only source blocks pointed inside a scan root can shadow anything, so
+/// every row being a duplicate is not a real shape; 2x absorbs it and costs one
+/// extra pass over an already-bounded heap.
+const SHADOW_OVERFETCH: usize = 2;
 
 fn top_limit(mut ranked: Vec<(u32, i64)>, limit: usize) -> Vec<(u32, i64)> {
     ranked.truncate(limit);
@@ -302,6 +307,7 @@ impl QueryEngine {
 
             let final_score = regex_score
                 + kind_bias(&candidate.candidate)
+                + self.source_bias(&candidate.candidate)
                 + path_depth_penalty(&candidate.candidate);
             push_top_k(
                 &mut top,
@@ -386,6 +392,7 @@ impl QueryEngine {
                 &candidate.candidate,
                 &candidate.title_search,
             ) + kind_bias(&candidate.candidate)
+                + self.source_bias(&candidate.candidate)
                 // Reuse precomputed query kind to keep this hot loop allocation-free.
                 + query_kind_penalty_with_settings_flag(settings_query, &candidate.candidate)
                 + path_depth_penalty(&candidate.candidate);
@@ -431,22 +438,57 @@ impl QueryEngine {
 
         let parsed_query = ParsedQuery::from_input(query);
         let kind_filter = parsed_query.kind_filter.as_ref();
+
+        // Shadowed rows are dropped AFTER ranking, so asking for exactly `limit`
+        // and then filtering would return fewer rows than the caller asked for
+        // and leave matches below the cutoff unshown. Over-fetch enough to
+        // absorb the drops, filter, then truncate.
+        let fetch = limit.saturating_mul(SHADOW_OVERFETCH).max(limit);
         let indices = if parsed_query.is_recent {
-            self.search_recent_query(&parsed_query.normalized_query, limit)
+            self.search_recent_query(&parsed_query.normalized_query, fetch)
         } else if parsed_query.normalized_query.is_empty() && !parsed_query.is_regex {
-            self.search_empty_query(kind_filter, limit)
+            self.search_empty_query(kind_filter, fetch)
         } else if parsed_query.is_regex {
-            self.search_regex_query(parsed_query.raw_query.as_ref(), kind_filter, limit)
+            self.search_regex_query(parsed_query.raw_query.as_ref(), kind_filter, fetch)
         } else {
-            self.search_text_query(&parsed_query.normalized_query, kind_filter, limit)
+            self.search_text_query(&parsed_query.normalized_query, kind_filter, fetch)
         };
 
         // Materialize Candidates only for the final top-K - the hot scoring loop
         // kept everything as (index, score) pairs to avoid per-push clones.
-        indices
+        top_limit(self.drop_source_shadowed(indices), limit)
             .into_iter()
             .map(|(idx, score)| (self.candidates[idx as usize].candidate.clone(), score))
             .collect()
+    }
+
+    /// A folder source pointed inside a scan root produces a row for a path the
+    /// file walker already indexed. Both are the same thing to the user, so only
+    /// one may appear, and the source's row is the one that carries the source's
+    /// name and its actions.
+    pub(crate) fn drop_source_shadowed(&self, ranked: Vec<(u32, i64)>) -> Vec<(u32, i64)> {
+        let source_paths: HashSet<&str> = ranked
+            .iter()
+            .map(|(idx, _)| &self.candidates[*idx as usize].candidate)
+            .filter(|candidate| Self::is_source_row(candidate))
+            .map(|candidate| candidate.path.as_ref())
+            .collect();
+
+        if source_paths.is_empty() {
+            return ranked;
+        }
+
+        ranked
+            .into_iter()
+            .filter(|(idx, _)| {
+                let candidate = &self.candidates[*idx as usize].candidate;
+                Self::is_source_row(candidate) || !source_paths.contains(candidate.path.as_ref())
+            })
+            .collect()
+    }
+
+    fn is_source_row(candidate: &Candidate) -> bool {
+        candidate.id.starts_with(CandidateIdKind::PREFIX_SOURCE)
     }
 }
 
@@ -493,6 +535,103 @@ fn location_folder(loc: &str) -> Option<&'static str> {
 mod tests {
     use super::QueryEngine;
     use look_indexing::{Candidate, CandidateKind};
+
+    #[test]
+    fn a_source_row_hides_the_file_walker_row_for_the_same_path() {
+        // A folder source pointed inside a scan root indexes paths the file
+        // walker already has. The user sees one project, not two, and the row
+        // they get is the source's, which knows its name and its actions.
+        let walked = Candidate::new(
+            "folder:/u/dev/look",
+            CandidateKind::Folder,
+            "look",
+            "/u/dev/look",
+        );
+        let from_source = Candidate::new(
+            "src:projects:/u/dev/look",
+            CandidateKind::Folder,
+            "look",
+            "/u/dev/look",
+        );
+        let unrelated = Candidate::new(
+            "folder:/u/dev/other",
+            CandidateKind::Folder,
+            "look-alike",
+            "/u/dev/other",
+        );
+        let engine = QueryEngine::new(vec![walked, from_source, unrelated]);
+
+        let ids: Vec<String> = engine
+            .search_scored("look", 10)
+            .into_iter()
+            .map(|(candidate, _)| candidate.id.to_string())
+            .collect();
+
+        assert!(ids.contains(&"src:projects:/u/dev/look".to_string()));
+        assert!(
+            !ids.contains(&"folder:/u/dev/look".to_string()),
+            "the walker row is shadowed by the source row: {ids:?}"
+        );
+        assert!(
+            ids.contains(&"folder:/u/dev/other".to_string()),
+            "a different path is untouched: {ids:?}"
+        );
+    }
+
+    #[test]
+    fn a_shadowed_pair_does_not_cost_the_caller_a_row() {
+        // Filtering after the limit would return 1 row for limit=2, hiding a
+        // match that was ranked below the cutoff.
+        let engine = QueryEngine::new(vec![
+            Candidate::new(
+                "folder:/u/dev/look",
+                CandidateKind::Folder,
+                "look",
+                "/u/dev/look",
+            ),
+            Candidate::new(
+                "src:projects:/u/dev/look",
+                CandidateKind::Folder,
+                "look",
+                "/u/dev/look",
+            ),
+            Candidate::new(
+                "folder:/u/dev/look-alike",
+                CandidateKind::Folder,
+                "look-alike",
+                "/u/dev/look-alike",
+            ),
+        ]);
+
+        let ids: Vec<String> = engine
+            .search_scored("look", 2)
+            .into_iter()
+            .map(|(candidate, _)| candidate.id.to_string())
+            .collect();
+
+        assert_eq!(ids.len(), 2, "the limit is still filled: {ids:?}");
+        assert!(ids.contains(&"src:projects:/u/dev/look".to_string()));
+        assert!(ids.contains(&"folder:/u/dev/look-alike".to_string()));
+    }
+
+    #[test]
+    fn without_a_source_row_nothing_is_dropped() {
+        let engine = QueryEngine::new(vec![
+            Candidate::new(
+                "folder:/u/dev/look",
+                CandidateKind::Folder,
+                "look",
+                "/u/dev/look",
+            ),
+            Candidate::new(
+                "file:/u/dev/look.md",
+                CandidateKind::File,
+                "look.md",
+                "/u/dev/look.md",
+            ),
+        ]);
+        assert_eq!(engine.search_scored("look", 10).len(), 2);
+    }
 
     fn recent_engine() -> QueryEngine {
         let mut older = Candidate::new("file:old", CandidateKind::File, "old.txt", "/x/old.txt");

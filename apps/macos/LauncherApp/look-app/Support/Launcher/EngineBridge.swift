@@ -224,6 +224,34 @@ private func look_todo_save_json(_ json: UnsafePointer<CChar>?) -> Bool
 nonisolated
 private func look_lunar_date_json(_ year: Int64, _ month: Int64, _ day: Int64, _ tz: Double) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_refresh_run_blocks_json")
+nonisolated
+private func look_refresh_run_blocks_json() -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_source_preview_json")
+nonisolated
+private func look_source_preview_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_source_blocks_json")
+nonisolated
+private func look_source_blocks_json() -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_source_block_json")
+nonisolated
+private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_perform_block_json")
+nonisolated
+private func look_perform_block_json(_ blockID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ asTarget: Bool) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_tool_action_json")
+nonisolated
+private func look_tool_action_json(_ action: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool) -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_perform_tool_action_json")
+nonisolated
+private func look_perform_tool_action_json(_ action: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_netspeed_run_json")
 nonisolated
 private func look_netspeed_run_json() -> UnsafeMutablePointer<CChar>?
@@ -985,6 +1013,145 @@ final class EngineBridge: @unchecked Sendable {
         url.withCString { look_record_url_hit($0) }
     }
 
+    /// The user-declared block a row belongs to, with the exact steps Enter will
+    /// perform. Reads the sources directory, so call it off the main thread.
+    nonisolated func sourceBlock(
+        candidateID: String, rowID: String = "", rowTitle: String = "", rowPath: String = ""
+    ) -> SourceBlock? {
+        let ptr = candidateID.withCString { candidate in
+            rowID.withCString { id in
+                rowTitle.withCString { title in
+                    rowPath.withCString { path in
+                        look_source_block_json(candidate, id, title, path)
+                    }
+                }
+            }
+        }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(SourceBlock.self, from: data)
+    }
+
+    /// What `action` would do to a row, without doing it: the tool it would
+    /// start, or why it cannot. For labels and availability.
+    nonisolated func toolAction(_ action: String, path: String, isDirectory: Bool) -> ToolAction? {
+        let ptr = action.withCString { action in
+            path.withCString { path in
+                look_tool_action_json(action, path, isDirectory)
+            }
+        }
+        return Self.decodeToolAction(ptr)
+    }
+
+    /// Runs `action` on a row. Shell actions are spawned detached inside core;
+    /// an `application` result is handed back for `NSWorkspace` to launch.
+    /// Spawns a process, so call it off the main thread.
+    nonisolated func performToolAction(_ action: String, path: String, isDirectory: Bool) -> ToolAction? {
+        let ptr = action.withCString { action in
+            path.withCString { path in
+                look_perform_tool_action_json(action, path, isDirectory)
+            }
+        }
+        return Self.decodeToolAction(ptr)
+    }
+
+    private nonisolated static func decodeToolAction(_ ptr: UnsafeMutablePointer<CChar>?) -> ToolAction? {
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(ToolAction.self, from: data)
+    }
+
+    /// Re-runs every `run` block and stores its rows for the next index pass.
+    /// Spawns the user's commands and waits for them - call off the main thread.
+    nonisolated func refreshRunBlocks() -> RunBlockRefreshOutcome {
+        guard let ptr = look_refresh_run_blocks_json() else {
+            return RunBlockRefreshOutcome(refreshed: 0, errors: [])
+        }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8),
+              let outcome = try? JSONDecoder().decode(RunBlockRefreshOutcome.self, from: data)
+        else {
+            return RunBlockRefreshOutcome(refreshed: 0, errors: [])
+        }
+        return outcome
+    }
+
+    /// A block's declared `preview`, run against the selected row. Nil when the
+    /// block declares none. Runs a command - call off the main thread.
+    nonisolated func sourcePreview(
+        candidateID: String, rowID: String, rowTitle: String, rowPath: String
+    ) -> SourcePreview? {
+        let ptr = candidateID.withCString { candidate in
+            rowID.withCString { id in
+                rowTitle.withCString { title in
+                    rowPath.withCString { path in
+                        look_source_preview_json(candidate, id, title, path)
+                    }
+                }
+            }
+        }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(SourcePreview.self, from: data)
+    }
+
+    /// Every declared block, for the row-icon cache. Reads the sources
+    /// directory, so call it off the main thread.
+    nonisolated func sourceBlocks() -> [SourceBlockSummary] {
+        guard let ptr = look_source_blocks_json() else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([SourceBlockSummary].self, from: data)) ?? []
+    }
+
+    /// Performs every step of that block, detached, through the user's login
+    /// shell. Spawns processes - call off the main thread.
+    /// `asTarget` is the caller's intent, and only the caller knows it: Enter on
+    /// a row runs that block's `open`, while a `then` target that produces rows
+    /// is a level to descend into rather than something to run.
+    nonisolated func performBlock(
+        blockID: String,
+        rowID: String = "",
+        rowTitle: String = "",
+        rowPath: String = "",
+        query: String = "",
+        asTarget: Bool = false
+    ) -> PerformBlockOutcome {
+        let ptr = blockID.withCString { block in
+            rowID.withCString { id in
+                rowTitle.withCString { title in
+                    rowPath.withCString { path in
+                        query.withCString { query in
+                            look_perform_block_json(block, id, title, path, query, asTarget)
+                        }
+                    }
+                }
+            }
+        }
+        // A failure carries a reason. An empty `errors` with nothing performed
+        // means something else entirely (a block that produces rows), and the
+        // caller keys on that, so the two must not share a value.
+        guard let ptr else {
+            return PerformBlockOutcome(
+                performed: 0, errors: ["the core did not answer"], producesRows: false)
+        }
+        defer { look_free_cstring(ptr) }
+        // The core sends snake_case, so `produces_rows` only reaches
+        // `producesRows` with the conversion strategy set.
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let data = String(cString: ptr).data(using: .utf8),
+              let outcome = try? decoder.decode(PerformBlockOutcome.self, from: data)
+        else {
+            return PerformBlockOutcome(
+                performed: 0, errors: ["the core's answer could not be read"], producesRows: false)
+        }
+        return outcome
+    }
+
     /// Up to `limit` previously-opened URLs matching `query`, most-recent first.
     /// Opens the shared look.db - call off the main thread.
     nonisolated func recentURLs(query: String, limit: Int) -> [URLHistoryEntry] {
@@ -1171,6 +1338,87 @@ nonisolated struct URLMatch: Decodable {
 
     let url: String
     let tier: Tier
+}
+
+/// A user-declared block and the steps performing it will run, so the panel can
+/// show exactly what Enter is about to do.
+/// One preferred-tool action resolved against a row. `kind` says which of the
+/// other fields are filled; see `specs/preferred-tools.md`.
+nonisolated struct ToolAction: Decodable {
+    enum Kind: String, Decodable {
+        /// Composed shell text. Only `look_tool_action_json` returns this;
+        /// performing runs it in core and reports `performed` or `failed`.
+        case shell
+        /// The native side launches `tool` with `path`.
+        case application
+        /// Nothing declared, so the platform's own handler does it.
+        case systemDefault = "system_default"
+        /// Core spawned it.
+        case performed
+        case failed
+        /// No tool declared, or one that cannot do this.
+        case unavailable
+    }
+
+    let kind: Kind
+    let tool: String?
+    let command: String?
+    let path: String?
+    /// Shown as-is when `kind` is `unavailable` or `failed`.
+    let reason: String?
+    /// The config key that would fix an `unavailable` action.
+    let key: String?
+}
+
+nonisolated struct SourceBlock: Decodable {
+    let id: String
+    let name: String
+    let steps: [String]
+    /// The `.toml` (or script) that declared it, for showing and revealing.
+    let file: String?
+    /// Where a row of this block can go next.
+    let then: [SourceBlockTarget]
+}
+
+/// One `then` target. `performs` says what the target's own producer decided:
+/// steps to run now, or rows to descend into.
+nonisolated struct SourceBlockTarget: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let icon: String?
+    let performs: Bool
+    /// Already expanded against the row, so it names what will actually happen.
+    let confirm: String?
+}
+
+/// A declared block as the row layer needs it: what to call it and what icon it
+/// asked for. Cached per launcher open so rendering a row never touches disk.
+nonisolated struct SourceBlockSummary: Decodable {
+    let id: String
+    let name: String
+    let icon: String?
+}
+
+/// How a `run`-block refresh went. A block that failed kept the rows it had.
+nonisolated struct RunBlockRefreshOutcome: Decodable {
+    let refreshed: Int
+    let errors: [String]
+}
+
+/// A block's `preview` output, or why it could not run.
+nonisolated struct SourcePreview: Decodable {
+    let text: String
+    let error: String?
+}
+
+/// How performing a block went. `errors` is empty when every step was spawned;
+/// a step's own exit code is its business, since nothing waits for it.
+nonisolated struct PerformBlockOutcome: Decodable {
+    let performed: Int
+    let errors: [String]
+    /// The target lists rows to pick from rather than steps to run. An explicit
+    /// flag, because "nothing performed" is also what a failure looks like.
+    let producesRows: Bool
 }
 
 /// Wire shape of a `url_history` row (see url-history spec), decoded with

@@ -93,6 +93,12 @@ struct LauncherView: View {
     @State var recentURLTask: Task<Void, Never>?
     // Quick Actions for the selected result (see docs/writing-controls.md).
     @State var quickActionDescriptors: [QuickActionDescriptor] = []
+    // The Cmd+K action menu. Closed by default, so a row's verbs cost the
+    // preview no space until asked for.
+    @State var isActionMenuOpen = false
+    @State var actionMenuIndex = 0
+    /// A destructive `then` target waiting for a yes/no answer in the menu.
+    @State var pendingActionConfirm: (blockID: String, title: String, question: String)?
     @State var quickActionStates: [String: ActionState] = [:]
     // The result `quickActionStates`/`quickActionInfo` were read for. Lets a refresh
     // of the SAME result keep showing what it already resolved, instead of blanking
@@ -251,7 +257,7 @@ struct LauncherView: View {
         }
 
         if let configPath = env["LOOK_CONFIG_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-            configPath.lowercased().contains(".look.dev.config")
+            configPath.lowercased().hasSuffix("config.dev")
         {
             return true
         }
@@ -540,6 +546,19 @@ struct LauncherView: View {
         )
     }
 
+    /// Query shapes that render their OWN panel instead of backend results:
+    /// clipboard history, the `"` prefix menu, the `:` command menu,
+    /// translation, the process finder.
+    ///
+    /// One list because every consumer needs the same answer - skip the search,
+    /// skip the AI card, skip the home hint bar. Each call site used to spell
+    /// the disjunction out by hand, and they had already drifted apart. A new
+    /// mode belongs HERE, not in each caller.
+    var usesOwnResultPanel: Bool {
+        isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery
+            || isTranslationQuery || isProcessQuery
+    }
+
     var isTranslationQuery: Bool {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return extractTranslationQuery(from: trimmed) != nil
@@ -653,7 +672,22 @@ struct LauncherView: View {
         // The home screen replaces the "Cmd+/ command mode" hint with a
         // clickable today done/total quick view (see todoQuickView), so it
         // is intentionally omitted here.
-        return ["Enter open", "Cmd+H help"]
+        var hints = [enterHint]
+        if !isLaunchpadActive {
+            hints.append(AppConstants.Launcher.ActionMenu.openHint)
+        }
+        hints.append("Cmd+H help")
+        return hints
+    }
+
+    /// What Enter does to the selected row. A declared block performs steps or
+    /// runs its own command, so claiming "open" there is simply wrong.
+    private var enterHint: String {
+        guard let id = selectedResultID,
+              let selected = displayedResults.first(where: { $0.id == id }),
+              selected.kind == .action
+        else { return "Enter open" }
+        return "Enter run"
     }
 
     /// True when the launcher is on its default/home screen (the state
@@ -661,10 +695,7 @@ struct LauncherView: View {
     /// view is shown in place of the command-mode hint.
     var isHomeHintScreen: Bool {
         guard isLauncherIdle else { return false }
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if extractTranslationQuery(from: trimmed) != nil { return false }
-        if isPrefixSuggestionQuery || isCommandSuggestionQuery || isClipboardQuery || isProcessQuery { return false }
-        return true
+        return !usesOwnResultPanel
     }
 
     /// Today's done/total quick view for the home hint bar, or nil when
@@ -807,6 +838,9 @@ struct LauncherView: View {
             refreshSearchResults()
             configureLaunchpadIfNeeded()
             refreshLaunchpadState()
+            // Warms the block catalog off the main actor, so a row that has one
+            // renders its declared icon rather than the generic bolt.
+            SourceBlockCatalog.prefill()
             startKeyboardNavigationIfNeeded()
             focusActiveInput()
             refreshClipboardMonitoringMode()
@@ -959,6 +993,9 @@ struct LauncherView: View {
         .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in
             reloadConfig()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .lookSourceTargetsLoaded)) { _ in
+            refreshQuickActions()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .lookRefocusInputRequested)) { _ in
             DispatchQueue.main.async {
                 focusActiveInput(recoveryDelays: [0.0], activateApp: false)
@@ -1085,7 +1122,7 @@ struct LauncherView: View {
                 if showsHelpScreen {
                     showsHelpScreen = false
                 }
-                if isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery || isTranslationQuery || isProcessQuery {
+                if usesOwnResultPanel {
                     // These render their own panels (clip history / prefix menu /
                     // command menu / translation / process finder), not backend
                     // results. Skip the search + AI answer entirely - otherwise a
@@ -2020,7 +2057,11 @@ struct LauncherView: View {
                         : nil,
                     processDetail: processDetail(for: selectedResult),
                     processCPU: processCPU(for: selectedResult),
-                    isMeasuringProcessCPU: isMeasuringCPU(for: selectedResult)
+                    isMeasuringProcessCPU: isMeasuringCPU(for: selectedResult),
+                    isActionMenuOpen: isActionMenuOpen,
+                    actionMenuIndex: actionMenuIndex,
+                    actionMenuDescriptors: actionMenuRows,
+                    onActivateActionMenuRow: { activateActionMenuRow($0) }
                 )
                 // Arrow-key nav assigns `selectedResultID` inside a global
                 // `withAnimation` so the pill can glide (see LauncherView+

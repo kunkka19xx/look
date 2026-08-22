@@ -2474,7 +2474,9 @@ dependencies = [
  "look-indexing",
  "look-matching",
  "look-ranking",
+ "look-sources",
  "look-storage",
+ "look-tools",
  "objc2",
  "objc2-foundation",
  "regex",
@@ -2528,6 +2530,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "look-sources"
+version = "0.1.0"
+dependencies = [
+ "globset",
+ "look-tools",
+ "serde",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
 name = "look-storage"
 version = "0.1.0"
 dependencies = [
@@ -2542,6 +2554,10 @@ dependencies = [
  "rusqlite",
  "serde",
 ]
+
+[[package]]
+name = "look-tools"
+version = "0.1.0"
 
 [[package]]
 name = "lookapp"

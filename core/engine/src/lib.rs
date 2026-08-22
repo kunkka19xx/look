@@ -1,5 +1,6 @@
 pub mod action;
 pub mod config;
+pub mod config_path;
 pub mod index;
 mod normalize;
 mod platform;
@@ -67,6 +68,11 @@ struct IndexedCandidate {
 pub struct QueryEngine {
     candidates: Vec<IndexedCandidate>,
     search_aliases: HashMap<String, Vec<String>>,
+    /// Per-block score offset from a declared `bias`, keyed by block id. Kept
+    /// beside the candidates rather than on them: the bias belongs to the
+    /// declaration, so editing it must take effect without reindexing every row
+    /// the block produced.
+    source_biases: HashMap<String, i64>,
 }
 
 impl QueryEngine {
@@ -78,10 +84,44 @@ impl QueryEngine {
     pub fn new_with_config(candidates: Vec<Candidate>, config: &RuntimeConfig) -> Self {
         // Build an in-memory search index up front (hot path reads only).
         let candidates = candidates.into_iter().map(IndexedCandidate::new).collect();
+        let declared = index::declared_blocks();
+        let mut search_aliases = config.search_aliases.clone();
+        // A block's `aliases` are extra words that should find its rows. Its
+        // rows carry the block name as their subtitle, so pointing the alias at
+        // that name reuses the existing alias matcher unchanged.
+        for block in &declared {
+            for alias in &block.aliases {
+                let key = normalize_for_search(alias);
+                if key.is_empty() {
+                    continue;
+                }
+                search_aliases
+                    .entry(key)
+                    .or_default()
+                    .push(normalize_for_search(&block.name));
+            }
+        }
+
         Self {
             candidates,
-            search_aliases: config.search_aliases.clone(),
+            search_aliases,
+            source_biases: declared
+                .into_iter()
+                .filter(|block| block.bias != 0)
+                .map(|block| (block.id, block.bias))
+                .collect(),
         }
+    }
+
+    /// The declared bias for the block that produced `candidate`, or 0.
+    pub(crate) fn source_bias(&self, candidate: &Candidate) -> i64 {
+        if self.source_biases.is_empty() {
+            return 0;
+        }
+        CandidateIdKind::source_id_of(&candidate.id)
+            .and_then(|id| self.source_biases.get(id))
+            .copied()
+            .unwrap_or(0)
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Vec<LaunchResult> {
@@ -111,7 +151,8 @@ impl QueryEngine {
                 }
             }
         }
-        let results = indices
+        let results = self
+            .drop_source_shadowed(indices)
             .into_iter()
             .map(|(idx, score)| {
                 LaunchResult::from((&self.candidates[idx as usize].candidate, score))
@@ -347,6 +388,7 @@ pub struct BootstrapScope {
     pub apps: bool,
     pub files: bool,
     pub settings: bool,
+    pub sources: bool,
 }
 
 impl BootstrapScope {
@@ -354,24 +396,33 @@ impl BootstrapScope {
         apps: true,
         files: true,
         settings: true,
+        sources: true,
     };
     pub const APPS_ONLY: Self = Self {
         apps: true,
         files: false,
         settings: false,
+        sources: false,
     };
     pub const FILES_ONLY: Self = Self {
         apps: false,
         files: true,
         settings: false,
+        sources: false,
+    };
+    pub const SOURCES_ONLY: Self = Self {
+        apps: false,
+        files: false,
+        settings: false,
+        sources: true,
     };
 
     pub fn is_all(&self) -> bool {
-        self.apps && self.files && self.settings
+        self.apps && self.files && self.settings && self.sources
     }
 
     pub fn is_empty(&self) -> bool {
-        !(self.apps || self.files || self.settings)
+        !(self.apps || self.files || self.settings || self.sources)
     }
 
     pub(crate) fn id_prefixes(&self) -> Vec<&'static str> {
@@ -386,6 +437,9 @@ impl BootstrapScope {
         }
         if self.settings {
             out.push(CandidateIdKind::PREFIX_SETTING);
+        }
+        if self.sources {
+            out.push(CandidateIdKind::PREFIX_SOURCE);
         }
         out
     }
@@ -608,7 +662,7 @@ mod tests {
         let s = BootstrapScope::ALL;
         assert!(s.is_all());
         assert!(!s.is_empty());
-        assert!(s.apps && s.files && s.settings);
+        assert!(s.apps && s.files && s.settings && s.sources);
     }
 
     #[test]
@@ -632,7 +686,7 @@ mod tests {
     }
 
     #[test]
-    fn bootstrap_scope_all_yields_all_four_prefixes() {
+    fn bootstrap_scope_all_yields_every_prefix() {
         let prefixes = BootstrapScope::ALL.id_prefixes();
         assert_eq!(
             prefixes,
@@ -641,7 +695,23 @@ mod tests {
                 CandidateIdKind::PREFIX_FILE,
                 CandidateIdKind::PREFIX_FOLDER,
                 CandidateIdKind::PREFIX_SETTING,
+                CandidateIdKind::PREFIX_SOURCE,
             ]
+        );
+    }
+
+    #[test]
+    fn bootstrap_scope_sources_only_sweeps_only_source_rows() {
+        // A source refresh must never prune an app, a file, or a setting, and a
+        // file refresh must never prune a source's rows.
+        assert_eq!(
+            BootstrapScope::SOURCES_ONLY.id_prefixes(),
+            vec![CandidateIdKind::PREFIX_SOURCE]
+        );
+        assert!(
+            !BootstrapScope::FILES_ONLY
+                .id_prefixes()
+                .contains(&CandidateIdKind::PREFIX_SOURCE)
         );
     }
 
@@ -651,6 +721,7 @@ mod tests {
             apps: false,
             files: false,
             settings: false,
+            sources: false,
         };
         assert!(s.is_empty());
         assert!(!s.is_all());

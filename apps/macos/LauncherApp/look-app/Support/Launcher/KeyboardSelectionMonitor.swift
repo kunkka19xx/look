@@ -35,7 +35,19 @@ final class KeyboardSelectionMonitor {
         /// is a line break there, not "open all picked").
         inAIMode: @escaping @MainActor () -> Bool = { false },
         onWebSearch: @escaping @MainActor () -> Void,
+        /// The Cmd+K action menu. While it is open it owns the arrows, Enter,
+        /// and Escape, so those never reach the results list underneath.
+        inActionMenu: @escaping @MainActor () -> Bool = { false },
+        onToggleActionMenu: @escaping @MainActor () -> Void = {},
+        onActionMenuMove: @escaping @MainActor (Int) -> Void = { _ in },
+        onActionMenuRun: @escaping @MainActor () -> Void = {},
+        onActionMenuClose: @escaping @MainActor () -> Void = {},
         onRevealInFinder: @escaping @MainActor () -> Void,
+        /// Cmd+E / Cmd+T act through the user's declared tools. They sit with
+        /// the other result chords, below the launchpad mnemonics, so the strip
+        /// keeps Cmd+T for the theme while a row is not selected.
+        onEditSelection: @escaping @MainActor () -> Void = {},
+        onOpenTerminalForSelection: @escaping @MainActor () -> Void = {},
         onCopySelection: @escaping @MainActor () -> Bool,
         onTogglePick: @escaping @MainActor () -> Void,
         onClearPicked: @escaping @MainActor () -> Void,
@@ -103,6 +115,50 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
+            // Open: the menu owns navigation. Cmd+J / Cmd+K step through it
+            // (vim-style), arrows do the same, Escape closes. Anything else
+            // falls through, so typing still reaches the query field.
+            if inActionMenu() {
+                let character = event.charactersIgnoringModifiers?.lowercased()
+                if event.keyCode == KeyCode.escape {
+                    onActionMenuClose()
+                    return nil
+                }
+                if event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter {
+                    onActionMenuRun()
+                    return nil
+                }
+                if event.keyCode == KeyCode.arrowDown
+                    || (flags == [.command] && (event.keyCode == KeyCode.j || character == "j"))
+                {
+                    onActionMenuMove(1)
+                    return nil
+                }
+                if event.keyCode == KeyCode.arrowUp
+                    || (flags == [.command] && (event.keyCode == KeyCode.k || character == "k"))
+                {
+                    onActionMenuMove(-1)
+                    return nil
+                }
+            }
+
+            // Cmd+K opens it. Cmd+J opens it too and starts on the first row,
+            // so either half of the pair gets you in.
+            //
+            // Never on the launchpad: its tiles ARE the actions, each with its
+            // own mnemonic, and ⌘K is already Keep Awake there. Opening a menu
+            // of the same tiles would both duplicate what is on screen and
+            // shadow the key the user meant.
+            if flags == [.command],
+                !isLaunchpadActive(),
+                event.keyCode == KeyCode.k || event.keyCode == KeyCode.j
+                    || event.charactersIgnoringModifiers?.lowercased() == "k"
+                    || event.charactersIgnoringModifiers?.lowercased() == "j"
+            {
+                onToggleActionMenu()
+                return nil
+            }
+
             if flags.contains(.command)
                 && !flags.contains(.control)
                 && !flags.contains(.option)
@@ -139,6 +195,20 @@ final class KeyboardSelectionMonitor {
                 && flags == [.command]
             {
                 onRevealInFinder()
+                return nil
+            }
+
+            if (event.keyCode == KeyCode.e || event.charactersIgnoringModifiers?.lowercased() == "e")
+                && flags == [.command]
+            {
+                onEditSelection()
+                return nil
+            }
+
+            if (event.keyCode == KeyCode.t || event.charactersIgnoringModifiers?.lowercased() == "t")
+                && flags == [.command]
+            {
+                onOpenTerminalForSelection()
                 return nil
             }
 

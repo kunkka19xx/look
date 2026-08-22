@@ -105,6 +105,34 @@ extension LauncherView {
         }
     }
 
+    /// Re-runs every `run` block, then reindexes so the rows it produced are
+    /// picked up.
+    ///
+    /// Off the main actor and after the config reload, not inline with it: each
+    /// block spawns a command and waits for it, so doing this on the main actor
+    /// freezes the window for the sum of their timeouts. The reindex is
+    /// triggered from the completion, which keeps the ordering that matters -
+    /// the blocks must run before the pass that reads their rows.
+    private func refreshRunBlocksInBackground() {
+        Task {
+            let outcome = await Task.detached(priority: .utility) {
+                let outcome = EngineBridge.shared.refreshRunBlocks()
+                // Only worth a second index pass when a block actually produced
+                // rows; the reload above already covered everything else.
+                if outcome.refreshed > 0 {
+                    _ = EngineBridge.shared.requestIndexRefresh()
+                }
+                return outcome
+            }.value
+
+            await MainActor.run {
+                for failure in outcome.errors {
+                    showBanner(failure, style: .error, duration: 3.0)
+                }
+            }
+        }
+    }
+
     /// Publishes results on the main actor only if this request is still the
     /// latest and the query hasn't changed out from under it.
     @MainActor
@@ -347,6 +375,10 @@ extension LauncherView {
         let result = themeStore.reloadFromConfig()
         let backendReloaded = bridge.reloadConfig()
         clipboardStore.reloadFromConfig()
+        // Declared block icons and `then` targets are cached for the process, so
+        // a reload is the point where an edited file should start showing.
+        SourceBlockCatalog.invalidate()
+        refreshRunBlocksInBackground()
 
         // Sync settings blur multiplier to AppUIState
         if let blurMultiplier = result.settingsBlurMultiplier {
