@@ -276,7 +276,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         smoothcaret.attach(input);
     }
     preview.init(previewPanel);
-    actionmenu.init(previewPanel);
+    actionmenu.init(previewPanel, queryInput);
     banner.init(document.getElementById('banner'));
     health.init();
     confirm.init(document.getElementById('confirm-bar'));

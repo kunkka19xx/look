@@ -20,8 +20,15 @@ const BANNER_SECONDS = 1.2;
 const HEADER_GAP = 8;
 // Where to hang the menu when the preview has no header to hang it under.
 const FALLBACK_TOP = 84;
+// `aria-activedescendant` and `aria-controls` address their targets by id, so
+// the list and its rows need stable ones.
+const MENU_ID = 'action-menu';
+const ROW_ID = (index) => `${MENU_ID}-row-${index}`;
+// What a screen reader calls the list, which has no visible label of its own.
+const MENU_LABEL = 'Actions';
 
 let panel = null;
+let input = null;
 let menuEl = null;
 let rows = [];
 let focusedIndex = 0;
@@ -29,8 +36,15 @@ let focusedIndex = 0;
 // changes their mind cannot open the menu behind them.
 let token = 0;
 
-export function init(panelEl) {
+/**
+ * `inputEl` keeps DOM focus for as long as the menu is up, so typing goes on
+ * filtering. It is what carries the menu's virtual focus for a screen reader:
+ * `aria-controls` points at the list, `aria-activedescendant` at the row the
+ * user is on.
+ */
+export function init(panelEl, inputEl) {
     panel = panelEl;
+    input = inputEl;
 }
 
 function isOpen() {
@@ -51,6 +65,8 @@ export function vimKey(e) {
 export function close() {
     token += 1;
     if (!menuEl) return;
+    input?.removeAttribute('aria-controls');
+    input?.removeAttribute('aria-activedescendant');
     menuEl.remove();
     menuEl = null;
     rows = [];
@@ -114,11 +130,19 @@ export function handleKey(e) {
 function mount(descriptors) {
     menuEl = document.createElement('div');
     menuEl.className = 'action-menu';
+    menuEl.id = MENU_ID;
+    // A list of choices rather than a menu bar: the row a user lands on is a
+    // selection they then run, which is what `option` describes and what the
+    // focused input is allowed to point at.
+    menuEl.setAttribute('role', 'listbox');
+    menuEl.setAttribute('aria-label', MENU_LABEL);
     menuEl.style.top = `${anchorTop()}px`;
 
     rows = descriptors.map((descriptor, index) => {
         const row = document.createElement('div');
         row.className = 'action-menu-row';
+        row.id = ROW_ID(index);
+        row.setAttribute('role', 'option');
 
         const title = document.createElement('span');
         title.className = 'action-menu-title';
@@ -138,12 +162,15 @@ function mount(descriptors) {
         return { id: descriptor.id, el: row };
     });
 
-    focusedIndex = 0;
-    applyFocus();
     // The menu hangs off the header, so a panel scrolled away from it would
     // open the menu out of sight.
     panel.scrollTop = 0;
     panel.appendChild(menuEl);
+    input?.setAttribute('aria-controls', MENU_ID);
+    // After the menu is in the document: applyFocus scrolls the focused row
+    // into view, which a detached node cannot do.
+    focusedIndex = 0;
+    applyFocus();
 }
 
 /** Flush under the preview header, whatever height that header came out. */
@@ -162,9 +189,17 @@ function move(offset) {
 
 function applyFocus() {
     rows.forEach(({ el }, index) => {
-        el.classList.toggle('is-focused', index === focusedIndex);
+        const focused = index === focusedIndex;
+        el.classList.toggle('is-focused', focused);
+        el.setAttribute('aria-selected', String(focused));
     });
-    rows[focusedIndex]?.el.scrollIntoView({ block: 'nearest' });
+
+    const focused = rows[focusedIndex]?.el;
+    if (!focused) return;
+    focused.scrollIntoView({ block: 'nearest' });
+    // The row never takes DOM focus, so this is the only thing telling a screen
+    // reader which one the keys are on.
+    input?.setAttribute('aria-activedescendant', focused.id);
 }
 
 // The single entry point for running a row, by key or by click, so neither can
