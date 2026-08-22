@@ -577,10 +577,20 @@ private let launchpadAlertBorderOpacity = 0.3
 /// The frosted surface every launchpad tile sits on: the same backdrop +
 /// control-fill stack as `LauncherView.tileBackground(floats:)`. An optional tint
 /// (accent for on-state toggles, caution for a confirming/muted action) layers on top.
-func frostedTile(themeStore: ThemeStore, tint: Color? = nil, tintOpacity: Double = 0) -> some View {
-    let radius = themeStore.surfaceCornerRadius(AppConstants.Launcher.Launchpad.cornerRadius)
+func frostedTile(
+    themeStore: ThemeStore,
+    cornerRadius: CGFloat? = nil,
+    /// Floating surfaces sit straight on the desktop with no window backdrop
+    /// behind them, so they have to sample it directly. `.withinWindow` would
+    /// find nothing there and render a flat wash instead of a blur.
+    blendingMode: NSVisualEffectView.BlendingMode = .behindWindow,
+    tint: Color? = nil,
+    tintOpacity: Double = 0
+) -> some View {
+    let radius = cornerRadius
+        ?? themeStore.surfaceCornerRadius(AppConstants.Launcher.Launchpad.cornerRadius)
     return ZStack {
-        ThemedBackdrop(themeStore: themeStore, cornerRadius: radius)
+        ThemedBackdrop(themeStore: themeStore, blendingMode: blendingMode, cornerRadius: radius)
         themeStore.controlFillColor()
         if let tint {
             tint.opacity(tintOpacity)

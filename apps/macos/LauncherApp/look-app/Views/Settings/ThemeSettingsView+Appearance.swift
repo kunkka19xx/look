@@ -59,12 +59,13 @@ extension ThemeSettingsView {
 
                 sectionHeader("Blur")
 
-                // Glass has no blur to thin, so `ThemedBackdrop` ignores this.
                 // Disabled rather than hidden, to keep the value visible.
                 LabeledSlider(title: "Blur Opacity", value: $settings.blurOpacity, range: 0...1)
                     .disabled(settings.blurMaterial.rendersGlass)
                     .opacity(settings.blurMaterial.rendersGlass ? AppConstants.ThemeUI.disabledControlOpacity : 1)
-                LabeledSlider(title: "Settings Blur", value: $appUIState.settingsBlurMultiplier, range: 0.4...1)
+
+                LabeledSlider(title: "Settings Blur", value: $settings.settingsBlurMultiplier, range: 0.4...1)
+                    .help("How much the backdrop thins while Settings is open.")
 
                 HStack(spacing: 10) {
                     Text("Blur Style")
