@@ -369,6 +369,36 @@ pub fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+#[tauri::command]
+pub fn get_install_method() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        return crate::platform::windows::update::detect_install_method()
+            .as_str()
+            .to_string();
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        "unknown".to_string()
+    }
+}
+
+#[tauri::command]
+pub fn start_windows_update(app: tauri::AppHandle, version: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        return crate::platform::windows::update::start(app, &version);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        let _ = version;
+        Err("Windows self-update is unsupported on this platform".into())
+    }
+}
+
 /// Longest the window stays up waiting for the frontend to paint the armed
 /// frame. `confirm_hide` ends the wait as soon as that frame lands, so this
 /// only runs out for a webview that never answers.

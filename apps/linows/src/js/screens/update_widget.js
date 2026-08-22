@@ -1,12 +1,12 @@
-// Notify-only update widget mounted in Settings ("About" footer) and Help.
-// We never download or replace the binary - Linux/Windows distros vary too
-// much to bundle a single upgrade command, so the banner links to the
-// release notes and the README install section instead.
+// Update widget mounted in Settings ("About" footer) and Help.
+// Linux stays notify-only because install paths vary too much; Windows can
+// offer a manual user-triggered update button for the shipped per-user NSIS
+// install after the user checks and a newer release is found.
 //
 // The check itself runs in the webview via `fetch()` (no Rust HTTP/TLS
 // dep); cross-origin works because `tauri.conf.json` has `csp: null`.
 // Dismissed versions persist in `localStorage`.
-import { getLookappVersion, openPath, isDevBuild } from '../ipc.js';
+import { getInstallMethod, getLookappVersion, openPath, isDevBuild, startWindowsUpdate } from '../ipc.js';
 import * as platform from '../platform.js';
 
 const RELEASES_API_URL = 'https://api.github.com/repos/kunkka19xx/look/releases/latest';
@@ -27,6 +27,7 @@ const widgets = new Map();
 const state = {
     currentVersion: '',
     isDev: false,
+    installMethod: '',
     available: null,
     status: '',
     isChecking: false,
@@ -39,13 +40,18 @@ export async function mountUpdateWidget(container, { label = '' } = {}) {
     render(container);
     if (!state.currentVersion) {
         try {
-            [state.currentVersion, state.isDev] = await Promise.all([
+            const loadInstallMethod = platform.os() === 'windows'
+                ? getInstallMethod()
+                : Promise.resolve('');
+            [state.currentVersion, state.isDev, state.installMethod] = await Promise.all([
                 getLookappVersion(),
                 isDevBuild(),
+                loadInstallMethod,
             ]);
         } catch {
             state.currentVersion = '';
             state.isDev = false;
+            state.installMethod = '';
         }
         renderAll();
     }
@@ -84,6 +90,18 @@ function handleDismiss() {
 function handleNotes() {
     if (!state.available) return;
     openPath(state.available.release_url, 'browser', '');
+}
+
+async function handleUpdate() {
+    if (!state.available || state.installMethod !== 'nsis') return;
+    state.status = 'Preparing update…';
+    renderAll();
+    try {
+        await startWindowsUpdate(state.available.version);
+    } catch (error) {
+        state.status = error?.message || String(error || "Couldn't start the update");
+        renderAll();
+    }
 }
 
 function handleInstallHint() {
@@ -176,14 +194,15 @@ function renderAll() {
 
 function render(container) {
     const label = widgets.get(container) || '';
-    const { currentVersion, isDev, available, status, isChecking } = state;
+    const { currentVersion, isDev, installMethod, available, status, isChecking } = state;
     const devSuffix = isDev ? ' - dev' : '';
     const versionLabel = currentVersion
         ? `Look ${escapeHtml(currentVersion)}${devSuffix}`
         : 'Look …';
-    // Suppress the status text once a real update has surfaced - the banner below
-    // says the same thing more loudly.
-    const showStatus = status && !available;
+    const canSelfUpdate = platform.os() === 'windows' && installMethod === 'nsis' && !!available;
+    // Suppress only the duplicated "Update available" line; keep real progress
+    // or errors visible while the banner is shown.
+    const showStatus = status && (!available || status !== `Update available: Look ${available.version}`);
 
     let html = '';
     if (label) {
@@ -193,8 +212,8 @@ function render(container) {
     <div class="update-row">
       <span class="update-version">${versionLabel}</span>
       ${showStatus ? `<span class="update-status">${escapeHtml(status)}</span>` : ''}
-      <button class="update-pill" type="button" data-action="check"${isChecking ? ' disabled' : ''}>
-        ${isChecking ? 'Checking…' : 'Check for Updates'}
+      <button class="update-pill" type="button" data-action="${canSelfUpdate ? 'update' : 'check'}"${isChecking ? ' disabled' : ''}>
+        ${isChecking ? 'Checking…' : (canSelfUpdate ? 'Update' : 'Check for Updates')}
       </button>
     </div>
   `;
@@ -208,7 +227,19 @@ function render(container) {
       </div>
     `;
         const os = platform.os();
-        if (INSTALL_HINT_URLS[os]) {
+        if (os === 'windows' && installMethod === 'scoop') {
+            html += `
+        <div class="update-hint">
+          Update in PowerShell: <code>scoop update look</code>
+        </div>
+      `;
+        } else if (os === 'windows' && installMethod === 'nsis') {
+            html += `
+        <div class="update-hint">
+          Update on Windows: rerun the installer from <a class="update-hint-link" href="#" data-action="install-hint">install instructions</a>. Look must close before the installer can replace it.
+        </div>
+      `;
+        } else if (INSTALL_HINT_URLS[os]) {
             const osLabel = os === 'windows' ? 'Windows' : 'Linux';
             html += `
         <div class="update-hint">
@@ -220,6 +251,7 @@ function render(container) {
 
     container.innerHTML = html;
     container.querySelector('[data-action="check"]')?.addEventListener('click', handleCheck);
+    container.querySelector('[data-action="update"]')?.addEventListener('click', handleUpdate);
     container.querySelector('[data-action="notes"]')?.addEventListener('click', handleNotes);
     container.querySelector('[data-action="dismiss"]')?.addEventListener('click', handleDismiss);
     container.querySelector('[data-action="install-hint"]')?.addEventListener('click', (e) => {
