@@ -27,6 +27,7 @@
  * `.launcher-window > *`. */
 [data-surface="liquid"] .launcher-window::after,
 [data-surface="liquid"] .pane-tile::after,
+[data-surface="liquid"] .action-menu::after,
 [data-surface="liquid"] .ctl-tile::after {
     content: "";
     position: absolute;
@@ -42,6 +43,7 @@
 }
 
 [data-surface="liquid"] .pane-tile::after,
+[data-surface="liquid"] .action-menu::after,
 [data-surface="liquid"] .ctl-tile::after {
     border-radius: var(--tile-radius);
 }

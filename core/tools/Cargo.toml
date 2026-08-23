@@ -5,3 +5,11 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 version = "0.1.0"
+
+[dependencies]
+# The resolved-action wire shape is serialized identically for both shells, so
+# it is derived here rather than restated in each transport layer.
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

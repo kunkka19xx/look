@@ -390,7 +390,7 @@ enum AppConstants {
             static let resultIDPrefix = "clipboard:"
             static let resultPath = "clipboard://history"
             // How many clips history keeps. `maxEntries` is the default/fallback used
-            // when `clipboard_history_limit` in ~/.look.config is absent or out of the
+            // when `clipboard_history_limit` in ~/.look/config is absent or out of the
             // [minEntries, maxEntriesLimit] range. See ClipboardHistoryStore.
             static let maxEntries = 10
             static let minEntries = 10

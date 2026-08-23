@@ -38,7 +38,7 @@ This document tracks what `look` supports today and what is planned next.
 
 ### AI answers and web suggestions (macOS, Linux, Windows)
 
-- optional, **on by default**; toggle with `ai_enabled` in `~/.look.config` or the Settings panel
+- optional, **on by default**; toggle with `ai_enabled` in `~/.look/config` or the Settings panel
 - **answer card**: a question, an entity with no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather/currency/crypto) shows a Spotlight-style card. Sources resolve concurrently and render as they arrive - DuckDuckGo, then Wikipedia (arithmetic no longer answers here; it has its own pinned row above the results - see Core search and launch). On macOS it falls back to a streaming on-device **Apple Intelligence** answer when no web source hits. In the knowledge-lookup view the card sits in a two-column layout with the suggestion list
 - **search suggestions**: Google autocomplete rows appear under the results for plain text queries (2+ chars); `Enter` on one runs a web search, as does `Cmd+Enter` on the query
 - **model interpretation** *(macOS)*: when a natural-language query finds nothing locally, the model turns the phrasing into a *structured* file query (type, time, place) and re-searches - never a rewritten query string, never overriding results already on screen. Results say when they were interpreted, or when the search had to be relaxed to find near-misses
@@ -81,7 +81,7 @@ This document tracks what `look` supports today and what is planned next.
 - badge labels follow an ergonomic outer-first layout: with N running apps we consume the easiest-to-reach keys first (`1, 2, 3, 9, 8` before `4`, then `7`, then `6`, then `5`). 5 running apps → badges `1, 2, 3, 8, 9`; 9 running apps → all of `1`..`9`
 - focus paths: macOS = `NSRunningApplication.activate()` with Dock-style reopen for windowless apps; Linux = GNOME Shell extension D-Bus on GNOME Wayland, `wlr-foreign-toplevel-management` on sway/Hyprland, niri IPC on niri (focuses and scrolls to the window's workspace), `i3-msg` on i3, `_NET_ACTIVE_WINDOW` (x11rb) on other X11 WMs; Windows = `SetForegroundWindow` via window handle
 - click on an icon also switches; hover shows app name + shortcut tooltip; active app has an accent ring
-- toggled on/off via `Settings > Appearance > Running Apps`. Persisted as `running_apps_placement` in `~/.look.config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` still load as "on"). The window is a single fixed size and never resizes for the row
+- toggled on/off via `Settings > Appearance > Running Apps`. Persisted as `running_apps_placement` in `~/.look/config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` still load as "on"). The window is a single fixed size and never resizes for the row
 - off hides the row and disables the activation shortcut
 - AI mode (`>`) hides the row too, and hands `Cmd+1`..`Cmd+9` plus `Cmd+0` to the conversation list: the digit opens the session carrying that chip. Ten chips is the ceiling (a `Cmd` chord is one keypress), so the list shows ten and older sessions are found by typing
 
@@ -93,17 +93,17 @@ This document tracks what `look` supports today and what is planned next.
 - activation: click a tile, or press the platform modifier + its highlighted letter - `Cmd` (macOS) / `Alt` (Linux, Windows): `B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `R` Restart, `D` Shut Down, `P` Now Playing play/pause
 - Restart and Shut Down arm on the first press and fire on the second; `Esc` (macOS) or the auto-disarm timeout cancels
 - Battery, Weather and the L slot are read-only
-- toggled on/off via `Settings > Appearance > Super Actions`. Persisted as `super_actions_enabled` in `~/.look.config`
+- toggled on/off via `Settings > Appearance > Super Actions`. Persisted as `super_actions_enabled` in `~/.look/config`
 - off hides the strip and disables its mnemonics
 
 ### Settings and runtime config
 
 - in-app settings panel (`Cmd+Shift+,`)
-- local config file `~/.look.config`
+- local config file `~/.look/config`
 - runtime reload (`Cmd+Shift+;`)
 - 9 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, Custom)
 - Behind-window blur requested from the compositor where it exists (macOS material; KDE / Hyprland / Niri on Linux), clear glass everywhere else
-- query alias presets in `~/.look.config` for app + System Settings intent expansion (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`)
+- query alias presets in `~/.look/config` for app + System Settings intent expansion (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`)
 - in-app config reset (`Settings > Advanced > Create Fresh Config`) with confirmation popup
 - semantic color system with auto-derived text colors in Custom mode
 - indexing, UI, privacy/logging, launch-at-login controls

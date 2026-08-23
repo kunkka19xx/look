@@ -97,6 +97,13 @@ export function canRunElevated(item) {
     return isWindows() && item?.kind === 'app' && !item.path?.startsWith('ms-settings:');
 }
 
+// The name of the platform's own file manager, for a Reveal entry that has no
+// declared `file_manager` to name. Null on Linux: the desktop's handler has no
+// one name every distro agrees on, so the entry keeps its plain wording.
+export function systemFileManager() {
+    return isWindows() ? 'Explorer' : null;
+}
+
 // Windows calls it the Recycle Bin; Linux/macOS call it the Trash. Used for
 // user-facing strings so the banner/confirm copy matches the OS.
 export function trashLabel() {

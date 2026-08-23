@@ -2454,7 +2454,7 @@ struct LauncherView: View {
             ConfirmActionBar(
                 icon: NSWorkspace.shared.icon(forFile: pendingHideAppResult.path),
                 title: "Hide \(pendingHideAppResult.title)?",
-                detail: "Add it to app_exclude_names in .look.config.",
+                detail: "Add it to app_exclude_names in .look/config.",
                 themeStore: themeStore,
                 onConfirm: { confirmHideSelectedApp() },
                 onCancel: { cancelHideSelectedApp() }

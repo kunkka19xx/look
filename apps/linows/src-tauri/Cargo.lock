@@ -2558,6 +2558,9 @@ dependencies = [
 [[package]]
 name = "look-tools"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "lookapp"
@@ -2567,6 +2570,7 @@ dependencies = [
  "base64 0.22.1",
  "dirs",
  "futures-util",
+ "gtk",
  "look-answers",
  "look-calc",
  "look-engine",
@@ -2574,8 +2578,10 @@ dependencies = [
  "look-matching",
  "look-netspeed",
  "look-qactions",
+ "look-sources",
  "look-storage",
  "look-todo",
+ "look-tools",
  "notify",
  "open",
  "png 0.17.16",

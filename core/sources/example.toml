@@ -50,7 +50,7 @@ then = ["ghostty"]
 
 # What the standard keys do to a picked row. Each verb has one key across the
 # whole app, so Cmd+E always edits. Declare only what differs from your global
-# default in ~/.look.config (see specs/preferred-tools.md).
+# default in ~/.look/config (see specs/preferred-tools.md).
 open     = "open {path}"
 edit     = "nvim {path}"
 terminal = "tmux new-session -As {title} -c {path}"
