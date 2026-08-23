@@ -108,7 +108,7 @@ extension LauncherView {
         var resolved: [String: ToolAction] = [:]
         for action in entries.compactMap(\.tool) {
             if let outcome = EngineBridge.shared.toolAction(
-                action, row: row, isDirectory: result.kind == .folder
+                action, row: row, isDirectory: pathIsDirectory(result)
             ) {
                 resolved[action] = outcome
             }

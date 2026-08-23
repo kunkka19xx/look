@@ -48,6 +48,13 @@ extension LauncherView {
 
         let row = (id: selected.id, title: selected.title, path: selected.path, query: query)
         let ancestors = selectedRowAncestorsJSON
+        let parent = LevelParentRow(
+            candidateID: selected.id,
+            title: selected.title,
+            path: selected.path,
+            openedFromQuery: query,
+            openedFromSelection: selectedResultID
+        )
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.performBlock(
@@ -69,7 +76,8 @@ extension LauncherView {
                 if outcome.producesRows {
                     // Not a failure and nothing was performed: the target lists,
                     // so it is a level to descend into.
-                    descendIntoBlock(blockID: blockID, title: title)
+                    descendIntoBlock(
+                        blockID: blockID, title: title, parent: parent, ancestorsJSON: ancestors)
                     return
                 }
                 hideLauncherWindow(restorePreviousApp: false)

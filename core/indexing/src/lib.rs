@@ -87,11 +87,16 @@ impl CandidateIdKind {
             return candidate_id;
         };
 
-        match rest.strip_prefix(Self::CHAIN_MARK) {
-            Some(after_mark) => match after_mark.split_once(Self::CHAIN_MARK) {
-                Some((_, row)) => row,
-                None => rest,
-            },
+        let Some(after_mark) = rest.strip_prefix(Self::CHAIN_MARK) else {
+            return rest;
+        };
+        // Doubled: a top-level row id that starts with the mark, minus the one
+        // the encoder added.
+        if after_mark.starts_with(Self::CHAIN_MARK) {
+            return after_mark;
+        }
+        match after_mark.split_once(Self::CHAIN_MARK) {
+            Some((_, row)) => row,
             None => rest,
         }
     }
@@ -117,14 +122,10 @@ impl CandidateIdKind {
         let prefix = Self::source_row_prefix(block_id);
         if ancestors.is_empty() {
             // A row id opening with the chain mark would otherwise read as a
-            // chain. Escaping the first character is enough, since that is the
-            // only position the decoder looks at.
+            // chain, so it is doubled. Escaping it instead would be lossy: the
+            // decoder hands back a borrowed slice and cannot unescape.
             return match row_id.starts_with(Self::CHAIN_MARK) {
-                true => format!(
-                    "{prefix}{}{}",
-                    escape_chain_char(Self::CHAIN_MARK),
-                    &row_id[1..]
-                ),
+                true => format!("{prefix}{}{row_id}", Self::CHAIN_MARK),
                 false => format!("{prefix}{row_id}"),
             };
         }
@@ -164,11 +165,17 @@ impl CandidateIdKind {
 
     /// The chain between the two marks, when the id carries one.
     fn chain_of(candidate_id: &str) -> Option<&str> {
-        candidate_id
+        let after_mark = candidate_id
             .strip_prefix(Self::PREFIX_SOURCE)?
             .split_once(':')?
             .1
-            .strip_prefix(Self::CHAIN_MARK)?
+            .strip_prefix(Self::CHAIN_MARK)?;
+        // Doubled means a top-level row id that begins with the mark, not a
+        // chain.
+        if after_mark.starts_with(Self::CHAIN_MARK) {
+            return None;
+        }
+        after_mark
             .split_once(Self::CHAIN_MARK)
             .map(|(chain, _)| chain)
     }
@@ -182,10 +189,6 @@ fn escape_chain(segment: &str) -> String {
         .replace(CandidateIdKind::CHAIN_MARK, "%7C")
         .replace(CandidateIdKind::CHAIN_PAIR, "%2F")
         .replace(CandidateIdKind::CHAIN_SEPARATOR, "%3B")
-}
-
-fn escape_chain_char(value: char) -> String {
-    escape_chain(&value.to_string())
 }
 
 fn unescape_chain(segment: &str) -> String {
@@ -285,6 +288,7 @@ mod id_tests {
 
             let top = CandidateIdKind::source_row_candidate_id("child", &[], row);
             assert!(CandidateIdKind::source_ancestors_of(&top).is_empty());
+            assert_eq!(CandidateIdKind::source_row_id_of(&top), row);
         }
     }
 

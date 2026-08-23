@@ -68,7 +68,7 @@ extension LauncherView {
     /// A file row and a folder row say which they are; a block's row does not,
     /// so its path is checked. Editing resolves to a different tool for each and
     /// a terminal opens in a different place, so guessing is not an option.
-    private func pathIsDirectory(_ result: LauncherResult) -> Bool {
+    func pathIsDirectory(_ result: LauncherResult) -> Bool {
         if result.kind != .action {
             return result.kind == .folder
         }

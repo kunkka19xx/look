@@ -13,7 +13,18 @@ extension LauncherView {
             // No rows on screen. A seeded selection here is one the user cannot
             // see, and Enter / Cmd+D / Cmd+Shift+H would still act on it.
             selectedResultID = nil
+        } else if let restore = pendingSelectionRestore, restore.query == query {
+            // Leaving a level puts back what was selected before it. The rows
+            // may not be there yet on the first pass (a parent level's search
+            // is async), so the restore waits rather than being spent.
+            if displayedResults.contains(where: { $0.id == restore.id }) {
+                selectedResultID = restore.id
+                pendingSelectionRestore = nil
+            } else {
+                selectedResultID = displayedResults.first?.id
+            }
         } else {
+            pendingSelectionRestore = nil
             selectedResultID = displayedResults.first?.id
         }
     }

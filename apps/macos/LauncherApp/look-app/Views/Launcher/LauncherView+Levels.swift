@@ -30,16 +30,18 @@ extension LauncherView {
             }
     }
 
-    /// Opens `blockID` as a level below the selected row.
-    func descendIntoBlock(blockID: String, title: String) {
-        guard let selected = actionableSelectedResult() else { return }
-
-        // On the main actor: the stack is main-actor state, a String is not.
-        let ancestorsJSON = levelStack.ancestorsOfCurrentRows.ancestorsJSON
-        let parent = (
-            candidateID: selected.id, title: selected.title, path: selected.path
-        )
-        let openedFrom = (query: query, selection: selectedResultID)
+    /// Opens `blockID` as a level below `parent`.
+    ///
+    /// The parent is passed in rather than read from the selection: the target
+    /// that led here already ran a detached call, and the user may have moved
+    /// on since it started.
+    func descendIntoBlock(
+        blockID: String, title: String, parent: LevelParentRow, ancestorsJSON: String
+    ) {
+        let openedFrom = (query: parent.openedFromQuery, selection: parent.openedFromSelection)
+        // A level opened after the stack was cleared is a level from a launcher
+        // the user has already closed.
+        let epoch = levelEpoch
 
         Task {
             let level = await Task.detached(priority: .userInitiated) {
@@ -54,6 +56,7 @@ extension LauncherView {
             }.value
 
             await MainActor.run {
+                guard epoch == levelEpoch else { return }
                 guard let level else {
                     showBanner("\(title): the core did not answer", style: .error, duration: 3.0)
                     return
@@ -93,12 +96,22 @@ extension LauncherView {
     @discardableResult
     func popLevel() -> Bool {
         guard let left = levelStack.pop() else { return false }
+        levelEpoch &+= 1
+        // Setting the query runs the change handler, which seeds the selection
+        // from the first row. The restore has to survive that, so it is left
+        // pending for whichever pass has the rows.
+        pendingSelectionRestore = left.restoredSelectionID.map {
+            PendingSelection(id: $0, query: left.restoredQuery)
+        }
         query = left.restoredQuery
         selectedResultID = left.restoredSelectionID
         return true
     }
 
     func clearLevels() {
+        guard levelStack.isActive || pendingSelectionRestore != nil else { return }
+        levelEpoch &+= 1
+        pendingSelectionRestore = nil
         levelStack.clear()
     }
 
@@ -106,6 +119,23 @@ extension LauncherView {
     var selectedRowAncestorsJSON: String {
         levelStack.ancestorsOfCurrentRows.ancestorsJSON
     }
+}
+
+/// The row a level is opened from, captured when the target was picked.
+struct LevelParentRow {
+    let candidateID: String
+    let title: String
+    let path: String
+    let openedFromQuery: String
+    let openedFromSelection: String?
+}
+
+/// A selection to put back once the rows it names are on screen.
+struct PendingSelection {
+    let id: String
+    /// What the query was when it was captured: typing anything else means the
+    /// user moved on and the restore is stale.
+    let query: String
 }
 
 /// Not the engine's scorer: these rows are a list the user is looking at, and

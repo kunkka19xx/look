@@ -272,7 +272,10 @@ mod tests {
 
         row.path = Some("~/dev/look".into());
         let candidate = row_candidate(&block, &row, home);
-        assert_eq!(candidate.path.as_ref(), "/home/u/dev/look");
+        // Built the same way the code builds it: a separator is the platform's
+        // business, and hardcoding `/` fails on Windows for a correct answer.
+        let expanded = home.join("dev/look");
+        assert_eq!(candidate.path.as_ref(), expanded.to_string_lossy());
         // Still an action row: a block's verbs are what Enter performs, and a
         // path only adds where the tool chords act.
         assert_eq!(candidate.kind, CandidateKind::Action);

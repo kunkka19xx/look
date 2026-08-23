@@ -117,6 +117,11 @@ struct LauncherView: View {
     /// flags: a level stack IS navigation state, and the mode booleans above
     /// grew into a pile by being added one at a time.
     @State var levelStack = SourceLevelStack()
+    /// Bumped whenever the stack changes, so a level whose command is still
+    /// running cannot push its rows into a launcher that has moved on.
+    @State var levelEpoch: UInt64 = 0
+    /// A selection to restore once its rows are on screen (see `popLevel`).
+    @State var pendingSelectionRestore: PendingSelection?
     /// `@`-mention state for the AI input. `mentionHighlight` starts at -1 so
     /// Enter still SENDS: the popup is passive until Tab reaches into it (same
     /// shape as the conversation list's -1).
