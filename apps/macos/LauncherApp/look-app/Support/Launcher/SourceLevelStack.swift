@@ -12,7 +12,6 @@ struct SourceLevelStack {
 
     var isActive: Bool { !frames.isEmpty }
     var current: SourceLevelFrame? { frames.last }
-    var depth: Int { frames.count }
 
     /// What the query bar shows: the rows walked through, then WHAT is being
     /// listed. "look › Changed files", not "look", because the row you came
@@ -28,12 +27,6 @@ struct SourceLevelStack {
         frames.reversed().map {
             SourceLevelParent(id: $0.parentRowID, title: $0.parentTitle, path: $0.parentPath)
         }
-    }
-
-    /// The ancestors of the row a level was OPENED from, which is one step out
-    /// of the above: descending again passes these plus that row.
-    var ancestorsOfCurrentParent: [SourceLevelParent] {
-        Array(ancestorsOfCurrentRows.dropFirst())
     }
 
     mutating func push(_ frame: SourceLevelFrame) {
@@ -54,16 +47,13 @@ struct SourceLevelStack {
 /// One level: the block that produced it, the row it was opened from, and what
 /// to put back on Escape.
 struct SourceLevelFrame {
-    let blockID: String
     let blockName: String
     /// The row's OWN id, which is what `{parent.id}` expands to, not its
     /// namespaced candidate id.
     let parentRowID: String
-    let parentCandidateID: String
     let parentTitle: String
     let parentPath: String
     let rows: [SourceLevelRow]
-    let truncated: Bool
     /// The query and selection the level was opened from, restored on Escape.
     let restoredQuery: String
     let restoredSelectionID: String?

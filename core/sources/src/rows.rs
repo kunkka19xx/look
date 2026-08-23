@@ -1,13 +1,13 @@
 //! The row wire formats shared by list and command sources.
 //!
-//! The default is `id<TAB>title<TAB>group`, where a bare line is a row whose id
-//! and title are the same text. Tab separated rather than anything richer so a
-//! naive `ls` or `awk` one-liner is already a valid source, while a script that
-//! wants stable ranking can still say what the id is.
+//! The default is `id<TAB>title<TAB>subtitle`, where a bare line is a row whose
+//! id and title are the same text. Tab separated rather than anything richer so
+//! a naive `ls` or `awk` one-liner is already a valid source, while a script
+//! that wants stable ranking can still say what the id is.
 //!
-//! `format = "json"` is the opt-in for the two fields tabs cannot carry:
-//! `subtitle`, and `path`, which is what makes a row a real filesystem object
-//! rather than a piece of text. It costs the author a `jq`, so it stays opt-in.
+//! `format = "json"` is the opt-in for the field tabs cannot carry: `path`,
+//! which is what makes a row a real filesystem object rather than a piece of
+//! text. It costs the author a `jq`, so it stays opt-in.
 
 use serde_json::Value;
 
@@ -19,20 +19,25 @@ use crate::def::RowFormat;
 pub struct SourceRow {
     pub id: String,
     pub title: String,
+    /// The row's second line.
     pub subtitle: Option<String>,
-    /// Section header this row sits under, within its own source.
-    pub group: Option<String>,
     /// Filesystem target, when the row has one. Folder sources always do.
     pub path: Option<String>,
 }
 
 impl SourceRow {
+    /// The row's second line: what it said about itself, else where it came
+    /// from. One rule, so an indexed row and a drilled one cannot disagree
+    /// about the same block's rows.
+    pub fn display_subtitle<'a>(&'a self, block_name: &'a str) -> &'a str {
+        self.subtitle.as_deref().unwrap_or(block_name)
+    }
+
     pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             title: title.into(),
             subtitle: None,
-            group: None,
             path: None,
         }
     }
@@ -42,7 +47,7 @@ const FIELD_SEPARATOR: char = '\t';
 
 /// Parses one line. Blank lines are not rows; a line that is only whitespace is
 /// almost always an artifact of the script, not something the user wants to see.
-pub fn parse_line(line: &str) -> Option<SourceRow> {
+fn parse_line(line: &str) -> Option<SourceRow> {
     let line = line.strip_suffix('\r').unwrap_or(line);
     if line.trim().is_empty() {
         return None;
@@ -57,7 +62,7 @@ pub fn parse_line(line: &str) -> Option<SourceRow> {
         .next()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let group = fields
+    let subtitle = fields
         .next()
         .map(str::trim)
         .filter(|value| !value.is_empty());
@@ -65,15 +70,14 @@ pub fn parse_line(line: &str) -> Option<SourceRow> {
     Some(SourceRow {
         id: id.to_string(),
         title: title.unwrap_or(id).to_string(),
-        subtitle: None,
-        group: group.map(String::from),
+        subtitle: subtitle.map(String::from),
         path: None,
     })
 }
 
 /// Parses stdout or a list file, dropping rows past `limit` so a runaway
 /// producer cannot flood the index. The caller reports the truncation.
-pub fn parse_lines(text: &str, limit: usize) -> (Vec<SourceRow>, bool) {
+fn parse_lines(text: &str, limit: usize) -> (Vec<SourceRow>, bool) {
     let mut rows = Vec::new();
     for line in text.lines() {
         if rows.len() == limit {
@@ -91,7 +95,6 @@ pub fn parse_lines(text: &str, limit: usize) -> (Vec<SourceRow>, bool) {
 const KEY_ID: &str = "id";
 const KEY_TITLE: &str = "title";
 const KEY_SUBTITLE: &str = "subtitle";
-const KEY_GROUP: &str = "group";
 const KEY_PATH: &str = "path";
 
 /// Parses rows in whichever encoding the block declared. `Err` means the text
@@ -111,7 +114,7 @@ pub fn parse_rows(
 /// Accepts the three shapes a real command emits: one top-level array, one
 /// object per line, or pretty-printed objects run together. All three are what
 /// some tool already prints, and telling them apart is free.
-pub fn parse_json(text: &str, limit: usize) -> Result<(Vec<SourceRow>, bool), String> {
+fn parse_json(text: &str, limit: usize) -> Result<(Vec<SourceRow>, bool), String> {
     let mut rows = Vec::new();
     for value in serde_json::Deserializer::from_str(text).into_iter::<Value>() {
         let value = value.map_err(|err| format!("not valid JSON: {err}"))?;
@@ -144,7 +147,6 @@ fn parse_value(value: &Value) -> Option<SourceRow> {
         title: text_field(object.get(KEY_TITLE)).unwrap_or_else(|| id.clone()),
         id,
         subtitle: text_field(object.get(KEY_SUBTITLE)),
-        group: text_field(object.get(KEY_GROUP)),
         path: text_field(object.get(KEY_PATH)),
     })
 }
@@ -170,15 +172,15 @@ mod tests {
         let row = parse_line("look").unwrap();
         assert_eq!(row.id, "look");
         assert_eq!(row.title, "look");
-        assert_eq!(row.group, None);
+        assert_eq!(row.subtitle, None);
     }
 
     #[test]
     fn id_and_title_can_differ_so_a_row_shows_one_thing_and_acts_on_another() {
-        let row = parse_line("look\tlook (main, 3 windows)\tSession").unwrap();
+        let row = parse_line("look\tlook (main, 3 windows)\tattached").unwrap();
         assert_eq!(row.id, "look");
         assert_eq!(row.title, "look (main, 3 windows)");
-        assert_eq!(row.group.as_deref(), Some("Session"));
+        assert_eq!(row.subtitle.as_deref(), Some("attached"));
     }
 
     #[test]
@@ -192,7 +194,7 @@ mod tests {
     fn empty_trailing_fields_fall_back_rather_than_showing_blanks() {
         let row = parse_line("look\t\t").unwrap();
         assert_eq!(row.title, "look");
-        assert_eq!(row.group, None);
+        assert_eq!(row.subtitle, None);
     }
 
     #[test]
@@ -220,7 +222,7 @@ mod tests {
     #[test]
     fn a_json_row_carries_the_fields_tabs_cannot() {
         let (rows, _) = parse_json(
-            r#"{"id":"look","title":"Look","subtitle":"3 uncommitted","group":"This week","path":"/dev/look"}"#,
+            r#"{"id":"look","title":"Look","subtitle":"3 uncommitted","path":"/dev/look"}"#,
             10,
         )
         .unwrap();
@@ -228,7 +230,6 @@ mod tests {
         assert_eq!(row.id, "look");
         assert_eq!(row.title, "Look");
         assert_eq!(row.subtitle.as_deref(), Some("3 uncommitted"));
-        assert_eq!(row.group.as_deref(), Some("This week"));
         assert_eq!(row.path.as_deref(), Some("/dev/look"));
     }
 

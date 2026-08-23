@@ -23,7 +23,7 @@ pub use def::{
     RowFormat, Verbs, inferred, parse_duration, parse_file,
 };
 pub use load::{Loaded, Problem, SOURCES_DIR_ENV, load_dir, sources_dir};
-pub use rows::{SourceRow, parse_json, parse_line, parse_lines, parse_rows};
+pub use rows::{SourceRow, parse_rows};
 pub use run::{
     ENV_ID, ENV_PATH, ENV_TITLE, ParentRow, RowContext, StepOutcome, capture, expand, expand_path,
     perform,

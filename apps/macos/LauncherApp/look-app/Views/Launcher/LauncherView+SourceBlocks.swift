@@ -26,7 +26,7 @@ extension LauncherView {
     /// selection change, and an async load that appends later would make the
     /// action list grow under the user's cursor.
     func sourceBlockTargets(for result: LauncherResult) -> [QuickActionDescriptor] {
-        guard result.id.hasPrefix(AppConstants.Launcher.SourceBlock.idPrefix) else { return [] }
+        guard result.isSourceRow else { return [] }
 
         return SourceBlockCatalog.targets(for: result).map { target in
             QuickActionDescriptor(

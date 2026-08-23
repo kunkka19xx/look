@@ -66,8 +66,10 @@ impl CandidateIdKind {
             .map(|(source, _)| source)
     }
 
-    /// The id-prefix that scoped pruning uses for one source's rows.
-    pub fn source_row_prefix(source_id: &str) -> String {
+    /// The namespace one block's rows share. Private: ids are built by
+    /// `source_row_candidate_id` and read by the three functions above, and a
+    /// caller assembling one by hand is how the two drift.
+    fn source_row_prefix(source_id: &str) -> String {
         format!("{}{source_id}:", Self::PREFIX_SOURCE)
     }
 

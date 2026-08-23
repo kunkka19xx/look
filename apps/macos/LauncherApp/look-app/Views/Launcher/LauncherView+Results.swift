@@ -66,11 +66,23 @@ extension LauncherView {
             hideLauncherWindow(restorePreviousApp: false)
         case .file:
             guard ensureTargetExists(selected) else { return }
+            // A row a block produced answers to its block first: what Enter does
+            // is what the block says, whatever kind the row ended up with. The
+            // staleness check stays above it, since a row pointing at a deleted
+            // file is worth reporting either way.
+            if selected.isSourceRow {
+                performSourceBlock(selected)
+                return
+            }
             openTargetAsync(selected.path)
             recordOpen(selected, action: "open_file")
             hideLauncherWindow(restorePreviousApp: false)
         case .folder:
             guard ensureTargetExists(selected) else { return }
+            if selected.isSourceRow {
+                performSourceBlock(selected)
+                return
+            }
             openTargetAsync(selected.path)
             // Quick-folder entries are ephemeral filesystem suggestions, not
             // ranked candidates - they aren't in the usage index.
@@ -187,6 +199,10 @@ extension LauncherView {
 
     /// Performs a declared block's steps. Usage is recorded on intent, like an
     /// open, so a routine you run every morning ranks like one.
+    ///
+    /// One rule for Enter: the block's `open` when it declares one, else the
+    /// row's own path. Which producer made the row does not enter into it, and
+    /// the core is what answers, so both shells get the same behaviour.
     private func performSourceBlock(_ selected: LauncherResult) {
         // Resolve BEFORE recording usage or hiding: an unparseable id would
         // otherwise rank the row up, close the window, and do nothing, with no
@@ -215,6 +231,10 @@ extension LauncherView {
                 )
             }.value
             await MainActor.run {
+                if outcome.opensPath {
+                    openTargetAsync(row.path)
+                    return
+                }
                 guard let failure = outcome.errors.first else { return }
                 // Steps are detached, so this only fires when one could not be
                 // started at all. A step's own exit code is its business.

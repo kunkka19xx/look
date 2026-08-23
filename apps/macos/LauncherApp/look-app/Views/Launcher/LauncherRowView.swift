@@ -32,11 +32,6 @@ struct LauncherRowView: View {
         SyntheticRow.classify(resultID: result.id)
     }
 
-    /// A row a user-declared block produced (`specs/user-sources.md`).
-    private var isSourceRow: Bool {
-        result.id.hasPrefix(AppConstants.Launcher.SourceBlock.idPrefix)
-    }
-
     /// Cached: this runs inside `body`, and a fresh `NSImage` per redraw makes
     /// every icon in the list flicker. See `RowIconCache`.
     private var rowIcon: NSImage {
@@ -86,14 +81,19 @@ struct LauncherRowView: View {
             }
         }
 
-        // A declared block has no file to take an icon from, and must not look
-        // like one: Enter performs steps rather than opening anything. What the
-        // block declared wins; the bolt is the fallback.
+        // What the block declared wins: the author chose it for these rows.
+        // Then the file, when the row names one - a row with a path IS that
+        // file (`format = "json"`), and a list of them should not be a column
+        // of identical bolts. The bolt is left for rows with nothing on disk,
+        // where it says the honest thing: Enter performs steps.
         if result.kind == .action {
             if let declared = SourceBlockIcons.declaredIcon(
                 SourceBlockCatalog.icon(forCandidateID: result.id)
             ) {
                 return declared
+            }
+            if !result.path.isEmpty {
+                return RowIconCache.icon(forFile: result.path)
             }
             return RowIconCache.image(key: "symbol:bolt") {
                 NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil)
@@ -181,7 +181,7 @@ struct LauncherRowView: View {
         // A row a user's block produced says WHICH block, not "Folder". The kind
         // is already on the icon, and where the row came from is the thing the
         // list cannot otherwise tell you.
-        if isSourceRow, let block = result.subtitle {
+        if result.isSourceRow, let block = result.subtitle {
             return "\(block)  •  \(pathInfo)"
         }
         return "\(kindLabel)  •  \(pathInfo)"

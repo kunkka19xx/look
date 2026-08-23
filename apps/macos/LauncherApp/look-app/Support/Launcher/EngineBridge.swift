@@ -1179,7 +1179,8 @@ final class EngineBridge: @unchecked Sendable {
         // caller keys on that, so the two must not share a value.
         guard let ptr else {
             return PerformBlockOutcome(
-                performed: 0, errors: ["the core did not answer"], producesRows: false)
+                performed: 0, errors: ["the core did not answer"], producesRows: false,
+                opensPath: false)
         }
         defer { look_free_cstring(ptr) }
         // The core sends snake_case, so `produces_rows` only reaches
@@ -1190,7 +1191,8 @@ final class EngineBridge: @unchecked Sendable {
               let outcome = try? decoder.decode(PerformBlockOutcome.self, from: data)
         else {
             return PerformBlockOutcome(
-                performed: 0, errors: ["the core's answer could not be read"], producesRows: false)
+                performed: 0, errors: ["the core's answer could not be read"],
+                producesRows: false, opensPath: false)
         }
         return outcome
     }
@@ -1434,31 +1436,6 @@ nonisolated struct SourceBlockTarget: Decodable, Identifiable {
     let confirm: String?
 }
 
-/// One level of a drill-down: the rows a block produced against the row it was
-/// opened from (`specs/user-sources.md` §2.10).
-nonisolated struct SourceLevel: Decodable {
-    /// The parent row's own id, decoded by the core so the shell never has to
-    /// take a candidate id apart itself.
-    let parentRowId: String
-    let rows: [SourceLevelRow]
-    /// The row cap dropped rows, so the list is not all there is.
-    let truncated: Bool
-    /// Why the level could not be produced. Non-nil means do not descend.
-    let error: String?
-}
-
-/// A row inside a level. `candidateId` already encodes the levels it was reached
-/// through, so usage ranks per ancestor path and two parents never share a row's
-/// history.
-nonisolated struct SourceLevelRow: Decodable, Identifiable {
-    let candidateId: String
-    let id: String
-    let title: String
-    let subtitle: String?
-    let group: String?
-    let path: String?
-}
-
 /// A declared block as the row layer needs it: what to call it and what icon it
 /// asked for. Cached per launcher open so rendering a row never touches disk.
 nonisolated struct SourceBlockSummary: Decodable {
@@ -1487,6 +1464,9 @@ nonisolated struct PerformBlockOutcome: Decodable {
     /// The target lists rows to pick from rather than steps to run. An explicit
     /// flag, because "nothing performed" is also what a failure looks like.
     let producesRows: Bool
+    /// Nothing declared and the row has a path, so it opens like any file. The
+    /// core decides this, not the row's kind.
+    let opensPath: Bool
 }
 
 /// Wire shape of a `url_history` row (see url-history spec), decoded with

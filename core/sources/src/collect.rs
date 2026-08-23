@@ -496,7 +496,7 @@ mod tests {
         assert_eq!(collected.rows.len(), 2);
         assert_eq!(collected.rows[0].id, "web1");
         assert_eq!(collected.rows[0].title, "Production web");
-        assert_eq!(collected.rows[0].group.as_deref(), Some("Servers"));
+        assert_eq!(collected.rows[0].subtitle.as_deref(), Some("Servers"));
         assert_eq!(collected.rows[1].title, "db1");
     }
 

@@ -25,7 +25,7 @@ extension LauncherView {
                     id: row.candidateId,
                     kind: .action,
                     title: row.title,
-                    subtitle: row.subtitle ?? row.group ?? level.blockName,
+                    subtitle: row.subtitle,
                     path: row.path ?? "",
                     // The producer's order, kept: a script list is written in an
                     // order its author chose, and nothing here knows better yet.
@@ -72,14 +72,11 @@ extension LauncherView {
 
                 levelStack.push(
                     SourceLevelFrame(
-                        blockID: blockID,
                         blockName: title,
                         parentRowID: level.parentRowId,
-                        parentCandidateID: parent.candidateID,
                         parentTitle: parent.title,
                         parentPath: parent.path,
                         rows: level.rows,
-                        truncated: level.truncated,
                         restoredQuery: openedFrom.query,
                         restoredSelectionID: openedFrom.selection
                     )
@@ -127,8 +124,6 @@ enum LevelFilter {
         let needle = query.lowercased()
         if row.title.lowercased().contains(needle) { return true }
         if row.id.lowercased().contains(needle) { return true }
-        if let subtitle = row.subtitle, subtitle.lowercased().contains(needle) { return true }
-        if let group = row.group, group.lowercased().contains(needle) { return true }
-        return false
+        return row.subtitle.lowercased().contains(needle)
     }
 }

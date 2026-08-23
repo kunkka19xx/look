@@ -51,7 +51,7 @@ struct BlockSummary {
     icon: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 struct PerformOutcome {
     performed: usize,
     errors: Vec<String>,
@@ -59,6 +59,11 @@ struct PerformOutcome {
     /// caller should descend into it. An explicit signal, because "nothing was
     /// performed" is also what a failure looks like.
     produces_rows: bool,
+    /// The block declares no `open` and the row names a path, so the row IS the
+    /// thing: the shell opens it the way it opens any file. One rule for Enter,
+    /// decided here rather than from the row's kind, which says which producer
+    /// made it and nothing the user chose.
+    opens_path: bool,
 }
 
 /// `{id, name, steps, file, then}` for the block a candidate id belongs to, or
@@ -170,6 +175,9 @@ pub(crate) fn look_perform_block_json_impl(
         _ if as_target => return produces_rows(),
         _ => match block.verbs.open.as_deref() {
             Some(command) => vec![command.to_string()],
+            // A row that names a path needs no verb to be openable, which is
+            // what makes `dir` blocks work without declaring one.
+            None if !row.path.is_empty() => return opens_path(),
             None => {
                 return outcome(
                     0,
@@ -268,12 +276,13 @@ struct LevelRow {
     candidate_id: String,
     id: String,
     title: String,
-    subtitle: Option<String>,
-    group: Option<String>,
+    /// Already resolved against the block name, by the same rule the index
+    /// uses, so neither shell has to know it.
+    subtitle: String,
     path: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 struct Level {
     /// The parent's OWN id, as the core decoded it. Handed back so the shell can
     /// name the ancestor in later calls without keeping a second decoder for the
@@ -293,10 +302,8 @@ struct Level {
 fn level_error(message: impl Into<String>) -> *mut c_char {
     json_cstring_or_null(
         serde_json::to_string(&Level {
-            parent_row_id: String::new(),
-            rows: Vec::new(),
-            truncated: false,
             error: Some(message.into()),
+            ..Default::default()
         })
         .ok(),
     )
@@ -396,10 +403,9 @@ pub(crate) fn look_source_rows_json_impl(
         .into_iter()
         .map(|row| LevelRow {
             candidate_id: CandidateIdKind::source_row_candidate_id(&block.id, &ancestors, &row.id),
+            subtitle: row.display_subtitle(&block.name).to_string(),
             id: row.id,
             title: row.title,
-            subtitle: row.subtitle,
-            group: row.group,
             path: row.path.map(|path| {
                 look_sources::expand_home(&path, &home)
                     .to_string_lossy()
@@ -503,26 +509,31 @@ fn steps_of(block: &Block) -> Vec<String> {
     }
 }
 
+fn respond(outcome: PerformOutcome) -> *mut c_char {
+    json_cstring_or_null(serde_json::to_string(&outcome).ok())
+}
+
 fn outcome(performed: usize, errors: Vec<String>) -> *mut c_char {
-    json_cstring_or_null(
-        serde_json::to_string(&PerformOutcome {
-            performed,
-            errors,
-            produces_rows: false,
-        })
-        .ok(),
-    )
+    respond(PerformOutcome {
+        performed,
+        errors,
+        ..Default::default()
+    })
 }
 
 fn produces_rows() -> *mut c_char {
-    json_cstring_or_null(
-        serde_json::to_string(&PerformOutcome {
-            performed: 0,
-            errors: Vec::new(),
-            produces_rows: true,
-        })
-        .ok(),
-    )
+    respond(PerformOutcome {
+        produces_rows: true,
+        ..Default::default()
+    })
+}
+
+/// Nothing declared, but the row has somewhere to point.
+fn opens_path() -> *mut c_char {
+    respond(PerformOutcome {
+        opens_path: true,
+        ..Default::default()
+    })
 }
 
 fn find_block(block_id: &str) -> Option<Block> {
@@ -686,6 +697,55 @@ mod tests {
         // Inside a producer the parent IS the row, so `{parent.*}` is the level
         // above that one.
         assert_eq!(level["rows"][0]["id"], "the grandparent", "{level}");
+    }
+
+    fn perform(block: &str, row_path: &str) -> serde_json::Value {
+        let block = CString::new(block).unwrap();
+        let id = CString::new("src:probe:row").unwrap();
+        let title = CString::new("row").unwrap();
+        let path = CString::new(row_path).unwrap();
+        let query = CString::new("").unwrap();
+        let ancestors = CString::new("[]").unwrap();
+        let ptr = look_perform_block_json_impl(
+            block.as_ptr(),
+            id.as_ptr(),
+            title.as_ptr(),
+            path.as_ptr(),
+            query.as_ptr(),
+            ancestors.as_ptr(),
+            false,
+        );
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        crate::state::free_json_allocation(ptr);
+        serde_json::from_str(&raw).expect("outcome json")
+    }
+
+    #[test]
+    fn enter_runs_the_declared_open_whatever_producer_made_the_row() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new(
+            "enter",
+            "[declared]\ndir = \"/tmp\"\nopen = \"true\"\n             [bare]\ndir = \"/tmp\"\n             [pathless]\nfile = \"/tmp/rows.txt\"\n",
+        );
+
+        // Declared: run it. This is the case a `dir` block could not reach
+        // before, so `open` on one was a key that did nothing.
+        let ran = perform("declared", "/tmp");
+        assert_eq!(ran["performed"], 1, "{ran}");
+        assert_eq!(ran["opens_path"], false);
+
+        // Nothing declared but the row has a path: the row IS the thing.
+        let opens = perform("bare", "/tmp");
+        assert_eq!(opens["opens_path"], true, "{opens}");
+        assert_eq!(opens["errors"].as_array().unwrap().len(), 0);
+
+        // Nothing declared and nowhere to point: the only case left that is an
+        // error the user can act on.
+        let stuck = perform("pathless", "");
+        assert_eq!(stuck["opens_path"], false, "{stuck}");
+        assert!(stuck["errors"][0].as_str().unwrap().contains("open"));
     }
 
     #[test]

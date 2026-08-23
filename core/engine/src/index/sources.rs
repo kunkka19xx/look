@@ -159,12 +159,10 @@ fn row_candidate(block: &Block, row: &SourceRow, home: &Path) -> Candidate {
         .map(|path| expand_home(path, home).to_string_lossy().into_owned())
         .unwrap_or_default();
     let mut candidate = Candidate::new(&id, CandidateKind::Action, &row.title, &path);
-    // What the row declared, then its group, then the block: the most specific
-    // thing the row can say about itself, falling back to where it came from.
+    // What the row said about itself, else where it came from.
     candidate.subtitle = Some(
         row.subtitle
             .as_deref()
-            .or(row.group.as_deref())
             .unwrap_or(block.name.as_str())
             .into(),
     );
@@ -247,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn a_row_says_what_it_declared_before_its_group_or_its_block() {
+    fn a_row_says_what_it_declared_before_its_block() {
         let block = block_of("[repos]\nname = \"Repos\"\nrun = \"repos\"\n");
         let home = Path::new("/home/u");
 
@@ -255,12 +253,6 @@ mod tests {
         assert_eq!(
             row_candidate(&block, &row, home).subtitle.as_deref(),
             Some("Repos")
-        );
-
-        row.group = Some("This week".into());
-        assert_eq!(
-            row_candidate(&block, &row, home).subtitle.as_deref(),
-            Some("This week")
         );
 
         row.subtitle = Some("3 uncommitted".into());
