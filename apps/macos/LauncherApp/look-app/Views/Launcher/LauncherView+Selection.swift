@@ -273,6 +273,9 @@ extension LauncherView {
             onActivateSession: { [self] index in
                 openSessionAt(index)
             },
+            onPopLevel: { [self] in
+                popLevel()
+            },
             onEscapeHome: { [self] in
                 // Esc closes the file popup first and leaves the typed text
                 // alone, so dismissing a suggestion never costs the message.

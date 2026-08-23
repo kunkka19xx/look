@@ -199,6 +199,10 @@ extension LauncherView {
         // Don't leave a stale Empty Trash confirmation to reappear on next show.
         pendingEmptyTrashCount = nil
         pendingHideAppResult = nil
+        // Levels do not survive a hide (§2.10). Their rows were produced live
+        // from a row that may not even exist by the next open, and coming back
+        // to a list with no visible way in would be worse than starting fresh.
+        clearLevels()
         // The AI session intentionally survives hide/recall (Cmd+Space away and
         // back must not lose the conversation). Only Esc ends and archives it.
         let wasVisible = window.isVisible

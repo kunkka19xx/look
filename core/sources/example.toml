@@ -94,6 +94,26 @@ open    = "git -C ~/dev/look checkout {id}"
 then    = ["drop-branch"]
 
 
+# -------------------------------------------------------------------- json --
+# Rows as JSON instead of tab-separated lines, for the two fields lines cannot
+# carry: `subtitle`, and `path`, which makes a row a real filesystem object
+# (Cmd+E, Cmd+T, Cmd+F, and {path} in the verbs below).
+#
+# One array, or one object per line, or pretty-printed objects run together:
+# whichever your tool already prints. `id` is the only required key, a bare
+# string is a row like a bare line, and keys Look does not know are ignored.
+#
+#   [{"id": "look", "title": "Look", "subtitle": "3 uncommitted",
+#     "group": "This week", "path": "~/dev/look"}]
+
+[repos]
+name   = "Repos"
+run    = "~/.look/bin/repos"
+format = "json"
+
+open   = "code {path}"
+
+
 # `confirm` asks before the block does anything. Anything destructive should
 # have one: a launcher makes Enter on the wrong row cheap.
 [drop-branch]

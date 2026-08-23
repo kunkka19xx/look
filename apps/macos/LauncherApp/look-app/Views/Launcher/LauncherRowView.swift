@@ -165,8 +165,15 @@ struct LauncherRowView: View {
             return kindLabel
         }
         if result.kind == .action {
-            // "Action • 3 steps": there is no path, and the step count says this
-            // will do several things before the user commits to it.
+            // A row that named a path is a real filesystem object, so it says
+            // where it is, like every other such row. Without one there is
+            // nothing to point at: "Action • 3 steps" says instead that pressing
+            // this will do several things.
+            if !result.path.isEmpty {
+                return [result.subtitle, pathInfo]
+                    .compactMap { $0 }
+                    .joined(separator: "  •  ")
+            }
             return [kindLabel, result.subtitle]
                 .compactMap { $0 }
                 .joined(separator: "  •  ")

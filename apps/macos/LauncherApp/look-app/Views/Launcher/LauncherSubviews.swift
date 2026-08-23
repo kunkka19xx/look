@@ -15,6 +15,9 @@ struct SearchInputBar: View {
     var showsBackground: Bool = true
     /// Changes each time the launcher opens, replaying the spawn cascade.
     var revealToken: UInt64 = 0
+    /// Where a drill-down is: shown as a leading chip, because a list that has
+    /// replaced the index has to say what it is (`specs/user-sources.md` §2.10).
+    var breadcrumb: String?
     let onSubmit: () -> Void
     let onExitCommandMode: () -> Void
 
@@ -29,6 +32,9 @@ struct SearchInputBar: View {
     private var showsBetaBadge: Bool { isAIMode && !isCommandMode }
 
     private var placeholderText: String {
+        if breadcrumb != nil {
+            return "Filter, or Esc to go back"
+        }
         if isCommandMode {
             return activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder
         }
@@ -40,12 +46,29 @@ struct SearchInputBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: isCommandMode ? "terminal" : (isAIMode ? "sparkles" : "magnifyingglass"))
-                .foregroundStyle(
-                    isCommandMode || isAIMode
-                        ? themeStore.accentColor() : themeStore.secondaryTextColor())
-                .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: revealToken)
+            Image(
+                systemName: breadcrumb != nil
+                    ? "chevron.right"
+                    : (isCommandMode ? "terminal" : (isAIMode ? "sparkles" : "magnifyingglass"))
+            )
+            .foregroundStyle(
+                isCommandMode || isAIMode || breadcrumb != nil
+                    ? themeStore.accentColor() : themeStore.secondaryTextColor()
+            )
+            .contentTransition(.symbolEffect(.replace))
+            .symbolEffect(.bounce, value: revealToken)
+
+            if let breadcrumb {
+                Text(breadcrumb)
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1)))
+                    .foregroundStyle(themeStore.fontColor())
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(themeStore.liftColor(opacity: 0.14), in: Capsule())
+                    .accessibilityLabel("Inside \(breadcrumb)")
+            }
             SmoothCaretTextField(
                 text: $text,
                 // Empty: the placeholder is drawn as the overlay below instead,

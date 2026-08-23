@@ -113,6 +113,10 @@ struct LauncherView: View {
     @State var pendingQuickActions: Set<String> = []
     @State var quickActionTask: Task<Void, Never>?
     @State var selectedResultID: String?
+    /// Where the user has drilled to (`specs/user-sources.md` §2.10). One value
+    /// rather than another set of flags: a level stack IS navigation state, and
+    /// the mode booleans above grew into a pile by being added one at a time.
+    @State var levelStack = SourceLevelStack()
     /// `@`-mention state for the AI input. `mentionHighlight` starts at -1 so
     /// Enter still SENDS: the popup is passive until Tab reaches into it (same
     /// shape as the conversation list's -1).
@@ -499,6 +503,9 @@ struct LauncherView: View {
     // LauncherView+URLResults.swift.
 
     var displayedResults: [LauncherResult] {
+        // A level owns the list outright: its rows are not in the index, so
+        // nothing else here can produce them.
+        if isInLevel { return levelResults }
         if isPrefixSuggestionQuery { return prefixSuggestionResults }
         if isCommandSuggestionQuery { return commandSuggestionResults }
         if isClipboardQuery { return clipboardResults }
@@ -558,7 +565,7 @@ struct LauncherView: View {
     /// the disjunction out by hand, and they had already drifted apart. A new
     /// mode belongs HERE, not in each caller.
     var usesOwnResultPanel: Bool {
-        isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery
+        isInLevel || isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery
             || isTranslationQuery || isProcessQuery
     }
 
@@ -609,6 +616,12 @@ struct LauncherView: View {
 
         if isHideAppConfirmationVisible {
             return ["Y confirm", "N cancel", "Esc back"]
+        }
+
+        // Inside a level the way out is the thing to say: the list came from a
+        // row, and nothing else on screen explains that.
+        if isInLevel {
+            return [enterHint, "⌘K actions", "Esc back"]
         }
 
         if isCommandMode {
@@ -691,6 +704,13 @@ struct LauncherView: View {
               selected.kind == .action
         else { return "Enter open" }
         return "Enter run"
+    }
+
+    /// Where the user is, when they are inside a level. Shown in the query bar,
+    /// because a list that replaced the index has to say what it is.
+    var levelBreadcrumb: String? {
+        guard isInLevel else { return nil }
+        return levelStack.breadcrumb.joined(separator: "  ›  ")
     }
 
     /// True when the launcher is on its default/home screen (the state
@@ -1213,6 +1233,7 @@ struct LauncherView: View {
             isAIMode: isAIMode,
             showsBackground: showsBackground,
             revealToken: appearanceRevealToken,
+            breadcrumb: levelBreadcrumb,
             onSubmit: handleSubmit,
             onExitCommandMode: exitCommandMode
         )
@@ -2045,6 +2066,7 @@ struct LauncherView: View {
                 // Info + actions panel: the preview plus any Quick Actions.
                 ResultPreviewView(
                     result: selectedResult,
+                    rowAncestorsJSON: selectedRowAncestorsJSON,
                     quickActions: quickActionDescriptors,
                     quickActionStates: quickActionStates,
                     quickActionInfo: quickActionInfo,
@@ -2189,7 +2211,9 @@ struct LauncherView: View {
     /// the results columns and the hint bar below it. Applies in both modes (gap
     /// or no gap), so an empty launcher is always just the top bar.
     var hidesResultsForEmptyQuery: Bool {
-        isQueryEmpty && isLauncherIdle
+        // Never inside a level: it always has rows, and an empty query there
+        // means "unfiltered", not "nothing asked for" (§2.10).
+        isQueryEmpty && isLauncherIdle && !isInLevel
     }
 
     /// True whenever the panel has no backdrop box and its content floats freely

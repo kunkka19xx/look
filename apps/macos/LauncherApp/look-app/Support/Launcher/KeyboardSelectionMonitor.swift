@@ -58,6 +58,8 @@ final class KeyboardSelectionMonitor {
         onSelectCommandByIndex: @escaping @MainActor (Int) -> Void,
         onActivateRunningApp: @escaping @MainActor (Int) -> Bool = { _ in false },
         onActivateSession: @escaping @MainActor (Int) -> Bool = { _ in false },
+        /// Escape inside a drill-down goes back one level. True means it did.
+        onPopLevel: (@MainActor () -> Bool)? = nil,
         onEscapeHome: (@MainActor () -> Bool)? = nil,
         onConfirmKill: (@MainActor () -> Void)? = nil,
         onCancelKill: (@MainActor () -> Void)? = nil,
@@ -443,6 +445,13 @@ final class KeyboardSelectionMonitor {
 
                 if actionConfirmationActive() {
                     onCancelAction?()
+                    return nil
+                }
+
+                // Inside a drill-down, Escape goes back one level rather than
+                // closing the launcher: the way out of a list is the way you
+                // came into it.
+                if onPopLevel?() == true {
                     return nil
                 }
 

@@ -17,6 +17,8 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+use crate::run::{PLACEHOLDER_PARENT, PLACEHOLDERS};
+
 /// Immediate children only. Deep walks belong to the file index, not to a
 /// block the user declared to get one short list.
 pub const DEFAULT_FOLDER_DEPTH: usize = 1;
@@ -185,9 +187,12 @@ impl Block {
     /// block's `then`, never as a top-level row: running `make -C {path} deploy`
     /// with nothing selected would substitute an empty path.
     pub fn needs_row(&self) -> bool {
-        self.producer_text()
-            .iter()
-            .any(|text| text.contains(PLACEHOLDER_OPEN))
+        self.producer_text().iter().any(|text| {
+            text.contains(PLACEHOLDER_PARENT)
+                || PLACEHOLDERS
+                    .iter()
+                    .any(|placeholder| text.contains(placeholder))
+        })
     }
 
     fn producer_text(&self) -> Vec<&str> {
@@ -199,9 +204,6 @@ impl Block {
         }
     }
 }
-
-/// Opens a row placeholder such as `{path}`.
-const PLACEHOLDER_OPEN: char = '{';
 
 #[derive(Debug, Default, Deserialize)]
 struct RawBlock {
@@ -579,6 +581,21 @@ dir = "~/notes"
     }
 
     #[test]
+    fn a_producer_emitting_json_is_not_mistaken_for_one_that_needs_a_row() {
+        // Every brace used to count as a placeholder, so a `run` command that
+        // printed JSON was read as "only meaningful against a selected row" and
+        // vanished from the index entirely.
+        let json = one(r#"[branches]
+format = "json"
+run = "git for-each-ref --format='{\"id\":\"%(refname:short)\"}' refs/heads"
+"#);
+        assert!(!json.needs_row());
+
+        let real = one("[deploy]\nrun = \"make -C {path} targets\"\n");
+        assert!(real.needs_row());
+    }
+
+    #[test]
     fn the_shipped_example_parses_with_nothing_left_unexplained() {
         // example.toml is what users copy, so a key renamed here without
         // updating it would hand everyone a file full of ignored settings.
@@ -594,6 +611,7 @@ dir = "~/notes"
                 "ghostty",
                 "hosts",
                 "projects",
+                "repos",
                 "work"
             ]
         );

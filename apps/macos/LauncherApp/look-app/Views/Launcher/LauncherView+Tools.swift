@@ -29,12 +29,17 @@ extension LauncherView {
     /// thing you launch, and the folder holding it is `/Applications`, which is
     /// never "here", so both are absent for app rows rather than quietly acting
     /// on the wrong directory. Revealing an app is genuinely useful and stays.
+    ///
+    /// An action row qualifies too, because a block's row can name a `path`
+    /// (`format = "json"`) and is then a real filesystem object. Both callers
+    /// already require a non-empty path, so the ones that name none never reach
+    /// here.
     static func toolActionApplies(_ action: String, to kind: LauncherResultKind) -> Bool {
         switch action {
         case AppConstants.Launcher.Tools.revealAction:
-            return kind.isFileOrFolder || kind == .app
+            return kind.isFileOrFolder || kind == .app || kind == .action
         default:
-            return kind.isFileOrFolder
+            return kind.isFileOrFolder || kind == .action
         }
     }
 
@@ -45,7 +50,21 @@ extension LauncherView {
             Self.toolActionApplies(action, to: selected.kind)
         else { return nil }
 
-        return (selected.path, selected.kind == .folder)
+        return (selected.path, pathIsDirectory(selected))
+    }
+
+    /// A file row and a folder row say which they are; a block's row does not,
+    /// so its path is checked. Editing resolves to a different tool for each and
+    /// a terminal opens in a different place, so guessing is not an option.
+    private func pathIsDirectory(_ result: LauncherResult) -> Bool {
+        if result.kind != .action {
+            return result.kind == .folder
+        }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: result.path, isDirectory: &isDir) else {
+            return false
+        }
+        return isDir.boolValue
     }
 
     private func runToolAction(_ action: String) {

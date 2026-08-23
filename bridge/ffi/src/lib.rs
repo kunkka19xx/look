@@ -275,9 +275,45 @@ pub extern "C" fn look_source_block_json(
     row_id: *const c_char,
     row_title: *const c_char,
     row_path: *const c_char,
+    ancestors_json: *const c_char,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        sources_api::look_source_block_json_impl(candidate_id, row_id, row_title, row_path)
+        sources_api::look_source_block_json_impl(
+            candidate_id,
+            row_id,
+            row_title,
+            row_path,
+            ancestors_json,
+        )
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The rows of `block_id` produced against the selected row, for descending into
+/// a `then` target that lists rather than performs (`specs/user-sources.md`
+/// §2.10). Returns `{rows, truncated, error}`, where each row carries the
+/// `candidateId` that encodes the levels it was reached through, so usage ranks
+/// per ancestor path.
+///
+/// Runs the block live on every call. An error means do not descend.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_rows_json(
+    block_id: *const c_char,
+    parent_candidate_id: *const c_char,
+    parent_title: *const c_char,
+    parent_path: *const c_char,
+    query: *const c_char,
+    ancestors_json: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_source_rows_json_impl(
+            block_id,
+            parent_candidate_id,
+            parent_title,
+            parent_path,
+            query,
+            ancestors_json,
+        )
     }))
     .unwrap_or(std::ptr::null_mut())
 }
@@ -363,9 +399,16 @@ pub extern "C" fn look_source_preview_json(
     row_id: *const c_char,
     row_title: *const c_char,
     row_path: *const c_char,
+    ancestors_json: *const c_char,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        sources_api::look_source_preview_json_impl(candidate_id, row_id, row_title, row_path)
+        sources_api::look_source_preview_json_impl(
+            candidate_id,
+            row_id,
+            row_title,
+            row_path,
+            ancestors_json,
+        )
     }))
     .unwrap_or(std::ptr::null_mut())
 }
@@ -379,11 +422,18 @@ pub extern "C" fn look_perform_block_json(
     row_title: *const c_char,
     row_path: *const c_char,
     query: *const c_char,
+    ancestors_json: *const c_char,
     as_target: bool,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         sources_api::look_perform_block_json_impl(
-            block_id, row_id, row_title, row_path, query, as_target,
+            block_id,
+            row_id,
+            row_title,
+            row_path,
+            query,
+            ancestors_json,
+            as_target,
         )
     }))
     .unwrap_or(std::ptr::null_mut())

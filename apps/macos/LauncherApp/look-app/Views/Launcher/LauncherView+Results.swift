@@ -200,6 +200,9 @@ extension LauncherView {
 
         let name = selected.title
         let row = (id: selected.id, title: selected.title, path: selected.path, query: query)
+        // Inside a level the row's ancestors are what `{parent.*}` names, and
+        // without them a command would act on nothing.
+        let ancestors = selectedRowAncestorsJSON
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.performBlock(
@@ -207,7 +210,8 @@ extension LauncherView {
                     rowID: row.id,
                     rowTitle: row.title,
                     rowPath: row.path,
-                    query: row.query
+                    query: row.query,
+                    ancestorsJSON: ancestors
                 )
             }.value
             await MainActor.run {
@@ -278,9 +282,14 @@ extension LauncherView {
         case .process:
             showBanner("Processes can't be revealed in Finder", style: .info, duration: 1.2)
         case .action:
-            // No file of its own, but the declaration that created it is a real
-            // file and is the thing the user wants to get to from here.
-            revealDeclaringFile(for: selected)
+            // A block's row may name a path of its own (`format = "json"`), and
+            // then it is an ordinary filesystem object that reveals like one.
+            // Only a row without one falls back to the declaration that made it.
+            if selected.path.isEmpty {
+                revealDeclaringFile(for: selected)
+            } else {
+                revealPathInFinder(selected.path)
+            }
         }
     }
 

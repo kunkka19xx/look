@@ -47,6 +47,7 @@ extension LauncherView {
         guard let selected = actionableSelectedResult() else { return }
 
         let row = (id: selected.id, title: selected.title, path: selected.path, query: query)
+        let ancestors = selectedRowAncestorsJSON
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.performBlock(
@@ -55,6 +56,7 @@ extension LauncherView {
                     rowTitle: row.title,
                     rowPath: row.path,
                     query: row.query,
+                    ancestorsJSON: ancestors,
                     asTarget: true
                 )
             }.value
@@ -65,10 +67,9 @@ extension LauncherView {
                     return
                 }
                 if outcome.producesRows {
-                    // Descending needs the level stack, which does not exist
-                    // yet. Said plainly rather than inferred from a zero count,
-                    // which is also what a failure looks like.
-                    showBanner("\(title) produces rows; drill-down is not built yet", style: .info, duration: 2.4)
+                    // Not a failure and nothing was performed: the target lists,
+                    // so it is a level to descend into.
+                    descendIntoBlock(blockID: blockID, title: title)
                     return
                 }
                 hideLauncherWindow(restorePreviousApp: false)

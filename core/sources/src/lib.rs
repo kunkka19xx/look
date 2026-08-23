@@ -15,11 +15,16 @@ mod load;
 mod rows;
 mod run;
 
-pub use collect::{CollectError, Collected, MAX_ROWS_PER_SOURCE, collect, expand_home};
+pub use collect::{
+    CollectError, Collected, MAX_ROWS_PER_SOURCE, collect, collect_for_row, expand_home,
+};
 pub use def::{
     Block, DEFAULT_FOLDER_DEPTH, KEY_DIR, KEY_DO, KEY_FILE, KEY_RUN, Only, ParsedFile, Producer,
     RowFormat, Verbs, inferred, parse_duration, parse_file,
 };
 pub use load::{Loaded, Problem, SOURCES_DIR_ENV, load_dir, sources_dir};
-pub use rows::{SourceRow, parse_line, parse_lines};
-pub use run::{ENV_ID, ENV_PATH, ENV_TITLE, RowContext, StepOutcome, capture, expand, perform};
+pub use rows::{SourceRow, parse_json, parse_line, parse_lines, parse_rows};
+pub use run::{
+    ENV_ID, ENV_PATH, ENV_TITLE, ParentRow, RowContext, StepOutcome, capture, expand, expand_path,
+    perform,
+};
