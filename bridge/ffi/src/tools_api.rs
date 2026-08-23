@@ -27,7 +27,14 @@ pub(crate) fn look_tool_action_json_impl(
     is_dir: bool,
     ancestors_json: *const c_char,
 ) -> *mut c_char {
-    let request = Request::read(action, candidate_id, row_title, path, is_dir, ancestors_json);
+    let request = Request::read(
+        action,
+        candidate_id,
+        row_title,
+        path,
+        is_dir,
+        ancestors_json,
+    );
 
     json_cstring_or_null(
         request
@@ -52,7 +59,14 @@ pub(crate) fn look_perform_tool_action_json_impl(
     is_dir: bool,
     ancestors_json: *const c_char,
 ) -> *mut c_char {
-    let request = Request::read(action, candidate_id, row_title, path, is_dir, ancestors_json);
+    let request = Request::read(
+        action,
+        candidate_id,
+        row_title,
+        path,
+        is_dir,
+        ancestors_json,
+    );
 
     let resolved = request.resolve().map(|outcome| {
         let resolved = match outcome {

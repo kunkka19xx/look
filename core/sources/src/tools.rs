@@ -72,7 +72,8 @@ mod tests {
 
     #[test]
     fn a_blocks_verb_wins_for_its_own_rows_and_expands_like_any_other() {
-        let block = block("[projects]\ndir = \"~/dev\"\nterminal = \"tmux new -As {title} -c {path}\"\n");
+        let block =
+            block("[projects]\ndir = \"~/dev\"\nterminal = \"tmux new -As {title} -c {path}\"\n");
         let launch = resolve_for_row(
             "terminal",
             "/dev/look",
@@ -134,7 +135,27 @@ mod tests {
     #[test]
     fn an_unknown_action_or_an_empty_path_answers_nothing() {
         let block = block("[projects]\ndir = \"~/dev\"\nterminal = \"tmux new\"\n");
-        assert!(resolve_for_row("nope", "/dev/look", true, &Tools::default(), Some(&block), &row()).is_none());
-        assert!(resolve_for_row("terminal", "", true, &Tools::default(), Some(&block), &row()).is_none());
+        assert!(
+            resolve_for_row(
+                "nope",
+                "/dev/look",
+                true,
+                &Tools::default(),
+                Some(&block),
+                &row()
+            )
+            .is_none()
+        );
+        assert!(
+            resolve_for_row(
+                "terminal",
+                "",
+                true,
+                &Tools::default(),
+                Some(&block),
+                &row()
+            )
+            .is_none()
+        );
     }
 }
