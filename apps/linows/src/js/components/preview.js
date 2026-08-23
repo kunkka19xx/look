@@ -75,7 +75,7 @@ export function update(result) {
     }
     panel.hidden = false;
     panel.innerHTML = '';
-    panel.classList.remove('is-block');
+    panel.classList.remove('is-block', 'has-block-extra');
     currentProcPid = null;
     // The panel was wiped: invalidate any in-flight Quick Actions render so a
     // late response can't append a stale section for the previous result.
@@ -91,10 +91,16 @@ export function update(result) {
         return;
     }
 
-    // A declared block has no file to describe, so the panel answers the only
-    // question that matters before Enter: exactly what is about to run.
+    // A block's row with nothing on disk has no file to describe, so the panel
+    // answers the only question that matters before Enter: what is about to
+    // run. A row that names a path IS that file (`format = "json"`), so it
+    // previews like one, with what the block adds appended below.
     if (result.kind === 'action' && sourceblocks.isSourceRow(result.id)) {
-        renderBlockPreview(result, cacheKey);
+        if (result.path) {
+            renderFileBackedBlock(result, cacheKey);
+        } else {
+            renderBlockPreview(result, cacheKey);
+        }
         return;
     }
 
@@ -118,6 +124,11 @@ export function update(result) {
             return;
     }
 
+    renderStandard(result, cacheKey);
+}
+
+/** The ordinary panel: icon, title, kind badge, then the file or app detail. */
+function renderStandard(result, cacheKey) {
     // Header: icon + title + badge + size
     const header = document.createElement('div');
     header.className = 'preview-header';
@@ -159,7 +170,10 @@ export function update(result) {
     const badge = document.createElement('span');
     badge.className = `preview-badge kind-${result.kind}`;
     const kindLabels = { app: 'App', file: 'File', folder: 'Folder', setting: 'Setting' };
-    badge.textContent = kindLabels[result.kind] || result.kind;
+    // A row a user's block produced says which block; the kind is on the icon
+    // and in the metadata below, and where it came from is what the list cannot
+    // otherwise tell you.
+    badge.textContent = sourceblocks.blockName(result.id) || kindLabels[result.kind] || result.kind;
     headerSub.appendChild(badge);
 
     headerText.appendChild(headerSub);
@@ -184,9 +198,9 @@ export function update(result) {
     panel.appendChild(metaWrap);
 
     if (result.kind === 'app') {
-        renderAppMeta(metaWrap, result, headerSub);
+        renderAppMeta(metaWrap, result, headerSub, cacheKey);
     } else {
-        renderFileMeta(metaWrap, previewSlot, result, headerSub);
+        renderFileMeta(metaWrap, previewSlot, result, headerSub, cacheKey);
     }
 
     // Quick Actions - interactive controls for results the shared catalog
@@ -414,10 +428,10 @@ function formatStart(epoch) {
     });
 }
 
-function renderAppMeta(metaWrap, result, headerSub) {
+function renderAppMeta(metaWrap, result, headerSub, cacheKey) {
     // Async version lookup
     getAppVersion(result.path).then((version) => {
-        if (currentPath !== result.path) return;
+        if (currentPath !== cacheKey) return;
         if (version) {
             // Insert version as first row
             metaWrap.insertBefore(infoRow('Version', version), metaWrap.firstChild);
@@ -431,9 +445,7 @@ function renderAppMeta(metaWrap, result, headerSub) {
     }
 }
 
-function renderFileMeta(metaWrap, previewSlot, result, headerSub) {
-    const cacheKey = result.path;
-
+function renderFileMeta(metaWrap, previewSlot, result, headerSub, cacheKey) {
     // Metadata: size (in header), then Kind → Path → Modified (matches macOS order)
     getFileMeta(result.path).then((meta) => {
         if (currentPath !== cacheKey) return;
@@ -622,6 +634,58 @@ export function showClipboardHelp() {
       <div class="preview-clip-help-line">• Type <kbd>c"mail</kbd> to filter</div>
       <div class="preview-clip-help-line">• Press <kbd>Enter</kbd> to copy selected item</div>
     </div>`;
+}
+
+/**
+ * A block's row that names a path: the file's own panel, with what the block
+ * adds under it. The row IS that file, so everything a file row shows (the
+ * thumbnail, the text preview, the folder listing, size and modified) is what
+ * the user is looking for; the block only adds what Enter does and where it was
+ * declared.
+ */
+async function renderFileBackedBlock(result, cacheKey) {
+    let meta = null;
+    try {
+        meta = await getFileMeta(result.path);
+    } catch (err) {
+        console.warn('preview: could not stat a block row', err);
+    }
+    if (currentPath !== cacheKey) return;
+
+    // The block never says which it is, so the filesystem answers: a folder
+    // gets its listing, a file its preview.
+    renderStandard({ ...result, kind: meta?.is_dir ? 'folder' : 'file' }, cacheKey);
+
+    // The block's own section is claimed NOW, empty, so it always sits under the
+    // file's metadata. Filling it later would otherwise land above or below
+    // those rows depending on which read answered first - one file's panel
+    // ordered differently from the next one's.
+    const section = document.createElement('div');
+    section.className = 'preview-meta preview-block-extra';
+    // The panel becomes a column so the section sits at its FOOT, wherever the
+    // metadata above it ends: the declaration belongs in one place on every
+    // row, not wherever the content happens to stop.
+    panel.classList.add('has-block-extra');
+    panel.appendChild(section);
+
+    const block = await sourceblocks.loadDetail(result);
+    if (!block || currentPath !== cacheKey) return;
+
+    if (block.steps.length > 0) {
+        const label = document.createElement('div');
+        label.className = 'preview-section-label';
+        label.textContent = 'Enter runs';
+        section.appendChild(label);
+        section.appendChild(await stepsBlock(block.steps));
+        if (currentPath !== cacheKey) return;
+    }
+    if (block.file) {
+        section.appendChild(infoRow('Declared in', sourceblocks.tildePath(block.file)));
+    }
+
+    const preview = await sourcePreview(sourceblocks.rowPayload(result));
+    if (!preview || currentPath !== cacheKey) return;
+    section.appendChild(blockPreviewBody(preview));
 }
 
 /**

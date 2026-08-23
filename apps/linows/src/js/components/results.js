@@ -385,8 +385,9 @@ function createRow(result, index) {
         clipboard: clipboardIcon,
         process: cpuIcon,
         // The bolt says the honest thing for a row with nothing on disk: Enter
-        // performs steps.
-        action: sourceblocks.actionIconHtml,
+        // performs steps. A row that names a path IS that file, so it waits for
+        // the file's own icon behind the same glyph every file row uses.
+        action: result.path ? fileIcon : sourceblocks.actionIconHtml,
     };
     // What the block declared wins for the rows with nothing on disk: the
     // author chose it, and a list of them should not be a column of identical

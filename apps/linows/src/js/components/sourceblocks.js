@@ -89,9 +89,11 @@ export async function prefill() {
 
 /** A reload may have changed what blocks exist and what they declare. */
 export function invalidate() {
-    catalog = null;
     detailByRow.clear();
     detailInFlight.clear();
+    // The catalog is replaced when the new one lands rather than dropped now:
+    // rows render synchronously, and clearing it first paints every row with a
+    // generic icon for as long as the read takes.
     return prefill();
 }
 
