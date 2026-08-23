@@ -289,11 +289,10 @@ pub extern "C" fn look_source_block_json(
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// The rows of `block_id` produced against the selected row, for descending into
-/// a `then` target that lists rather than performs (`specs/user-sources.md`
-/// §2.10). Returns `{rows, truncated, error}`, where each row carries the
-/// `candidateId` that encodes the levels it was reached through, so usage ranks
-/// per ancestor path.
+/// The rows of `block_id` produced against the selected row, for descending
+/// into a `then` target that lists rather than performs. Returns
+/// `{rows, truncated, error}`; each row's `candidateId` encodes the levels it
+/// came through, so two parents never share a row.
 ///
 /// Runs the block live on every call. An error means do not descend.
 #[unsafe(no_mangle)]
@@ -335,10 +334,9 @@ pub extern "C" fn look_source_blocks_json() -> *mut c_char {
 /// Reads the declared tools from the cached config, so Cmd+Shift+; is all a
 /// user needs after editing them.
 ///
-/// `candidate_id` is the row's, so a block that declares `edit` / `terminal` /
-/// `reveal` wins for its own rows (`specs/preferred-tools.md` §6). Pass the row
-/// title and its ancestors too: a block's verb expands like every other command
-/// it declares, `{parent.*}` included.
+/// A block that declares `edit` / `terminal` / `reveal` wins for its own rows,
+/// so pass the row's id, title and ancestors: its verb expands like every other
+/// command it declares.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_tool_action_json(
     action: *const c_char,

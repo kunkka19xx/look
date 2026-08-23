@@ -1,9 +1,8 @@
 import XCTest
 @testable import LauncherLogic
 
-/// The drill-down stack (`specs/user-sources.md` §2.10). Pure navigation state,
-/// so it is testable without a launcher: what the query bar says, what the core
-/// is told about ancestors, and what Escape puts back.
+/// The drill-down stack: what the query bar says, what the core is told about
+/// ancestors, and what Escape puts back.
 final class SourceLevelStackTests: XCTestCase {
     private func row(_ id: String) -> SourceLevelRow {
         SourceLevelRow(candidateId: "src:child:\(id)", id: id, title: id, subtitle: "", path: nil)

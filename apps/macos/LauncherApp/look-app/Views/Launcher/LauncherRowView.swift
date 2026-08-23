@@ -32,6 +32,19 @@ struct LauncherRowView: View {
         SyntheticRow.classify(resultID: result.id)
     }
 
+    /// Whether the row IS the file it names, rather than something that merely
+    /// lives there. A `[changed]` row is `EngineBridge.swift` at that path; a
+    /// branch row is `main`, whose path is the repo every other branch shares,
+    /// and giving it that folder's icon says "folder" about a branch.
+    ///
+    /// The title matching the last path component is what tells them apart. A
+    /// block that knows better says so with its own `icon`, which still wins.
+    private var rowIsItsPath: Bool {
+        guard !result.path.isEmpty else { return false }
+        return (result.path as NSString).lastPathComponent
+            .caseInsensitiveCompare(result.title) == .orderedSame
+    }
+
     /// Cached: this runs inside `body`, and a fresh `NSImage` per redraw makes
     /// every icon in the list flicker. See `RowIconCache`.
     private var rowIcon: NSImage {
@@ -92,7 +105,7 @@ struct LauncherRowView: View {
             ) {
                 return declared
             }
-            if !result.path.isEmpty {
+            if rowIsItsPath {
                 return RowIconCache.icon(forFile: result.path)
             }
             return RowIconCache.image(key: "symbol:bolt") {

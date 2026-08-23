@@ -106,6 +106,13 @@ fn validate_and_record_usage(
         return Err(UsageRecordError::InvalidUsageAction);
     }
 
+    // A drilled row is never written to `candidates`, which the `usage_events`
+    // foreign key requires, so there is nothing to record. Reporting a failure
+    // would show a storage error for behaving as designed.
+    if !CandidateIdKind::source_ancestors_of(trimmed_id).is_empty() {
+        return Ok(());
+    }
+
     let Ok(store) = SqliteStore::open(default_db_path()) else {
         return Err(UsageRecordError::StorageOpenFailed);
     };
@@ -130,4 +137,26 @@ fn validate_and_record_usage(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+
+    /// Not in `candidates`, so the insert would hit the foreign key and the
+    /// shell would show a storage error for pressing Enter in a level.
+    #[test]
+    fn a_drilled_row_records_nothing_and_reports_no_failure() {
+        let id = CString::new("src:scripts:|projects/animate|build").unwrap();
+        let action = CString::new(UsageAction::EXECUTE).unwrap();
+        assert!(look_record_usage_impl(id.as_ptr(), action.as_ptr()));
+    }
+
+    #[test]
+    fn an_id_that_belongs_to_nothing_is_still_refused() {
+        let id = CString::new("not-a-candidate-id").unwrap();
+        let action = CString::new(UsageAction::EXECUTE).unwrap();
+        assert!(!look_record_usage_impl(id.as_ptr(), action.as_ptr()));
+    }
 }

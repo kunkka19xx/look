@@ -15,8 +15,7 @@ struct SearchInputBar: View {
     var showsBackground: Bool = true
     /// Changes each time the launcher opens, replaying the spawn cascade.
     var revealToken: UInt64 = 0
-    /// Where a drill-down is: shown as a leading chip, because a list that has
-    /// replaced the index has to say what it is (`specs/user-sources.md` §2.10).
+    /// Where a drill-down is, shown as a leading chip.
     var breadcrumb: String?
     let onSubmit: () -> Void
     let onExitCommandMode: () -> Void

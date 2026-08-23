@@ -4,8 +4,7 @@ import Foundation
 /// nobody could discover; the panel is where they become visible.
 ///
 /// Suppressed for a row whose block declared `then` targets: the author already
-/// chose that row's vocabulary and every entry here keeps its chord anyway
-/// (`specs/preferred-tools.md` §7.1).
+/// chose that row's vocabulary, and every entry here keeps its chord anyway.
 extension LauncherView {
     enum RowAction {
         static let prefix = "rowaction:"
@@ -89,9 +88,8 @@ extension LauncherView {
     }
 
     private static func label(for entry: RowActionEntry, tools: [String: ToolAction]) -> String {
-        // A block that took this chord names itself, not a tool, so the plain
-        // wording stands: what happens is the block's business and its steps
-        // are already on screen in the panel.
+        // A block names itself, not a tool, and its steps are already on
+        // screen in the panel.
         if let action = entry.tool, tools[action]?.fromBlock == true {
             return entry.plain
         }
@@ -101,9 +99,8 @@ extension LauncherView {
     }
 
     /// Which tool each offered action would start, or which block took the
-    /// chord over for these rows (`specs/preferred-tools.md` §6). The tools come
-    /// from the process-wide config cache; a block row also reads its
-    /// declaration, which is the same read the panel already does per selection.
+    /// chord for these rows. Tools come from the process-wide config cache; a
+    /// block row also reads its declaration, like the panel already does.
     private func resolvedTools(
         for result: LauncherResult, entries: [RowActionEntry]
     ) -> [String: ToolAction] {

@@ -1040,11 +1040,9 @@ final class EngineBridge: @unchecked Sendable {
         return try? JSONDecoder().decode(SourceBlock.self, from: data)
     }
 
-    /// The rows of `blockID`, produced against the row a level is being opened
-    /// from. Runs the block's command, so call it off the main thread.
-    ///
-    /// `error` non-nil means do not descend: an empty level and a broken command
-    /// look the same on screen, so neither is entered silently.
+    /// The rows of `blockID`, produced against the row a level is opening from.
+    /// Runs the block's command, so call it off the main thread. `error`
+    /// non-nil means do not descend.
     nonisolated func sourceRows(
         blockID: String, parentCandidateID: String, parentTitle: String, parentPath: String,
         query: String, ancestorsJSON: String = "[]"
@@ -1392,7 +1390,7 @@ nonisolated struct URLMatch: Decodable {
 /// A user-declared block and the steps performing it will run, so the panel can
 /// show exactly what Enter is about to do.
 /// One preferred-tool action resolved against a row. `kind` says which of the
-/// other fields are filled; see `specs/preferred-tools.md`.
+/// other fields are filled.
 nonisolated struct ToolAction: Decodable {
     enum Kind: String, Decodable {
         /// Composed shell text. Only `look_tool_action_json` returns this;
@@ -1417,8 +1415,8 @@ nonisolated struct ToolAction: Decodable {
     let reason: String?
     /// The config key that would fix an `unavailable` action.
     let key: String?
-    /// A block declared this action for its own rows, so `tool` names the block
-    /// rather than a tool: "Open in Projects" is not a label worth showing.
+    /// A block declared this action for its own rows, so `tool` names the
+    /// block: "Open in Projects" is not a label worth showing.
     let fromBlock: Bool
 }
 

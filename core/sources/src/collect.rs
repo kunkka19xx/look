@@ -76,13 +76,9 @@ pub fn collect(block: &Block, home: &Path) -> Result<Collected, CollectError> {
     }
 }
 
-/// Rows for `block` produced against `row`, the row a level was launched from
-/// (`specs/user-sources.md` §2.10).
-///
-/// A producer expands against that row, because at this point there is no other:
-/// its own rows are what this call is about to make. A `run` block still needs a
-/// process, so it comes back as `NeedsRunner` and the shell runs the expanded
-/// command.
+/// Rows for `block` produced against the row a level was launched from. The
+/// producer expands against that row, because its own rows do not exist yet. A
+/// `run` block still comes back as `NeedsRunner` for the shell to run.
 pub fn collect_for_row(
     block: &Block,
     home: &Path,

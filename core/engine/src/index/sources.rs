@@ -151,8 +151,8 @@ fn send_rows(block: &Block, rows: &[SourceRow], home: &Path, tx: &SyncSender<Can
 
 fn row_candidate(block: &Block, row: &SourceRow, home: &Path) -> Candidate {
     let id = CandidateIdKind::source_row_candidate_id(&block.id, &[], &row.id);
-    // A row's path comes from a script, which writes `~` as readily as a user
-    // does, and the verbs and the tool chords both act on it directly.
+    // A script writes `~` as readily as a user does, and the verbs and chords
+    // act on this path directly.
     let path = row
         .path
         .as_deref()

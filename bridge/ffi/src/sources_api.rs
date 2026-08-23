@@ -227,10 +227,9 @@ pub(crate) fn look_refresh_run_blocks_json_impl() -> *mut c_char {
             continue;
         };
 
-        // A block whose command names a row placeholder only means something
-        // against a selection: it is a level, run live when the user descends
-        // (§2.10). Running it here would execute `jq ... {path}/package.json`
-        // literally and report a failure the user cannot act on.
+        // A block whose command names a row placeholder is a level, run live
+        // when the user descends. Running it here would execute
+        // `jq ... {path}/package.json` literally and report a useless failure.
         if block.needs_row() {
             continue;
         }
@@ -263,39 +262,34 @@ pub(crate) fn look_refresh_run_blocks_json_impl() -> *mut c_char {
     )
 }
 
-/// How deep a stack of levels may go (`specs/user-sources.md` §2.10). Bounds
-/// both the id and the stack, and a launcher six levels deep has stopped being
-/// a launcher.
+/// How deep a stack of levels may go. A launcher six levels deep has stopped
+/// being a launcher.
 const MAX_LEVEL_DEPTH: usize = 5;
 
-/// One row of a level, ready to render and to rank: its candidate id already
-/// carries the ancestors it was reached through.
+/// One row of a level: its candidate id carries the ancestors it came through.
 #[derive(Serialize)]
 struct LevelRow {
     #[serde(rename = "candidateId")]
     candidate_id: String,
     id: String,
     title: String,
-    /// Already resolved against the block name, by the same rule the index
-    /// uses, so neither shell has to know it.
+    /// Resolved against the block name by the same rule the index uses.
     subtitle: String,
     path: Option<String>,
 }
 
 #[derive(Serialize, Default)]
 struct Level {
-    /// The parent's OWN id, as the core decoded it. Handed back so the shell can
-    /// name the ancestor in later calls without keeping a second decoder for the
-    /// id format (§2.10).
+    /// The parent's OWN id, decoded here so the shell needs no second decoder
+    /// for the id format.
     #[serde(rename = "parentRowId")]
     parent_row_id: String,
     rows: Vec<LevelRow>,
     /// The row cap dropped rows, so the caller can say so rather than implying
     /// the level is all there is.
     truncated: bool,
-    /// Set when the level could not be produced. The caller must not descend:
-    /// an empty level and a broken command look identical on screen, so neither
-    /// is silently entered.
+    /// Set when the level could not be produced, and the caller must not
+    /// descend: an empty level and a broken command look identical on screen.
     error: Option<String>,
 }
 
@@ -309,13 +303,10 @@ fn level_error(message: impl Into<String>) -> *mut c_char {
     )
 }
 
-/// The rows of `block_id` produced against the selected row, for descending into
-/// it (`specs/user-sources.md` §2.10).
+/// The rows of `block_id` produced against the selected row, for descending.
 ///
 /// Live on every call, never cached: `~/.look/cache/rows/<block>` is keyed by
-/// block alone, and a level's rows depend on the row it was launched from. The
-/// user has already picked that row, so one command is a wait they asked for and
-/// a stale level is worse.
+/// block alone, and a level's rows depend on the row it opened from.
 pub(crate) fn look_source_rows_json_impl(
     block_id: *const c_char,
     parent_candidate_id: *const c_char,
@@ -326,9 +317,8 @@ pub(crate) fn look_source_rows_json_impl(
 ) -> *mut c_char {
     let block_id = cstr_to_string(block_id);
     let parent_candidate_id = cstr_to_string(parent_candidate_id);
-    // Built here rather than through `row_context`, which takes C pointers: the
-    // parent id is already an owned Rust string and handing its bytes back as a
-    // C string would read past the end of it.
+    // Not through `row_context`: the parent id is already an owned Rust string,
+    // and handing its bytes back as a C string would read past the end.
     let row = RowContext {
         id: CandidateIdKind::source_row_id_of(&parent_candidate_id).to_string(),
         title: cstr_to_string(parent_title),

@@ -113,9 +113,9 @@ struct LauncherView: View {
     @State var pendingQuickActions: Set<String> = []
     @State var quickActionTask: Task<Void, Never>?
     @State var selectedResultID: String?
-    /// Where the user has drilled to (`specs/user-sources.md` §2.10). One value
-    /// rather than another set of flags: a level stack IS navigation state, and
-    /// the mode booleans above grew into a pile by being added one at a time.
+    /// Where the user has drilled to. One value rather than another set of
+    /// flags: a level stack IS navigation state, and the mode booleans above
+    /// grew into a pile by being added one at a time.
     @State var levelStack = SourceLevelStack()
     /// `@`-mention state for the AI input. `mentionHighlight` starts at -1 so
     /// Enter still SENDS: the popup is passive until Tab reaches into it (same
@@ -503,8 +503,7 @@ struct LauncherView: View {
     // LauncherView+URLResults.swift.
 
     var displayedResults: [LauncherResult] {
-        // A level owns the list outright: its rows are not in the index, so
-        // nothing else here can produce them.
+        // A level owns the list: its rows are not in the index.
         if isInLevel { return levelResults }
         if isPrefixSuggestionQuery { return prefixSuggestionResults }
         if isCommandSuggestionQuery { return commandSuggestionResults }
@@ -618,8 +617,7 @@ struct LauncherView: View {
             return ["Y confirm", "N cancel", "Esc back"]
         }
 
-        // Inside a level the way out is the thing to say: the list came from a
-        // row, and nothing else on screen explains that.
+        // Inside a level the way out is the thing to say.
         if isInLevel {
             return [enterHint, "⌘K actions", "Esc back"]
         }
@@ -706,8 +704,8 @@ struct LauncherView: View {
         return "Enter run"
     }
 
-    /// Where the user is, when they are inside a level. Shown in the query bar,
-    /// because a list that replaced the index has to say what it is.
+    /// Shown in the query bar: a list that replaced the index has to say what
+    /// it is.
     var levelBreadcrumb: String? {
         guard isInLevel else { return nil }
         return levelStack.breadcrumb.joined(separator: "  ›  ")
@@ -2211,8 +2209,8 @@ struct LauncherView: View {
     /// the results columns and the hint bar below it. Applies in both modes (gap
     /// or no gap), so an empty launcher is always just the top bar.
     var hidesResultsForEmptyQuery: Bool {
-        // Never inside a level: it always has rows, and an empty query there
-        // means "unfiltered", not "nothing asked for" (§2.10).
+        // Never inside a level: an empty query there means "unfiltered", not
+        // "nothing asked for".
         isQueryEmpty && isLauncherIdle && !isInLevel
     }
 

@@ -52,9 +52,8 @@ struct LauncherResult: Identifiable {
 }
 
 extension LauncherResult {
-    /// A row a user-declared block produced (`specs/user-sources.md`). One
-    /// definition: the prefix was spelled out in three views, which is how a
-    /// namespace check drifts.
+    /// A row a user-declared block produced. One definition: the prefix was
+    /// spelled out in three views, which is how a namespace check drifts.
     var isSourceRow: Bool {
         id.hasPrefix(AppConstants.Launcher.SourceBlock.idPrefix)
     }

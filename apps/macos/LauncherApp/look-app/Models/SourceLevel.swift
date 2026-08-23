@@ -1,7 +1,7 @@
 import Foundation
 
 /// One level of a drill-down: the rows a block produced against the row it was
-/// opened from (`specs/user-sources.md` §2.10).
+/// opened from.
 nonisolated struct SourceLevel: Decodable {
     /// The parent row's own id, decoded by the core so the shell never has to
     /// take a candidate id apart itself.
@@ -13,28 +13,25 @@ nonisolated struct SourceLevel: Decodable {
     let error: String?
 }
 
-/// A row inside a level. `candidateId` already encodes the levels it was reached
-/// through, so usage ranks per ancestor path and two parents never share a row's
-/// history.
+/// A row inside a level. `candidateId` encodes the levels it came through, so
+/// two parents never share a row.
 nonisolated struct SourceLevelRow: Decodable, Identifiable {
     let candidateId: String
     let id: String
     let title: String
-    /// Already resolved against the block name by the core, so a level row and
-    /// an indexed one read the same.
+    /// Resolved against the block name by the core.
     let subtitle: String
     let path: String?
 }
 
-/// The row a tool action acts on. One value because the four always travel
-/// together, and because a block's `edit` / `terminal` / `reveal` expands
-/// against the row exactly like its `open` does (`specs/preferred-tools.md` §6).
+/// The row a tool action acts on: one value because the four always travel
+/// together, and a block's `edit` / `terminal` / `reveal` expands against the
+/// row exactly like its `open` does.
 nonisolated struct ToolActionRow {
     let candidateID: String
     let title: String
     let path: String
-    /// The levels it was reached through, for `{parent.*}`. Empty outside a
-    /// drill-down.
+    /// The levels it came through, for `{parent.*}`. Empty outside a level.
     var ancestorsJSON: String = "[]"
 
     func withCStrings<T>(

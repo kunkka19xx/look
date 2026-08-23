@@ -66,9 +66,8 @@ impl CandidateIdKind {
             .map(|(source, _)| source)
     }
 
-    /// The namespace one block's rows share. Private: ids are built by
-    /// `source_row_candidate_id` and read by the three functions above, and a
-    /// caller assembling one by hand is how the two drift.
+    /// The namespace one block's rows share. Private: an id assembled by hand
+    /// is how an encoder and its readers drift.
     fn source_row_prefix(source_id: &str) -> String {
         format!("{}{source_id}:", Self::PREFIX_SOURCE)
     }
@@ -77,8 +76,8 @@ impl CandidateIdKind {
     /// what a user's command expects `{id}` to be. Anything not namespaced is
     /// returned as-is, so a caller can pass either shape.
     ///
-    /// A drilled row carries its ancestors between two marks before the row id
-    /// (§2.10); the row id is everything after them, untouched.
+    /// A drilled row carries its ancestors between two marks first; the row id
+    /// is everything after them, untouched.
     pub fn source_row_id_of(candidate_id: &str) -> &str {
         let Some(rest) = candidate_id
             .strip_prefix(Self::PREFIX_SOURCE)
@@ -97,10 +96,9 @@ impl CandidateIdKind {
         }
     }
 
-    /// Separators for the ancestor chain a drilled row id carries
-    /// (`specs/user-sources.md` §2.10). A chain segment escapes them; the row
-    /// id, which is free-form script output, is left exactly as the script
-    /// wrote it.
+    /// Separators for the ancestor chain a drilled row id carries. A chain
+    /// segment escapes them; the row id, which is free-form script output, is
+    /// left exactly as the script wrote it.
     const CHAIN_MARK: char = '|';
     const CHAIN_SEPARATOR: char = ';';
     const CHAIN_PAIR: char = '/';
@@ -108,10 +106,9 @@ impl CandidateIdKind {
     /// The candidate id for a row of `block_id`, reached through `ancestors`
     /// (outermost first, each a block id and the row picked in it).
     ///
-    /// The one encoder. Decoding is `source_id_of`, `source_row_id_of`, and
-    /// `source_ancestors_of`, and nothing else may take an id apart: handing a
-    /// script `src:branches:main` where it expected `main` is the bug that looks
-    /// like the user's command being wrong.
+    /// The one encoder; `source_id_of`, `source_row_id_of` and
+    /// `source_ancestors_of` are the only readers. Handing a script
+    /// `src:branches:main` where it expected `main` is the bug this prevents.
     pub fn source_row_candidate_id(
         block_id: &str,
         ancestors: &[(String, String)],

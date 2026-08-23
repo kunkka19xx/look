@@ -1,18 +1,15 @@
 import Foundation
 
-/// Descending into a `then` target that lists rather than performs
-/// (`specs/user-sources.md` §2.10).
+/// Descending into a `then` target that lists rather than performs.
 ///
 /// A level takes the result list over: its rows are produced live against the
-/// row it was opened from, filtered here rather than by the engine, since they
-/// are not in the index and never will be.
+/// row it opened from, and filtered here, since they are not in the index.
 extension LauncherView {
     var isInLevel: Bool { levelStack.isActive }
 
-    /// The current level's rows, filtered by what is typed at this level.
-    ///
-    /// `.action` whatever the row carries: Enter at a level runs the block's
-    /// verbs, and a path only says where the tool chords act.
+    /// Filtered by what is typed at this level. `.action` whatever the row
+    /// carries: Enter runs the block's verbs, and a path only says where the
+    /// chords act.
     var levelResults: [LauncherResult] {
         guard let level = levelStack.current else { return [] }
         let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -27,8 +24,7 @@ extension LauncherView {
                     title: row.title,
                     subtitle: row.subtitle,
                     path: row.path ?? "",
-                    // The producer's order, kept: a script list is written in an
-                    // order its author chose, and nothing here knows better yet.
+                    // The producer's order, kept: its author knows the domain.
                     score: level.rows.count - position
                 )
             }
@@ -38,8 +34,7 @@ extension LauncherView {
     func descendIntoBlock(blockID: String, title: String) {
         guard let selected = actionableSelectedResult() else { return }
 
-        // Resolved here, on the main actor, rather than inside the detached task
-        // below: the stack is main-actor state and a String crosses freely.
+        // On the main actor: the stack is main-actor state, a String is not.
         let ancestorsJSON = levelStack.ancestorsOfCurrentRows.ancestorsJSON
         let parent = (
             candidateID: selected.id, title: selected.title, path: selected.path
@@ -64,8 +59,8 @@ extension LauncherView {
                     return
                 }
                 if let error = level.error {
-                    // Not descending is the point: an empty level and a broken
-                    // command look identical once you are inside one.
+                    // An empty level and a broken command look identical once
+                    // you are inside one, so neither is entered.
                     showBanner("\(title): \(error)", style: .error, duration: 4.0)
                     return
                 }
@@ -81,8 +76,7 @@ extension LauncherView {
                         restoredSelectionID: openedFrom.selection
                     )
                 )
-                // A level starts unfiltered: narrowing it is the first thing
-                // anyone does, and the query that got here means nothing now.
+                // The query that got here means nothing now.
                 query = ""
                 setInitialSelection()
                 if level.truncated {
@@ -94,8 +88,8 @@ extension LauncherView {
         }
     }
 
-    /// Escape: back one level, with the query and selection it was opened from.
-    /// Returns whether a level was there to leave.
+    /// Back one level, with the query and selection it opened from. Returns
+    /// whether there was a level to leave.
     @discardableResult
     func popLevel() -> Bool {
         guard let left = levelStack.pop() else { return false }
@@ -108,16 +102,14 @@ extension LauncherView {
         levelStack.clear()
     }
 
-    /// The ancestors of the row currently selected, for the core's `{parent.*}`.
-    /// Empty outside a level, which is what every non-drilled row has.
+    /// Ancestors of the selected row, for `{parent.*}`. Empty outside a level.
     var selectedRowAncestorsJSON: String {
         levelStack.ancestorsOfCurrentRows.ancestorsJSON
     }
 }
 
-/// Matching inside a level. Deliberately not the engine's scorer: these rows are
-/// not candidates, they are a list the user is looking at, and the useful thing
-/// is to narrow it without reordering what the block's author wrote.
+/// Not the engine's scorer: these rows are a list the user is looking at, and
+/// narrowing it must not reorder what the block's author wrote.
 enum LevelFilter {
     static func matches(_ query: String, row: SourceLevelRow) -> Bool {
         guard !query.isEmpty else { return true }

@@ -337,7 +337,7 @@ impl QueryEngine {
         // sweep the matching prefixes or the deleted row lingers forever
         // (only an `ALL` refresh would otherwise catch it).
         // Prune by the `seen` set rather than the old "indexed_at < run_started"
-        // sweep: the change-detecting upsert (see specs/indexing-scale.md) no
+        // sweep: the change-detecting upsert no
         // longer bumps indexed_at on unchanged rows, so only "not seen this scan"
         // reliably means "gone". delete_unseen_candidates keeps the indexed_at<run
         // guard to preserve i64::MAX pinned rows. `seen` is already collected above

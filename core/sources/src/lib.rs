@@ -7,8 +7,6 @@
 //! ids, ranking, or process execution: mapping rows into the index is the
 //! engine's job, and running a user's command is the shell's.
 //!
-//! See `specs/user-sources.md`.
-
 mod collect;
 mod def;
 mod load;

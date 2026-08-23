@@ -1,28 +1,24 @@
 import Foundation
 
-/// The drill-down stack: the levels a user has descended into from a block row
-/// (`specs/user-sources.md` §2.10).
+/// The levels a user has descended into from a block row.
 ///
-/// One value type rather than another handful of `@State` booleans on
-/// `LauncherView`. A level stack IS navigation state, and the mode flags beside
-/// it (`isCommandMode`, `isAIMode`, `isActionMenuOpen`) grew into a pile exactly
-/// by being added one at a time.
+/// One value type rather than another handful of `@State` booleans: a level
+/// stack IS navigation state, and the mode flags beside it grew into a pile by
+/// being added one at a time.
 struct SourceLevelStack {
     private(set) var frames: [SourceLevelFrame] = []
 
     var isActive: Bool { !frames.isEmpty }
     var current: SourceLevelFrame? { frames.last }
 
-    /// What the query bar shows: the rows walked through, then WHAT is being
-    /// listed. "look › Changed files", not "look", because the row you came
-    /// from does not say which of its targets you picked.
+    /// "look › Changed files", not "look": the row you came from does not say
+    /// which of its targets you picked.
     var breadcrumb: [String] {
         guard let current else { return [] }
         return frames.map(\.parentTitle) + [current.blockName]
     }
 
-    /// The ancestors of the rows IN the current level, nearest first, as the
-    /// core expects them for `{parent.*}`.
+    /// Ancestors of the rows IN this level, nearest first, for `{parent.*}`.
     var ancestorsOfCurrentRows: [SourceLevelParent] {
         frames.reversed().map {
             SourceLevelParent(id: $0.parentRowID, title: $0.parentTitle, path: $0.parentPath)
@@ -33,8 +29,8 @@ struct SourceLevelStack {
         frames.append(frame)
     }
 
-    /// Pops one level and hands back what the launcher was showing before it,
-    /// so Escape restores rather than re-searches.
+    /// Hands back what the launcher was showing before it, so Escape restores
+    /// rather than re-searches.
     mutating func pop() -> SourceLevelFrame? {
         frames.popLast()
     }
@@ -44,12 +40,11 @@ struct SourceLevelStack {
     }
 }
 
-/// One level: the block that produced it, the row it was opened from, and what
-/// to put back on Escape.
+/// The block that produced a level, the row it opened from, and what Escape
+/// puts back.
 struct SourceLevelFrame {
     let blockName: String
-    /// The row's OWN id, which is what `{parent.id}` expands to, not its
-    /// namespaced candidate id.
+    /// The row's OWN id, what `{parent.id}` expands to.
     let parentRowID: String
     let parentTitle: String
     let parentPath: String
@@ -59,8 +54,8 @@ struct SourceLevelFrame {
     let restoredSelectionID: String?
 }
 
-/// An ancestor as the core reads it (`ParentRow`). `nonisolated`, like the
-/// bridge's own payloads: encoding one is pure work that any context may do.
+/// An ancestor as the core reads it. `nonisolated` like the bridge's other
+/// payloads: encoding one is pure work any context may do.
 nonisolated struct SourceLevelParent: Encodable {
     let id: String
     let title: String
@@ -68,8 +63,7 @@ nonisolated struct SourceLevelParent: Encodable {
 }
 
 nonisolated extension Array where Element == SourceLevelParent {
-    /// The payload every source call takes. An empty array rather than an empty
-    /// string, so the core never has to guess what "no ancestors" looked like.
+    /// An empty array rather than an empty string: the core parses it as JSON.
     var ancestorsJSON: String {
         guard let data = try? JSONEncoder().encode(self),
             let json = String(data: data, encoding: .utf8)

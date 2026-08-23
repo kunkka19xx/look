@@ -91,20 +91,15 @@ pub struct RowContext {
     pub path: String,
     /// What the user had typed when they picked the row.
     pub query: String,
-    /// The rows this one was reached through while drilling down, NEAREST
-    /// first, so `{parent.id}` is `parents[0]` and each further `parent.` steps
-    /// one out (`specs/user-sources.md` §2.10).
+    /// Rows this one was drilled from, NEAREST first: `{parent.id}` is
+    /// `parents[0]`, and each further `parent.` steps one out.
     pub parents: Vec<ParentRow>,
 }
 
 impl RowContext {
-    /// Where a command for this row should run: its own path, or the nearest
-    /// ancestor that has one.
-    ///
-    /// A drilled row often has no path of its own (a script, a branch, a
-    /// container) while the level above does, and "run this in the project"
-    /// is what the user means. A command that needs to say so explicitly has
-    /// `{parent.path}`; a working directory has no syntax to say it with.
+    /// Its own path, or the nearest ancestor that has one: a script or branch
+    /// row has none while the project above it does, and that is where "run
+    /// this" means. A command can say `{parent.path}`; a directory cannot.
     pub fn working_path(&self) -> &str {
         if !self.path.is_empty() {
             return &self.path;
@@ -116,23 +111,16 @@ impl RowContext {
             .unwrap_or_default()
     }
 
-    /// The FOLDER a command for this row runs in: `working_path` when it is a
-    /// directory, its parent when it is a file.
-    ///
-    /// Never the file itself. `current_dir` on a file fails the spawn outright
-    /// with ENOTDIR, which surfaces as `/bin/zsh: Not a directory` and looks
-    /// like the user's command is broken when nothing has run at all.
+    /// The FOLDER to run in, never the file itself: `current_dir` on a file
+    /// fails the spawn with ENOTDIR, which reads as `/bin/zsh: Not a directory`
+    /// as if the user's command were broken.
     pub fn working_dir(&self) -> String {
         parent_dir(self.working_path())
     }
 }
 
-/// An ancestor row, for `{parent.*}`. Flat rather than a nested `RowContext`:
-/// a level's own query and its own ancestors are not what a placeholder can
-/// name, so carrying them would only invite reading the wrong one.
-///
-/// Deserialized because the shell is what still holds an ancestor's title and
-/// path; the candidate id carries only the ids.
+/// An ancestor row, for `{parent.*}`. Flat rather than a nested `RowContext`,
+/// since a placeholder can name nothing else about it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct ParentRow {
@@ -141,17 +129,16 @@ pub struct ParentRow {
     pub path: String,
 }
 
-/// The placeholders a template can carry, in one list so that `expand` and
-/// `Block::needs_row` agree on what one is. A brace that opens anything else is
-/// not a placeholder: a `run` command emitting JSON is full of them.
+/// One list, so `expand` and `Block::needs_row` agree on what a placeholder is.
+/// A brace that opens anything else is not one: a `run` command emitting JSON
+/// is full of them.
 pub const PLACEHOLDER_ID: &str = "{id}";
 pub const PLACEHOLDER_TITLE: &str = "{title}";
 pub const PLACEHOLDER_PATH: &str = "{path}";
 pub const PLACEHOLDER_DIR: &str = "{dir}";
 pub const PLACEHOLDER_QUERY: &str = "{query}";
-/// Opens an ancestor placeholder (`{parent.id}`, `{parent.parent.path}`). A
-/// producer mentioning one still needs a row, so `Block::needs_row` looks for
-/// this too.
+/// Opens an ancestor placeholder (`{parent.id}`), which also means a producer
+/// mentioning one needs a row.
 pub const PLACEHOLDER_PARENT: &str = "{parent.";
 pub const PLACEHOLDERS: [&str; 5] = [
     PLACEHOLDER_ID,
@@ -172,21 +159,15 @@ pub fn expand(template: &str, row: &RowContext) -> String {
     substitute(template, row, quote)
 }
 
-/// The same placeholders, substituted raw.
-///
-/// For a value that becomes a filesystem path (`dir`, `file`) rather than shell
-/// text: quoting there would put the quotes in the path and nothing would be
-/// found. Every caller must therefore hand the result to the filesystem, never
-/// to a shell.
+/// The same placeholders, unquoted, for a value that becomes a filesystem path
+/// rather than shell text: quotes there land in the path and nothing is found.
+/// Hand the result to the filesystem, never to a shell.
 pub fn expand_path(template: &str, row: &RowContext) -> String {
     substitute(template, row, |value| value.to_string())
 }
 
-/// One substitution pass, so the shell and filesystem forms cannot drift in
-/// which placeholders they know.
-///
-/// Ancestors are substituted deepest prefix first, and an ancestor that does not
-/// exist reads as empty, exactly like a row with no path.
+/// One pass, so the shell and filesystem forms cannot drift. Ancestors go
+/// deepest prefix first; a missing one reads as empty, like a row with no path.
 fn substitute(template: &str, row: &RowContext, transform: fn(&str) -> String) -> String {
     let mut out = template.to_string();
 
