@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
 use crate::def::{Block, Only, Producer, RowFormat};
-use crate::rows::{SourceRow, parse_lines};
+use crate::rows::{SourceRow, parse_rows};
+use crate::run::{RowContext, expand_path};
 
 /// Hard ceiling on rows from one source. A source that hits this is a mistake
 /// (a root pointed at the home directory, a runaway script), and the honest
@@ -35,7 +36,8 @@ pub enum CollectError {
     /// Command sources are collected by the shell, which owns process
     /// execution. Never a user error.
     NeedsRunner,
-    Unsupported(String),
+    /// The rows were read but could not be parsed in the declared format.
+    Malformed(String),
 }
 
 impl std::fmt::Display for CollectError {
@@ -44,7 +46,7 @@ impl std::fmt::Display for CollectError {
             Self::Io(message) => write!(f, "{message}"),
             Self::Glob(message) => write!(f, "{message}"),
             Self::NeedsRunner => write!(f, "command sources are run by the shell"),
-            Self::Unsupported(message) => write!(f, "{message}"),
+            Self::Malformed(message) => write!(f, "{message}"),
         }
     }
 }
@@ -71,6 +73,35 @@ pub fn collect(block: &Block, home: &Path) -> Result<Collected, CollectError> {
         }
         Producer::File { path, format } => collect_list(&expand_home(path, home), *format),
         Producer::Run { .. } => Err(CollectError::NeedsRunner),
+    }
+}
+
+/// Rows for `block` produced against the row a level was launched from. The
+/// producer expands against that row, because its own rows do not exist yet. A
+/// `run` block still comes back as `NeedsRunner` for the shell to run.
+pub fn collect_for_row(
+    block: &Block,
+    home: &Path,
+    row: &RowContext,
+) -> Result<Collected, CollectError> {
+    match &block.producer {
+        Producer::Dir {
+            roots,
+            depth,
+            only,
+            include,
+            exclude,
+        } => {
+            let roots: Vec<PathBuf> = roots
+                .iter()
+                .map(|root| expand_home(&expand_path(root, row), home))
+                .collect();
+            collect_folders(&roots, *depth, *only, include, exclude)
+        }
+        Producer::File { path, format } => {
+            collect_list(&expand_home(&expand_path(path, row), home), *format)
+        }
+        Producer::Bundle { .. } | Producer::Run { .. } => collect(block, home),
     }
 }
 
@@ -202,19 +233,14 @@ fn collect_list(file: &Path, format: RowFormat) -> Result<Collected, CollectErro
         fs::read(file).map_err(|err| CollectError::Io(format!("{}: {err}", file.display())))?;
     let text = String::from_utf8_lossy(&contents);
 
-    match format {
-        RowFormat::Lines => {
-            let (rows, truncated) = parse_lines(&text, MAX_ROWS_PER_SOURCE);
-            Ok(Collected {
-                rows,
-                truncated,
-                unreadable: Vec::new(),
-            })
-        }
-        RowFormat::Json => Err(CollectError::Unsupported(
-            "format = \"json\" is not implemented yet".into(),
-        )),
-    }
+    let (rows, truncated) = parse_rows(&text, MAX_ROWS_PER_SOURCE, format)
+        .map_err(|message| CollectError::Malformed(format!("{}: {message}", file.display())))?;
+
+    Ok(Collected {
+        rows,
+        truncated,
+        unreadable: Vec::new(),
+    })
 }
 
 fn build_globs(patterns: &[String]) -> Result<Option<GlobSet>, CollectError> {
@@ -466,7 +492,7 @@ mod tests {
         assert_eq!(collected.rows.len(), 2);
         assert_eq!(collected.rows[0].id, "web1");
         assert_eq!(collected.rows[0].title, "Production web");
-        assert_eq!(collected.rows[0].group.as_deref(), Some("Servers"));
+        assert_eq!(collected.rows[0].subtitle.as_deref(), Some("Servers"));
         assert_eq!(collected.rows[1].title, "db1");
     }
 
@@ -483,6 +509,81 @@ mod tests {
             .map(|r| r.title)
             .collect();
         assert_eq!(titles, ["zeta", "alpha", "middle"]);
+    }
+
+    #[test]
+    fn a_json_list_source_reads_the_fields_the_line_format_cannot_carry() {
+        let tmp = TempDir::new("json-list");
+        let file = tmp.file(
+            "repos.json",
+            r#"[{"id":"look","title":"Look","subtitle":"3 uncommitted","path":"/dev/look"}]"#,
+        );
+
+        let def = folder_def(&format!(
+            "file = {:?}\nformat = \"json\"\n",
+            file.to_str().unwrap()
+        ));
+        let collected = collect(&def, Path::new("/nonexistent")).unwrap();
+
+        assert_eq!(collected.rows.len(), 1);
+        assert_eq!(collected.rows[0].subtitle.as_deref(), Some("3 uncommitted"));
+        assert_eq!(collected.rows[0].path.as_deref(), Some("/dev/look"));
+    }
+
+    #[test]
+    fn a_json_list_that_does_not_parse_names_the_file() {
+        let tmp = TempDir::new("json-broken");
+        let file = tmp.file("broken.json", "{\"id\": }");
+
+        let def = folder_def(&format!(
+            "file = {:?}\nformat = \"json\"\n",
+            file.to_str().unwrap()
+        ));
+        match collect(&def, Path::new("/nonexistent")) {
+            Err(CollectError::Malformed(message)) => assert!(message.contains("broken.json")),
+            other => panic!("expected a malformed error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_producer_expands_against_the_row_a_level_was_launched_from() {
+        let tmp = TempDir::new("level");
+        std::fs::create_dir_all(tmp.0.join("animate/src")).expect("child dir");
+        std::fs::create_dir_all(tmp.0.join("look/src")).expect("child dir");
+
+        let def = folder_def("dir = \"{path}/src\"\n");
+        let row = RowContext {
+            path: tmp.0.join("animate").to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+
+        let collected = collect_for_row(&def, Path::new("/nonexistent"), &row).unwrap();
+        assert!(
+            collected
+                .rows
+                .iter()
+                .all(|r| r.path.as_deref().unwrap().contains("animate")),
+            "the level lists the selected row's folder, not another's"
+        );
+    }
+
+    #[test]
+    fn a_path_placeholder_is_not_shell_quoted_on_its_way_into_the_filesystem() {
+        // `expand` quotes, which is right for a command and fatal for a path:
+        // the quotes would become part of the name and nothing would be found.
+        let tmp = TempDir::new("quoting");
+        let parent = tmp.0.join("my project");
+        std::fs::create_dir_all(parent.join("inside")).expect("child dir");
+
+        let def = folder_def("dir = \"{path}\"\n");
+        let row = RowContext {
+            path: parent.to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+
+        let collected = collect_for_row(&def, Path::new("/nonexistent"), &row).unwrap();
+        assert_eq!(collected.rows.len(), 1);
+        assert_eq!(collected.rows[0].title, "inside");
     }
 
     #[test]

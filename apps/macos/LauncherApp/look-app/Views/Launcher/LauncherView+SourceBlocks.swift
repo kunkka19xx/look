@@ -26,7 +26,7 @@ extension LauncherView {
     /// selection change, and an async load that appends later would make the
     /// action list grow under the user's cursor.
     func sourceBlockTargets(for result: LauncherResult) -> [QuickActionDescriptor] {
-        guard result.id.hasPrefix(AppConstants.Launcher.SourceBlock.idPrefix) else { return [] }
+        guard result.isSourceRow else { return [] }
 
         return SourceBlockCatalog.targets(for: result).map { target in
             QuickActionDescriptor(
@@ -47,6 +47,17 @@ extension LauncherView {
         guard let selected = actionableSelectedResult() else { return }
 
         let row = (id: selected.id, title: selected.title, path: selected.path, query: query)
+        let ancestors = selectedRowAncestorsJSON
+        // Claimed before the block runs: the user can hide the launcher or
+        // start another target while it does.
+        let epoch = levelStack.beginRequest()
+        let parent = LevelParentRow(
+            candidateID: selected.id,
+            title: selected.title,
+            path: selected.path,
+            openedFromQuery: query,
+            openedFromSelection: selectedResultID
+        )
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.performBlock(
@@ -55,20 +66,23 @@ extension LauncherView {
                     rowTitle: row.title,
                     rowPath: row.path,
                     query: row.query,
+                    ancestorsJSON: ancestors,
                     asTarget: true
                 )
             }.value
 
             await MainActor.run {
+                guard epoch == levelStack.epoch else { return }
                 if let failure = outcome.errors.first {
                     showBanner("\(title): \(failure)", style: .error, duration: 4.0)
                     return
                 }
                 if outcome.producesRows {
-                    // Descending needs the level stack, which does not exist
-                    // yet. Said plainly rather than inferred from a zero count,
-                    // which is also what a failure looks like.
-                    showBanner("\(title) produces rows; drill-down is not built yet", style: .info, duration: 2.4)
+                    // Not a failure and nothing was performed: the target lists,
+                    // so it is a level to descend into.
+                    descendIntoBlock(
+                        blockID: blockID, title: title, parent: parent, ancestorsJSON: ancestors,
+                        epoch: epoch)
                     return
                 }
                 hideLauncherWindow(restorePreviousApp: false)

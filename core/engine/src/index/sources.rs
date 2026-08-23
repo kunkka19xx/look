@@ -16,7 +16,9 @@ use std::sync::mpsc::SyncSender;
 use std::time::UNIX_EPOCH;
 
 use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
-use look_sources::{Block, Producer, SourceRow, collect, load_dir, sources_dir};
+use look_sources::{
+    Block, Producer, RowFormat, SourceRow, collect, expand_home, load_dir, sources_dir,
+};
 
 use crate::index::run_cache;
 
@@ -65,7 +67,7 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
             // A `run` block needs a process, and spawning one per index pass
             // would put arbitrary user commands on the indexing thread. The
             // shell runs it and hands the rows back (see `run_cache`).
-            Producer::Run { .. } => emit_cached_rows(block, &tx),
+            Producer::Run { format, .. } => emit_cached_rows(block, *format, home, &tx),
         }
     }
 }
@@ -73,7 +75,7 @@ pub(super) fn discover_user_sources(tx: SyncSender<Candidate>) {
 /// A bundle is one row, and Enter performs its steps. The step count is the
 /// honest subtitle: it says this will do several things before you press it.
 fn bundle_candidate(block: &Block, steps: usize) -> Candidate {
-    let id = format!("{}{}", CandidateIdKind::source_row_prefix(&block.id), "");
+    let id = CandidateIdKind::source_row_candidate_id(&block.id, &[], "");
     let mut candidate = Candidate::new(&id, CandidateKind::Action, &block.name, "");
     let plural = if steps == 1 { "" } else { "s" };
     candidate.subtitle = Some(format!("{steps} {BUNDLE_STEP_LABEL}{plural}").into());
@@ -128,40 +130,42 @@ fn emit_rows(block: &Block, home: &Path, tx: &SyncSender<Candidate>) {
             block.id
         );
     }
-    send_rows(block, &collected.rows, tx);
+    send_rows(block, &collected.rows, home, tx);
 }
 
 /// A `run` block's rows come from the last refresh the shell performed. No cache
 /// means the block has not been run yet, which is silent: a first launcher open
 /// should not look like a broken source.
-fn emit_cached_rows(block: &Block, tx: &SyncSender<Candidate>) {
-    let rows = run_cache::read(&block.id);
-    send_rows(block, &rows, tx);
+fn emit_cached_rows(block: &Block, format: RowFormat, home: &Path, tx: &SyncSender<Candidate>) {
+    let rows = run_cache::read(&block.id, format);
+    send_rows(block, &rows, home, tx);
 }
 
-fn send_rows(block: &Block, rows: &[SourceRow], tx: &SyncSender<Candidate>) {
+fn send_rows(block: &Block, rows: &[SourceRow], home: &Path, tx: &SyncSender<Candidate>) {
     for row in rows {
-        if tx.send(row_candidate(block, row)).is_err() {
+        if tx.send(row_candidate(block, row, home)).is_err() {
             return;
         }
     }
 }
 
-fn row_candidate(block: &Block, row: &SourceRow) -> Candidate {
-    let id = format!(
-        "{}{}",
-        CandidateIdKind::source_row_prefix(&block.id),
-        row.id
+fn row_candidate(block: &Block, row: &SourceRow, home: &Path) -> Candidate {
+    let id = CandidateIdKind::source_row_candidate_id(&block.id, &[], &row.id);
+    // A script writes `~` as readily as a user does, and the verbs and chords
+    // act on this path directly.
+    let path = row
+        .path
+        .as_deref()
+        .map(|path| expand_home(path, home).to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut candidate = Candidate::new(&id, CandidateKind::Action, &row.title, &path);
+    // What the row said about itself, else where it came from.
+    candidate.subtitle = Some(
+        row.subtitle
+            .as_deref()
+            .unwrap_or(block.name.as_str())
+            .into(),
     );
-    let mut candidate = Candidate::new(
-        &id,
-        CandidateKind::Action,
-        &row.title,
-        row.path.as_deref().unwrap_or_default(),
-    );
-    // The group when the row named one, else the block: either way the row says
-    // where it came from, and typing that word lists the block.
-    candidate.subtitle = Some(row.group.as_deref().unwrap_or(block.name.as_str()).into());
     candidate
 }
 
@@ -172,7 +176,7 @@ fn dir_candidate(block: &Block, row_id: &str, title: &str, path: &str) -> Candid
         _ => CandidateKind::File,
     };
 
-    let id = format!("{}{row_id}", CandidateIdKind::source_row_prefix(&block.id));
+    let id = CandidateIdKind::source_row_candidate_id(&block.id, &[], row_id);
     let mut candidate = Candidate::new(&id, kind, title, path);
     // The block's name, not the generic kind word the file walker uses, so the
     // row says where it came from and typing that name lists the whole block.
@@ -238,6 +242,42 @@ mod tests {
             bundle_candidate(&block, 1).subtitle.as_deref(),
             Some("1 step")
         );
+    }
+
+    #[test]
+    fn a_row_says_what_it_declared_before_its_block() {
+        let block = block_of("[repos]\nname = \"Repos\"\nrun = \"repos\"\n");
+        let home = Path::new("/home/u");
+
+        let mut row = SourceRow::new("look", "Look");
+        assert_eq!(
+            row_candidate(&block, &row, home).subtitle.as_deref(),
+            Some("Repos")
+        );
+
+        row.subtitle = Some("3 uncommitted".into());
+        assert_eq!(
+            row_candidate(&block, &row, home).subtitle.as_deref(),
+            Some("3 uncommitted")
+        );
+    }
+
+    #[test]
+    fn a_row_path_is_usable_whether_or_not_the_script_expanded_it() {
+        let block = block_of("[repos]\nname = \"Repos\"\nrun = \"repos\"\n");
+        let home = Path::new("/home/u");
+
+        let mut row = SourceRow::new("look", "Look");
+        assert_eq!(row_candidate(&block, &row, home).path.as_ref(), "");
+
+        row.path = Some("~/dev/look".into());
+        let candidate = row_candidate(&block, &row, home);
+        // Built like the code builds it: the separator is the platform's.
+        let expanded = home.join("dev/look");
+        assert_eq!(candidate.path.as_ref(), expanded.to_string_lossy());
+        // Still an action row: a block's verbs are what Enter performs, and a
+        // path only adds where the tool chords act.
+        assert_eq!(candidate.kind, CandidateKind::Action);
     }
 
     #[test]

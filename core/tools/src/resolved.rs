@@ -31,6 +31,11 @@ pub const KIND_FAILED: &str = "failed";
 /// struct: `kind` says which of the other fields are filled.
 #[derive(Debug, Default, Serialize)]
 pub struct Resolved {
+    /// The row's own block declared this action, so `tool` names the block
+    /// rather than a tool: "Open in WezTerm" is a tool, "Open in Projects" is
+    /// not a sentence. Set by whoever knows about blocks; the default is false.
+    #[serde(rename = "fromBlock")]
+    pub from_block: bool,
     pub kind: &'static str,
     /// The tool that will start, for the label and the installed check.
     pub tool: Option<String>,

@@ -275,9 +275,44 @@ pub extern "C" fn look_source_block_json(
     row_id: *const c_char,
     row_title: *const c_char,
     row_path: *const c_char,
+    ancestors_json: *const c_char,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        sources_api::look_source_block_json_impl(candidate_id, row_id, row_title, row_path)
+        sources_api::look_source_block_json_impl(
+            candidate_id,
+            row_id,
+            row_title,
+            row_path,
+            ancestors_json,
+        )
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The rows of `block_id` produced against the selected row, for descending
+/// into a `then` target that lists rather than performs. Returns
+/// `{rows, truncated, error}`; each row's `candidateId` encodes the levels it
+/// came through, so two parents never share a row.
+///
+/// Runs the block live on every call. An error means do not descend.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_rows_json(
+    block_id: *const c_char,
+    parent_candidate_id: *const c_char,
+    parent_title: *const c_char,
+    parent_path: *const c_char,
+    query: *const c_char,
+    ancestors_json: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_source_rows_json_impl(
+            block_id,
+            parent_candidate_id,
+            parent_title,
+            parent_path,
+            query,
+            ancestors_json,
+        )
     }))
     .unwrap_or(std::ptr::null_mut())
 }
@@ -298,14 +333,28 @@ pub extern "C" fn look_source_blocks_json() -> *mut c_char {
 ///
 /// Reads the declared tools from the cached config, so Cmd+Shift+; is all a
 /// user needs after editing them.
+///
+/// A block that declares `edit` / `terminal` / `reveal` wins for its own rows,
+/// so pass the row's id, title and ancestors: its verb expands like every other
+/// command it declares.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_tool_action_json(
     action: *const c_char,
+    candidate_id: *const c_char,
+    row_title: *const c_char,
     path: *const c_char,
     is_dir: bool,
+    ancestors_json: *const c_char,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        tools_api::look_tool_action_json_impl(action, path, is_dir)
+        tools_api::look_tool_action_json_impl(
+            action,
+            candidate_id,
+            row_title,
+            path,
+            is_dir,
+            ancestors_json,
+        )
     }))
     .unwrap_or(std::ptr::null_mut())
 }
@@ -316,11 +365,21 @@ pub extern "C" fn look_tool_action_json(
 #[unsafe(no_mangle)]
 pub extern "C" fn look_perform_tool_action_json(
     action: *const c_char,
+    candidate_id: *const c_char,
+    row_title: *const c_char,
     path: *const c_char,
     is_dir: bool,
+    ancestors_json: *const c_char,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        tools_api::look_perform_tool_action_json_impl(action, path, is_dir)
+        tools_api::look_perform_tool_action_json_impl(
+            action,
+            candidate_id,
+            row_title,
+            path,
+            is_dir,
+            ancestors_json,
+        )
     }))
     .unwrap_or(std::ptr::null_mut())
 }
@@ -363,9 +422,16 @@ pub extern "C" fn look_source_preview_json(
     row_id: *const c_char,
     row_title: *const c_char,
     row_path: *const c_char,
+    ancestors_json: *const c_char,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        sources_api::look_source_preview_json_impl(candidate_id, row_id, row_title, row_path)
+        sources_api::look_source_preview_json_impl(
+            candidate_id,
+            row_id,
+            row_title,
+            row_path,
+            ancestors_json,
+        )
     }))
     .unwrap_or(std::ptr::null_mut())
 }
@@ -379,11 +445,18 @@ pub extern "C" fn look_perform_block_json(
     row_title: *const c_char,
     row_path: *const c_char,
     query: *const c_char,
+    ancestors_json: *const c_char,
     as_target: bool,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         sources_api::look_perform_block_json_impl(
-            block_id, row_id, row_title, row_path, query, as_target,
+            block_id,
+            row_id,
+            row_title,
+            row_path,
+            query,
+            ancestors_json,
+            as_target,
         )
     }))
     .unwrap_or(std::ptr::null_mut())

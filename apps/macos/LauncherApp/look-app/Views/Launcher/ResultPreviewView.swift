@@ -3,8 +3,18 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ResultPreviewView: View {
+    private enum Layout {
+        /// How much of a block's steps the panel shows before scrolling. Two,
+        /// because the steps are context for the row, not the subject of the
+        /// panel, and one long command should not push the preview off screen.
+        static let visibleStepLines = 2
+    }
+
     @EnvironmentObject private var themeStore: ThemeStore
     let result: LauncherResult
+    /// The levels this row was reached through, for a `preview` that names
+    /// `{parent.*}`. Empty for every row that is not inside a drill-down.
+    var rowAncestorsJSON: String = "[]"
     /// Quick Actions for this result, rendered beneath the header (info + actions
     /// panel). Empty for results with no actions.
     var quickActions: [QuickActionDescriptor] = []
@@ -551,7 +561,8 @@ struct ResultPreviewView: View {
                         AICodeBlockView(
                             code: blockSteps.joined(separator: "\n"),
                             language: "sh",
-                            themeStore: themeStore
+                            themeStore: themeStore,
+                            maxVisibleLines: Layout.visibleStepLines
                         )
                     }
                     if let preview = blockPreview {
@@ -565,15 +576,22 @@ struct ResultPreviewView: View {
             if let file = blockFile {
                 Divider().overlay(themeStore.secondaryTextColor().opacity(0.2))
                 InfoRow(label: "Declared in", value: (file as NSString).abbreviatingWithTildeInPath)
-                hintRow(key: "⌘F", text: "Reveal that file")
+                // A row that names its own path reveals that, like every other
+                // row with one, so the chord belongs to the declaration only
+                // when the row has nothing of its own to point at.
+                if result.path.isEmpty {
+                    hintRow(key: "⌘F", text: "Reveal that file")
+                }
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task(id: result.id) {
             let candidateID = result.id
+            let ancestors = rowAncestorsJSON
             let block = await Task.detached(priority: .userInitiated) {
-                EngineBridge.shared.sourceBlock(candidateID: candidateID)
+                EngineBridge.shared.sourceBlock(
+                    candidateID: candidateID, ancestorsJSON: ancestors)
             }.value
             // The detached read outlives a cancelled task, so a late answer must
             // not populate the panel of a row the user has already left.
@@ -590,7 +608,8 @@ struct ResultPreviewView: View {
                     candidateID: candidateID,
                     rowID: row.id,
                     rowTitle: row.title,
-                    rowPath: row.path
+                    rowPath: row.path,
+                    ancestorsJSON: ancestors
                 )
             }.value
             if Task.isCancelled { return }

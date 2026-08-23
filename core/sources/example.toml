@@ -50,7 +50,10 @@ then = ["ghostty"]
 
 # What the standard keys do to a picked row. Each verb has one key across the
 # whole app, so Cmd+E always edits. Declare only what differs from your global
-# default in ~/.look/config (see specs/preferred-tools.md).
+# default in ~/.look/config.
+#
+# `open` is what Enter runs, for rows of ANY producer. Without it, a row that
+# names a path opens that path, which is why most `dir` blocks declare none.
 open     = "open {path}"
 edit     = "nvim {path}"
 terminal = "tmux new-session -As {title} -c {path}"
@@ -64,7 +67,7 @@ do   = ["open -a Ghostty {path}"]
 
 
 # -------------------------------------------------------------------- file --
-# Rows from a text file, one per line: id<TAB>title<TAB>group
+# Rows from a text file, one per line: id<TAB>title<TAB>subtitle
 # A bare line is both id and title. The id is what verbs and `then` receive, so
 # a row can show one thing and act on another.
 
@@ -92,6 +95,26 @@ preview = "git -C ~/dev/look log -10 --date=short --format='%h  %ad  %an  %s' {i
 
 open    = "git -C ~/dev/look checkout {id}"
 then    = ["drop-branch"]
+
+
+# -------------------------------------------------------------------- json --
+# Rows as JSON instead of tab-separated lines, for the field lines cannot carry:
+# `path`, which makes a row a real filesystem object (Cmd+E, Cmd+T, Cmd+F, and
+# {path} in the verbs below).
+#
+# One array, or one object per line, or pretty-printed objects run together:
+# whichever your tool already prints. `id` is the only required key, a bare
+# string is a row like a bare line, and keys Look does not know are ignored.
+#
+#   [{"id": "look", "title": "Look", "subtitle": "3 uncommitted",
+#     "path": "~/dev/look"}]
+
+[repos]
+name   = "Repos"
+run    = "~/.look/bin/repos"
+format = "json"
+
+open   = "code {path}"
 
 
 # `confirm` asks before the block does anything. Anything destructive should

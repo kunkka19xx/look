@@ -407,6 +407,7 @@ dependencies = [
  "globset",
  "look-tools",
  "serde",
+ "serde_json",
  "toml",
 ]
 

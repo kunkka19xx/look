@@ -230,27 +230,31 @@ private func look_refresh_run_blocks_json() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_preview_json")
 nonisolated
-private func look_source_preview_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private func look_source_preview_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_source_blocks_json")
 nonisolated
 private func look_source_blocks_json() -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_source_rows_json")
+nonisolated
+private func look_source_rows_json(_ blockID: UnsafePointer<CChar>?, _ parentCandidateID: UnsafePointer<CChar>?, _ parentTitle: UnsafePointer<CChar>?, _ parentPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_source_block_json")
 nonisolated
-private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+private func look_source_block_json(_ candidateID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_perform_block_json")
 nonisolated
-private func look_perform_block_json(_ blockID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ asTarget: Bool) -> UnsafeMutablePointer<CChar>?
+private func look_perform_block_json(_ blockID: UnsafePointer<CChar>?, _ rowID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ rowPath: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ ancestorsJSON: UnsafePointer<CChar>?, _ asTarget: Bool) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_tool_action_json")
 nonisolated
-private func look_tool_action_json(_ action: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool) -> UnsafeMutablePointer<CChar>?
+private func look_tool_action_json(_ action: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_perform_tool_action_json")
 nonisolated
-private func look_perform_tool_action_json(_ action: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool) -> UnsafeMutablePointer<CChar>?
+private func look_perform_tool_action_json(_ action: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_netspeed_run_json")
 nonisolated
@@ -1016,13 +1020,16 @@ final class EngineBridge: @unchecked Sendable {
     /// The user-declared block a row belongs to, with the exact steps Enter will
     /// perform. Reads the sources directory, so call it off the main thread.
     nonisolated func sourceBlock(
-        candidateID: String, rowID: String = "", rowTitle: String = "", rowPath: String = ""
+        candidateID: String, rowID: String = "", rowTitle: String = "", rowPath: String = "",
+        ancestorsJSON: String = "[]"
     ) -> SourceBlock? {
         let ptr = candidateID.withCString { candidate in
             rowID.withCString { id in
                 rowTitle.withCString { title in
                     rowPath.withCString { path in
-                        look_source_block_json(candidate, id, title, path)
+                        ancestorsJSON.withCString { ancestors in
+                            look_source_block_json(candidate, id, title, path, ancestors)
+                        }
                     }
                 }
             }
@@ -1033,12 +1040,41 @@ final class EngineBridge: @unchecked Sendable {
         return try? JSONDecoder().decode(SourceBlock.self, from: data)
     }
 
+    /// The rows of `blockID`, produced against the row a level is opening from.
+    /// Runs the block's command, so call it off the main thread. `error`
+    /// non-nil means do not descend.
+    nonisolated func sourceRows(
+        blockID: String, parentCandidateID: String, parentTitle: String, parentPath: String,
+        query: String, ancestorsJSON: String = "[]"
+    ) -> SourceLevel? {
+        let ptr = blockID.withCString { block in
+            parentCandidateID.withCString { parent in
+                parentTitle.withCString { title in
+                    parentPath.withCString { path in
+                        query.withCString { query in
+                            ancestorsJSON.withCString { ancestors in
+                                look_source_rows_json(
+                                    block, parent, title, path, query, ancestors)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        guard let ptr else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(SourceLevel.self, from: data)
+    }
+
     /// What `action` would do to a row, without doing it: the tool it would
     /// start, or why it cannot. For labels and availability.
-    nonisolated func toolAction(_ action: String, path: String, isDirectory: Bool) -> ToolAction? {
-        let ptr = action.withCString { action in
-            path.withCString { path in
-                look_tool_action_json(action, path, isDirectory)
+    nonisolated func toolAction(
+        _ action: String, row: ToolActionRow, isDirectory: Bool
+    ) -> ToolAction? {
+        let ptr = row.withCStrings { candidate, title, path, ancestors in
+            action.withCString { action in
+                look_tool_action_json(action, candidate, title, path, isDirectory, ancestors)
             }
         }
         return Self.decodeToolAction(ptr)
@@ -1047,10 +1083,12 @@ final class EngineBridge: @unchecked Sendable {
     /// Runs `action` on a row. Shell actions are spawned detached inside core;
     /// an `application` result is handed back for `NSWorkspace` to launch.
     /// Spawns a process, so call it off the main thread.
-    nonisolated func performToolAction(_ action: String, path: String, isDirectory: Bool) -> ToolAction? {
-        let ptr = action.withCString { action in
-            path.withCString { path in
-                look_perform_tool_action_json(action, path, isDirectory)
+    nonisolated func performToolAction(
+        _ action: String, row: ToolActionRow, isDirectory: Bool
+    ) -> ToolAction? {
+        let ptr = row.withCStrings { candidate, title, path, ancestors in
+            action.withCString { action in
+                look_perform_tool_action_json(action, candidate, title, path, isDirectory, ancestors)
             }
         }
         return Self.decodeToolAction(ptr)
@@ -1081,13 +1119,16 @@ final class EngineBridge: @unchecked Sendable {
     /// A block's declared `preview`, run against the selected row. Nil when the
     /// block declares none. Runs a command - call off the main thread.
     nonisolated func sourcePreview(
-        candidateID: String, rowID: String, rowTitle: String, rowPath: String
+        candidateID: String, rowID: String, rowTitle: String, rowPath: String,
+        ancestorsJSON: String = "[]"
     ) -> SourcePreview? {
         let ptr = candidateID.withCString { candidate in
             rowID.withCString { id in
                 rowTitle.withCString { title in
                     rowPath.withCString { path in
-                        look_source_preview_json(candidate, id, title, path)
+                        ancestorsJSON.withCString { ancestors in
+                            look_source_preview_json(candidate, id, title, path, ancestors)
+                        }
                     }
                 }
             }
@@ -1118,6 +1159,7 @@ final class EngineBridge: @unchecked Sendable {
         rowTitle: String = "",
         rowPath: String = "",
         query: String = "",
+        ancestorsJSON: String = "[]",
         asTarget: Bool = false
     ) -> PerformBlockOutcome {
         let ptr = blockID.withCString { block in
@@ -1125,7 +1167,10 @@ final class EngineBridge: @unchecked Sendable {
                 rowTitle.withCString { title in
                     rowPath.withCString { path in
                         query.withCString { query in
-                            look_perform_block_json(block, id, title, path, query, asTarget)
+                            ancestorsJSON.withCString { ancestors in
+                                look_perform_block_json(
+                                    block, id, title, path, query, ancestors, asTarget)
+                            }
                         }
                     }
                 }
@@ -1136,7 +1181,8 @@ final class EngineBridge: @unchecked Sendable {
         // caller keys on that, so the two must not share a value.
         guard let ptr else {
             return PerformBlockOutcome(
-                performed: 0, errors: ["the core did not answer"], producesRows: false)
+                performed: 0, errors: ["the core did not answer"], producesRows: false,
+                opensPath: false)
         }
         defer { look_free_cstring(ptr) }
         // The core sends snake_case, so `produces_rows` only reaches
@@ -1147,7 +1193,8 @@ final class EngineBridge: @unchecked Sendable {
               let outcome = try? decoder.decode(PerformBlockOutcome.self, from: data)
         else {
             return PerformBlockOutcome(
-                performed: 0, errors: ["the core's answer could not be read"], producesRows: false)
+                performed: 0, errors: ["the core's answer could not be read"],
+                producesRows: false, opensPath: false)
         }
         return outcome
     }
@@ -1343,7 +1390,7 @@ nonisolated struct URLMatch: Decodable {
 /// A user-declared block and the steps performing it will run, so the panel can
 /// show exactly what Enter is about to do.
 /// One preferred-tool action resolved against a row. `kind` says which of the
-/// other fields are filled; see `specs/preferred-tools.md`.
+/// other fields are filled.
 nonisolated struct ToolAction: Decodable {
     enum Kind: String, Decodable {
         /// Composed shell text. Only `look_tool_action_json` returns this;
@@ -1368,6 +1415,9 @@ nonisolated struct ToolAction: Decodable {
     let reason: String?
     /// The config key that would fix an `unavailable` action.
     let key: String?
+    /// A block declared this action for its own rows, so `tool` names the
+    /// block: "Open in Projects" is not a label worth showing.
+    let fromBlock: Bool
 }
 
 nonisolated struct SourceBlock: Decodable {
@@ -1419,6 +1469,9 @@ nonisolated struct PerformBlockOutcome: Decodable {
     /// The target lists rows to pick from rather than steps to run. An explicit
     /// flag, because "nothing performed" is also what a failure looks like.
     let producesRows: Bool
+    /// Nothing declared and the row has a path, so it opens like any file. The
+    /// core decides this, not the row's kind.
+    let opensPath: Bool
 }
 
 /// Wire shape of a `url_history` row (see url-history spec), decoded with

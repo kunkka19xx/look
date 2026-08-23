@@ -62,6 +62,10 @@ struct IndexedCandidate {
     title_search: String,
     subtitle_search: Option<String>,
     path_search: String,
+    /// Matched but never shown. A source row is found by the block that made it,
+    /// and the block's words cannot live in the subtitle, which the row may
+    /// have declared for itself.
+    keywords_search: Option<String>,
 }
 
 #[derive(Default)]
@@ -82,13 +86,20 @@ impl QueryEngine {
     }
 
     pub fn new_with_config(candidates: Vec<Candidate>, config: &RuntimeConfig) -> Self {
-        // Build an in-memory search index up front (hot path reads only).
-        let candidates = candidates.into_iter().map(IndexedCandidate::new).collect();
         let declared = index::declared_blocks();
+        let block_names: HashMap<&str, &str> = declared
+            .iter()
+            .map(|block| (block.id.as_str(), block.name.as_str()))
+            .collect();
+        // Build an in-memory search index up front (hot path reads only).
+        let candidates = candidates
+            .into_iter()
+            .map(|candidate| IndexedCandidate::new(candidate, &block_names))
+            .collect();
         let mut search_aliases = config.search_aliases.clone();
-        // A block's `aliases` are extra words that should find its rows. Its
-        // rows carry the block name as their subtitle, so pointing the alias at
-        // that name reuses the existing alias matcher unchanged.
+        // A block's `aliases` are extra words that should find its rows. They
+        // point at the block name, which every one of its rows carries in its
+        // search keywords.
         for block in &declared {
             for alias in &block.aliases {
                 let key = normalize_for_search(alias);
@@ -102,14 +113,16 @@ impl QueryEngine {
             }
         }
 
+        let source_biases = declared
+            .iter()
+            .filter(|block| block.bias != 0)
+            .map(|block| (block.id.clone(), block.bias))
+            .collect();
+
         Self {
             candidates,
             search_aliases,
-            source_biases: declared
-                .into_iter()
-                .filter(|block| block.bias != 0)
-                .map(|block| (block.id, block.bias))
-                .collect(),
+            source_biases,
         }
     }
 
@@ -324,7 +337,7 @@ impl QueryEngine {
         // sweep the matching prefixes or the deleted row lingers forever
         // (only an `ALL` refresh would otherwise catch it).
         // Prune by the `seen` set rather than the old "indexed_at < run_started"
-        // sweep: the change-detecting upsert (see specs/indexing-scale.md) no
+        // sweep: the change-detecting upsert no
         // longer bumps indexed_at on unchanged rows, so only "not seen this scan"
         // reliably means "gone". delete_unseen_candidates keeps the indexed_at<run
         // guard to preserve i64::MAX pinned rows. `seen` is already collected above
@@ -363,7 +376,7 @@ impl QueryEngine {
 }
 
 impl IndexedCandidate {
-    fn new(candidate: Candidate) -> Self {
+    fn new(candidate: Candidate, block_names: &HashMap<&str, &str>) -> Self {
         // Normalize once; reuse for fuzzy/contains/path scoring.
         let title_search = normalize_for_search(&candidate.title);
         let subtitle_search = candidate
@@ -371,11 +384,20 @@ impl IndexedCandidate {
             .as_ref()
             .map(|subtitle| normalize_for_search(subtitle));
         let path_search = normalize_for_search(&candidate.path);
+        // Both the name the user reads and the id they wrote in the file: either
+        // is what they will type to reach the block's rows.
+        let keywords_search = CandidateIdKind::source_id_of(&candidate.id).map(|block_id| {
+            match block_names.get(block_id) {
+                Some(name) => normalize_for_search(&format!("{name} {block_id}")),
+                None => normalize_for_search(block_id),
+            }
+        });
         Self {
             candidate,
             title_search,
             subtitle_search,
             path_search,
+            keywords_search,
         }
     }
 }
