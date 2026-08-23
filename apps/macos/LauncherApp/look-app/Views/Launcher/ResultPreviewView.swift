@@ -3,6 +3,13 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ResultPreviewView: View {
+    private enum Layout {
+        /// How much of a block's steps the panel shows before scrolling. Two,
+        /// because the steps are context for the row, not the subject of the
+        /// panel, and one long command should not push the preview off screen.
+        static let visibleStepLines = 2
+    }
+
     @EnvironmentObject private var themeStore: ThemeStore
     let result: LauncherResult
     /// The levels this row was reached through, for a `preview` that names
@@ -554,7 +561,8 @@ struct ResultPreviewView: View {
                         AICodeBlockView(
                             code: blockSteps.joined(separator: "\n"),
                             language: "sh",
-                            themeStore: themeStore
+                            themeStore: themeStore,
+                            maxVisibleLines: Layout.visibleStepLines
                         )
                     }
                     if let preview = blockPreview {
