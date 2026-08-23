@@ -82,7 +82,7 @@ export function rows(query) {
 
     return level.rows
         .filter((row) => matches(needle, row))
-        .map((row) => ({
+        .map((row, position) => ({
             id: row.candidateId,
             // Enter runs the block's verbs whatever the row carries; a path
             // only says where the chords act.
@@ -90,7 +90,9 @@ export function rows(query) {
             title: row.title,
             subtitle: row.subtitle,
             path: row.path || '',
-            score: 0,
+            // Descending, so the producer's order IS the score wherever one is
+            // read (macOS LauncherView+Levels does the same).
+            score: level.rows.length - position,
         }));
 }
 

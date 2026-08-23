@@ -75,6 +75,7 @@ export function update(result) {
     }
     panel.hidden = false;
     panel.innerHTML = '';
+    panel.classList.remove('is-block');
     currentProcPid = null;
     // The panel was wiped: invalidate any in-flight Quick Actions render so a
     // late response can't append a stale section for the previous result.
@@ -631,6 +632,13 @@ export function showClipboardHelp() {
  * the panel of a row the user has already left, so both check the cache key.
  */
 async function renderBlockPreview(result, cacheKey) {
+    // A column of its own: the declaring file sits at the BOTTOM of the panel
+    // (macOS puts a Spacer above it), and only this preview wants that.
+    const column = document.createElement('div');
+    column.className = 'preview-block';
+    panel.classList.add('is-block');
+    panel.appendChild(column);
+
     const header = document.createElement('div');
     header.className = 'preview-header';
 
@@ -647,54 +655,67 @@ async function renderBlockPreview(result, cacheKey) {
     title.className = 'preview-title';
     title.textContent = result.title;
     headerText.appendChild(title);
+    // No kind badge: the subtitle is already the block's name, and the panel
+    // saying it twice reads as a bug rather than as emphasis (macOS
+    // ResultPreviewView.actionPreview shows title and subtitle only).
     const headerSub = document.createElement('div');
     headerSub.className = 'preview-header-sub';
-    const badge = document.createElement('span');
-    badge.className = 'preview-badge kind-action';
-    badge.textContent = sourceblocks.blockName(result.id) || 'Action';
-    headerSub.appendChild(badge);
-    if (result.subtitle) {
-        const detail = document.createElement('span');
-        detail.className = 'preview-size';
-        detail.textContent = result.subtitle;
-        headerSub.appendChild(detail);
-    }
+    const detail = document.createElement('span');
+    detail.className = 'preview-size';
+    detail.textContent = result.subtitle || sourceblocks.blockName(result.id) || '';
+    headerSub.appendChild(detail);
     headerText.appendChild(headerSub);
     header.appendChild(headerText);
-    panel.appendChild(header);
+    column.appendChild(header);
 
     const body = document.createElement('div');
     body.className = 'preview-slot';
-    panel.appendChild(body);
+    column.appendChild(body);
 
-    const meta = document.createElement('div');
-    meta.className = 'preview-meta';
-    panel.appendChild(meta);
+    // Pushed to the bottom by its own margin, so a block with two steps and a
+    // block with a long preview both say where they came from in the same place.
+    const footer = document.createElement('div');
+    footer.className = 'preview-block-footer';
+    column.appendChild(footer);
 
     const block = await sourceblocks.loadDetail(result);
     if (!block || currentPath !== cacheKey) return;
 
     if (block.steps.length > 0) {
+        // Above the scrolling region, not inside it: what Enter does should not
+        // scroll away from the commands it labels (macOS keeps the same line
+        // outside its ScrollView).
         const label = document.createElement('div');
         label.className = 'preview-section-label';
         label.textContent = 'Enter runs';
-        body.appendChild(label);
+        column.insertBefore(label, body);
         body.appendChild(await stepsBlock(block.steps));
         if (currentPath !== cacheKey) return;
     }
 
     if (block.file) {
-        meta.appendChild(infoRow('Declared in', block.file));
+        const divider = document.createElement('div');
+        divider.className = 'preview-divider';
+        footer.appendChild(divider);
+
+        const meta = document.createElement('div');
+        meta.className = 'preview-meta';
+        meta.appendChild(infoRow('Declared in', sourceblocks.tildePath(block.file)));
+        footer.appendChild(meta);
+
         // A row that names its own path reveals that, like every other row with
         // one, so the chord belongs to the declaration only when the row has
         // nothing of its own to point at.
-        if (!result.path) meta.appendChild(infoRow('Ctrl+F', 'Reveal that file'));
+        if (!result.path) footer.appendChild(hintRow('Ctrl+F', 'Reveal that file'));
     }
 
     // The declared `preview` runs a command, so it is read last and only after
     // the cheap details are on screen.
     const preview = await sourcePreview(sourceblocks.rowPayload(result));
     if (!preview || currentPath !== cacheKey) return;
+    // Only real output shares the space: a block with none leaves the steps to
+    // fill it, and a failure is one line rather than a second pane.
+    if (!preview.error && preview.text) column.classList.add('has-preview');
     body.appendChild(blockPreviewBody(preview));
 }
 
@@ -750,6 +771,25 @@ function blockPreviewBody(preview) {
     pre.textContent = preview.text;
     wrap.appendChild(pre);
     return wrap;
+}
+
+/** A chord and what it does: the key in a cap, the wording beside it. Not an
+ *  info row - that is a fact about the thing, this is something you can press. */
+function hintRow(key, text) {
+    const row = document.createElement('div');
+    row.className = 'preview-hint';
+
+    const cap = document.createElement('span');
+    cap.className = 'preview-hint-key';
+    cap.textContent = key;
+    row.appendChild(cap);
+
+    const label = document.createElement('span');
+    label.className = 'preview-hint-text';
+    label.textContent = text;
+    row.appendChild(label);
+
+    return row;
 }
 
 function infoRow(label, value) {

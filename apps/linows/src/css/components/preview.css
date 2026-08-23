@@ -79,11 +79,6 @@
 .preview-badge.kind-process {
     color: var(--color-info);
 }
-/* A row a user declared: the block it came from, in the accent that marks
- * everything the user configured. */
-.preview-badge.kind-action {
-    color: var(--accent-color);
-}
 
 .preview-size {
     font-size: calc(var(--font-size) - 2px);
@@ -132,9 +127,77 @@
     box-shadow: 0 2px 8px rgba(var(--shadow), 0.2);
 }
 
-/* Code/text file preview */
-/* "Enter runs", above the steps it labels. */
+/* A block row's panel is a column all the way down, so the card is the same
+ * height whatever the block declared: header, what runs, then the declaration
+ * at the foot. Flex rather than height:100% - a percentage needs a definite
+ * parent, and a panel that cannot resolve one collapses to its content. */
+.preview-panel.is-block {
+    display: flex;
+    flex-direction: column;
+}
+
+.preview-panel.is-block > .preview-block {
+    flex: 1;
+    min-height: 0;
+}
+
+.preview-block {
+    display: flex;
+    flex-direction: column;
+}
+
+/* The middle takes the leftover and scrolls, the panel does not: macOS puts a
+ * ScrollView here so the declaration below it never leaves the screen.
+ * Scrollbars are hidden app-wide (reset.css), so this shows none. */
+.preview-block > .preview-slot {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.preview-block-footer {
+    flex-shrink: 0;
+}
+
+.preview-divider {
+    height: 1px;
+    margin-top: 14px;
+    background: var(--divider-color);
+    opacity: 0.5;
+}
+
+/* A chord and what it does. The key wears a cap, so it reads as something to
+ * press rather than as another fact about the row. */
+.preview-hint {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 2px;
+}
+
+.preview-hint-key {
+    min-width: 36px;
+    padding: 3px 8px;
+    text-align: center;
+    font-size: calc(var(--font-size) - 2px);
+    font-weight: 600;
+    color: var(--accent-color);
+    background: var(--control-fill);
+    border-radius: 6px;
+}
+
+.preview-hint-text {
+    font-size: calc(var(--font-size) - 1px);
+    font-weight: 500;
+    color: var(--font-secondary);
+}
+
+/* "Enter runs", above the steps it labels and above the scroll with them. */
 .preview-section-label {
+    flex-shrink: 0;
     margin-top: 12px;
     font-size: calc(var(--font-size) - 2px);
     font-weight: 600;
@@ -148,6 +211,35 @@
     margin-top: 6px;
 }
 
+/* Inside the block panel both code blocks are columns that scroll themselves,
+ * so neither can push the other out of view and no fixed line cap is needed. */
+.preview-block .preview-code {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.preview-block .preview-code-text {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+}
+
+/* The steps take only what they need while a declared `preview` shares the
+ * space below them, and all of it when nothing follows: an eighteen-line
+ * script should not sit in a six-line box above an empty half-panel. */
+.preview-block .preview-steps {
+    flex: 0 1 auto;
+}
+
+.preview-block:not(.has-preview) .preview-steps {
+    flex: 1 1 auto;
+}
+
+.preview-block .preview-code:not(.preview-steps) {
+    flex: 1 1 auto;
+}
+
 .preview-steps-copy {
     position: absolute;
     top: 6px;
@@ -155,6 +247,7 @@
     z-index: 1;
 }
 
+/* Code/text file preview */
 .preview-code {
     margin-top: 12px;
     background: var(--control-fill);

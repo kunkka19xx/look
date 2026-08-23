@@ -19,6 +19,7 @@ import {
 import { zap } from '../icons.js';
 import * as levels from '../levels.js';
 import * as banner from './banner.js';
+import * as actionmenu from './actionmenu.js';
 
 // `look_indexing::CandidateIdKind::PREFIX_SOURCE`. A drilled row keeps it, so
 // this tells indexed and drilled source rows alike from every other row.
@@ -232,6 +233,12 @@ export async function activateRow(result) {
         return;
     }
 
+    // A block that declares `confirm` asks before Enter runs it, in the menu
+    // and not a modal, exactly as a `then` target does: it is the same row and
+    // the same risk, reached by a different key (§2.5).
+    const declared = await loadDetail(result);
+    if (declared?.confirm && !(await actionmenu.askConfirm(declared.confirm))) return;
+
     const outcome = await performRow(result);
     // On intent, like an open: core skips a drilled row, which is transient and
     // has nothing in the candidates table to key on.
@@ -308,6 +315,12 @@ function isSymbolName(declared) {
 }
 
 let home = null;
+
+/** `/home/you/.look/sources/x.toml` -> `~/.look/sources/x.toml`, the way macOS
+ *  abbreviates the declaring file in the panel. */
+export function tildePath(path) {
+    return home && path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+}
 
 function expandHome(path) {
     return path.startsWith('~/') && home ? `${home}${path.slice(1)}` : path;

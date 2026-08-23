@@ -141,11 +141,6 @@ html[data-os="windows"] .launcher-window {
     text-overflow: ellipsis;
 }
 
-/* A level's empty query is for filtering, not an invitation to search. */
-.search-breadcrumb:not([hidden]) ~ .search-placeholder {
-    opacity: 0;
-}
-
 #query {
     flex: 1;
     font-size: calc(var(--font-size) + 1px);

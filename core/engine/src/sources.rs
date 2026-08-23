@@ -64,10 +64,18 @@ pub struct ThenTarget {
 pub struct BlockDetail {
     pub id: String,
     pub name: String,
+    /// Expanded against the row, like `confirm` beside it: a panel that
+    /// answers "what is about to run" has to show the command, not the
+    /// template it was written as. Quoting included, since that is what runs.
     pub steps: Vec<String>,
     /// The file this block was declared in, so the panel can show it and
     /// reveal has something to point at.
     pub file: Option<String>,
+    /// The block's OWN question, expanded against the row, or null when it
+    /// declares none. Enter has to ask it: `confirm` exists because a launcher
+    /// makes Enter on the wrong row cheap, and a block reached by Enter rather
+    /// than through another block's `then` is the same row and the same risk.
+    pub confirm: Option<String>,
     pub then: Vec<ThenTarget>,
     /// Whether a `preview` command will run for this row. Answered with the
     /// cheap details rather than by waiting for the command, so the panel can
@@ -178,8 +186,12 @@ pub fn block_detail(candidate_id: &str, row: &RowContext) -> Option<BlockDetail>
     Some(BlockDetail {
         id: block.id.clone(),
         name: block.name.clone(),
-        steps: steps_of(block),
+        steps: steps_of(block, row),
         file: block.source_file.clone(),
+        confirm: block
+            .confirm
+            .as_deref()
+            .map(|question| look_sources::expand(question, row)),
         then,
         has_preview: block.preview.is_some(),
     })
@@ -521,6 +533,7 @@ pub fn parents_from_json(ancestors_json: &str) -> Vec<look_sources::ParentRow> {
 }
 
 /// What Enter will run: a bundle's steps, or the `open` verb that acts on a row
+<<<<<<< HEAD
 /// the block produced. Either way the panel shows the real commands.
 /// What a block is actually given: its own `timeout`, else the default, capped.
 fn capture_timeout(declared: Option<Duration>) -> Duration {
@@ -542,6 +555,19 @@ fn steps_of(block: &Block) -> Vec<String> {
         Producer::Bundle { steps } => steps.clone(),
         _ => block.verbs.open.iter().cloned().collect(),
     }
+=======
+/// the block produced. Either way the panel shows the real commands, expanded
+/// against the row the way the runner will expand them.
+fn steps_of(block: &Block, row: &RowContext) -> Vec<String> {
+    let declared: Vec<&str> = match &block.producer {
+        Producer::Bundle { steps } => steps.iter().map(String::as_str).collect(),
+        _ => block.verbs.open.iter().map(String::as_str).collect(),
+    };
+    declared
+        .into_iter()
+        .map(|step| look_sources::expand(step, row))
+        .collect()
+>>>>>>> 65fc4f3 (cosmetic)
 }
 
 fn failed(errors: Vec<String>) -> PerformOutcome {
@@ -800,7 +826,10 @@ mod tests {
 
         let row = row_context("src:branches:main", "main", "", "", Vec::new());
         let block = block_detail("src:branches:main", &row).expect("a declared block");
-        assert_eq!(block.steps, vec!["git checkout {id}".to_string()]);
+        // The command, not the template: the panel is what the user reads
+        // before pressing Enter, and its copy button hands them something they
+        // can paste.
+        assert_eq!(block.steps, vec!["git checkout 'main'".to_string()]);
 
         // A `then` naming a block that does not exist is reported by the
         // loader, not offered as a target.
@@ -816,6 +845,19 @@ mod tests {
         // A target that lists is a level to descend into, and says so.
         assert!(!block.then[1].performs, "rows to pick from");
         assert!(block.then[1].confirm.is_none());
+        // The row's own block asks nothing, so Enter on it runs straight away.
+        assert!(block.confirm.is_none());
+
+        // A block that DOES declare one carries it here, expanded the same way:
+        // Enter on its row is the same risk as reaching it through a `then`.
+        let target = row_context("src:drop:main", "main", "", "", Vec::new());
+        assert_eq!(
+            block_detail("src:drop:main", &target)
+                .expect("a declared block")
+                .confirm
+                .as_deref(),
+            Some("Delete local branch 'main'?")
+        );
     }
 
     #[test]

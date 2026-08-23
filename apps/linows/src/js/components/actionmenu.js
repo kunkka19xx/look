@@ -38,7 +38,9 @@ let input = null;
 let menuEl = null;
 let rows = [];
 let focusedIndex = 0;
-// The target whose question the menu is asking right now, or null.
+// Resolves the answer to the question the menu is asking right now, or null
+// when it is not asking one. Escape and any close answer no, which is what
+// makes Escape mean the safe thing.
 let pendingConfirm = null;
 // Bumped on every open and close, so a list still being resolved when the user
 // changes their mind cannot open the menu behind them.
@@ -72,7 +74,8 @@ export function vimKey(e) {
 
 export function close() {
     token += 1;
-    pendingConfirm = null;
+    // Closing IS the safe answer, whatever closed it.
+    answer(false);
     if (!menuEl) return;
     input?.removeAttribute('aria-controls');
     input?.removeAttribute('aria-activedescendant');
@@ -137,22 +140,34 @@ export function handleKey(e) {
 }
 
 /**
- * Ask a target's question in place of the action list, rather than in a modal:
- * the keys the user already has (move, Enter, Escape) keep working and Escape
- * means the safe thing.
+ * Ask `question` in the menu rather than in a modal: the keys the user already
+ * has (move, Enter, Escape) keep working and Escape means the safe thing.
+ * Resolves true only if they pick the question itself.
+ *
+ * Exported because Enter on a row whose block declares `confirm` has to ask it
+ * too, and asking it twice in two different shapes would be two things to
+ * learn (specs/user-sources.md §2.5).
  */
-function ask(row) {
-    pendingConfirm = { id: row.id, title: row.title };
-    menuEl?.remove();
-    menuEl = null;
-    mount([
-        { id: CONFIRM_YES, title: row.confirm },
-        { id: CONFIRM_NO, title: CONFIRM_CANCEL },
-    ]);
-    // Start on Cancel: a destructive action should cost one more press than an
-    // accidental double-Enter.
-    focusedIndex = 1;
-    applyFocus();
+export function askConfirm(question) {
+    return new Promise((resolve) => {
+        close();
+        pendingConfirm = { resolve };
+        mount([
+            { id: CONFIRM_YES, title: question },
+            { id: CONFIRM_NO, title: CONFIRM_CANCEL },
+        ]);
+        // Start on Cancel: a destructive action should cost one more press than
+        // an accidental double-Enter.
+        focusedIndex = 1;
+        applyFocus();
+    });
+}
+
+/** Settle an outstanding question, once. */
+function answer(yes) {
+    const pending = pendingConfirm;
+    pendingConfirm = null;
+    pending?.resolve(yes);
 }
 
 function mount(descriptors) {
@@ -239,18 +254,22 @@ function activate(index) {
     const row = rows[index];
     if (!row) return;
 
-    // Answering a question.
+    // Answering a question. `close` settles it; picking the question itself is
+    // the only yes.
     if (pendingConfirm) {
-        const target = pendingConfirm.id;
+        const yes = row.id === CONFIRM_YES;
+        answer(yes);
         close();
-        if (row.id === CONFIRM_YES) rowactions.activate(target);
         return;
     }
 
-    // Asking one. The menu stays open and swaps to the question, so the answer
-    // happens where the user's eyes already are.
+    // Asking one. The menu swaps to the question, so the answer happens where
+    // the user's eyes already are.
     if (row.confirm) {
-        ask(row);
+        const id = row.id;
+        askConfirm(row.confirm).then((yes) => {
+            if (yes) rowactions.activate(id);
+        });
         return;
     }
 

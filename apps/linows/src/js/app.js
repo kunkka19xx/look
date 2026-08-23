@@ -167,6 +167,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const helpScreen = document.getElementById('help-screen');
     const previewCol = document.getElementById('preview-col');
     const breadcrumbEl = document.getElementById('search-breadcrumb');
+    const placeholderEl = document.querySelector('.search-placeholder');
     const previewFooter = document.getElementById('preview-footer');
 
     // Floating "inner-gap" layout state (classes on .launcher-window)
@@ -758,6 +759,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const crumbs = levels.breadcrumb();
         breadcrumbEl.hidden = crumbs.length === 0;
         breadcrumbEl.textContent = crumbs.join('  \u203A  ');
+        // A level's empty query is for filtering, not an invitation to search.
+        // Hidden here rather than in CSS: the placeholder's own rule keys on
+        // #query, which outranks anything a sibling selector could say.
+        placeholderEl.hidden = crumbs.length > 0;
     }
 
     // A level was pushed: the query that got here means nothing now, and the
