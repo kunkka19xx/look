@@ -250,11 +250,11 @@ private func look_perform_block_json(_ blockID: UnsafePointer<CChar>?, _ rowID: 
 
 @_silgen_name("look_tool_action_json")
 nonisolated
-private func look_tool_action_json(_ action: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool) -> UnsafeMutablePointer<CChar>?
+private func look_tool_action_json(_ action: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_perform_tool_action_json")
 nonisolated
-private func look_perform_tool_action_json(_ action: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool) -> UnsafeMutablePointer<CChar>?
+private func look_perform_tool_action_json(_ action: UnsafePointer<CChar>?, _ candidateID: UnsafePointer<CChar>?, _ rowTitle: UnsafePointer<CChar>?, _ path: UnsafePointer<CChar>?, _ isDir: Bool, _ ancestorsJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_netspeed_run_json")
 nonisolated
@@ -1071,10 +1071,12 @@ final class EngineBridge: @unchecked Sendable {
 
     /// What `action` would do to a row, without doing it: the tool it would
     /// start, or why it cannot. For labels and availability.
-    nonisolated func toolAction(_ action: String, path: String, isDirectory: Bool) -> ToolAction? {
-        let ptr = action.withCString { action in
-            path.withCString { path in
-                look_tool_action_json(action, path, isDirectory)
+    nonisolated func toolAction(
+        _ action: String, row: ToolActionRow, isDirectory: Bool
+    ) -> ToolAction? {
+        let ptr = row.withCStrings { candidate, title, path, ancestors in
+            action.withCString { action in
+                look_tool_action_json(action, candidate, title, path, isDirectory, ancestors)
             }
         }
         return Self.decodeToolAction(ptr)
@@ -1083,10 +1085,12 @@ final class EngineBridge: @unchecked Sendable {
     /// Runs `action` on a row. Shell actions are spawned detached inside core;
     /// an `application` result is handed back for `NSWorkspace` to launch.
     /// Spawns a process, so call it off the main thread.
-    nonisolated func performToolAction(_ action: String, path: String, isDirectory: Bool) -> ToolAction? {
-        let ptr = action.withCString { action in
-            path.withCString { path in
-                look_perform_tool_action_json(action, path, isDirectory)
+    nonisolated func performToolAction(
+        _ action: String, row: ToolActionRow, isDirectory: Bool
+    ) -> ToolAction? {
+        let ptr = row.withCStrings { candidate, title, path, ancestors in
+            action.withCString { action in
+                look_perform_tool_action_json(action, candidate, title, path, isDirectory, ancestors)
             }
         }
         return Self.decodeToolAction(ptr)
@@ -1413,6 +1417,9 @@ nonisolated struct ToolAction: Decodable {
     let reason: String?
     /// The config key that would fix an `unavailable` action.
     let key: String?
+    /// A block declared this action for its own rows, so `tool` names the block
+    /// rather than a tool: "Open in Projects" is not a label worth showing.
+    let fromBlock: Bool
 }
 
 nonisolated struct SourceBlock: Decodable {

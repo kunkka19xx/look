@@ -494,7 +494,7 @@ fn row_context(
 /// their titles and paths too, and only the shell still holds those. Anything
 /// unparseable is no ancestors, which reads as empty rather than as a literal
 /// placeholder reaching a shell.
-fn parents_from(ancestors_json: *const c_char) -> Vec<ParentRow> {
+pub(crate) fn parents_from(ancestors_json: *const c_char) -> Vec<ParentRow> {
     let raw = cstr_to_string(ancestors_json);
     if raw.trim().is_empty() {
         return Vec::new();
@@ -536,7 +536,7 @@ fn opens_path() -> *mut c_char {
     })
 }
 
-fn find_block(block_id: &str) -> Option<Block> {
+pub(crate) fn find_block(block_id: &str) -> Option<Block> {
     let home = home_dir()?;
     load_dir(&sources_dir(&home))
         .blocks
@@ -746,6 +746,66 @@ mod tests {
         let stuck = perform("pathless", "");
         assert_eq!(stuck["opens_path"], false, "{stuck}");
         assert!(stuck["errors"][0].as_str().unwrap().contains("open"));
+    }
+
+    fn tool_action(
+        action: &str,
+        candidate: &str,
+        title: &str,
+        path: &str,
+        ancestors: &str,
+    ) -> serde_json::Value {
+        let action = CString::new(action).unwrap();
+        let candidate = CString::new(candidate).unwrap();
+        let title = CString::new(title).unwrap();
+        let path = CString::new(path).unwrap();
+        let ancestors = CString::new(ancestors).unwrap();
+        let ptr = crate::tools_api::look_tool_action_json_impl(
+            action.as_ptr(),
+            candidate.as_ptr(),
+            title.as_ptr(),
+            path.as_ptr(),
+            true,
+            ancestors.as_ptr(),
+        );
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        crate::state::free_json_allocation(ptr);
+        serde_json::from_str(&raw).expect("resolved action json")
+    }
+
+    #[test]
+    fn a_blocks_verb_takes_the_chord_for_its_own_rows_only() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new(
+            "chords",
+            "[projects]\ndir = \"/tmp\"\nterminal = \"tmux new -As {title} -c {parent.path}\"\n",
+        );
+
+        // The block's own row: its verb wins, expanded like any other command
+        // it declares, ancestors included.
+        let mine = tool_action(
+            "terminal",
+            "src:projects:/tmp/look",
+            "look",
+            "/tmp/look",
+            r#"[{"id":"dev","title":"dev","path":"/dev"}]"#,
+        );
+        assert_eq!(mine["kind"], "shell", "{mine}");
+        assert_eq!(mine["command"], "tmux new -As 'look' -c '/dev'");
+        assert_eq!(mine["tool"], "projects", "the block is what decided");
+
+        // A chord it did not declare is untouched, so a block cannot quietly
+        // take over keys it never mentioned.
+        assert_ne!(
+            tool_action("edit", "src:projects:/tmp/look", "look", "/tmp/look", "[]")["tool"],
+            serde_json::json!("projects")
+        );
+
+        // An ordinary file row never sees the block at all.
+        let theirs = tool_action("terminal", "file:/tmp/other", "other", "/tmp/other", "[]");
+        assert_ne!(theirs["tool"], serde_json::json!("projects"), "{theirs}");
     }
 
     #[test]

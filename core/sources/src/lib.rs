@@ -14,6 +14,7 @@ mod def;
 mod load;
 mod rows;
 mod run;
+mod tools;
 
 pub use collect::{
     CollectError, Collected, MAX_ROWS_PER_SOURCE, collect, collect_for_row, expand_home,
@@ -28,3 +29,4 @@ pub use run::{
     ENV_ID, ENV_PATH, ENV_TITLE, ParentRow, RowContext, StepOutcome, capture, expand, expand_path,
     perform,
 };
+pub use tools::{block_declares, resolve_for_row};

@@ -334,14 +334,29 @@ pub extern "C" fn look_source_blocks_json() -> *mut c_char {
 ///
 /// Reads the declared tools from the cached config, so Cmd+Shift+; is all a
 /// user needs after editing them.
+///
+/// `candidate_id` is the row's, so a block that declares `edit` / `terminal` /
+/// `reveal` wins for its own rows (`specs/preferred-tools.md` §6). Pass the row
+/// title and its ancestors too: a block's verb expands like every other command
+/// it declares, `{parent.*}` included.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_tool_action_json(
     action: *const c_char,
+    candidate_id: *const c_char,
+    row_title: *const c_char,
     path: *const c_char,
     is_dir: bool,
+    ancestors_json: *const c_char,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        tools_api::look_tool_action_json_impl(action, path, is_dir)
+        tools_api::look_tool_action_json_impl(
+            action,
+            candidate_id,
+            row_title,
+            path,
+            is_dir,
+            ancestors_json,
+        )
     }))
     .unwrap_or(std::ptr::null_mut())
 }
@@ -352,11 +367,21 @@ pub extern "C" fn look_tool_action_json(
 #[unsafe(no_mangle)]
 pub extern "C" fn look_perform_tool_action_json(
     action: *const c_char,
+    candidate_id: *const c_char,
+    row_title: *const c_char,
     path: *const c_char,
     is_dir: bool,
+    ancestors_json: *const c_char,
 ) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        tools_api::look_perform_tool_action_json_impl(action, path, is_dir)
+        tools_api::look_perform_tool_action_json_impl(
+            action,
+            candidate_id,
+            row_title,
+            path,
+            is_dir,
+            ancestors_json,
+        )
     }))
     .unwrap_or(std::ptr::null_mut())
 }

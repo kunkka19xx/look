@@ -43,14 +43,26 @@ extension LauncherView {
         }
     }
 
-    /// The selected row as a path plus whether it is a directory, or nil when
-    /// the action does not apply to it.
-    private func toolTarget(for action: String) -> (path: String, isDirectory: Bool)? {
+    /// The selected row as a tool target, or nil when the action does not apply
+    /// to it.
+    private func toolTarget(for action: String) -> (row: ToolActionRow, isDirectory: Bool)? {
         guard let selected = actionableSelectedResult(), !selected.path.isEmpty,
             Self.toolActionApplies(action, to: selected.kind)
         else { return nil }
 
-        return (selected.path, pathIsDirectory(selected))
+        return (toolActionRow(for: selected), pathIsDirectory(selected))
+    }
+
+    /// A row as the core needs it for a tool action: its id so a block can
+    /// override the chord, its title and ancestors so that override expands
+    /// like any other command the block declares.
+    func toolActionRow(for result: LauncherResult) -> ToolActionRow {
+        ToolActionRow(
+            candidateID: result.id,
+            title: result.title,
+            path: result.path,
+            ancestorsJSON: selectedRowAncestorsJSON
+        )
     }
 
     /// A file row and a folder row say which they are; a block's row does not,
@@ -69,16 +81,16 @@ extension LauncherView {
 
     private func runToolAction(_ action: String) {
         guard let target = toolTarget(for: action) else { return }
-        let path = target.path
+        let row = target.row
         let isDirectory = target.isDirectory
 
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
-                EngineBridge.shared.performToolAction(action, path: path, isDirectory: isDirectory)
+                EngineBridge.shared.performToolAction(action, row: row, isDirectory: isDirectory)
             }.value
 
             await MainActor.run {
-                applyToolOutcome(outcome, path: path)
+                applyToolOutcome(outcome, path: row.path)
             }
         }
     }

@@ -89,21 +89,29 @@ extension LauncherView {
     }
 
     private static func label(for entry: RowActionEntry, tools: [String: ToolAction]) -> String {
+        // A block that took this chord names itself, not a tool, so the plain
+        // wording stands: what happens is the block's business and its steps
+        // are already on screen in the panel.
+        if let action = entry.tool, tools[action]?.fromBlock == true {
+            return entry.plain
+        }
         let resolved = entry.tool.flatMap { tools[$0]?.tool } ?? entry.fallbackTool
         guard let named = entry.named, let resolved else { return entry.plain }
         return "\(named) \(resolved)"
     }
 
-    /// Which tool each offered action would start. Cheap after the first call:
-    /// the tools come from the process-wide config cache and resolving is string
-    /// work.
+    /// Which tool each offered action would start, or which block took the
+    /// chord over for these rows (`specs/preferred-tools.md` §6). The tools come
+    /// from the process-wide config cache; a block row also reads its
+    /// declaration, which is the same read the panel already does per selection.
     private func resolvedTools(
         for result: LauncherResult, entries: [RowActionEntry]
     ) -> [String: ToolAction] {
+        let row = toolActionRow(for: result)
         var resolved: [String: ToolAction] = [:]
         for action in entries.compactMap(\.tool) {
             if let outcome = EngineBridge.shared.toolAction(
-                action, path: result.path, isDirectory: result.kind == .folder
+                action, row: row, isDirectory: result.kind == .folder
             ) {
                 resolved[action] = outcome
             }

@@ -15,6 +15,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use look_tools::Action;
 use serde::Deserialize;
 
 use crate::run::{PLACEHOLDER_PARENT, PLACEHOLDERS};
@@ -131,6 +132,17 @@ impl Verbs {
             && self.edit.is_none()
             && self.terminal.is_none()
             && self.reveal.is_none()
+    }
+
+    /// The command this block declares for `action`, if any. The one mapping
+    /// from a tool action to a block key, so `Action::Edit` cannot come to mean
+    /// `terminal` in one caller and `edit` in another.
+    pub fn for_action(&self, action: Action) -> Option<&str> {
+        match action {
+            Action::Edit => self.edit.as_deref(),
+            Action::TerminalHere => self.terminal.as_deref(),
+            Action::Reveal => self.reveal.as_deref(),
+        }
     }
 
     /// Declared verbs in a stable order, for the action menu.

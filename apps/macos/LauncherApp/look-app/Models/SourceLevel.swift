@@ -25,3 +25,30 @@ nonisolated struct SourceLevelRow: Decodable, Identifiable {
     let subtitle: String
     let path: String?
 }
+
+/// The row a tool action acts on. One value because the four always travel
+/// together, and because a block's `edit` / `terminal` / `reveal` expands
+/// against the row exactly like its `open` does (`specs/preferred-tools.md` §6).
+nonisolated struct ToolActionRow {
+    let candidateID: String
+    let title: String
+    let path: String
+    /// The levels it was reached through, for `{parent.*}`. Empty outside a
+    /// drill-down.
+    var ancestorsJSON: String = "[]"
+
+    func withCStrings<T>(
+        _ body: (UnsafePointer<CChar>?, UnsafePointer<CChar>?, UnsafePointer<CChar>?,
+            UnsafePointer<CChar>?) -> T
+    ) -> T {
+        candidateID.withCString { candidate in
+            title.withCString { title in
+                path.withCString { path in
+                    ancestorsJSON.withCString { ancestors in
+                        body(candidate, title, path, ancestors)
+                    }
+                }
+            }
+        }
+    }
+}
