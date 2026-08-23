@@ -272,8 +272,7 @@ mod tests {
 
         row.path = Some("~/dev/look".into());
         let candidate = row_candidate(&block, &row, home);
-        // Built the same way the code builds it: a separator is the platform's
-        // business, and hardcoding `/` fails on Windows for a correct answer.
+        // Built like the code builds it: the separator is the platform's.
         let expanded = home.join("dev/look");
         assert_eq!(candidate.path.as_ref(), expanded.to_string_lossy());
         // Still an action row: a block's verbs are what Enter performs, and a

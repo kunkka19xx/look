@@ -90,8 +90,7 @@ impl CandidateIdKind {
         let Some(after_mark) = rest.strip_prefix(Self::CHAIN_MARK) else {
             return rest;
         };
-        // Doubled: a top-level row id that starts with the mark, minus the one
-        // the encoder added.
+        // Doubled: a top-level row id, minus the mark the encoder added.
         if after_mark.starts_with(Self::CHAIN_MARK) {
             return after_mark;
         }
@@ -121,9 +120,8 @@ impl CandidateIdKind {
     ) -> String {
         let prefix = Self::source_row_prefix(block_id);
         if ancestors.is_empty() {
-            // A row id opening with the chain mark would otherwise read as a
-            // chain, so it is doubled. Escaping it instead would be lossy: the
-            // decoder hands back a borrowed slice and cannot unescape.
+            // Doubled, not escaped: a row id opening with the mark would read
+            // as a chain, and the decoder returns a slice it cannot unescape.
             return match row_id.starts_with(Self::CHAIN_MARK) {
                 true => format!("{prefix}{}{row_id}", Self::CHAIN_MARK),
                 false => format!("{prefix}{row_id}"),
@@ -170,8 +168,7 @@ impl CandidateIdKind {
             .split_once(':')?
             .1
             .strip_prefix(Self::CHAIN_MARK)?;
-        // Doubled means a top-level row id that begins with the mark, not a
-        // chain.
+        // Doubled means a row id beginning with the mark, not a chain.
         if after_mark.starts_with(Self::CHAIN_MARK) {
             return None;
         }

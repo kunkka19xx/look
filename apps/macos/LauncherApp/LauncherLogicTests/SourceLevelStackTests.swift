@@ -76,6 +76,45 @@ final class SourceLevelStackTests: XCTestCase {
         XCTAssertEqual([SourceLevelParent]().ancestorsJSON, "[]")
     }
 
+    // ── A request only lands in the state that asked for it ─────────────
+
+    func testHidingTheLauncherInvalidatesARequestForTheFirstLevel() {
+        // The stack is empty while the first level's command runs, so a clear
+        // that only bumped when it had frames would let the result through.
+        var stack = SourceLevelStack()
+        let inFlight = stack.beginRequest()
+
+        stack.clear()
+
+        XCTAssertNotEqual(inFlight, stack.epoch)
+    }
+
+    func testASecondRequestInvalidatesTheFirst() {
+        var stack = SourceLevelStack()
+        let first = stack.beginRequest()
+        let second = stack.beginRequest()
+
+        XCTAssertNotEqual(first, stack.epoch)
+        XCTAssertEqual(second, stack.epoch, "the newest request is the live one")
+    }
+
+    func testARequestThatNothingInterruptedStillHoldsItsEpoch() {
+        var stack = SourceLevelStack()
+        let inFlight = stack.beginRequest()
+
+        XCTAssertEqual(inFlight, stack.epoch)
+    }
+
+    func testLeavingALevelInvalidatesWhatWasStartedInIt() {
+        var stack = SourceLevelStack()
+        stack.push(frame(block: "Browse", parent: "look"))
+        let inFlight = stack.beginRequest()
+
+        _ = stack.pop()
+
+        XCTAssertNotEqual(inFlight, stack.epoch)
+    }
+
     // ── Escape restores rather than re-searching ────────────────────────
 
     func testPoppingHandsBackWhatTheLevelWasOpenedFrom() {

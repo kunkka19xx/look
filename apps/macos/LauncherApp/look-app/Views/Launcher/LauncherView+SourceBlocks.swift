@@ -48,6 +48,9 @@ extension LauncherView {
 
         let row = (id: selected.id, title: selected.title, path: selected.path, query: query)
         let ancestors = selectedRowAncestorsJSON
+        // Claimed before the block runs: the user can hide the launcher or
+        // start another target while it does.
+        let epoch = levelStack.beginRequest()
         let parent = LevelParentRow(
             candidateID: selected.id,
             title: selected.title,
@@ -69,6 +72,7 @@ extension LauncherView {
             }.value
 
             await MainActor.run {
+                guard epoch == levelStack.epoch else { return }
                 if let failure = outcome.errors.first {
                     showBanner("\(title): \(failure)", style: .error, duration: 4.0)
                     return
@@ -77,7 +81,8 @@ extension LauncherView {
                     // Not a failure and nothing was performed: the target lists,
                     // so it is a level to descend into.
                     descendIntoBlock(
-                        blockID: blockID, title: title, parent: parent, ancestorsJSON: ancestors)
+                        blockID: blockID, title: title, parent: parent, ancestorsJSON: ancestors,
+                        epoch: epoch)
                     return
                 }
                 hideLauncherWindow(restorePreviousApp: false)

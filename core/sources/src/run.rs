@@ -171,9 +171,8 @@ pub fn expand_path(template: &str, row: &RowContext) -> String {
 fn substitute(template: &str, row: &RowContext, transform: fn(&str) -> String) -> String {
     let mut out = template.to_string();
 
-    // As deep as the row goes OR as deep as the template asks: a template
-    // naming an ancestor the row does not have must still be substituted, or
-    // the literal `{parent.parent.id}` reaches the shell.
+    // As deep as the row goes OR as deep as the template asks: an ancestor the
+    // row lacks must still be substituted, or the literal text reaches a shell.
     let deepest = deepest_parent_depth(template).max(row.parents.len()).max(1);
     for depth in (1..=deepest).rev() {
         let prefix = PLACEHOLDER_PARENT_WORD.repeat(depth);
@@ -204,24 +203,16 @@ fn substitute(template: &str, row: &RowContext, transform: fn(&str) -> String) -
 /// The word an ancestor placeholder repeats, without the brace.
 const PLACEHOLDER_PARENT_WORD: &str = "parent.";
 
-/// Past this a template is not naming an ancestor, it is a typo repeating a
-/// word, and substituting further would only grow the loop.
-const MAX_PARENT_DEPTH: usize = 8;
-
-/// The deepest `{parent.parent....}` the template names.
+/// The deepest `{parent.parent....}` the template names. No ceiling: a depth
+/// the search stops short of is a placeholder handed to a shell as text.
 fn deepest_parent_depth(template: &str) -> usize {
     let mut deepest = 0;
     for (open, _) in template.match_indices(PLACEHOLDER_PARENT) {
         let mut rest = &template[open + 1..];
         let mut depth = 0;
-        while depth < MAX_PARENT_DEPTH {
-            match rest.strip_prefix(PLACEHOLDER_PARENT_WORD) {
-                Some(shorter) => {
-                    depth += 1;
-                    rest = shorter;
-                }
-                None => break,
-            }
+        while let Some(shorter) = rest.strip_prefix(PLACEHOLDER_PARENT_WORD) {
+            depth += 1;
+            rest = shorter;
         }
         deepest = deepest.max(depth);
     }
@@ -513,8 +504,6 @@ mod tests {
 
     #[test]
     fn an_ancestor_deeper_than_the_chain_still_reads_as_empty() {
-        // The template names a grandparent the row does not have. Leaving
-        // `{parent.parent.id}` literal would hand the shell that text.
         let row = drilled(&[("animate", "/dev/animate")]);
         assert_eq!(
             expand(
@@ -523,6 +512,12 @@ mod tests {
             ),
             "k --context '' -n 'animate' logs 'build'"
         );
+    }
+
+    #[test]
+    fn no_depth_is_deep_enough_to_leave_a_placeholder_behind() {
+        let deep = "x {parent.parent.parent.parent.parent.parent.parent.parent.parent.id}";
+        assert_eq!(expand(deep, &drilled(&[("one", "/one")])), "x ''");
     }
 
     #[test]

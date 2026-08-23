@@ -577,6 +577,15 @@ mod tests {
             unsafe { std::env::set_var(look_sources::SOURCES_DIR_ENV, &dir) };
             Self { dir }
         }
+
+        /// Rows for a `file` block to read.
+        fn rows(&self, name: &str, contents: &str) {
+            let path = self.dir.join(name);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("rows dir");
+            }
+            std::fs::write(&path, contents).expect("rows file");
+        }
     }
 
     impl Drop for Fixture {
@@ -611,12 +620,13 @@ mod tests {
     #[test]
     fn a_level_carries_the_ancestors_its_rows_were_reached_through() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
-        let _fixture = Fixture::new(
-            "rows",
-            "[child]\nrun = \"printf 'one\\ttitle one\\ntwo\\n'\"\n",
-        );
+        // A `file` producer: ids and ancestors are not shell behaviour, and
+        // `run` refuses off unix.
+        let fixture = Fixture::new("rows", "[child]\nfile = \"{path}/rows.txt\"\n");
+        fixture.rows("rows.txt", "one\ttitle one\ntwo\n");
+        let root = fixture.dir.to_string_lossy().into_owned();
 
-        let level = descend("child", "src:parent:alpha", "/tmp");
+        let level = descend("child", "src:parent:alpha", &root);
         assert!(level["error"].is_null(), "{level}");
         let rows = level["rows"].as_array().unwrap();
         assert_eq!(rows.len(), 2);
@@ -625,7 +635,7 @@ mod tests {
 
         // The same block under another parent is a different id, which is what
         // keeps usage ranking from bleeding between levels.
-        let other = descend("child", "src:parent:beta", "/tmp");
+        let other = descend("child", "src:parent:beta", &root);
         assert_eq!(
             other["rows"][0]["candidateId"],
             "src:child:|parent/beta|one"
@@ -635,41 +645,61 @@ mod tests {
     #[test]
     fn a_producer_expands_against_the_row_the_level_opened_from() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
-        let _fixture = Fixture::new("expand", "[child]\nrun = \"basename {path}\"\n");
+        let fixture = Fixture::new("expand", "[child]\nfile = \"{path}/rows.txt\"\n");
+        // A space in the name: the level is empty unless `{path}` was
+        // substituted and left unquoted.
+        fixture.rows("some project/rows.txt", "one\n");
+        let inside = fixture.dir.join("some project");
 
-        let level = descend("child", "src:parent:alpha", "/tmp/some project");
+        let level = descend("child", "src:parent:alpha", &inside.to_string_lossy());
         assert!(level["error"].is_null(), "{level}");
-        // Quoted on substitution, so a space in the path stays one argument.
-        assert_eq!(level["rows"][0]["id"], "some project");
+        assert_eq!(level["rows"][0]["id"], "one");
     }
 
     #[test]
     fn nothing_to_descend_into_is_an_error_rather_than_an_empty_level() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
-        let _fixture = Fixture::new(
+        let fixture = Fixture::new(
             "empty",
-            "[child]\nrun = \"true\"\n[off]\nrun = \"echo x\"\nenabled = false\n",
+            "[child]\nfile = \"{path}/rows.txt\"\n[off]\nfile = \"{path}/rows.txt\"\nenabled = false\n",
         );
+        // Produced nothing, rather than failed to run: a `run` block would
+        // pass this off unix by reporting the missing shell.
+        fixture.rows("rows.txt", "\n");
+        let root = fixture.dir.to_string_lossy().into_owned();
 
-        assert!(descend("child", "src:parent:alpha", "/tmp")["error"].is_string());
-        assert!(descend("off", "src:parent:alpha", "/tmp")["error"].is_string());
-        assert!(descend("missing", "src:parent:alpha", "/tmp")["error"].is_string());
+        let empty = descend("child", "src:parent:alpha", &root);
+        assert!(
+            empty["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("no rows"),
+            "{empty}"
+        );
+        assert!(descend("off", "src:parent:alpha", &root)["error"].is_string());
+        assert!(descend("missing", "src:parent:alpha", &root)["error"].is_string());
         // A row that belongs to no block cannot be a parent.
-        assert!(descend("child", "app:safari", "/tmp")["error"].is_string());
+        assert!(descend("child", "app:safari", &root)["error"].is_string());
     }
 
     #[test]
     fn an_ancestors_payload_reaches_the_producer_as_parent_placeholders() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
-        let _fixture = Fixture::new("parents", "[child]\nrun = \"echo {parent.title}\"\n");
+        let fixture = Fixture::new(
+            "parents",
+            "[child]\nfile = \"{path}/{parent.title}/rows.txt\"\n",
+        );
+        // The grandparent's title names the folder, so an empty level means
+        // `{parent.title}` never reached the producer.
+        fixture.rows("outer-title/rows.txt", "found\n");
 
         let block = CString::new("child").unwrap();
         let parent = CString::new("src:mid:row").unwrap();
         let title = CString::new("mid").unwrap();
-        let path = CString::new("/tmp").unwrap();
+        let path = CString::new(fixture.dir.to_string_lossy().as_ref()).unwrap();
         let query = CString::new("").unwrap();
         let ancestors =
-            CString::new(r#"[{"id":"outer","title":"the grandparent","path":"/tmp"}]"#).unwrap();
+            CString::new(r#"[{"id":"outer","title":"outer-title","path":"/tmp"}]"#).unwrap();
         let ptr = look_source_rows_json_impl(
             block.as_ptr(),
             parent.as_ptr(),
@@ -686,7 +716,7 @@ mod tests {
 
         // Inside a producer the parent IS the row, so `{parent.*}` is the level
         // above that one.
-        assert_eq!(level["rows"][0]["id"], "the grandparent", "{level}");
+        assert_eq!(level["rows"][0]["id"], "found", "{level}");
     }
 
     fn perform(block: &str, row_path: &str) -> serde_json::Value {
@@ -723,8 +753,10 @@ mod tests {
         // Declared: run it. This is the case a `dir` block could not reach
         // before, so `open` on one was a key that did nothing.
         let ran = perform("declared", "/tmp");
+        assert_eq!(ran["opens_path"], false, "{ran}");
+        // The spawn is the platform's business: `run` refuses off unix.
+        #[cfg(unix)]
         assert_eq!(ran["performed"], 1, "{ran}");
-        assert_eq!(ran["opens_path"], false);
 
         // Nothing declared but the row has a path: the row IS the thing.
         let opens = perform("bare", "/tmp");
@@ -798,6 +830,8 @@ mod tests {
         assert_ne!(theirs["tool"], serde_json::json!("projects"), "{theirs}");
     }
 
+    /// Refresh runs a `run` block's command, which `run` refuses off unix.
+    #[cfg(unix)]
     #[test]
     fn a_refresh_leaves_the_levels_alone() {
         // A level's command is written for a selected row. Refresh has none, so

@@ -7,6 +7,9 @@ import Foundation
 /// being added one at a time.
 struct SourceLevelStack {
     private(set) var frames: [SourceLevelFrame] = []
+    /// Bumped by every request and every change, so a target still running
+    /// after the launcher is hidden, or after another starts, answers stale.
+    private(set) var epoch: UInt64 = 0
 
     var isActive: Bool { !frames.isEmpty }
     var current: SourceLevelFrame? { frames.last }
@@ -25,17 +28,27 @@ struct SourceLevelStack {
         }
     }
 
+    /// The epoch a request must still hold when it answers.
+    mutating func beginRequest() -> UInt64 {
+        epoch &+= 1
+        return epoch
+    }
+
     mutating func push(_ frame: SourceLevelFrame) {
         frames.append(frame)
+        epoch &+= 1
     }
 
     /// Hands back what the launcher was showing before it, so Escape restores
     /// rather than re-searches.
     mutating func pop() -> SourceLevelFrame? {
-        frames.popLast()
+        epoch &+= 1
+        return frames.popLast()
     }
 
     mutating func clear() {
+        // Bumped even with no frames: a first-level request is in flight then.
+        epoch &+= 1
         frames.removeAll()
     }
 }
