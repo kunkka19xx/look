@@ -9,6 +9,7 @@ import {
     settingIcon,
     historyLg,
 } from '../icons.js';
+import * as sourceblocks from './sourceblocks.js';
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
 import { classifyResultId } from '../catalog.js';
 import { prefersReducedMotion } from '../platform.js';
@@ -60,6 +61,10 @@ let emptyState = { mode: 'default' };
 // the gate the cursor follows it there instead of resting on the top result.
 let userNavigated = false;
 let lastRenderQuery = null;
+// A selection to put back once the rows it names are on screen, and the query
+// it was captured under: anything else means the user moved on. Set when a
+// level is left, since the rows it restores to arrive a pass later.
+let pendingRestore = null;
 
 export function init(containerEl) {
     container = containerEl;
@@ -111,6 +116,11 @@ function renderEmptyState() {
     return '<div class="empty-state">No results</div>';
 }
 
+/** Select `id` again as soon as a render for `query` carries it. */
+export function restoreSelection(id, query) {
+    pendingRestore = id ? { id, query } : null;
+}
+
 export function render(results, query = null) {
     // A new query invalidates any manual cursor position.
     if (query !== lastRenderQuery) {
@@ -147,6 +157,21 @@ export function render(results, query = null) {
     if (prevSelectedId != null) {
         const idx = results.findIndex((r) => r.id === prevSelectedId);
         nextIndex = idx >= 0 ? idx : Math.min(prevIndex, results.length - 1);
+    }
+
+    // A restored selection outranks the preserved one: it is where the user was
+    // before they descended, and this is the render that can put them back.
+    if (pendingRestore) {
+        if (pendingRestore.query !== query) {
+            pendingRestore = null;
+        } else {
+            const idx = results.findIndex((r) => r.id === pendingRestore.id);
+            if (idx >= 0) {
+                nextIndex = idx;
+                userNavigated = true;
+                pendingRestore = null;
+            }
+        }
     }
 
     if (layout.isEmptyQuery(query) && layout.hidesResultsForEmptyQuery()) {
@@ -313,6 +338,14 @@ const SETTINGS_SUBTITLE_PREFIXES = ['Windows Settings', 'System Settings'];
 
 function displaySubtitle(result) {
     if (result.kind === 'clipboard') return result.subtitle;
+    // A row a user's block produced says WHICH block, not "action": the kind is
+    // already on the icon, and where the row came from is the thing the list
+    // cannot otherwise tell you. A row that named a path says where it is too,
+    // like every other row with one.
+    if (sourceblocks.isSourceRow(result.id)) {
+        const label = result.subtitle || sourceblocks.blockName(result.id) || 'Action';
+        return result.path ? `${label}  \u2022  ${result.path}` : label;
+    }
     if (result.subtitle) {
         for (const prefix of SETTINGS_SUBTITLE_PREFIXES) {
             if (result.subtitle.startsWith(prefix + ' ')) return prefix;
@@ -351,12 +384,21 @@ function createRow(result, index) {
         setting: settingIcon,
         clipboard: clipboardIcon,
         process: cpuIcon,
+        // The bolt says the honest thing for a row with nothing on disk: Enter
+        // performs steps.
+        action: sourceblocks.actionIconHtml,
     };
+    // What the block declared wins for the rows with nothing on disk: the
+    // author chose it, and a list of them should not be a column of identical
+    // bolts. A `dir` block's rows ARE files and folders and keep their own
+    // icons, the way they keep everything else about being one.
+    const declaredIcon = result.kind === 'action' ? sourceblocks.declaredIconHtml(result.id) : null;
     // Synthetic discovery rows (prefix/command menus) ship their own glyph in
     // result.iconSvg so the list scans visually; everything else falls back to
     // the kind-based stub until the backend icon fetch resolves.
     icon.innerHTML =
         result.iconSvg ||
+        declaredIcon ||
         windowsSettingsSvg ||
         (isLinuxSettings ? settingIcon : fallbacks[result.kind] || appIcon);
     icon.style.background = 'var(--control-fill)';
@@ -376,6 +418,7 @@ function createRow(result, index) {
         result.kind !== 'clipboard' &&
         !windowsSettingsSvg &&
         !result.iconSvg &&
+        !declaredIcon &&
         result.path
     ) {
         loadIcon(icon, result.kind, result.path, result.id);

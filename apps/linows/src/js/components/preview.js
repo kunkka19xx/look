@@ -4,6 +4,9 @@ import {
     getAppVersion,
     deleteClipboardEntry,
     highlightFile,
+    highlightShell,
+    sourcePreview,
+    copyToClipboard,
     listFolder,
     openPath,
     processDetail,
@@ -19,7 +22,10 @@ import {
     settingIcon,
     globeLg,
     calculatorLg,
+    copy as copyIcon,
 } from '../icons.js';
+import * as sourceblocks from './sourceblocks.js';
+import * as banner from './banner.js';
 import { classifyResultId, WEB_URL_OPEN_SUBTITLE } from '../catalog.js';
 import * as qactions from './qactions.js';
 import * as actionmenu from './actionmenu.js';
@@ -51,8 +57,11 @@ export function update(result) {
         return;
     }
 
-    // Clipboard items use id as cache key (not path, since all share clipboard://history)
-    const cacheKey = result.kind === 'clipboard' ? result.id : result.path;
+    // Clipboard items use id as cache key (not path, since all share
+    // clipboard://history); so do block rows, which may name no path at all and
+    // would otherwise all share the empty one.
+    const cacheKey =
+        result.kind === 'clipboard' || result.kind === 'action' ? result.id : result.path;
     if (currentPath === cacheKey) return;
     currentPath = cacheKey;
     // The menu lists the SELECTED row's verbs, so it must not survive a move to
@@ -78,6 +87,13 @@ export function update(result) {
 
     if (result.kind === 'process') {
         renderProcessPreview(result);
+        return;
+    }
+
+    // A declared block has no file to describe, so the panel answers the only
+    // question that matters before Enter: exactly what is about to run.
+    if (result.kind === 'action' && sourceblocks.isSourceRow(result.id)) {
+        renderBlockPreview(result, cacheKey);
         return;
     }
 
@@ -605,6 +621,135 @@ export function showClipboardHelp() {
       <div class="preview-clip-help-line">• Type <kbd>c"mail</kbd> to filter</div>
       <div class="preview-clip-help-line">• Press <kbd>Enter</kbd> to copy selected item</div>
     </div>`;
+}
+
+/**
+ * The panel for a row a user-declared block produced.
+ *
+ * Two reads, in that order: the declaration is cheap and goes up first, then
+ * the declared `preview`, which runs a command. A late answer must not land in
+ * the panel of a row the user has already left, so both check the cache key.
+ */
+async function renderBlockPreview(result, cacheKey) {
+    const header = document.createElement('div');
+    header.className = 'preview-header';
+
+    const iconWrap = document.createElement('div');
+    iconWrap.className = 'preview-icon';
+    iconWrap.innerHTML = sourceblocks.declaredIconHtml(result.id) || sourceblocks.actionIconHtml;
+    iconWrap.style.background = 'var(--control-fill)';
+    iconWrap.style.color = 'var(--accent-color)';
+    header.appendChild(iconWrap);
+
+    const headerText = document.createElement('div');
+    headerText.className = 'preview-header-text';
+    const title = document.createElement('div');
+    title.className = 'preview-title';
+    title.textContent = result.title;
+    headerText.appendChild(title);
+    const headerSub = document.createElement('div');
+    headerSub.className = 'preview-header-sub';
+    const badge = document.createElement('span');
+    badge.className = 'preview-badge kind-action';
+    badge.textContent = sourceblocks.blockName(result.id) || 'Action';
+    headerSub.appendChild(badge);
+    if (result.subtitle) {
+        const detail = document.createElement('span');
+        detail.className = 'preview-size';
+        detail.textContent = result.subtitle;
+        headerSub.appendChild(detail);
+    }
+    headerText.appendChild(headerSub);
+    header.appendChild(headerText);
+    panel.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'preview-slot';
+    panel.appendChild(body);
+
+    const meta = document.createElement('div');
+    meta.className = 'preview-meta';
+    panel.appendChild(meta);
+
+    const block = await sourceblocks.loadDetail(result);
+    if (!block || currentPath !== cacheKey) return;
+
+    if (block.steps.length > 0) {
+        const label = document.createElement('div');
+        label.className = 'preview-section-label';
+        label.textContent = 'Enter runs';
+        body.appendChild(label);
+        body.appendChild(await stepsBlock(block.steps));
+        if (currentPath !== cacheKey) return;
+    }
+
+    if (block.file) {
+        meta.appendChild(infoRow('Declared in', block.file));
+        // A row that names its own path reveals that, like every other row with
+        // one, so the chord belongs to the declaration only when the row has
+        // nothing of its own to point at.
+        if (!result.path) meta.appendChild(infoRow('Ctrl+F', 'Reveal that file'));
+    }
+
+    // The declared `preview` runs a command, so it is read last and only after
+    // the cheap details are on screen.
+    const preview = await sourcePreview(sourceblocks.rowPayload(result));
+    if (!preview || currentPath !== cacheKey) return;
+    body.appendChild(blockPreviewBody(preview));
+}
+
+/** The steps ARE shell, so they get what an AI answer's code gets: highlighted,
+ *  selectable, and copyable in one press. */
+async function stepsBlock(steps) {
+    const source = steps.join('\n');
+    const wrap = document.createElement('div');
+    wrap.className = 'preview-code preview-steps';
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'ai-card-copy preview-steps-copy';
+    copyButton.tabIndex = -1;
+    copyButton.title = 'Copy these steps';
+    copyButton.innerHTML = copyIcon;
+    copyButton.addEventListener('click', () => {
+        copyToClipboard(source)
+            .then(() => banner.show('Steps copied', 'success', 1.0))
+            .catch(() => banner.show('Copy failed', 'error', 1.2));
+    });
+    wrap.appendChild(copyButton);
+
+    const pre = document.createElement('pre');
+    pre.className = 'preview-code-text';
+    // Plain text first: highlighting is a round trip, and the steps must be on
+    // screen either way.
+    pre.textContent = source;
+    wrap.appendChild(pre);
+    try {
+        const highlighted = await highlightShell(source);
+        if (highlighted?.html) pre.innerHTML = highlighted.html;
+    } catch {
+        // The unhighlighted text is already there and says the same thing.
+    }
+    return wrap;
+}
+
+/** A block's `preview` output, or the reason it could not run. A failure is
+ *  shown rather than swallowed: a preview that silently does nothing reads as
+ *  the feature being broken. */
+function blockPreviewBody(preview) {
+    if (preview.error) {
+        const failed = document.createElement('div');
+        failed.className = 'preview-code-truncated';
+        failed.textContent = preview.error;
+        return failed;
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'preview-code';
+    const pre = document.createElement('pre');
+    pre.className = 'preview-code-text';
+    pre.textContent = preview.text;
+    wrap.appendChild(pre);
+    return wrap;
 }
 
 function infoRow(label, value) {

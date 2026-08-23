@@ -112,6 +112,13 @@
     background: var(--accent-color);
 }
 
+/* A block that declared an emoji draws it in the icon box, which otherwise
+ * holds an SVG or an <img>. */
+.result-icon-glyph {
+    font-size: calc(var(--icon-size) * 0.62);
+    line-height: 1;
+}
+
 .result-icon img {
     width: 100%;
     height: 100%;

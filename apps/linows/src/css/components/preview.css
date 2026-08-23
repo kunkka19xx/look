@@ -79,6 +79,11 @@
 .preview-badge.kind-process {
     color: var(--color-info);
 }
+/* A row a user declared: the block it came from, in the accent that marks
+ * everything the user configured. */
+.preview-badge.kind-action {
+    color: var(--accent-color);
+}
 
 .preview-size {
     font-size: calc(var(--font-size) - 2px);
@@ -128,6 +133,28 @@
 }
 
 /* Code/text file preview */
+/* "Enter runs", above the steps it labels. */
+.preview-section-label {
+    margin-top: 12px;
+    font-size: calc(var(--font-size) - 2px);
+    font-weight: 600;
+    color: var(--font-secondary);
+}
+
+/* The copy button floats over the steps rather than taking a header row of its
+ * own: the commands are what the panel is for. */
+.preview-steps {
+    position: relative;
+    margin-top: 6px;
+}
+
+.preview-steps-copy {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 1;
+}
+
 .preview-code {
     margin-top: 12px;
     background: var(--control-fill);

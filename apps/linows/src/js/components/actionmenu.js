@@ -27,11 +27,19 @@ const ROW_ID = (index) => `${MENU_ID}-row-${index}`;
 // What a screen reader calls the list, which has no visible label of its own.
 const MENU_LABEL = 'Actions';
 
+// Ids of the two rows shown in place of the action list while a destructive
+// target waits for an answer.
+const CONFIRM_YES = 'srcconfirm:yes';
+const CONFIRM_NO = 'srcconfirm:no';
+const CONFIRM_CANCEL = 'Cancel';
+
 let panel = null;
 let input = null;
 let menuEl = null;
 let rows = [];
 let focusedIndex = 0;
+// The target whose question the menu is asking right now, or null.
+let pendingConfirm = null;
 // Bumped on every open and close, so a list still being resolved when the user
 // changes their mind cannot open the menu behind them.
 let token = 0;
@@ -64,6 +72,7 @@ export function vimKey(e) {
 
 export function close() {
     token += 1;
+    pendingConfirm = null;
     if (!menuEl) return;
     input?.removeAttribute('aria-controls');
     input?.removeAttribute('aria-activedescendant');
@@ -127,6 +136,25 @@ export function handleKey(e) {
     return true;
 }
 
+/**
+ * Ask a target's question in place of the action list, rather than in a modal:
+ * the keys the user already has (move, Enter, Escape) keep working and Escape
+ * means the safe thing.
+ */
+function ask(row) {
+    pendingConfirm = { id: row.id, title: row.title };
+    menuEl?.remove();
+    menuEl = null;
+    mount([
+        { id: CONFIRM_YES, title: row.confirm },
+        { id: CONFIRM_NO, title: CONFIRM_CANCEL },
+    ]);
+    // Start on Cancel: a destructive action should cost one more press than an
+    // accidental double-Enter.
+    focusedIndex = 1;
+    applyFocus();
+}
+
 function mount(descriptors) {
     menuEl = document.createElement('div');
     menuEl.className = 'action-menu';
@@ -158,8 +186,9 @@ function mount(descriptors) {
 
         row.addEventListener('click', () => activate(index));
         menuEl.appendChild(row);
-        // Only the id is read after this; the label and chord are in the DOM.
-        return { id: descriptor.id, el: row };
+        // The confirm question rides along: it is asked in the menu, so the
+        // descriptor has to survive until the row is activated.
+        return { id: descriptor.id, title: descriptor.title, confirm: descriptor.confirm, el: row };
     });
 
     // The menu hangs off the header, so a panel scrolled away from it would
@@ -203,10 +232,27 @@ function applyFocus() {
 }
 
 // The single entry point for running a row, by key or by click, so neither can
-// take a shortcut the other does not.
+// take a shortcut the other does not: a click that bypassed this would skip the
+// confirmation, so a `confirm` target would ask when reached with Enter and act
+// silently when reached with the mouse.
 function activate(index) {
     const row = rows[index];
     if (!row) return;
+
+    // Answering a question.
+    if (pendingConfirm) {
+        const target = pendingConfirm.id;
+        close();
+        if (row.id === CONFIRM_YES) rowactions.activate(target);
+        return;
+    }
+
+    // Asking one. The menu stays open and swaps to the question, so the answer
+    // happens where the user's eyes already are.
+    if (row.confirm) {
+        ask(row);
+        return;
+    }
 
     close();
     rowactions.activate(row.id);

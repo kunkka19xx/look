@@ -25,12 +25,39 @@ export async function revealPath(path) {
 // Preferred tools (core look-tools). `toolActions` resolves a batch without
 // acting, for the menu labels; `performToolAction` resolves one and carries it
 // out. Batched because the menu asks about every action at once.
-export async function toolActions(actions, path, isDir) {
-    return invoke('tool_actions', { actions, path, isDir });
+// `row` is the payload every source-aware command takes:
+// `{candidateId, rowTitle, rowPath, query, ancestors}`. A block that declares
+// its own `edit` / `terminal` / `reveal` wins for its own rows, and it expands
+// against that row, so the chords carry it too.
+export async function toolActions(actions, row, isDir) {
+    return invoke('tool_actions', { actions, row, isDir });
 }
 
-export async function performToolAction(action, path, isDir) {
-    return invoke('perform_tool_action', { action, path, isDir });
+export async function performToolAction(action, row, isDir) {
+    return invoke('perform_tool_action', { action, row, isDir });
+}
+
+// User-declared sources (specs/user-sources.md). Everything below runs a
+// user's command except `sourceBlock` and `sourceBlocks`, which only read the
+// declarations.
+export async function sourceBlock(row) {
+    return invoke('source_block', { row });
+}
+
+export async function sourceBlocks() {
+    return invoke('source_blocks');
+}
+
+export async function performBlock(blockId, row, asTarget) {
+    return invoke('perform_block', { blockId, row, asTarget });
+}
+
+export async function sourceRows(blockId, parent) {
+    return invoke('source_rows', { blockId, parent });
+}
+
+export async function sourcePreview(row) {
+    return invoke('source_preview', { row });
 }
 
 export async function reloadConfig() {
@@ -331,6 +358,11 @@ export async function getAutostart() {
 
 export async function highlightFile(path) {
     return invoke('highlight_file_cmd', { path });
+}
+
+// A block's steps, highlighted as shell for the panel.
+export async function highlightShell(source) {
+    return invoke('highlight_shell_cmd', { source });
 }
 
 export async function listFolder(path) {

@@ -86,3 +86,18 @@ pub fn highlight_file(path: &str) -> Option<HighlightResult> {
 pub fn highlight_file_cmd(path: String) -> Option<HighlightResult> {
     highlight_file(&path)
 }
+
+/// Tauri command: highlight text the app already holds, as shell.
+///
+/// A block's steps ARE shell (`specs/user-sources.md` §2.8), and the panel
+/// shows them the way an AI answer's code is shown. Never truncated: what is
+/// about to run is shown in full or the panel is lying about it.
+#[tauri::command]
+pub fn highlight_shell_cmd(source: String) -> HighlightResult {
+    let bytes = source.as_bytes();
+    let spans = tokenizer::tokenize(bytes, Language::Shell);
+    HighlightResult {
+        html: html::render(bytes, &spans),
+        truncated: false,
+    }
+}

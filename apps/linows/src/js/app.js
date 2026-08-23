@@ -15,6 +15,8 @@ import { mountUpdateWidget } from './screens/update_widget.js';
 import * as translatePanel from './components/translate.js';
 import * as runningApps from './components/running-apps.js';
 import * as superactions from './components/superactions.js';
+import * as sourceblocks from './components/sourceblocks.js';
+import * as levels from './levels.js';
 import * as smoothcaret from './components/smoothcaret.js';
 import * as platform from './platform.js';
 import * as motion from './motion.js';
@@ -65,6 +67,8 @@ import {
 // what keeps the clipboard hint to its first two items - all three still work
 // and are still listed in Settings > Shortcuts.
 const HINT_MAIN = 'Enter: Open \u2022 Ctrl+K: Actions \u2022 Ctrl+H: Help';
+// Inside a level the way out is the thing to say.
+const HINT_LEVEL = 'Enter: Open \u2022 Ctrl+K: Actions \u2022 Esc: Back';
 const HINT_TRANSLATE = 'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help';
 const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Ctrl+D: Remove clip';
 const HINT_PROCESS = 'Enter: CPU \u2022 Ctrl+D: Kill \u2022 Ctrl+C: Copy PID';
@@ -162,6 +166,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const aiCardEl = document.getElementById('ai-answer-card');
     const helpScreen = document.getElementById('help-screen');
     const previewCol = document.getElementById('preview-col');
+    const breadcrumbEl = document.getElementById('search-breadcrumb');
     const previewFooter = document.getElementById('preview-footer');
 
     // Floating "inner-gap" layout state (classes on .launcher-window)
@@ -219,6 +224,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function isHomeHintContext() {
         return (
+            !levels.isActive() &&
             !commands.isActive() &&
             !settings.isActive() &&
             helpScreen?.hidden !== false &&
@@ -277,6 +283,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     preview.init(previewPanel);
     actionmenu.init(previewPanel, queryInput);
+    // What each declared block asked to be drawn as, read once: rows render
+    // synchronously and a miss costs them their icon until it lands.
+    sourceblocks.prefill();
+    // `{query}` is whatever is typed right now, at whatever level.
+    sourceblocks.setQueryProvider(() => queryInput.value);
     banner.init(document.getElementById('banner'));
     health.init();
     confirm.init(document.getElementById('confirm-bar'));
@@ -308,6 +319,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Shared "back to the empty home screen" reset, used when leaving
     // settings or command mode.
     function resetHomeQuery() {
+        // A level is a place inside the launcher, and this is the way home.
+        if (levels.isActive()) {
+            levels.clear();
+            syncBreadcrumb();
+        }
         queryInput.value = '';
         search.handleQueryInput('');
         layout.setQuery({ empty: true, translate: false });
@@ -426,6 +442,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // "/:) own the result area and must NOT trigger AI/web lookups. A query
     // like `t"who is` would otherwise fire isEntityLookup and pull Wikipedia.
     search.setOnResults((items, query) => {
+        // A level owns the list. A search that was in flight when the user
+        // descended must not paint the index over it.
+        if (levels.isActive()) return;
         lastResults = items;
         results.render(items, query);
         applyAiLayoutMode();
@@ -520,6 +539,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // differs in hint text, preview visibility and empty-state flavor.
     queryInput.addEventListener('input', (e) => {
         const value = e.target.value;
+
+        // A level owns the result list: its rows are produced live and are not
+        // in the index, so typing filters them rather than searching. No
+        // cross-level search - reaching the index again is one Escape.
+        if (levels.isActive()) {
+            actionmenu.close();
+            renderLevel();
+            return;
+        }
+
         if (tryCommandPrefix(value)) return;
 
         // Typing re-renders the list the menu hangs off, and the modes below
@@ -616,6 +645,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        // A block's row runs what the block declared, by click as by Enter.
+        if (sourceblocks.isSourceRow(item.id)) {
+            sourceblocks.activateRow(item);
+            return;
+        }
+
         import('./ipc.js').then(({ openPath, recordUsage }) => {
             openPath(item.path, item.kind, item.id);
             const actionMap = { app: 'open_app', file: 'open_file', folder: 'open_folder' };
@@ -629,6 +664,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         queryInput.select();
         smoothcaret.refresh(queryInput);
         requestIndexRefresh();
+        // A block edited while Look was away takes effect on this open.
+        sourceblocks.prefill();
         runningApps.refresh();
         // Quick-action state is cached from the last render; the system may have
         // changed while hidden (Bluetooth flipped elsewhere), so re-read it.
@@ -651,6 +688,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // primary trigger (WebView2 doesn't reliably fire visibilitychange on a
     // native hide); visibilitychange stays as a WebKitGTK fallback.
     onWindowHidden((event) => {
+        // A level does not survive the launcher closing (§2.10): what survives
+        // is the ranking. Dropped here so the next summon opens on the index.
+        if (levels.isActive()) resetHomeQuery();
         superactions.armEntrance();
         motion.armReveal();
         // The next summon keeps the query and the selection, but an open menu
@@ -677,6 +717,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     onIndexReady(() => {
+        // A level's rows are not in the index, and its query filters them.
+        if (levels.isActive()) return;
         search.handleQueryInput(queryInput.value);
     });
 
@@ -701,6 +743,68 @@ document.addEventListener('DOMContentLoaded', async () => {
         search.handleQueryInput('');
         syncControlStrip();
     });
+
+    // --- Levels (drill-down into a `then` target that lists, §2.10) ---
+
+    // The rows of the current level, filtered by what is typed at it. Filtered,
+    // never re-ranked: the block's author ordered them, and they are not
+    // competing with apps and files for the top slot.
+    function renderLevel() {
+        previewPanel.hidden = false;
+        results.render(levels.rows(queryInput.value), queryInput.value);
+    }
+
+    function syncBreadcrumb() {
+        const crumbs = levels.breadcrumb();
+        breadcrumbEl.hidden = crumbs.length === 0;
+        breadcrumbEl.textContent = crumbs.join('  \u203A  ');
+    }
+
+    // A level was pushed: the query that got here means nothing now, and the
+    // launcher's other modes have nothing to say inside one.
+    function enterLevel() {
+        actionmenu.close();
+        aiAnswer.cancel();
+        translatePanel.hide();
+        resultsList.hidden = false;
+        queryInput.value = '';
+        smoothcaret.refresh(queryInput);
+        layout.setQuery({ empty: false, translate: false });
+        syncControlStrip();
+        syncBreadcrumb();
+        setHint(hintMessage, HINT_LEVEL);
+        renderLevel();
+    }
+
+    // Escape: back one level, with the query and selection it opened from, so
+    // descending and coming back is free rather than a re-search.
+    function popLevel() {
+        const left = levels.pop();
+        if (!left) return;
+        queryInput.value = left.restoredQuery;
+        smoothcaret.refresh(queryInput);
+        // Setting the query seeds the selection from the first row, so the
+        // restore waits for whichever pass has the rows.
+        results.restoreSelection(left.restoredSelectionId, left.restoredQuery);
+        syncBreadcrumb();
+
+        if (levels.isActive()) {
+            setHint(hintMessage, HINT_LEVEL);
+            renderLevel();
+            return;
+        }
+        // Back to the index, where that query is a search again.
+        search.handleQueryInput(left.restoredQuery);
+        layout.setQuery({
+            empty: layout.isEmptyQuery(left.restoredQuery),
+            translate: false,
+        });
+        syncControlStrip();
+        renderMainHint();
+    }
+
+    levels.setOnEnter(enterLevel);
+    keyboard.setPopLevel(popLevel);
 
     // --- Command mode helpers ---
 
