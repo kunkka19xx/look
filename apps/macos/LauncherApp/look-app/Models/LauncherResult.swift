@@ -49,6 +49,9 @@ struct LauncherResult: Identifiable {
     /// it was written into. The URL itself rides in the result id.
     var linkKindLabel: String? = nil
     var linkDetail: String? = nil
+    /// What a declared source row asked to be drawn as. Beats its block's icon,
+    /// which is the whole point of it being per row.
+    var icon: String? = nil
 }
 
 extension LauncherResult {

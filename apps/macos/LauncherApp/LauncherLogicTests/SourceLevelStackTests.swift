@@ -5,7 +5,8 @@ import XCTest
 /// ancestors, and what Escape puts back.
 final class SourceLevelStackTests: XCTestCase {
     private func row(_ id: String) -> SourceLevelRow {
-        SourceLevelRow(candidateId: "src:child:\(id)", id: id, title: id, subtitle: "", path: nil)
+        SourceLevelRow(
+            candidateId: "src:child:\(id)", id: id, title: id, subtitle: "", path: nil, icon: nil)
     }
 
     private func frame(

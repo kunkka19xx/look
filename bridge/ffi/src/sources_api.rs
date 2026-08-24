@@ -12,9 +12,9 @@ use look_indexing::CandidateIdKind;
 use look_sources::{Block, ParentRow, Producer, RowContext, load_dir, sources_dir};
 use serde::Serialize;
 use std::os::raw::c_char;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use crate::state::{cstr_to_string, json_cstring_or_null};
+use crate::state::{cstr_to_string, json_cstring_or_null, mark_index_dirty};
 
 /// Somewhere a row can go from here. `performs` is what the target's own
 /// producer decides: steps to run, or rows to descend into.
@@ -204,6 +204,23 @@ pub(crate) fn look_perform_block_json_impl(
 const DEFAULT_CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 
+/// The longest a single block may declare. `timeout` is the one limit the
+/// format hands to the author, and it only ever raises the default - a block
+/// asking for "24h" parses fine and would hold the refresh for a day.
+const MAX_BLOCK_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The longest a whole refresh may spend running commands. Blocks run one after
+/// another, so without this the wait is the SUM of every block's timeout, and
+/// each new source a user declares makes every reload slower.
+const REFRESH_TIME_BUDGET: Duration = Duration::from_secs(60);
+
+/// What a block is actually given: its own `timeout`, else the default, capped.
+fn capture_timeout(declared: Option<Duration>) -> Duration {
+    declared
+        .unwrap_or(DEFAULT_CAPTURE_TIMEOUT)
+        .min(MAX_BLOCK_TIMEOUT)
+}
+
 /// Re-runs every enabled `run` block and stores its rows, so the next index pass
 /// picks them up. Returns `{refreshed, errors}`.
 ///
@@ -216,6 +233,11 @@ pub(crate) fn look_refresh_run_blocks_json_impl() -> *mut c_char {
 
     let mut refreshed = 0usize;
     let mut errors: Vec<String> = Vec::new();
+    let started_at = Instant::now();
+    let mut skipped: Vec<String> = Vec::new();
+    // Any write to the run cache, not just rows gained: turning a block off
+    // clears its rows, and those have to leave the index too.
+    let mut changed = false;
     for block in load_dir(&sources_dir(&home)).blocks {
         let Producer::Run {
             command,
@@ -236,21 +258,50 @@ pub(crate) fn look_refresh_run_blocks_json_impl() -> *mut c_char {
 
         if !block.enabled {
             look_engine::index::clear_run_rows(&block.id);
+            changed = true;
+            continue;
+        }
+
+        // Out of budget: the blocks left keep the rows they had, and are named
+        // rather than dropped silently - "my source stopped updating" with no
+        // reason given is worse than a slow one.
+        if started_at.elapsed() >= REFRESH_TIME_BUDGET {
+            skipped.push(block.id.clone());
             continue;
         }
 
         let outcome = look_sources::capture(
             command,
             cwd.as_deref(),
-            timeout.unwrap_or(DEFAULT_CAPTURE_TIMEOUT),
+            capture_timeout(*timeout),
             MAX_CAPTURE_BYTES,
         )
         .and_then(|output| look_engine::index::store_run_rows(&block.id, &output, *format));
 
         match outcome {
-            Ok(rows) => refreshed += rows,
+            Ok(rows) => {
+                refreshed += rows;
+                changed = true;
+            }
             Err(message) => errors.push(format!("[{}] {message}", block.id)),
         }
+    }
+
+    // The rows a block just produced ARE an index change, and nothing else will
+    // say so: they land in a cache directory no watcher covers. Without this the
+    // refresh the shell asks for next is declined by the dirty check whenever
+    // lazy indexing is on (the default), and the new rows sit in the cache until
+    // something unrelated dirties the index or the app restarts.
+    if changed {
+        mark_index_dirty();
+    }
+
+    if !skipped.is_empty() {
+        errors.push(format!(
+            "refresh ran out of time after {}s; not refreshed: {}",
+            REFRESH_TIME_BUDGET.as_secs(),
+            skipped.join(", ")
+        ));
     }
 
     json_cstring_or_null(
@@ -276,6 +327,8 @@ struct LevelRow {
     /// Resolved against the block name by the same rule the index uses.
     subtitle: String,
     path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
 }
 
 #[derive(Serialize, Default)]
@@ -364,7 +417,7 @@ pub(crate) fn look_source_rows_json_impl(
             match look_sources::capture(
                 &command,
                 cwd.as_deref(),
-                timeout.unwrap_or(DEFAULT_CAPTURE_TIMEOUT),
+                capture_timeout(*timeout),
                 MAX_CAPTURE_BYTES,
             )
             .and_then(|output| {
@@ -394,6 +447,7 @@ pub(crate) fn look_source_rows_json_impl(
         .map(|row| LevelRow {
             candidate_id: CandidateIdKind::source_row_candidate_id(&block.id, &ancestors, &row.id),
             subtitle: row.display_subtitle(&block.name).to_string(),
+            icon: row.display_icon(&home),
             id: row.id,
             title: row.title,
             path: row.path.map(|path| {
@@ -559,6 +613,24 @@ fn home_dir() -> Option<PathBuf> {
 mod tests {
     use super::*;
     use std::ffi::{CStr, CString};
+
+    #[test]
+    fn a_block_cannot_hold_a_refresh_longer_than_the_ceiling() {
+        assert_eq!(capture_timeout(None), DEFAULT_CAPTURE_TIMEOUT);
+        // Under the ceiling is honoured, including asking for less than default.
+        assert_eq!(
+            capture_timeout(Some(Duration::from_secs(1))),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            capture_timeout(Some(Duration::from_secs(20))),
+            Duration::from_secs(20)
+        );
+        assert_eq!(
+            capture_timeout(Some(Duration::from_secs(86_400))),
+            MAX_BLOCK_TIMEOUT
+        );
+    }
 
     /// The sources directory is process-wide state, so these run one at a time.
     static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());

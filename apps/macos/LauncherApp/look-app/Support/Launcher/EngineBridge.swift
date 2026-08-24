@@ -334,16 +334,7 @@ final class EngineBridge: @unchecked Sendable {
             if compactPayload.error != nil {
                 return fallbackResults()
             }
-            return compactPayload.results.map { item in
-                LauncherResult(
-                    id: item.id,
-                    kind: LauncherResultKind(rawValue: item.kind) ?? .app,
-                    title: item.title,
-                    subtitle: item.subtitle,
-                    path: item.path,
-                    score: item.score
-                )
-            }
+            return compactPayload.results.map { LauncherResult($0, defaultKind: .app) }
         }
 
         // Compatibility fallback for older JSON payload shape.
@@ -353,16 +344,7 @@ final class EngineBridge: @unchecked Sendable {
             return fallbackResults()
         }
 
-        return fullPayload.results.map { item in
-            LauncherResult(
-                id: item.id,
-                kind: LauncherResultKind(rawValue: item.kind) ?? .app,
-                title: item.title,
-                subtitle: item.subtitle,
-                path: item.path,
-                score: item.score
-            )
-        }
+        return fullPayload.results.map { LauncherResult($0, defaultKind: .app) }
     }
 
     /// The Rust-core routing decision for submitted AI-mode input (see
@@ -542,16 +524,7 @@ final class EngineBridge: @unchecked Sendable {
     }
 
     private nonisolated static func fileRecallOutcome(from payload: SearchPayload) -> FileRecallOutcome {
-        let results = payload.results.map { item in
-            LauncherResult(
-                id: item.id,
-                kind: LauncherResultKind(rawValue: item.kind) ?? .file,
-                title: item.title,
-                subtitle: item.subtitle,
-                path: item.path,
-                score: item.score
-            )
-        }
+        let results = payload.results.map { LauncherResult($0, defaultKind: .file) }
         return FileRecallOutcome(results: results, relaxed: payload.relaxed)
     }
 
@@ -1523,4 +1496,22 @@ private nonisolated struct SearchItem: Decodable {
     let subtitle: String?
     let path: String
     let score: Int
+    let icon: String?
+}
+
+extension LauncherResult {
+    /// One decode of a search payload row. Spelled out per call site, every new
+    /// field the core adds is a three-site edit, and the sites drift: `icon`
+    /// reached search results and missed file recall entirely.
+    fileprivate nonisolated init(_ item: SearchItem, defaultKind: LauncherResultKind) {
+        self.init(
+            id: item.id,
+            kind: LauncherResultKind(rawValue: item.kind) ?? defaultKind,
+            title: item.title,
+            subtitle: item.subtitle,
+            path: item.path,
+            score: item.score,
+            icon: item.icon
+        )
+    }
 }

@@ -516,10 +516,18 @@ struct ResultPreviewView: View {
     private var actionPreview: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 26))
-                    .foregroundStyle(themeStore.accentColor())
-                    .frame(width: 48, height: 48)
+                // The same icon the row is drawn with, else the bolt.
+                if let declared = SourceBlockIcons.declaredIcon(for: result) {
+                    Image(nsImage: declared)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 48, height: 48)
+                } else {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 26))
+                        .foregroundStyle(themeStore.accentColor())
+                        .frame(width: 48, height: 48)
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(result.title)

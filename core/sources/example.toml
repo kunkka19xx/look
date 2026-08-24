@@ -98,9 +98,9 @@ then    = ["drop-branch"]
 
 
 # -------------------------------------------------------------------- json --
-# Rows as JSON instead of tab-separated lines, for the field lines cannot carry:
-# `path`, which makes a row a real filesystem object (Cmd+E, Cmd+T, Cmd+F, and
-# {path} in the verbs below).
+# Rows as JSON instead of tab-separated lines, for the two fields lines cannot
+# carry: `path`, which makes a row a real filesystem object (Cmd+E, Cmd+T,
+# Cmd+F, and {path} in the verbs below), and `icon`.
 #
 # One array, or one object per line, or pretty-printed objects run together:
 # whichever your tool already prints. `id` is the only required key, a bare
@@ -108,6 +108,16 @@ then    = ["drop-branch"]
 #
 #   [{"id": "look", "title": "Look", "subtitle": "3 uncommitted",
 #     "path": "~/dev/look"}]
+#
+# `icon` takes the same three spellings as a block's, and beats it. The block's
+# icon is right when its rows are alike; declare a row's own when they are not -
+# a favicon per browser-history entry, a status glyph per deploy.
+#
+#   {"id": "https://github.com", "title": "GitHub",
+#    "icon": "~/.look/cache/favicons/github.com.png"}
+#
+# A path that does not exist is drawn as its own text, so write the file before
+# naming it.
 
 [repos]
 name   = "Repos"

@@ -621,7 +621,7 @@ struct LauncherView: View {
 
         // Inside a level the way out is the thing to say.
         if isInLevel {
-            return [enterHint, "⌘K actions", "Esc back"]
+            return [enterHint, AppConstants.Launcher.ActionMenu.openHint, "Esc back"]
         }
 
         if isCommandMode {

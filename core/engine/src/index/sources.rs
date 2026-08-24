@@ -159,6 +159,10 @@ fn row_candidate(block: &Block, row: &SourceRow, home: &Path) -> Candidate {
         .map(|path| expand_home(path, home).to_string_lossy().into_owned())
         .unwrap_or_default();
     let mut candidate = Candidate::new(&id, CandidateKind::Action, &row.title, &path);
+    // What the row asked for, else nothing: the block's icon is applied by the
+    // shell, which already has it cached and would otherwise repeat it on every
+    // row of the block.
+    candidate.icon = row.display_icon(home).map(String::into_boxed_str);
     // What the row said about itself, else where it came from.
     candidate.subtitle = Some(
         row.subtitle

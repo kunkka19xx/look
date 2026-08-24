@@ -551,6 +551,20 @@ mod tests {
     }
 
     #[test]
+    fn rows_a_source_just_produced_can_ask_for_a_refresh() {
+        let _guard = test_lock();
+
+        clear_index_dirty();
+        assert!(
+            !refresh_allowed_by_dirty_mode(true, is_index_dirty()),
+            "a clean index declines, which is the behaviour being worked around"
+        );
+
+        mark_index_dirty();
+        assert!(refresh_allowed_by_dirty_mode(true, is_index_dirty()));
+    }
+
+    #[test]
     fn refresh_slot_acquire_and_guard_release_are_consistent() {
         let _guard = test_lock();
 
