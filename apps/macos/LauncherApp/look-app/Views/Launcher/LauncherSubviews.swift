@@ -15,6 +15,8 @@ struct SearchInputBar: View {
     var showsBackground: Bool = true
     /// Changes each time the launcher opens, replaying the spawn cascade.
     var revealToken: UInt64 = 0
+    /// Where a drill-down is, shown as a leading chip.
+    var breadcrumb: String?
     let onSubmit: () -> Void
     let onExitCommandMode: () -> Void
 
@@ -29,6 +31,9 @@ struct SearchInputBar: View {
     private var showsBetaBadge: Bool { isAIMode && !isCommandMode }
 
     private var placeholderText: String {
+        if breadcrumb != nil {
+            return "Filter, or Esc to go back"
+        }
         if isCommandMode {
             return activeCommand?.placeholder ?? AppConstants.Launcher.commandModePlaceholder
         }
@@ -40,12 +45,29 @@ struct SearchInputBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: isCommandMode ? "terminal" : (isAIMode ? "sparkles" : "magnifyingglass"))
-                .foregroundStyle(
-                    isCommandMode || isAIMode
-                        ? themeStore.accentColor() : themeStore.secondaryTextColor())
-                .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: revealToken)
+            Image(
+                systemName: breadcrumb != nil
+                    ? "chevron.right"
+                    : (isCommandMode ? "terminal" : (isAIMode ? "sparkles" : "magnifyingglass"))
+            )
+            .foregroundStyle(
+                isCommandMode || isAIMode || breadcrumb != nil
+                    ? themeStore.accentColor() : themeStore.secondaryTextColor()
+            )
+            .contentTransition(.symbolEffect(.replace))
+            .symbolEffect(.bounce, value: revealToken)
+
+            if let breadcrumb {
+                Text(breadcrumb)
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1)))
+                    .foregroundStyle(themeStore.fontColor())
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(themeStore.liftColor(opacity: 0.14), in: Capsule())
+                    .accessibilityLabel("Inside \(breadcrumb)")
+            }
             SmoothCaretTextField(
                 text: $text,
                 // Empty: the placeholder is drawn as the overlay below instead,
@@ -383,26 +405,44 @@ struct HintBar: View {
     var todo: TodoQuickView? = nil
     let themeStore: ThemeStore
 
+    private enum Layout {
+        /// How far the hint may shrink before it truncates instead. Enough to
+        /// absorb a long hint or a large font setting, not so much that the bar
+        /// becomes unreadable.
+        static let minimumScale: CGFloat = 0.75
+    }
+
     private var hintFont: Font {
         themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular)
     }
 
     var body: some View {
+        // One line, always. The hint is a reminder, not content: a second line
+        // would reflow the whole bar as the selection changes, and a longer
+        // font or another hint must shrink the text rather than move the layout.
         HStack(spacing: 0) {
             Text(hint)
                 .font(hintFont)
                 .foregroundStyle(themeStore.secondaryTextColor())
+                .lineLimit(1)
+                .minimumScaleFactor(Layout.minimumScale)
+                .truncationMode(.tail)
+                .layoutPriority(1)
 
             if let todo {
                 Text("  •  ")
                     .font(hintFont)
                     .foregroundStyle(themeStore.secondaryTextColor())
+                    .lineLimit(1)
+                    .fixedSize()
                 Button(action: todo.onTap) {
                     HStack(spacing: 5) {
                         Image(systemName: "checklist")
                             .font(.system(size: CGFloat(themeStore.settings.fontSize - 3)))
                         Text("Todo \(todo.done)/\(todo.total)")
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                     .foregroundStyle(themeStore.accentColor())
                     .contentShape(Rectangle())

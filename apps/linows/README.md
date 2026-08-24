@@ -16,7 +16,7 @@ apps/linows/
       state.rs           AppState: engine cache, scoped-refresh watcher (non-recursive
                          file roots, noise filter, debounce + cooldown, off-thread reindex,
                          RAII slot guard). See tools/perf/WATCHER_PERF.md for benchmarks.
-      config.rs          Config get/set (.look.config persistence)
+      config.rs          Config get/set (.look/config persistence)
       files.rs           File meta, version, clipboard copy, music scan, folder pick
       clipboard.rs       Clipboard history monitor
       shell.rs           Shell command execution

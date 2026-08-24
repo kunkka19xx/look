@@ -238,20 +238,15 @@ impl SqliteStore {
     }
 
     pub fn load_candidates(&self, limit: Option<usize>) -> StorageResult<Vec<Candidate>> {
-        let sql = match limit {
-            Some(_) => {
-                "SELECT id, kind, title, subtitle, path, use_count, last_used_at_unix_s, fs_modified_at_unix_s FROM candidates ORDER BY title ASC LIMIT ?1"
-            }
-            None => {
-                "SELECT id, kind, title, subtitle, path, use_count, last_used_at_unix_s, fs_modified_at_unix_s FROM candidates ORDER BY title ASC"
-            }
-        };
-
-        let mut stmt = self.conn.prepare(sql)?;
-        let mut rows = match limit {
-            Some(max) => stmt.query([max as i64])?,
-            None => stmt.query([])?,
-        };
+        // One statement, not one per branch: the column list has to stay aligned
+        // with the `row.get` indices below, and two copies of it means every new
+        // column is two edits that can silently disagree. SQLite reads a
+        // negative LIMIT as unbounded, which is exactly "no limit".
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, title, subtitle, path, use_count, last_used_at_unix_s, fs_modified_at_unix_s, icon
+             FROM candidates ORDER BY title ASC LIMIT ?1",
+        )?;
+        let mut rows = stmt.query([limit.map_or(-1, |max| max as i64)])?;
 
         let mut out = match limit {
             Some(max) => Vec::with_capacity(max.min(MAX_CANDIDATE_PREALLOC)),
@@ -269,6 +264,7 @@ impl SqliteStore {
                 use_count: to_use_count(use_count_raw)?,
                 last_used_at_unix_s: row.get(6)?,
                 fs_modified_at_unix_s: row.get(7)?,
+                icon: row.get::<_, Option<String>>(8)?.map(String::into_boxed_str),
             });
         }
 
@@ -298,20 +294,22 @@ impl SqliteStore {
                 // TODO(indexing-scale Direction A): the full walk + per-reindex
                 // re-normalize are still O(total). Move to event-driven incremental
                 // indexing (watcher paths) to make reindex cost ∝ changed files.
-                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s, indexed_at_unix_s, fs_modified_at_unix_s)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s, indexed_at_unix_s, fs_modified_at_unix_s, icon)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                  ON CONFLICT(id) DO UPDATE SET
                    kind = excluded.kind,
                    title = excluded.title,
                    subtitle = excluded.subtitle,
                      path = excluded.path,
                     indexed_at_unix_s = excluded.indexed_at_unix_s,
-                    fs_modified_at_unix_s = excluded.fs_modified_at_unix_s
+                    fs_modified_at_unix_s = excluded.fs_modified_at_unix_s,
+                    icon = excluded.icon
                  WHERE candidates.kind <> excluded.kind
                     OR candidates.title <> excluded.title
                     OR candidates.subtitle IS NOT excluded.subtitle
                     OR candidates.path <> excluded.path
-                    OR candidates.fs_modified_at_unix_s IS NOT excluded.fs_modified_at_unix_s",
+                    OR candidates.fs_modified_at_unix_s IS NOT excluded.fs_modified_at_unix_s
+                    OR candidates.icon IS NOT excluded.icon",
             )?;
 
             for candidate in candidates {
@@ -326,6 +324,7 @@ impl SqliteStore {
                     candidate.last_used_at_unix_s,
                     indexed_at_unix_s,
                     candidate.fs_modified_at_unix_s,
+                    candidate.icon.as_deref(),
                 ])?;
             }
         }
@@ -340,8 +339,8 @@ impl SqliteStore {
 
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s, indexed_at_unix_s, fs_modified_at_unix_s)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT INTO candidates (id, kind, title, subtitle, path, use_count, last_used_at_unix_s, indexed_at_unix_s, fs_modified_at_unix_s, icon)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             )?;
 
             for candidate in candidates {
@@ -356,6 +355,7 @@ impl SqliteStore {
                     candidate.last_used_at_unix_s,
                     None::<i64>,
                     candidate.fs_modified_at_unix_s,
+                    candidate.icon.as_deref(),
                 ])?;
             }
         }
@@ -893,6 +893,10 @@ impl SqliteStore {
         // "newly added/changed" signal. Additive column on existing DBs.
         ensure_column_exists(&self.conn, "candidates", "fs_modified_at_unix_s", "INTEGER")?;
 
+        // What a declared source row asked to be drawn as. Only source rows set
+        // it, so it is NULL for almost every row. Additive on existing DBs.
+        ensure_column_exists(&self.conn, "candidates", "icon", "TEXT")?;
+
         Ok(())
     }
 }
@@ -1172,6 +1176,30 @@ mod tests {
         assert_eq!(loaded[0].path.as_ref(), "/Applications/Test.app");
         assert_eq!(loaded[0].use_count, 0);
         assert_eq!(loaded[0].last_used_at_unix_s, None);
+    }
+
+    #[test]
+    fn a_declared_row_icon_survives_the_index() {
+        // Source rows are persisted like every other candidate and re-read from
+        // here on the next launch. An icon that did not round-trip would show
+        // once, at index time, and be gone after a restart.
+        let mut store = SqliteStore::open_in_memory().expect("open sqlite in memory");
+        let mut row = candidate("src:history:https://github.com", "GitHub", "");
+        row.icon = Some("/tmp/fav/github.com.png".into());
+        store.upsert_candidates(&[row]).expect("insert candidate");
+
+        let loaded = store.load_candidates(None).expect("load candidates");
+        assert_eq!(loaded[0].icon.as_deref(), Some("/tmp/fav/github.com.png"));
+
+        // A re-index that changes only the icon must still write: it is in the
+        // change-detection list, so a moved favicon is not stale forever.
+        let mut moved = candidate("src:history:https://github.com", "GitHub", "");
+        moved.icon = Some("/tmp/fav2/github.com.png".into());
+        store
+            .upsert_candidates(&[moved])
+            .expect("update candidate icon");
+        let after = store.load_candidates(None).expect("reload candidates");
+        assert_eq!(after[0].icon.as_deref(), Some("/tmp/fav2/github.com.png"));
     }
 
     #[test]

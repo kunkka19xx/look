@@ -22,6 +22,7 @@ import {
 } from '../icons.js';
 import { classifyResultId, WEB_URL_OPEN_SUBTITLE } from '../catalog.js';
 import * as qactions from './qactions.js';
+import * as actionmenu from './actionmenu.js';
 import { canRunElevated } from '../platform.js';
 
 let panel = null;
@@ -46,6 +47,7 @@ export function update(result) {
         panel.hidden = true;
         currentPath = null;
         qactions.clear();
+        actionmenu.close();
         return;
     }
 
@@ -53,6 +55,10 @@ export function update(result) {
     const cacheKey = result.kind === 'clipboard' ? result.id : result.path;
     if (currentPath === cacheKey) return;
     currentPath = cacheKey;
+    // The menu lists the SELECTED row's verbs, so it must not survive a move to
+    // another row and offer the previous one's. Re-rendering the same result (a
+    // window show) returns above and leaves it alone.
+    actionmenu.close();
 
     if (highlightTimer) {
         clearTimeout(highlightTimer);
@@ -571,6 +577,8 @@ export function clear() {
         panel.innerHTML = '';
         currentPath = null;
         qactions.clear();
+        // The menu lives in the panel we just wiped.
+        actionmenu.close();
     }
 }
 
@@ -588,6 +596,7 @@ export function showClipboardHelp() {
     if (!panel) return;
     currentPath = null;
     qactions.clear();
+    actionmenu.close();
     panel.hidden = false;
     panel.innerHTML = `
     <div class="preview-clip-help">

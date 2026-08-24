@@ -10,8 +10,10 @@ members = [
   "matching",
   "netspeed",
   "ranking",
+  "sources",
   "storage",
   "todo",
+  "tools",
 ]
 resolver = "2"
 

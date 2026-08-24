@@ -58,7 +58,7 @@ These are constraints, not preferences. Breaking one breaks the product.
 
 1. **Local-first is the brand.** On-device and Ollama are the default. Cloud is
    opt-in, keyed, and always shows "this leaves your machine." API keys live in
-   the OS keychain, never in `~/.look.config`.
+   the OS keychain, never in `~/.look/config`.
 2. **Chat is a fallback, never the surface.** The moment the main interaction is
    a conversation window, `look` becomes a worse ChatGPT.
 3. **Acting is guarded.** Every action gets preview, confirm, and undo. The model
@@ -163,7 +163,7 @@ Defaults and posture:
 - Default to the most private capable option present: Apple Intelligence for
   find/answer, Ollama for act/recall when installed.
 - Cloud is always opt-in and always shows "this leaves your machine." Keys live
-  in the OS keychain, never in `~/.look.config`.
+  in the OS keychain, never in `~/.look/config`.
 - Never auto-select a cloud provider or send a query off-device without an
   explicit, remembered choice.
 - One clear Settings surface: which provider powers which verb, current

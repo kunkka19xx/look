@@ -104,17 +104,18 @@ pub(crate) fn list() -> Vec<RunningApp> {
     apps
 }
 
-/// Switcher view: one entry per switchable top-level window. Unlike `list()`
-/// (the kill view), this surfaces UWP apps - Settings, Calculator, Photos, … -
-/// whose visible windows are owned by `ApplicationFrameHost.exe` while their
-/// real process is windowless, so `list()` hides them. UWP entries activate by
-/// HWND (encoded in `desktop_id` as `hwnd:<handle>`) because several UWP apps
-/// share one ApplicationFrameHost PID and exe-path matching can't tell them
-/// apart. Normal apps keep the `app:<exe>` id and per-process dedup.
+/// Switcher view: one entry per running **app**. Unlike `list()` (the kill
+/// view), this surfaces UWP apps - Settings, Calculator, Photos, … - whose
+/// visible windows are owned by `ApplicationFrameHost.exe` while their real
+/// process is windowless, so `list()` hides them. UWP entries activate by HWND
+/// (encoded in `desktop_id` as `hwnd:<handle>`) because several UWP apps share
+/// one ApplicationFrameHost PID and exe-path matching can't tell them apart.
+/// Normal apps keep the `app:<exe>` id, which is also what the frontend
+/// resolves their icon from.
 pub(crate) fn list_gui() -> Vec<RunningApp> {
     let current_pid = unsafe { GetCurrentProcessId() };
     let mut apps: Vec<RunningApp> = Vec::new();
-    let mut seen_pids: HashSet<u32> = HashSet::new();
+    let mut seen: HashSet<String> = HashSet::new();
 
     for (hwnd_raw, pid, title) in enumerate_switchable_windows() {
         if pid == 0 || pid == 4 || pid == current_pid {
@@ -133,10 +134,27 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
             continue;
         }
 
+        // One entry per app, not per process: Windows 11 runs each Explorer
+        // window in its own, so a PID key lists "File Explorer" three times.
+        // UWP cannot use the exe path for the same reason it cannot use the PID:
+        // every UWP app shares one host binary, so the title is what names it.
+        // EnumWindows walks in z-order, so the first window seen for an app is
+        // its most recently active one, which is the one worth raising.
+        let identity = if is_frame_host {
+            format!("uwp:{}", title.to_lowercase())
+        } else if exe_path.is_empty() {
+            format!("exe:{}", basename.to_lowercase())
+        } else {
+            format!("exe:{}", exe_path.to_lowercase())
+        };
+        if !seen.insert(identity) {
+            continue;
+        }
+
         if is_frame_host {
             // The UWP window title ("Settings") is the app name (always non-empty
-            // - enumerate_switchable_windows drops untitled windows). One entry
-            // per window, activated by HWND.
+            // - enumerate_switchable_windows drops untitled windows), activated
+            // by HWND.
             apps.push(RunningApp {
                 name: title,
                 pid,
@@ -144,9 +162,6 @@ pub(crate) fn list_gui() -> Vec<RunningApp> {
                 exec: (!exe_path.is_empty()).then(|| exe_path.clone()),
             });
         } else {
-            if !seen_pids.insert(pid) {
-                continue;
-            }
             apps.push(RunningApp {
                 name: resolve_display_name(&basename, &exe_path, &title),
                 pid,

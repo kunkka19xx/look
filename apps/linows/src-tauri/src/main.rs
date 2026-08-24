@@ -23,6 +23,7 @@ mod shell;
 mod state;
 mod sysinfo;
 mod todo;
+mod tools;
 mod translate;
 mod trash;
 mod weather;
@@ -291,25 +292,20 @@ fn is_wayland() -> bool {
 /// SAFETY: Must be called at startup before any threads are spawned.
 #[cfg(debug_assertions)]
 fn setup_dev_env() {
-    // Resolve home/data dirs per platform. On Linux cmd shells set HOME; on
-    // Windows cmd/PowerShell set USERPROFILE instead - falling back to "."
-    // would land dev artifacts inside the repo.
-    let home = std::env::var("HOME")
-        .ok()
-        .or_else(|| std::env::var("USERPROFILE").ok())
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| ".".to_string());
+    // The engine's answer, not a second one: Windows can have $HOME and
+    // $USERPROFILE pointing at different directories.
+    let home = look_engine::config_path::home().unwrap_or_else(|| ".".to_string());
 
     if std::env::var(config::ENV_CONFIG_PATH)
         .unwrap_or_default()
         .trim()
         .is_empty()
     {
+        // `~/.look/config.dev`, never migrated: a dev file is written by hand.
+        let dev =
+            look_engine::config_path::resolve_home_variant(std::path::Path::new(&home), true).path;
         unsafe {
-            std::env::set_var(
-                config::ENV_CONFIG_PATH,
-                std::path::PathBuf::from(&home).join(".look.dev.config"),
-            );
+            std::env::set_var(config::ENV_CONFIG_PATH, dev);
         }
     }
     if std::env::var(state::ENV_DB_PATH)
@@ -574,6 +570,11 @@ fn main() {
             app.state::<AppState>().start_bootstrap();
             clipboard::start_monitor();
 
+            // Probes the user's systemd manager, so the first launch of a
+            // session does not wait on it.
+            #[cfg(target_os = "linux")]
+            platform::linux::prime_user_session();
+
             register_shortcuts(app, use_wayland);
 
             #[cfg(debug_assertions)]
@@ -669,6 +670,10 @@ fn main() {
             files::pick_image,
             // Shell
             shell::run_shell_command,
+            // Preferred tools (shared look-tools composition; the native half
+            // lives in platform::{linux,windows}::tools)
+            tools::tool_actions,
+            tools::perform_tool_action,
             // Platform: icons, detection, window effects
             platform::get_icon,
             platform::get_platform,

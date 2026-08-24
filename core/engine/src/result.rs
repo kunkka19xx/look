@@ -11,16 +11,34 @@ pub struct LaunchResult {
     pub path: String,
     pub score: i64,
     pub action: LaunchResultAction,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LaunchResultAction {
-    Open { path: String },
-    OpenFolder { path: String },
-    Reveal { path: String },
-    WebSearch { query: String },
-    Translate { text: String, target_lang: String },
+    Open {
+        path: String,
+    },
+    OpenFolder {
+        path: String,
+    },
+    Reveal {
+        path: String,
+    },
+    WebSearch {
+        query: String,
+    },
+    Translate {
+        text: String,
+        target_lang: String,
+    },
+    /// A user-declared block, identified by its candidate id. There is nothing
+    /// to open: the shell looks the block up and performs its steps.
+    PerformBlock {
+        candidate_id: String,
+    },
 }
 
 impl From<(&Candidate, i64)> for LaunchResult {
@@ -35,6 +53,9 @@ impl From<(&Candidate, i64)> for LaunchResult {
             CandidateKind::Folder => LaunchResultAction::OpenFolder {
                 path: candidate.path.to_string(),
             },
+            CandidateKind::Action => LaunchResultAction::PerformBlock {
+                candidate_id: candidate.id.to_string(),
+            },
         };
 
         Self {
@@ -45,6 +66,7 @@ impl From<(&Candidate, i64)> for LaunchResult {
             path: candidate.path.to_string(),
             score,
             action,
+            icon: candidate.icon.as_deref().map(str::to_string),
         }
     }
 }

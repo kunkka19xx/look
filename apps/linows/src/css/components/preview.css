@@ -609,3 +609,69 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* ============ Action menu (Ctrl+K) ============ */
+/* Everything you can do to the selected row, floating under the preview header
+   (components/actionmenu.js). It sits over the preview rather than in it, so a
+   row with actions costs the panel no space until the user asks for them. */
+
+.action-menu {
+    position: absolute;
+    left: var(--content-padding);
+    right: var(--content-padding);
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px;
+    /* Same surface as a floating tile, so the menu reads as the panel raised
+       rather than a slab dropped on it: the control fill over the window tint,
+       both from the active theme, with the window's own frost behind them. */
+    background-color: transparent;
+    background-image:
+        linear-gradient(var(--control-fill), var(--control-fill)),
+        linear-gradient(var(--bg-tint), var(--bg-tint));
+    backdrop-filter: blur(var(--blur-radius, 0px));
+    -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
+    border: var(--border-thickness) solid var(--border-color);
+    border-radius: var(--tile-radius);
+    box-shadow: 0 8px 20px rgba(var(--shadow), 0.35);
+}
+
+.action-menu-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: var(--control-radius);
+    cursor: pointer;
+}
+
+.action-menu-row.is-focused {
+    background: var(--selection-fill);
+}
+
+.action-menu-title {
+    font-size: calc(var(--font-size) - 1px);
+    font-weight: 500;
+    color: var(--font-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The chord that already performs the action, flush right so the keys line up
+   down one edge. Empty for an action that has none. */
+.action-menu-key {
+    flex-shrink: 0;
+    font-size: calc(var(--font-size) - 2px);
+    font-weight: 600;
+    color: var(--font-muted);
+}
+
+.action-menu-row.is-focused .action-menu-key {
+    color: var(--font-secondary);
+}

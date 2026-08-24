@@ -71,6 +71,7 @@ extension LauncherView {
         quickActionTask?.cancel()
 
         guard let result = selectedResultForActions else {
+            closeActionMenu()
             if !quickActionDescriptors.isEmpty { quickActionDescriptors = [] }
             if !quickActionStates.isEmpty { quickActionStates = [:] }
             if !quickActionInfo.isEmpty { quickActionInfo = [:] }
@@ -78,7 +79,19 @@ extension LauncherView {
             return
         }
 
-        let descriptors = bridge.quickActions(forResultID: result.id, kind: result.kind.rawValue)
+        var descriptors = bridge.quickActions(forResultID: result.id, kind: result.kind.rawValue)
+        // A block's `then` targets are actions on this row, so they join the
+        // same Cmd+K menu as the compiled controls. They are declared at parse
+        // time rather than build time; that is the only difference.
+        let blockTargets = sourceBlockTargets(for: result)
+        descriptors.append(contentsOf: blockTargets)
+
+        // Declared beats default in the panel exactly as it does when running
+        // (`specs/preferred-tools.md` §7.1): a block that named its own actions
+        // keeps them unburied, and its rows keep every chord regardless.
+        if blockTargets.isEmpty {
+            descriptors.append(contentsOf: rowActionDescriptors(for: result))
+        }
         quickActionDescriptors = descriptors
 
         // Only a *different* result invalidates what the panel is showing. Re-reading
@@ -93,6 +106,10 @@ extension LauncherView {
             quickActionStates = [:]
             quickActionInfo = [:]
             quickActionsLoadedResultID = result.id
+            // The menu lists the SELECTED row's verbs, so it must not survive a
+            // move to another row and offer the previous one's. Re-reading the
+            // same result (a window show, a re-render) leaves it alone.
+            closeActionMenu()
         }
 
         guard !descriptors.isEmpty else { return }
@@ -101,6 +118,12 @@ extension LauncherView {
         quickActionTask = Task {
             for descriptor in descriptors {
                 guard !Task.isCancelled else { return }
+                // A declared target has no adapter and nothing to read: it is a
+                // button that runs a command. Asking the registry for its state
+                // would resolve to "not supported on this Mac".
+                if SourceBlockAction.blockID(fromActionID: descriptor.actionId) != nil {
+                    continue
+                }
                 let (state, info) = await readQuickAction(descriptor)
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
@@ -123,6 +146,10 @@ extension LauncherView {
     /// Runs a specific action's intent (from a click or a key), shows the
     /// outcome, and reloads its state + info. Shared by the toggle and Cmd+O.
     func runQuickAction(_ descriptor: QuickActionDescriptor, intent: ActionIntent) {
+        if let blockID = SourceBlockAction.blockID(fromActionID: descriptor.actionId) {
+            performSourceBlockTarget(blockID: blockID, title: descriptor.title)
+            return
+        }
         guard let adapter = ActionAdapterRegistry.adapter(for: descriptor.actionId) else {
             showBanner("\(descriptor.title) is not available", style: .info, duration: Banner.unavailable)
             return

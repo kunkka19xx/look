@@ -3,8 +3,33 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ResultPreviewView: View {
+    private enum Layout {
+        /// How much of a block's steps the panel shows before scrolling. Two,
+        /// because the steps are context for the row, not the subject of the
+        /// panel, and one long command should not push the preview off screen.
+        static let visibleStepLines = 2
+
+        /// The cap when the steps are the only thing in the panel. Nothing is
+        /// competing for the space, so a long command is worth reading in full;
+        /// past this it scrolls, without bars (see AICodeBlockView).
+        static let expandedStepLines = 14
+
+        /// How long a row must stay selected before its `preview` command runs.
+        ///
+        /// The command is a process, and a cancelled task only stops the panel
+        /// from being filled - the shell it already spawned runs to completion.
+        /// Without this, holding a arrow key through a source forks one process
+        /// per row it passes, each free to burn its whole timeout after the user
+        /// has moved on. Short enough that a row the user actually stops on
+        /// still fills immediately.
+        static let previewDebounceNanoseconds: UInt64 = 150_000_000
+    }
+
     @EnvironmentObject private var themeStore: ThemeStore
     let result: LauncherResult
+    /// The levels this row was reached through, for a `preview` that names
+    /// `{parent.*}`. Empty for every row that is not inside a drill-down.
+    var rowAncestorsJSON: String = "[]"
     /// Quick Actions for this result, rendered beneath the header (info + actions
     /// panel). Empty for results with no actions.
     var quickActions: [QuickActionDescriptor] = []
@@ -23,9 +48,59 @@ struct ResultPreviewView: View {
     var processDetail: ProcessDetail? = nil
     var processCPU: Double? = nil
     var isMeasuringProcessCPU: Bool = false
+    /// The Cmd+K action menu, floated under the header rather than laid out, so
+    /// a row's verbs cost the preview nothing until they are asked for.
+    var isActionMenuOpen: Bool = false
+    var actionMenuIndex: Int = 0
+    /// What the menu lists. Not always `quickActions`: with an empty query the
+    /// launchpad's own controls take its place.
+    var actionMenuDescriptors: [QuickActionDescriptor] = []
+    /// Activating a row of the Cmd+K menu, which is not the same as running it:
+    /// a target with a `confirm` asks first.
+    var onActivateActionMenuRow: (QuickActionDescriptor) -> Void = { _ in }
 
     @State private var folderListing: FolderListing?
     @State private var trashItemCount: Int?
+    /// Steps of the declared block behind an `.action` row, read on selection,
+    /// with the file that declared it.
+    @State private var blockSteps: [String] = []
+    @State private var blockFile: String?
+    /// Whether this row's block declares a `preview`, known before it runs, so
+    /// the steps can claim the space when nothing is coming below them.
+    @State private var blockHasPreview = false
+    /// Output of the block's declared `preview`, for rows that have one.
+    @State private var blockPreview: SourcePreview?
+
+    /// The menu for a preview that has no content area to pin it into. Padded
+    /// clear of the header so it still reads as attached to the row above it.
+    @ViewBuilder
+    private var floatingActionMenu: some View {
+        if isActionMenuOpen {
+            actionMenu
+                .padding(.horizontal, 16)
+                .padding(.top, 84)
+        }
+    }
+
+    /// The Cmd+K popup, pinned to the top of the content area so it opens flush
+    /// under the header and floats over whatever the preview is showing.
+    private var actionMenu: some View {
+        ActionMenuView(
+            descriptors: actionMenuDescriptors,
+            states: quickActionStates,
+            focusedIndex: actionMenuIndex,
+            themeStore: themeStore,
+            onActivate: onActivateActionMenuRow
+        )
+        .transition(.opacity.combined(with: .move(edge: .top)))
+        .zIndex(1)
+    }
+
+    /// Actions with live details worth reading (Bluetooth's paired devices).
+    /// Their verbs live in the Cmd+K menu; only what they know stays here.
+    private var infoOnlyQuickActions: [QuickActionDescriptor] {
+        quickActions.filter { !$0.info.isEmpty }
+    }
 
     /// A System Settings pane result (its "path" is a URL scheme, not a file).
     private var isSetting: Bool {
@@ -309,7 +384,9 @@ struct ResultPreviewView: View {
     }
 
     var body: some View {
-        if result.kind == .process {
+        if result.kind == .action {
+            actionPreview.overlay(alignment: .top) { floatingActionMenu }
+        } else if result.kind == .process {
             processPreview
         } else if result.kind == .clipboard {
             clipboardPreview
@@ -360,17 +437,22 @@ struct ResultPreviewView: View {
                     Spacer()
                 }
 
-                if !quickActions.isEmpty {
+                ZStack(alignment: .topLeading) {
+                    VStack(alignment: .leading, spacing: 12) {
+                // Info only: an action's live details (Bluetooth's paired
+                // devices) are what the panel is for. Its verbs are in Cmd+K.
+                if !infoOnlyQuickActions.isEmpty {
                     QuickActionsSection(
-                        descriptors: quickActions,
+                        descriptors: infoOnlyQuickActions,
                         states: quickActionStates,
                         info: quickActionInfo,
                         pendingItems: pendingQuickActionItems,
                         busyActionIds: busyQuickActionIds,
                         themeStore: themeStore,
                         revealToken: quickActionsRevealToken,
-                        onRun: onRunQuickAction,
-                        onActivateItem: onActivateQuickActionItem
+                        onRun: { _, _ in },
+                        onActivateItem: onActivateQuickActionItem,
+                        controlHidden: true
                     )
                 }
 
@@ -413,6 +495,12 @@ struct ResultPreviewView: View {
                 if result.kind != .file && result.kind != .folder {
                     Spacer()
                 }
+                    }
+
+                    if isActionMenuOpen {
+                        actionMenu
+                    }
+                }
             }
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -437,6 +525,163 @@ struct ResultPreviewView: View {
                 // stale assignment when the user moved on to another folder.
                 if Task.isCancelled { return }
                 folderListing = listing
+            }
+        }
+    }
+
+    /// A declared block has no file to describe, so the panel answers the only
+    /// question that matters before Enter: exactly what is about to run.
+    private var actionPreview: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                // The same icon the row is drawn with, else the bolt.
+                if let declared = SourceBlockIcons.declaredIcon(for: result) {
+                    Image(nsImage: declared)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 48, height: 48)
+                } else {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 26))
+                        .foregroundStyle(themeStore.accentColor())
+                        .frame(width: 48, height: 48)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(result.title)
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 2), weight: .semibold))
+                        .foregroundStyle(themeStore.fontColor())
+                        .lineLimit(2)
+                    Text(result.subtitle ?? "")
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                        .foregroundStyle(themeStore.secondaryTextColor())
+                }
+                Spacer()
+            }
+
+            let appIcons = SourceBlockIcons.appIcons(forSteps: blockSteps, limit: 8)
+            if !appIcons.isEmpty {
+                // What the steps will actually bring up. Only steps that name an
+                // app contribute, so the strip never implies more than the block
+                // does.
+                HStack(spacing: 6) {
+                    ForEach(Array(appIcons.enumerated()), id: \.offset) { _, icon in
+                        Image(nsImage: icon)
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                    }
+                }
+            }
+
+            if !blockSteps.isEmpty {
+                Text("Enter runs")
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
+                    .foregroundStyle(themeStore.secondaryTextColor())
+            }
+
+            // The steps ARE shell, so they get the same block an AI answer's
+            // code gets: highlighted, selectable, and copyable in one press.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    if !blockSteps.isEmpty {
+                        AICodeBlockView(
+                            code: blockSteps.joined(separator: "\n"),
+                            language: "sh",
+                            themeStore: themeStore,
+                            // Two lines when output is coming below, since the
+                            // steps are context for the row rather than its
+                            // subject. With nothing below them they are the
+                            // subject, so they take the room.
+                            maxVisibleLines: blockHasPreview
+                                ? Layout.visibleStepLines : Layout.expandedStepLines
+                        )
+                    }
+                    if let preview = blockPreview {
+                        blockPreviewBody(preview)
+                    } else if blockHasPreview {
+                        // Blank space reads as broken, and the command is
+                        // allowed to take seconds.
+                        Text("Running…")
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                            .foregroundStyle(themeStore.mutedTextColor())
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            if let file = blockFile {
+                Divider().overlay(themeStore.secondaryTextColor().opacity(0.2))
+                InfoRow(label: "Declared in", value: (file as NSString).abbreviatingWithTildeInPath)
+                // A row that names its own path reveals that, like every other
+                // row with one, so the chord belongs to the declaration only
+                // when the row has nothing of its own to point at.
+                if result.path.isEmpty {
+                    hintRow(key: "⌘F", text: "Reveal that file")
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .task(id: result.id) {
+            let candidateID = result.id
+            let ancestors = rowAncestorsJSON
+            let block = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.sourceBlock(
+                    candidateID: candidateID, ancestorsJSON: ancestors)
+            }.value
+            // The detached read outlives a cancelled task, so a late answer must
+            // not populate the panel of a row the user has already left.
+            if Task.isCancelled { return }
+            blockSteps = block?.steps ?? []
+            blockFile = block?.file
+            blockHasPreview = block?.hasPreview ?? false
+
+            // The declared `preview` runs a command, so it is read separately
+            // and only after the cheap details are on screen - and only once the
+            // selection settles. `Task.sleep` throws on cancellation, so a row
+            // arrowed past never reaches the spawn at all.
+            blockPreview = nil
+            do {
+                try await Task.sleep(nanoseconds: Layout.previewDebounceNanoseconds)
+            } catch {
+                return
+            }
+            let row = (id: result.id, title: result.title, path: result.path)
+            let preview = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.sourcePreview(
+                    candidateID: candidateID,
+                    rowID: row.id,
+                    rowTitle: row.title,
+                    rowPath: row.path,
+                    ancestorsJSON: ancestors
+                )
+            }.value
+            if Task.isCancelled { return }
+            blockPreview = preview
+        }
+    }
+
+    /// A block's `preview` output, or the reason it could not run. A failure is
+    /// shown rather than swallowed: a preview that silently does nothing reads
+    /// as the feature being broken.
+    @ViewBuilder
+    private func blockPreviewBody(_ preview: SourcePreview) -> some View {
+        if let error = preview.error {
+            Text(error)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                .foregroundStyle(themeStore.mutedTextColor())
+        } else if !preview.text.isEmpty {
+            let shown = PreviewText.visible(preview.text)
+            Text(shown.text)
+                .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
+                .foregroundStyle(themeStore.secondaryTextColor())
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if shown.dropped > 0 {
+                Text("… \(shown.dropped) more lines")
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                    .foregroundStyle(themeStore.mutedTextColor())
             }
         }
     }
