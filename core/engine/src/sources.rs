@@ -532,9 +532,6 @@ pub fn parents_from_json(ancestors_json: &str) -> Vec<look_sources::ParentRow> {
     serde_json::from_str(ancestors_json).unwrap_or_default()
 }
 
-/// What Enter will run: a bundle's steps, or the `open` verb that acts on a row
-<<<<<<< HEAD
-/// the block produced. Either way the panel shows the real commands.
 /// What a block is actually given: its own `timeout`, else the default, capped.
 fn capture_timeout(declared: Option<Duration>) -> Duration {
     declared
@@ -550,12 +547,7 @@ fn block_slice(declared: Option<Duration>, elapsed: Duration) -> Option<Duration
     (remaining >= MIN_BLOCK_SLICE).then(|| capture_timeout(declared).min(remaining))
 }
 
-fn steps_of(block: &Block) -> Vec<String> {
-    match &block.producer {
-        Producer::Bundle { steps } => steps.clone(),
-        _ => block.verbs.open.iter().cloned().collect(),
-    }
-=======
+/// What Enter will run: a bundle's steps, or the `open` verb that acts on a row
 /// the block produced. Either way the panel shows the real commands, expanded
 /// against the row the way the runner will expand them.
 fn steps_of(block: &Block, row: &RowContext) -> Vec<String> {
@@ -567,7 +559,6 @@ fn steps_of(block: &Block, row: &RowContext) -> Vec<String> {
         .into_iter()
         .map(|step| look_sources::expand(step, row))
         .collect()
->>>>>>> 65fc4f3 (cosmetic)
 }
 
 fn failed(errors: Vec<String>) -> PerformOutcome {
