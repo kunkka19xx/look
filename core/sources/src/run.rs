@@ -17,6 +17,8 @@
 use std::io::Read;
 use std::process::{Command, Stdio};
 
+use serde::Deserialize;
+
 use look_tools::shell_quote as quote;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -89,7 +91,62 @@ pub struct RowContext {
     pub path: String,
     /// What the user had typed when they picked the row.
     pub query: String,
+    /// Rows this one was drilled from, NEAREST first: `{parent.id}` is
+    /// `parents[0]`, and each further `parent.` steps one out.
+    pub parents: Vec<ParentRow>,
 }
+
+impl RowContext {
+    /// Its own path, or the nearest ancestor that has one: a script or branch
+    /// row has none while the project above it does, and that is where "run
+    /// this" means. A command can say `{parent.path}`; a directory cannot.
+    pub fn working_path(&self) -> &str {
+        if !self.path.is_empty() {
+            return &self.path;
+        }
+        self.parents
+            .iter()
+            .map(|parent| parent.path.as_str())
+            .find(|path| !path.is_empty())
+            .unwrap_or_default()
+    }
+
+    /// The FOLDER to run in, never the file itself: `current_dir` on a file
+    /// fails the spawn with ENOTDIR, which reads as `/bin/zsh: Not a directory`
+    /// as if the user's command were broken.
+    pub fn working_dir(&self) -> String {
+        parent_dir(self.working_path())
+    }
+}
+
+/// An ancestor row, for `{parent.*}`. Flat rather than a nested `RowContext`,
+/// since a placeholder can name nothing else about it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct ParentRow {
+    pub id: String,
+    pub title: String,
+    pub path: String,
+}
+
+/// One list, so `expand` and `Block::needs_row` agree on what a placeholder is.
+/// A brace that opens anything else is not one: a `run` command emitting JSON
+/// is full of them.
+pub const PLACEHOLDER_ID: &str = "{id}";
+pub const PLACEHOLDER_TITLE: &str = "{title}";
+pub const PLACEHOLDER_PATH: &str = "{path}";
+pub const PLACEHOLDER_DIR: &str = "{dir}";
+pub const PLACEHOLDER_QUERY: &str = "{query}";
+/// Opens an ancestor placeholder (`{parent.id}`), which also means a producer
+/// mentioning one needs a row.
+pub const PLACEHOLDER_PARENT: &str = "{parent.";
+pub const PLACEHOLDERS: [&str; 5] = [
+    PLACEHOLDER_ID,
+    PLACEHOLDER_TITLE,
+    PLACEHOLDER_PATH,
+    PLACEHOLDER_DIR,
+    PLACEHOLDER_QUERY,
+];
 
 /// Substitutes `{id}`, `{title}`, `{path}`, `{dir}`, and `{query}`.
 ///
@@ -99,13 +156,67 @@ pub struct RowContext {
 /// titled `; rm -rf ~` must not execute. A template therefore never quotes its
 /// own placeholders.
 pub fn expand(template: &str, row: &RowContext) -> String {
+    substitute(template, row, quote)
+}
+
+/// The same placeholders, unquoted, for a value that becomes a filesystem path
+/// rather than shell text: quotes there land in the path and nothing is found.
+/// Hand the result to the filesystem, never to a shell.
+pub fn expand_path(template: &str, row: &RowContext) -> String {
+    substitute(template, row, |value| value.to_string())
+}
+
+/// One pass, so the shell and filesystem forms cannot drift. Ancestors go
+/// deepest prefix first; a missing one reads as empty, like a row with no path.
+fn substitute(template: &str, row: &RowContext, transform: fn(&str) -> String) -> String {
+    let mut out = template.to_string();
+
+    // As deep as the row goes OR as deep as the template asks: an ancestor the
+    // row lacks must still be substituted, or the literal text reaches a shell.
+    let deepest = deepest_parent_depth(template).max(row.parents.len()).max(1);
+    for depth in (1..=deepest).rev() {
+        let prefix = PLACEHOLDER_PARENT_WORD.repeat(depth);
+        let parent = row.parents.get(depth - 1);
+        let (id, title, path) = match parent {
+            Some(parent) => (
+                parent.id.as_str(),
+                parent.title.as_str(),
+                parent.path.as_str(),
+            ),
+            None => ("", "", ""),
+        };
+        out = out
+            .replace(&format!("{{{prefix}id}}"), &transform(id))
+            .replace(&format!("{{{prefix}title}}"), &transform(title))
+            .replace(&format!("{{{prefix}path}}"), &transform(path))
+            .replace(&format!("{{{prefix}dir}}"), &transform(&parent_dir(path)));
+    }
+
     let dir = parent_dir(&row.path);
-    template
-        .replace("{id}", &quote(&row.id))
-        .replace("{title}", &quote(&row.title))
-        .replace("{path}", &quote(&row.path))
-        .replace("{dir}", &quote(&dir))
-        .replace("{query}", &quote(&row.query))
+    out.replace(PLACEHOLDER_ID, &transform(&row.id))
+        .replace(PLACEHOLDER_TITLE, &transform(&row.title))
+        .replace(PLACEHOLDER_PATH, &transform(&row.path))
+        .replace(PLACEHOLDER_DIR, &transform(&dir))
+        .replace(PLACEHOLDER_QUERY, &transform(&row.query))
+}
+
+/// The word an ancestor placeholder repeats, without the brace.
+const PLACEHOLDER_PARENT_WORD: &str = "parent.";
+
+/// The deepest `{parent.parent....}` the template names. No ceiling: a depth
+/// the search stops short of is a placeholder handed to a shell as text.
+fn deepest_parent_depth(template: &str) -> usize {
+    let mut deepest = 0;
+    for (open, _) in template.match_indices(PLACEHOLDER_PARENT) {
+        let mut rest = &template[open + 1..];
+        let mut depth = 0;
+        while let Some(shorter) = rest.strip_prefix(PLACEHOLDER_PARENT_WORD) {
+            depth += 1;
+            rest = shorter;
+        }
+        deepest = deepest.max(depth);
+    }
+    deepest
 }
 
 /// The row's own folder: itself when it is one, its parent otherwise.
@@ -145,7 +256,13 @@ fn posix_shell(configured: &str) -> &str {
 fn shell_command(step: &str) -> Result<Command, String> {
     let configured = std::env::var("SHELL").unwrap_or_default();
     let mut command = Command::new(posix_shell(&configured));
-    command.arg("-lc").arg(step);
+    command
+        .arg("-lc")
+        .arg(step)
+        // An AppImage runtime points this at its own bundled libs, and a host
+        // binary resolving against them dies on a symbol lookup. A step is the
+        // user's own command, so it must see the host's loader path, not ours.
+        .env_remove("LD_LIBRARY_PATH");
     Ok(command)
 }
 
@@ -175,7 +292,7 @@ fn spawn(step: &str, row: Option<&RowContext>) -> Result<(), String> {
         // The row's FOLDER, never the row itself: `path` is a file for most
         // rows, and `current_dir` on a file makes every spawn fail with
         // ENOTDIR. Same rule as `{dir}`.
-        let dir = parent_dir(&row.path);
+        let dir = row.working_dir();
         if !dir.is_empty() {
             command.current_dir(&dir);
         }
@@ -321,7 +438,104 @@ mod tests {
             title: "look".into(),
             path: path.into(),
             query: "loo".into(),
+            ..Default::default()
         }
+    }
+
+    fn drilled(parents: &[(&str, &str)]) -> RowContext {
+        RowContext {
+            id: "build".into(),
+            title: "build".into(),
+            query: String::new(),
+            path: String::new(),
+            parents: parents
+                .iter()
+                .map(|(id, path)| ParentRow {
+                    id: (*id).into(),
+                    title: (*id).into(),
+                    path: (*path).into(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn a_command_for_a_file_row_runs_in_the_files_folder_not_on_the_file() {
+        // `current_dir` on a file is ENOTDIR: the shell never starts, and the
+        // user sees "/bin/zsh: Not a directory" as if their command were wrong.
+        let dir = std::env::temp_dir().join(format!("look-workdir-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("probe dir");
+        let file = dir.join("changed.txt");
+        std::fs::write(&file, "x").expect("probe file");
+
+        let row = RowContext {
+            path: file.to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+        assert_eq!(row.working_dir(), dir.to_string_lossy());
+
+        // A row with no path of its own borrows the nearest ancestor's folder.
+        let drilled = RowContext {
+            parents: vec![ParentRow {
+                path: dir.to_string_lossy().into_owned(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert_eq!(drilled.working_dir(), dir.to_string_lossy());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_ancestor_is_named_by_stepping_out_one_level_at_a_time() {
+        let row = drilled(&[("animate", "/dev/animate"), ("prod", "")]);
+        assert_eq!(
+            expand("npm --prefix {parent.path} run {id}", &row),
+            "npm --prefix '/dev/animate' run 'build'"
+        );
+        assert_eq!(
+            expand(
+                "k --context {parent.parent.id} -n {parent.id} logs {id}",
+                &row
+            ),
+            "k --context 'prod' -n 'animate' logs 'build'"
+        );
+    }
+
+    #[test]
+    fn an_ancestor_deeper_than_the_chain_still_reads_as_empty() {
+        let row = drilled(&[("animate", "/dev/animate")]);
+        assert_eq!(
+            expand(
+                "k --context {parent.parent.id} -n {parent.id} logs {id}",
+                &row
+            ),
+            "k --context '' -n 'animate' logs 'build'"
+        );
+    }
+
+    #[test]
+    fn no_depth_is_deep_enough_to_leave_a_placeholder_behind() {
+        let deep = "x {parent.parent.parent.parent.parent.parent.parent.parent.parent.id}";
+        assert_eq!(expand(deep, &drilled(&[("one", "/one")])), "x ''");
+    }
+
+    #[test]
+    fn an_ancestor_that_is_not_there_reads_as_empty_rather_than_as_itself() {
+        // A literal `{parent.path}` reaching the shell would be worse: the
+        // command would run against a directory named after the placeholder.
+        let row = drilled(&[]);
+        assert_eq!(expand("ls {parent.path}", &row), "ls ''");
+    }
+
+    #[test]
+    fn an_ancestor_placeholder_is_quoted_for_a_shell_and_raw_for_a_path() {
+        let row = drilled(&[("my project", "/dev/my project")]);
+        assert_eq!(expand("cd {parent.path}", &row), "cd '/dev/my project'");
+        assert_eq!(
+            expand_path("{parent.path}/src", &row),
+            "/dev/my project/src"
+        );
     }
 
     #[test]

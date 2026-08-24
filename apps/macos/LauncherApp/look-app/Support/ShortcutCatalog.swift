@@ -68,6 +68,7 @@ enum ShortcutCatalog {
             ShortcutEntry("main.openPicked", "Shift+Enter", "Open all picked files/folders at once"),
             ShortcutEntry("main.clearPicks", "Cmd+Shift+P", "Clear all picked items"),
             ShortcutEntry("main.trash", "Cmd+D", "Trash selected file/folder (Trash pin: empty it) or remove the clipboard item"),
+            ShortcutEntry("main.actions", "Cmd+K / Ctrl+K", "Open the action menu for the selected row (Cmd+J/K or Ctrl+J/K move, Enter runs)"),
             ShortcutEntry("main.moveTab", "Tab / Shift+Tab", "Move selection"),
             ShortcutEntry("main.moveArrows", "Up / Down", "Move selection"),
             ShortcutEntry("main.reveal", "Cmd+F", "Reveal selected app/file/folder in Finder"),
@@ -100,7 +101,7 @@ enum ShortcutCatalog {
 
         ShortcutGroup(title: "View & panels", topic: .main, entries: [
             ShortcutEntry("view.settings", "Cmd+Shift+,", "Open/close settings panel"),
-            ShortcutEntry("view.reloadConfig", "Cmd+Shift+;", "Reload .look.config"),
+            ShortcutEntry("view.reloadConfig", "Cmd+Shift+;", "Reload .look/config"),
             ShortcutEntry("view.zoom", "Cmd+- / Cmd+=", "Zoom UI scale out / in"),
             ShortcutEntry("view.zoomReset", "Cmd+0", "Reset UI scale (opens the tenth session while the AI list is up)"),
         ]),

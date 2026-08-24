@@ -27,7 +27,7 @@ flowchart LR
     Hotkey --> App[SwiftUI macOS App\nlook_appApp / AppDelegate / LauncherView]
 
     App --> Clipboard[ClipboardHistoryStore\nSupport/Launcher/ in-memory history]
-    App --> Theme[ThemeStore\n.look.config + UserDefaults]
+    App --> Theme[ThemeStore\n.look/config + UserDefaults]
     App --> Bridge[EngineBridge.swift\nSupport/Launcher/]
     App --> Services[LauncherSearchCoordinator\nLauncherTranslationService\nLauncherWindowCoordinator]
 
@@ -177,7 +177,7 @@ Benchmarks for this path live in `tools/perf/` (see [tools/perf/WATCHER_PERF.md]
 ```mermaid
 flowchart TD
     Start[Engine cache init or config reload] --> Bootstrap[QueryEngine bootstrap_sqlite_scoped scope]
-    Bootstrap --> LoadCfg[RuntimeConfig load from .look.config]
+    Bootstrap --> LoadCfg[RuntimeConfig load from .look/config]
     LoadCfg --> OpenStore[SqliteStore open and migrate]
     OpenStore --> Stream[discover_candidates_stream_scoped]
 
@@ -527,7 +527,7 @@ motion sensitivity.
 
 ### Config File Integration
 
-All settings are persisted to `.look.config`:
+All settings are persisted to `.look/config`:
 
 **UI Theme:**
 - `ui_theme` - theme name (catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle, liquid). Matched case-insensitively, and applied after the individual `ui_*` keys below, so a preset overrides them. Empty means Custom. Save Config writes a preset name only while the values still match that preset, so a theme you have tweaked is stored as its literal values.

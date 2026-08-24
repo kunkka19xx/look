@@ -45,6 +45,8 @@ struct FfiCompactLaunchResult<'a> {
     subtitle: Option<&'a str>,
     path: &'a str,
     score: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon: Option<&'a str>,
 }
 
 #[derive(serde::Serialize)]
@@ -223,6 +225,7 @@ pub(crate) fn look_search_json_compact_impl(query: *const c_char, limit: u32) ->
             subtitle: candidate.subtitle.as_deref(),
             path: &candidate.path,
             score: *score,
+            icon: candidate.icon.as_deref(),
         })
         .collect();
     let payload = FfiCompactSearchPayload {
@@ -260,6 +263,7 @@ impl<'a> From<&'a LaunchResult> for FfiCompactLaunchResult<'a> {
             subtitle: value.subtitle.as_deref(),
             path: &value.path,
             score: value.score,
+            icon: value.icon.as_deref(),
         }
     }
 }

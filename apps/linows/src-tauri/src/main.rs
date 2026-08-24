@@ -23,6 +23,7 @@ mod shell;
 mod state;
 mod sysinfo;
 mod todo;
+mod tools;
 mod translate;
 mod trash;
 mod weather;
@@ -569,6 +570,11 @@ fn main() {
             app.state::<AppState>().start_bootstrap();
             clipboard::start_monitor();
 
+            // Probes the user's systemd manager, so the first launch of a
+            // session does not wait on it.
+            #[cfg(target_os = "linux")]
+            platform::linux::prime_user_session();
+
             register_shortcuts(app, use_wayland);
 
             #[cfg(debug_assertions)]
@@ -664,6 +670,10 @@ fn main() {
             files::pick_image,
             // Shell
             shell::run_shell_command,
+            // Preferred tools (shared look-tools composition; the native half
+            // lives in platform::{linux,windows}::tools)
+            tools::tool_actions,
+            tools::perform_tool_action,
             // Platform: icons, detection, window effects
             platform::get_icon,
             platform::get_platform,

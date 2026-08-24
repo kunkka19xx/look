@@ -12,7 +12,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use look_sources::{SourceRow, parse_lines};
+use look_sources::{RowFormat, SourceRow, parse_rows};
 
 /// Where a block's rows are kept between refreshes.
 const CACHE_DIR_NAME: &str = ".look/cache/rows";
@@ -33,14 +33,18 @@ fn cache_path(block_id: &str) -> Option<PathBuf> {
 }
 
 /// The rows `block_id` last produced, or empty when it has never run.
-pub(super) fn read(block_id: &str) -> Vec<SourceRow> {
+///
+/// The cache holds the command's raw stdout, so reading it back needs the same
+/// format the block declared when it was written.
+pub(super) fn read(block_id: &str, format: RowFormat) -> Vec<SourceRow> {
     let Some(path) = cache_path(block_id) else {
         return Vec::new();
     };
     let Ok(contents) = fs::read(&path) else {
         return Vec::new();
     };
-    let (rows, _) = parse_lines(&String::from_utf8_lossy(&contents), MAX_CACHED_ROWS);
+    let (rows, _) = parse_rows(&String::from_utf8_lossy(&contents), MAX_CACHED_ROWS, format)
+        .unwrap_or_default();
     rows
 }
 
@@ -50,8 +54,8 @@ pub(super) fn read(block_id: &str) -> Vec<SourceRow> {
 /// broken (network down, tool missing, wrong directory) than genuinely empty,
 /// and keeping the last good rows costs nothing while clearing them loses the
 /// user's ranking.
-pub fn write(block_id: &str, output: &str) -> Result<usize, String> {
-    let (rows, _) = parse_lines(output, MAX_CACHED_ROWS);
+pub fn write(block_id: &str, output: &str, format: RowFormat) -> Result<usize, String> {
+    let (rows, _) = parse_rows(output, MAX_CACHED_ROWS, format)?;
     if rows.is_empty() {
         return Err("produced no rows; keeping the previous ones".into());
     }
@@ -87,7 +91,14 @@ mod tests {
     fn empty_output_keeps_the_previous_rows() {
         // A command returning nothing is usually broken, not empty, and the ids
         // it produced carry the user's usage history.
-        assert!(write("probe", "").is_err());
-        assert!(write("probe", "   \n\n").is_err());
+        assert!(write("probe", "", RowFormat::Lines).is_err());
+        assert!(write("probe", "   \n\n", RowFormat::Lines).is_err());
+    }
+
+    #[test]
+    fn output_that_is_not_the_declared_format_keeps_the_previous_rows() {
+        // Same reasoning: a script whose JSON broke must not take the rows, and
+        // the ranking they carry, down with it.
+        assert!(write("probe", "look\tLook", RowFormat::Json).is_err());
     }
 }

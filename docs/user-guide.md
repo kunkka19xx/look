@@ -39,9 +39,9 @@ To bind `Cmd+Space` to Look, disable Spotlight's default shortcut: `System Setti
 Look is designed to need as few macOS permissions as possible:
 
 - **No Accessibility permission** is required.
-- **No Full Disk Access** is required. Look indexes standard user directories (`~`, `/Applications`, `~/Documents`, `~/Downloads`, etc.). To index a directory outside those defaults, add it via `file_scan_extra_roots` in `~/.look.config`.
+- **No Full Disk Access** is required. Look indexes standard user directories (`~`, `/Applications`, `~/Documents`, `~/Downloads`, etc.). To index a directory outside those defaults, add it via `file_scan_extra_roots` in `~/.look/config`.
 - **No Screen Recording** is required.
-- **Network access** is used for explicit actions - `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search - and, when **AI features** are enabled (macOS, on by default), for live Google search suggestions and the DuckDuckGo/Wikipedia answer card as you type. The AI model runs wherever you point it. Apple Intelligence is on-device and Ollama defaults to `localhost`, so by default no prompt leaves the machine. If you change `ollama_host` to a non-loopback address, or select a cloud-routed Ollama model (a `-cloud` tag, which the local daemon proxies to Ollama's service), then **your prompt travels over the network to that provider**. Separately from the prompt, your calendar, clipboard, and remembered facts are attached only when inference is on this machine; for anything remote they are withheld until you turn on `ai_allow_remote_context` in Settings. Turn the AI/web features off by setting `ai_enabled = false` in `~/.look.config` (or via Settings). Local search and indexing never make network calls.
+- **Network access** is used for explicit actions - `t"` translation, `tw"` dictionary lookup, and `Cmd+Enter` web search - and, when **AI features** are enabled (macOS, on by default), for live Google search suggestions and the DuckDuckGo/Wikipedia answer card as you type. The AI model runs wherever you point it. Apple Intelligence is on-device and Ollama defaults to `localhost`, so by default no prompt leaves the machine. If you change `ollama_host` to a non-loopback address, or select a cloud-routed Ollama model (a `-cloud` tag, which the local daemon proxies to Ollama's service), then **your prompt travels over the network to that provider**. Separately from the prompt, your calendar, clipboard, and remembered facts are attached only when inference is on this machine; for anything remote they are withheld until you turn on `ai_allow_remote_context` in Settings. Turn the AI/web features off by setting `ai_enabled = false` in `~/.look/config` (or via Settings). Local search and indexing never make network calls.
 - **Finder Automation** is requested only when you empty the Trash (`Cmd+D` on the pinned Trash folder). The Trash is protected by macOS, so Look asks Finder to empty it; macOS prompts once, and you can manage it under `System Settings > Privacy & Security > Automation`. Moving individual files to the Trash needs no permission.
 
 **Settings > AI > Permissions** lists every capability that needs OS access (Calendar, Reminders), what Look does with it, and whether it's connected. **Grant all** asks for the outstanding ones in turn; macOS has no single "allow everything" prompt, so each still appears on its own. Once a permission has been answered - granted or denied - only System Settings can change it, so those rows link straight to the right pane. Look also asks the first time you use a feature that needs access, which is why `join` may prompt for Calendar.
@@ -91,11 +91,11 @@ Restart and Shut Down arm on the first press and only run on the second, so a st
 
 The rest of the strip is read-only: **Battery**, **Weather**, and the large slot on the left, which shows a running Pomodoro session, otherwise today's remaining todos, otherwise the clock.
 
-Turn the strip off in `Settings > Appearance > Super Actions`. Off hides it and disables the letter shortcuts. Saved as `super_actions_enabled=true|false` in `~/.look.config`.
+Turn the strip off in `Settings > Appearance > Super Actions`. Off hides it and disables the letter shortcuts. Saved as `super_actions_enabled=true|false` in `~/.look/config`.
 
 ## AI answers and web suggestions (macOS, Linux, Windows)
 
-Look can answer questions and look things up without leaving the launcher. These features are **on by default** on macOS, Linux, and Windows. Toggle them in Settings or with `ai_enabled` in `~/.look.config`.
+Look can answer questions and look things up without leaving the launcher. These features are **on by default** on macOS, Linux, and Windows. Toggle them in Settings or with `ai_enabled` in `~/.look/config`.
 
 - **Answer card.** A question, an entity that has no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather, currency, crypto) shows a Spotlight-style card above the results. Sources resolve independently and each appears as it lands - **DuckDuckGo** and **Wikipedia**. Arithmetic doesn't answer here anymore - see the **Calculator row** under Query prefixes below. On macOS, when no web source has an answer it falls back to a streaming on-device **Apple Intelligence** answer. Click a source label to open it; the copy button copies that block.
 - **Search suggestions.** For plain text queries (2+ characters), Google autocomplete rows appear under the results. `Enter` on a suggestion (or `Cmd+Enter` on your query) runs a web search in your default browser.
@@ -284,7 +284,7 @@ Behavior:
 - **Linux focus** - Look's GNOME Shell extension activates the app's most-recent window on Wayland; X11 uses `_NET_ACTIVE_WINDOW` via x11rb; sway/Hyprland use `wlr-foreign-toplevel-management`; i3 uses `i3-msg`; niri uses its own IPC socket, which also scrolls the view to the window's workspace.
 - **Windowless apps** (Finder with no Finder windows, etc.) get a fresh window via a Dock-style "reopen" so you don't see an empty flash.
 
-Saved as `running_apps_placement=<value>` in `~/.look.config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
+Saved as `running_apps_placement=<value>` in `~/.look/config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
 
 **Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`.
 
@@ -317,7 +317,7 @@ Lazy indexing behavior:
 
 Runtime config file:
 
-- path: `~/.look.config`
+- path: `~/.look/config`
 - optional override: `LOOK_CONFIG_PATH=/path/to/config`
 - reload after manual edits: `Cmd+Shift+;`
 - reset to fresh defaults from UI: `Settings -> Advanced -> Create Fresh Config` (confirmation popup)
@@ -351,7 +351,7 @@ homeConfigurations."me" = home-manager.lib.homeManagerConfiguration {
 }
 ```
 
-Activation merges those keys into `~/.look.config` instead of replacing it, so
+Activation merges those keys into `~/.look/config` instead of replacing it, so
 settings you change in the app are kept and only the keys declared in Nix are
 overwritten. Removing a key from the Nix config removes it from the file on the
 next rebuild. Nix wins on every activation, so for the keys it manages, edit the
@@ -371,7 +371,7 @@ Backend-related keys:
 
 File-only settings (no Settings UI):
 
-These keys have no control in the Settings screens. Edit `~/.look.config` directly, then reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux/Windows), or restart Look. Out-of-range or unparseable values fall back to the listed default. More keys will be added here over time.
+These keys have no control in the Settings screens. Edit `~/.look/config` directly, then reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux/Windows), or restart Look. Out-of-range or unparseable values fall back to the listed default. More keys will be added here over time.
 
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
 
@@ -413,18 +413,18 @@ Default alias presets (fresh config files):
 
 Preset update behavior:
 
-- presets are written automatically only when `~/.look.config` is created for the first time
+- presets are written automatically only when `~/.look/config` is created for the first time
 - app updates do not rewrite an existing config file, so existing users should add new `alias_*` keys manually
 
 Fresh config reset behavior:
 
 - `Create Fresh Config` replaces the current config file with the latest default template
-- reset uses the active config path (`LOOK_CONFIG_PATH` when set, otherwise `~/.look.config`)
+- reset uses the active config path (`LOOK_CONFIG_PATH` when set, otherwise `~/.look/config`)
 - existing custom values are replaced during this reset flow (use manual edit + `Cmd+Shift+;` if you only want partial changes)
 
 UI-related keys include the `ui_*` group (tint/blur/font/border values).
 
-Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not written to `~/.look.config`.
+Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not written to `~/.look/config`.
 
 ## Keyboard shortcuts (quick reference)
 
@@ -464,7 +464,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 
 - reload config with `Cmd+Shift+;`
 - if lazy indexing is Off, Look reindexes on every launcher open; if On, it reindexes only when filesystem changes are detected
-- check scan roots, depth, and limits in `~/.look.config`
+- check scan roots, depth, and limits in `~/.look/config`
 - add user-specific directories via `file_scan_extra_roots`
 
 **`Cmd+Space` does not open Look.**
@@ -481,12 +481,12 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 **High CPU or slow first launch.**
 
 - the initial index scan is a one-time cost on first run; subsequent launches use the cached SQLite index
-- you can lower `file_scan_depth` and `file_scan_limit` in `~/.look.config` if you have very large user directories
+- you can lower `file_scan_depth` and `file_scan_limit` in `~/.look/config` if you have very large user directories
 
 **A config change was ignored.**
 
-- Look reads `~/.look.config` at launch. After editing manually, reload with `Cmd+Shift+;` or restart Look.
-- confirm you edited the active config path (`LOOK_CONFIG_PATH` overrides `~/.look.config` when set)
+- Look reads `~/.look/config` at launch. After editing manually, reload with `Cmd+Shift+;` or restart Look.
+- confirm you edited the active config path (`LOOK_CONFIG_PATH` overrides `~/.look/config` when set)
 
 **Translation (`t"` / `tw"`) returns no results.**
 
@@ -502,7 +502,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 
 **I want to reset everything to defaults.**
 
-- `Settings > Advanced > Create Fresh Config` rewrites `~/.look.config` from the latest defaults (with a confirmation prompt)
+- `Settings > Advanced > Create Fresh Config` rewrites `~/.look/config` from the latest defaults (with a confirmation prompt)
 
 ## Uninstall
 

@@ -8,13 +8,21 @@
 mod catalog;
 mod compose;
 mod quote;
+mod resolved;
+mod windows_terminals;
 
 pub use catalog::{
-    AppleScript, CommandStyle, DEFAULT_COMMAND_STYLE, Surface, TERMINALS, TTY_TOOLS, Terminal,
-    command_style, entry, surface,
+    AppleScript, CommandStyle, DEFAULT_COMMAND_STYLE, Surface, TERMINAL_NAMES, TERMINALS,
+    TTY_TOOLS, Terminal, command_style, entry, surface,
 };
 pub use compose::{Action, Launch, Target, Unavailable, edit, reveal, terminal_here};
 pub use quote::{applescript_quote, shell_quote};
+pub use windows_terminals::{WINDOWS_TERMINALS, WindowsTerminal};
+
+pub use resolved::{
+    KIND_APPLICATION, KIND_ARGV, KIND_FAILED, KIND_PERFORMED, KIND_SHELL, KIND_SYSTEM_DEFAULT,
+    KIND_UNAVAILABLE, Resolved, resolve,
+};
 
 /// The tool keys read from `~/.look/config`, as constants so the config parser,
 /// the catalog, and the "which key to set" message cannot drift apart.

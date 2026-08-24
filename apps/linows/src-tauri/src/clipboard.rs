@@ -138,7 +138,7 @@ fn push_entry(state: &mut ClipboardState, text: String, payload: Option<String>)
     save_entries(&state.entries);
 }
 
-/// Re-reads the clipboard section of `~/.look.config` and applies it to the running
+/// Re-reads the clipboard section of `~/.look/config` and applies it to the running
 /// monitor (trimming and persisting any entries beyond a lowered limit), so file-only
 /// clipboard settings take effect on config reload without a restart. One reload entry
 /// point for the whole subsystem: adding a clipboard key means another apply line here,

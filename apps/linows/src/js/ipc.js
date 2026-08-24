@@ -22,6 +22,17 @@ export async function revealPath(path) {
     return invoke('reveal_path', { path });
 }
 
+// Preferred tools (core look-tools). `toolActions` resolves a batch without
+// acting, for the menu labels; `performToolAction` resolves one and carries it
+// out. Batched because the menu asks about every action at once.
+export async function toolActions(actions, path, isDir) {
+    return invoke('tool_actions', { actions, path, isDir });
+}
+
+export async function performToolAction(action, path, isDir) {
+    return invoke('perform_tool_action', { action, path, isDir });
+}
+
 export async function reloadConfig() {
     return invoke('reload_config');
 }

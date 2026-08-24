@@ -4,8 +4,7 @@ import Foundation
 /// nobody could discover; the panel is where they become visible.
 ///
 /// Suppressed for a row whose block declared `then` targets: the author already
-/// chose that row's vocabulary and every entry here keeps its chord anyway
-/// (`specs/preferred-tools.md` §7.1).
+/// chose that row's vocabulary, and every entry here keeps its chord anyway.
 extension LauncherView {
     enum RowAction {
         static let prefix = "rowaction:"
@@ -47,9 +46,6 @@ extension LauncherView {
         }
     }
 
-    /// Separates a label from the chord that already performs it.
-    private static let chordGap = "  "
-
     private static var rowActionCatalog: [RowActionEntry] {
         [
             RowActionEntry(id: RowAction.open, plain: "Open", chord: "⏎"),
@@ -85,28 +81,34 @@ extension LauncherView {
                 control: .button,
                 onLabel: nil,
                 offLabel: nil,
-                info: []
+                info: [],
+                shortcut: entry.chord
             )
         }
     }
 
     private static func label(for entry: RowActionEntry, tools: [String: ToolAction]) -> String {
+        // A block names itself, not a tool, and its steps are already on
+        // screen in the panel.
+        if let action = entry.tool, tools[action]?.fromBlock == true {
+            return entry.plain
+        }
         let resolved = entry.tool.flatMap { tools[$0]?.tool } ?? entry.fallbackTool
-        let wording =
-            if let named = entry.named, let resolved { "\(named) \(resolved)" } else { entry.plain }
-        return "\(wording)\(chordGap)\(entry.chord)"
+        guard let named = entry.named, let resolved else { return entry.plain }
+        return "\(named) \(resolved)"
     }
 
-    /// Which tool each offered action would start. Cheap after the first call:
-    /// the tools come from the process-wide config cache and resolving is string
-    /// work.
+    /// Which tool each offered action would start, or which block took the
+    /// chord for these rows. Tools come from the process-wide config cache; a
+    /// block row also reads its declaration, like the panel already does.
     private func resolvedTools(
         for result: LauncherResult, entries: [RowActionEntry]
     ) -> [String: ToolAction] {
+        let row = toolActionRow(for: result)
         var resolved: [String: ToolAction] = [:]
         for action in entries.compactMap(\.tool) {
             if let outcome = EngineBridge.shared.toolAction(
-                action, path: result.path, isDirectory: result.kind == .folder
+                action, row: row, isDirectory: pathIsDirectory(result)
             ) {
                 resolved[action] = outcome
             }

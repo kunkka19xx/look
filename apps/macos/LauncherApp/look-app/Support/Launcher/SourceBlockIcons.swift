@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 
 /// What each declared block asked to be drawn as, keyed by block id.
 ///
@@ -127,15 +128,52 @@ enum SourceBlockIcons {
         return nil
     }
 
+    /// The biggest an icon is ever drawn is the preview panel's 48pt, so this
+    /// covers it at 2x with headroom.
+    private static let maxIconPixels = 128
+
+    /// Decodes at icon size rather than at whatever size the file happens to be.
+    ///
+    /// The path comes from a user's script, so nothing bounds it: browsers cache
+    /// 192px PWA icons, and a row could name a 4000px photo, which would decode
+    /// to 64MB to be drawn 20pt wide. ImageIO scales during decode, so the
+    /// oversized bitmap never exists. Nil when the file is not an image the
+    /// system can read, which leaves the caller its other fallbacks.
+    private static func downsampled(atPath path: String) -> NSImage? {
+        let url = URL(fileURLWithPath: path) as CFURL
+        guard let source = CGImageSourceCreateWithURL(url, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxIconPixels,
+        ]
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { return nil }
+        return NSImage(
+            cgImage: thumbnail,
+            size: NSSize(width: thumbnail.width, height: thumbnail.height))
+    }
+
+    /// What a row is drawn as: its own `icon` if it named one, else its block's.
+    ///
+    /// One resolver rather than one per view, because the preview panel and the
+    /// row it describes must not disagree about what the thing looks like.
+    @MainActor
+    static func declaredIcon(for result: LauncherResult) -> NSImage? {
+        declaredIcon(result.icon)
+            ?? declaredIcon(SourceBlockCatalog.icon(forCandidateID: result.id))
+    }
+
     /// The declared `icon`, resolved as an image path, an SF Symbol name, or
-    /// text to draw (an emoji). Nil when the block declared nothing.
+    /// text to draw (an emoji). Nil when nothing was declared.
     static func declaredIcon(_ declared: String?) -> NSImage? {
-        guard let declared, !declared.trimmingCharacters(in: .whitespaces).isEmpty else {
+        guard let declared, !declared.allSatisfy(\.isWhitespace) else {
             return nil
         }
         return RowIconCache.image(key: "blockicon:\(declared)") {
-            if FileManager.default.fileExists(atPath: declared),
-               let image = NSImage(contentsOfFile: declared) {
+            // No `fileExists` first: both decoders answer nil for a path that is
+            // not there, so the check would only repeat their work.
+            if let image = downsampled(atPath: declared) ?? NSImage(contentsOfFile: declared) {
                 return image
             }
             if let symbol = NSImage(systemSymbolName: declared, accessibilityDescription: nil) {

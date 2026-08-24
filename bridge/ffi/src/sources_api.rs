@@ -9,12 +9,12 @@
 use std::path::PathBuf;
 
 use look_indexing::CandidateIdKind;
-use look_sources::{Block, Producer, RowContext, load_dir, sources_dir};
+use look_sources::{Block, ParentRow, Producer, RowContext, load_dir, sources_dir};
 use serde::Serialize;
 use std::os::raw::c_char;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use crate::state::{cstr_to_string, json_cstring_or_null};
+use crate::state::{cstr_to_string, json_cstring_or_null, mark_index_dirty};
 
 /// Somewhere a row can go from here. `performs` is what the target's own
 /// producer decides: steps to run, or rows to descend into.
@@ -40,6 +40,12 @@ struct BlockDetail {
     /// reveal-in-Finder has something to point at.
     file: Option<String>,
     then: Vec<ThenTarget>,
+    /// Whether a `preview` command will run for this row. Answered with the
+    /// cheap details rather than by waiting for the command, so the panel can
+    /// lay itself out before knowing what the output says - or that there will
+    /// be none at all.
+    #[serde(rename = "hasPreview")]
+    has_preview: bool,
 }
 
 /// One row of the block index the shell caches: enough to render a row without
@@ -51,7 +57,7 @@ struct BlockSummary {
     icon: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 struct PerformOutcome {
     performed: usize,
     errors: Vec<String>,
@@ -59,6 +65,11 @@ struct PerformOutcome {
     /// caller should descend into it. An explicit signal, because "nothing was
     /// performed" is also what a failure looks like.
     produces_rows: bool,
+    /// The block declares no `open` and the row names a path, so the row IS the
+    /// thing: the shell opens it the way it opens any file. One rule for Enter,
+    /// decided here rather than from the row's kind, which says which producer
+    /// made it and nothing the user chose.
+    opens_path: bool,
 }
 
 /// `{id, name, steps, file, then}` for the block a candidate id belongs to, or
@@ -68,9 +79,10 @@ pub(crate) fn look_source_block_json_impl(
     row_id: *const c_char,
     row_title: *const c_char,
     row_path: *const c_char,
+    ancestors_json: *const c_char,
 ) -> *mut c_char {
     let candidate_id = cstr_to_string(candidate_id);
-    let row = row_context(row_id, row_title, row_path, "");
+    let row = row_context(row_id, row_title, row_path, "", ancestors_json);
     let Some(block_id) = CandidateIdKind::source_id_of(&candidate_id) else {
         return json_cstring_or_null(None);
     };
@@ -108,6 +120,7 @@ pub(crate) fn look_source_block_json_impl(
             steps: steps_of(block),
             file: block.source_file.clone(),
             then,
+            has_preview: block.preview.is_some(),
         })
         .ok(),
     )
@@ -146,10 +159,17 @@ pub(crate) fn look_perform_block_json_impl(
     row_title: *const c_char,
     row_path: *const c_char,
     query: *const c_char,
+    ancestors_json: *const c_char,
     as_target: bool,
 ) -> *mut c_char {
     let block_id = cstr_to_string(block_id);
-    let row = row_context(row_id, row_title, row_path, &cstr_to_string(query));
+    let row = row_context(
+        row_id,
+        row_title,
+        row_path,
+        &cstr_to_string(query),
+        ancestors_json,
+    );
 
     let Some(block) = find_block(&block_id) else {
         return outcome(0, vec!["that block no longer exists".into()]);
@@ -162,6 +182,9 @@ pub(crate) fn look_perform_block_json_impl(
         _ if as_target => return produces_rows(),
         _ => match block.verbs.open.as_deref() {
             Some(command) => vec![command.to_string()],
+            // A row that names a path needs no verb to be openable, which is
+            // what makes `dir` blocks work without declaring one.
+            None if !row.path.is_empty() => return opens_path(),
             None => {
                 return outcome(
                     0,
@@ -188,6 +211,35 @@ pub(crate) fn look_perform_block_json_impl(
 const DEFAULT_CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 
+/// The longest a single block may declare. `timeout` is the one limit the
+/// format hands to the author, and it only ever raises the default - a block
+/// asking for "24h" parses fine and would hold the refresh for a day.
+const MAX_BLOCK_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The longest a whole refresh may spend running commands. Blocks run one after
+/// another, so without this the wait is the SUM of every block's timeout, and
+/// each new source a user declares makes every reload slower.
+const REFRESH_TIME_BUDGET: Duration = Duration::from_secs(60);
+
+/// Below this a block is skipped rather than handed a sliver, which would come
+/// back as a timeout it did not earn.
+const MIN_BLOCK_SLICE: Duration = Duration::from_secs(1);
+
+/// What a block is actually given: its own `timeout`, else the default, capped.
+fn capture_timeout(declared: Option<Duration>) -> Duration {
+    declared
+        .unwrap_or(DEFAULT_CAPTURE_TIMEOUT)
+        .min(MAX_BLOCK_TIMEOUT)
+}
+
+/// The same, capped by what the refresh has left. `None` means skip it: gating
+/// entry alone, a block starting just under the budget still spent its whole
+/// timeout on top, so 60s could take 90.
+fn block_slice(declared: Option<Duration>, elapsed: Duration) -> Option<Duration> {
+    let remaining = REFRESH_TIME_BUDGET.saturating_sub(elapsed);
+    (remaining >= MIN_BLOCK_SLICE).then(|| capture_timeout(declared).min(remaining))
+}
+
 /// Re-runs every enabled `run` block and stores its rows, so the next index pass
 /// picks them up. Returns `{refreshed, errors}`.
 ///
@@ -200,34 +252,70 @@ pub(crate) fn look_refresh_run_blocks_json_impl() -> *mut c_char {
 
     let mut refreshed = 0usize;
     let mut errors: Vec<String> = Vec::new();
+    let started_at = Instant::now();
+    let mut skipped: Vec<String> = Vec::new();
+    // Any write to the run cache, not just rows gained: turning a block off
+    // clears its rows, and those have to leave the index too.
+    let mut changed = false;
     for block in load_dir(&sources_dir(&home)).blocks {
         let Producer::Run {
             command,
             cwd,
             timeout,
-            ..
+            format,
         } = &block.producer
         else {
             continue;
         };
 
-        if !block.enabled {
-            look_engine::index::clear_run_rows(&block.id);
+        // A block whose command names a row placeholder is a level, run live
+        // when the user descends. Running it here would execute
+        // `jq ... {path}/package.json` literally and report a useless failure.
+        if block.needs_row() {
             continue;
         }
 
-        let outcome = look_sources::capture(
-            command,
-            cwd.as_deref(),
-            timeout.unwrap_or(DEFAULT_CAPTURE_TIMEOUT),
-            MAX_CAPTURE_BYTES,
-        )
-        .and_then(|output| look_engine::index::store_run_rows(&block.id, &output));
+        if !block.enabled {
+            look_engine::index::clear_run_rows(&block.id);
+            changed = true;
+            continue;
+        }
+
+        // Out of budget: the blocks left keep the rows they had, and are named
+        // rather than dropped silently - "my source stopped updating" with no
+        // reason given is worse than a slow one.
+        let Some(timeout) = block_slice(*timeout, started_at.elapsed()) else {
+            skipped.push(block.id.clone());
+            continue;
+        };
+
+        let outcome = look_sources::capture(command, cwd.as_deref(), timeout, MAX_CAPTURE_BYTES)
+            .and_then(|output| look_engine::index::store_run_rows(&block.id, &output, *format));
 
         match outcome {
-            Ok(rows) => refreshed += rows,
+            Ok(rows) => {
+                refreshed += rows;
+                changed = true;
+            }
             Err(message) => errors.push(format!("[{}] {message}", block.id)),
         }
+    }
+
+    // The rows a block just produced ARE an index change, and nothing else will
+    // say so: they land in a cache directory no watcher covers. Without this the
+    // refresh the shell asks for next is declined by the dirty check whenever
+    // lazy indexing is on (the default), and the new rows sit in the cache until
+    // something unrelated dirties the index or the app restarts.
+    if changed {
+        mark_index_dirty();
+    }
+
+    if !skipped.is_empty() {
+        errors.push(format!(
+            "refresh ran out of time after {}s; not refreshed: {}",
+            REFRESH_TIME_BUDGET.as_secs(),
+            skipped.join(", ")
+        ));
     }
 
     json_cstring_or_null(
@@ -239,6 +327,162 @@ pub(crate) fn look_refresh_run_blocks_json_impl() -> *mut c_char {
     )
 }
 
+/// How deep a stack of levels may go. A launcher six levels deep has stopped
+/// being a launcher.
+const MAX_LEVEL_DEPTH: usize = 5;
+
+/// One row of a level: its candidate id carries the ancestors it came through.
+#[derive(Serialize)]
+struct LevelRow {
+    #[serde(rename = "candidateId")]
+    candidate_id: String,
+    id: String,
+    title: String,
+    /// Resolved against the block name by the same rule the index uses.
+    subtitle: String,
+    path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
+}
+
+#[derive(Serialize, Default)]
+struct Level {
+    /// The parent's OWN id, decoded here so the shell needs no second decoder
+    /// for the id format.
+    #[serde(rename = "parentRowId")]
+    parent_row_id: String,
+    rows: Vec<LevelRow>,
+    /// The row cap dropped rows, so the caller can say so rather than implying
+    /// the level is all there is.
+    truncated: bool,
+    /// Set when the level could not be produced, and the caller must not
+    /// descend: an empty level and a broken command look identical on screen.
+    error: Option<String>,
+}
+
+fn level_error(message: impl Into<String>) -> *mut c_char {
+    json_cstring_or_null(
+        serde_json::to_string(&Level {
+            error: Some(message.into()),
+            ..Default::default()
+        })
+        .ok(),
+    )
+}
+
+/// The rows of `block_id` produced against the selected row, for descending.
+///
+/// Live on every call, never cached: `~/.look/cache/rows/<block>` is keyed by
+/// block alone, and a level's rows depend on the row it opened from.
+pub(crate) fn look_source_rows_json_impl(
+    block_id: *const c_char,
+    parent_candidate_id: *const c_char,
+    parent_title: *const c_char,
+    parent_path: *const c_char,
+    query: *const c_char,
+    ancestors_json: *const c_char,
+) -> *mut c_char {
+    let block_id = cstr_to_string(block_id);
+    let parent_candidate_id = cstr_to_string(parent_candidate_id);
+    // Not through `row_context`: the parent id is already an owned Rust string,
+    // and handing its bytes back as a C string would read past the end.
+    let row = RowContext {
+        id: CandidateIdKind::source_row_id_of(&parent_candidate_id).to_string(),
+        title: cstr_to_string(parent_title),
+        path: cstr_to_string(parent_path),
+        query: cstr_to_string(query),
+        // The parent's own ancestors: inside this call the parent IS the row, so
+        // a producer saying `{parent.path}` means the grandparent.
+        parents: parents_from(ancestors_json),
+    };
+
+    let Some(home) = home_dir() else {
+        return level_error("no home directory");
+    };
+    let Some(block) = find_block(&block_id) else {
+        return level_error("that block no longer exists");
+    };
+    if !block.enabled {
+        return level_error(format!("[{}] is turned off", block.id));
+    }
+
+    // The chain the child's rows will carry: everything the parent was reached
+    // through, then the parent itself.
+    let Some(parent_block) = CandidateIdKind::source_id_of(&parent_candidate_id) else {
+        return level_error("that row does not belong to a block");
+    };
+    let mut ancestors = CandidateIdKind::source_ancestors_of(&parent_candidate_id);
+    ancestors.push((parent_block.to_string(), row.id.clone()));
+    if ancestors.len() > MAX_LEVEL_DEPTH {
+        return level_error(format!("{MAX_LEVEL_DEPTH} levels is as deep as this goes"));
+    }
+
+    let collected = match &block.producer {
+        Producer::Run {
+            command,
+            cwd,
+            timeout,
+            format,
+        } => {
+            let command = look_sources::expand(command, &row);
+            let cwd = cwd
+                .as_deref()
+                .map(|cwd| look_sources::expand_path(cwd, &row));
+            match look_sources::capture(
+                &command,
+                cwd.as_deref(),
+                capture_timeout(*timeout),
+                MAX_CAPTURE_BYTES,
+            )
+            .and_then(|output| {
+                look_sources::parse_rows(&output, look_sources::MAX_ROWS_PER_SOURCE, *format)
+            }) {
+                Ok((rows, truncated)) => look_sources::Collected {
+                    rows,
+                    truncated,
+                    unreadable: Vec::new(),
+                },
+                Err(message) => return level_error(message),
+            }
+        }
+        _ => match look_sources::collect_for_row(&block, &home, &row) {
+            Ok(collected) => collected,
+            Err(err) => return level_error(err.to_string()),
+        },
+    };
+
+    if collected.rows.is_empty() {
+        return level_error(format!("[{}] produced no rows", block.id));
+    }
+
+    let rows: Vec<LevelRow> = collected
+        .rows
+        .into_iter()
+        .map(|row| LevelRow {
+            candidate_id: CandidateIdKind::source_row_candidate_id(&block.id, &ancestors, &row.id),
+            subtitle: row.display_subtitle(&block.name).to_string(),
+            icon: row.display_icon(&home),
+            id: row.id,
+            title: row.title,
+            path: row.path.map(|path| {
+                look_sources::expand_home(&path, &home)
+                    .to_string_lossy()
+                    .into_owned()
+            }),
+        })
+        .collect();
+
+    json_cstring_or_null(
+        serde_json::to_string(&Level {
+            parent_row_id: row.id.clone(),
+            rows,
+            truncated: collected.truncated,
+            error: None,
+        })
+        .ok(),
+    )
+}
+
 /// Runs a block's declared `preview` against the selected row and returns its
 /// output as `{rows, error}`-shaped text, or `null` when it declares none.
 pub(crate) fn look_source_preview_json_impl(
@@ -246,6 +490,7 @@ pub(crate) fn look_source_preview_json_impl(
     row_id: *const c_char,
     row_title: *const c_char,
     row_path: *const c_char,
+    ancestors_json: *const c_char,
 ) -> *mut c_char {
     let candidate_id = cstr_to_string(candidate_id);
     let Some(block_id) = CandidateIdKind::source_id_of(&candidate_id) else {
@@ -258,11 +503,11 @@ pub(crate) fn look_source_preview_json_impl(
         return json_cstring_or_null(None);
     };
 
-    let row = row_context(row_id, row_title, row_path, "");
+    let row = row_context(row_id, row_title, row_path, "", ancestors_json);
     let command = look_sources::expand(preview, &row);
     let text = look_sources::capture(
         &command,
-        Some(&row.path),
+        Some(&row.working_dir()),
         DEFAULT_CAPTURE_TIMEOUT,
         MAX_CAPTURE_BYTES,
     );
@@ -288,6 +533,7 @@ fn row_context(
     row_title: *const c_char,
     row_path: *const c_char,
     query: &str,
+    ancestors_json: *const c_char,
 ) -> RowContext {
     let candidate_id = cstr_to_string(row_id);
     RowContext {
@@ -295,7 +541,23 @@ fn row_context(
         title: cstr_to_string(row_title),
         path: cstr_to_string(row_path),
         query: query.to_string(),
+        parents: parents_from(ancestors_json),
     }
+}
+
+/// The rows a drilled row was reached through, for `{parent.*}`: nearest first,
+/// as `[{id, title, path}]`.
+///
+/// The candidate id already carries the ancestor ids, but a placeholder can name
+/// their titles and paths too, and only the shell still holds those. Anything
+/// unparseable is no ancestors, which reads as empty rather than as a literal
+/// placeholder reaching a shell.
+pub(crate) fn parents_from(ancestors_json: *const c_char) -> Vec<ParentRow> {
+    let raw = cstr_to_string(ancestors_json);
+    if raw.trim().is_empty() {
+        return Vec::new();
+    }
+    serde_json::from_str::<Vec<ParentRow>>(&raw).unwrap_or_default()
 }
 
 fn steps_of(block: &Block) -> Vec<String> {
@@ -305,29 +567,34 @@ fn steps_of(block: &Block) -> Vec<String> {
     }
 }
 
+fn respond(outcome: PerformOutcome) -> *mut c_char {
+    json_cstring_or_null(serde_json::to_string(&outcome).ok())
+}
+
 fn outcome(performed: usize, errors: Vec<String>) -> *mut c_char {
-    json_cstring_or_null(
-        serde_json::to_string(&PerformOutcome {
-            performed,
-            errors,
-            produces_rows: false,
-        })
-        .ok(),
-    )
+    respond(PerformOutcome {
+        performed,
+        errors,
+        ..Default::default()
+    })
 }
 
 fn produces_rows() -> *mut c_char {
-    json_cstring_or_null(
-        serde_json::to_string(&PerformOutcome {
-            performed: 0,
-            errors: Vec::new(),
-            produces_rows: true,
-        })
-        .ok(),
-    )
+    respond(PerformOutcome {
+        produces_rows: true,
+        ..Default::default()
+    })
 }
 
-fn find_block(block_id: &str) -> Option<Block> {
+/// Nothing declared, but the row has somewhere to point.
+fn opens_path() -> *mut c_char {
+    respond(PerformOutcome {
+        opens_path: true,
+        ..Default::default()
+    })
+}
+
+pub(crate) fn find_block(block_id: &str) -> Option<Block> {
     let home = home_dir()?;
     load_dir(&sources_dir(&home))
         .blocks
@@ -354,4 +621,363 @@ fn home_dir() -> Option<PathBuf> {
         .ok()
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::{CStr, CString};
+
+    #[test]
+    fn a_block_cannot_hold_a_refresh_longer_than_the_ceiling() {
+        assert_eq!(capture_timeout(None), DEFAULT_CAPTURE_TIMEOUT);
+        // Under the ceiling is honoured, including asking for less than default.
+        assert_eq!(
+            capture_timeout(Some(Duration::from_secs(1))),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            capture_timeout(Some(Duration::from_secs(20))),
+            Duration::from_secs(20)
+        );
+        assert_eq!(
+            capture_timeout(Some(Duration::from_secs(86_400))),
+            MAX_BLOCK_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn a_block_never_spends_more_than_the_refresh_has_left() {
+        let spent = REFRESH_TIME_BUDGET - Duration::from_secs(3);
+        assert_eq!(
+            block_slice(Some(MAX_BLOCK_TIMEOUT), spent),
+            Some(Duration::from_secs(3)),
+            "the remaining budget wins over the block's own ceiling"
+        );
+        assert_eq!(
+            block_slice(Some(Duration::from_secs(20)), Duration::ZERO),
+            Some(Duration::from_secs(20))
+        );
+
+        assert_eq!(block_slice(None, REFRESH_TIME_BUDGET), None);
+        assert_eq!(
+            block_slice(None, REFRESH_TIME_BUDGET + Duration::from_secs(30)),
+            None,
+            "overrunning the budget must not underflow"
+        );
+        assert_eq!(
+            block_slice(None, REFRESH_TIME_BUDGET - MIN_BLOCK_SLICE / 2),
+            None,
+            "a sliver is a skip"
+        );
+    }
+
+    /// The sources directory is process-wide state, so these run one at a time.
+    static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct Fixture {
+        dir: PathBuf,
+    }
+
+    impl Fixture {
+        fn new(label: &str, declarations: &str) -> Self {
+            let dir =
+                std::env::temp_dir().join(format!("look-ffi-level-{label}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("fixture dir");
+            std::fs::write(dir.join("blocks.toml"), declarations).expect("fixture file");
+            unsafe { std::env::set_var(look_sources::SOURCES_DIR_ENV, &dir) };
+            Self { dir }
+        }
+
+        /// Rows for a `file` block to read.
+        fn rows(&self, name: &str, contents: &str) {
+            let path = self.dir.join(name);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("rows dir");
+            }
+            std::fs::write(&path, contents).expect("rows file");
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            unsafe { std::env::remove_var(look_sources::SOURCES_DIR_ENV) };
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    fn descend(block: &str, parent_id: &str, parent_path: &str) -> serde_json::Value {
+        let block = CString::new(block).unwrap();
+        let parent = CString::new(parent_id).unwrap();
+        let title = CString::new("parent").unwrap();
+        let path = CString::new(parent_path).unwrap();
+        let query = CString::new("").unwrap();
+        let ancestors = CString::new("[]").unwrap();
+        let ptr = look_source_rows_json_impl(
+            block.as_ptr(),
+            parent.as_ptr(),
+            title.as_ptr(),
+            path.as_ptr(),
+            query.as_ptr(),
+            ancestors.as_ptr(),
+        );
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        crate::state::free_json_allocation(ptr);
+        serde_json::from_str(&raw).expect("level json")
+    }
+
+    #[test]
+    fn a_level_carries_the_ancestors_its_rows_were_reached_through() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        // A `file` producer: ids and ancestors are not shell behaviour, and
+        // `run` refuses off unix.
+        let fixture = Fixture::new("rows", "[child]\nfile = \"{path}/rows.txt\"\n");
+        fixture.rows("rows.txt", "one\ttitle one\ntwo\n");
+        let root = fixture.dir.to_string_lossy().into_owned();
+
+        let level = descend("child", "src:parent:alpha", &root);
+        assert!(level["error"].is_null(), "{level}");
+        let rows = level["rows"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["candidateId"], "src:child:|parent/alpha|one");
+        assert_eq!(rows[0]["title"], "title one");
+
+        // The same block under another parent is a different id, which is what
+        // keeps usage ranking from bleeding between levels.
+        let other = descend("child", "src:parent:beta", &root);
+        assert_eq!(
+            other["rows"][0]["candidateId"],
+            "src:child:|parent/beta|one"
+        );
+    }
+
+    #[test]
+    fn a_producer_expands_against_the_row_the_level_opened_from() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("expand", "[child]\nfile = \"{path}/rows.txt\"\n");
+        // A space in the name: the level is empty unless `{path}` was
+        // substituted and left unquoted.
+        fixture.rows("some project/rows.txt", "one\n");
+        let inside = fixture.dir.join("some project");
+
+        let level = descend("child", "src:parent:alpha", &inside.to_string_lossy());
+        assert!(level["error"].is_null(), "{level}");
+        assert_eq!(level["rows"][0]["id"], "one");
+    }
+
+    #[test]
+    fn nothing_to_descend_into_is_an_error_rather_than_an_empty_level() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new(
+            "empty",
+            "[child]\nfile = \"{path}/rows.txt\"\n[off]\nfile = \"{path}/rows.txt\"\nenabled = false\n",
+        );
+        // Produced nothing, rather than failed to run: a `run` block would
+        // pass this off unix by reporting the missing shell.
+        fixture.rows("rows.txt", "\n");
+        let root = fixture.dir.to_string_lossy().into_owned();
+
+        let empty = descend("child", "src:parent:alpha", &root);
+        assert!(
+            empty["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("no rows"),
+            "{empty}"
+        );
+        assert!(descend("off", "src:parent:alpha", &root)["error"].is_string());
+        assert!(descend("missing", "src:parent:alpha", &root)["error"].is_string());
+        // A row that belongs to no block cannot be a parent.
+        assert!(descend("child", "app:safari", &root)["error"].is_string());
+    }
+
+    #[test]
+    fn an_ancestors_payload_reaches_the_producer_as_parent_placeholders() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new(
+            "parents",
+            "[child]\nfile = \"{path}/{parent.title}/rows.txt\"\n",
+        );
+        // The grandparent's title names the folder, so an empty level means
+        // `{parent.title}` never reached the producer.
+        fixture.rows("outer-title/rows.txt", "found\n");
+
+        let block = CString::new("child").unwrap();
+        let parent = CString::new("src:mid:row").unwrap();
+        let title = CString::new("mid").unwrap();
+        let path = CString::new(fixture.dir.to_string_lossy().as_ref()).unwrap();
+        let query = CString::new("").unwrap();
+        let ancestors =
+            CString::new(r#"[{"id":"outer","title":"outer-title","path":"/tmp"}]"#).unwrap();
+        let ptr = look_source_rows_json_impl(
+            block.as_ptr(),
+            parent.as_ptr(),
+            title.as_ptr(),
+            path.as_ptr(),
+            query.as_ptr(),
+            ancestors.as_ptr(),
+        );
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        crate::state::free_json_allocation(ptr);
+        let level: serde_json::Value = serde_json::from_str(&raw).unwrap();
+
+        // Inside a producer the parent IS the row, so `{parent.*}` is the level
+        // above that one.
+        assert_eq!(level["rows"][0]["id"], "found", "{level}");
+    }
+
+    fn perform(block: &str, row_path: &str) -> serde_json::Value {
+        let block = CString::new(block).unwrap();
+        let id = CString::new("src:probe:row").unwrap();
+        let title = CString::new("row").unwrap();
+        let path = CString::new(row_path).unwrap();
+        let query = CString::new("").unwrap();
+        let ancestors = CString::new("[]").unwrap();
+        let ptr = look_perform_block_json_impl(
+            block.as_ptr(),
+            id.as_ptr(),
+            title.as_ptr(),
+            path.as_ptr(),
+            query.as_ptr(),
+            ancestors.as_ptr(),
+            false,
+        );
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        crate::state::free_json_allocation(ptr);
+        serde_json::from_str(&raw).expect("outcome json")
+    }
+
+    #[test]
+    fn enter_runs_the_declared_open_whatever_producer_made_the_row() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new(
+            "enter",
+            "[declared]\ndir = \"/tmp\"\nopen = \"true\"\n             [bare]\ndir = \"/tmp\"\n             [pathless]\nfile = \"/tmp/rows.txt\"\n",
+        );
+
+        // Declared: run it. This is the case a `dir` block could not reach
+        // before, so `open` on one was a key that did nothing.
+        let ran = perform("declared", "/tmp");
+        assert_eq!(ran["opens_path"], false, "{ran}");
+        // The spawn is the platform's business: `run` refuses off unix.
+        #[cfg(unix)]
+        assert_eq!(ran["performed"], 1, "{ran}");
+
+        // Nothing declared but the row has a path: the row IS the thing.
+        let opens = perform("bare", "/tmp");
+        assert_eq!(opens["opens_path"], true, "{opens}");
+        assert_eq!(opens["errors"].as_array().unwrap().len(), 0);
+
+        // Nothing declared and nowhere to point: the only case left that is an
+        // error the user can act on.
+        let stuck = perform("pathless", "");
+        assert_eq!(stuck["opens_path"], false, "{stuck}");
+        assert!(stuck["errors"][0].as_str().unwrap().contains("open"));
+    }
+
+    fn tool_action(
+        action: &str,
+        candidate: &str,
+        title: &str,
+        path: &str,
+        ancestors: &str,
+    ) -> serde_json::Value {
+        let action = CString::new(action).unwrap();
+        let candidate = CString::new(candidate).unwrap();
+        let title = CString::new(title).unwrap();
+        let path = CString::new(path).unwrap();
+        let ancestors = CString::new(ancestors).unwrap();
+        let ptr = crate::tools_api::look_tool_action_json_impl(
+            action.as_ptr(),
+            candidate.as_ptr(),
+            title.as_ptr(),
+            path.as_ptr(),
+            true,
+            ancestors.as_ptr(),
+        );
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        crate::state::free_json_allocation(ptr);
+        serde_json::from_str(&raw).expect("resolved action json")
+    }
+
+    #[test]
+    fn a_blocks_verb_takes_the_chord_for_its_own_rows_only() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new(
+            "chords",
+            "[projects]\ndir = \"/tmp\"\nterminal = \"tmux new -As {title} -c {parent.path}\"\n",
+        );
+
+        // The block's own row: its verb wins, expanded like any other command
+        // it declares, ancestors included.
+        let mine = tool_action(
+            "terminal",
+            "src:projects:/tmp/look",
+            "look",
+            "/tmp/look",
+            r#"[{"id":"dev","title":"dev","path":"/dev"}]"#,
+        );
+        assert_eq!(mine["kind"], "shell", "{mine}");
+        assert_eq!(mine["command"], "tmux new -As 'look' -c '/dev'");
+        assert_eq!(mine["tool"], "projects", "the block is what decided");
+
+        // A chord it did not declare is untouched, so a block cannot quietly
+        // take over keys it never mentioned.
+        assert_ne!(
+            tool_action("edit", "src:projects:/tmp/look", "look", "/tmp/look", "[]")["tool"],
+            serde_json::json!("projects")
+        );
+
+        // An ordinary file row never sees the block at all.
+        let theirs = tool_action("terminal", "file:/tmp/other", "other", "/tmp/other", "[]");
+        assert_ne!(theirs["tool"], serde_json::json!("projects"), "{theirs}");
+    }
+
+    /// Refresh runs a `run` block's command, which `run` refuses off unix.
+    #[cfg(unix)]
+    #[test]
+    fn a_refresh_leaves_the_levels_alone() {
+        // A level's command is written for a selected row. Refresh has none, so
+        // running it would hand the shell a literal `{path}` and report an
+        // error against a block that is working exactly as declared.
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new(
+            "refresh",
+            "[level]\nrun = \"jq . {path}/package.json\"\n[flat]\nrun = \"echo one\"\n",
+        );
+
+        let ptr = look_refresh_run_blocks_json_impl();
+        let raw = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        crate::state::free_json_allocation(ptr);
+        let outcome: serde_json::Value = serde_json::from_str(&raw).unwrap();
+
+        assert_eq!(outcome["errors"].as_array().unwrap().len(), 0, "{outcome}");
+        assert_eq!(outcome["refreshed"], 1, "only the flat block has rows");
+        look_engine::index::clear_run_rows("flat");
+    }
+
+    #[test]
+    fn the_stack_stops_at_the_declared_depth() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new("depth", "[child]\nrun = \"echo x\"\n");
+
+        let chain = (0..MAX_LEVEL_DEPTH)
+            .map(|i| format!("b{i}/r{i}"))
+            .collect::<Vec<_>>()
+            .join(";");
+        let deep = format!("src:parent:|{chain}|row");
+        let level = descend("child", &deep, "/tmp");
+        assert!(level["error"].as_str().unwrap().contains("deep"), "{level}");
+    }
 }

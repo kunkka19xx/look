@@ -60,6 +60,13 @@ pub enum Launch {
         tool: String,
         command: String,
     },
+    /// For a platform with no POSIX shell to compose through. A terminal that
+    /// takes no directory flag is opened in one by `cwd` alone.
+    Argv {
+        tool: String,
+        args: Vec<String>,
+        cwd: String,
+    },
     /// For the platform's application launcher (`open -a`), since a GUI app may
     /// ship no CLI and only the native side can find a bundle.
     Application {
@@ -76,7 +83,9 @@ pub enum Launch {
 impl Launch {
     pub fn tool(&self) -> Option<&str> {
         match self {
-            Launch::Shell { tool, .. } | Launch::Application { tool, .. } => Some(tool),
+            Launch::Shell { tool, .. }
+            | Launch::Argv { tool, .. }
+            | Launch::Application { tool, .. } => Some(tool),
             Launch::SystemDefault { .. } => None,
         }
     }
@@ -86,10 +95,23 @@ impl Launch {
 /// absent reads as the feature being broken.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Unavailable {
-    NotDeclared { key: &'static str },
-    TerminalRequired { tool: String, key: &'static str },
-    CannotRunCommand { tool: String },
-    UnsupportedPlatform,
+    NotDeclared {
+        key: &'static str,
+    },
+    TerminalRequired {
+        tool: String,
+        key: &'static str,
+    },
+    /// A terminal declared where an editor was meant. Named rather than tried:
+    /// a terminal handed a path exits on the argument it cannot read, which
+    /// reads as the action doing nothing at all.
+    NotAnEditor {
+        tool: String,
+        key: &'static str,
+    },
+    CannotRunCommand {
+        tool: String,
+    },
 }
 
 impl Unavailable {
@@ -100,11 +122,11 @@ impl Unavailable {
             Unavailable::TerminalRequired { tool, key } => {
                 format!("{tool} runs in a terminal; set {key} in your Look config")
             }
+            Unavailable::NotAnEditor { tool, key } => {
+                format!("{tool} is a terminal; set {key} to the editor it should run")
+            }
             Unavailable::CannotRunCommand { tool } => {
                 format!("{tool} cannot be told to run a command")
-            }
-            Unavailable::UnsupportedPlatform => {
-                "This platform has no POSIX shell to run actions through".to_string()
             }
         }
     }
@@ -112,10 +134,10 @@ impl Unavailable {
     /// The config key that would fix this, when one would.
     pub fn key(&self) -> Option<&'static str> {
         match self {
-            Unavailable::NotDeclared { key } | Unavailable::TerminalRequired { key, .. } => {
-                Some(key)
-            }
-            Unavailable::CannotRunCommand { .. } | Unavailable::UnsupportedPlatform => None,
+            Unavailable::NotDeclared { key }
+            | Unavailable::TerminalRequired { key, .. }
+            | Unavailable::NotAnEditor { key, .. } => Some(key),
+            Unavailable::CannotRunCommand { .. } => None,
         }
     }
 }
@@ -169,7 +191,8 @@ pub fn reveal(tools: &Tools, target: &Target) -> Launch {
 }
 
 /// Composition emits POSIX shell text down to its quoting, so a platform without
-/// a POSIX shell is refused rather than handed text `cmd` would mangle.
+/// a POSIX shell takes [`windows_launch`] instead of being handed text `cmd`
+/// would mangle.
 #[cfg(unix)]
 const POSIX_SHELL_AVAILABLE: bool = true;
 #[cfg(not(unix))]
@@ -190,16 +213,15 @@ pub fn edit(tools: &Tools, target: &Target) -> Result<Launch, Unavailable> {
         .ok_or(Unavailable::NotDeclared { key: missing })?;
 
     match surface(editor) {
+        Surface::Terminal => Err(Unavailable::NotAnEditor {
+            tool: editor.to_string(),
+            key: missing,
+        }),
         Surface::Gui => Ok(Launch::Application {
             tool: editor.to_string(),
             path: target.path().to_string(),
         }),
-        Surface::Tty => {
-            // Quoted like the path: a tool declared as `/opt/my tools/nvim` is
-            // one word. A tool is a name, never a command with its own args.
-            let inner = format!("{} {}", shell_quote(editor), shell_quote(target.path()));
-            in_terminal(tools, &inner, editor)
-        }
+        Surface::Tty => in_terminal(tools, target, Some(editor)),
     }
 }
 
@@ -212,34 +234,41 @@ fn declared(value: &Option<String>) -> Option<&str> {
 }
 
 pub fn terminal_here(tools: &Tools, target: &Target) -> Result<Launch, Unavailable> {
-    let inner = format!("cd {} && {INTERACTIVE_TAIL}", shell_quote(&target.dir()));
-    in_terminal(tools, &inner, "")
+    in_terminal(tools, target, None)
 }
 
-/// `requester` is the TTY tool needing a host, or empty when the terminal is the
+/// `editor` is the TTY tool needing a host, or `None` when the terminal is the
 /// point of the action.
-fn in_terminal(tools: &Tools, inner: &str, requester: &str) -> Result<Launch, Unavailable> {
+fn in_terminal(
+    tools: &Tools,
+    target: &Target,
+    editor: Option<&str>,
+) -> Result<Launch, Unavailable> {
+    let terminal = declared(&tools.terminal).ok_or_else(|| match editor {
+        None => Unavailable::NotDeclared { key: key::TERMINAL },
+        Some(tool) => Unavailable::TerminalRequired {
+            tool: tool.to_string(),
+            key: key::TERMINAL,
+        },
+    })?;
+
     if !POSIX_SHELL_AVAILABLE {
-        return Err(Unavailable::UnsupportedPlatform);
+        return windows_launch(terminal, target, editor);
     }
 
-    let terminal = declared(&tools.terminal).ok_or_else(|| {
-        if requester.is_empty() {
-            Unavailable::NotDeclared { key: key::TERMINAL }
-        } else {
-            Unavailable::TerminalRequired {
-                tool: requester.to_string(),
-                key: key::TERMINAL,
-            }
-        }
-    })?;
+    // Quoted like the path: a tool declared as `/opt/my tools/nvim` is one
+    // word. A tool is a name, never a command with its own args.
+    let inner = match editor {
+        None => format!("cd {} && {INTERACTIVE_TAIL}", shell_quote(&target.dir())),
+        Some(tool) => format!("{} {}", shell_quote(tool), shell_quote(target.path())),
+    };
 
     let command = match command_style(terminal) {
         CommandStyle::Argv(prefix) => match macos_app(terminal) {
-            Some(app) => open_command(app, prefix, inner),
-            None => argv_command(terminal, prefix, inner),
+            Some(app) => open_command(app, prefix, &inner),
+            None => argv_command(terminal, prefix, &inner),
         },
-        CommandStyle::Script(dialect) => applescript_command(dialect, inner),
+        CommandStyle::Script(dialect) => applescript_command(dialect, &inner),
         CommandStyle::Unsupported => {
             return Err(Unavailable::CannotRunCommand {
                 tool: terminal.to_string(),
@@ -251,6 +280,37 @@ fn in_terminal(tools: &Tools, inner: &str, requester: &str) -> Result<Launch, Un
         tool: terminal.to_string(),
         command,
     })
+}
+
+/// The Windows half: `windows_terminals` owns which argv a terminal takes.
+/// Paths go in with backslashes, the separator every console host parses.
+fn windows_launch(
+    terminal: &str,
+    target: &Target,
+    editor: Option<&str>,
+) -> Result<Launch, Unavailable> {
+    let cwd = native_path(&target.dir());
+    let path = native_path(target.path());
+    let command: Vec<&str> = match editor {
+        None => Vec::new(),
+        Some(tool) => vec![tool, &path],
+    };
+
+    let args = crate::windows_terminals::argv(terminal, &cwd, &command).ok_or_else(|| {
+        Unavailable::CannotRunCommand {
+            tool: terminal.to_string(),
+        }
+    })?;
+
+    Ok(Launch::Argv {
+        tool: terminal.to_string(),
+        args,
+        cwd,
+    })
+}
+
+fn native_path(path: &str) -> String {
+    path.replace('/', "\\")
 }
 
 /// `<terminal> <prefix...> "$SHELL" -lc '<inner>'`. The inner login shell is what
@@ -356,7 +416,7 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
+    /// Asked before the platform split, so both compositions name the same key.
     #[test]
     fn a_terminal_with_nothing_declared_names_the_terminal_key() {
         assert_eq!(
@@ -365,20 +425,69 @@ mod tests {
         );
     }
 
-    /// Composition emits POSIX shell text down to its quoting, so a platform
-    /// without a POSIX shell is refused outright rather than handed something
-    /// `cmd` would mangle. Windows needs its own composition path, not a few
-    /// catalog rows.
+    /// Windows has no shell to compose through, so the terminal is started
+    /// directly: its own argv, in the target directory.
     #[cfg(not(unix))]
     #[test]
-    fn a_platform_without_a_posix_shell_is_refused() {
+    fn a_windows_terminal_is_started_in_the_target_directory() {
         assert_eq!(
-            terminal_here(&tools(None, None, Some("wt")), &folder()),
-            Err(Unavailable::UnsupportedPlatform)
+            terminal_here(
+                &tools(None, None, Some("wt")),
+                &Target::Folder("C:/look".into())
+            ),
+            Ok(Launch::Argv {
+                tool: "wt".into(),
+                args: vec!["-d".into(), "C:\\look".into()],
+                cwd: "C:\\look".into(),
+            })
+        );
+        // A file row opens its parent, the same as everywhere else.
+        assert_eq!(
+            terminal_here(
+                &tools(None, None, Some("cmd")),
+                &Target::File("C:/look/a.txt".into())
+            ),
+            Ok(Launch::Argv {
+                tool: "cmd".into(),
+                args: Vec::new(),
+                cwd: "C:\\look".into(),
+            })
+        );
+    }
+
+    /// A TTY editor still needs a terminal on Windows, and rides in as argv
+    /// rather than as a quoted shell line.
+    #[cfg(not(unix))]
+    #[test]
+    fn a_windows_tty_editor_rides_in_its_terminals_argv() {
+        assert_eq!(
+            edit(&tools(Some("nvim"), None, None), &file()),
+            Err(Unavailable::TerminalRequired {
+                tool: "nvim".into(),
+                key: key::TERMINAL
+            })
         );
         assert_eq!(
-            edit(&tools(Some("nvim"), None, Some("wt")), &file()),
-            Err(Unavailable::UnsupportedPlatform)
+            edit(
+                &tools(Some("nvim"), None, Some("wt")),
+                &Target::File("C:/look/a.txt".into())
+            ),
+            Ok(Launch::Argv {
+                tool: "wt".into(),
+                args: vec![
+                    "-d".into(),
+                    "C:\\look".into(),
+                    "nvim".into(),
+                    "C:\\look\\a.txt".into()
+                ],
+                cwd: "C:\\look".into(),
+            })
+        );
+        // cmd takes no argv for a command, and says so rather than opening a
+        // window that ignores the editor.
+        assert_eq!(
+            edit(&tools(Some("nvim"), None, Some("cmd")), &file()),
+            Err(Unavailable::CannotRunCommand { tool: "cmd".into() })
         );
     }
 
@@ -449,6 +558,43 @@ mod tests {
 
     /// A GUI editor is handed to the platform launcher with the path, since only
     /// native code can find and start a bundle.
+    /// The trap this exists for: a terminal handed a path exits on the argument
+    /// it cannot read, so the row reads as doing nothing at all.
+    #[test]
+    fn a_terminal_named_as_an_editor_says_which_key_to_fix() {
+        for terminal in ["alacritty", "ghostty", "konsole", "iTerm2"] {
+            assert_eq!(
+                edit(&tools(Some(terminal), None, Some("ghostty")), &file()),
+                Err(Unavailable::NotAnEditor {
+                    tool: terminal.into(),
+                    key: key::TEXT_EDITOR
+                }),
+                "{terminal:?} on a file row"
+            );
+            assert_eq!(
+                edit(&tools(None, Some(terminal), None), &folder()),
+                Err(Unavailable::NotAnEditor {
+                    tool: terminal.into(),
+                    key: key::CODE_EDITOR
+                }),
+                "{terminal:?} on a folder row"
+            );
+        }
+    }
+
+    /// Naming a terminal under `terminal` is the whole point of that key, so it
+    /// must not be caught by the check above.
+    #[cfg(unix)]
+    #[test]
+    fn the_terminal_key_still_takes_a_terminal() {
+        assert_eq!(
+            terminal_here(&tools(None, None, Some("alacritty")), &folder())
+                .unwrap()
+                .tool(),
+            Some("alacritty")
+        );
+    }
+
     #[test]
     fn a_gui_editor_goes_to_the_application_launcher() {
         assert_eq!(
@@ -595,13 +741,20 @@ mod tests {
                 "nvim",
             ),
             (
+                Unavailable::NotAnEditor {
+                    tool: "alacritty".into(),
+                    key: key::TEXT_EDITOR,
+                },
+                Some(key::TEXT_EDITOR),
+                "alacritty",
+            ),
+            (
                 Unavailable::CannotRunCommand {
                     tool: "warp".into(),
                 },
                 None,
                 "warp",
             ),
-            (Unavailable::UnsupportedPlatform, None, "POSIX"),
         ];
 
         for (reason, expected_key, mentions) in cases {

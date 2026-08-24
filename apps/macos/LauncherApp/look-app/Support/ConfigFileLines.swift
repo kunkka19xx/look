@@ -1,6 +1,6 @@
 import Foundation
 
-/// The single line-level editor for `~/.look.config`. Every writer goes through
+/// The single line-level editor for `~/.look/config`. Every writer goes through
 /// `parse` -> `upsert`/`remove` -> `render` so the file's shape is decided in one
 /// place instead of once per feature.
 ///
