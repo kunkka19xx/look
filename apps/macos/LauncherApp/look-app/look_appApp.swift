@@ -13,9 +13,8 @@ import SwiftUI
 struct look_appApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     // The launcher window is owned by AppDelegate (an AppKit NSWindow), not a
-    // SwiftUI WindowGroup - see AppDelegate.makeLauncherWindow() for why. These
-    // stores are shared with that window's hosted ContentView.
-    private let appUIState = AppUIState.shared
+    // SwiftUI WindowGroup - see AppDelegate.makeLauncherWindow() for why. This
+    // store is shared with that window's hosted ContentView.
     private let themeStore = ThemeStore.shared
 
     init() {
@@ -138,6 +137,11 @@ struct look_appApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
 
+            // The Settings scene above only keeps SwiftUI's command
+            // infrastructure alive. Remove macOS's default Cmd+, action so the
+            // documented Cmd+Shift+, shortcut is the only way to open settings.
+            CommandGroup(replacing: .appSettings) {}
+
             CommandGroup(replacing: .appTermination) {
                 Button("Hide Look") {
                     NotificationCenter.default.post(name: .lookHideLauncherRequested, object: nil)
@@ -153,7 +157,7 @@ struct look_appApp: App {
             CommandGroup(after: .appSettings) {
                 Button("Theme Settings") {
                     DispatchQueue.main.async {
-                        appUIState.showsThemeSettings.toggle()
+                        NotificationCenter.default.post(name: .lookToggleSettingsRequested, object: nil)
                     }
                 }
                 .keyboardShortcut(",", modifiers: [.command, .shift])

@@ -24,6 +24,7 @@ extension Notification.Name {
     static let lookSourceTargetsLoaded = Notification.Name("look.sourceTargetsLoaded")
     static let lookFocusSettingsInputRequested = Notification.Name("look.focusSettingsInputRequested")
     static let lookToggleWindowRequested = Notification.Name("look.toggleWindowRequested")
+    static let lookToggleSettingsRequested = Notification.Name("look.toggleSettingsRequested")
     static let lookActivateLauncherRequested = Notification.Name("look.activateLauncherRequested")
     static let lookHideLauncherRequested = Notification.Name("look.hideLauncherRequested")
 }
