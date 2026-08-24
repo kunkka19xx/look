@@ -24,6 +24,7 @@ let package = Package(
                 "Support/Launcher/RevealTargetLogic.swift",
                 "Support/Launcher/BridgeErrorMapping.swift",
                 "Support/Launcher/SyntheticRow.swift",
+                "Support/Launcher/PreviewText.swift",
                 "Support/AI/OllamaCodec.swift",
                 "Support/AI/AIRequest.swift",
                 "Support/AI/LocalHostCheck.swift",

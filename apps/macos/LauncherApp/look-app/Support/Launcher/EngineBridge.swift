@@ -1401,6 +1401,8 @@ nonisolated struct SourceBlock: Decodable {
     let file: String?
     /// Where a row of this block can go next.
     let then: [SourceBlockTarget]
+    /// Whether a `preview` command will run, known before it does.
+    let hasPreview: Bool
 }
 
 /// One `then` target. `performs` says what the target's own producer decided:

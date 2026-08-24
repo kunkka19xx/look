@@ -40,6 +40,12 @@ struct BlockDetail {
     /// reveal-in-Finder has something to point at.
     file: Option<String>,
     then: Vec<ThenTarget>,
+    /// Whether a `preview` command will run for this row. Answered with the
+    /// cheap details rather than by waiting for the command, so the panel can
+    /// lay itself out before knowing what the output says - or that there will
+    /// be none at all.
+    #[serde(rename = "hasPreview")]
+    has_preview: bool,
 }
 
 /// One row of the block index the shell caches: enough to render a row without
@@ -114,6 +120,7 @@ pub(crate) fn look_source_block_json_impl(
             steps: steps_of(block),
             file: block.source_file.clone(),
             then,
+            has_preview: block.preview.is_some(),
         })
         .ok(),
     )
