@@ -357,6 +357,16 @@ function displaySubtitle(result) {
     return kindLabels[result.kind] || result.kind;
 }
 
+/**
+ * Whether the row IS the file it names: a branch row is `main`, whose path is
+ * the repo every branch shares, so that folder's icon would lie about it.
+ */
+function rowIsItsPath(result) {
+    if (!result.path) return false;
+    const last = result.path.split(/[/\\]/).pop();
+    return last.toLowerCase() === result.title.toLowerCase();
+}
+
 function createRow(result, index) {
     const row = document.createElement('div');
     row.className = 'result-row';
@@ -384,16 +394,14 @@ function createRow(result, index) {
         setting: settingIcon,
         clipboard: clipboardIcon,
         process: cpuIcon,
-        // The bolt says the honest thing for a row with nothing on disk: Enter
-        // performs steps. A row that names a path IS that file, so it waits for
-        // the file's own icon behind the same glyph every file row uses.
-        action: result.path ? fileIcon : sourceblocks.actionIconHtml,
+        // The bolt is honest for a row that is not the file it names: Enter
+        // performs steps.
+        action: rowIsItsPath(result) ? fileIcon : sourceblocks.actionIconHtml,
     };
-    // What the block declared wins for the rows with nothing on disk: the
-    // author chose it, and a list of them should not be a column of identical
-    // bolts. A `dir` block's rows ARE files and folders and keep their own
-    // icons, the way they keep everything else about being one.
-    const declaredIcon = result.kind === 'action' ? sourceblocks.declaredIconHtml(result.id) : null;
+    // What was declared wins: a list of block rows should not be identical bolts.
+    const declaredIcon = result.kind === 'action' ? sourceblocks.declaredIconHtml(result) : null;
+    // Loaded behind the glyph the list drew first, which stays on a miss.
+    const declaredPath = result.kind === 'action' ? sourceblocks.declaredIconPath(result) : null;
     // Synthetic discovery rows (prefix/command menus) ship their own glyph in
     // result.iconSvg so the list scans visually; everything else falls back to
     // the kind-based stub until the backend icon fetch resolves.
@@ -409,7 +417,9 @@ function createRow(result, index) {
     // Skip backend icon fetch for ms-settings entries - the Shell PNG would just
     // be the generic gear and would clobber our category-specific glyph. Same
     // applies to synthetic discovery rows whose `path` is empty.
-    if (result.kind === 'process') {
+    if (declaredPath) {
+        loadIcon(icon, 'declared', declaredPath, result.id);
+    } else if (result.kind === 'process') {
         // App-backed processes wear their app icon (loaded as an app path);
         // the rest keep the generic process glyph from the fallback above.
         if (result.iconPath) {
@@ -420,7 +430,9 @@ function createRow(result, index) {
         !windowsSettingsSvg &&
         !result.iconSvg &&
         !declaredIcon &&
-        result.path
+        result.path &&
+        // Fetching would hand a branch the icon of the repo it shares.
+        (result.kind !== 'action' || rowIsItsPath(result))
     ) {
         loadIcon(icon, result.kind, result.path, result.id);
     }

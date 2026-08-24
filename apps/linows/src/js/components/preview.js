@@ -127,6 +127,20 @@ export function update(result) {
     renderStandard(result, cacheKey);
 }
 
+/** Swaps the placeholder glyph for the real icon, unless the selection moved on. */
+function loadPreviewIcon(iconWrap, kind, path, id, cacheKey) {
+    getIcon(kind, path, id).then((res) => {
+        if (!res?.data_url || currentPath !== cacheKey) return;
+        const img = document.createElement('img');
+        img.src = res.data_url;
+        img.alt = '';
+        iconWrap.innerHTML = '';
+        iconWrap.style.background = 'none';
+        iconWrap.style.color = '';
+        iconWrap.appendChild(img);
+    });
+}
+
 /** The ordinary panel: icon, title, kind badge, then the file or app detail. */
 function renderStandard(result, cacheKey) {
     // Header: icon + title + badge + size
@@ -144,17 +158,7 @@ function renderStandard(result, cacheKey) {
     iconWrap.style.color = 'var(--font-secondary)';
     header.appendChild(iconWrap);
 
-    getIcon(result.kind, result.path, result.id).then((res) => {
-        if (res?.data_url && currentPath === cacheKey) {
-            const img = document.createElement('img');
-            img.src = res.data_url;
-            img.alt = '';
-            iconWrap.innerHTML = '';
-            iconWrap.style.background = 'none';
-            iconWrap.style.color = '';
-            iconWrap.appendChild(img);
-        }
-    });
+    loadPreviewIcon(iconWrap, result.kind, result.path, result.id, cacheKey);
 
     const headerText = document.createElement('div');
     headerText.className = 'preview-header-text';
@@ -305,17 +309,7 @@ function renderProcessPreview(result) {
 
     // App-backed process: swap the generic glyph for the real app icon.
     if (result.iconPath) {
-        getIcon('app', result.iconPath, result.id).then((res) => {
-            if (res?.data_url && currentPath === cacheKey) {
-                const img = document.createElement('img');
-                img.src = res.data_url;
-                img.alt = '';
-                iconWrap.innerHTML = '';
-                iconWrap.style.background = 'none';
-                iconWrap.style.color = '';
-                iconWrap.appendChild(img);
-            }
-        });
+        loadPreviewIcon(iconWrap, 'app', result.iconPath, result.id, cacheKey);
     }
 
     const headerText = document.createElement('div');
@@ -708,9 +702,13 @@ async function renderBlockPreview(result, cacheKey) {
 
     const iconWrap = document.createElement('div');
     iconWrap.className = 'preview-icon';
-    iconWrap.innerHTML = sourceblocks.declaredIconHtml(result.id) || sourceblocks.actionIconHtml;
+    iconWrap.innerHTML = sourceblocks.declaredIconHtml(result) || sourceblocks.actionIconHtml;
     iconWrap.style.background = 'var(--control-fill)';
     iconWrap.style.color = 'var(--accent-color)';
+    const declaredPath = sourceblocks.declaredIconPath(result);
+    if (declaredPath) {
+        loadPreviewIcon(iconWrap, 'declared', declaredPath, result.id, cacheKey);
+    }
     header.appendChild(iconWrap);
 
     const headerText = document.createElement('div');

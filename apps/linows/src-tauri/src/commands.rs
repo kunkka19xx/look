@@ -16,6 +16,9 @@ pub struct SearchResult {
     pub subtitle: Option<String>,
     pub path: String,
     pub score: i64,
+    /// What the row declared, which beats its block's icon.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -52,6 +55,7 @@ pub fn search(state: State<'_, AppState>, query: String, limit: u32) -> SearchPa
             subtitle: candidate.subtitle.as_deref().map(str::to_string),
             path: candidate.path.to_string(),
             score,
+            icon: candidate.icon.as_deref().map(str::to_string),
         })
         .collect();
 
@@ -358,8 +362,7 @@ pub fn reload_config(state: State<'_, AppState>) -> look_engine::sources::Refres
     // Before the index pass, never after: the pass reads the rows these blocks
     // write, and the other order indexes the previous run's.
     let sources = look_engine::sources::refresh_run_blocks();
-    // Run rows land in a cache directory no watcher covers, so nothing else
-    // marks the index dirty and the lazy check would decline this refresh.
+    // Run rows land where no watcher covers, so nothing else marks them dirty.
     if sources.changed {
         state.force_index_refresh();
     } else {

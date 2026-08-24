@@ -151,9 +151,7 @@ pub struct PreviewOutcome {
 pub struct RefreshOutcome {
     pub refreshed: usize,
     pub errors: Vec<String>,
-    /// Any write to the run cache, not just rows gained: turning a block off
-    /// clears its rows, and those have to leave the index too. The shells act
-    /// on it, because the dirty flag they gate refreshes on is their own.
+    /// Any write to the run cache, since the dirty flag belongs to each shell.
     #[serde(skip)]
     pub changed: bool,
 }

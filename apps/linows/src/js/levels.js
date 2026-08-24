@@ -93,6 +93,7 @@ export function rows(query) {
             // Descending, so the producer's order IS the score wherever one is
             // read (macOS LauncherView+Levels does the same).
             score: level.rows.length - position,
+            icon: row.icon,
         }));
 }
 

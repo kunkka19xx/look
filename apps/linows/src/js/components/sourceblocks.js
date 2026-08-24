@@ -120,26 +120,30 @@ export function blockName(candidateId) {
     return id ? catalog?.get(id)?.name || null : null;
 }
 
-/**
- * The row icon a source row asked for, as HTML, or null to use the row's own.
- *
- * A declared `icon` is portable as an emoji or an image path; an SF Symbol name
- * is a macOS spelling with no Lucide equivalent, so it falls through to the
- * generic glyph rather than being guessed at.
- */
-export function declaredIconHtml(candidateId) {
-    const id = blockIdOf(candidateId);
-    const declared = id ? catalog?.get(id)?.icon?.trim() : null;
-    if (!declared) return null;
+/** What the row declared, else its block: the row's own wins whatever its form. */
+function declaredIcon(result) {
+    return result?.icon?.trim() || blockIconOf(result?.id)?.trim() || null;
+}
 
-    if (isImagePath(declared)) {
-        const src = window.__TAURI__.core.convertFileSrc(expandHome(declared));
-        // A path that no longer resolves leaves the row's own glyph rather than
-        // a broken-image frame.
-        return `<img src="${escapeAttribute(src)}" alt="" onerror="this.remove()">`;
-    }
-    if (isSymbolName(declared)) return null;
+function blockIconOf(candidateId) {
+    const id = blockIdOf(candidateId);
+    return id ? catalog?.get(id)?.icon : null;
+}
+
+/**
+ * A declared icon that draws as text, as HTML. An SF Symbol name has no Lucide
+ * equivalent, so it falls through to the generic glyph rather than a guess.
+ */
+export function declaredIconHtml(result) {
+    const declared = declaredIcon(result);
+    if (!declared || isImagePath(declared) || isSymbolName(declared)) return null;
     return `<span class="result-icon-glyph">${escapeText(declared)}</span>`;
+}
+
+/** The image file a row is drawn as, for the icon pipeline to read. */
+export function declaredIconPath(result) {
+    const declared = declaredIcon(result);
+    return declared && isImagePath(declared) ? expandHome(declared) : null;
 }
 
 /** The bolt, for a block row with nothing on disk: Enter performs steps. */
@@ -326,10 +330,6 @@ export function tildePath(path) {
 
 function expandHome(path) {
     return path.startsWith('~/') && home ? `${home}${path.slice(1)}` : path;
-}
-
-function escapeAttribute(value) {
-    return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
 }
 
 function escapeText(value) {

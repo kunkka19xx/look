@@ -27,6 +27,9 @@ impl IconCache {
     }
 }
 
+/// The kind the frontend asks with for an image a block or row named.
+const DECLARED_ICON_KIND: &str = "declared";
+
 #[derive(Serialize)]
 pub struct IconResult {
     pub data_url: Option<String>,
@@ -50,7 +53,12 @@ pub fn get_icon(
         }
     }
 
-    let data_url = resolve_icon(&kind, &path, id.as_deref());
+    let data_url = if kind == DECLARED_ICON_KIND {
+        // The named image IS the icon, so read it rather than ask the theme.
+        shared::read_icon_file(&path)
+    } else {
+        resolve_icon(&kind, &path, id.as_deref())
+    };
 
     {
         let mut map = cache.0.lock().unwrap();

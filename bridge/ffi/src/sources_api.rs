@@ -61,11 +61,7 @@ pub(crate) fn look_perform_block_json_impl(
 /// picks them up. Returns `{refreshed, errors}`.
 pub(crate) fn look_refresh_run_blocks_json_impl() -> *mut c_char {
     let outcome = look_engine::sources::refresh_run_blocks();
-    // The rows a block just produced ARE an index change, and nothing else will
-    // say so: they land in a cache directory no watcher covers. Without this the
-    // refresh the shell asks for next is declined by the dirty check whenever
-    // lazy indexing is on (the default), and the new rows sit in the cache until
-    // something unrelated dirties the index or the app restarts.
+    // Rows land in a cache directory no watcher covers, so nothing else says so.
     if outcome.changed {
         mark_index_dirty();
     }
