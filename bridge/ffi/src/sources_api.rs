@@ -221,11 +221,23 @@ const MAX_BLOCK_TIMEOUT: Duration = Duration::from_secs(30);
 /// each new source a user declares makes every reload slower.
 const REFRESH_TIME_BUDGET: Duration = Duration::from_secs(60);
 
+/// Below this a block is skipped rather than handed a sliver, which would come
+/// back as a timeout it did not earn.
+const MIN_BLOCK_SLICE: Duration = Duration::from_secs(1);
+
 /// What a block is actually given: its own `timeout`, else the default, capped.
 fn capture_timeout(declared: Option<Duration>) -> Duration {
     declared
         .unwrap_or(DEFAULT_CAPTURE_TIMEOUT)
         .min(MAX_BLOCK_TIMEOUT)
+}
+
+/// The same, capped by what the refresh has left. `None` means skip it: gating
+/// entry alone, a block starting just under the budget still spent its whole
+/// timeout on top, so 60s could take 90.
+fn block_slice(declared: Option<Duration>, elapsed: Duration) -> Option<Duration> {
+    let remaining = REFRESH_TIME_BUDGET.saturating_sub(elapsed);
+    (remaining >= MIN_BLOCK_SLICE).then(|| capture_timeout(declared).min(remaining))
 }
 
 /// Re-runs every enabled `run` block and stores its rows, so the next index pass
@@ -272,18 +284,13 @@ pub(crate) fn look_refresh_run_blocks_json_impl() -> *mut c_char {
         // Out of budget: the blocks left keep the rows they had, and are named
         // rather than dropped silently - "my source stopped updating" with no
         // reason given is worse than a slow one.
-        if started_at.elapsed() >= REFRESH_TIME_BUDGET {
+        let Some(timeout) = block_slice(*timeout, started_at.elapsed()) else {
             skipped.push(block.id.clone());
             continue;
-        }
+        };
 
-        let outcome = look_sources::capture(
-            command,
-            cwd.as_deref(),
-            capture_timeout(*timeout),
-            MAX_CAPTURE_BYTES,
-        )
-        .and_then(|output| look_engine::index::store_run_rows(&block.id, &output, *format));
+        let outcome = look_sources::capture(command, cwd.as_deref(), timeout, MAX_CAPTURE_BYTES)
+            .and_then(|output| look_engine::index::store_run_rows(&block.id, &output, *format));
 
         match outcome {
             Ok(rows) => {
@@ -636,6 +643,32 @@ mod tests {
         assert_eq!(
             capture_timeout(Some(Duration::from_secs(86_400))),
             MAX_BLOCK_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn a_block_never_spends_more_than_the_refresh_has_left() {
+        let spent = REFRESH_TIME_BUDGET - Duration::from_secs(3);
+        assert_eq!(
+            block_slice(Some(MAX_BLOCK_TIMEOUT), spent),
+            Some(Duration::from_secs(3)),
+            "the remaining budget wins over the block's own ceiling"
+        );
+        assert_eq!(
+            block_slice(Some(Duration::from_secs(20)), Duration::ZERO),
+            Some(Duration::from_secs(20))
+        );
+
+        assert_eq!(block_slice(None, REFRESH_TIME_BUDGET), None);
+        assert_eq!(
+            block_slice(None, REFRESH_TIME_BUDGET + Duration::from_secs(30)),
+            None,
+            "overrunning the budget must not underflow"
+        );
+        assert_eq!(
+            block_slice(None, REFRESH_TIME_BUDGET - MIN_BLOCK_SLICE / 2),
+            None,
+            "a sliver is a skip"
         );
     }
 

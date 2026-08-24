@@ -10,6 +10,8 @@
 //! text. It costs the author a `jq`, so it stays opt-in.
 
 use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 
 use serde_json::Value;
 
@@ -273,13 +275,14 @@ mod tests {
         // The shell checks the icon it is handed for existence, so a `~` that
         // survived would be drawn as its own text rather than as the image.
         let home = Path::new("/Users/x");
-        let with_path = parse_line("id").map(|row| SourceRow {
+        let with_path = SourceRow {
             icon: Some("~/.look/cache/favicons/github.com.png".into()),
-            ..row
-        });
+            ..SourceRow::new("id", "title")
+        };
+        // As a path, not as text: `join` separates with `\` on Windows.
         assert_eq!(
-            with_path.unwrap().display_icon(home).as_deref(),
-            Some("/Users/x/.look/cache/favicons/github.com.png")
+            with_path.display_icon(home).map(PathBuf::from),
+            Some(home.join(".look/cache/favicons/github.com.png"))
         );
 
         let glyph = SourceRow {
