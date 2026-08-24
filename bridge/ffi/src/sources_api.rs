@@ -156,6 +156,10 @@ fn home_dir() -> Option<std::path::PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    use look_tools::cmd_quote as quote;
+    #[cfg(not(windows))]
+    use look_tools::shell_quote as quote;
     use std::ffi::{CStr, CString};
     use std::path::PathBuf;
 
@@ -230,7 +234,12 @@ mod tests {
             r#"[{"id":"dev","title":"dev","path":"/dev"}]"#,
         );
         assert_eq!(mine["kind"], "shell", "{mine}");
-        assert_eq!(mine["command"], "tmux new -As 'look' -c '/dev'");
+        // The platform's quoting, so this says which placeholder was quoted
+        // rather than repeating one shell's spelling of it.
+        assert_eq!(
+            mine["command"],
+            format!("tmux new -As {} -c {}", quote("look"), quote("/dev"))
+        );
         assert_eq!(mine["tool"], "projects", "the block is what decided");
 
         // A chord it did not declare is untouched, so a block cannot quietly
