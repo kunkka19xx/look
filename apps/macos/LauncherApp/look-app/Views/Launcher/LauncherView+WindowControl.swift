@@ -169,6 +169,31 @@ extension LauncherView {
         }
     }
 
+    /// The settings panel is a page of the AppKit-owned launcher window, so the
+    /// menu command has to bring that window up itself. The SwiftUI Settings
+    /// scene is only a command carrier and must not open a window of its own.
+    /// Focus is left to the `showsThemeSettings` observer in LauncherView, which
+    /// routes it to the settings input or back to the query field.
+    func toggleThemeSettings() {
+        appUIState.showsThemeSettings.toggle()
+        revealLauncherWindowIfHidden()
+    }
+
+    private func revealLauncherWindowIfHidden() {
+        guard let window = launcherWindow(), !window.isVisible else { return }
+
+        // Only when nothing is stored yet: the launcher is frontmost whenever the
+        // menu command fires, so recapturing here would drop the app the user
+        // came from and leave hideLauncherWindow() with nothing to restore.
+        if pidToRestoreOnHide == nil {
+            captureFrontmostAppForRestoreIfNeeded()
+        }
+        NSApplication.shared.unhide(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        positionOnActiveScreen(window)
+        window.makeKeyAndOrderFront(nil)
+    }
+
     /// Places the launcher at its fixed position on whichever
     /// screen currently holds the mouse cursor. Called on every show so the
     /// launcher always appears on the display the user is working on (issue
