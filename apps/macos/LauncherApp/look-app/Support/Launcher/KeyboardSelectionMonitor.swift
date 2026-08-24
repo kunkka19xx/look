@@ -21,6 +21,13 @@ final class KeyboardSelectionMonitor {
         Self.logger.notice("\(message, privacy: .public)")
     }
 
+    /// ⌘ and ⌃ are interchangeable for the action-menu J/K pair, so the same
+    /// vim keys work whichever modifier the hand is already on. Exact match, so
+    /// adding Shift or Option still falls through to whatever owns that chord.
+    nonisolated private static func isActionMenuChord(_ flags: NSEvent.ModifierFlags) -> Bool {
+        flags == [.command] || flags == [.control]
+    }
+
     func start(
         onNext: @escaping @MainActor () -> Void,
         onPrevious: @escaping @MainActor () -> Void,
@@ -117,7 +124,7 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
-            // Open: the menu owns navigation. Cmd+J / Cmd+K step through it
+            // Open: the menu owns navigation. ⌘J/⌘K and ⌃J/⌃K step through it
             // (vim-style), arrows do the same, Escape closes. Anything else
             // falls through, so typing still reaches the query field.
             if inActionMenu() {
@@ -131,27 +138,27 @@ final class KeyboardSelectionMonitor {
                     return nil
                 }
                 if event.keyCode == KeyCode.arrowDown
-                    || (flags == [.command] && (event.keyCode == KeyCode.j || character == "j"))
+                    || (Self.isActionMenuChord(flags) && (event.keyCode == KeyCode.j || character == "j"))
                 {
                     onActionMenuMove(1)
                     return nil
                 }
                 if event.keyCode == KeyCode.arrowUp
-                    || (flags == [.command] && (event.keyCode == KeyCode.k || character == "k"))
+                    || (Self.isActionMenuChord(flags) && (event.keyCode == KeyCode.k || character == "k"))
                 {
                     onActionMenuMove(-1)
                     return nil
                 }
             }
 
-            // Cmd+K opens it. Cmd+J opens it too and starts on the first row,
-            // so either half of the pair gets you in.
+            // ⌘K opens it, and ⌘J opens it too and starts on the first row, so
+            // either half of the pair gets you in. ⌃J/⌃K do the same.
             //
             // Never on the launchpad: its tiles ARE the actions, each with its
             // own mnemonic, and ⌘K is already Keep Awake there. Opening a menu
             // of the same tiles would both duplicate what is on screen and
             // shadow the key the user meant.
-            if flags == [.command],
+            if Self.isActionMenuChord(flags),
                 !isLaunchpadActive(),
                 event.keyCode == KeyCode.k || event.keyCode == KeyCode.j
                     || event.charactersIgnoringModifiers?.lowercased() == "k"

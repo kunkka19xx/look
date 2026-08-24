@@ -321,7 +321,8 @@ enum AppConstants {
         /// The Cmd+K action menu: everything you can do to the selected row,
         /// in one place, instead of scattered across Cmd+F / Cmd+C / Cmd+P.
         enum ActionMenu {
-            static let openHint = "⌘K actions"
+            static let openHint = "⌘K / ⌃K actions"
+            static let moveHint = "⌘J / ⌘K or ⌃J / ⌃K move  •  ⏎ run"
             static let runHint = "↵"
             static let maxHeight: CGFloat = 240
             static let cornerRadius: CGFloat = 10

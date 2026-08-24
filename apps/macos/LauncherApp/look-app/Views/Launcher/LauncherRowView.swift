@@ -100,9 +100,7 @@ struct LauncherRowView: View {
         // of identical bolts. The bolt is left for rows with nothing on disk,
         // where it says the honest thing: Enter performs steps.
         if result.kind == .action {
-            if let declared = SourceBlockIcons.declaredIcon(
-                SourceBlockCatalog.icon(forCandidateID: result.id)
-            ) {
+            if let declared = SourceBlockIcons.declaredIcon(for: result) {
                 return declared
             }
             if rowIsItsPath {

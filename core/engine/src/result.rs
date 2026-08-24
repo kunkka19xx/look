@@ -11,6 +11,8 @@ pub struct LaunchResult {
     pub path: String,
     pub score: i64,
     pub action: LaunchResultAction,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -64,6 +66,7 @@ impl From<(&Candidate, i64)> for LaunchResult {
             path: candidate.path.to_string(),
             score,
             action,
+            icon: candidate.icon.as_deref().map(str::to_string),
         }
     }
 }

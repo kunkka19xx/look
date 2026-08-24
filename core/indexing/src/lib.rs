@@ -406,6 +406,9 @@ pub struct Candidate {
     /// Lets the "recent" view surface freshly downloaded/created files the user
     /// hasn't opened through Look yet. `None` for app/settings candidates.
     pub fs_modified_at_unix_s: Option<i64>,
+    /// What to draw this row as, when it asked for something. Only a declared
+    /// source sets it; everything else takes its icon from the kind or the path.
+    pub icon: Option<Box<str>>,
 }
 
 impl Candidate {
@@ -437,6 +440,7 @@ impl Default for Candidate {
             use_count: 0,
             last_used_at_unix_s: None,
             fs_modified_at_unix_s: None,
+            icon: None,
         }
     }
 }

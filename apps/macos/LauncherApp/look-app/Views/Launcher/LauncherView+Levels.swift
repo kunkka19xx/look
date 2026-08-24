@@ -25,7 +25,8 @@ extension LauncherView {
                     subtitle: row.subtitle,
                     path: row.path ?? "",
                     // The producer's order, kept: its author knows the domain.
-                    score: level.rows.count - position
+                    score: level.rows.count - position,
+                    icon: row.icon
                 )
             }
     }

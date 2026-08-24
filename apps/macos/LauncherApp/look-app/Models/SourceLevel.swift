@@ -22,6 +22,8 @@ nonisolated struct SourceLevelRow: Decodable, Identifiable {
     /// Resolved against the block name by the core.
     let subtitle: String
     let path: String?
+    /// The row's own icon, when it declared one.
+    let icon: String?
 }
 
 /// The row a tool action acts on: one value because the four always travel

@@ -9,8 +9,13 @@
 //! which is what makes a row a real filesystem object rather than a piece of
 //! text. It costs the author a `jq`, so it stays opt-in.
 
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
+
 use serde_json::Value;
 
+use crate::collect::expand_home;
 use crate::def::RowFormat;
 
 /// The id is what actions receive and what usage is recorded against, so a row
@@ -23,6 +28,11 @@ pub struct SourceRow {
     pub subtitle: Option<String>,
     /// Filesystem target, when the row has one. Folder sources always do.
     pub path: Option<String>,
+    /// What to draw this row as, in the same three spellings a block's `icon`
+    /// accepts: emoji, SF Symbol name, or an image path. Per row rather than
+    /// per block, so a producer whose rows are not alike - browser history,
+    /// containers, hosts - can say which is which.
+    pub icon: Option<String>,
 }
 
 impl SourceRow {
@@ -33,12 +43,23 @@ impl SourceRow {
         self.subtitle.as_deref().unwrap_or(block_name)
     }
 
+    /// The row's icon with a leading `~` resolved, for the same reason: a row
+    /// reached by search and the same row reached by drilling in must not look
+    /// different. Only a path can start with `~`, so an emoji or an SF Symbol
+    /// name comes back untouched.
+    pub fn display_icon(&self, home: &Path) -> Option<String> {
+        self.icon
+            .as_deref()
+            .map(|icon| expand_home(icon, home).to_string_lossy().into_owned())
+    }
+
     pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             title: title.into(),
             subtitle: None,
             path: None,
+            icon: None,
         }
     }
 }
@@ -72,6 +93,7 @@ fn parse_line(line: &str) -> Option<SourceRow> {
         title: title.unwrap_or(id).to_string(),
         subtitle: subtitle.map(String::from),
         path: None,
+        icon: None,
     })
 }
 
@@ -96,6 +118,7 @@ const KEY_ID: &str = "id";
 const KEY_TITLE: &str = "title";
 const KEY_SUBTITLE: &str = "subtitle";
 const KEY_PATH: &str = "path";
+const KEY_ICON: &str = "icon";
 
 /// Parses rows in whichever encoding the block declared. `Err` means the text
 /// could not be read at all, which the caller reports and, for a `run` block,
@@ -148,6 +171,7 @@ fn parse_value(value: &Value) -> Option<SourceRow> {
         id,
         subtitle: text_field(object.get(KEY_SUBTITLE)),
         path: text_field(object.get(KEY_PATH)),
+        icon: text_field(object.get(KEY_ICON)),
     })
 }
 
@@ -231,6 +255,50 @@ mod tests {
         assert_eq!(row.title, "Look");
         assert_eq!(row.subtitle.as_deref(), Some("3 uncommitted"));
         assert_eq!(row.path.as_deref(), Some("/dev/look"));
+    }
+
+    #[test]
+    fn a_json_row_can_name_its_own_icon() {
+        // The point of per-row icons: one block whose rows are not alike. The
+        // line format cannot carry this, and a block's `icon` is one for all.
+        let (rows, _) = parse_json(
+            "{\"id\":\"https://github.com\",\"icon\":\"/tmp/fav/github.com.png\"}\n{\"id\":\"https://x.com\"}",
+            10,
+        )
+        .unwrap();
+        assert_eq!(rows[0].icon.as_deref(), Some("/tmp/fav/github.com.png"));
+        assert_eq!(rows[1].icon, None, "a row that says nothing gets nothing");
+    }
+
+    #[test]
+    fn an_icon_path_gets_a_home_and_a_glyph_is_left_alone() {
+        // The shell checks the icon it is handed for existence, so a `~` that
+        // survived would be drawn as its own text rather than as the image.
+        let home = Path::new("/Users/x");
+        let with_path = SourceRow {
+            icon: Some("~/.look/cache/favicons/github.com.png".into()),
+            ..SourceRow::new("id", "title")
+        };
+        // As a path, not as text: `join` separates with `\` on Windows.
+        assert_eq!(
+            with_path.display_icon(home).map(PathBuf::from),
+            Some(home.join(".look/cache/favicons/github.com.png"))
+        );
+
+        let glyph = SourceRow {
+            icon: Some("🌐".into()),
+            ..SourceRow::new("id", "title")
+        };
+        assert_eq!(glyph.display_icon(home).as_deref(), Some("🌐"));
+        assert_eq!(SourceRow::new("id", "title").display_icon(home), None);
+    }
+
+    #[test]
+    fn a_line_row_has_no_icon_of_its_own() {
+        // Tabs carry three fields; anything richer is what `format = "json"`
+        // is for. A fourth tab must not be read as one.
+        let row = parse_line("id\ttitle\tsubtitle\t/tmp/fav.png").unwrap();
+        assert_eq!(row.icon, None);
     }
 
     #[test]
