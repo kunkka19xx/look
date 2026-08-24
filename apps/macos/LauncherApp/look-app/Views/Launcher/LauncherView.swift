@@ -1023,8 +1023,11 @@ struct LauncherView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookActivateLauncherRequested)) { _ in
-            activateLauncherOrSettings()
+            activateLauncherModeAndFocus()
             refreshClipboardMonitoringMode()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .lookToggleSettingsRequested)) { _ in
+            toggleThemeSettings()
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookHideLauncherRequested)) { _ in
             hideLauncherWindow()

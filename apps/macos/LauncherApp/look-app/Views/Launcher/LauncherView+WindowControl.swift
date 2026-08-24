@@ -46,14 +46,6 @@ extension LauncherView {
         focusActiveInput()
     }
 
-    func activateLauncherOrSettings() {
-        if appUIState.showsThemeSettings {
-            showThemeSettings()
-        } else {
-            activateLauncherModeAndFocus()
-        }
-    }
-
     func scheduleFocusRecovery(delays: [Double], token: UInt64) {
         for delay in delays {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -177,21 +169,29 @@ extension LauncherView {
         }
     }
 
-    /// Opens the real settings panel hosted inside the AppKit-owned launcher.
-    /// The SwiftUI Settings scene exists only as a command carrier and must not
-    /// create a separate window of its own.
-    func showThemeSettings() {
-        appUIState.showsThemeSettings = true
+    /// The settings panel is a page of the AppKit-owned launcher window, so the
+    /// menu command has to bring that window up itself. The SwiftUI Settings
+    /// scene is only a command carrier and must not open a window of its own.
+    /// Focus is left to the `showsThemeSettings` observer in LauncherView, which
+    /// routes it to the settings input or back to the query field.
+    func toggleThemeSettings() {
+        appUIState.showsThemeSettings.toggle()
+        revealLauncherWindowIfHidden()
+    }
+
+    private func revealLauncherWindowIfHidden() {
+        guard let window = launcherWindow(), !window.isVisible else { return }
+
+        // Only when nothing is stored yet: the launcher is frontmost whenever the
+        // menu command fires, so recapturing here would drop the app the user
+        // came from and leave hideLauncherWindow() with nothing to restore.
         if pidToRestoreOnHide == nil {
             captureFrontmostAppForRestoreIfNeeded()
         }
         NSApplication.shared.unhide(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
-
-        guard let window = launcherWindow() else { return }
         positionOnActiveScreen(window)
         window.makeKeyAndOrderFront(nil)
-        focusActiveInput(recoveryDelays: [0.0, 0.04], activateApp: false)
     }
 
     /// Places the launcher at its fixed position on whichever

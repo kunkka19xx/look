@@ -13,9 +13,8 @@ import SwiftUI
 struct look_appApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     // The launcher window is owned by AppDelegate (an AppKit NSWindow), not a
-    // SwiftUI WindowGroup - see AppDelegate.makeLauncherWindow() for why. These
-    // stores are shared with that window's hosted ContentView.
-    private let appUIState = AppUIState.shared
+    // SwiftUI WindowGroup - see AppDelegate.makeLauncherWindow() for why. This
+    // store is shared with that window's hosted ContentView.
     private let themeStore = ThemeStore.shared
 
     init() {
@@ -157,7 +156,9 @@ struct look_appApp: App {
 
             CommandGroup(after: .appSettings) {
                 Button("Theme Settings") {
-                    openThemeSettings()
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(name: .lookToggleSettingsRequested, object: nil)
+                    }
                 }
                 .keyboardShortcut(",", modifiers: [.command, .shift])
 
@@ -191,13 +192,6 @@ struct look_appApp: App {
                 }
                 .keyboardShortcut("0", modifiers: [.command])
             }
-        }
-    }
-
-    private func openThemeSettings() {
-        DispatchQueue.main.async {
-            appUIState.showsThemeSettings.toggle()
-            NotificationCenter.default.post(name: .lookActivateLauncherRequested, object: nil)
         }
     }
 }
