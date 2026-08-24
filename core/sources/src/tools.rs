@@ -51,6 +51,10 @@ pub fn block_declares(block: Option<&Block>, action: &str) -> bool {
 mod tests {
     use super::*;
     use crate::def::parse_file;
+    #[cfg(windows)]
+    use look_tools::cmd_quote as quote;
+    #[cfg(not(windows))]
+    use look_tools::shell_quote as quote;
 
     fn block(contents: &str) -> Block {
         parse_file(contents)
@@ -87,7 +91,10 @@ mod tests {
 
         match launch {
             Launch::Shell { tool, command } => {
-                assert_eq!(command, "tmux new -As 'main' -c '/dev/look'");
+                assert_eq!(
+                    command,
+                    format!("tmux new -As {} -c {}", quote("main"), quote("/dev/look"))
+                );
                 assert_eq!(tool, "projects", "the block is what decided");
             }
             other => panic!("expected shell, got {other:?}"),

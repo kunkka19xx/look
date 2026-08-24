@@ -582,6 +582,10 @@ fn home_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    use look_tools::cmd_quote as quote;
+    #[cfg(not(windows))]
+    use look_tools::shell_quote as quote;
 
     #[test]
     fn a_block_cannot_hold_a_refresh_longer_than_the_ceiling() {
@@ -820,7 +824,7 @@ mod tests {
         // The command, not the template: the panel is what the user reads
         // before pressing Enter, and its copy button hands them something they
         // can paste.
-        assert_eq!(block.steps, vec!["git checkout 'main'".to_string()]);
+        assert_eq!(block.steps, vec![format!("git checkout {}", quote("main"))]);
 
         // A `then` naming a block that does not exist is reported by the
         // loader, not offered as a target.
@@ -830,7 +834,7 @@ mod tests {
         // serves the command that runs if the answer is yes.
         assert_eq!(
             block.then[0].confirm.as_deref(),
-            Some("Delete local branch 'main'?")
+            Some(format!("Delete local branch {}?", quote("main")).as_str())
         );
         assert!(block.then[0].performs, "steps to run");
         // A target that lists is a level to descend into, and says so.
@@ -847,7 +851,7 @@ mod tests {
                 .expect("a declared block")
                 .confirm
                 .as_deref(),
-            Some("Delete local branch 'main'?")
+            Some(format!("Delete local branch {}?", quote("main")).as_str())
         );
     }
 

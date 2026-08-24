@@ -9,16 +9,21 @@
 //! Steps are detached and not waited on: the launcher window closes immediately
 //! after Enter, and an app it launched must outlive it.
 //!
-//! A step is POSIX shell text down to its punctuation - `&&`, `>`, and the
-//! single quotes `expand` wraps every placeholder in. A `$SHELL` reading
-//! another language is passed over for `/bin/sh`; Windows, having none, refuses
-//! the step rather than hand `cmd` arguments it would mangle.
+//! A step is shell text down to its punctuation - `&&`, `>`, and the quotes
+//! `expand` wraps every placeholder in. Which shell reads it is the platform's
+//! answer: a POSIX one on Unix, where a `$SHELL` speaking another language is
+//! passed over for `/bin/sh`, and `cmd` on Windows, where `COMSPEC` names it.
+//! Quoting follows the same split, so a placeholder is inert in the shell that
+//! will actually read it.
 
 use std::io::Read;
 use std::process::{Command, Stdio};
 
 use serde::Deserialize;
 
+#[cfg(windows)]
+use look_tools::cmd_quote as quote;
+#[cfg(not(windows))]
 use look_tools::shell_quote as quote;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -36,10 +41,25 @@ const POSIX_SHELLS: [&str; 9] = [
     "sh", "bash", "dash", "ash", "zsh", "ksh", "ksh93", "mksh", "yash",
 ];
 
+/// What `COMSPEC` is expected to name, and what is used when it names anything
+/// else: the shell whose quoting `expand` writes for.
+#[cfg(windows)]
+const COMMAND_SHELL: &str = "cmd.exe";
+
+/// No console for a step the launcher starts. A `do` block opening an app must
+/// not flash a black window, and a captured command has nothing to show.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Its own group, so the launcher exiting never signals what it started. The
+/// Windows half of `setsid`.
+#[cfg(windows)]
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+
 /// Said instead of running anything, so the step reads as unsupported rather
 /// than as a missing program.
-#[cfg(not(unix))]
-const NO_POSIX_SHELL: &str = "steps are POSIX shell commands, which this platform has no shell for";
+#[cfg(not(any(unix, windows)))]
+const NO_SHELL: &str = "steps are shell commands, which this platform has no shell for";
 
 /// How often a captured command is checked for having finished. Short enough
 /// that a fast command is not held up, long enough not to spin.
@@ -266,9 +286,45 @@ fn shell_command(step: &str) -> Result<Command, String> {
     Ok(command)
 }
 
-#[cfg(not(unix))]
+/// `COMSPEC` when it names `cmd`, which is the only thing it names in practice,
+/// and `cmd.exe` off `PATH` otherwise: a step is written in `cmd`'s language and
+/// quoted for it, so another interpreter would read it wrong rather than better.
+#[cfg(windows)]
+fn command_shell() -> String {
+    let configured = std::env::var("COMSPEC").unwrap_or_default();
+    let names_cmd = std::path::Path::new(&configured)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .is_some_and(|stem| stem.eq_ignore_ascii_case("cmd"));
+    if names_cmd {
+        configured
+    } else {
+        COMMAND_SHELL.to_string()
+    }
+}
+
+/// The one place a step becomes a process on Windows: `cmd /D /S /C "<step>"`.
+///
+/// `/D` skips the AutoRun command the registry can hold, which a launcher must
+/// not inherit into every step. `/S` makes the quoting rule the simple one -
+/// strip the outer pair, take the rest verbatim - which is what lets a step keep
+/// the quotes `expand` put around its placeholders.
+#[cfg(windows)]
+fn shell_command(step: &str) -> Result<Command, String> {
+    use std::os::windows::process::CommandExt;
+
+    let mut command = Command::new(command_shell());
+    // `raw_arg`, never `arg`: std escapes for the MSVCRT argv rules, which `cmd`
+    // does not read, so a step carrying a quote would arrive mangled.
+    command
+        .raw_arg(format!("/D /S /C \"{step}\""))
+        .creation_flags(CREATE_NO_WINDOW);
+    Ok(command)
+}
+
+#[cfg(not(any(unix, windows)))]
 fn shell_command(_step: &str) -> Result<Command, String> {
-    Err(NO_POSIX_SHELL.to_string())
+    Err(NO_SHELL.to_string())
 }
 
 /// Names the shell that could not start: "no such file or directory" alone
@@ -322,7 +378,11 @@ pub fn capture(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .current_dir(cwd.filter(|dir| !dir.is_empty()).unwrap_or("/"));
+        .current_dir(
+            cwd.filter(|dir| !dir.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(root_dir),
+        );
     let mut spawned = shell.spawn().map_err(|err| spawn_failure(&shell, err))?;
 
     // Both pipes are drained on their own threads for the whole run. Polling
@@ -362,6 +422,21 @@ pub fn capture(
         });
     }
     Ok(out)
+}
+
+/// Where a captured command runs when its block named no `cwd`: a directory
+/// that is certain to exist, since the launcher's own may have been deleted.
+#[cfg(not(windows))]
+fn root_dir() -> String {
+    "/".to_string()
+}
+
+/// `\` alone is the current drive's root, which is not where the launcher was
+/// started from. `SystemDrive` names the one that is always mounted.
+#[cfg(windows)]
+fn root_dir() -> String {
+    let drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
+    format!("{drive}\\")
 }
 
 /// Reads a pipe to its end on its own thread, keeping at most `max_bytes`.
@@ -425,7 +500,16 @@ fn libc_setsid() {
     }
 }
 
-#[cfg(not(unix))]
+/// Same intent as the Unix `setsid`, plus the console suppression `cmd` needs:
+/// `creation_flags` replaces rather than adds, so both flags are set here.
+#[cfg(windows)]
+fn detach(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+
+    command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+}
+
+#[cfg(not(any(unix, windows)))]
 fn detach(_command: &mut Command) {}
 
 #[cfg(test)]
@@ -440,6 +524,13 @@ mod tests {
             query: "loo".into(),
             ..Default::default()
         }
+    }
+
+    /// The platform's quoting, so a test says which placeholder was quoted
+    /// rather than repeating one shell's spelling of it. The spellings
+    /// themselves are asserted by `look_tools`.
+    fn q(value: &str) -> String {
+        quote(value)
     }
 
     fn drilled(parents: &[(&str, &str)]) -> RowContext {
@@ -491,14 +582,19 @@ mod tests {
         let row = drilled(&[("animate", "/dev/animate"), ("prod", "")]);
         assert_eq!(
             expand("npm --prefix {parent.path} run {id}", &row),
-            "npm --prefix '/dev/animate' run 'build'"
+            format!("npm --prefix {} run {}", q("/dev/animate"), q("build"))
         );
         assert_eq!(
             expand(
                 "k --context {parent.parent.id} -n {parent.id} logs {id}",
                 &row
             ),
-            "k --context 'prod' -n 'animate' logs 'build'"
+            format!(
+                "k --context {} -n {} logs {}",
+                q("prod"),
+                q("animate"),
+                q("build")
+            )
         );
     }
 
@@ -510,14 +606,22 @@ mod tests {
                 "k --context {parent.parent.id} -n {parent.id} logs {id}",
                 &row
             ),
-            "k --context '' -n 'animate' logs 'build'"
+            format!(
+                "k --context {} -n {} logs {}",
+                q(""),
+                q("animate"),
+                q("build")
+            )
         );
     }
 
     #[test]
     fn no_depth_is_deep_enough_to_leave_a_placeholder_behind() {
         let deep = "x {parent.parent.parent.parent.parent.parent.parent.parent.parent.id}";
-        assert_eq!(expand(deep, &drilled(&[("one", "/one")])), "x ''");
+        assert_eq!(
+            expand(deep, &drilled(&[("one", "/one")])),
+            format!("x {}", q(""))
+        );
     }
 
     #[test]
@@ -525,13 +629,16 @@ mod tests {
         // A literal `{parent.path}` reaching the shell would be worse: the
         // command would run against a directory named after the placeholder.
         let row = drilled(&[]);
-        assert_eq!(expand("ls {parent.path}", &row), "ls ''");
+        assert_eq!(expand("ls {parent.path}", &row), format!("ls {}", q("")));
     }
 
     #[test]
     fn an_ancestor_placeholder_is_quoted_for_a_shell_and_raw_for_a_path() {
         let row = drilled(&[("my project", "/dev/my project")]);
-        assert_eq!(expand("cd {parent.path}", &row), "cd '/dev/my project'");
+        assert_eq!(
+            expand("cd {parent.path}", &row),
+            format!("cd {}", q("/dev/my project"))
+        );
         assert_eq!(
             expand_path("{parent.path}/src", &row),
             "/dev/my project/src"
@@ -541,14 +648,17 @@ mod tests {
     #[test]
     fn placeholders_expand_to_the_selected_row() {
         let expanded = expand("nvim {path} # {title} {query}", &row("/tmp/look"));
-        assert_eq!(expanded, "nvim '/tmp/look' # 'look' 'loo'");
+        assert_eq!(
+            expanded,
+            format!("nvim {} # {} {}", q("/tmp/look"), q("look"), q("loo"))
+        );
     }
 
     #[test]
     fn a_path_with_spaces_stays_one_argument() {
         assert_eq!(
             expand("code {path}", &row("/tmp/my project")),
-            "code '/tmp/my project'"
+            format!("code {}", q("/tmp/my project"))
         );
     }
 
@@ -558,14 +668,31 @@ mod tests {
         // difference between quoting and a deleted home directory.
         let mut hostile = row("");
         hostile.title = "; rm -rf ~".into();
-        assert_eq!(expand("echo {title}", &hostile), "echo '; rm -rf ~'");
+        assert_eq!(
+            expand("echo {title}", &hostile),
+            format!("echo {}", q("; rm -rf ~"))
+        );
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn an_embedded_quote_survives_intact() {
         let mut tricky = row("");
         tricky.title = "it's".into();
         assert_eq!(expand("echo {title}", &tricky), "echo 'it'\\''s'");
+    }
+
+    /// The quote `cmd` cares about is the double one, and a row carrying it must
+    /// not be able to close the argument it sits in.
+    #[cfg(windows)]
+    #[test]
+    fn an_embedded_quote_survives_intact() {
+        let mut tricky = row("");
+        tricky.title = "say \"hi\" & whoami".into();
+        assert_eq!(
+            expand("echo {title}", &tricky),
+            "echo \"say \"\"hi\"\" & whoami\""
+        );
     }
 
     #[test]
@@ -574,13 +701,13 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("probe dir");
         let dir_text = dir.to_str().expect("utf8 path");
 
-        assert_eq!(expand("{dir}", &row(dir_text)), format!("'{dir_text}'"));
+        assert_eq!(expand("{dir}", &row(dir_text)), q(dir_text));
 
         let file = dir.join("probe.txt");
         std::fs::write(&file, "x").expect("probe file");
         assert_eq!(
             expand("{dir}", &row(file.to_str().unwrap())),
-            format!("'{dir_text}'"),
+            q(dir_text),
             "a file row hands its command the folder it lives in"
         );
 
@@ -711,14 +838,99 @@ mod tests {
         }
     }
 
-    /// Off Unix the step is refused by name, not run wrongly.
-    #[cfg(not(unix))]
+    /// Everything below performs a real command through `cmd`.
+    #[cfg(windows)]
+    mod cmd {
+        use super::*;
+
+        #[test]
+        fn comspec_is_used_only_when_it_names_cmd() {
+            // Steps are written in `cmd`'s language and quoted for it, so an
+            // interpreter that reads them differently is not an improvement.
+            let shell = command_shell();
+            assert!(
+                std::path::Path::new(&shell)
+                    .file_stem()
+                    .is_some_and(|stem| stem.eq_ignore_ascii_case("cmd")),
+                "{shell}"
+            );
+        }
+
+        #[test]
+        fn capture_returns_what_the_command_printed() {
+            let out = capture("echo a", None, Duration::from_secs(5), 1024).unwrap();
+            assert_eq!(out.trim_end(), "a");
+        }
+
+        #[test]
+        fn a_command_that_fails_reports_its_first_stderr_line() {
+            let err = capture(
+                "echo boom 1>&2 & exit /b 1",
+                None,
+                Duration::from_secs(5),
+                1024,
+            )
+            .unwrap_err();
+            assert_eq!(err, "boom");
+        }
+
+        #[test]
+        fn a_hung_command_is_killed_rather_than_waited_on() {
+            let err = capture(
+                "ping -n 30 127.0.0.1 >nul",
+                None,
+                Duration::from_millis(150),
+                1024,
+            )
+            .unwrap_err();
+            assert!(err.contains("timed out"), "{err}");
+        }
+
+        #[test]
+        fn a_quoted_placeholder_is_text_and_not_a_second_command() {
+            // Rows come from directory listings and command output, so this is
+            // the difference between quoting and running what a row is named.
+            let mut hostile = row("");
+            hostile.title = "a & echo pwned".into();
+            let out = capture(
+                &expand("echo {title}", &hostile),
+                None,
+                Duration::from_secs(5),
+                1024,
+            )
+            .unwrap();
+            assert_eq!(out.trim_end(), "\"a & echo pwned\"");
+        }
+
+        #[test]
+        fn a_step_runs_through_a_shell_so_shell_syntax_works() {
+            let path = std::env::temp_dir().join(format!("look-run-{}", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+
+            let outcomes = perform(&[format!("echo hi> \"{}\"", path.display())], None);
+            assert!(outcomes[0].error.is_none(), "{:?}", outcomes[0].error);
+
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !path.exists() && Instant::now() < deadline {
+                std::thread::sleep(POLL_INTERVAL);
+            }
+            assert!(
+                path.exists(),
+                "redirection is shell syntax, so it needs a shell"
+            );
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+
+    /// Where there is no shell at all the step is refused by name, not run
+    /// wrongly.
+    #[cfg(not(any(unix, windows)))]
     #[test]
-    fn a_step_without_a_posix_shell_is_refused_by_name() {
+    fn a_step_without_a_shell_is_refused_by_name() {
         let outcomes = perform(&["true".to_string()], None);
-        assert_eq!(outcomes[0].error.as_deref(), Some(NO_POSIX_SHELL));
+        assert_eq!(outcomes[0].error.as_deref(), Some(NO_SHELL));
 
         let err = capture("true", None, Duration::from_secs(5), 1024).unwrap_err();
-        assert_eq!(err, NO_POSIX_SHELL);
+        assert_eq!(err, NO_SHELL);
     }
 }
