@@ -517,15 +517,11 @@ struct LauncherView: View {
         let tail = webSuggestionResults
         let base: [LauncherResult]
         if let urlResult {
-            // Structural matches can't be a file/search, so rank on top. A bare-host
-            // match must never take the default slot from a real local result, so it
-            // sits after the backend results (issue #232).
-            switch urlResult.tier {
-            case .structural:
-                base = [urlResult.result] + ranked + tail
-            case .bareHost:
-                base = ranked + [urlResult.result] + tail
-            }
+            base = URLRowPlacement.merged(
+                url: urlResult.result,
+                isBareHost: urlResult.tier == .bareHost,
+                into: ranked
+            ) + tail
         } else {
             base = ranked + tail
         }

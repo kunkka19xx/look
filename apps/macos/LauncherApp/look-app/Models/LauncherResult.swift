@@ -61,3 +61,22 @@ extension LauncherResult {
         id.hasPrefix(AppConstants.Launcher.SourceBlock.idPrefix)
     }
 }
+
+/// Where the synthesized "open this URL" row sits among the local results.
+enum URLRowPlacement {
+    /// A structural URL (one with a scheme or a path) cannot be a file or a
+    /// search term, so it leads.
+    ///
+    /// A bare host sits one below the best local match (issue #232): Enter still
+    /// opens that match, and the row stays one keypress away however many rows a
+    /// source contributes. It used to sit after every local result, which a
+    /// declared source can flood - browser history carries the host in every
+    /// subtitle, so typing an address buried the row for that address under
+    /// hundreds of pages from it.
+    static func merged(
+        url: LauncherResult, isBareHost: Bool, into ranked: [LauncherResult]
+    ) -> [LauncherResult] {
+        guard isBareHost else { return [url] + ranked }
+        return Array(ranked.prefix(1)) + [url] + ranked.dropFirst()
+    }
+}
