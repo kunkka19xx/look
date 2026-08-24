@@ -49,4 +49,34 @@ struct LauncherResult: Identifiable {
     /// it was written into. The URL itself rides in the result id.
     var linkKindLabel: String? = nil
     var linkDetail: String? = nil
+    /// What a declared source row asked to be drawn as. Beats its block's icon,
+    /// which is the whole point of it being per row.
+    var icon: String? = nil
+}
+
+extension LauncherResult {
+    /// A row a user-declared block produced. One definition: the prefix was
+    /// spelled out in three views, which is how a namespace check drifts.
+    var isSourceRow: Bool {
+        id.hasPrefix(AppConstants.Launcher.SourceBlock.idPrefix)
+    }
+}
+
+/// Where the synthesized "open this URL" row sits among the local results.
+enum URLRowPlacement {
+    /// A structural URL (one with a scheme or a path) cannot be a file or a
+    /// search term, so it leads.
+    ///
+    /// A bare host sits one below the best local match (issue #232): Enter still
+    /// opens that match, and the row stays one keypress away however many rows a
+    /// source contributes. It used to sit after every local result, which a
+    /// declared source can flood - browser history carries the host in every
+    /// subtitle, so typing an address buried the row for that address under
+    /// hundreds of pages from it.
+    static func merged(
+        url: LauncherResult, isBareHost: Bool, into ranked: [LauncherResult]
+    ) -> [LauncherResult] {
+        guard isBareHost else { return [url] + ranked }
+        return Array(ranked.prefix(1)) + [url] + ranked.dropFirst()
+    }
 }

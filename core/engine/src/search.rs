@@ -353,6 +353,13 @@ impl QueryEngine {
                 .map(|value| value / 2);
             let contains_score =
                 contains_match_score(normalized_query, &candidate.title_search, subtitle_search);
+            // Scored like a subtitle, and for the same reason: it says where the
+            // row came from, not what the row is.
+            let keywords_score = candidate
+                .keywords_search
+                .as_deref()
+                .and_then(|keywords| fuzzy_score_prepared(&prepared_query, keywords))
+                .map(|value| value / 2);
             let path_score = if has_path_hint {
                 path_match_score(normalized_query, &candidate.path_search)
             } else {
@@ -364,11 +371,20 @@ impl QueryEngine {
                 subtitle_search
             };
             let alias_score = alias_terms.and_then(|terms| {
-                if candidate.candidate.kind != CandidateKind::App {
-                    return None;
+                if candidate.candidate.kind == CandidateKind::App {
+                    // Alias boosts are app-only to avoid distorting file/folder
+                    // ranking.
+                    return Self::alias_match_score(
+                        terms,
+                        &candidate.title_search,
+                        alias_subtitle_search,
+                    );
                 }
-                // Alias boosts are app-only to avoid distorting file/folder ranking.
-                Self::alias_match_score(terms, &candidate.title_search, alias_subtitle_search)
+                // Except for a block's own rows, which is what a declared
+                // `aliases` names. It reaches them through their keywords, so no
+                // file's text is involved and no file's ranking moves.
+                let keywords = candidate.keywords_search.as_deref()?;
+                Self::alias_match_score(terms, keywords, None)
             });
 
             let base = [
@@ -377,6 +393,7 @@ impl QueryEngine {
                 contains_score,
                 path_score,
                 alias_score,
+                keywords_score,
             ]
             .into_iter()
             .flatten()
@@ -576,6 +593,24 @@ mod tests {
             ids.contains(&"folder:/u/dev/other".to_string()),
             "a different path is untouched: {ids:?}"
         );
+    }
+
+    #[test]
+    fn a_row_that_declares_its_own_subtitle_is_still_found_by_its_block() {
+        // The block name used to reach its rows only because it sat in their
+        // subtitle. A row declaring one (`format = "json"`) would otherwise
+        // become unreachable by the word the user typed to build it.
+        let mut declared = Candidate::new("src:branches:main", CandidateKind::Action, "main", "");
+        declared.subtitle = Some("3 months ago, someone".into());
+
+        let engine = QueryEngine::new(vec![declared]);
+        let ids: Vec<String> = engine
+            .search_scored("branches", 10)
+            .into_iter()
+            .map(|(candidate, _)| candidate.id.to_string())
+            .collect();
+
+        assert_eq!(ids, ["src:branches:main"]);
     }
 
     #[test]

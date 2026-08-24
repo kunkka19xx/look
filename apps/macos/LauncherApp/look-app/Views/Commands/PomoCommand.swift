@@ -74,7 +74,7 @@ enum PomoCommand {
     }
 }
 
-// ── Persistence: read/write pomo_* keys in .look.config ────────────────
+// ── Persistence: read/write pomo_* keys in .look/config ────────────────
 //
 // Keys are all optional. Missing keys fall back to defaults so users who
 // never touch /pomo aren't affected by its existence.

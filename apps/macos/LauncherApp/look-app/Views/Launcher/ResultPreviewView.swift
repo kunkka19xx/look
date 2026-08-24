@@ -3,8 +3,33 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ResultPreviewView: View {
+    private enum Layout {
+        /// How much of a block's steps the panel shows before scrolling. Two,
+        /// because the steps are context for the row, not the subject of the
+        /// panel, and one long command should not push the preview off screen.
+        static let visibleStepLines = 2
+
+        /// The cap when the steps are the only thing in the panel. Nothing is
+        /// competing for the space, so a long command is worth reading in full;
+        /// past this it scrolls, without bars (see AICodeBlockView).
+        static let expandedStepLines = 14
+
+        /// How long a row must stay selected before its `preview` command runs.
+        ///
+        /// The command is a process, and a cancelled task only stops the panel
+        /// from being filled - the shell it already spawned runs to completion.
+        /// Without this, holding a arrow key through a source forks one process
+        /// per row it passes, each free to burn its whole timeout after the user
+        /// has moved on. Short enough that a row the user actually stops on
+        /// still fills immediately.
+        static let previewDebounceNanoseconds: UInt64 = 150_000_000
+    }
+
     @EnvironmentObject private var themeStore: ThemeStore
     let result: LauncherResult
+    /// The levels this row was reached through, for a `preview` that names
+    /// `{parent.*}`. Empty for every row that is not inside a drill-down.
+    var rowAncestorsJSON: String = "[]"
     /// Quick Actions for this result, rendered beneath the header (info + actions
     /// panel). Empty for results with no actions.
     var quickActions: [QuickActionDescriptor] = []
@@ -40,6 +65,9 @@ struct ResultPreviewView: View {
     /// with the file that declared it.
     @State private var blockSteps: [String] = []
     @State private var blockFile: String?
+    /// Whether this row's block declares a `preview`, known before it runs, so
+    /// the steps can claim the space when nothing is coming below them.
+    @State private var blockHasPreview = false
     /// Output of the block's declared `preview`, for rows that have one.
     @State private var blockPreview: SourcePreview?
 
@@ -506,10 +534,18 @@ struct ResultPreviewView: View {
     private var actionPreview: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 26))
-                    .foregroundStyle(themeStore.accentColor())
-                    .frame(width: 48, height: 48)
+                // The same icon the row is drawn with, else the bolt.
+                if let declared = SourceBlockIcons.declaredIcon(for: result) {
+                    Image(nsImage: declared)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 48, height: 48)
+                } else {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 26))
+                        .foregroundStyle(themeStore.accentColor())
+                        .frame(width: 48, height: 48)
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(result.title)
@@ -551,11 +587,23 @@ struct ResultPreviewView: View {
                         AICodeBlockView(
                             code: blockSteps.joined(separator: "\n"),
                             language: "sh",
-                            themeStore: themeStore
+                            themeStore: themeStore,
+                            // Two lines when output is coming below, since the
+                            // steps are context for the row rather than its
+                            // subject. With nothing below them they are the
+                            // subject, so they take the room.
+                            maxVisibleLines: blockHasPreview
+                                ? Layout.visibleStepLines : Layout.expandedStepLines
                         )
                     }
                     if let preview = blockPreview {
                         blockPreviewBody(preview)
+                    } else if blockHasPreview {
+                        // Blank space reads as broken, and the command is
+                        // allowed to take seconds.
+                        Text("Running…")
+                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                            .foregroundStyle(themeStore.mutedTextColor())
                     }
                 }
             }
@@ -565,32 +613,48 @@ struct ResultPreviewView: View {
             if let file = blockFile {
                 Divider().overlay(themeStore.secondaryTextColor().opacity(0.2))
                 InfoRow(label: "Declared in", value: (file as NSString).abbreviatingWithTildeInPath)
-                hintRow(key: "⌘F", text: "Reveal that file")
+                // A row that names its own path reveals that, like every other
+                // row with one, so the chord belongs to the declaration only
+                // when the row has nothing of its own to point at.
+                if result.path.isEmpty {
+                    hintRow(key: "⌘F", text: "Reveal that file")
+                }
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task(id: result.id) {
             let candidateID = result.id
+            let ancestors = rowAncestorsJSON
             let block = await Task.detached(priority: .userInitiated) {
-                EngineBridge.shared.sourceBlock(candidateID: candidateID)
+                EngineBridge.shared.sourceBlock(
+                    candidateID: candidateID, ancestorsJSON: ancestors)
             }.value
             // The detached read outlives a cancelled task, so a late answer must
             // not populate the panel of a row the user has already left.
             if Task.isCancelled { return }
             blockSteps = block?.steps ?? []
             blockFile = block?.file
+            blockHasPreview = block?.hasPreview ?? false
 
             // The declared `preview` runs a command, so it is read separately
-            // and only after the cheap details are on screen.
+            // and only after the cheap details are on screen - and only once the
+            // selection settles. `Task.sleep` throws on cancellation, so a row
+            // arrowed past never reaches the spawn at all.
             blockPreview = nil
+            do {
+                try await Task.sleep(nanoseconds: Layout.previewDebounceNanoseconds)
+            } catch {
+                return
+            }
             let row = (id: result.id, title: result.title, path: result.path)
             let preview = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.sourcePreview(
                     candidateID: candidateID,
                     rowID: row.id,
                     rowTitle: row.title,
-                    rowPath: row.path
+                    rowPath: row.path,
+                    ancestorsJSON: ancestors
                 )
             }.value
             if Task.isCancelled { return }
@@ -608,11 +672,17 @@ struct ResultPreviewView: View {
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
                 .foregroundStyle(themeStore.mutedTextColor())
         } else if !preview.text.isEmpty {
-            Text(preview.text)
+            let shown = PreviewText.visible(preview.text)
+            Text(shown.text)
                 .font(.system(size: CGFloat(themeStore.settings.fontSize - 2), design: .monospaced))
                 .foregroundStyle(themeStore.secondaryTextColor())
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if shown.dropped > 0 {
+                Text("… \(shown.dropped) more lines")
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 3), weight: .regular))
+                    .foregroundStyle(themeStore.mutedTextColor())
+            }
         }
     }
 

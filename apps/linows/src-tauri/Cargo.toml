@@ -16,8 +16,10 @@ look-lunar = { path = "../../../core/lunar" }
 look-matching = { path = "../../../core/matching" }
 look-netspeed = { path = "../../../core/netspeed" }
 look-qactions = { path = "../../../core/qactions" }
+look-sources = { path = "../../../core/sources" }
 look-storage = { path = "../../../core/storage" }
 look-todo = { path = "../../../core/todo" }
+look-tools = { path = "../../../core/tools" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 notify = "6"
@@ -38,6 +40,11 @@ zbus = "5"
 # StreamExt for zbus signal streams.
 futures-util = { version = "0.3", default-features = false }
 webkit2gtk = "2.0"
+# Owning the clipboard in-process, which is the only way to offer a path as
+# BOTH a file (for a file manager) and text (for everything else): wl-copy and
+# xclip each advertise a single MIME type per invocation. Pinned to the version
+# WebKitGTK already pulls in, so this adds no new build.
+gtk = "0.18"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 # "system" pins the libwayland backend: blur binds against GTK's own
 # wl_display, which only the sys backend can adopt.

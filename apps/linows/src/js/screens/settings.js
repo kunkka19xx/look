@@ -41,7 +41,7 @@ const BLUR_PRESETS = {
 // (apps/macos/.../Support/ThemeStore.swift:270). The effective `--font-size`
 // is `baseFontSize * uiScale`; baseFontSize tracks the slider value, uiScale
 // is the user's Ctrl+= / Ctrl+- / Ctrl+0 multiplier. Persisted in localStorage
-// (not .look.config) so the config file stays scoped to declarative settings.
+// (not .look/config) so the config file stays scoped to declarative settings.
 const UI_SCALE_MIN = 0.7;
 const UI_SCALE_MAX = 1.8;
 const UI_SCALE_STEP = 0.1;
@@ -545,7 +545,7 @@ export function init(exitFn) {
         if (name) applyFontName(name);
     });
 
-    // Save Config button - grab all current UI values and write to .look.config
+    // Save Config button - grab all current UI values and write to .look/config
     document.getElementById('settings-save-btn').addEventListener('click', async () => {
         try {
             const updates = {};
@@ -627,7 +627,7 @@ export function isActive() {
     return active;
 }
 
-// Ctrl+Shift+; - reload all values from .look.config file into running app
+// Ctrl+Shift+; - reload all values from .look/config file into running app
 export async function reloadFromFile() {
     try {
         await reloadConfig();
@@ -811,7 +811,7 @@ function updateSettingsHint() {
     if (!hint) return;
     if (activeTab === 'advanced') {
         hint.textContent =
-            'Save Config applies changes immediately. Ctrl+Shift+; is only needed after editing .look.config manually.';
+            'Save Config applies changes immediately. Ctrl+Shift+; is only needed after editing .look/config manually.';
     } else if (activeTab === 'shortcuts') {
         hint.textContent =
             'Tips: t"word for web EN/VI/JA translation \u2022 /kill to force quit apps';

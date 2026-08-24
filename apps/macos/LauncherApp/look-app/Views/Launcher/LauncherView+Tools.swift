@@ -29,37 +29,68 @@ extension LauncherView {
     /// thing you launch, and the folder holding it is `/Applications`, which is
     /// never "here", so both are absent for app rows rather than quietly acting
     /// on the wrong directory. Revealing an app is genuinely useful and stays.
+    ///
+    /// An action row qualifies too, because a block's row can name a `path`
+    /// (`format = "json"`) and is then a real filesystem object. Both callers
+    /// already require a non-empty path, so the ones that name none never reach
+    /// here.
     static func toolActionApplies(_ action: String, to kind: LauncherResultKind) -> Bool {
         switch action {
         case AppConstants.Launcher.Tools.revealAction:
-            return kind.isFileOrFolder || kind == .app
+            return kind.isFileOrFolder || kind == .app || kind == .action
         default:
-            return kind.isFileOrFolder
+            return kind.isFileOrFolder || kind == .action
         }
     }
 
-    /// The selected row as a path plus whether it is a directory, or nil when
-    /// the action does not apply to it.
-    private func toolTarget(for action: String) -> (path: String, isDirectory: Bool)? {
+    /// The selected row as a tool target, or nil when the action does not apply
+    /// to it.
+    private func toolTarget(for action: String) -> (row: ToolActionRow, isDirectory: Bool)? {
         guard let selected = actionableSelectedResult(), !selected.path.isEmpty,
             Self.toolActionApplies(action, to: selected.kind)
         else { return nil }
 
-        return (selected.path, selected.kind == .folder)
+        return (toolActionRow(for: selected), pathIsDirectory(selected))
+    }
+
+    /// A row as the core needs it for a tool action: its id so a block can
+    /// override the chord, its title and ancestors so that override expands
+    /// like any other command the block declares.
+    func toolActionRow(for result: LauncherResult) -> ToolActionRow {
+        ToolActionRow(
+            candidateID: result.id,
+            title: result.title,
+            path: result.path,
+            ancestorsJSON: selectedRowAncestorsJSON
+        )
+    }
+
+    /// A file row and a folder row say which they are; a block's row does not,
+    /// so its path is checked. Editing resolves to a different tool for each and
+    /// a terminal opens in a different place, so guessing is not an option.
+    func pathIsDirectory(_ result: LauncherResult) -> Bool {
+        if result.kind != .action {
+            return result.kind == .folder
+        }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: result.path, isDirectory: &isDir) else {
+            return false
+        }
+        return isDir.boolValue
     }
 
     private func runToolAction(_ action: String) {
         guard let target = toolTarget(for: action) else { return }
-        let path = target.path
+        let row = target.row
         let isDirectory = target.isDirectory
 
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
-                EngineBridge.shared.performToolAction(action, path: path, isDirectory: isDirectory)
+                EngineBridge.shared.performToolAction(action, row: row, isDirectory: isDirectory)
             }.value
 
             await MainActor.run {
-                applyToolOutcome(outcome, path: path)
+                applyToolOutcome(outcome, path: row.path)
             }
         }
     }

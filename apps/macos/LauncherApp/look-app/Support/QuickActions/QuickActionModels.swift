@@ -35,6 +35,8 @@ struct QuickActionDescriptor: Decodable, Equatable, Identifiable {
     /// action silently. The descriptor is what gets activated, so the guard
     /// travels with it.
     var confirm: String? = nil
+    /// Chord that already runs this, shown right-aligned in the menu.
+    var shortcut: String? = nil
 
     var id: String { actionId }
 }

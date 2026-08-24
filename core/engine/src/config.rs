@@ -132,7 +132,7 @@ impl Default for RuntimeConfig {
     }
 }
 
-/// Process-wide cache of the parsed `~/.look.config`. Filled lazily by
+/// Process-wide cache of the parsed `~/.look/config`. Filled lazily by
 /// `RuntimeConfig::load_cached()`, cleared by `RuntimeConfig::invalidate_cache()`.
 /// Reading the config from disk is cheap (< 1 KB file) but happens on every
 /// `bootstrap_sqlite_scoped` / `from_sqlite` - including watcher-triggered
@@ -144,7 +144,7 @@ fn cached_config_slot() -> &'static Mutex<Option<RuntimeConfig>> {
 }
 
 impl RuntimeConfig {
-    /// Reads `~/.look.config` from disk and parses it. Always touches the file.
+    /// Reads `~/.look/config` from disk and parses it. Always touches the file.
     /// Most callers should use [`load_cached`](Self::load_cached) instead.
     pub fn load() -> Self {
         let mut config = Self::default();
@@ -174,7 +174,7 @@ impl RuntimeConfig {
 
     /// Returns the cached `RuntimeConfig`, reading from disk on first call only.
     /// Subsequent calls clone the cached value (cheap - the struct is plain
-    /// data). Callers that mutate `~/.look.config` at runtime must call
+    /// data). Callers that mutate `~/.look/config` at runtime must call
     /// [`invalidate_cache`](Self::invalidate_cache) afterwards.
     pub fn load_cached() -> Self {
         let slot = cached_config_slot();
@@ -194,7 +194,23 @@ impl RuntimeConfig {
         fresh
     }
 
-    /// Drops the cached config. Call after `~/.look.config` is edited so the
+    /// The declared tools alone, without cloning everything else.
+    ///
+    /// `load_cached` clones ~120 strings and rebuilds the alias map; resolving
+    /// one row action needs three `Option<String>` and nothing else, and both
+    /// shells do it once per action per menu.
+    pub fn tools_cached() -> Tools {
+        let slot = cached_config_slot();
+        {
+            let guard = slot.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some(cfg) = guard.as_ref() {
+                return cfg.tools.clone();
+            }
+        }
+        Self::load_cached().tools
+    }
+
+    /// Drops the cached config. Call after `~/.look/config` is edited so the
     /// next `load_cached()` re-reads from disk.
     pub fn invalidate_cache() {
         let mut guard = cached_config_slot()
@@ -417,7 +433,8 @@ fn default_config_contents() -> String {
     };
     format!(
         "# look configuration\n\
-# Generated on first launch. Edit values and press Cmd+Shift+; to reload.\n\
+# Generated on first launch. Edit values, then reload with Cmd+Shift+;\n\
+# (Ctrl+Shift+; on Linux and Windows).\n\
 \n\
 # Backend indexing (file_scan_depth: 1-12, file_scan_limit: 500-50000)\n\
 app_scan_roots={app_roots}\n\
@@ -450,8 +467,7 @@ clipboard_history_limit=10\n\
 # including running a terminal editor inside your terminal. Declare nothing and\n\
 # nothing changes. Editing uses text_editor on a file and code_editor on a\n\
 # folder; declaring only one of the two covers both.\n\
-# Acted on from the row's action menu, and from Cmd+E / Cmd+T.\n\
-# macOS only so far: the Linux and Windows shells do not read these yet.\n\
+# Acted on from the row's action menu, and from Cmd+E / Cmd+T (Ctrl elsewhere).\n\
 # text_editor=nvim\n\
 # code_editor=zed\n\
 # terminal=ghostty\n\

@@ -479,6 +479,7 @@ dependencies = [
  "globset",
  "look-tools",
  "serde",
+ "serde_json",
  "toml",
 ]
 
@@ -501,6 +502,9 @@ dependencies = [
 [[package]]
 name = "look-tools"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "memchr"

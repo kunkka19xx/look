@@ -113,6 +113,12 @@ struct LauncherView: View {
     @State var pendingQuickActions: Set<String> = []
     @State var quickActionTask: Task<Void, Never>?
     @State var selectedResultID: String?
+    /// Where the user has drilled to. One value rather than another set of
+    /// flags: a level stack IS navigation state, and the mode booleans above
+    /// grew into a pile by being added one at a time.
+    @State var levelStack = SourceLevelStack()
+    /// A selection to restore once its rows are on screen (see `popLevel`).
+    @State var pendingSelectionRestore: PendingSelection?
     /// `@`-mention state for the AI input. `mentionHighlight` starts at -1 so
     /// Enter still SENDS: the popup is passive until Tab reaches into it (same
     /// shape as the conversation list's -1).
@@ -171,10 +177,13 @@ struct LauncherView: View {
     static let panelCoordinateSpace = "launcherPanel"
 
     static let floatingTileScrimOpacity = 0.30
+
+    /// 0 = pure glass, and the bar goes white over a light page; 1 = opaque,
+    /// and the blur is lost.
+    static let searchBarSubstrateOpacity = 0.55
     /// Legibility floor for surfaces that float on the bare desktop while the
     /// material is Liquid Glass. Tune here: too low and light theme text
     /// disappears over a white window, too high and the refraction is lost.
-    static let glassLegibilityScrimOpacity = 0.22
     /// Resting corner for a tile that floats free of its neighbours, and for the
     /// seated variant that reads as part of one box. Both are scaled by the
     /// active theme surface (Liquid rounds harder) at each use.
@@ -496,6 +505,8 @@ struct LauncherView: View {
     // LauncherView+URLResults.swift.
 
     var displayedResults: [LauncherResult] {
+        // A level owns the list: its rows are not in the index.
+        if isInLevel { return levelResults }
         if isPrefixSuggestionQuery { return prefixSuggestionResults }
         if isCommandSuggestionQuery { return commandSuggestionResults }
         if isClipboardQuery { return clipboardResults }
@@ -506,15 +517,11 @@ struct LauncherView: View {
         let tail = webSuggestionResults
         let base: [LauncherResult]
         if let urlResult {
-            // Structural matches can't be a file/search, so rank on top. A bare-host
-            // match must never take the default slot from a real local result, so it
-            // sits after the backend results (issue #232).
-            switch urlResult.tier {
-            case .structural:
-                base = [urlResult.result] + ranked + tail
-            case .bareHost:
-                base = ranked + [urlResult.result] + tail
-            }
+            base = URLRowPlacement.merged(
+                url: urlResult.result,
+                isBareHost: urlResult.tier == .bareHost,
+                into: ranked
+            ) + tail
         } else {
             base = ranked + tail
         }
@@ -555,7 +562,7 @@ struct LauncherView: View {
     /// the disjunction out by hand, and they had already drifted apart. A new
     /// mode belongs HERE, not in each caller.
     var usesOwnResultPanel: Bool {
-        isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery
+        isInLevel || isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery
             || isTranslationQuery || isProcessQuery
     }
 
@@ -606,6 +613,11 @@ struct LauncherView: View {
 
         if isHideAppConfirmationVisible {
             return ["Y confirm", "N cancel", "Esc back"]
+        }
+
+        // Inside a level the way out is the thing to say.
+        if isInLevel {
+            return [enterHint, AppConstants.Launcher.ActionMenu.openHint, "Esc back"]
         }
 
         if isCommandMode {
@@ -688,6 +700,13 @@ struct LauncherView: View {
               selected.kind == .action
         else { return "Enter open" }
         return "Enter run"
+    }
+
+    /// Shown in the query bar: a list that replaced the index has to say what
+    /// it is.
+    var levelBreadcrumb: String? {
+        guard isInLevel else { return nil }
+        return levelStack.breadcrumb.joined(separator: "  ›  ")
     }
 
     /// True when the launcher is on its default/home screen (the state
@@ -832,7 +851,9 @@ struct LauncherView: View {
         // floating strip that grows the window. The launcher is always a single
         // fixed-size panel regardless of the running-apps toggle.
         borderedPanel(windowCornerRadius: windowCornerRadius, contentSpacing: contentSpacing, contentPadding: contentPadding)
-        .rootReveal(token: appearanceRevealToken)
+        // No `.rootReveal`: its opacity rasterized the panel on every show, and
+        // the bar's backdrop must draw straight through. The spawnReveal
+        // cascade still animates the open.
         .ignoresSafeArea()
         .onAppear {
             refreshSearchResults()
@@ -1208,6 +1229,7 @@ struct LauncherView: View {
             isAIMode: isAIMode,
             showsBackground: showsBackground,
             revealToken: appearanceRevealToken,
+            breadcrumb: levelBreadcrumb,
             onSubmit: handleSubmit,
             onExitCommandMode: exitCommandMode
         )
@@ -2040,6 +2062,7 @@ struct LauncherView: View {
                 // Info + actions panel: the preview plus any Quick Actions.
                 ResultPreviewView(
                     result: selectedResult,
+                    rowAncestorsJSON: selectedRowAncestorsJSON,
                     quickActions: quickActionDescriptors,
                     quickActionStates: quickActionStates,
                     quickActionInfo: quickActionInfo,
@@ -2184,7 +2207,9 @@ struct LauncherView: View {
     /// the results columns and the hint bar below it. Applies in both modes (gap
     /// or no gap), so an empty launcher is always just the top bar.
     var hidesResultsForEmptyQuery: Bool {
-        isQueryEmpty && isLauncherIdle
+        // Never inside a level: an empty query there means "unfiltered", not
+        // "nothing asked for".
+        isQueryEmpty && isLauncherIdle && !isInLevel
     }
 
     /// True whenever the panel has no backdrop box and its content floats freely
@@ -2227,33 +2252,38 @@ struct LauncherView: View {
     /// so the tiles read as separate windows onto one image. Otherwise it takes the
     /// themed backdrop, at the same blur and tint opacities as the window.
     @ViewBuilder
-    private func tileBackground(cornerRadius: CGFloat, floats: Bool) -> some View {
-        if floats {
+    private func tileBackground(
+        cornerRadius: CGFloat, floats: Bool, substrate: Bool = false
+    ) -> some View {
+        if floats, let image = themeStore.backgroundImage {
             ZStack {
-                if let image = themeStore.backgroundImage {
-                    croppedBackgroundImage(image)
-                    // Only the opaque image needs a scrim; the blur path is
-                    // covered by the tint.
-                    themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
-                } else {
-                    ThemedBackdrop(themeStore: themeStore, cornerRadius: cornerRadius)
-                    // Liquid Glass is transparent to the desktop, and a floating
-                    // surface sits over content we do not control. The launchpad
-                    // tiles get away with it because the panel backs them; this
-                    // bar does not, so over a white window the theme's own light
-                    // text lands on near-white. A scrim guarantees the substrate
-                    // the glass cannot: enough to read against, well under the
-                    // weight that would cancel the refraction.
-                    if themeStore.settings.blurMaterial.rendersGlass {
-                        themeStore.scrimColor(opacity: Self.glassLegibilityScrimOpacity)
-                    }
-                }
+                croppedBackgroundImage(image)
+                // Only the opaque image needs a scrim; the blur path is
+                // covered by the tint.
+                themeStore.scrimColor(opacity: Self.floatingTileScrimOpacity)
                 themeStore.controlFillColor()
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         } else {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(themeStore.controlFillColor())
+            ZStack {
+                // Bounds how bright the bar can get over a white page. The
+                // panes are dense enough that the same floor only flattens them.
+                if substrate {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(themeStore.commandModeBackgroundColor())
+                        .opacity(Self.searchBarSubstrateOpacity)
+                }
+
+                // Window-server composited. The bar hosts an
+                // `NSViewRepresentable`, and a `.withinWindow` material beside
+                // one flips brightness whenever the layer is re-composited.
+                frostedTile(
+                    themeStore: themeStore,
+                    cornerRadius: cornerRadius,
+                    // Seated is the only case with a window backdrop behind it.
+                    blendingMode: floats ? .behindWindow : .withinWindow
+                )
+            }
         }
     }
 
@@ -2296,12 +2326,17 @@ struct LauncherView: View {
         // (e.g. typing the first character out of the empty-rest state at gap 0).
         let floats = barFloatsFree
         return content()
+            // Wraps the content, not the chrome: the reveal leaves an opacity
+            // in the tree, which would rasterize the backdrop below.
+            .spawnReveal(index: Self.searchBarRevealIndex, token: appearanceRevealToken, scales: false)
             .background {
                 tileBackground(
                     cornerRadius: themeStore.surfaceCornerRadius(
                         floats ? Self.floatingTileCornerRadius : Self.seatedTileCornerRadius
                     ),
-                    floats: floats
+                    floats: floats,
+                    // Seated, the panel's backdrop already backs the bar.
+                    substrate: floats
                 )
             }
             .overlay {
@@ -2311,9 +2346,6 @@ struct LauncherView: View {
             }
             .shadow(color: floats ? .black.opacity(0.25) : .clear,
                     radius: floats ? 7 : 0, x: 0, y: floats ? 3 : 0)
-            // Leads the cascade: the bar lands first, then the launchpad tiles.
-            // No scale, so the search field's text stays crisp (see spawnReveal).
-            .spawnReveal(index: Self.searchBarRevealIndex, token: appearanceRevealToken, scales: false)
     }
 
     /// Wraps a single-panel home state (translation, clipboard/recent empty) in a
@@ -2442,7 +2474,7 @@ struct LauncherView: View {
             ConfirmActionBar(
                 icon: NSWorkspace.shared.icon(forFile: pendingHideAppResult.path),
                 title: "Hide \(pendingHideAppResult.title)?",
-                detail: "Add it to app_exclude_names in .look.config.",
+                detail: "Add it to app_exclude_names in .look/config.",
                 themeStore: themeStore,
                 onConfirm: { confirmHideSelectedApp() },
                 onCancel: { cancelHideSelectedApp() }

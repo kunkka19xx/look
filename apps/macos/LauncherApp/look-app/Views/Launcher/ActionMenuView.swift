@@ -17,17 +17,26 @@ struct ActionMenuView: View {
 
     private typealias Layout = AppConstants.Launcher.ActionMenu
 
+    @State private var contentHeight: CGFloat = 0
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2) {
                     ForEach(Array(descriptors.enumerated()), id: \.element.id) { pair in
                         row(pair.element, isFocused: pair.offset == focusedIndex)
                             .id(pair.offset)
                     }
                 }
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear { contentHeight = geo.size.height }
+                            .onChange(of: geo.size.height) { _, new in contentHeight = new }
+                    }
+                )
             }
-            .frame(height: menuHeight)
+            .frame(height: min(contentHeight, Layout.maxHeight))
             .onChange(of: focusedIndex) { _, index in
                 withAnimation(Motion.Selection.glide) { proxy.scrollTo(index) }
             }
@@ -35,13 +44,6 @@ struct ActionMenuView: View {
         .padding(4)
         .background(menuBackground)
         .overlay(menuBorder)
-    }
-
-    /// Tall enough for its rows, never taller than the cap.
-    private var menuHeight: CGFloat {
-        let rows = CGFloat(descriptors.count)
-        let rowHeight = CGFloat(themeStore.settings.fontSize - 1) + Layout.rowVerticalPadding * 2 + 6
-        return min(rows * rowHeight + max(0, rows - 1) * 2, Layout.maxHeight)
     }
 
     private var menuBackground: some View {
@@ -69,6 +71,11 @@ struct ActionMenuView: View {
                 .foregroundStyle(themeStore.fontColor())
                 .lineLimit(1)
             Spacer(minLength: 8)
+            if let shortcut = descriptor.shortcut {
+                Text(shortcut)
+                    .font(themeStore.uiFont(size: hintSize, weight: .regular))
+                    .foregroundStyle(themeStore.mutedTextColor())
+            }
             if isFocused {
                 Text(Layout.runHint)
                     .font(themeStore.uiFont(size: hintSize, weight: .semibold))

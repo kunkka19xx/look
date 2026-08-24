@@ -74,7 +74,6 @@ final class ThemeStore: ObservableObject {
     struct ConfigReloadResult {
         let loadedTheme: String
         let warnings: [String]
-        let settingsBlurMultiplier: Double?
     }
 
     func reloadFromConfig() -> ConfigReloadResult {
@@ -159,8 +158,7 @@ final class ThemeStore: ObservableObject {
         _ = applyLaunchAtLoginSetting()
 
         let resultTheme = detectBuiltinTheme(for: settings)
-        let loadedBlurMultiplier = settings.settingsBlurMultiplier
-        return ConfigReloadResult(loadedTheme: resultTheme.title, warnings: warnings, settingsBlurMultiplier: loadedBlurMultiplier)
+        return ConfigReloadResult(loadedTheme: resultTheme.title, warnings: warnings)
     }
 
     func saveCurrentConfigToFile() -> Bool {
@@ -407,13 +405,11 @@ final class ThemeStore: ObservableObject {
         UserDefaults.standard.set(data, forKey: defaultsKey)
     }
 
-    /// Value for `ui_theme`. Recorded only while the values still match the
-    /// preset, since reading applies it over the individual keys. Empty = Custom.
+    /// The theme the user chose, kept even once they tune values away from it.
+    /// Dropping it on divergence left `activeAppearanceStyle()` nil, so one
+    /// slider silently re-derived the whole palette. Only Custom clears it.
     private func savedThemeName() -> String {
-        guard let style = detectBuiltinTheme(for: settings).style, style.matches(settings) else {
-            return ""
-        }
-        return style.themeName
+        settings.themeName
     }
 
     private func applyThemeOverridesFromConfigFile() {
@@ -428,6 +424,14 @@ final class ThemeStore: ObservableObject {
         excludedFolderPaths = []
         fileScanRoots = defaultFileScanRoots()
         extraFileScanRoots = []
+
+        // Base, not override: the ui_* keys below win. Applied last, it threw
+        // away tuned values on every load. Accepted cost: a hand-written
+        // `ui_theme` no longer beats ui_* keys already in the file.
+        if let themeValue = ConfigFileLines.keyValues(raw)["ui_theme"],
+           let preset = BuiltinThemePreset.preset(forThemeName: themeValue) {
+            applyBuiltinTheme(preset)
+        }
 
         for line in raw.split(whereSeparator: \ .isNewline) {
             let stripped = ConfigFileLines.stripComment(String(line)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -606,14 +610,6 @@ final class ThemeStore: ObservableObject {
             default:
                 continue
             }
-        }
-
-        // Applied last, overriding the individual ui_* keys: every config file
-        // carries a full set of them, so the other order would ignore a
-        // hand-written `ui_theme=kindle`. See savedThemeName.
-        if let themeValue = ConfigFileLines.keyValues(raw)["ui_theme"],
-           let preset = BuiltinThemePreset.preset(forThemeName: themeValue) {
-            applyBuiltinTheme(preset)
         }
 
         // Keeps the Settings picker in step when the config file is what changed.
@@ -844,7 +840,8 @@ skip_dir_names=node_modules,target,build,dist,library,applications,old firefox d
 # UI theme
 # Preset: catppuccin, tokyoNight, rosePine, gruvbox, dracula, kanagawa, kindle,
 # liquid (liquid needs macOS 26; it falls back to the classic surface below that).
-# A preset overrides every ui_* value below. Leave it empty to use them as written.
+# A preset supplies base values; the ui_* keys below override it. The name stays
+# recorded as you tune, until you pick Custom. Empty = only the keys below.
 ui_theme=
 ui_tint_red=0.08
 ui_tint_green=0.10
@@ -868,7 +865,7 @@ ui_border_opacity=0.12
 running_apps_placement=right
 
 # Inner gap (points, 0-24) between the three home panes; 0 = classic flat layout
-inner_gap=0
+inner_gap=7
 
 # Apple Intelligence / AI features. ai_provider: appleIntelligence | ollama
 ai_enabled=true
