@@ -92,9 +92,10 @@ enum LauncherSearchLogic {
             return "\(result.kind.rawValue):\(normalizedTitle)"
         case .file, .folder:
             return "\(result.kind.rawValue):\(normalizedPath)"
-        case .clipboard, .process:
-            // Clipboard entries and process rows are already unique by id
-            // (entry UUID / pid), so key on it rather than title/path.
+        case .clipboard, .process, .action:
+            // Clipboard entries, process rows, and declared blocks are already
+            // unique by id (entry UUID / pid / block id), so key on it rather
+            // than title/path.
             return result.id
         }
     }

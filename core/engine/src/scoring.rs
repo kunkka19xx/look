@@ -101,6 +101,7 @@ pub(crate) fn kind_bias(candidate: &Candidate) -> i64 {
         CandidateKind::App => BIAS_APP,
         CandidateKind::Folder => BIAS_FOLDER,
         CandidateKind::File => BIAS_FILE,
+        CandidateKind::Action => BIAS_ACTION,
     }
 }
 
@@ -119,7 +120,9 @@ pub(crate) fn query_kind_penalty_with_settings_flag(
                     BIAS_APP_ON_SETTINGS_QUERY
                 }
             }
-            CandidateKind::Folder | CandidateKind::File => BIAS_NON_APP_ON_SETTINGS_QUERY,
+            CandidateKind::Folder | CandidateKind::File | CandidateKind::Action => {
+                BIAS_NON_APP_ON_SETTINGS_QUERY
+            }
         }
     } else if is_system_settings_candidate(candidate) {
         SETTINGS_ON_NON_SETTINGS_QUERY_PENALTY
@@ -158,7 +161,8 @@ pub(crate) fn is_system_settings_candidate(candidate: &Candidate) -> bool {
 
 pub(crate) fn path_depth_penalty(candidate: &Candidate) -> i64 {
     match candidate.kind {
-        CandidateKind::App => 0,
+        // Neither has a filesystem path to be deep in.
+        CandidateKind::App | CandidateKind::Action => 0,
         CandidateKind::File | CandidateKind::Folder => {
             let depth = candidate
                 .path
@@ -173,6 +177,7 @@ pub(crate) fn path_depth_penalty(candidate: &Candidate) -> i64 {
 pub(crate) fn default_browse_score(candidate: &Candidate, now_unix_s: i64) -> i64 {
     let kind_boost = match candidate.kind {
         CandidateKind::App => 600,
+        CandidateKind::Action => BROWSE_BOOST_ACTION,
         CandidateKind::Folder => 120,
         CandidateKind::File => 0,
     };

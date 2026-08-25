@@ -24,7 +24,7 @@ struct ActionPanelView: View {
 
             Spacer(minLength: 0)
 
-            Text("⌘J / ⌘K move  •  ⏎ run")
+            Text(AppConstants.Launcher.ActionMenu.moveHint)
                 .font(themeStore.uiFont(size: CGFloat(max(10, themeStore.settings.fontSize - 3)), weight: .regular))
                 .foregroundStyle(themeStore.mutedTextColor())
         }

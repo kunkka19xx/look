@@ -10,7 +10,9 @@ version = "0.1.0"
 look-indexing = { path = "../indexing" }
 look-matching = { path = "../matching" }
 look-ranking = { path = "../ranking" }
+look-sources = { path = "../sources" }
 look-storage = { path = "../storage" }
+look-tools = { path = "../tools" }
 ignore = "0.4"
 regex = "1"
 serde = { version = "1", features = ["derive"] }

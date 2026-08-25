@@ -371,6 +371,7 @@ impl AppState {
                         apps: apps_dirty,
                         files: files_dirty,
                         settings: false,
+                        sources: false,
                     };
                     last_dirty_at = None;
                     apps_dirty = false;

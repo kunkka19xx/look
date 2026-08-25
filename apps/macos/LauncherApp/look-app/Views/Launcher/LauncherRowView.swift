@@ -32,6 +32,19 @@ struct LauncherRowView: View {
         SyntheticRow.classify(resultID: result.id)
     }
 
+    /// Whether the row IS the file it names, rather than something that merely
+    /// lives there. A `[changed]` row is `EngineBridge.swift` at that path; a
+    /// branch row is `main`, whose path is the repo every other branch shares,
+    /// and giving it that folder's icon says "folder" about a branch.
+    ///
+    /// The title matching the last path component is what tells them apart. A
+    /// block that knows better says so with its own `icon`, which still wins.
+    private var rowIsItsPath: Bool {
+        guard !result.path.isEmpty else { return false }
+        return (result.path as NSString).lastPathComponent
+            .caseInsensitiveCompare(result.title) == .orderedSame
+    }
+
     /// Cached: this runs inside `body`, and a fresh `NSImage` per redraw makes
     /// every icon in the list flicker. See `RowIconCache`.
     private var rowIcon: NSImage {
@@ -81,6 +94,24 @@ struct LauncherRowView: View {
             }
         }
 
+        // What the block declared wins: the author chose it for these rows.
+        // Then the file, when the row names one - a row with a path IS that
+        // file (`format = "json"`), and a list of them should not be a column
+        // of identical bolts. The bolt is left for rows with nothing on disk,
+        // where it says the honest thing: Enter performs steps.
+        if result.kind == .action {
+            if let declared = SourceBlockIcons.declaredIcon(for: result) {
+                return declared
+            }
+            if rowIsItsPath {
+                return RowIconCache.icon(forFile: result.path)
+            }
+            return RowIconCache.image(key: "symbol:bolt") {
+                NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil)
+                    ?? NSWorkspace.shared.icon(for: .plainText)
+            }
+        }
+
         // Not cached: a process icon is keyed to a live pid, and pids are reused.
         if result.kind == .process, let pid = result.processPID {
             return LauncherProcessFeature.icon(forPID: pid)
@@ -125,6 +156,8 @@ struct LauncherRowView: View {
             return "Clipboard"
         case .process:
             return "Process"
+        case .action:
+            return "Action"
         }
     }
 
@@ -141,6 +174,26 @@ struct LauncherRowView: View {
         }
         if result.kind == .app {
             return kindLabel
+        }
+        if result.kind == .action {
+            // A row that named a path is a real filesystem object, so it says
+            // where it is, like every other such row. Without one there is
+            // nothing to point at: "Action • 3 steps" says instead that pressing
+            // this will do several things.
+            if !result.path.isEmpty {
+                return [result.subtitle, pathInfo]
+                    .compactMap { $0 }
+                    .joined(separator: "  •  ")
+            }
+            return [kindLabel, result.subtitle]
+                .compactMap { $0 }
+                .joined(separator: "  •  ")
+        }
+        // A row a user's block produced says WHICH block, not "Folder". The kind
+        // is already on the icon, and where the row came from is the thing the
+        // list cannot otherwise tell you.
+        if result.isSourceRow, let block = result.subtitle {
+            return "\(block)  •  \(pathInfo)"
         }
         return "\(kindLabel)  •  \(pathInfo)"
     }

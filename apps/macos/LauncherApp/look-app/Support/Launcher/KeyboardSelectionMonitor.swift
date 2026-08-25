@@ -21,6 +21,13 @@ final class KeyboardSelectionMonitor {
         Self.logger.notice("\(message, privacy: .public)")
     }
 
+    /// ⌘ and ⌃ are interchangeable for the action-menu J/K pair, so the same
+    /// vim keys work whichever modifier the hand is already on. Exact match, so
+    /// adding Shift or Option still falls through to whatever owns that chord.
+    nonisolated private static func isActionMenuChord(_ flags: NSEvent.ModifierFlags) -> Bool {
+        flags == [.command] || flags == [.control]
+    }
+
     func start(
         onNext: @escaping @MainActor () -> Void,
         onPrevious: @escaping @MainActor () -> Void,
@@ -35,7 +42,19 @@ final class KeyboardSelectionMonitor {
         /// is a line break there, not "open all picked").
         inAIMode: @escaping @MainActor () -> Bool = { false },
         onWebSearch: @escaping @MainActor () -> Void,
+        /// The Cmd+K action menu. While it is open it owns the arrows, Enter,
+        /// and Escape, so those never reach the results list underneath.
+        inActionMenu: @escaping @MainActor () -> Bool = { false },
+        onToggleActionMenu: @escaping @MainActor () -> Void = {},
+        onActionMenuMove: @escaping @MainActor (Int) -> Void = { _ in },
+        onActionMenuRun: @escaping @MainActor () -> Void = {},
+        onActionMenuClose: @escaping @MainActor () -> Void = {},
         onRevealInFinder: @escaping @MainActor () -> Void,
+        /// Cmd+E / Cmd+T act through the user's declared tools. They sit with
+        /// the other result chords, below the launchpad mnemonics, so the strip
+        /// keeps Cmd+T for the theme while a row is not selected.
+        onEditSelection: @escaping @MainActor () -> Void = {},
+        onOpenTerminalForSelection: @escaping @MainActor () -> Void = {},
         onCopySelection: @escaping @MainActor () -> Bool,
         onTogglePick: @escaping @MainActor () -> Void,
         onClearPicked: @escaping @MainActor () -> Void,
@@ -46,6 +65,8 @@ final class KeyboardSelectionMonitor {
         onSelectCommandByIndex: @escaping @MainActor (Int) -> Void,
         onActivateRunningApp: @escaping @MainActor (Int) -> Bool = { _ in false },
         onActivateSession: @escaping @MainActor (Int) -> Bool = { _ in false },
+        /// Escape inside a drill-down goes back one level. True means it did.
+        onPopLevel: (@MainActor () -> Bool)? = nil,
         onEscapeHome: (@MainActor () -> Bool)? = nil,
         onConfirmKill: (@MainActor () -> Void)? = nil,
         onCancelKill: (@MainActor () -> Void)? = nil,
@@ -103,6 +124,50 @@ final class KeyboardSelectionMonitor {
                 return nil
             }
 
+            // Open: the menu owns navigation. ⌘J/⌘K and ⌃J/⌃K step through it
+            // (vim-style), arrows do the same, Escape closes. Anything else
+            // falls through, so typing still reaches the query field.
+            if inActionMenu() {
+                let character = event.charactersIgnoringModifiers?.lowercased()
+                if event.keyCode == KeyCode.escape {
+                    onActionMenuClose()
+                    return nil
+                }
+                if event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.keypadEnter {
+                    onActionMenuRun()
+                    return nil
+                }
+                if event.keyCode == KeyCode.arrowDown
+                    || (Self.isActionMenuChord(flags) && (event.keyCode == KeyCode.j || character == "j"))
+                {
+                    onActionMenuMove(1)
+                    return nil
+                }
+                if event.keyCode == KeyCode.arrowUp
+                    || (Self.isActionMenuChord(flags) && (event.keyCode == KeyCode.k || character == "k"))
+                {
+                    onActionMenuMove(-1)
+                    return nil
+                }
+            }
+
+            // ⌘K opens it, and ⌘J opens it too and starts on the first row, so
+            // either half of the pair gets you in. ⌃J/⌃K do the same.
+            //
+            // Never on the launchpad: its tiles ARE the actions, each with its
+            // own mnemonic, and ⌘K is already Keep Awake there. Opening a menu
+            // of the same tiles would both duplicate what is on screen and
+            // shadow the key the user meant.
+            if Self.isActionMenuChord(flags),
+                !isLaunchpadActive(),
+                event.keyCode == KeyCode.k || event.keyCode == KeyCode.j
+                    || event.charactersIgnoringModifiers?.lowercased() == "k"
+                    || event.charactersIgnoringModifiers?.lowercased() == "j"
+            {
+                onToggleActionMenu()
+                return nil
+            }
+
             if flags.contains(.command)
                 && !flags.contains(.control)
                 && !flags.contains(.option)
@@ -139,6 +204,20 @@ final class KeyboardSelectionMonitor {
                 && flags == [.command]
             {
                 onRevealInFinder()
+                return nil
+            }
+
+            if (event.keyCode == KeyCode.e || event.charactersIgnoringModifiers?.lowercased() == "e")
+                && flags == [.command]
+            {
+                onEditSelection()
+                return nil
+            }
+
+            if (event.keyCode == KeyCode.t || event.charactersIgnoringModifiers?.lowercased() == "t")
+                && flags == [.command]
+            {
+                onOpenTerminalForSelection()
                 return nil
             }
 
@@ -373,6 +452,13 @@ final class KeyboardSelectionMonitor {
 
                 if actionConfirmationActive() {
                     onCancelAction?()
+                    return nil
+                }
+
+                // Inside a drill-down, Escape goes back one level rather than
+                // closing the launcher: the way out of a list is the way you
+                // came into it.
+                if onPopLevel?() == true {
                     return nil
                 }
 

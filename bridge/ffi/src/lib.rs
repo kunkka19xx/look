@@ -13,8 +13,10 @@ mod qactions_api;
 mod runtime_config;
 mod search_api;
 mod seed_api;
+mod sources_api;
 mod state;
 mod todo_api;
+mod tools_api;
 mod translate_api;
 mod url_history_api;
 mod usage_api;
@@ -99,7 +101,7 @@ pub extern "C" fn look_record_usage_json(
 #[unsafe(no_mangle)]
 pub extern "C" fn look_reload_config() -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        // Drop the engine's cached `~/.look.config` before anything below reads
+        // Drop the engine's cached `~/.look/config` before anything below reads
         // RuntimeConfig - otherwise the reload would see stale roots/limits.
         look_engine::config::RuntimeConfig::invalidate_cache();
         runtime_config::reload_runtime_config();
@@ -260,6 +262,202 @@ pub extern "C" fn look_translate_json(
 pub extern "C" fn look_instant_answer_json(query: *const c_char) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         answers_api::look_instant_answer_json_impl(query)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// `{id, name, steps}` for the user-declared block a candidate id belongs to,
+/// so the panel can show what Enter will perform. `null` when the row is not a
+/// block row.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_block_json(
+    candidate_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+    ancestors_json: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_source_block_json_impl(
+            candidate_id,
+            row_id,
+            row_title,
+            row_path,
+            ancestors_json,
+        )
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The rows of `block_id` produced against the selected row, for descending
+/// into a `then` target that lists rather than performs. Returns
+/// `{rows, truncated, error}`; each row's `candidateId` encodes the levels it
+/// came through, so two parents never share a row.
+///
+/// Runs the block live on every call. An error means do not descend.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_rows_json(
+    block_id: *const c_char,
+    parent_candidate_id: *const c_char,
+    parent_title: *const c_char,
+    parent_path: *const c_char,
+    query: *const c_char,
+    ancestors_json: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_source_rows_json_impl(
+            block_id,
+            parent_candidate_id,
+            parent_title,
+            parent_path,
+            query,
+            ancestors_json,
+        )
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Every declared block as `{id, name, icon}`, for the shell's row-icon cache.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_blocks_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        sources_api::look_source_blocks_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// What `action` ("edit", "terminal", "reveal") does to the row at `path`, as
+/// `{kind, tool, command, path, reason, key}` where `kind` is "shell",
+/// "application", "system_default", or "unavailable". Null for an unknown
+/// action or empty path.
+///
+/// Reads the declared tools from the cached config, so Cmd+Shift+; is all a
+/// user needs after editing them.
+///
+/// A block that declares `edit` / `terminal` / `reveal` wins for its own rows,
+/// so pass the row's id, title and ancestors: its verb expands like every other
+/// command it declares.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_tool_action_json(
+    action: *const c_char,
+    candidate_id: *const c_char,
+    row_title: *const c_char,
+    path: *const c_char,
+    is_dir: bool,
+    ancestors_json: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        tools_api::look_tool_action_json_impl(
+            action,
+            candidate_id,
+            row_title,
+            path,
+            is_dir,
+            ancestors_json,
+        )
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Runs `action` on the row at `path`. Shell actions are performed here,
+/// detached, and come back as `{"kind":"performed"}` or `{"kind":"failed"}`; an
+/// `application` result is handed back for the shell to launch itself.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_perform_tool_action_json(
+    action: *const c_char,
+    candidate_id: *const c_char,
+    row_title: *const c_char,
+    path: *const c_char,
+    is_dir: bool,
+    ancestors_json: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        tools_api::look_perform_tool_action_json_impl(
+            action,
+            candidate_id,
+            row_title,
+            path,
+            is_dir,
+            ancestors_json,
+        )
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Every action id `look_tool_action_json` accepts, as a JSON array.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_tool_actions_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        tools_api::look_tool_actions_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The config file to read and write. Pass `dev` for a development build, which
+/// keeps its own pair so it never edits the installed copy's settings. Plain
+/// path string, not JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_config_path(dev: bool) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_config_path_impl(dev)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Re-runs every enabled `run` block and stores its rows for the next index
+/// pass. Blocks while commands run - call off the main thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_refresh_run_blocks_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        sources_api::look_refresh_run_blocks_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// A block's declared `preview`, run against the selected row. `null` when the
+/// block declares none.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_source_preview_json(
+    candidate_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+    ancestors_json: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_source_preview_json_impl(
+            candidate_id,
+            row_id,
+            row_title,
+            row_path,
+            ancestors_json,
+        )
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Performs every step of that block, detached, through the user's login shell.
+/// Returns `{performed, errors}`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_perform_block_json(
+    block_id: *const c_char,
+    row_id: *const c_char,
+    row_title: *const c_char,
+    row_path: *const c_char,
+    query: *const c_char,
+    ancestors_json: *const c_char,
+    as_target: bool,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sources_api::look_perform_block_json_impl(
+            block_id,
+            row_id,
+            row_title,
+            row_path,
+            query,
+            ancestors_json,
+            as_target,
+        )
     }))
     .unwrap_or(std::ptr::null_mut())
 }
@@ -714,7 +912,7 @@ mod tests {
     static TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 
     /// Config the whole binary runs against, so no test reads the developer's
-    /// real `~/.look.config`.
+    /// real `~/.look/config`.
     const TEST_CONFIG: &str =
         "lazy_indexing_enabled=true\nfile_scan_roots=\nfile_scan_extra_roots=\napp_scan_roots=\n";
 

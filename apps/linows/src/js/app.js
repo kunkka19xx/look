@@ -2,6 +2,7 @@ import * as results from './components/results.js';
 import * as search from './search.js';
 import * as keyboard from './keyboard.js';
 import * as preview from './components/preview.js';
+import * as actionmenu from './components/actionmenu.js';
 import * as picked from './components/picked.js';
 import * as banner from './components/banner.js';
 import * as health from './components/health.js';
@@ -57,12 +58,14 @@ import {
 // (apps/macos/.../LauncherView.swift:302) so both platforms surface the same
 // shortcuts in the same modes. Style stays per-platform: linows uses the
 // colon + bold-bullet format, macOS keeps its space-separated form.
-// "Ctrl+F: Reveal" was dropped from the home hint (still works, still listed
-// in Settings > Shortcuts); the clipboard hint keeps only its first two items
-// so it fits one line in the left card footer when the panes float.
-const HINT_MAIN = 'Enter: Open \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
-const HINT_TRANSLATE =
-    'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help \u2022 Ctrl+/: Command mode';
+//
+// Every line here has to fit the left card footer in one row when the panes
+// float, which is the narrowest place a hint is shown. That budget is what
+// dropped "Ctrl+F: Reveal" and "Ctrl+/: Command mode" from the home hints, and
+// what keeps the clipboard hint to its first two items - all three still work
+// and are still listed in Settings > Shortcuts.
+const HINT_MAIN = 'Enter: Open \u2022 Ctrl+K: Actions \u2022 Ctrl+H: Help';
+const HINT_TRANSLATE = 'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help';
 const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Ctrl+D: Remove clip';
 const HINT_PROCESS = 'Enter: CPU \u2022 Ctrl+D: Kill \u2022 Ctrl+C: Copy PID';
 // Discovery-menu hints \u2014 mirror macOS prefixSuggestion / commandSuggestion
@@ -176,9 +179,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Todo quick view: when today has tasks, the last main-hint item
-    // ("Ctrl+/: Command mode") is swapped for a clickable "Todo X/Y" stat with
-    // an "Unfinished today" hover bubble. Mirrors macOS HintBar.TodoQuickView:
-    // home screen only, hidden when today is empty.
+    // ("Ctrl+H: Help") is swapped for a clickable "Todo X/Y" stat with an
+    // "Unfinished today" hover bubble, so the line stays one row. Mirrors macOS
+    // HintBar.TodoQuickView: home screen only, hidden when today is empty.
     let todoQuick = null;
 
     function renderMainHint() {
@@ -273,6 +276,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         smoothcaret.attach(input);
     }
     preview.init(previewPanel);
+    actionmenu.init(previewPanel, queryInput);
     banner.init(document.getElementById('banner'));
     health.init();
     confirm.init(document.getElementById('confirm-bar'));
@@ -365,9 +369,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             item &&
             (prefixFromResultId(item.id) != null || commandIdFromResultId(item.id) != null)
         ) {
+            // Nothing to preview, so preview.update never runs and cannot close
+            // the menu for us.
+            actionmenu.close();
             previewPanel.hidden = true;
             return;
         }
+        // The menu lists the selected row's verbs and cannot outlive that row;
+        // preview.update closes it exactly when the row changes. Closing here
+        // would also fire on a re-render that re-selects the SAME row, which is
+        // every progressive publish (engine, URL rows, web suggestions).
         previewPanel.hidden = false;
         preview.update(item);
     });
@@ -511,6 +522,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const value = e.target.value;
         if (tryCommandPrefix(value)) return;
 
+        // Typing re-renders the list the menu hangs off, and the modes below
+        // take the preview panel away from under it entirely.
+        actionmenu.close();
+
         search.handleQueryInput(value);
         const translating = search.isTranslateMode();
         layout.setQuery({ empty: layout.isEmptyQuery(value), translate: translating });
@@ -638,6 +653,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     onWindowHidden((event) => {
         superactions.armEntrance();
         motion.armReveal();
+        // The next summon keeps the query and the selection, but an open menu
+        // is a question the user already walked away from.
+        actionmenu.close();
         // Rust holds the window up until this lands. Two frames: the first
         // callback runs before the armed frame is painted, the second after.
         // The payload keys the dismissal. A failed invoke falls back to Rust's
@@ -687,6 +705,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Command mode helpers ---
 
     function enterCommandMode() {
+        // Command mode owns the whole content area, and an open menu would go
+        // on eating the keys it navigates with.
+        actionmenu.close();
         superactions.setVisible(false);
         resultsList.hidden = true;
         previewPanel.hidden = true;

@@ -318,6 +318,45 @@ enum AppConstants {
             static let cannotRevealBanner = "Cannot reveal this target in Finder"
         }
 
+        /// The Cmd+K action menu: everything you can do to the selected row,
+        /// in one place, instead of scattered across Cmd+F / Cmd+C / Cmd+P.
+        enum ActionMenu {
+            static let openHint = "⌘K / ⌃K actions"
+            static let moveHint = "⌘J / ⌘K or ⌃J / ⌃K move  •  ⏎ run"
+            static let runHint = "↵"
+            static let maxHeight: CGFloat = 240
+            static let cornerRadius: CGFloat = 10
+            static let rowVerticalPadding: CGFloat = 7
+            static let rowHorizontalPadding: CGFloat = 10
+            static let shadowRadius: CGFloat = 14
+        }
+
+        /// Preferred tools: Cmd+E and Cmd+T act through the tools a user named
+        /// in their config. See `specs/preferred-tools.md`.
+        enum Tools {
+            static let editAction = "edit"
+            static let terminalAction = "terminal"
+            static let revealAction = "reveal"
+            static let launchFailedBanner = "Could not start"
+            /// Shown when no `file_manager` is declared, which is the default.
+            static let systemFileManagerName = "Finder"
+            static let bannerDuration: TimeInterval = 2.4
+            /// Long enough for the terminal to have made its new window, so
+            /// activating raises that one and not the window it already had.
+            static let activationSettleNanoseconds: UInt64 = 350_000_000
+            /// A terminal that was not running yet has to start first.
+            static let activationPollNanoseconds: UInt64 = 200_000_000
+            static let activationPollAttempts = 8
+        }
+
+        /// Rows from a user-declared block in `~/.look/sources`.
+        enum SourceBlock {
+            static let idPrefix = "src:"
+            /// Recorded like an open, so a routine run every morning ranks like
+            /// one. The engine's usage table only needs the verb to be stable.
+            static let usageAction = "execute"
+        }
+
         enum QuickFolder {
             static let idPrefix = "quickfolder:"
             static let pinnedSubtitle = "Pinned home folder"
@@ -352,7 +391,7 @@ enum AppConstants {
             static let resultIDPrefix = "clipboard:"
             static let resultPath = "clipboard://history"
             // How many clips history keeps. `maxEntries` is the default/fallback used
-            // when `clipboard_history_limit` in ~/.look.config is absent or out of the
+            // when `clipboard_history_limit` in ~/.look/config is absent or out of the
             // [minEntries, maxEntriesLimit] range. See ClipboardHistoryStore.
             static let maxEntries = 10
             static let minEntries = 10
@@ -385,6 +424,10 @@ enum AppConstants {
             static let f: UInt16 = 3
             static let h: UInt16 = 4
             static let c: UInt16 = 8
+            static let e: UInt16 = 14
+            static let t: UInt16 = 17
+            static let j: UInt16 = 38
+            static let k: UInt16 = 40
             static let p: UInt16 = 35
             static let returnKey: UInt16 = 36
             static let tab: UInt16 = 48

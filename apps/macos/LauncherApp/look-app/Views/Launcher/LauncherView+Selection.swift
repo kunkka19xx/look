@@ -13,7 +13,17 @@ extension LauncherView {
             // No rows on screen. A seeded selection here is one the user cannot
             // see, and Enter / Cmd+D / Cmd+Shift+H would still act on it.
             selectedResultID = nil
+        } else if let restore = pendingSelectionRestore, restore.query == query {
+            // Leaving a level puts back what was selected before it. A parent
+            // level's search is async, so the restore waits for its rows.
+            if displayedResults.contains(where: { $0.id == restore.id }) {
+                selectedResultID = restore.id
+                pendingSelectionRestore = nil
+            } else {
+                selectedResultID = displayedResults.first?.id
+            }
         } else {
+            pendingSelectionRestore = nil
             selectedResultID = displayedResults.first?.id
         }
     }
@@ -222,8 +232,19 @@ extension LauncherView {
             onWebSearch: {
                 performWebSearchFromQuery()
             },
+            inActionMenu: { isActionMenuOpen },
+            onToggleActionMenu: { toggleActionMenu() },
+            onActionMenuMove: { moveActionMenuFocus(by: $0) },
+            onActionMenuRun: { runFocusedAction() },
+            onActionMenuClose: { closeActionMenu() },
             onRevealInFinder: {
                 revealSelectedInFinder()
+            },
+            onEditSelection: {
+                editSelectedResult()
+            },
+            onOpenTerminalForSelection: {
+                openTerminalForSelectedResult()
             },
             onCopySelection: {
                 copySelectedResultToPasteboard()
@@ -261,6 +282,9 @@ extension LauncherView {
             },
             onActivateSession: { [self] index in
                 openSessionAt(index)
+            },
+            onPopLevel: { [self] in
+                popLevel()
             },
             onEscapeHome: { [self] in
                 // Esc closes the file popup first and leaves the typed text

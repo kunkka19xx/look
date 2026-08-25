@@ -107,7 +107,7 @@ final class ClipboardHistoryStore: ObservableObject {
     private var maxEntries = ClipboardHistoryStore.resolveMaxEntries()
     private let maxStoredCharacters = AppConstants.Launcher.Clipboard.maxStoredCharacters
 
-    /// Re-reads the clipboard section of `~/.look.config` and applies it live, so file-only
+    /// Re-reads the clipboard section of `~/.look/config` and applies it live, so file-only
     /// clipboard settings take effect on config reload (`Cmd+Shift+;`) without a restart.
     /// Matches the `reloadFromConfig()` convention used by ThemeStore. Every clipboard key
     /// is applied from a single parse here, so adding a key is one more `apply` line below,

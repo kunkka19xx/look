@@ -4,6 +4,7 @@ use crate::platform;
 use crate::platform::paths::compile_ignore_matcher;
 use crate::platform::paths::expand_with_home;
 use globset::GlobBuilder;
+use look_tools::Tools;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -33,6 +34,12 @@ pub const SCORE_REGEX_SUBTITLE_ONLY: i64 = 1000;
 pub const BIAS_APP: i64 = 220;
 pub const BIAS_FOLDER: i64 = 0;
 pub const BIAS_FILE: i64 = -20;
+/// A user declared this row by hand and named it, so a match on that name is
+/// deliberate in a way a file path match is not. Sits with apps, not below them.
+pub const BIAS_ACTION: i64 = 200;
+/// On an empty query the launchpad already covers routines, so bundles sit
+/// between apps and folders rather than leading the browse list.
+pub const BROWSE_BOOST_ACTION: i64 = 300;
 
 pub const BIAS_SETTINGS_MATCH: i64 = 420;
 pub const BIAS_APP_ON_SETTINGS_QUERY: i64 = 120;
@@ -88,6 +95,7 @@ pub struct RuntimeConfig {
     pub lazy_indexing_enabled: bool,
     pub localized_app_names: bool,
     pub search_aliases: HashMap<String, Vec<String>>,
+    pub tools: Tools,
 }
 
 impl Default for RuntimeConfig {
@@ -119,11 +127,12 @@ impl Default for RuntimeConfig {
             lazy_indexing_enabled: LAZY_INDEXING_ENABLED,
             localized_app_names: false,
             search_aliases: default_search_aliases(),
+            tools: Tools::default(),
         }
     }
 }
 
-/// Process-wide cache of the parsed `~/.look.config`. Filled lazily by
+/// Process-wide cache of the parsed `~/.look/config`. Filled lazily by
 /// `RuntimeConfig::load_cached()`, cleared by `RuntimeConfig::invalidate_cache()`.
 /// Reading the config from disk is cheap (< 1 KB file) but happens on every
 /// `bootstrap_sqlite_scoped` / `from_sqlite` - including watcher-triggered
@@ -135,7 +144,7 @@ fn cached_config_slot() -> &'static Mutex<Option<RuntimeConfig>> {
 }
 
 impl RuntimeConfig {
-    /// Reads `~/.look.config` from disk and parses it. Always touches the file.
+    /// Reads `~/.look/config` from disk and parses it. Always touches the file.
     /// Most callers should use [`load_cached`](Self::load_cached) instead.
     pub fn load() -> Self {
         let mut config = Self::default();
@@ -165,7 +174,7 @@ impl RuntimeConfig {
 
     /// Returns the cached `RuntimeConfig`, reading from disk on first call only.
     /// Subsequent calls clone the cached value (cheap - the struct is plain
-    /// data). Callers that mutate `~/.look.config` at runtime must call
+    /// data). Callers that mutate `~/.look/config` at runtime must call
     /// [`invalidate_cache`](Self::invalidate_cache) afterwards.
     pub fn load_cached() -> Self {
         let slot = cached_config_slot();
@@ -185,7 +194,23 @@ impl RuntimeConfig {
         fresh
     }
 
-    /// Drops the cached config. Call after `~/.look.config` is edited so the
+    /// The declared tools alone, without cloning everything else.
+    ///
+    /// `load_cached` clones ~120 strings and rebuilds the alias map; resolving
+    /// one row action needs three `Option<String>` and nothing else, and both
+    /// shells do it once per action per menu.
+    pub fn tools_cached() -> Tools {
+        let slot = cached_config_slot();
+        {
+            let guard = slot.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some(cfg) = guard.as_ref() {
+                return cfg.tools.clone();
+            }
+        }
+        Self::load_cached().tools
+    }
+
+    /// Drops the cached config. Call after `~/.look/config` is edited so the
     /// next `load_cached()` re-reads from disk.
     pub fn invalidate_cache() {
         let mut guard = cached_config_slot()
@@ -322,21 +347,17 @@ impl RuntimeConfig {
                         apply_alias_override(alias_key, value, &mut self.search_aliases);
                     }
                 }
+                _ if look_tools::key::ALL.contains(&key) => self.tools.set(key, value),
                 _ => {}
             }
         }
     }
 }
 
+/// Where the config lives, migrating a legacy `~/.look.config` into `~/.look/`
+/// the first time. One resolver for every caller: see `crate::config_path`.
 fn config_path() -> Option<PathBuf> {
-    if let Ok(custom) = env::var("LOOK_CONFIG_PATH") {
-        let trimmed = custom.trim();
-        if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed));
-        }
-    }
-
-    user_home_dir().map(|home| PathBuf::from(home).join(".look.config"))
+    crate::config_path::current().map(|resolved| resolved.path)
 }
 
 fn ensure_default_config_file(path: &Path) {
@@ -412,7 +433,8 @@ fn default_config_contents() -> String {
     };
     format!(
         "# look configuration\n\
-# Generated on first launch. Edit values and press Cmd+Shift+; to reload.\n\
+# Generated on first launch. Edit values, then reload with Cmd+Shift+;\n\
+# (Ctrl+Shift+; on Linux and Windows).\n\
 \n\
 # Backend indexing (file_scan_depth: 1-12, file_scan_limit: 500-50000)\n\
 app_scan_roots={app_roots}\n\
@@ -440,6 +462,16 @@ skip_dir_names=node_modules,target,build,dist,library,applications,old firefox d
 \n\
 # Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
 clipboard_history_limit=10\n\
+\n\
+# Preferred tools. Name the tool, not a command: Look knows how to drive it,\n\
+# including running a terminal editor inside your terminal. Declare nothing and\n\
+# nothing changes. Editing uses text_editor on a file and code_editor on a\n\
+# folder; declaring only one of the two covers both.\n\
+# Acted on from the row's action menu, and from Cmd+E / Cmd+T (Ctrl elsewhere).\n\
+# text_editor=nvim\n\
+# code_editor=zed\n\
+# terminal=ghostty\n\
+# file_manager=nautilus\n\
 \n\
 # UI theme\n\
 ui_tint_red=0.08\n\
@@ -608,7 +640,7 @@ fn default_file_scan_roots() -> Vec<String> {
 }
 
 #[cfg(target_os = "windows")]
-fn user_home_dir() -> Option<String> {
+pub(crate) fn user_home_dir() -> Option<String> {
     env::var("USERPROFILE")
         .ok()
         .filter(|value| !value.trim().is_empty())
@@ -620,7 +652,7 @@ fn user_home_dir() -> Option<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn user_home_dir() -> Option<String> {
+pub(crate) fn user_home_dir() -> Option<String> {
     env::var("HOME")
         .ok()
         .filter(|value| !value.trim().is_empty())
@@ -976,6 +1008,109 @@ mod tests {
     fn default_config_contents_include_lazy_indexing_enabled() {
         assert!(default_config_contents().contains("lazy_indexing_enabled=true"));
     }
+
+    fn config_from(contents: &str, label: &str) -> RuntimeConfig {
+        let tmp = std::env::temp_dir().join(format!(
+            "look-config-test-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+        std::fs::write(&tmp, contents).expect("write temporary config");
+
+        let mut config = RuntimeConfig::default();
+        config.apply_from_file(&tmp);
+
+        let _ = std::fs::remove_file(&tmp);
+        config
+    }
+
+    #[test]
+    fn tools_are_unset_until_declared() {
+        assert!(RuntimeConfig::default().tools.is_empty());
+        assert!(
+            config_from("file_scan_depth=4\n", "tools-absent")
+                .tools
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn every_tool_key_loads_from_config() {
+        let declared = look_tools::key::ALL
+            .iter()
+            .map(|key| format!("{key}=ghostty\n"))
+            .collect::<String>();
+
+        let tools = config_from(&declared, "tools-all").tools;
+
+        assert_eq!(tools.text_editor.as_deref(), Some("ghostty"));
+        assert_eq!(tools.code_editor.as_deref(), Some("ghostty"));
+        assert_eq!(tools.terminal.as_deref(), Some("ghostty"));
+        assert_eq!(tools.browser.as_deref(), Some("ghostty"));
+        assert_eq!(tools.file_manager.as_deref(), Some("ghostty"));
+    }
+
+    #[test]
+    fn tool_keys_survive_comments_and_whitespace() {
+        let tools = config_from(
+            "  terminal = ghostty   # my terminal\ntext_editor=\n",
+            "tools-trim",
+        )
+        .tools;
+
+        assert_eq!(tools.terminal.as_deref(), Some("ghostty"));
+        assert!(tools.text_editor.is_none());
+    }
+
+    /// The keys ship commented out: an existing config is not grown by lines it
+    /// did not ask for, and Cmd+E names the key to set at the point of use.
+    #[test]
+    fn tool_keys_are_documented_but_not_enabled_by_default() {
+        let defaults = default_config_contents();
+        for key in ADVERTISED_TOOL_KEYS {
+            assert!(
+                defaults.contains(&format!("# {key}=")),
+                "{key} should appear commented out in the generated config"
+            );
+            assert!(
+                !defaults.contains(&format!("\n{key}=")),
+                "{key} should not be live in the generated config"
+            );
+        }
+    }
+
+    /// `browser` parses, but no action reads it yet: Look has no URL row for it
+    /// to act on. Advertising it would make it a key a user can set and get
+    /// silence from, which is the trap `specs/preferred-tools.md` §6 calls out.
+    /// Document it here when something consumes it.
+    #[test]
+    fn unconsumed_tool_keys_are_not_advertised() {
+        // The assignment form, not the bare word: `ignored_patterns_browser=`
+        // is a different key that legitimately contains it.
+        let defaults = default_config_contents();
+        for form in ["# browser=", "\nbrowser="] {
+            assert!(
+                !defaults.contains(form),
+                "{form:?} should not be advertised"
+            );
+        }
+
+        let unadvertised: Vec<_> = look_tools::key::ALL
+            .iter()
+            .filter(|key| !ADVERTISED_TOOL_KEYS.contains(key))
+            .collect();
+        assert_eq!(unadvertised, vec![&look_tools::key::BROWSER]);
+    }
+
+    const ADVERTISED_TOOL_KEYS: &[&str] = &[
+        look_tools::key::TEXT_EDITOR,
+        look_tools::key::CODE_EDITOR,
+        look_tools::key::TERMINAL,
+        look_tools::key::FILE_MANAGER,
+    ];
 
     #[test]
     fn localized_app_names_defaults_to_false_and_loads_from_config() {

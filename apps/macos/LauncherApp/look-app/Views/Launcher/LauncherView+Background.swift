@@ -24,16 +24,22 @@ extension LauncherView {
             // NSVisualEffectView to sample anything → no halo.
             commandModeBackdrop
         } else {
+            ThemedBackdrop(
+                themeStore: themeStore,
+                blurOpacityMultiplier: appUIState.showsThemeSettings
+                    ? themeStore.settings.settingsBlurMultiplier : 1.0,
+                blendingMode: .behindWindow
+            )
+
+            // Above the backdrop, not below it: the blur samples what is behind
+            // the WINDOW, so anything drawn under it is simply covered. The
+            // image keeps its own blur and opacity, and a partly transparent
+            // one still shows the frosted desktop through.
             if let image = themeStore.backgroundImage {
                 backgroundImageView(image: image)
                     .blur(radius: themeStore.settings.backgroundImageBlur)
                     .opacity(themeStore.settings.backgroundImageOpacity)
             }
-
-            ThemedBackdrop(
-                themeStore: themeStore,
-                blurOpacityMultiplier: appUIState.showsThemeSettings ? appUIState.settingsBlurMultiplier : 1.0
-            )
         }
     }
 
