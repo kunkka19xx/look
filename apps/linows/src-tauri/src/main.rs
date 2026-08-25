@@ -649,6 +649,10 @@ fn main() {
             // comes off the window handle.
             #[cfg(target_os = "linux")]
             platform::linux::blur::init(&window);
+            // Before the first show: on the layer-shell path focus arrives as
+            // a GTK signal, and a handler connected afterwards misses the one
+            // that would focus the query input.
+            setup_window_events(&window);
             #[cfg(target_os = "linux")]
             if supports_transparency() {
                 commands::show_launcher(&window);
@@ -666,7 +670,6 @@ fn main() {
                 // from `border-radius` on `.launcher-window` in `layout.css`.
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
             }
-            setup_window_events(&window);
 
             Ok(())
         })

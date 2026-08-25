@@ -24,8 +24,35 @@ function issueKey(issue) {
     return `${issue.id}:${issue.kind ?? issue.id}`;
 }
 
+// What issueKey produced before it dropped the message. Kept only so an
+// upgrade does not re-nag about a notice the user already dismissed.
+function legacyKey(issue) {
+    return `${issue.id}:${issue.message}`;
+}
+
+// Rewrite any legacy entry the current issues still match, so the old
+// message-keyed set drains instead of growing alongside the new one.
+function migrate(dismissed) {
+    let changed = false;
+    issues.forEach((i) => {
+        if (!dismissed.delete(legacyKey(i))) return;
+        dismissed.add(issueKey(i));
+        changed = true;
+    });
+    if (changed) persist(dismissed);
+}
+
+function persist(dismissed) {
+    try {
+        localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed]));
+    } catch {
+        // Best effort - worst case the notice reappears next launch.
+    }
+}
+
 function render() {
     const dismissed = dismissedSet();
+    migrate(dismissed);
     const visible = issues.filter((i) => !dismissed.has(issueKey(i)));
     if (visible.length === 0) {
         banner.showSticky(null);
@@ -37,11 +64,7 @@ function render() {
 function dismissAll() {
     const dismissed = dismissedSet();
     issues.forEach((i) => dismissed.add(issueKey(i)));
-    try {
-        localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed]));
-    } catch {
-        // Best effort - worst case the notice reappears next launch.
-    }
+    persist(dismissed);
 }
 
 export function init() {

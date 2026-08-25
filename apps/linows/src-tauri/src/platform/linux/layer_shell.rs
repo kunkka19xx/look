@@ -33,15 +33,19 @@ const NAMESPACE: &std::ffi::CStr = c"lookapp";
 /// `GtkLayerShellLayer`. Only overlay clears a fullscreen window.
 const LAYER_OVERLAY: u32 = 3;
 
-/// `GtkLayerShellKeyboardMode`. On-demand, not exclusive: the protocol says a
-/// compositor "should give the surface keyboard focus on creation" in this
-/// mode, so the launcher still accepts typing the moment it appears, but the
-/// user can take the keyboard back by clicking elsewhere. Exclusive is for
-/// lock screens - it makes the session's keyboard ours until we drop it, and
-/// a click outside then reaches a window that cannot be typed into. None while
-/// hidden, so an unmapped surface holds nothing.
+/// `GtkLayerShellKeyboardMode`. The protocol says a compositor "should give
+/// the surface keyboard focus on creation" under on-demand, but sway reads
+/// that as click-to-focus: its `arrange_layers` only keeps the keyboard on a
+/// layer whose interactivity is exclusive, and drops any other layer's focus
+/// the moment it runs. The launcher then maps, blinks a caret, and swallows
+/// every key until the user clicks it. Exclusive is what the wlr-layer-shell
+/// launchers all use, for exactly this reason.
+///
+/// The cost is that a click outside no longer dismisses: focus never leaves,
+/// so no focus-out arrives to trigger it. Escape and running an entry still
+/// do, and both restore the mode below.
 const KEYBOARD_NONE: u32 = 0;
-const KEYBOARD_ON_DEMAND: u32 = 2;
+const KEYBOARD_EXCLUSIVE: u32 = 1;
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static VISIBLE: AtomicBool = AtomicBool::new(false);
@@ -135,6 +139,13 @@ pub fn attach(window: &tauri::WebviewWindow, size: Option<(i32, i32)>) -> bool {
 
     toplevel.remove(&vbox);
     layer.add(&vbox);
+    // gtk_container_remove drops the toplevel's focus widget, and the new
+    // window inherits none. The compositor still hands the layer surface the
+    // keyboard, but GtkWindow has nowhere to route a key press, so the
+    // launcher comes up unable to type into.
+    if let Some(target) = focus_target(&layer) {
+        layer.set_focus(Some(&target));
+    }
 
     let ptr = layer.as_ptr() as *mut c_void;
     unsafe {
@@ -186,23 +197,44 @@ pub fn visible() -> Option<bool> {
 pub fn show() {
     VISIBLE.store(true, Ordering::Relaxed);
     on_main(|layer| {
-        set_keyboard_mode(layer, KEYBOARD_ON_DEMAND);
+        // Before the map: sway reads the committed interactivity in its map
+        // handler, and a mode raised afterwards never reaches that path.
+        set_keyboard_mode(layer, KEYBOARD_EXCLUSIVE);
         layer.show_all();
+        // show_all marks every child visible again, which is when a widget can
+        // hold focus; re-grab here so a dismissal that unmapped the surface
+        // does not leave the next summon typing into nothing.
+        if let Some(target) = focus_target(layer) {
+            target.grab_focus();
+        }
     });
 }
 
-pub fn hide() {
-    VISIBLE.store(false, Ordering::Relaxed);
-    on_main(|layer| {
-        set_keyboard_mode(layer, KEYBOARD_NONE);
-        layer.hide();
-    });
+/// The webview, the only child that takes key events. Looked up rather than
+/// stored: the vbox is Tauri's and its contents are not ours to assume.
+fn focus_target(layer: &gtk::ApplicationWindow) -> Option<gtk::Widget> {
+    let vbox = layer.children().into_iter().next()?;
+    vbox.downcast::<gtk::Container>()
+        .ok()?
+        .children()
+        .into_iter()
+        .find(|child| child.can_focus())
 }
 
 fn set_keyboard_mode(layer: &gtk::ApplicationWindow, mode: u32) {
     if let Some(api) = api() {
         unsafe { (api.set_keyboard_mode)(layer.as_ptr() as *mut c_void, mode) }
     }
+}
+
+pub fn hide() {
+    VISIBLE.store(false, Ordering::Relaxed);
+    on_main(|layer| {
+        // Give the keyboard back before the surface goes; an exclusive layer
+        // that merely unmaps can leave the session without focus.
+        set_keyboard_mode(layer, KEYBOARD_NONE);
+        layer.hide();
+    });
 }
 
 /// Keyboard focus arriving and leaving, which `WindowEvent::Focused` no longer

@@ -416,21 +416,25 @@ const NIRI_SYSTEM_CONFIG: &str = "/etc/niri/config.kdl";
 /// file niri ignores would otherwise pass for a working hotkey and suppress
 /// the setup notice the user needs.
 fn niri_config_root() -> std::path::PathBuf {
+    let pid = niri_pid();
     select_niri_root(
-        niri_config_flag(),
+        pid.and_then(niri_config_flag),
         std::env::var_os("NIRI_CONFIG").map(std::path::PathBuf::from),
         niri_user_config().filter(|path| path.is_file()),
+        pid.and_then(niri_cwd),
     )
 }
 
 /// niri's order: `--config` beats `NIRI_CONFIG` ("if both are set, the command
 /// line argument takes precedence"), either beats the user's file, and the
 /// system file is the last resort. `user` is `None` unless it exists, since
-/// niri falls through to the system file when it does not.
+/// niri falls through to the system file when it does not. `cwd` is niri's
+/// working directory, which only the two explicit paths are resolved against.
 fn select_niri_root(
     flag: Option<std::path::PathBuf>,
     env: Option<std::path::PathBuf>,
     user: Option<std::path::PathBuf>,
+    cwd: Option<std::path::PathBuf>,
 ) -> std::path::PathBuf {
     [flag, env]
         .into_iter()
@@ -438,6 +442,12 @@ fn select_niri_root(
         // An exported-but-empty NIRI_CONFIG names nothing; niri treats it as
         // unset and so must we, or we scan "" and report a missing bind.
         .find(|path| !path.as_os_str().is_empty())
+        // A relative `--config`/`NIRI_CONFIG` is niri's own working directory,
+        // not ours; joining ours would read a different file or none at all.
+        .map(|path| match cwd {
+            Some(cwd) if path.is_relative() => cwd.join(path),
+            _ => path,
+        })
         .or(user)
         .unwrap_or_else(|| std::path::PathBuf::from(NIRI_SYSTEM_CONFIG))
 }
@@ -449,18 +459,22 @@ fn niri_user_config() -> Option<std::path::PathBuf> {
         .map(|dir| dir.join("niri/config.kdl"))
 }
 
-/// `-c`/`--config` off niri's own command line, which nothing exports. The
-/// socket path carries the compositor's pid - `niri.<display>.<pid>.sock` - so
-/// `/proc` has the argv. Silently `None` anywhere that lookup does not hold.
-fn niri_config_flag() -> Option<std::path::PathBuf> {
+/// The compositor's pid, off the socket path - `niri.<display>.<pid>.sock` -
+/// since nothing else exports it. Silently `None` anywhere that shape does not
+/// hold, which leaves every caller on its own fallback.
+fn niri_pid() -> Option<u32> {
     let socket = std::env::var("NIRI_SOCKET").ok()?;
-    let pid: u32 = std::path::Path::new(&socket)
+    std::path::Path::new(&socket)
         .file_stem()?
         .to_str()?
         .rsplit('.')
         .next()?
         .parse()
-        .ok()?;
+        .ok()
+}
+
+/// `-c`/`--config` off niri's own command line, which nothing exports.
+fn niri_config_flag(pid: u32) -> Option<std::path::PathBuf> {
     let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
     niri_config_arg(
         cmdline
@@ -468,6 +482,13 @@ fn niri_config_flag() -> Option<std::path::PathBuf> {
             .filter(|arg| !arg.is_empty())
             .map(String::from_utf8_lossy),
     )
+}
+
+/// Where niri resolves its relative config path from. Look is not started from
+/// the same directory - systemd units and `spawn-at-startup` both land in the
+/// home - so this cannot be assumed to be ours.
+fn niri_cwd(pid: u32) -> Option<std::path::PathBuf> {
+    std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
 }
 
 /// Last one wins, as clap resolves a repeated single-value argument.
@@ -1118,7 +1139,7 @@ mod tests {
     fn an_empty_niri_config_env_falls_through_to_the_user_file() {
         let user = PathBuf::from("/home/u/.config/niri/config.kdl");
         assert_eq!(
-            select_niri_root(None, Some(PathBuf::new()), Some(user.clone())),
+            select_niri_root(None, Some(PathBuf::new()), Some(user.clone()), None),
             user
         );
     }
@@ -1126,9 +1147,9 @@ mod tests {
     #[test]
     fn the_user_file_wins_over_the_system_one_and_only_when_it_exists() {
         let user = PathBuf::from("/home/u/.config/niri/config.kdl");
-        assert_eq!(select_niri_root(None, None, Some(user.clone())), user);
+        assert_eq!(select_niri_root(None, None, Some(user.clone()), None), user);
         assert_eq!(
-            select_niri_root(None, None, None),
+            select_niri_root(None, None, None, None),
             PathBuf::from(NIRI_SYSTEM_CONFIG)
         );
     }
@@ -1141,6 +1162,7 @@ mod tests {
                 Some(PathBuf::from("/flag.kdl")),
                 Some(PathBuf::from("/env.kdl")),
                 Some(PathBuf::from("/user.kdl")),
+                None,
             ),
             PathBuf::from("/flag.kdl")
         );
@@ -1148,9 +1170,51 @@ mod tests {
             select_niri_root(
                 None,
                 Some(PathBuf::from("/env.kdl")),
-                Some(PathBuf::from("/user.kdl"))
+                Some(PathBuf::from("/user.kdl")),
+                None,
             ),
             PathBuf::from("/env.kdl")
+        );
+    }
+
+    /// niri reads a relative `--config`/`NIRI_CONFIG` from its own working
+    /// directory. Look runs from a different one, so keeping the path as given
+    /// scans the wrong file and nags about a hotkey that already works.
+    #[test]
+    fn a_relative_explicit_config_resolves_against_niris_working_directory() {
+        let cwd = PathBuf::from("/run/niri");
+        assert_eq!(
+            select_niri_root(
+                Some(PathBuf::from("niri.kdl")),
+                None,
+                None,
+                Some(cwd.clone())
+            ),
+            cwd.join("niri.kdl")
+        );
+        assert_eq!(
+            select_niri_root(
+                None,
+                Some(PathBuf::from("cfg/niri.kdl")),
+                None,
+                Some(cwd.clone())
+            ),
+            cwd.join("cfg/niri.kdl")
+        );
+        // Absolute paths and the user/system fallbacks are untouched by it.
+        assert_eq!(
+            select_niri_root(
+                Some(PathBuf::from("/flag.kdl")),
+                None,
+                None,
+                Some(cwd.clone())
+            ),
+            PathBuf::from("/flag.kdl")
+        );
+        let user = PathBuf::from("/home/u/.config/niri/config.kdl");
+        assert_eq!(
+            select_niri_root(None, None, Some(user.clone()), Some(cwd)),
+            user
         );
     }
 
@@ -1194,7 +1258,7 @@ mod tests {
         .expect("system");
 
         assert_eq!(
-            select_niri_root(None, None, Some(user.clone())),
+            select_niri_root(None, None, Some(user.clone()), None),
             user,
             "the existing user file is the root"
         );
