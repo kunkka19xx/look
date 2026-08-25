@@ -31,8 +31,6 @@ const ACTION_PREFIX = 'srcblock:';
 // run every morning ranks like one.
 const USAGE_ACTION = 'execute';
 const BANNER_SECONDS = 4.0;
-// Cache keys are fields joined, and a field can hold anything a script printed.
-const KEY_SEPARATOR = '\u0001';
 
 // Declared icons and names, keyed by block id. Null until `prefill` lands: rows
 // render synchronously and there are many of them, so a miss falls back to the
@@ -200,6 +198,12 @@ export async function loadDetail(result) {
     return detailInFlight.get(key);
 }
 
+/** What a row IS, as fields rather than as a string: every one of them can hold
+ *  whatever a script printed, so the joining is JSON's problem, not ours. */
+function keyFields(result) {
+    return [result.id, result.title, result.path || '', levels.ancestorsJson()];
+}
+
 /**
  * What a row IS, for a cache that must not hand one row's answer to another: a
  * target's `confirm` is expanded against the row, so two rows sharing an id but
@@ -209,7 +213,7 @@ export async function loadDetail(result) {
  * Exported because the preview panel keys its own render on the same rows.
  */
 export function rowKey(result) {
-    return [result.id, result.title, result.path || '', levels.ancestorsJson()].join(KEY_SEPARATOR);
+    return JSON.stringify(keyFields(result));
 }
 
 /**
@@ -222,7 +226,7 @@ export function rowKey(result) {
  * panel shows can lag the query by a keystroke; the menu and Enter both re-read.
  */
 function readKey(result) {
-    return `${rowKey(result)}${KEY_SEPARATOR}${queryProvider()}`;
+    return JSON.stringify([...keyFields(result), queryProvider()]);
 }
 
 /** The row payload every source command takes. `ancestors` comes from the level
