@@ -18,10 +18,10 @@ function dismissedSet() {
     }
 }
 
-// Keyed on id + message: a new failure mode under the same id should
-// surface again even if an older notice was dismissed.
+// id + kind, never the message: messages carry store paths and error text
+// that churn, which would resurrect a dismissed notice.
 function issueKey(issue) {
-    return `${issue.id}:${issue.message}`;
+    return `${issue.id}:${issue.kind ?? issue.id}`;
 }
 
 function render() {

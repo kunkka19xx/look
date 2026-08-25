@@ -166,7 +166,7 @@ binds {
 
 `allow-inhibiting=false` matters: without it niri passes the key to a window holding a keyboard-shortcuts inhibitor, which fullscreen games, browsers and virtual machines all take, and Look never opens over them.
 
-Any key works, it is the same `spawn` line: Look only ever sees the D-Bus call. Bind a key niri already uses (`Mod+D` spawns fuzzel in the default config) and niri rejects the whole config as a duplicate keybind, keeping the last good one, so drop the existing bind first and check with `niri validate`.
+Any key works, it is the same `spawn` line: Look only ever sees the D-Bus call. Bind a key niri already uses (`Mod+D` spawns fuzzel in the default config) and niri rejects the whole config as a duplicate keybind, keeping the last good one, so drop the existing bind first and check with `niri validate`, or `niri --config <path> validate` if you start niri with `-c`. The setup notice names the file Look actually read, which is that `-c` path, then `NIRI_CONFIG`, then `~/.config/niri/config.kdl`, then `/etc/niri/config.kdl` - niri loads one of them and never merges.
 
 Floating is applied at runtime over niri's IPC; add a rule only if you also want the focus ring and shadow off:
 

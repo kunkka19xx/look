@@ -15,8 +15,7 @@ use tauri::Emitter;
 
 pub const EVENT_HEALTH_CHANGED: &str = "health-changed";
 
-/// Stable issue ids: reports are deduped by id and the frontend keys
-/// dismissal persistence on them.
+/// Stable issue ids: reports are deduped by id.
 pub const ISSUE_HOTKEY: &str = "hotkey";
 #[cfg(target_os = "linux")]
 pub const ISSUE_GNOME_EXT: &str = "gnome-ext";
@@ -24,6 +23,9 @@ pub const ISSUE_GNOME_EXT: &str = "gnome-ext";
 #[derive(Debug, Clone, Serialize)]
 pub struct HealthIssue {
     pub id: &'static str,
+    /// What the frontend keys dismissal on, with the id. Stable where the
+    /// message is not: messages carry store paths and error text that churn.
+    pub kind: &'static str,
     pub message: String,
 }
 
@@ -33,6 +35,11 @@ static ISSUES: Mutex<Vec<HealthIssue>> = Mutex::new(Vec::new());
 /// repeat reports (e.g. the stale-extension warning firing on every search)
 /// are silently dropped.
 pub fn report(id: &'static str, message: String) {
+    report_as(id, id, message);
+}
+
+/// For an id with more than one failure mode: `kind` tells them apart.
+pub fn report_as(id: &'static str, kind: &'static str, message: String) {
     {
         let Ok(mut issues) = ISSUES.lock() else {
             return;
@@ -41,7 +48,7 @@ pub fn report(id: &'static str, message: String) {
             return;
         }
         eprintln!("[look:health] {message}");
-        issues.push(HealthIssue { id, message });
+        issues.push(HealthIssue { id, kind, message });
     }
     if let Some(handle) = crate::state::app_handle() {
         let _ = handle.emit(EVENT_HEALTH_CHANGED, snapshot());

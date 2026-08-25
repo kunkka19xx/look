@@ -149,8 +149,9 @@ where
         // per issue id, and a missing caller explains the dead key better than
         // the per-compositor failures that follow.
         if compositor != Compositor::Kde && dbus_caller().is_none() {
-            health::report(
+            health::report_as(
                 health::ISSUE_HOTKEY,
+                "no-dbus-tool",
                 format!(
                     "Alt+Space cannot reach Look: none of these D-Bus \
                      command-line tools are installed ({}). Install one of \
@@ -171,8 +172,9 @@ where
             Compositor::Kde => {}
             Compositor::Other => {
                 let cmd = toggle_cmd();
-                health::report(
+                health::report_as(
                     health::ISSUE_HOTKEY,
+                    "no-api",
                     format!(
                         "This compositor has no supported hotkey API, so Alt+Space \
                          is not set up. Bind a key manually to run: {cmd}"
@@ -194,8 +196,9 @@ where
                 tokio::task::spawn(async move {
                     if let Err(e) = run_kde_keybinding(move || toggle()).await {
                         let cmd = toggle_cmd();
-                        health::report(
+                        health::report_as(
                             health::ISSUE_HOTKEY,
+                            "kde-failed",
                             format!(
                                 "KDE hotkey registration failed ({e}). Bind a key \
                                  manually to run: {cmd}"
@@ -214,8 +217,9 @@ where
                 } else {
                     // Every other compositor binding toggles by calling this
                     // service, so the hotkey is dead without it.
-                    health::report(
+                    health::report_as(
                         health::ISSUE_HOTKEY,
+                        "dbus-service",
                         format!(
                             "Look's D-Bus service failed to start ({e}), so the \
                              Alt+Space binding cannot reach the app. Restart Look \
@@ -271,8 +275,9 @@ fn ensure_sway_keybinding() {
     if bound {
         eprintln!("[look] Registered Sway keybinding: Alt+Space → Look toggle");
     } else {
-        health::report(
+        health::report_as(
             health::ISSUE_HOTKEY,
+            "sway-failed",
             format!(
                 "Failed to register Alt+Space via swaymsg. Bind a key manually \
                  to run: {cmd}"
@@ -304,8 +309,9 @@ fn ensure_hyprland_keybinding() {
     if bound {
         eprintln!("[look] Registered Hyprland keybinding: Alt+Space → Look toggle");
     } else {
-        health::report(
+        health::report_as(
             health::ISSUE_HOTKEY,
+            "hypr-failed",
             format!(
                 "Failed to register Alt+Space via hyprctl. Bind a key manually \
                  to run: {cmd}"
@@ -337,6 +343,13 @@ hl.bind("ALT + space", hl.dsp.exec_cmd("{cmd}"){flags})"#
         return true;
     }
 
+    // The Lua path opens with an unbind; this one has to as well. `keyword
+    // bind` appends rather than replaces, so an ALT,space bind left by an
+    // earlier run - or by the other of bind/bindp - stays live alongside the
+    // new one and Hyprland fires both dispatchers.
+    let _ = host_command("hyprctl")
+        .args(["keyword", "unbind", "ALT,space"])
+        .output();
     let _ = host_command("hyprctl")
         .args(["keyword", "windowrulev2", "float, class:lookapp"])
         .output();
@@ -395,19 +408,84 @@ fn niri_bind_snippet() -> String {
     format!("binds {{ Alt+Space {NIRI_NO_INHIBIT} {{ spawn {argv}; }} }}")
 }
 
-/// Where niri looks for its config, in the order it does. `NIRI_CONFIG` wins
-/// when set; a `-c` given on niri's command line stays invisible to us.
-fn niri_config_paths() -> Vec<std::path::PathBuf> {
-    if let Some(path) = std::env::var_os("NIRI_CONFIG") {
-        return vec![std::path::PathBuf::from(path)];
-    }
+/// Read only when nothing above it names a config.
+const NIRI_SYSTEM_CONFIG: &str = "/etc/niri/config.kdl";
+
+/// The one config niri actually loaded. It reads a single root and never
+/// merges, so every other candidate has to stay unread: a bind sitting in a
+/// file niri ignores would otherwise pass for a working hotkey and suppress
+/// the setup notice the user needs.
+fn niri_config_root() -> std::path::PathBuf {
+    select_niri_root(
+        niri_config_flag(),
+        std::env::var_os("NIRI_CONFIG").map(std::path::PathBuf::from),
+        niri_user_config().filter(|path| path.is_file()),
+    )
+}
+
+/// niri's order: `--config` beats `NIRI_CONFIG` ("if both are set, the command
+/// line argument takes precedence"), either beats the user's file, and the
+/// system file is the last resort. `user` is `None` unless it exists, since
+/// niri falls through to the system file when it does not.
+fn select_niri_root(
+    flag: Option<std::path::PathBuf>,
+    env: Option<std::path::PathBuf>,
+    user: Option<std::path::PathBuf>,
+) -> std::path::PathBuf {
+    [flag, env]
+        .into_iter()
+        .flatten()
+        // An exported-but-empty NIRI_CONFIG names nothing; niri treats it as
+        // unset and so must we, or we scan "" and report a missing bind.
+        .find(|path| !path.as_os_str().is_empty())
+        .or(user)
+        .unwrap_or_else(|| std::path::PathBuf::from(NIRI_SYSTEM_CONFIG))
+}
+
+fn niri_user_config() -> Option<std::path::PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
         .map(|dir| dir.join("niri/config.kdl"))
-        .into_iter()
-        .chain([std::path::PathBuf::from("/etc/niri/config.kdl")])
-        .collect()
+}
+
+/// `-c`/`--config` off niri's own command line, which nothing exports. The
+/// socket path carries the compositor's pid - `niri.<display>.<pid>.sock` - so
+/// `/proc` has the argv. Silently `None` anywhere that lookup does not hold.
+fn niri_config_flag() -> Option<std::path::PathBuf> {
+    let socket = std::env::var("NIRI_SOCKET").ok()?;
+    let pid: u32 = std::path::Path::new(&socket)
+        .file_stem()?
+        .to_str()?
+        .rsplit('.')
+        .next()?
+        .parse()
+        .ok()?;
+    let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+    niri_config_arg(
+        cmdline
+            .split(|byte| *byte == 0)
+            .filter(|arg| !arg.is_empty())
+            .map(String::from_utf8_lossy),
+    )
+}
+
+/// Last one wins, as clap resolves a repeated single-value argument.
+fn niri_config_arg<'a>(
+    args: impl Iterator<Item = std::borrow::Cow<'a, str>>,
+) -> Option<std::path::PathBuf> {
+    let mut args = args.skip(1);
+    let mut found = None;
+    while let Some(arg) = args.next() {
+        if let Some(path) = arg.strip_prefix("--config=") {
+            found = Some(std::path::PathBuf::from(path));
+        } else if arg == "-c" || arg == "--config" {
+            found = args
+                .next()
+                .map(|path| std::path::PathBuf::from(path.as_ref()));
+        }
+    }
+    found
 }
 
 /// Ceiling on `include` nesting, matching niri's own recursion limit.
@@ -460,16 +538,13 @@ fn resolve_niri_include(arg: &str, dir: &std::path::Path) -> Option<std::path::P
 /// callers, and for a user's own wrapper script. Included files count:
 /// splitting binds into their own `.kdl` is common, and missing one means
 /// nagging a user whose hotkey already works.
-fn niri_bind_state() -> NiriBind {
-    niri_bind_state_in(niri_config_paths())
-}
-
-fn niri_bind_state_in(roots: Vec<std::path::PathBuf>) -> NiriBind {
-    let mut pending: Vec<(std::path::PathBuf, u8)> =
-        roots.into_iter().map(|path| (path, 0)).collect();
+fn niri_bind_state_in(root: std::path::PathBuf) -> NiriBind {
+    // A queue, not a stack: niri applies includes in the order it meets them,
+    // and the header we read the opt-out off has to be the one it would use.
+    let mut pending = std::collections::VecDeque::from([(root, 0u8)]);
     let mut seen = std::collections::HashSet::new();
 
-    while let Some((path, depth)) = pending.pop() {
+    while let Some((path, depth)) = pending.pop_front() {
         if !seen.insert(path.clone()) {
             continue;
         }
@@ -513,23 +588,30 @@ fn niri_bind_inhibitable(config: &str) -> NiriBind {
 }
 
 fn report_niri_keybinding() {
-    match niri_bind_state() {
+    // Named in both notices: with `--config`, `NIRI_CONFIG` or no user file at
+    // all, the path we read is not the one the user would guess.
+    let root = niri_config_root();
+    let state = niri_bind_state_in(root.clone());
+    let root = root.display();
+    match state {
         NiriBind::Ready => {}
-        NiriBind::Inhibitable => health::report(
+        NiriBind::Inhibitable => health::report_as(
             health::ISSUE_HOTKEY,
+            "niri-inhibitable",
             format!(
                 "niri hands Alt+Space to fullscreen windows that inhibit \
                  keyboard shortcuts (games, browsers, virtual machines), so \
                  Look will not open over them. Add {NIRI_NO_INHIBIT} to the \
-                 bind in ~/.config/niri/config.kdl: {}",
+                 bind in {root}: {}",
                 niri_bind_snippet()
             ),
         ),
-        NiriBind::Missing => health::report(
+        NiriBind::Missing => health::report_as(
             health::ISSUE_HOTKEY,
+            "niri-missing",
             format!(
                 "niri has no API to register hotkeys, so Alt+Space must be bound in \
-                 ~/.config/niri/config.kdl, or any file it includes: {}",
+                 {root}, or any file it includes: {}",
                 niri_bind_snippet()
             ),
         ),
@@ -603,8 +685,9 @@ fn ensure_gnome_keybinding() {
     if ok {
         eprintln!("[look] Registered GNOME keybinding: Alt+Space → Look toggle");
     } else {
-        health::report(
+        health::report_as(
             health::ISSUE_HOTKEY,
+            "gsettings-failed",
             format!(
                 "Failed to register Alt+Space via gsettings. Bind a key manually \
                  to run: {cmd}"
@@ -771,8 +854,9 @@ where
         eprintln!("[look] Registered KDE keybinding: Alt+Space → Look toggle");
     } else {
         let cmd = toggle_cmd();
-        health::report(
+        health::report_as(
             health::ISSUE_HOTKEY,
+            "kde-rebound",
             format!(
                 "KDE assigned a different key than Alt+Space (it may be taken). \
                  Rebind it in System Settings → Shortcuts → Look, or bind a key \
@@ -929,7 +1013,8 @@ fn parse_gsettings_array(s: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
+    use std::borrow::Cow;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn gdbus_command_targets_our_service() {
@@ -1016,16 +1101,105 @@ mod tests {
         )
         .expect("binds");
 
-        assert_eq!(
-            niri_bind_state_in(vec![dir.join("config.kdl")]),
-            NiriBind::Ready
-        );
+        assert_eq!(niri_bind_state_in(dir.join("config.kdl")), NiriBind::Ready);
 
         std::fs::write(dir.join("nested/binds.kdl"), "binds { }").expect("binds");
         assert_eq!(
-            niri_bind_state_in(vec![dir.join("config.kdl")]),
+            niri_bind_state_in(dir.join("config.kdl")),
             NiriBind::Missing
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An exported-but-empty NIRI_CONFIG names nothing. Reading it as a path
+    /// finds no bind and nags a user whose hotkey already works.
+    #[test]
+    fn an_empty_niri_config_env_falls_through_to_the_user_file() {
+        let user = PathBuf::from("/home/u/.config/niri/config.kdl");
+        assert_eq!(
+            select_niri_root(None, Some(PathBuf::new()), Some(user.clone())),
+            user
+        );
+    }
+
+    #[test]
+    fn the_user_file_wins_over_the_system_one_and_only_when_it_exists() {
+        let user = PathBuf::from("/home/u/.config/niri/config.kdl");
+        assert_eq!(select_niri_root(None, None, Some(user.clone())), user);
+        assert_eq!(
+            select_niri_root(None, None, None),
+            PathBuf::from(NIRI_SYSTEM_CONFIG)
+        );
+    }
+
+    /// niri: "if both are set, the command line argument takes precedence".
+    #[test]
+    fn the_command_line_config_outranks_the_env_and_the_user_file() {
+        assert_eq!(
+            select_niri_root(
+                Some(PathBuf::from("/flag.kdl")),
+                Some(PathBuf::from("/env.kdl")),
+                Some(PathBuf::from("/user.kdl")),
+            ),
+            PathBuf::from("/flag.kdl")
+        );
+        assert_eq!(
+            select_niri_root(
+                None,
+                Some(PathBuf::from("/env.kdl")),
+                Some(PathBuf::from("/user.kdl"))
+            ),
+            PathBuf::from("/env.kdl")
+        );
+    }
+
+    #[test]
+    fn the_config_flag_is_read_off_niri_argv_in_either_form() {
+        let arg = |args: &[&str]| niri_config_arg(args.iter().map(|a| Cow::from(*a)));
+        assert_eq!(arg(&["niri", "--session"]), None);
+        assert_eq!(
+            arg(&["niri", "-c", "/a.kdl"]),
+            Some(PathBuf::from("/a.kdl"))
+        );
+        assert_eq!(
+            arg(&["niri", "--config", "/a.kdl"]),
+            Some(PathBuf::from("/a.kdl"))
+        );
+        assert_eq!(
+            arg(&["niri", "--config=/a.kdl"]),
+            Some(PathBuf::from("/a.kdl"))
+        );
+        // clap resolves a repeated single-value argument to the last one.
+        assert_eq!(
+            arg(&["niri", "-c", "/a.kdl", "--config=/b.kdl"]),
+            Some(PathBuf::from("/b.kdl"))
+        );
+    }
+
+    /// The regression the selection exists for: a bind in a config niri never
+    /// loads must not pass for a working hotkey.
+    #[test]
+    fn a_bind_only_in_the_unselected_config_does_not_count() {
+        let dir = std::env::temp_dir().join("look-niri-precedence-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let user = dir.join("user.kdl");
+        let system = dir.join("system.kdl");
+        std::fs::write(&user, "binds { }").expect("user");
+        std::fs::write(
+            &system,
+            format!("binds {{ Alt+Space {NIRI_NO_INHIBIT} {{ spawn \"{DBUS_NAME}\"; }} }}"),
+        )
+        .expect("system");
+
+        assert_eq!(
+            select_niri_root(None, None, Some(user.clone())),
+            user,
+            "the existing user file is the root"
+        );
+        assert_eq!(niri_bind_state_in(user), NiriBind::Missing);
+        assert_eq!(niri_bind_state_in(system), NiriBind::Ready);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1069,10 +1243,7 @@ mod tests {
         std::fs::write(dir.join("a.kdl"), "include \"b.kdl\"\n").expect("a");
         std::fs::write(dir.join("b.kdl"), "include \"a.kdl\"\n").expect("b");
 
-        assert_eq!(
-            niri_bind_state_in(vec![dir.join("a.kdl")]),
-            NiriBind::Missing
-        );
+        assert_eq!(niri_bind_state_in(dir.join("a.kdl")), NiriBind::Missing);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
