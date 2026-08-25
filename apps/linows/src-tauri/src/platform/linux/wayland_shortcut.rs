@@ -232,6 +232,14 @@ where
 // Sway
 // ---------------------------------------------------------------------------
 
+const SWAY_KEY: &str = "Alt+space";
+
+/// Sway drops its own bindings while the focused window holds a
+/// keyboard-shortcuts inhibitor, which fullscreen browsers, games and VMs all
+/// take; `--inhibited` exempts ours. Bind and unbind must agree on it, since
+/// sway matches bindings on flags as well as keys.
+const SWAY_BIND_FLAGS: &str = "--inhibited";
+
 fn ensure_sway_keybinding() {
     // Add window rule: float + no border
     let _ = host_command("swaymsg")
@@ -245,10 +253,17 @@ fn ensure_sway_keybinding() {
         ])
         .output();
 
+    // Drop a binding left by a Look old enough to predate SWAY_BIND_FLAGS:
+    // sway counts the flag as part of a binding's identity, so the two would
+    // coexist and fire the toggle twice.
+    let _ = host_command("swaymsg")
+        .arg(format!("unbindsym {SWAY_KEY}"))
+        .output();
+
     // Bind Alt+Space to toggle Look via D-Bus
     let cmd = toggle_cmd();
     let bound = host_command("swaymsg")
-        .arg(format!("bindsym Alt+space exec {cmd}"))
+        .arg(format!("bindsym {SWAY_BIND_FLAGS} {SWAY_KEY} exec {cmd}"))
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
@@ -267,7 +282,9 @@ fn ensure_sway_keybinding() {
 }
 
 fn cleanup_sway_keybinding() {
-    let _ = host_command("swaymsg").arg("unbindsym Alt+space").output();
+    let _ = host_command("swaymsg")
+        .arg(format!("unbindsym {SWAY_BIND_FLAGS} {SWAY_KEY}"))
+        .output();
     eprintln!("[look] Removed Sway keybinding for Alt+Space");
 }
 
@@ -276,36 +293,13 @@ fn cleanup_sway_keybinding() {
 // ---------------------------------------------------------------------------
 
 fn ensure_hyprland_keybinding() {
-    // Hyprland v0.55+ uses Lua config - `hyprctl eval` with hl.* API.
-    // Older versions use `hyprctl keyword bind ...` (INI-style parser).
-    //
-    // hl.bind stacks duplicates on every call (hot-reloads in dev, or
-    // sequential launches in prod), so unbind first via pcall - pcall keeps
-    // the eval succeeding even when the binding doesn't exist yet (first run).
     let cmd = toggle_cmd();
-    let lua = format!(
-        r#"pcall(hl.unbind, "ALT + space")
-hl.window_rule({{ name = "look-float", match = {{ class = "lookapp" }}, float = true }})
-hl.window_rule({{ name = "look-noborder", match = {{ class = "lookapp" }}, border_size = 0, rounding = 0, no_shadow = true }})
-hl.bind("ALT + space", hl.dsp.exec_cmd("{cmd}"))"#
-    );
 
-    let used_lua = hyprctl_ok(host_command("hyprctl").args(["eval", &lua]).output());
-
-    let bound = used_lua || {
-        // Fallback: legacy keyword syntax for older Hyprland
-        let _ = host_command("hyprctl")
-            .args(["keyword", "windowrulev2", "float, class:lookapp"])
-            .output();
-        let _ = host_command("hyprctl")
-            .args(["keyword", "windowrulev2", "noborder, class:lookapp"])
-            .output();
-        hyprctl_ok(
-            host_command("hyprctl")
-                .args(["keyword", "bind", &format!("ALT,space,exec,{cmd}")])
-                .output(),
-        )
-    };
+    // `dont_inhibit` keeps Alt+Space alive while the focused window holds a
+    // keyboard-shortcuts inhibitor, as fullscreen browsers, games and VMs do.
+    // Hyprland builds predating the flag reject the whole bind, so a plain one
+    // follows.
+    let bound = hyprland_bind(cmd, true) || hyprland_bind(cmd, false);
 
     if bound {
         eprintln!("[look] Registered Hyprland keybinding: Alt+Space → Look toggle");
@@ -318,6 +312,46 @@ hl.bind("ALT + space", hl.dsp.exec_cmd("{cmd}"))"#
             ),
         );
     }
+}
+
+/// One bind attempt over both config dialects: Hyprland v0.55+ takes Lua via
+/// `hyprctl eval` with the hl.* API, older versions the INI-style
+/// `hyprctl keyword`, where `bindp` spells `dont_inhibit`.
+///
+/// hl.bind stacks duplicates on every call (hot-reloads in dev, or sequential
+/// launches in prod), so unbind first via pcall - pcall keeps the eval
+/// succeeding even when the binding doesn't exist yet (first run).
+fn hyprland_bind(cmd: &str, dont_inhibit: bool) -> bool {
+    let flags = if dont_inhibit {
+        ", { dont_inhibit = true }"
+    } else {
+        ""
+    };
+    let lua = format!(
+        r#"pcall(hl.unbind, "ALT + space")
+hl.window_rule({{ name = "look-float", match = {{ class = "lookapp" }}, float = true }})
+hl.window_rule({{ name = "look-noborder", match = {{ class = "lookapp" }}, border_size = 0, rounding = 0, no_shadow = true }})
+hl.bind("ALT + space", hl.dsp.exec_cmd("{cmd}"){flags})"#
+    );
+    if hyprctl_ok(host_command("hyprctl").args(["eval", &lua]).output()) {
+        return true;
+    }
+
+    let _ = host_command("hyprctl")
+        .args(["keyword", "windowrulev2", "float, class:lookapp"])
+        .output();
+    let _ = host_command("hyprctl")
+        .args(["keyword", "windowrulev2", "noborder, class:lookapp"])
+        .output();
+    hyprctl_ok(
+        host_command("hyprctl")
+            .args([
+                "keyword",
+                if dont_inhibit { "bindp" } else { "bind" },
+                &format!("ALT,space,exec,{cmd}"),
+            ])
+            .output(),
+    )
 }
 
 /// hyprctl exits 0 even for some rejected commands, reporting the failure as
@@ -358,7 +392,7 @@ fn niri_bind_snippet() -> String {
         .map(|arg| format!("\"{arg}\""))
         .collect::<Vec<_>>()
         .join(" ");
-    format!("binds {{ Alt+Space {{ spawn {argv}; }} }}")
+    format!("binds {{ Alt+Space {NIRI_NO_INHIBIT} {{ spawn {argv}; }} }}")
 }
 
 /// Where niri looks for its config, in the order it does. `NIRI_CONFIG` wins
@@ -378,6 +412,21 @@ fn niri_config_paths() -> Vec<std::path::PathBuf> {
 
 /// Ceiling on `include` nesting, matching niri's own recursion limit.
 const NIRI_INCLUDE_DEPTH: u8 = 10;
+
+/// Bind property that keeps niri handling the key itself instead of passing it
+/// to a window holding a keyboard-shortcuts inhibitor.
+const NIRI_NO_INHIBIT: &str = "allow-inhibiting=false";
+
+/// What the user's config does about Look's hotkey.
+#[derive(Debug, PartialEq)]
+enum NiriBind {
+    /// No bind spawns our D-Bus call.
+    Missing,
+    /// Bound, but fullscreen windows can swallow the key.
+    Inhibitable,
+    /// Bound and exempt from inhibiting.
+    Ready,
+}
 
 /// Files an `include` node pulls in, resolved as niri resolves them: one
 /// quoted path per node, relative to the including file, `~` for `$HOME`,
@@ -406,16 +455,16 @@ fn resolve_niri_include(arg: &str, dir: &std::path::Path) -> Option<std::path::P
     })
 }
 
-/// Whether a bind already spawns something that talks to Look's D-Bus service.
-/// Matching on the bus name rather than a full command line keeps this true
-/// for any of the three callers, and for a user's own wrapper script. Included
-/// files count: splitting binds into their own `.kdl` is common, and missing
-/// one means nagging a user whose hotkey already works.
-fn niri_bind_present() -> bool {
-    niri_bind_present_in(niri_config_paths())
+/// What, if anything, the config binds to Look's D-Bus service. Matching on the
+/// bus name rather than a full command line finds the bind for any of the three
+/// callers, and for a user's own wrapper script. Included files count:
+/// splitting binds into their own `.kdl` is common, and missing one means
+/// nagging a user whose hotkey already works.
+fn niri_bind_state() -> NiriBind {
+    niri_bind_state_in(niri_config_paths())
 }
 
-fn niri_bind_present_in(roots: Vec<std::path::PathBuf>) -> bool {
+fn niri_bind_state_in(roots: Vec<std::path::PathBuf>) -> NiriBind {
     let mut pending: Vec<(std::path::PathBuf, u8)> =
         roots.into_iter().map(|path| (path, 0)).collect();
     let mut seen = std::collections::HashSet::new();
@@ -428,7 +477,7 @@ fn niri_bind_present_in(roots: Vec<std::path::PathBuf>) -> bool {
             continue;
         };
         if config.contains(DBUS_NAME) {
-            return true;
+            return niri_bind_inhibitable(&config);
         }
         if depth < NIRI_INCLUDE_DEPTH {
             let dir = path.parent().unwrap_or(std::path::Path::new(""));
@@ -439,21 +488,52 @@ fn niri_bind_present_in(roots: Vec<std::path::PathBuf>) -> bool {
             );
         }
     }
-    false
+    NiriBind::Missing
+}
+
+/// Whether the bind spawning our D-Bus call opts out of shortcut inhibiting.
+/// KDL keeps a node's properties on its opening line, so the header is the
+/// last `{` line at or above the one naming the bus - a `spawn` argv split
+/// over several lines sits below it. A header we cannot identify reports
+/// `Ready` rather than nagging about a hotkey that may well be fine.
+fn niri_bind_inhibitable(config: &str) -> NiriBind {
+    let mut header = None;
+    for line in config.lines() {
+        if line.contains('{') {
+            header = Some(line);
+        }
+        if line.contains(DBUS_NAME) {
+            break;
+        }
+    }
+    match header {
+        Some(line) if !line.contains(NIRI_NO_INHIBIT) => NiriBind::Inhibitable,
+        _ => NiriBind::Ready,
+    }
 }
 
 fn report_niri_keybinding() {
-    if niri_bind_present() {
-        return;
-    }
-    health::report(
-        health::ISSUE_HOTKEY,
-        format!(
-            "niri has no API to register hotkeys, so Alt+Space must be bound in \
-             ~/.config/niri/config.kdl, or any file it includes: {}",
-            niri_bind_snippet()
+    match niri_bind_state() {
+        NiriBind::Ready => {}
+        NiriBind::Inhibitable => health::report(
+            health::ISSUE_HOTKEY,
+            format!(
+                "niri hands Alt+Space to fullscreen windows that inhibit \
+                 keyboard shortcuts (games, browsers, virtual machines), so \
+                 Look will not open over them. Add {NIRI_NO_INHIBIT} to the \
+                 bind in ~/.config/niri/config.kdl: {}",
+                niri_bind_snippet()
+            ),
         ),
-    );
+        NiriBind::Missing => health::report(
+            health::ISSUE_HOTKEY,
+            format!(
+                "niri has no API to register hotkeys, so Alt+Space must be bound in \
+                 ~/.config/niri/config.kdl, or any file it includes: {}",
+                niri_bind_snippet()
+            ),
+        ),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -930,16 +1010,55 @@ mod tests {
         std::fs::write(dir.join("config.kdl"), "include \"nested/binds.kdl\"\n").expect("config");
         std::fs::write(
             dir.join("nested/binds.kdl"),
-            format!("binds {{ Alt+Space {{ spawn \"gdbus\" \"{DBUS_NAME}\"; }} }}"),
+            format!(
+                "binds {{ Alt+Space {NIRI_NO_INHIBIT} {{ spawn \"gdbus\" \"{DBUS_NAME}\"; }} }}"
+            ),
         )
         .expect("binds");
 
-        assert!(niri_bind_present_in(vec![dir.join("config.kdl")]));
+        assert_eq!(
+            niri_bind_state_in(vec![dir.join("config.kdl")]),
+            NiriBind::Ready
+        );
 
         std::fs::write(dir.join("nested/binds.kdl"), "binds { }").expect("binds");
-        assert!(!niri_bind_present_in(vec![dir.join("config.kdl")]));
+        assert_eq!(
+            niri_bind_state_in(vec![dir.join("config.kdl")]),
+            NiriBind::Missing
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_bind_without_the_opt_out_is_reported_inhibitable() {
+        assert_eq!(
+            niri_bind_inhibitable(&multiline_bind("")),
+            NiriBind::Inhibitable
+        );
+    }
+
+    #[test]
+    fn the_opt_out_on_the_bind_header_counts_for_a_multiline_spawn() {
+        assert_eq!(
+            niri_bind_inhibitable(&multiline_bind(NIRI_NO_INHIBIT)),
+            NiriBind::Ready
+        );
+    }
+
+    /// A bind whose `spawn` argv wraps, so the bus name lands well below the
+    /// header carrying the properties.
+    fn multiline_bind(props: &str) -> String {
+        [
+            "binds {".to_string(),
+            format!("    Alt+Space {props} {{"),
+            "        spawn \"dbus-send\" \\".to_string(),
+            format!("              \"--dest={DBUS_NAME}\" \\"),
+            format!("              \"{DBUS_NAME}.{TOGGLE_METHOD}\""),
+            "    }".to_string(),
+            "}".to_string(),
+        ]
+        .join("\n")
     }
 
     #[test]
@@ -950,7 +1069,10 @@ mod tests {
         std::fs::write(dir.join("a.kdl"), "include \"b.kdl\"\n").expect("a");
         std::fs::write(dir.join("b.kdl"), "include \"a.kdl\"\n").expect("b");
 
-        assert!(!niri_bind_present_in(vec![dir.join("a.kdl")]));
+        assert_eq!(
+            niri_bind_state_in(vec![dir.join("a.kdl")]),
+            NiriBind::Missing
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

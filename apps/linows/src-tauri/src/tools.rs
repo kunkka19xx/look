@@ -60,7 +60,7 @@ pub async fn perform_tool_action(
     // no explanation, so bring the launcher back to carry the banner.
     if outcome.is_failure() {
         crate::commands::show_launcher(&window);
-        let _ = window.set_focus();
+        crate::commands::focus_launcher(&window);
     }
     Some(outcome)
 }

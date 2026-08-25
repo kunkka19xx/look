@@ -108,7 +108,7 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
     let Some(window) = app_handle.get_webview_window(consts::MAIN_WINDOW) else {
         return;
     };
-    if window.is_visible().unwrap_or(false) {
+    if commands::launcher_visible(&window) {
         #[cfg(target_os = "linux")]
         platform::linux::window_focus::notify_hidden();
         hide_launcher(&window);
@@ -120,6 +120,13 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
         FOCUSED_SINCE_SHOWN.store(false, Ordering::Relaxed);
 
+        // A layer surface is placed and stacked by the compositor; neither is
+        // ours to ask for.
+        #[cfg(target_os = "linux")]
+        let placed_by_compositor = platform::linux::layer_shell::is_active();
+        #[cfg(not(target_os = "linux"))]
+        let placed_by_compositor = false;
+
         // Tiling WMs (i3, sway, Hyprland) ignore set_position on unmapped
         // windows - they apply their own placement on map. So we must
         // recenter AFTER show. Desktop environments (GNOME, KDE, …) work
@@ -129,12 +136,14 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         #[cfg(not(target_os = "linux"))]
         let tiling = false;
 
-        if !tiling {
-            recenter_window(&window);
+        if !placed_by_compositor {
+            if !tiling {
+                recenter_window(&window);
+            }
+            let _ = window.set_always_on_top(true);
         }
-        let _ = window.set_always_on_top(true);
         commands::show_launcher(&window);
-        if tiling {
+        if !placed_by_compositor && tiling {
             recenter_window(&window);
         }
         let _ = window.emit(EVENT_WINDOW_SHOWN, ());
@@ -148,16 +157,18 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
             platform::linux::window_focus::notify_shown();
         }
 
-        let _ = window.set_focus();
+        commands::focus_launcher(&window);
     }
 }
 
 /// Center and scale a window to fit the current monitor.
 /// Called once at startup. Avoid calling on toggle - see toggle_window.
-fn center_and_scale_window(window: &tauri::WebviewWindow) {
-    let Some(monitor) = monitor_at_cursor(window) else {
-        return;
-    };
+///
+/// Returns the logical size it settled on. The layer surface needs it from
+/// here rather than reading `inner_size` back: a Wayland window the compositor
+/// has not configured yet still reports tauri.conf's default.
+fn center_and_scale_window(window: &tauri::WebviewWindow) -> Option<(i32, i32)> {
+    let monitor = monitor_at_cursor(window)?;
     let pos = monitor.position();
     let screen = monitor.size();
     let scale = monitor.scale_factor();
@@ -178,6 +189,7 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) {
     let lx = pos.x as f64 / scale + (logical_screen_w - win_w as f64) / 2.0;
     let ly = pos.y as f64 / scale + (logical_screen_h - win_h as f64) / 2.0;
     let _ = window.set_position(tauri::LogicalPosition::new(lx, ly));
+    Some((win_w as i32, win_h as i32))
 }
 
 /// Find the monitor that contains the cursor. Falls back to the window's
@@ -484,25 +496,42 @@ fn apply_transparency(window: &tauri::WebviewWindow) {
 
 /// Set up window event handlers (focus input on focus, auto-hide on blur).
 fn setup_window_events(window: &tauri::WebviewWindow) {
+    // Tauri reports focus for the husk toplevel, so on the layer-shell path
+    // GTK's own signals are the only focus events left.
+    #[cfg(target_os = "linux")]
+    if platform::linux::layer_shell::is_active() {
+        let w = window.clone();
+        platform::linux::layer_shell::on_focus(move |focused| on_focus_change(&w, focused));
+        return;
+    }
+
     let w = window.clone();
-    window.on_window_event(move |event| match event {
-        tauri::WindowEvent::Focused(true) => {
-            FOCUSED_SINCE_SHOWN.store(true, Ordering::Relaxed);
-            let _ = w.eval(
-                "{ let q = document.getElementById('query'); if (q) { q.focus(); q.select(); } }",
-            );
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::Focused(focused) = event {
+            on_focus_change(&w, *focused);
         }
-        tauri::WindowEvent::Focused(false)
-            if !PICKING_FILE.load(Ordering::Relaxed)
-                && FOCUSED_SINCE_SHOWN.load(Ordering::Relaxed)
-                && now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) > AUTO_HIDE_GRACE_MS
-                && focus_loss_means_dismiss() =>
-        {
-            LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
-            hide_launcher(&w);
-        }
-        _ => {}
     });
+}
+
+/// Shared by both focus sources: Tauri's window event, and GTK's signals once
+/// the webview lives on a layer surface.
+fn on_focus_change(window: &tauri::WebviewWindow, focused: bool) {
+    if focused {
+        FOCUSED_SINCE_SHOWN.store(true, Ordering::Relaxed);
+        let _ = window.eval(
+            "{ let q = document.getElementById('query'); if (q) { q.focus(); q.select(); } }",
+        );
+        return;
+    }
+    if PICKING_FILE.load(Ordering::Relaxed)
+        || !FOCUSED_SINCE_SHOWN.load(Ordering::Relaxed)
+        || now_ms() - LAST_SHOWN_AT.load(Ordering::Relaxed) <= AUTO_HIDE_GRACE_MS
+        || !focus_loss_means_dismiss()
+    {
+        return;
+    }
+    LAST_AUTO_HIDDEN_AT.store(now_ms(), Ordering::Relaxed);
+    hide_launcher(window);
 }
 
 /// Whether a `Focused(false)` event should auto-hide the launcher.
@@ -539,7 +568,7 @@ fn main() {
             if let Some(window) = app.get_webview_window(consts::MAIN_WINDOW) {
                 LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
                 commands::show_launcher(&window);
-                let _ = window.set_focus();
+                commands::focus_launcher(&window);
             }
         }))
         .plugin(tauri_plugin_dialog::init())
@@ -610,7 +639,11 @@ fn main() {
                 let _ = window.hide();
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
             }
-            center_and_scale_window(&window);
+            let scaled_size = center_and_scale_window(&window);
+            #[cfg(target_os = "linux")]
+            platform::linux::layer_shell::attach(&window, scaled_size);
+            #[cfg(not(target_os = "linux"))]
+            let _ = scaled_size;
             apply_transparency(&window);
             // Needs the main thread and a live window: the surface pointer
             // comes off the window handle.
