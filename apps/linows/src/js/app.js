@@ -691,7 +691,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     onWindowHidden((event) => {
         // A level does not survive the launcher closing (§2.10): what survives
         // is the ranking. Dropped here so the next summon opens on the index.
+        // Cleared even with no level up: a target that produces rows may still
+        // be running, and its answer must not open a level on the next summon.
         if (levels.isActive()) resetHomeQuery();
+        else levels.clear();
         superactions.armEntrance();
         motion.armReveal();
         // The next summon keeps the query and the selection, but an open menu

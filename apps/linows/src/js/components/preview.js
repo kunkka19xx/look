@@ -59,9 +59,15 @@ export function update(result) {
 
     // Clipboard items use id as cache key (not path, since all share
     // clipboard://history); so do block rows, which may name no path at all and
-    // would otherwise all share the empty one.
-    const cacheKey =
-        result.kind === 'clipboard' || result.kind === 'action' ? result.id : result.path;
+    // would otherwise all share the empty one. A block row keys on `rowKey`
+    // rather than its id alone: what the panel shows is expanded against the
+    // levels above it as well, so the same id reached at two depths is two
+    // panels.
+    const cacheKey = sourceblocks.isSourceRow(result.id)
+        ? sourceblocks.rowKey(result)
+        : result.kind === 'clipboard' || result.kind === 'action'
+          ? result.id
+          : result.path;
     if (currentPath === cacheKey) return;
     currentPath = cacheKey;
     // The menu lists the SELECTED row's verbs, so it must not survive a move to
@@ -129,16 +135,20 @@ export function update(result) {
 
 /** Swaps the placeholder glyph for the real icon, unless the selection moved on. */
 function loadPreviewIcon(iconWrap, kind, path, id, cacheKey) {
-    getIcon(kind, path, id).then((res) => {
-        if (!res?.data_url || currentPath !== cacheKey) return;
-        const img = document.createElement('img');
-        img.src = res.data_url;
-        img.alt = '';
-        iconWrap.innerHTML = '';
-        iconWrap.style.background = 'none';
-        iconWrap.style.color = '';
-        iconWrap.appendChild(img);
-    });
+    getIcon(kind, path, id)
+        .then((res) => {
+            if (!res?.data_url || currentPath !== cacheKey) return;
+            const img = document.createElement('img');
+            img.src = res.data_url;
+            img.alt = '';
+            iconWrap.innerHTML = '';
+            iconWrap.style.background = 'none';
+            iconWrap.style.color = '';
+            iconWrap.appendChild(img);
+        })
+        // A refused read leaves the placeholder glyph, which is what the wrap
+        // already draws.
+        .catch((err) => console.warn('preview: could not read an icon', err));
 }
 
 /** The ordinary panel: icon, title, kind badge, then the file or app detail. */
@@ -677,7 +687,7 @@ async function renderFileBackedBlock(result, cacheKey) {
         section.appendChild(infoRow('Declared in', sourceblocks.tildePath(block.file)));
     }
 
-    const preview = await sourcePreview(sourceblocks.rowPayload(result));
+    const preview = await readSourcePreview(result);
     if (!preview || currentPath !== cacheKey) return;
     section.appendChild(blockPreviewBody(preview));
 }
@@ -773,12 +783,23 @@ async function renderBlockPreview(result, cacheKey) {
 
     // The declared `preview` runs a command, so it is read last and only after
     // the cheap details are on screen.
-    const preview = await sourcePreview(sourceblocks.rowPayload(result));
+    const preview = await readSourcePreview(result);
     if (!preview || currentPath !== cacheKey) return;
     // Only real output shares the space: a block with none leaves the steps to
     // fill it, and a failure is one line rather than a second pane.
     if (!preview.error && preview.text) column.classList.add('has-preview');
     body.appendChild(blockPreviewBody(preview));
+}
+
+/** The declared `preview` runs a command, so the backend can refuse to: a
+ *  rejection leaves the panel without that section rather than unhandled. */
+async function readSourcePreview(result) {
+    try {
+        return await sourcePreview(sourceblocks.rowPayload(result));
+    } catch (err) {
+        console.warn('preview: could not read a block preview', err);
+        return null;
+    }
 }
 
 /** The steps ARE shell, so they get what an AI answer's code gets: highlighted,

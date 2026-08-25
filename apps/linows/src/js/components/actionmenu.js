@@ -152,10 +152,16 @@ export function askConfirm(question) {
     return new Promise((resolve) => {
         close();
         pendingConfirm = { resolve };
-        mount([
-            { id: CONFIRM_YES, title: question },
-            { id: CONFIRM_NO, title: CONFIRM_CANCEL },
-        ]);
+        // The question labels the list, not just the row: focus starts on
+        // Cancel, so a screen reader would otherwise announce "Cancel" with
+        // nothing said about what is being cancelled.
+        mount(
+            [
+                { id: CONFIRM_YES, title: question },
+                { id: CONFIRM_NO, title: CONFIRM_CANCEL },
+            ],
+            question,
+        );
         // Start on Cancel: a destructive action should cost one more press than
         // an accidental double-Enter.
         focusedIndex = 1;
@@ -170,7 +176,7 @@ function answer(yes) {
     pending?.resolve(yes);
 }
 
-function mount(descriptors) {
+function mount(descriptors, label = MENU_LABEL) {
     menuEl = document.createElement('div');
     menuEl.className = 'action-menu';
     menuEl.id = MENU_ID;
@@ -178,7 +184,7 @@ function mount(descriptors) {
     // selection they then run, which is what `option` describes and what the
     // focused input is allowed to point at.
     menuEl.setAttribute('role', 'listbox');
-    menuEl.setAttribute('aria-label', MENU_LABEL);
+    menuEl.setAttribute('aria-label', label);
     menuEl.style.top = `${anchorTop()}px`;
 
     rows = descriptors.map((descriptor, index) => {

@@ -664,6 +664,16 @@ mod tests {
         }
     }
 
+    /// Rows a `run` block stored outlive the test that made them, so the
+    /// cleanup has to survive a failed assert.
+    struct StoredRows(&'static str);
+
+    impl Drop for StoredRows {
+        fn drop(&mut self) {
+            crate::index::clear_run_rows(self.0);
+        }
+    }
+
     fn descend(block: &str, parent_id: &str, parent_path: &str) -> Level {
         level(block, parent_id, "parent", parent_path, "", Vec::new())
     }
@@ -803,10 +813,11 @@ mod tests {
             "[level]\nrun = \"jq . {path}/package.json\"\n[flat]\nrun = \"echo one\"\n",
         );
 
+        let _rows = StoredRows("flat");
+
         let outcome = refresh_run_blocks();
         assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
         assert_eq!(outcome.refreshed, 1, "only the flat block has rows");
-        crate::index::clear_run_rows("flat");
     }
 
     #[test]

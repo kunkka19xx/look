@@ -31,6 +31,8 @@ const ACTION_PREFIX = 'srcblock:';
 // run every morning ranks like one.
 const USAGE_ACTION = 'execute';
 const BANNER_SECONDS = 4.0;
+// Cache keys are fields joined, and a field can hold anything a script printed.
+const KEY_SEPARATOR = '\u0001';
 
 // Declared icons and names, keyed by block id. Null until `prefill` lands: rows
 // render synchronously and there are many of them, so a miss falls back to the
@@ -152,7 +154,7 @@ export const actionIconHtml = zap;
 /** The block already read for this row, or null. Synchronous, for whoever
  *  already has it: the menu and the panel await `loadDetail` instead. */
 export function detailFor(result) {
-    return (result && detailByRow.get(cacheKey(result))) || null;
+    return (result && detailByRow.get(readKey(result))) || null;
 }
 
 /** The `then` targets already read for this row. */
@@ -171,7 +173,7 @@ export function targetsFor(result) {
  */
 export async function loadDetail(result) {
     if (!isSourceRow(result?.id)) return null;
-    const key = cacheKey(result);
+    const key = readKey(result);
     if (detailByRow.has(key)) return detailByRow.get(key);
     if (!detailInFlight.has(key)) {
         const reading = sourceBlock(rowPayload(result))
@@ -189,10 +191,29 @@ export async function loadDetail(result) {
     return detailInFlight.get(key);
 }
 
-/** A target's `confirm` is expanded against the row, so two rows sharing an id
- *  but differing in title or path must not share an entry. */
-function cacheKey(result) {
-    return `${result.id}${result.title}${result.path || ''}`;
+/**
+ * What a row IS, for a cache that must not hand one row's answer to another: a
+ * target's `confirm` is expanded against the row, so two rows sharing an id but
+ * differing in title or path must not share an entry, and neither must the same
+ * row seen at two depths, since `{parent.*}` reads the levels above it.
+ *
+ * Exported because the preview panel keys its own render on the same rows.
+ */
+export function rowKey(result) {
+    return [result.id, result.title, result.path || '', levels.ancestorsJson()].join(KEY_SEPARATOR);
+}
+
+/**
+ * `rowKey` plus what is typed, which `{query}` expands to: the identity of one
+ * READ of a block, which is what a cached detail actually is.
+ *
+ * The panel keys on `rowKey` alone rather than on this. It is what decides
+ * whether to rebuild, and a rebuild runs the block's declared `preview`, so
+ * keying it on the query would run a shell command on every keystroke. What the
+ * panel shows can lag the query by a keystroke; the menu and Enter both re-read.
+ */
+function readKey(result) {
+    return `${rowKey(result)}${KEY_SEPARATOR}${queryProvider()}`;
 }
 
 /** The row payload every source command takes. `ancestors` comes from the level

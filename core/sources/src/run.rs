@@ -46,6 +46,16 @@ const POSIX_SHELLS: [&str; 9] = [
 #[cfg(windows)]
 const COMMAND_SHELL: &str = "cmd.exe";
 
+/// Where the shell lives, relative to `SystemRoot`. Joined rather than left to
+/// a `PATH` search: a `cmd.exe` dropped in a writable directory earlier on
+/// `PATH` would win one, and every step would then go through it.
+#[cfg(windows)]
+const SYSTEM_SHELL_DIR: &str = "System32";
+
+/// Used when `SystemRoot` is unset, which a stripped environment can be.
+#[cfg(windows)]
+const SYSTEM_ROOT_FALLBACK: &str = r"C:\Windows";
+
 /// No console for a step the launcher starts. A `do` block opening an app must
 /// not flash a black window, and a captured command has nothing to show.
 #[cfg(windows)]
@@ -286,21 +296,34 @@ fn shell_command(step: &str) -> Result<Command, String> {
     Ok(command)
 }
 
-/// `COMSPEC` when it names `cmd`, which is the only thing it names in practice,
-/// and `cmd.exe` off `PATH` otherwise: a step is written in `cmd`'s language and
-/// quoted for it, so another interpreter would read it wrong rather than better.
+/// `COMSPEC` when it names `cmd` by absolute path, which is the only thing it
+/// names in practice, and the copy under `SystemRoot` otherwise: a step is
+/// written in `cmd`'s language and quoted for it, so another interpreter would
+/// read it wrong rather than better.
 #[cfg(windows)]
-fn command_shell() -> String {
-    let configured = std::env::var("COMSPEC").unwrap_or_default();
-    let names_cmd = std::path::Path::new(&configured)
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .is_some_and(|stem| stem.eq_ignore_ascii_case("cmd"));
+fn command_shell() -> std::path::PathBuf {
+    let configured = std::path::PathBuf::from(std::env::var_os("COMSPEC").unwrap_or_default());
+    let names_cmd = configured.is_absolute()
+        && configured
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .is_some_and(|stem| stem.eq_ignore_ascii_case("cmd"));
     if names_cmd {
         configured
     } else {
-        COMMAND_SHELL.to_string()
+        system_shell()
     }
+}
+
+/// `%SystemRoot%\System32\cmd.exe`, resolved rather than searched for.
+#[cfg(windows)]
+fn system_shell() -> std::path::PathBuf {
+    let root = std::env::var_os("SystemRoot")
+        .filter(|root| !root.is_empty())
+        .unwrap_or_else(|| SYSTEM_ROOT_FALLBACK.into());
+    std::path::Path::new(&root)
+        .join(SYSTEM_SHELL_DIR)
+        .join(COMMAND_SHELL)
 }
 
 /// The one place a step becomes a process on Windows: `cmd /D /S /C "<step>"`.
@@ -849,11 +872,15 @@ mod tests {
             // interpreter that reads them differently is not an improvement.
             let shell = command_shell();
             assert!(
-                std::path::Path::new(&shell)
+                shell
                     .file_stem()
                     .is_some_and(|stem| stem.eq_ignore_ascii_case("cmd")),
-                "{shell}"
+                "{}",
+                shell.display()
             );
+            // Absolute either way: a bare name is a `PATH` search, and a step
+            // must not go through whatever wins one.
+            assert!(shell.is_absolute(), "{}", shell.display());
         }
 
         #[test]
