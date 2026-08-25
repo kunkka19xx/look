@@ -316,7 +316,7 @@ pub async fn open_elevated(
             // Declined, refused, or the task died: don't leave Look hidden.
             eprintln!("[open_elevated] {e}");
             show_launcher(&window);
-            let _ = window.set_focus();
+            focus_launcher(&window);
         }
         result
     }
@@ -414,7 +414,7 @@ pub fn hide_armed(window: &tauri::WebviewWindow) {
             .compare_exchange(arm, 0, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
         {
-            let _ = window.hide();
+            hide_now(&window);
         }
     });
 }
@@ -429,14 +429,51 @@ pub fn confirm_hide(window: tauri::WebviewWindow, arm: NonZeroU64) {
         .compare_exchange(arm.get(), 0, Ordering::Relaxed, Ordering::Relaxed)
         .is_ok()
     {
-        let _ = window.hide();
+        hide_now(&window);
     }
+}
+
+/// Take the launcher off screen. With layer shell attached, the surface on
+/// screen is not the one Tauri hands out.
+pub fn hide_now(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "linux")]
+    if crate::platform::linux::layer_shell::is_active() {
+        crate::platform::linux::layer_shell::hide();
+        return;
+    }
+    let _ = window.hide();
+}
+
+/// Give the launcher keyboard focus. A layer surface takes it on its own
+/// through `keyboard-interactivity`, and `set_focus` would be harmful there:
+/// it reaches `gtk_window_present` and maps the husk toplevel.
+pub fn focus_launcher(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "linux")]
+    if crate::platform::linux::layer_shell::is_active() {
+        return;
+    }
+    let _ = window.set_focus();
+}
+
+/// Whether the launcher is on screen. The husk toplevel never maps, so its own
+/// `is_visible` reports false for a launcher that is plainly up.
+pub fn launcher_visible(window: &tauri::WebviewWindow) -> bool {
+    #[cfg(target_os = "linux")]
+    if let Some(visible) = crate::platform::linux::layer_shell::visible() {
+        return visible;
+    }
+    window.is_visible().unwrap_or(false)
 }
 
 /// Drop any dismissal in flight, show, and keep niri from tiling the window.
 /// Every show goes through here.
 pub fn show_launcher(window: &tauri::WebviewWindow) {
     PENDING_HIDE.store(0, Ordering::Relaxed);
+    #[cfg(target_os = "linux")]
+    if crate::platform::linux::layer_shell::is_active() {
+        crate::platform::linux::layer_shell::show();
+        return;
+    }
     let _ = window.show();
     #[cfg(target_os = "linux")]
     if crate::platform::linux::wm::is_niri() {
@@ -446,11 +483,11 @@ pub fn show_launcher(window: &tauri::WebviewWindow) {
 
 #[tauri::command]
 pub fn toggle_window(window: tauri::WebviewWindow) {
-    if window.is_visible().unwrap_or(false) {
+    if launcher_visible(&window) {
         hide_armed(&window);
     } else {
         show_launcher(&window);
-        let _ = window.set_focus();
+        focus_launcher(&window);
     }
 }
 

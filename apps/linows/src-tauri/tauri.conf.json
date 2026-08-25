@@ -64,7 +64,10 @@
           "libasound2",
           "xdg-desktop-portal"
         ],
-        "section": "utils",
+        "recommends": [
+        "libgtk-layer-shell0"
+      ],
+      "section": "utils",
         "priority": "optional"
       }
     },
