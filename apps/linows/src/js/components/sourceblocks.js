@@ -108,7 +108,16 @@ export function invalidate() {
  * stale rather than empty.
  */
 export async function reload() {
-    const outcome = await reloadConfig();
+    let outcome = null;
+    try {
+        outcome = await reloadConfig();
+    } catch (err) {
+        // Caught here rather than left to the caller: this is the first await
+        // of the reload gesture, and a throw would take the theme, the font and
+        // the background down with the blocks.
+        console.error('sourceblocks: reload failed', err);
+        banner.show('the backend did not answer', 'error', BANNER_SECONDS);
+    }
     await invalidate();
     for (const error of outcome?.errors || []) {
         banner.show(error, 'error', BANNER_SECONDS);
