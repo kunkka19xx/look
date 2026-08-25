@@ -6,6 +6,7 @@
   wrapGAppsHook3,
   webkitgtk_4_1,
   gtk3,
+  gtk-layer-shell,
   libsoup_3,
   glib,
   cairo,
@@ -70,6 +71,11 @@ rustPlatform.buildRustPackage {
     pkg-config
     wrapGAppsHook3
   ];
+
+  # dlopened at runtime, never linked, so it is not a buildInput: the absolute
+  # store path is compiled in instead. A wrapper exporting LD_LIBRARY_PATH
+  # would leak into every app Look launches.
+  LOOK_GTK_LAYER_SHELL = "${gtk-layer-shell}/lib/libgtk-layer-shell.so.0";
 
   buildInputs = [
     webkitgtk_4_1

@@ -2572,6 +2572,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "gtk",
+ "libloading 0.8.9",
  "look-answers",
  "look-calc",
  "look-engine",
