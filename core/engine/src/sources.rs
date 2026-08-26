@@ -963,6 +963,29 @@ mod tests {
         assert!(foreign.exists());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn a_refresh_leaves_alone_a_cache_entry_that_is_not_a_file() {
+        // A symlink is not a directory, so a directories-only filter let it
+        // through and unlinked it. Look writes regular files and nothing else,
+        // so anything else here belongs to whoever put it there.
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("sweep-symlink", "[flat]\nrun = \"echo one\"\n");
+        // Outside the cache: a file inside it, claimed by no block, is exactly
+        // what a sweep is supposed to remove.
+        let target = fixture.base.join("rows-a-script-keeps");
+        std::fs::write(&target, "rows\n").expect("target file");
+
+        let link = fixture.cache.join("unclaimed");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
+
+        let outcome = refresh_run_blocks();
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+
+        assert!(link.symlink_metadata().is_ok(), "the link itself survives");
+        assert!(target.exists(), "and so does what it points at");
+    }
+
     #[test]
     fn a_refresh_drops_cached_rows_no_block_claims_any_more() {
         // A block deleted from a file is never seen by a refresh again, so

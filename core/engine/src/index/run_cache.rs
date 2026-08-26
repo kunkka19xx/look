@@ -103,6 +103,10 @@ pub fn clear(block_id: &str) {
 /// Removes cached rows belonging to no declared block, and returns how many
 /// went. `keep` is the set of blocks a refresh would write or preserve.
 ///
+/// Only ever removes what this module could have written: a regular file whose
+/// name is a usable block id. Anything else in the directory was put there by
+/// something else and is not ours to delete.
+///
 /// A block deleted from a file is never seen by a refresh again, so nothing
 /// else can clear what it left: without this, its rows sit in the cache for
 /// good, and re-adding a block under the same id would serve them.
@@ -122,7 +126,10 @@ pub fn sweep(keep: &BTreeSet<String>) -> usize {
     let mut removed = 0;
     for entry in entries.flatten() {
         let path = entry.path();
-        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+        // Regular files only, the one thing `write` creates. `file_type` does
+        // not follow links, so a symlink is not a directory and would otherwise
+        // pass a directories-only filter and be unlinked.
+        if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
             continue;
         }
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {

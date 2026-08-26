@@ -4,20 +4,20 @@
 
 > **Cross-platform shortcut note.** Examples are written with macOS modifiers (`Cmd+...`). On Windows and Linux, read `Cmd` as `Ctrl` - except the launcher toggle, which is `Alt+Space` (since `Win+Space` / `Super+Space` are reserved by the OS or desktop environment).
 >
-> | macOS           | Windows / Linux  |
-> | --------------- | ---------------- |
-> | `Cmd+Space`     | `Alt+Space`      |
-> | `Cmd+Enter`     | `Ctrl+Enter`     |
-> | `Cmd+F`         | `Ctrl+F`         |
-> | `Cmd+C`         | `Ctrl+C`         |
-> | `Cmd+/`         | `Ctrl+/`         |
-> | `Cmd+0`         | `Ctrl+0`         |
-> | `Cmd+1`…`Cmd+7` (command mode) | `Ctrl+1`…`Ctrl+7`|
-> | `Cmd+1`…`Cmd+9` (running-apps switcher) | `Alt+1`…`Alt+9` |
-> | `Cmd+P`         | `Ctrl+P`         |
-> | `Cmd+Shift+P`   | `Ctrl+Shift+P`   |
-> | `Cmd+Shift+,`   | `Ctrl+Shift+,`   |
-> | `Cmd+Shift+;`   | `Ctrl+Shift+;`   |
+> | macOS                                   | Windows / Linux   |
+> | --------------------------------------- | ----------------- |
+> | `Cmd+Space`                             | `Alt+Space`       |
+> | `Cmd+Enter`                             | `Ctrl+Enter`      |
+> | `Cmd+F`                                 | `Ctrl+F`          |
+> | `Cmd+C`                                 | `Ctrl+C`          |
+> | `Cmd+/`                                 | `Ctrl+/`          |
+> | `Cmd+0`                                 | `Ctrl+0`          |
+> | `Cmd+1`…`Cmd+7` (command mode)          | `Ctrl+1`…`Ctrl+7` |
+> | `Cmd+1`…`Cmd+9` (running-apps switcher) | `Alt+1`…`Alt+9`   |
+> | `Cmd+P`                                 | `Ctrl+P`          |
+> | `Cmd+Shift+P`                           | `Ctrl+Shift+P`    |
+> | `Cmd+Shift+,`                           | `Ctrl+Shift+,`    |
+> | `Cmd+Shift+;`                           | `Ctrl+Shift+;`    |
 >
 > "Reveal in Finder" reads as "Reveal in Explorer" on Windows and "Show in Files" on Linux.
 
@@ -76,17 +76,17 @@ When at least one item is picked, the right panel switches to the **Picked** lis
 
 With an empty query, the home screen shows a strip of system controls instead of results. Fire a tile by clicking it, or with `Cmd`+letter (macOS) / `Alt`+letter (Linux, Windows), where the letter is the one highlighted on the tile:
 
-| Key | Tile         | Effect                        |
-| --- | ------------ | ----------------------------- |
-| `B` | Bluetooth    | Toggle on/off                 |
-| `W` | Wi-Fi        | Toggle on/off                 |
-| `T` | Theme        | Switch dark/light             |
-| `K` | Keep Awake   | Toggle sleep prevention       |
-| `S` | Screensaver  | Start it                      |
-| `M` | Mic          | Mute/unmute                   |
-| `P` | Now Playing  | Play/pause the current track  |
-| `R` | Restart      | Restart (press twice)         |
-| `D` | Shut Down    | Shut down (press twice)       |
+| Key | Tile        | Effect                       |
+| --- | ----------- | ---------------------------- |
+| `B` | Bluetooth   | Toggle on/off                |
+| `W` | Wi-Fi       | Toggle on/off                |
+| `T` | Theme       | Switch dark/light            |
+| `K` | Keep Awake  | Toggle sleep prevention      |
+| `S` | Screensaver | Start it                     |
+| `M` | Mic         | Mute/unmute                  |
+| `P` | Now Playing | Play/pause the current track |
+| `R` | Restart     | Restart (press twice)        |
+| `D` | Shut Down   | Shut down (press twice)      |
 
 Restart and Shut Down arm on the first press and only run on the second, so a stray key can't power the machine off. `Esc` or waiting a moment cancels the armed tile.
 
@@ -100,7 +100,7 @@ Look can answer questions and look things up without leaving the launcher. These
 
 - **Answer card.** A question, an entity that has no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather, currency, crypto) shows a Spotlight-style card above the results. Sources resolve independently and each appears as it lands - **DuckDuckGo** and **Wikipedia**. Arithmetic doesn't answer here anymore - see the **Calculator row** under Query prefixes below. On macOS, when no web source has an answer it falls back to a streaming on-device **Apple Intelligence** answer. Click a source label to open it; the copy button copies that block.
 - **Search suggestions.** For plain text queries (2+ characters), Google autocomplete rows appear under the results. `Enter` on a suggestion (or `Cmd+Enter` on your query) runs a web search in your default browser.
-- **Query rewrite** *(macOS only)*. When a natural-language query finds nothing locally, the on-device model rewrites it into Look's prefix grammar and searches again. It never overrides results you can already see - it only runs when the raw query came up empty.
+- **Query rewrite** _(macOS only)_. When a natural-language query finds nothing locally, the on-device model rewrites it into Look's prefix grammar and searches again. It never overrides results you can already see - it only runs when the raw query came up empty.
 
 **Platform note.** The web answer card and Google suggestions are available on macOS, Linux, and Windows. The on-device LLM - query rewrite and the Apple Intelligence answer fallback - is **macOS-only**; there is no on-device model on Linux/Windows, so there the card uses web sources (DuckDuckGo, Wikipedia, currency/weather/crypto) only. The `ai_enabled` toggle is shared across platforms.
 
@@ -217,12 +217,12 @@ Declare them in TOML files under `~/.look/sources/`. Put as many files in there 
 
 Each `[block]` has a `name` you can type and exactly one producer key that says what it is:
 
-| Producer | Rows it makes |
-| --- | --- |
-| `do` | one row; `Enter` performs its steps |
-| `dir` | the children of one or more directories |
-| `file` | the lines of a text file |
-| `run` | the lines a command prints |
+| Producer | Rows it makes                           |
+| -------- | --------------------------------------- |
+| `do`     | one row; `Enter` performs its steps     |
+| `dir`    | the children of one or more directories |
+| `file`   | the lines of a text file                |
+| `run`    | the lines a command prints              |
 
 ```toml
 # ~/.look/sources/mine.toml
@@ -242,7 +242,7 @@ Reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux, Windows) and type `p
 
 From there you can add `then` targets (actions and drill-downs reached with `Cmd+K`), a `preview` command for the right panel, a `confirm` question before anything destructive, per-row icons via `format = "json"`, and `aliases` / `bias` to place a block in the ranking.
 
-Commands are shell text, run by your login shell, so your own scripts are first-class: `run = "~/bin/my-repos"` or `do = ["~/bin/deploy.sh {path}"]`, in any language with a shebang, reading the row from `LOOK_ID` / `LOOK_TITLE` / `LOOK_PATH` if that suits it better than arguments. An executable dropped straight into `~/.look/sources/` needs no declaration at all: it *is* a `run` block. One caveat worth knowing up front: a login shell reads `~/.zprofile` and `~/.zshenv`, not `~/.zshrc`, and fish/nu users fall back to `/bin/sh`.
+Commands are shell text, run by your login shell, so your own scripts are first-class: `run = "~/bin/my-repos"` or `do = ["~/bin/deploy.sh {path}"]`, in any language with a shebang, reading the row from `LOOK_ID` / `LOOK_TITLE` / `LOOK_PATH` if that suits it better than arguments. An executable dropped straight into `~/.look/sources/` needs no declaration at all: it _is_ a `run` block. One caveat worth knowing up front: a login shell reads `~/.zprofile` and `~/.zshenv`, not `~/.zshrc`, and fish/nu users fall back to `/bin/sh`.
 
 **Full guide: [Declaring your own sources](user-sources.md)** - every key, every placeholder, limits, troubleshooting, and recipes.
 
@@ -298,7 +298,7 @@ Two consequences worth knowing:
 - The glass follows `Blur Style`, not the theme name, so you can pick
   `Settings > Appearance > Blur Style > Liquid Glass` on any theme to get the
   glass surface with that theme's palette. Going the other way, selecting Liquid
-  and then a different blur style keeps Liquid's palette *and* its rounder
+  and then a different blur style keeps Liquid's palette _and_ its rounder
   corners, and swaps only the material for the classic blur.
 
 On Linux and Windows, Liquid is clear glass rather than frosted: the same
@@ -418,25 +418,23 @@ These keys have no control in the Settings screens. Edit `~/.look/config` direct
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
 
 - `ignored_patterns_<group>` uses gitignore-style path glob syntax: `*`, `**`, `?`, `[abc]`
-    - macOS/Linux normally use `/` paths like `~/Library/...` or `/home/name/...`
-    - Windows is verified with native absolute paths like `C:\Users\me\...`; `~` is expanded against your home directory before matching
-    - macOS works the same way; common roots are `~/Library/...`, `~/Documents/...`, `~/Downloads/...`
-    - values are separated with `|`, and all `ignored_patterns_*` entries are merged together
-    - patterns apply to files only; they do not exclude folders from traversal
+  - macOS/Linux normally use `/` paths like `~/Library/...` or `/home/name/...`
+  - Windows is verified with native absolute paths like `C:\Users\me\...`; `~` is expanded against your home directory before matching
+  - macOS works the same way; common roots are `~/Library/...`, `~/Documents/...`, `~/Downloads/...`
+  - values are separated with `|`, and all `ignored_patterns_*` entries are merged together
+  - patterns apply to files only; they do not exclude folders from traversal
 
-    Examples:
+  Examples:
+  - `ignored_patterns_macos=~/Library/Application Support/Code/logs/**/*.log|~/Library/Caches/**/*.tmp`
+  - `ignored_patterns_windows=C:\Users\me\AppData\Local\Temp\**\*.etl|C:\Users\me\Downloads\**\*.tmp`
+  - `ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp`
+  - `ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm`
+  - `ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part`
 
-    - `ignored_patterns_macos=~/Library/Application Support/Code/logs/**/*.log|~/Library/Caches/**/*.tmp`
-    - `ignored_patterns_windows=C:\Users\me\AppData\Local\Temp\**\*.etl|C:\Users\me\Downloads\**\*.tmp`
-    - `ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp`
-    - `ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm`
-    - `ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part`
-
-    Quick matching guide:
-
-    - `*` matches within one path segment: `~/Downloads/*.tmp`
-    - `**` matches across nested folders: `~/Downloads/**/*.tmp`
-    - keep patterns path-scoped when possible; `*.log` works but is usually too broad
+  Quick matching guide:
+  - `*` matches within one path segment: `~/Downloads/*.tmp`
+  - `**` matches across nested folders: `~/Downloads/**/*.tmp`
+  - keep patterns path-scoped when possible; `*.log` works but is usually too broad
 
 Alias note:
 
@@ -496,7 +494,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
 - `Cmd+Shift+,`: toggle settings panel
-- `Cmd+Shift+;`: reload config, and re-read your declared sources
+- `Cmd+Shift+;` (macOS) / `Ctrl+Shift+;` (Linux, Windows): reload config, and re-read your declared sources
 - `Cmd+Shift+H`: hide the selected app from Look
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
 
