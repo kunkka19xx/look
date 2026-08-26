@@ -128,6 +128,19 @@ html[data-os="windows"] .launcher-window {
     flex-shrink: 0;
 }
 
+/* Inside a level: where the rows came from, before the text that filters them.
+ * Shrinks before the input does, so a deep chain never crowds out typing. */
+.search-breadcrumb {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: calc(var(--font-size) - 1px);
+    font-weight: 600;
+    color: var(--accent-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 #query {
     flex: 1;
     font-size: calc(var(--font-size) + 1px);

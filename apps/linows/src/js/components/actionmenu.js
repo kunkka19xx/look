@@ -27,11 +27,21 @@ const ROW_ID = (index) => `${MENU_ID}-row-${index}`;
 // What a screen reader calls the list, which has no visible label of its own.
 const MENU_LABEL = 'Actions';
 
+// Ids of the two rows shown in place of the action list while a destructive
+// target waits for an answer.
+const CONFIRM_YES = 'srcconfirm:yes';
+const CONFIRM_NO = 'srcconfirm:no';
+const CONFIRM_CANCEL = 'Cancel';
+
 let panel = null;
 let input = null;
 let menuEl = null;
 let rows = [];
 let focusedIndex = 0;
+// Resolves the answer to the question the menu is asking right now, or null
+// when it is not asking one. Escape and any close answer no, which is what
+// makes Escape mean the safe thing.
+let pendingConfirm = null;
 // Bumped on every open and close, so a list still being resolved when the user
 // changes their mind cannot open the menu behind them.
 let token = 0;
@@ -64,6 +74,8 @@ export function vimKey(e) {
 
 export function close() {
     token += 1;
+    // Closing IS the safe answer, whatever closed it.
+    answer(false);
     if (!menuEl) return;
     input?.removeAttribute('aria-controls');
     input?.removeAttribute('aria-activedescendant');
@@ -127,7 +139,44 @@ export function handleKey(e) {
     return true;
 }
 
-function mount(descriptors) {
+/**
+ * Ask `question` in the menu rather than in a modal: the keys the user already
+ * has (move, Enter, Escape) keep working and Escape means the safe thing.
+ * Resolves true only if they pick the question itself.
+ *
+ * Exported because Enter on a row whose block declares `confirm` has to ask it
+ * too, and asking it twice in two different shapes would be two things to
+ * learn (specs/user-sources.md §2.5).
+ */
+export function askConfirm(question) {
+    return new Promise((resolve) => {
+        close();
+        pendingConfirm = { resolve };
+        // The question labels the list, not just the row: focus starts on
+        // Cancel, so a screen reader would otherwise announce "Cancel" with
+        // nothing said about what is being cancelled.
+        mount(
+            [
+                { id: CONFIRM_YES, title: question },
+                { id: CONFIRM_NO, title: CONFIRM_CANCEL },
+            ],
+            question,
+        );
+        // Start on Cancel: a destructive action should cost one more press than
+        // an accidental double-Enter.
+        focusedIndex = 1;
+        applyFocus();
+    });
+}
+
+/** Settle an outstanding question, once. */
+function answer(yes) {
+    const pending = pendingConfirm;
+    pendingConfirm = null;
+    pending?.resolve(yes);
+}
+
+function mount(descriptors, label = MENU_LABEL) {
     menuEl = document.createElement('div');
     menuEl.className = 'action-menu';
     menuEl.id = MENU_ID;
@@ -135,7 +184,7 @@ function mount(descriptors) {
     // selection they then run, which is what `option` describes and what the
     // focused input is allowed to point at.
     menuEl.setAttribute('role', 'listbox');
-    menuEl.setAttribute('aria-label', MENU_LABEL);
+    menuEl.setAttribute('aria-label', label);
     menuEl.style.top = `${anchorTop()}px`;
 
     rows = descriptors.map((descriptor, index) => {
@@ -158,8 +207,9 @@ function mount(descriptors) {
 
         row.addEventListener('click', () => activate(index));
         menuEl.appendChild(row);
-        // Only the id is read after this; the label and chord are in the DOM.
-        return { id: descriptor.id, el: row };
+        // The confirm question rides along: it is asked in the menu, so the
+        // descriptor has to survive until the row is activated.
+        return { id: descriptor.id, title: descriptor.title, confirm: descriptor.confirm, el: row };
     });
 
     // The menu hangs off the header, so a panel scrolled away from it would
@@ -203,10 +253,31 @@ function applyFocus() {
 }
 
 // The single entry point for running a row, by key or by click, so neither can
-// take a shortcut the other does not.
+// take a shortcut the other does not: a click that bypassed this would skip the
+// confirmation, so a `confirm` target would ask when reached with Enter and act
+// silently when reached with the mouse.
 function activate(index) {
     const row = rows[index];
     if (!row) return;
+
+    // Answering a question. `close` settles it; picking the question itself is
+    // the only yes.
+    if (pendingConfirm) {
+        const yes = row.id === CONFIRM_YES;
+        answer(yes);
+        close();
+        return;
+    }
+
+    // Asking one. The menu swaps to the question, so the answer happens where
+    // the user's eyes already are.
+    if (row.confirm) {
+        const id = row.id;
+        askConfirm(row.confirm).then((yes) => {
+            if (yes) rowactions.activate(id);
+        });
+        return;
+    }
 
     close();
     rowactions.activate(row.id);

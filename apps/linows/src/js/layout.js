@@ -9,6 +9,7 @@
 
 import * as platform from './platform.js';
 import * as superactions from './components/superactions.js';
+import * as levels from './levels.js';
 import * as blur from './blur.js';
 
 const GAP_MIN = 0;
@@ -144,6 +145,9 @@ export function isEmptyQuery(query) {
  *  layout after handing the new query to search.js, and the discovery menus
  *  publish rows synchronously from there. Callers gate on the query itself. */
 export function hidesResultsForEmptyQuery() {
+    // A level is not the rest state: its rows ARE the screen, and it starts
+    // with an empty query because filtering one is the first thing anyone does.
+    if (levels.isActive()) return false;
     return onHome() && (platform.floatingSupported() || superactions.isEnabled());
 }
 

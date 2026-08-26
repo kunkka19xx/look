@@ -28,6 +28,8 @@ import * as qactions from './components/qactions.js';
 import * as actionmenu from './components/actionmenu.js';
 import * as rowactions from './components/rowactions.js';
 import * as superactions from './components/superactions.js';
+import * as sourceblocks from './components/sourceblocks.js';
+import * as levels from './levels.js';
 import * as runningApps from './components/running-apps.js';
 import { canRunElevated } from './platform.js';
 import { trash as trashIcon } from './icons.js';
@@ -50,6 +52,8 @@ let helpScreen = null;
 // Re-asserts the empty-state control strip after a screen open/close (set by
 // app.js). The strip must step aside for settings/help and return afterwards.
 let syncHomeFn = null;
+// Leaves one level, restoring what it was opened from (set by app.js).
+let popLevelFn = null;
 
 export function init(inputEl) {
     queryInput = inputEl;
@@ -104,6 +108,10 @@ export function setSettingsMode(mod, contentArea, searchBar) {
 
 export function setSyncHome(fn) {
     syncHomeFn = fn;
+}
+
+export function setPopLevel(fn) {
+    popLevelFn = fn;
 }
 
 function handleKeyDown(e) {
@@ -319,7 +327,11 @@ function handleKeyDown(e) {
 
         case 'Escape':
             e.preventDefault();
-            if (
+            // Inside a level Escape is the way back, one level per press, with
+            // the query and selection it was opened from.
+            if (levels.isActive()) {
+                popLevelFn?.();
+            } else if (
                 search.isClipboardMode() ||
                 search.isTranslateMode() ||
                 search.isProcessMode() ||
@@ -641,6 +653,14 @@ async function openSelected(elevated = false) {
             return;
     }
 
+    // A row a block produced answers to its block first: what Enter does is what
+    // the block declared, whatever kind the row ended up with. Core decides
+    // whether that means opening the row's own path.
+    if (sourceblocks.isSourceRow(item.id)) {
+        await sourceblocks.activateRow(item);
+        return;
+    }
+
     try {
         if (elevated) {
             await openElevated(item.path);
@@ -685,6 +705,15 @@ async function copySelectedPath() {
 async function revealSelected() {
     const item = results.getSelected();
     if (!item) return;
+
+    // A block's row may name a path of its own (`format = "json"`), and then it
+    // reveals like any other filesystem object. Only a row without one falls
+    // back to the declaration that made it.
+    if (!item.path && sourceblocks.isSourceRow(item.id)) {
+        const file = (await sourceblocks.loadDetail(item))?.file;
+        if (file) await revealPath(file);
+        return;
+    }
 
     if (rowactions.applies(rowactions.REVEAL, item.kind)) {
         rowactions.run(rowactions.REVEAL);

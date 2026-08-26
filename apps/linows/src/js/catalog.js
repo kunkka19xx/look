@@ -192,6 +192,18 @@ export function webUrlResult(url, subtitle, score) {
     };
 }
 
+/**
+ * Where the synthesized "open this URL" row sits (macOS URLRowPlacement).
+ *
+ * A structural URL cannot be a file or a search term, so it leads. A bare host
+ * sits one below the best local match (issue #232), out of reach of a declared
+ * source that carries the host in every subtitle and would bury it.
+ */
+export function placeUrlRow(url, isBareHost, ranked) {
+    if (!isBareHost) return [url, ...ranked];
+    return [...ranked.slice(0, 1), url, ...ranked.slice(1)];
+}
+
 export function webUrlFromResultId(resultId) {
     return resultId?.startsWith(WEB_URL_ID) ? resultId.slice(WEB_URL_ID.length) : null;
 }

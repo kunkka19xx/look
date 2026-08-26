@@ -2,7 +2,6 @@ import {
     getConfig,
     setConfig,
     forceIndexRefresh,
-    reloadConfig,
     resetConfig,
     listFonts,
     pickFolder,
@@ -12,6 +11,7 @@ import {
     listCandidateDrives,
 } from '../ipc.js';
 import * as banner from '../components/banner.js';
+import * as sourceblocks from '../components/sourceblocks.js';
 import * as platform from '../platform.js';
 import * as layout from '../layout.js';
 
@@ -433,7 +433,7 @@ export function init(exitFn) {
     document.getElementById('settings-fresh-config').addEventListener('click', async () => {
         try {
             await resetConfig();
-            await reloadConfig();
+            await sourceblocks.reload();
             await forceIndexRefresh();
             await loadConfig();
             clearBackgroundImage();
@@ -613,7 +613,7 @@ export function init(exitFn) {
             // Clearing the field saves the sentinel; the live inline override
             // has to go with it or the old family outlives the config value.
             applyFontFamily(updates.ui_font_name);
-            await reloadConfig();
+            await sourceblocks.reload();
             await forceIndexRefresh();
 
             showSaveMessage('Saved', false);
@@ -630,7 +630,7 @@ export function isActive() {
 // Ctrl+Shift+; - reload all values from .look/config file into running app
 export async function reloadFromFile() {
     try {
-        await reloadConfig();
+        await sourceblocks.reload();
         const map = await loadConfigMap();
 
         // Background image - apply BEFORE the tint pass: effectiveBlurOpacity

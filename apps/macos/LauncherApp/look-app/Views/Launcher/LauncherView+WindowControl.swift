@@ -234,6 +234,12 @@ extension LauncherView {
         window.orderOut(nil)
         hotkeyLog.notice("hide: orderOut wasVisible=\(wasVisible) restore=\(restorePreviousApp)")
 
+        // Preview bitmaps and highlighted text are the largest resident
+        // buffers; drop them while hidden. They rebuild behind the preview
+        // dwell, so reopening never shows the difference.
+        HighlightedTextCache.purge()
+        Task { await QuickLookPreviewService.shared.purge() }
+
         if restorePreviousApp {
             _ = reactivatePreviouslyFocusedAppIfNeeded()
         } else {
