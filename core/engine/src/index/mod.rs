@@ -6,7 +6,10 @@ mod run_cache;
 mod settings;
 mod sources;
 
-pub use run_cache::{clear as clear_run_rows, write as store_run_rows};
+pub use run_cache::{
+    CACHE_DIR_ENV as ROWS_CACHE_DIR_ENV, clear as clear_run_rows, sweep as sweep_run_cache,
+    write as store_run_rows,
+};
 pub use sources::declared_blocks;
 
 use look_indexing::{Candidate, CandidateIdKind};

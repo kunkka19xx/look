@@ -12,6 +12,7 @@
 //! directory again on demand (rather than caching it here) means a file the user
 //! just edited takes effect without a reindex.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -413,6 +414,11 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
     let mut outcome = RefreshOutcome::default();
     let started_at = Instant::now();
     let mut skipped: Vec<String> = Vec::new();
+    // Every block whose cached rows are still wanted after this refresh: the
+    // ones written below, and the ones deliberately left alone (a command that
+    // failed, a block the time budget could not reach). Anything else in the
+    // cache directory belongs to a block that no longer exists.
+    let mut keep: BTreeSet<String> = BTreeSet::new();
     for block in load_dir(&sources_dir(&home)).blocks {
         let Producer::Run {
             command,
@@ -436,6 +442,10 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
             outcome.changed = true;
             continue;
         }
+
+        // Claimed before the run, not after: a block that fails or runs out of
+        // budget keeps the rows it had, so its cache is still wanted.
+        keep.insert(block.id.clone());
 
         // Out of budget: the blocks left keep the rows they had, and are named
         // rather than dropped silently - "my source stopped updating" with no
@@ -464,6 +474,13 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
             REFRESH_TIME_BUDGET.as_secs(),
             skipped.join(", ")
         ));
+    }
+
+    // Only once the directory is known to be readable. An unreadable one loads
+    // as zero blocks, which is indistinguishable here from a user who deleted
+    // every source, and sweeping on that reading would drop everyone's rows.
+    if sources_dir(&home).is_dir() {
+        crate::index::sweep_run_cache(&keep);
     }
 
     outcome
@@ -664,7 +681,19 @@ mod tests {
             std::fs::create_dir_all(&dir).expect("fixture dir");
             std::fs::write(dir.join("blocks.toml"), declarations).expect("fixture file");
             unsafe { std::env::set_var(look_sources::SOURCES_DIR_ENV, &dir) };
+            // A refresh sweeps the row cache, so it has to be one of ours: the
+            // real one belongs to whoever is running the tests.
+            unsafe { std::env::set_var(crate::index::ROWS_CACHE_DIR_ENV, dir.join("cache")) };
             Self { dir }
+        }
+
+        /// Rows a `run` block is pretending to have produced earlier.
+        fn cached(&self, block_id: &str, contents: &str) -> PathBuf {
+            let dir = self.dir.join("cache");
+            std::fs::create_dir_all(&dir).expect("cache dir");
+            let path = dir.join(block_id);
+            std::fs::write(&path, contents).expect("cache file");
+            path
         }
 
         /// Rows for a `file` block to read.
@@ -680,6 +709,7 @@ mod tests {
     impl Drop for Fixture {
         fn drop(&mut self) {
             unsafe { std::env::remove_var(look_sources::SOURCES_DIR_ENV) };
+            unsafe { std::env::remove_var(crate::index::ROWS_CACHE_DIR_ENV) };
             let _ = std::fs::remove_dir_all(&self.dir);
         }
     }
@@ -910,6 +940,44 @@ mod tests {
         let outcome = refresh_run_blocks();
         assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
         assert_eq!(outcome.refreshed, 1);
+    }
+
+    #[test]
+    fn a_refresh_drops_cached_rows_no_block_claims_any_more() {
+        // A block deleted from a file is never seen by a refresh again, so
+        // nothing else can clear what it left behind. Re-adding a block under
+        // that id would then serve rows from whenever it was deleted.
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("sweep", "[flat]\nrun = \"echo one\"\n");
+        let kept = fixture.cached("flat", "stale\n");
+        let orphan = fixture.cached("deleted-block", "rows\tnobody declares\n");
+
+        let outcome = refresh_run_blocks();
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+
+        assert!(!orphan.exists(), "a block nobody declares keeps no rows");
+        // `flat` is declared, so its cache survives: refreshed here, and left
+        // alone on a run where the command fails.
+        assert!(kept.exists(), "a declared block keeps its rows");
+    }
+
+    #[test]
+    fn an_unreadable_sources_directory_sweeps_nothing() {
+        // Zero declared blocks reads the same whether the user deleted every
+        // source or the directory is not there yet, and one of those readings
+        // would throw away every block's rows.
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("sweep-missing", "[flat]\nrun = \"echo one\"\n");
+        let orphan = fixture.cached("keep-me", "rows\n");
+
+        unsafe { std::env::set_var(look_sources::SOURCES_DIR_ENV, fixture.dir.join("gone")) };
+        let outcome = refresh_run_blocks();
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+
+        assert!(
+            orphan.exists(),
+            "nothing is swept on a directory we cannot read"
+        );
     }
 
     #[test]

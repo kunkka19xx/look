@@ -36,8 +36,11 @@ flowchart LR
     Engine --> Storage[core/storage\nSqliteStore]
     Storage --> DB[(SQLite look.db)]
 
-    Engine --> Indexers[Index discovery\napps + files + settings]
+    Engine --> Indexers[Index discovery\napps + files + settings + user sources]
     Indexers --> DB
+
+    Engine --> Sources[core/sources\n~/.look/sources blocks]
+    Sources --> Shell[Login shell\nrun producers, do steps, verbs]
 
     App --> OS[macOS APIs\nAppKit / NSWorkspace / Carbon]
     OS --> User
