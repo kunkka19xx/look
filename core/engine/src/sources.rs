@@ -323,9 +323,7 @@ pub fn level(
             format,
         } => {
             let command = look_sources::expand(command, &row);
-            let cwd = cwd
-                .as_deref()
-                .map(|cwd| look_sources::expand_path(cwd, &row));
+            let cwd = resolved_cwd(cwd.as_deref(), &home, Some(&row));
             match look_sources::capture(
                 &command,
                 cwd.as_deref(),
@@ -447,6 +445,7 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
             continue;
         };
 
+        let cwd = resolved_cwd(cwd.as_deref(), &home, None);
         let stored = look_sources::capture(command, cwd.as_deref(), timeout, MAX_CAPTURE_BYTES)
             .and_then(|output| crate::index::store_run_rows(&block.id, &output, *format));
 
@@ -528,6 +527,27 @@ pub fn parents_from_json(ancestors_json: &str) -> Vec<look_sources::ParentRow> {
         return Vec::new();
     }
     serde_json::from_str(ancestors_json).unwrap_or_default()
+}
+
+/// A declared `cwd` as a real directory: placeholders substituted against the
+/// row, then a leading `~` resolved.
+///
+/// `cwd` is handed to the OS as a path and never to a shell, so nothing else
+/// expands it. A `~` left in place fails the spawn with an error naming the
+/// user's shell rather than the directory, which reads as "my command is
+/// broken" for a block whose only mistake was spelling home the way every
+/// other key in the format accepts it.
+fn resolved_cwd(cwd: Option<&str>, home: &Path, row: Option<&RowContext>) -> Option<String> {
+    let declared = cwd?;
+    let expanded = match row {
+        Some(row) => look_sources::expand_path(declared, row),
+        None => declared.to_string(),
+    };
+    Some(
+        look_sources::expand_home(&expanded, home)
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 /// What a block is actually given: its own `timeout`, else the default, capped.
@@ -818,6 +838,78 @@ mod tests {
         let outcome = refresh_run_blocks();
         assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
         assert_eq!(outcome.refreshed, 1, "only the flat block has rows");
+    }
+
+    #[test]
+    fn a_declared_cwd_resolves_home_like_every_other_path() {
+        // `cwd` reaches the OS as a path, so it is the one declared directory
+        // nothing else expands: a `~` left in it fails the spawn with an error
+        // naming the shell rather than the directory.
+        let home = Path::new("/home/u");
+        let row = row_context("src:b:row", "look", "/tmp/look", "", Vec::new());
+        // Compared as paths, not strings: `~` alone resolves to the home
+        // directory with a trailing separator, which every filesystem call
+        // treats as the same directory.
+        let resolved = |cwd: &str, row: Option<&RowContext>| {
+            resolved_cwd(Some(cwd), home, row).map(PathBuf::from)
+        };
+
+        assert_eq!(resolved_cwd(None, home, None), None);
+        assert_eq!(
+            resolved("~/dev/look", None),
+            Some(PathBuf::from("/home/u/dev/look"))
+        );
+        assert_eq!(resolved("~", None), Some(PathBuf::from("/home/u")));
+        assert_eq!(
+            resolved("/opt/src", None),
+            Some(PathBuf::from("/opt/src")),
+            "an absolute path is already what the OS wants"
+        );
+        // A level substitutes the row first, so both halves have to resolve.
+        assert_eq!(
+            resolved("{path}", Some(&row)),
+            Some(PathBuf::from("/tmp/look"))
+        );
+        assert_eq!(
+            resolved("~/src/{title}", Some(&row)),
+            Some(PathBuf::from("/home/u/src/look"))
+        );
+    }
+
+    /// `pwd` is the cheapest way to ask where a command actually ran, and it
+    /// needs a shell, which is unix here.
+    #[cfg(unix)]
+    fn ran_in(path: &str) -> Option<PathBuf> {
+        std::fs::canonicalize(path).ok()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_level_runs_its_command_in_the_home_it_declared() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new("levelcwd", "[here]\nrun = \"pwd\"\ncwd = \"~\"\n");
+
+        let level = descend("here", "src:parent:alpha", "/tmp");
+        assert!(level.error.is_none(), "{:?}", level.error);
+        assert_eq!(
+            ran_in(&level.rows[0].id),
+            home_dir().and_then(|home| ran_in(&home.to_string_lossy())),
+            "a `~` in cwd must reach the OS as the home directory"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_refresh_runs_a_block_in_the_home_it_declared() {
+        // The refresh path expanded nothing at all, so `cwd = "~"` failed the
+        // spawn and the block reported an error it had not earned.
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new("refreshcwd", "[athome]\nrun = \"pwd\"\ncwd = \"~\"\n");
+        let _rows = StoredRows("athome");
+
+        let outcome = refresh_run_blocks();
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+        assert_eq!(outcome.refreshed, 1);
     }
 
     #[test]

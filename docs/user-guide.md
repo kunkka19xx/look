@@ -57,6 +57,7 @@ Default search sources:
 - installed apps
 - local files/folders (from configured roots)
 - curated System Settings entries
+- anything you declared yourself (see [Your own sources](#your-own-sources))
 
 Useful actions:
 
@@ -205,6 +206,47 @@ Behavior:
 - `R` / `E` (inside `/speed`): run the test again, show or hide the public address
 - `Up` / `Down`: in `kill`, navigate process/app results
 - shell text containing `sudo` shows an orange warning cue
+
+## Your own sources
+
+Look indexes apps, files, and System Settings by default. **Sources** are how you add your own rows: your repos, your SSH hosts, your morning routine, your deploy script. They rank, preview, and act like every other row.
+
+> Needs Look v0.6.12 or newer.
+
+Declare them in TOML files under `~/.look/sources/`. Put as many files in there as you like: Look reads **every** `.toml` in the directory and merges them, so you can split by topic (`work.toml`, `git.toml`, `ssh.toml`) and delete one when you are done with it. Block ids have to be unique across all of them.
+
+Each `[block]` has a `name` you can type and exactly one producer key that says what it is:
+
+| Producer | Rows it makes |
+| --- | --- |
+| `do` | one row; `Enter` performs its steps |
+| `dir` | the children of one or more directories |
+| `file` | the lines of a text file |
+| `run` | the lines a command prints |
+
+```toml
+# ~/.look/sources/mine.toml
+
+[projects]
+name = "Projects"
+dir  = "~/dev"
+only = "dirs"
+edit = "nvim {path}"
+
+[work]
+name = "Work setup"
+do   = ["open -a Slack", "open -a Safari https://github.com"]
+```
+
+Reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux, Windows) and type `projects`.
+
+From there you can add `then` targets (actions and drill-downs reached with `Cmd+K`), a `preview` command for the right panel, a `confirm` question before anything destructive, per-row icons via `format = "json"`, and `aliases` / `bias` to place a block in the ranking.
+
+Commands are shell text, run by your login shell, so your own scripts are first-class: `run = "~/bin/my-repos"` or `do = ["~/bin/deploy.sh {path}"]`, in any language with a shebang, reading the row from `LOOK_ID` / `LOOK_TITLE` / `LOOK_PATH` if that suits it better than arguments. An executable dropped straight into `~/.look/sources/` needs no declaration at all: it *is* a `run` block. One caveat worth knowing up front: a login shell reads `~/.zprofile` and `~/.zshenv`, not `~/.zshrc`, and fish/nu users fall back to `/bin/sh`.
+
+**Full guide: [Declaring your own sources](user-sources.md)** - every key, every placeholder, limits, troubleshooting, and recipes.
+
+**Ready-made ones: [lookbook](https://github.com/kunkka19xx/lookbook)** - copy a file into `~/.look/sources/`, reload, done. Also the place to share one you wrote.
 
 ## Settings and config
 
@@ -454,7 +496,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
 - `Cmd+Shift+,`: toggle settings panel
-- `Cmd+Shift+;`: reload config
+- `Cmd+Shift+;`: reload config, and re-read your declared sources
 - `Cmd+Shift+H`: hide the selected app from Look
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
 
@@ -531,3 +573,4 @@ rm -rf "$HOME/Library/Application Support/look"
 - Architecture guide: `docs/architecture.md`
 - Feature status: `docs/features.md`
 - Backend contributor guide: `docs/backend-guide.md`
+- Declaring your own sources: `docs/user-sources.md`

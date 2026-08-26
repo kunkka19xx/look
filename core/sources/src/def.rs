@@ -207,12 +207,19 @@ impl Block {
         })
     }
 
+    /// Everything the producer needs before it can make a row. `cwd` counts:
+    /// it is where the command runs, so a command naming no row from a
+    /// directory that does is still a block about one selected row.
     fn producer_text(&self) -> Vec<&str> {
         match &self.producer {
             Producer::Bundle { steps } => steps.iter().map(String::as_str).collect(),
             Producer::Dir { roots, .. } => roots.iter().map(String::as_str).collect(),
             Producer::File { path, .. } => vec![path.as_str()],
-            Producer::Run { command, .. } => vec![command.as_str()],
+            Producer::Run { command, cwd, .. } => {
+                let mut text = vec![command.as_str()];
+                text.extend(cwd.as_deref());
+                text
+            }
         }
     }
 }
@@ -699,6 +706,22 @@ run = "git -C {path} branch"
 
         let work = one("[work]\ndo = [\"open -a Slack\"]\n");
         assert!(!work.needs_row(), "names no row, so it is a top-level row");
+    }
+
+    #[test]
+    fn a_command_that_only_names_a_row_in_its_cwd_still_needs_one() {
+        // `cd {path} && npm run` and `run = "npm run", cwd = "{path}"` are the
+        // same block written two ways. Reading only the command indexed the
+        // second as a top-level row, then ran it against a literal `{path}`.
+        let by_cwd = one("[scripts]\nrun = \"npm run\"\ncwd = \"{path}\"\n");
+        assert!(by_cwd.needs_row());
+
+        let by_command = one("[scripts]\nrun = \"npm --prefix {path} run\"\n");
+        assert!(by_command.needs_row());
+
+        // A fixed directory names no row, so the block stands on its own.
+        let fixed = one("[scripts]\nrun = \"npm run\"\ncwd = \"~/dev/look\"\n");
+        assert!(!fixed.needs_row());
     }
 
     #[test]
