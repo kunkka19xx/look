@@ -991,25 +991,44 @@ mod tests {
         // rows and the usage history keyed to them.
         use std::os::unix::fs::PermissionsExt;
 
+        /// No read, write, or traverse for anyone: the directory still exists,
+        /// but nothing can enumerate it.
+        const DENY_EVERYONE: u32 = 0o000;
+        /// What a directory normally carries. Restored so it can be removed.
+        const OWNER_WRITES_OTHERS_READ: u32 = 0o755;
+
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let fixture = Fixture::new("sweep-unreadable", "[flat]\nrun = \"echo one\"\n");
         let kept = fixture.cached("flat", "rows\n");
 
-        let locked = std::fs::Permissions::from_mode(0o000);
-        std::fs::set_permissions(&fixture.dir, locked).expect("lock the directory");
-        // Root ignores the mode, so there would be nothing to assert.
-        let unreadable = std::fs::read_dir(&fixture.dir).is_err();
-        if unreadable {
-            let outcome = refresh_run_blocks();
-            assert!(kept.exists(), "{:?}", outcome.errors);
-        }
-        std::fs::set_permissions(&fixture.dir, std::fs::Permissions::from_mode(0o755))
+        let unlock = |dir: &std::path::Path| {
+            std::fs::set_permissions(
+                dir,
+                std::fs::Permissions::from_mode(OWNER_WRITES_OTHERS_READ),
+            )
             .expect("unlock for cleanup");
+        };
 
-        assert!(
-            unreadable,
-            "expected the directory to be unreadable; skipped as root"
-        );
+        std::fs::set_permissions(&fixture.dir, std::fs::Permissions::from_mode(DENY_EVERYONE))
+            .expect("lock the directory");
+
+        // Root ignores the mode, so there is nothing left to exercise. Skipping
+        // rather than failing: the code under test is fine, the environment
+        // just cannot express the case.
+        if std::fs::read_dir(&fixture.dir).is_ok() {
+            unlock(&fixture.dir);
+            eprintln!("skipped: running as root, where a locked directory is still readable");
+            return;
+        }
+
+        let outcome = refresh_run_blocks();
+        let survived = kept.exists();
+        // Before the assertion, never after: a locked directory cannot be
+        // removed, so a failure here would leave the fixture behind for every
+        // later run to trip over.
+        unlock(&fixture.dir);
+
+        assert!(survived, "{:?}", outcome.errors);
     }
 
     #[test]

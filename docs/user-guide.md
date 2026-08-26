@@ -569,6 +569,8 @@ rm -rf "$HOME/Library/Application Support/look"
 rm -f "$HOME/.look.config"   # only if a pre-0.6 config was left behind
 ```
 
+Those are the default paths. If you moved anything with an environment override, remove it yourself as well: `LOOK_CONFIG_PATH` (the config file), `LOOK_SOURCES_DIR` (your declared sources), and `LOOK_ROWS_CACHE_DIR` (the rows a `run` block cached).
+
 ## Related docs
 
 - Architecture guide: `docs/architecture.md`
