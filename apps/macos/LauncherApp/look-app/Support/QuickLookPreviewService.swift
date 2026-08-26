@@ -30,9 +30,14 @@ actor QuickLookPreviewService {
         return width * height * bytesPerPixel
     }
 
+    /// Advanced on purge so a render in flight across the await does not
+    /// repopulate the cache after it was emptied.
+    private var purgeGeneration = 0
+
     /// Drops every cached thumbnail. Called when the launcher hides so an
     /// idle Look does not keep megabytes of preview bitmaps resident.
     func purge() {
+        purgeGeneration += 1
         cache.removeAllObjects()
     }
 
@@ -85,13 +90,14 @@ actor QuickLookPreviewService {
             representationTypes: .thumbnail
         )
 
+        let generation = purgeGeneration
         let image: NSImage? = await withCheckedContinuation { continuation in
             QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { rep, _ in
                 continuation.resume(returning: rep?.nsImage)
             }
         }
 
-        if let image {
+        if let image, generation == purgeGeneration {
             cache.setObject(image, forKey: key, cost: Self.estimatedBitmapBytes(image))
         }
         return image
