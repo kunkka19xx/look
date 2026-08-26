@@ -10,11 +10,31 @@ import QuickLookThumbnailing
 actor QuickLookPreviewService {
     static let shared = QuickLookPreviewService()
 
+    /// Decompressed retina thumbnails run several MB each, so the cache is
+    /// bounded by estimated bitmap bytes, not just entry count.
+    private static let cacheCountLimit = 64
+    private static let cacheCostLimitBytes = 48 * 1024 * 1024
+    private static let bytesPerPixel = 4
+
     private let cache: NSCache<NSString, NSImage> = {
         let c = NSCache<NSString, NSImage>()
-        c.countLimit = 64
+        c.countLimit = cacheCountLimit
+        c.totalCostLimit = cacheCostLimitBytes
         return c
     }()
+
+    private static func estimatedBitmapBytes(_ image: NSImage) -> Int {
+        let rep = image.representations.first
+        let width = rep?.pixelsWide ?? Int(image.size.width)
+        let height = rep?.pixelsHigh ?? Int(image.size.height)
+        return width * height * bytesPerPixel
+    }
+
+    /// Drops every cached thumbnail. Called when the launcher hides so an
+    /// idle Look does not keep megabytes of preview bitmaps resident.
+    func purge() {
+        cache.removeAllObjects()
+    }
 
     // Text/code files: QuickLook renders the *whole* file to produce a
     // thumbnail. Cap aggressively so 5 MB JSON dumps don't stall.
@@ -71,7 +91,9 @@ actor QuickLookPreviewService {
             }
         }
 
-        if let image { cache.setObject(image, forKey: key) }
+        if let image {
+            cache.setObject(image, forKey: key, cost: Self.estimatedBitmapBytes(image))
+        }
         return image
     }
 }
