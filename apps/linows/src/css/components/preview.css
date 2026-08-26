@@ -266,15 +266,26 @@
     max-height: none;
 }
 
-/* The steps take only what they need while a declared `preview` shares the
- * space below them, and all of it when nothing follows: an eighteen-line
- * script should not sit in a six-line box above an empty half-panel. */
+/* As tall as the steps are, capped, and never shrunk: flex takes the shrink out
+ * of siblings in proportion to their content, so forty lines of `preview`
+ * beside two lines of steps leaves the steps at their padding and nothing else.
+ * macOS sizes the same block to its content instead (AICodeBlockView). */
 .preview-block .preview-steps {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
 }
 
-.preview-block:not(.has-preview) .preview-steps {
-    flex: 1 1 auto;
+/* Never wrapped, matching macOS: a long command reads better scrolled than
+ * folded, and the cap counts lines of the command rather than lines of fold. */
+.preview-block .preview-steps .preview-code-text {
+    white-space: pre;
+    overflow: auto;
+    /* Clears the copy button floating over the first line. */
+    padding-right: var(--steps-copy-gutter);
+    max-height: calc(var(--steps-expanded-lines) * var(--code-line-height) * 1em);
+}
+
+.preview-block.has-preview .preview-steps .preview-code-text {
+    max-height: calc(var(--steps-visible-lines) * var(--code-line-height) * 1em);
 }
 
 .preview-block .preview-code:not(.preview-steps) {
@@ -290,6 +301,14 @@
 
 /* Code/text file preview */
 .preview-code {
+    --code-line-height: 1.5;
+    /* macOS Layout.visibleStepLines / expandedStepLines: the steps are context
+     * for the row when a declared `preview` shares the panel, and its subject
+     * when nothing else is competing for the space. */
+    --steps-visible-lines: 2;
+    --steps-expanded-lines: 14;
+    /* The copy button, 22px inset by 6px. */
+    --steps-copy-gutter: 28px;
     margin-top: 12px;
     background: var(--control-fill);
     border-radius: 8px;
@@ -307,7 +326,7 @@
     max-height: calc(100vh - 280px);
     overflow-y: auto;
     user-select: text;
-    line-height: 1.5;
+    line-height: var(--code-line-height);
 }
 
 .preview-code-truncated {
