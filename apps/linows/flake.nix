@@ -106,6 +106,8 @@
               xdg-desktop-portal
               xdg-desktop-portal-gtk
               prettier
+              # The CLI a `run` source block shells out to; the app links rusqlite.
+              sqlite
             ];
 
             buildInputs = runtimeLibs;

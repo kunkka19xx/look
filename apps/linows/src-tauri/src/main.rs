@@ -20,6 +20,7 @@ mod platform;
 mod process;
 mod qactions;
 mod shell;
+mod sources;
 mod state;
 mod sysinfo;
 mod todo;
@@ -710,6 +711,14 @@ fn main() {
             // lives in platform::{linux,windows}::tools)
             tools::tool_actions,
             tools::perform_tool_action,
+            // User-declared sources (shared look-engine orchestration over
+            // look-sources; see specs/user-sources.md)
+            sources::source_block,
+            sources::source_blocks,
+            sources::perform_block,
+            sources::source_rows,
+            sources::source_preview,
+            sources::refresh_run_blocks,
             // Platform: icons, detection, window effects
             platform::get_icon,
             platform::get_platform,
@@ -781,6 +790,7 @@ fn main() {
             health::get_health_issues,
             // Highlight
             highlight::highlight_file_cmd,
+            highlight::highlight_shell_cmd,
             // About widget: version only. The update check itself runs in
             // the webview via fetch() - no Rust HTTP/TLS dep needed.
             files::get_lookapp_version,

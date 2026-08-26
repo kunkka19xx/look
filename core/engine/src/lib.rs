@@ -8,10 +8,14 @@ mod query;
 pub mod result;
 mod scoring;
 mod search;
+pub mod sources;
 pub mod url_history;
 
 pub use action::{ActionKind, LaunchAction};
 use config::RuntimeConfig;
+/// Re-exported so a shell can validate a usage verb without depending on the
+/// indexing crate for one enum.
+pub use look_indexing::UsageAction;
 use look_indexing::{Candidate, CandidateIdKind, CandidateKind};
 use look_storage::{SearchSettings, SqliteStore, StorageError};
 use normalize::normalize_for_search;
