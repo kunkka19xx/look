@@ -561,11 +561,12 @@ Manual install:
 rm -rf "/Applications/Look.app"
 ```
 
-Remove local state (optional - includes config, index, and usage history):
+Remove local state (optional - includes config, your declared sources, index, and usage history):
 
 ```bash
-rm -f "$HOME/.look.config"
+rm -rf "$HOME/.look"
 rm -rf "$HOME/Library/Application Support/look"
+rm -f "$HOME/.look.config"   # only if a pre-0.6 config was left behind
 ```
 
 ## Related docs

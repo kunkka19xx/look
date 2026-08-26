@@ -37,11 +37,20 @@ fn cache_dir() -> Option<PathBuf> {
 /// or corrupted outside Look must not be able to flood the index.
 const MAX_CACHED_ROWS: usize = look_sources::MAX_ROWS_PER_SOURCE;
 
+/// Whether a name is one this module would ever write.
+///
+/// A block id is a TOML table header, so it can contain path separators. Any id
+/// that could escape the cache directory is refused rather than sanitized,
+/// since a silently renamed file would lose the rows it was meant to keep.
+///
+/// `sweep` asks the same question, so that it only ever removes files this
+/// module could have created: a name refused here belongs to something else.
+fn is_usable_cache_name(name: &str) -> bool {
+    !name.is_empty() && !name.contains(['/', '\\']) && !name.contains("..")
+}
+
 fn cache_path(block_id: &str) -> Option<PathBuf> {
-    // A block id is a TOML table header, so it can contain path separators. Any
-    // id that could escape the cache directory is refused rather than sanitized,
-    // since a silently renamed file would lose the rows it was meant to keep.
-    if block_id.is_empty() || block_id.contains(['/', '\\']) || block_id.contains("..") {
+    if !is_usable_cache_name(block_id) {
         return None;
     }
     Some(cache_dir()?.join(block_id))
@@ -119,7 +128,7 @@ pub fn sweep(keep: &BTreeSet<String>) -> usize {
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if keep.contains(name) {
+        if !is_usable_cache_name(name) || keep.contains(name) {
             continue;
         }
         if fs::remove_file(&path).is_ok() {
@@ -138,6 +147,20 @@ mod tests {
         assert!(cache_path("../../etc/passwd").is_none());
         assert!(cache_path("a/b").is_none());
         assert!(cache_path("").is_none());
+    }
+
+    #[test]
+    fn a_name_this_module_would_not_write_is_not_one_it_removes() {
+        // `sweep` deletes what no block claims. A name it could never have
+        // written was put there by something else, and is not ours to delete.
+        assert!(is_usable_cache_name("branches"));
+        assert!(is_usable_cache_name("git-branches"));
+
+        assert!(!is_usable_cache_name(""));
+        assert!(!is_usable_cache_name("a/b"));
+        assert!(!is_usable_cache_name("a\\b"));
+        assert!(!is_usable_cache_name(".."));
+        assert!(!is_usable_cache_name("weird..name"));
     }
 
     #[test]

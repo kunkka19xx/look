@@ -476,10 +476,12 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
         ));
     }
 
-    // Only once the directory is known to be readable. An unreadable one loads
-    // as zero blocks, which is indistinguishable here from a user who deleted
-    // every source, and sweeping on that reading would drop everyone's rows.
-    if sources_dir(&home).is_dir() {
+    // Only once the directory has actually been enumerated. `load_dir` answers
+    // an unreadable directory with zero blocks, exactly as it answers an empty
+    // one, and sweeping on that reading would drop every block's rows. Asking
+    // whether it exists is not the same question: a directory can be there and
+    // still refuse to be read.
+    if std::fs::read_dir(sources_dir(&home)).is_ok() {
         crate::index::sweep_run_cache(&keep);
     }
 
@@ -670,28 +672,34 @@ mod tests {
     static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     struct Fixture {
+        /// Removed on drop. Holds both directories below.
+        base: PathBuf,
         dir: PathBuf,
+        cache: PathBuf,
     }
 
     impl Fixture {
         fn new(label: &str, declarations: &str) -> Self {
-            let dir = std::env::temp_dir()
+            let base = std::env::temp_dir()
                 .join(format!("look-engine-src-{label}-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&dir);
+            let _ = std::fs::remove_dir_all(&base);
+            // Siblings, never nested: a test that makes the sources directory
+            // unreadable must not take the cache down with it.
+            let dir = base.join("sources");
+            let cache = base.join("cache");
             std::fs::create_dir_all(&dir).expect("fixture dir");
+            std::fs::create_dir_all(&cache).expect("fixture cache");
             std::fs::write(dir.join("blocks.toml"), declarations).expect("fixture file");
             unsafe { std::env::set_var(look_sources::SOURCES_DIR_ENV, &dir) };
             // A refresh sweeps the row cache, so it has to be one of ours: the
             // real one belongs to whoever is running the tests.
-            unsafe { std::env::set_var(crate::index::ROWS_CACHE_DIR_ENV, dir.join("cache")) };
-            Self { dir }
+            unsafe { std::env::set_var(crate::index::ROWS_CACHE_DIR_ENV, &cache) };
+            Self { base, dir, cache }
         }
 
         /// Rows a `run` block is pretending to have produced earlier.
         fn cached(&self, block_id: &str, contents: &str) -> PathBuf {
-            let dir = self.dir.join("cache");
-            std::fs::create_dir_all(&dir).expect("cache dir");
-            let path = dir.join(block_id);
+            let path = self.cache.join(block_id);
             std::fs::write(&path, contents).expect("cache file");
             path
         }
@@ -710,7 +718,7 @@ mod tests {
         fn drop(&mut self) {
             unsafe { std::env::remove_var(look_sources::SOURCES_DIR_ENV) };
             unsafe { std::env::remove_var(crate::index::ROWS_CACHE_DIR_ENV) };
-            let _ = std::fs::remove_dir_all(&self.dir);
+            let _ = std::fs::remove_dir_all(&self.base);
         }
     }
 
@@ -943,6 +951,19 @@ mod tests {
     }
 
     #[test]
+    fn a_refresh_leaves_alone_what_it_could_never_have_written() {
+        // `..` in a name is refused when writing, so a file carrying one came
+        // from something other than Look and is not Look's to delete.
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("sweep-foreign", "[flat]\nrun = \"echo one\"\n");
+        let foreign = fixture.cached("weird..name", "not ours\n");
+
+        let outcome = refresh_run_blocks();
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+        assert!(foreign.exists());
+    }
+
+    #[test]
     fn a_refresh_drops_cached_rows_no_block_claims_any_more() {
         // A block deleted from a file is never seen by a refresh again, so
         // nothing else can clear what it left behind. Re-adding a block under
@@ -959,6 +980,36 @@ mod tests {
         // `flat` is declared, so its cache survives: refreshed here, and left
         // alone on a run where the command fails.
         assert!(kept.exists(), "a declared block keeps its rows");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_sources_directory_that_exists_but_cannot_be_read_sweeps_nothing() {
+        // The dangerous case: the directory is there, so an existence check
+        // passes, but it cannot be enumerated, so it loads as zero blocks just
+        // like an empty one. Sweeping on that reading deletes every block's
+        // rows and the usage history keyed to them.
+        use std::os::unix::fs::PermissionsExt;
+
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("sweep-unreadable", "[flat]\nrun = \"echo one\"\n");
+        let kept = fixture.cached("flat", "rows\n");
+
+        let locked = std::fs::Permissions::from_mode(0o000);
+        std::fs::set_permissions(&fixture.dir, locked).expect("lock the directory");
+        // Root ignores the mode, so there would be nothing to assert.
+        let unreadable = std::fs::read_dir(&fixture.dir).is_err();
+        if unreadable {
+            let outcome = refresh_run_blocks();
+            assert!(kept.exists(), "{:?}", outcome.errors);
+        }
+        std::fs::set_permissions(&fixture.dir, std::fs::Permissions::from_mode(0o755))
+            .expect("unlock for cleanup");
+
+        assert!(
+            unreadable,
+            "expected the directory to be unreadable; skipped as root"
+        );
     }
 
     #[test]
