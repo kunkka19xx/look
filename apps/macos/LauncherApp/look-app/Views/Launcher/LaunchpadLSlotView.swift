@@ -56,11 +56,9 @@ private struct LaunchpadTodoTile: View {
 
     @State private var taskIndex = 0
 
-    private let taskTimer = Timer.publish(
-        every: AppConstants.Launcher.Launchpad.todoTaskRotateSeconds,
-        on: .main,
-        in: .common
-    ).autoconnect()
+    @StateObject private var ticker = LauncherActiveTicker(
+        every: AppConstants.Launcher.Launchpad.todoTaskRotateSeconds
+    )
 
     private var stat: TodoStat { TodoSharedState.shared.todayStat }
     private var openTasks: [String] {
@@ -92,7 +90,7 @@ private struct LaunchpadTodoTile: View {
                 .animation(.easeInOut(duration: 0.35), value: taskIndex)
             }
         }
-        .onReceive(taskTimer) { _ in
+        .onReceive(ticker.tick) { _ in
             guard openTasks.count > 1 else { return }
             taskIndex = (taskIndex + 1) % openTasks.count
         }
@@ -154,11 +152,9 @@ private struct LaunchpadClockTile: View {
     @State private var now = Date()
     @State private var lunar: LunarDate?
 
-    private let tickTimer = Timer.publish(
-        every: AppConstants.Launcher.Launchpad.clockTickSeconds,
-        on: .main,
-        in: .common
-    ).autoconnect()
+    @StateObject private var ticker = LauncherActiveTicker(
+        every: AppConstants.Launcher.Launchpad.clockTickSeconds
+    )
 
     var body: some View {
         LaunchpadSlotCard(
@@ -177,7 +173,7 @@ private struct LaunchpadClockTile: View {
             }
         }
         .onAppear { refreshLunar(for: now) }
-        .onReceive(tickTimer) { tick in
+        .onReceive(ticker.tick) { tick in
             // Recompute only when the calendar day rolls over (the lunar date is
             // stable within a day), or if the first read hasn't landed yet.
             if lunar == nil || !Calendar.current.isDate(tick, inSameDayAs: now) {
@@ -245,11 +241,9 @@ private struct LaunchpadHeaderClock: View {
     @State private var now = Date()
     @State private var lunar: LunarDate?
 
-    private let tickTimer = Timer.publish(
-        every: AppConstants.Launcher.Launchpad.clockTickSeconds,
-        on: .main,
-        in: .common
-    ).autoconnect()
+    @StateObject private var ticker = LauncherActiveTicker(
+        every: AppConstants.Launcher.Launchpad.clockTickSeconds
+    )
 
     var body: some View {
         VStack(alignment: .trailing, spacing: Const.headerClockLineSpacing) {
@@ -268,7 +262,7 @@ private struct LaunchpadHeaderClock: View {
             }
         }
         .onAppear { lunar = LunarToday.resolve(for: now) }
-        .onReceive(tickTimer) { tick in
+        .onReceive(ticker.tick) { tick in
             if lunar == nil || !Calendar.current.isDate(tick, inSameDayAs: now) {
                 lunar = LunarToday.resolve(for: tick)
             }
