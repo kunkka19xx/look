@@ -12,6 +12,7 @@
 //! directory again on demand (rather than caching it here) means a file the user
 //! just edited takes effect without a reindex.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -323,9 +324,7 @@ pub fn level(
             format,
         } => {
             let command = look_sources::expand(command, &row);
-            let cwd = cwd
-                .as_deref()
-                .map(|cwd| look_sources::expand_path(cwd, &row));
+            let cwd = resolved_cwd(cwd.as_deref(), &home, Some(&row));
             match look_sources::capture(
                 &command,
                 cwd.as_deref(),
@@ -415,6 +414,11 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
     let mut outcome = RefreshOutcome::default();
     let started_at = Instant::now();
     let mut skipped: Vec<String> = Vec::new();
+    // Every block whose cached rows are still wanted after this refresh: the
+    // ones written below, and the ones deliberately left alone (a command that
+    // failed, a block the time budget could not reach). Anything else in the
+    // cache directory belongs to a block that no longer exists.
+    let mut keep: BTreeSet<String> = BTreeSet::new();
     for block in load_dir(&sources_dir(&home)).blocks {
         let Producer::Run {
             command,
@@ -439,6 +443,10 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
             continue;
         }
 
+        // Claimed before the run, not after: a block that fails or runs out of
+        // budget keeps the rows it had, so its cache is still wanted.
+        keep.insert(block.id.clone());
+
         // Out of budget: the blocks left keep the rows they had, and are named
         // rather than dropped silently - "my source stopped updating" with no
         // reason given is worse than a slow one.
@@ -447,6 +455,7 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
             continue;
         };
 
+        let cwd = resolved_cwd(cwd.as_deref(), &home, None);
         let stored = look_sources::capture(command, cwd.as_deref(), timeout, MAX_CAPTURE_BYTES)
             .and_then(|output| crate::index::store_run_rows(&block.id, &output, *format));
 
@@ -465,6 +474,15 @@ pub fn refresh_run_blocks() -> RefreshOutcome {
             REFRESH_TIME_BUDGET.as_secs(),
             skipped.join(", ")
         ));
+    }
+
+    // Only once the directory has actually been enumerated. `load_dir` answers
+    // an unreadable directory with zero blocks, exactly as it answers an empty
+    // one, and sweeping on that reading would drop every block's rows. Asking
+    // whether it exists is not the same question: a directory can be there and
+    // still refuse to be read.
+    if std::fs::read_dir(sources_dir(&home)).is_ok() {
+        crate::index::sweep_run_cache(&keep);
     }
 
     outcome
@@ -528,6 +546,27 @@ pub fn parents_from_json(ancestors_json: &str) -> Vec<look_sources::ParentRow> {
         return Vec::new();
     }
     serde_json::from_str(ancestors_json).unwrap_or_default()
+}
+
+/// A declared `cwd` as a real directory: placeholders substituted against the
+/// row, then a leading `~` resolved.
+///
+/// `cwd` is handed to the OS as a path and never to a shell, so nothing else
+/// expands it. A `~` left in place fails the spawn with an error naming the
+/// user's shell rather than the directory, which reads as "my command is
+/// broken" for a block whose only mistake was spelling home the way every
+/// other key in the format accepts it.
+fn resolved_cwd(cwd: Option<&str>, home: &Path, row: Option<&RowContext>) -> Option<String> {
+    let declared = cwd?;
+    let expanded = match row {
+        Some(row) => look_sources::expand_path(declared, row),
+        None => declared.to_string(),
+    };
+    Some(
+        look_sources::expand_home(&expanded, home)
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 /// What a block is actually given: its own `timeout`, else the default, capped.
@@ -633,18 +672,36 @@ mod tests {
     static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     struct Fixture {
+        /// Removed on drop. Holds both directories below.
+        base: PathBuf,
         dir: PathBuf,
+        cache: PathBuf,
     }
 
     impl Fixture {
         fn new(label: &str, declarations: &str) -> Self {
-            let dir = std::env::temp_dir()
+            let base = std::env::temp_dir()
                 .join(format!("look-engine-src-{label}-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&dir);
+            let _ = std::fs::remove_dir_all(&base);
+            // Siblings, never nested: a test that makes the sources directory
+            // unreadable must not take the cache down with it.
+            let dir = base.join("sources");
+            let cache = base.join("cache");
             std::fs::create_dir_all(&dir).expect("fixture dir");
+            std::fs::create_dir_all(&cache).expect("fixture cache");
             std::fs::write(dir.join("blocks.toml"), declarations).expect("fixture file");
             unsafe { std::env::set_var(look_sources::SOURCES_DIR_ENV, &dir) };
-            Self { dir }
+            // A refresh sweeps the row cache, so it has to be one of ours: the
+            // real one belongs to whoever is running the tests.
+            unsafe { std::env::set_var(crate::index::ROWS_CACHE_DIR_ENV, &cache) };
+            Self { base, dir, cache }
+        }
+
+        /// Rows a `run` block is pretending to have produced earlier.
+        fn cached(&self, block_id: &str, contents: &str) -> PathBuf {
+            let path = self.cache.join(block_id);
+            std::fs::write(&path, contents).expect("cache file");
+            path
         }
 
         /// Rows for a `file` block to read.
@@ -660,7 +717,8 @@ mod tests {
     impl Drop for Fixture {
         fn drop(&mut self) {
             unsafe { std::env::remove_var(look_sources::SOURCES_DIR_ENV) };
-            let _ = std::fs::remove_dir_all(&self.dir);
+            unsafe { std::env::remove_var(crate::index::ROWS_CACHE_DIR_ENV) };
+            let _ = std::fs::remove_dir_all(&self.base);
         }
     }
 
@@ -818,6 +876,201 @@ mod tests {
         let outcome = refresh_run_blocks();
         assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
         assert_eq!(outcome.refreshed, 1, "only the flat block has rows");
+    }
+
+    #[test]
+    fn a_declared_cwd_resolves_home_like_every_other_path() {
+        // `cwd` reaches the OS as a path, so it is the one declared directory
+        // nothing else expands: a `~` left in it fails the spawn with an error
+        // naming the shell rather than the directory.
+        let home = Path::new("/home/u");
+        let row = row_context("src:b:row", "look", "/tmp/look", "", Vec::new());
+        // Compared as paths, not strings: `~` alone resolves to the home
+        // directory with a trailing separator, which every filesystem call
+        // treats as the same directory.
+        let resolved = |cwd: &str, row: Option<&RowContext>| {
+            resolved_cwd(Some(cwd), home, row).map(PathBuf::from)
+        };
+
+        assert_eq!(resolved_cwd(None, home, None), None);
+        assert_eq!(
+            resolved("~/dev/look", None),
+            Some(PathBuf::from("/home/u/dev/look"))
+        );
+        assert_eq!(resolved("~", None), Some(PathBuf::from("/home/u")));
+        assert_eq!(
+            resolved("/opt/src", None),
+            Some(PathBuf::from("/opt/src")),
+            "an absolute path is already what the OS wants"
+        );
+        // A level substitutes the row first, so both halves have to resolve.
+        assert_eq!(
+            resolved("{path}", Some(&row)),
+            Some(PathBuf::from("/tmp/look"))
+        );
+        assert_eq!(
+            resolved("~/src/{title}", Some(&row)),
+            Some(PathBuf::from("/home/u/src/look"))
+        );
+    }
+
+    /// `pwd` is the cheapest way to ask where a command actually ran, and it
+    /// needs a shell, which is unix here.
+    #[cfg(unix)]
+    fn ran_in(path: &str) -> Option<PathBuf> {
+        std::fs::canonicalize(path).ok()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_level_runs_its_command_in_the_home_it_declared() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new("levelcwd", "[here]\nrun = \"pwd\"\ncwd = \"~\"\n");
+
+        let level = descend("here", "src:parent:alpha", "/tmp");
+        assert!(level.error.is_none(), "{:?}", level.error);
+        assert_eq!(
+            ran_in(&level.rows[0].id),
+            home_dir().and_then(|home| ran_in(&home.to_string_lossy())),
+            "a `~` in cwd must reach the OS as the home directory"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_refresh_runs_a_block_in_the_home_it_declared() {
+        // The refresh path expanded nothing at all, so `cwd = "~"` failed the
+        // spawn and the block reported an error it had not earned.
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new("refreshcwd", "[athome]\nrun = \"pwd\"\ncwd = \"~\"\n");
+        let _rows = StoredRows("athome");
+
+        let outcome = refresh_run_blocks();
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+        assert_eq!(outcome.refreshed, 1);
+    }
+
+    #[test]
+    fn a_refresh_leaves_alone_what_it_could_never_have_written() {
+        // `..` in a name is refused when writing, so a file carrying one came
+        // from something other than Look and is not Look's to delete.
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("sweep-foreign", "[flat]\nrun = \"echo one\"\n");
+        let foreign = fixture.cached("weird..name", "not ours\n");
+
+        let outcome = refresh_run_blocks();
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+        assert!(foreign.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_refresh_leaves_alone_a_cache_entry_that_is_not_a_file() {
+        // A symlink is not a directory, so a directories-only filter let it
+        // through and unlinked it. Look writes regular files and nothing else,
+        // so anything else here belongs to whoever put it there.
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("sweep-symlink", "[flat]\nrun = \"echo one\"\n");
+        // Outside the cache: a file inside it, claimed by no block, is exactly
+        // what a sweep is supposed to remove.
+        let target = fixture.base.join("rows-a-script-keeps");
+        std::fs::write(&target, "rows\n").expect("target file");
+
+        let link = fixture.cache.join("unclaimed");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
+
+        let outcome = refresh_run_blocks();
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+
+        assert!(link.symlink_metadata().is_ok(), "the link itself survives");
+        assert!(target.exists(), "and so does what it points at");
+    }
+
+    #[test]
+    fn a_refresh_drops_cached_rows_no_block_claims_any_more() {
+        // A block deleted from a file is never seen by a refresh again, so
+        // nothing else can clear what it left behind. Re-adding a block under
+        // that id would then serve rows from whenever it was deleted.
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("sweep", "[flat]\nrun = \"echo one\"\n");
+        let kept = fixture.cached("flat", "stale\n");
+        let orphan = fixture.cached("deleted-block", "rows\tnobody declares\n");
+
+        let outcome = refresh_run_blocks();
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+
+        assert!(!orphan.exists(), "a block nobody declares keeps no rows");
+        // `flat` is declared, so its cache survives: refreshed here, and left
+        // alone on a run where the command fails.
+        assert!(kept.exists(), "a declared block keeps its rows");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_sources_directory_that_exists_but_cannot_be_read_sweeps_nothing() {
+        // The dangerous case: the directory is there, so an existence check
+        // passes, but it cannot be enumerated, so it loads as zero blocks just
+        // like an empty one. Sweeping on that reading deletes every block's
+        // rows and the usage history keyed to them.
+        use std::os::unix::fs::PermissionsExt;
+
+        /// No read, write, or traverse for anyone: the directory still exists,
+        /// but nothing can enumerate it.
+        const DENY_EVERYONE: u32 = 0o000;
+        /// What a directory normally carries. Restored so it can be removed.
+        const OWNER_WRITES_OTHERS_READ: u32 = 0o755;
+
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("sweep-unreadable", "[flat]\nrun = \"echo one\"\n");
+        let kept = fixture.cached("flat", "rows\n");
+
+        let unlock = |dir: &std::path::Path| {
+            std::fs::set_permissions(
+                dir,
+                std::fs::Permissions::from_mode(OWNER_WRITES_OTHERS_READ),
+            )
+            .expect("unlock for cleanup");
+        };
+
+        std::fs::set_permissions(&fixture.dir, std::fs::Permissions::from_mode(DENY_EVERYONE))
+            .expect("lock the directory");
+
+        // Root ignores the mode, so there is nothing left to exercise. Skipping
+        // rather than failing: the code under test is fine, the environment
+        // just cannot express the case.
+        if std::fs::read_dir(&fixture.dir).is_ok() {
+            unlock(&fixture.dir);
+            eprintln!("skipped: running as root, where a locked directory is still readable");
+            return;
+        }
+
+        let outcome = refresh_run_blocks();
+        let survived = kept.exists();
+        // Before the assertion, never after: a locked directory cannot be
+        // removed, so a failure here would leave the fixture behind for every
+        // later run to trip over.
+        unlock(&fixture.dir);
+
+        assert!(survived, "{:?}", outcome.errors);
+    }
+
+    #[test]
+    fn an_unreadable_sources_directory_sweeps_nothing() {
+        // Zero declared blocks reads the same whether the user deleted every
+        // source or the directory is not there yet, and one of those readings
+        // would throw away every block's rows.
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new("sweep-missing", "[flat]\nrun = \"echo one\"\n");
+        let orphan = fixture.cached("keep-me", "rows\n");
+
+        unsafe { std::env::set_var(look_sources::SOURCES_DIR_ENV, fixture.dir.join("gone")) };
+        let outcome = refresh_run_blocks();
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+
+        assert!(
+            orphan.exists(),
+            "nothing is swept on a directory we cannot read"
+        );
     }
 
     #[test]

@@ -260,20 +260,20 @@ open "/Applications/Look.app"
 
 ## Essential shortcuts
 
-| Action                                                        | macOS            | Windows             | Linux            |
-| ------------------------------------------------------------- | ---------------- | ------------------- | ---------------- |
-| Toggle launcher                                               | `Cmd+Space`      | `Alt+Space`         | `Alt+Space`      |
-| Open / run                                                    | `Enter`          | `Enter`             | `Enter`          |
-| Web search                                                    | `Cmd+Enter`      | `Ctrl+Enter`        | `Ctrl+Enter`     |
-| Reveal in file manager                                        | `Cmd+F` (Finder) | `Ctrl+F` (Explorer) | `Ctrl+F` (Files) |
-| Move to Trash (or empty the Trash folder)                     | `Cmd+D`          | n/a                 | n/a              |
-| Command mode (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`)                | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
-| Settings                                                      | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
-| Back / hide                                                   | `Escape`         | `Escape`            | `Escape`         |
-| Switch to running app N (home screen)                         | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
-| Hide selected app from Look                                   | `Cmd+Shift+H`    | `Ctrl+Shift+H`      | `Ctrl+Shift+H`   |
-| Run selected app as admin                                     | n/a              | `Ctrl+Shift+Enter`  | n/a              |
-| Fire a super action (empty home screen)                       | `Cmd+<letter>`   | `Alt+<letter>`      | `Alt+<letter>`   |
+| Action                                                                 | macOS            | Windows             | Linux            |
+| ---------------------------------------------------------------------- | ---------------- | ------------------- | ---------------- |
+| Toggle launcher                                                        | `Cmd+Space`      | `Alt+Space`         | `Alt+Space`      |
+| Open / run                                                             | `Enter`          | `Enter`             | `Enter`          |
+| Web search                                                             | `Cmd+Enter`      | `Ctrl+Enter`        | `Ctrl+Enter`     |
+| Reveal in file manager                                                 | `Cmd+F` (Finder) | `Ctrl+F` (Explorer) | `Ctrl+F` (Files) |
+| Move to Trash (or empty the Trash folder)                              | `Cmd+D`          | n/a                 | n/a              |
+| Command mode (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
+| Settings                                                               | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
+| Back / hide                                                            | `Escape`         | `Escape`            | `Escape`         |
+| Switch to running app N (home screen)                                  | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
+| Hide selected app from Look                                            | `Cmd+Shift+H`    | `Ctrl+Shift+H`      | `Ctrl+Shift+H`   |
+| Run selected app as admin                                              | n/a              | `Ctrl+Shift+Enter`  | n/a              |
+| Fire a super action (empty home screen)                                | `Cmd+<letter>`   | `Alt+<letter>`      | `Alt+<letter>`   |
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
 
@@ -281,20 +281,10 @@ Full reference: [docs/user-guide.md](docs/user-guide.md).
 
 ## Themes
 
-Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, plus Custom. Kindle is the one light preset - paper, ink, and a serif face. Liquid renders on macOS 26's Liquid Glass and is hidden on older releases; on Linux and Windows it ships as clear glass - same palette and geometry, a specular rim instead of refraction, plus real behind-window blur wherever the compositor grants it (KDE, Hyprland 0.56+, Niri). Switch in `Settings > Appearance`.
-
-<p align="center">
-  <img src="assets/look-ui/1.png" width="45%" />
-  <img src="assets/look-ui/2.png" width="45%" />
-</p>
-<p align="center">
-  <img src="assets/look-ui/3.png" width="45%" />
-  <img src="assets/look-ui/4.png" width="45%" />
-</p>
-<p align="center">
-  <img src="assets/look-ui/5.png" width="45%" />
-  <img src="assets/look-ui/6.png" width="45%" />
-</p>
+Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, plus Custom.
+Kindle is the one light preset - paper, ink, and a serif face.
+Liquid renders on macOS 26's Liquid Glass and is hidden on older releases; on Linux and Windows it ships as clear glass - same palette and geometry, a specular rim instead of refraction, plus real behind-window blur wherever the compositor grants it (KDE, Hyprland 0.56+, Niri).
+Switch in `Settings > Appearance`.
 
 ## Documentation
 
@@ -303,6 +293,8 @@ Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle
 - [Architecture](docs/architecture.md) - how the Swift app + Rust core fit together
 - [Features](docs/features.md) - what's shipped, what's planned
 - [Contributing](CONTRIBUTING.md) - how to contribute
+- [Your own sources](docs/user-sources.md) - declare custom rows from directories, files, and commands
+- [lookbook](https://github.com/kunkka19xx/lookbook) - ready-made sources to copy: git, ssh, docker, projects
 - [Writing a control](docs/writing-controls.md) - add a Quick Action toggle/button to the panel
 - [Development](DEVELOPMENT.md) - building locally, repo layout, release process
 
