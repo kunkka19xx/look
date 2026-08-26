@@ -21,7 +21,7 @@ let activeTab = 'appearance';
 let onExit = null;
 let onConfigReloadFn = null;
 
-const TABS = ['appearance', 'shortcuts', 'advanced'];
+const TABS = ['appearance', 'advanced', 'shortcuts'];
 
 // Sentinel the Font field falls back to: "let the theme decide", not a family.
 const DEFAULT_FONT_NAME = 'system-ui';
