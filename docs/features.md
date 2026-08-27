@@ -96,6 +96,18 @@ This document tracks what `look` supports today and what is planned next.
 - toggled on/off via `Settings > Appearance > Super Actions`. Persisted as `super_actions_enabled` in `~/.look/config`
 - off hides the strip and disables its mnemonics
 
+### Preferred tools and row actions (v0.6.12)
+
+- `Cmd+K` / `Ctrl+K` on a file, folder, or app row opens an action menu listing what Look can do to it (open, edit, terminal here, reveal, copy path), each with its chord and the declared tool's name
+- **Edit** (`Cmd+E`) and **Open terminal here** (`Cmd+T`) act through tools named in `~/.look/config`: `text_editor`, `code_editor`, `terminal`, `file_manager`
+- a value is a tool name, never a command with its own arguments; Look owns how each tool is driven, including running a terminal editor inside the declared terminal
+- `text_editor` on a file row, `code_editor` on a folder row; declaring only one of the two covers both
+- terminal here opens the folder itself, or a file's parent; app rows get neither verb, reveal still applies
+- `file_manager` retargets `Cmd+F` to the containing folder; left undeclared, the platform's own manager selects the file itself
+- declare nothing and nothing changes: every undeclared key means the system default
+- a value that cannot work explains itself (a terminal editor with no `terminal`, a terminal named as `text_editor`, Warp/Hyper which cannot be told to run a command)
+- shared `core/tools` catalog and command composition on macOS, Linux, and Windows; resolving a tool to an installed app and spawning it are native per shell. See [`docs/user-guide.md`](user-guide.md#preferred-tools)
+
 ### User-declared sources (v0.6.12)
 
 - your own rows from TOML files in `~/.look/sources/`, indexed and ranked alongside apps and files, with their own usage history

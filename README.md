@@ -266,6 +266,9 @@ open "/Applications/Look.app"
 | Open / run                                                             | `Enter`          | `Enter`             | `Enter`          |
 | Web search                                                             | `Cmd+Enter`      | `Ctrl+Enter`        | `Ctrl+Enter`     |
 | Reveal in file manager                                                 | `Cmd+F` (Finder) | `Ctrl+F` (Explorer) | `Ctrl+F` (Files) |
+| Edit selected file/folder in your editor                               | `Cmd+E`          | `Ctrl+E`            | `Ctrl+E`         |
+| Open a terminal there                                                  | `Cmd+T`          | `Ctrl+T`            | `Ctrl+T`         |
+| Action menu for the selected row                                       | `Cmd+K`          | `Ctrl+K`            | `Ctrl+K`         |
 | Move to Trash (or empty the Trash folder)                              | `Cmd+D`          | n/a                 | n/a              |
 | Command mode (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
 | Settings                                                               | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
@@ -276,6 +279,8 @@ open "/Applications/Look.app"
 | Fire a super action (empty home screen)                                | `Cmd+<letter>`   | `Alt+<letter>`      | `Alt+<letter>`   |
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
+
+`Cmd+E` and `Cmd+T` need a tool named in `~/.look/config` (`text_editor`, `code_editor`, `terminal`), and `file_manager` retargets `Cmd+F`. Declare nothing and each falls back to the system default: see [Preferred tools](docs/user-guide.md#preferred-tools).
 
 Full reference: [docs/user-guide.md](docs/user-guide.md).
 
