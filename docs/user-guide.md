@@ -61,7 +61,10 @@ Default search sources:
 
 Useful actions:
 
-- `Cmd+F`: reveal selected app/file/folder in Finder
+- `Cmd+E`: edit the selected file or folder in your editor (see [Preferred tools](#preferred-tools))
+- `Cmd+T`: open a terminal at the selected folder, or at a file's parent
+- `Cmd+K`: open the action menu for the selected row, listing every verb it accepts
+- `Cmd+F`: reveal selected app/file/folder in Finder, or in the `file_manager` you declared
 - `Cmd+C`: copy selected file/folder
 - `Cmd+P`: toggle pick on the selected file/folder (multi-select); the picked set is written to the system pasteboard so you can paste them anywhere in Finder
 - `Cmd+Shift+P`: clear all picked items
@@ -71,6 +74,51 @@ Useful actions:
 When at least one item is picked, the right panel switches to the **Picked** list - each row has an `X` to remove a single item, plus a **Clear all** button. File/folder copies (both `Cmd+C` and `Cmd+P`) are excluded from clipboard history.
 
 **Trash.** Type `trash` to pin the Trash quick folder; `Enter` opens it in Finder. With the Trash folder selected, its preview shows the item count and `Cmd+D` **empties** the Trash. Emptying is permanent, so it asks you to confirm (`Y`/`Enter` to empty, `N`/`Esc` to cancel). Look empties the Trash through Finder, so the first time you do this macOS asks for permission to control Finder (see [Permissions](#permissions)).
+
+## Preferred tools
+
+Name the editor, terminal, and file manager Look should hand a row to, and `Cmd+E` / `Cmd+T` / `Cmd+F` act through them. Four optional keys in `~/.look/config`:
+
+```ini
+text_editor=nvim
+code_editor=zed
+terminal=ghostty
+file_manager=nautilus
+```
+
+| Key            | Used for                                            | Example values                                            |
+| -------------- | --------------------------------------------------- | --------------------------------------------------------- |
+| `text_editor`  | editing one file (`Cmd+E` on a file row)            | `nvim`, `hx`, `micro`, `vim`, `zed`                       |
+| `code_editor`  | opening a project folder (`Cmd+E` on a folder row)  | `zed`, `code`, `cursor`, `xcode`                          |
+| `terminal`     | `Cmd+T`, and the host for any terminal editor       | `ghostty`, `iterm`, `kitty`, `wezterm`, `gnome-terminal`   |
+| `file_manager` | the `Cmd+F` reveal target                           | `nautilus`, `dolphin`, `thunar`, `finder`                 |
+
+**Declare nothing and nothing changes.** An undeclared key means the system default, which is what Look did before these keys existed. They are config-file only, with no Settings control, so edit `~/.look/config` and reload with `Cmd+Shift+;`.
+
+**Name the tool, not a command.** A value is a tool *name*, never a command carrying its own arguments: `text_editor=nvim -u NONE` will not work. Look already knows how to drive each tool, including running a terminal editor inside your terminal, which is the whole reason you name one instead of writing a command. Case, a trailing `.app`, and a leading directory are forgiven, so `Zed`, `Zed.app`, and `/opt/homebrew/bin/zed` all mean `zed`. Spelling out a full path pins that exact build instead of whatever `PATH` finds first.
+
+Which key an action uses:
+
+- **Edit** takes `text_editor` on a file row and `code_editor` on a folder row: a file is a thing to edit, a folder is a project to open. Declaring only one of the two covers both.
+- **Open terminal here** on a folder opens that folder; on a file it opens the file's parent, because "here" never means the file.
+- **An app row gets neither.** Both actions are about a place you work in, and the folder holding an app is `/Applications`. Reveal still works on an app.
+- A [source block](#your-own-sources) declaring its own `open` / `edit` / `terminal` / `reveal` beats these keys, for that block's rows only.
+- `file_manager` opens the **containing folder**. Leave it undeclared if you want the file itself selected on arrival: only the platform's own manager can do that.
+
+**Terminal editors.** Naming a terminal editor (`nvim`, `helix`, `kakoune`, `micro`, `nano`) as `text_editor` needs `terminal` declared too. Look then opens the terminal and runs the editor inside it, at the right path, so `terminal=ghostty` plus `text_editor=nvim` gives you all three of edit-a-file, edit-a-folder, and terminal-here from two words of config.
+
+A value that cannot work says so instead of doing nothing:
+
+| What you set                     | What Look tells you                                                |
+| -------------------------------- | ------------------------------------------------------------------ |
+| a terminal editor, no `terminal` | _nvim runs in a terminal; set terminal in your Look config_        |
+| a terminal as `text_editor`      | _ghostty is a terminal; set text_editor to the editor it should run_ |
+| `terminal=warp`, `terminal=hyper` | _warp cannot be told to run a command_                             |
+| nothing at all                   | _Set text_editor in your Look config_                              |
+
+Warp and Hyper are named because neither offers a way to run a command in a new window. Every other terminal is either known or driven with the `-e` convention, and one nobody has listed simply works if it honors `-e`.
+
+**The action menu.** `Cmd+K` (or `Cmd+J`) on a file, folder, or app row lists every verb that row accepts, with the chord beside it and the declared tool's name filled in: *Edit in Zed*, *Open in Ghostty*, *Reveal in Finder*. `Cmd+J` / `Cmd+K` or the arrows move, `Enter` runs, `Esc` closes. On a row from a source block that declares `then` targets, the menu lists those targets instead, and the chords above keep working on the row.
 
 ## Super actions
 
@@ -416,6 +464,7 @@ File-only settings (no Settings UI):
 These keys have no control in the Settings screens. Edit `~/.look/config` directly, then reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux/Windows), or restart Look. Out-of-range or unparseable values fall back to the listed default. More keys will be added here over time.
 
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
+- `text_editor`, `code_editor`, `terminal`, `file_manager` (the tools `Cmd+E` / `Cmd+T` / `Cmd+F` act through, see [Preferred tools](#preferred-tools); undeclared means the system default)
 
 - `ignored_patterns_<group>` uses gitignore-style path glob syntax: `*`, `**`, `?`, `[abc]`
   - macOS/Linux normally use `/` paths like `~/Library/...` or `/home/name/...`
@@ -489,7 +538,10 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Escape`: back/close (context dependent)
 - `Shift+Escape`: hide launcher
 - `Cmd+Enter`: web search
-- `Cmd+F`: reveal in Finder
+- `Cmd+E`: edit the selected file or folder in your `text_editor` / `code_editor`
+- `Cmd+T`: open your `terminal` at the selected folder, or at a file's parent
+- `Cmd+K` / `Cmd+J`: open the action menu for the selected row
+- `Cmd+F`: reveal in Finder, or in the `file_manager` you declared
 - `Cmd+C`: copy selected file/folder
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
