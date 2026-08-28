@@ -23,11 +23,16 @@ pub(crate) fn look_qactions_json_impl(
     store_json_allocation(cstring)
 }
 
-/// JSON array of `LaunchpadTile` describing the empty-state launchpad layout
-/// (fixed order, sizes, mnemonics), or `[]` on any serialization failure. The
-/// layout is input-free, so this takes no arguments.
+/// JSON array of `LaunchpadTile` describing the empty-state launchpad layout,
+/// every tile carrying the cell it was resolved to, or `[]` on any
+/// serialization failure.
+///
+/// Reads `~/.look/launchpad.toml` through the engine, which falls back to the
+/// built-in grid when there is no file or it cannot be trusted - so this never
+/// answers with an empty layout for a reason the user could have fixed. Still
+/// takes no arguments: the drawing is the only input and it is on disk.
 pub(crate) fn look_quick_actions_launchpad_json_impl() -> *mut c_char {
-    let tiles = look_qactions::launchpad_layout();
+    let tiles = look_engine::launchpad::layout_reported().tiles;
     let json = serde_json::to_string(&tiles).unwrap_or_else(|_| JSON_EMPTY_ARRAY.to_string());
     let cstring =
         CString::new(json).unwrap_or_else(|_| CString::new(JSON_EMPTY_ARRAY).expect("valid"));

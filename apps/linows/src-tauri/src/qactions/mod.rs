@@ -207,12 +207,16 @@ pub fn quick_actions(result_id: String, kind: String) -> Vec<look_qactions::Acti
     look_qactions::descriptors_for(&result_id, &kind)
 }
 
-/// The empty-state launchpad's tile layout, from the shared catalog. One source
-/// of truth across shells: the frontend renders these tiles (order, size, role,
-/// mnemonic, labels) instead of hardcoding its own copy.
+/// The empty-state launchpad's tile layout: the user's `~/.look/launchpad.toml`
+/// when they have one, else the shared catalog's default.
+///
+/// One source of truth across shells, and resolved entirely in the core - the
+/// frontend receives tiles that already know their cell, and never parses the
+/// drawing or works out a span for itself. A file that cannot be trusted falls
+/// back to the default rather than rendering an empty strip.
 #[tauri::command]
 pub fn launchpad_layout() -> Vec<look_qactions::LaunchpadTile> {
-    look_qactions::launchpad_layout()
+    look_engine::launchpad::layout_reported().tiles
 }
 
 /// Live state + info values for an action. `info_keys` are the descriptor's
