@@ -46,7 +46,8 @@ extension LauncherView {
     func performSourceBlockTarget(blockID: String, title: String) {
         guard let selected = actionableSelectedResult() else { return }
 
-        let row = (id: selected.id, title: selected.title, path: selected.path, query: query)
+        let row = RowRef(selected)
+        let typed = query
         let ancestors = selectedRowAncestorsJSON
         // Claimed before the block runs: the user can hide the launcher or
         // start another target while it does.
@@ -61,14 +62,8 @@ extension LauncherView {
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.performBlock(
-                    blockID: blockID,
-                    rowID: row.id,
-                    rowTitle: row.title,
-                    rowPath: row.path,
-                    query: row.query,
-                    ancestorsJSON: ancestors,
-                    asTarget: true
-                )
+                    blockID: blockID, row: row, query: typed, ancestorsJSON: ancestors,
+                    asTarget: true)
             }.value
 
             await MainActor.run {
