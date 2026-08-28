@@ -317,6 +317,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         },
     });
+    function syncSearchSurface() {
+        const translating = search.isTranslateMode();
+        resultsList.hidden = translating;
+        runningApps.setSuspended(translating);
+
+        if (translating) {
+            previewPanel.hidden = true;
+            if (!translatePanel.isActive()) translatePanel.showPlaceholder();
+            return;
+        }
+
+        translatePanel.hide();
+    }
+
     // Shared "back to the empty home screen" reset, used when leaving
     // settings or command mode.
     function resetHomeQuery() {
@@ -328,6 +342,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         queryInput.value = '';
         search.handleQueryInput('');
         layout.setQuery({ empty: true, translate: false });
+        syncSearchSurface();
         renderMainHint();
         syncControlStrip();
         queryInput.focus();
@@ -560,16 +575,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const translating = search.isTranslateMode();
         layout.setQuery({ empty: layout.isEmptyQuery(value), translate: translating });
         syncControlStrip();
-        resultsList.hidden = translating;
-        runningApps.setSuspended(translating);
+        syncSearchSurface();
 
         if (translating) {
             setHint(hintMessage, HINT_TRANSLATE);
-            previewPanel.hidden = true;
-            if (!translatePanel.isActive()) translatePanel.showPlaceholder();
             return;
         }
         translatePanel.hide();
+        if (runningApps.isEnabled()) runningApps.refresh();
 
         if (search.isClipboardMode()) {
             setHint(hintMessage, HINT_CLIPBOARD);
@@ -592,8 +605,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const empty = search.isRecentMode()
                 ? 'recent'
                 : lastAiState !== AiState.idle
-                  ? 'ai-suggestion'
-                  : 'default';
+                    ? 'ai-suggestion'
+                    : 'default';
             results.setEmptyState({ mode: empty });
         }
     });
@@ -705,7 +718,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // timeout.
         requestAnimationFrame(() =>
             requestAnimationFrame(() => {
-                confirmHide(event.payload).catch(() => {});
+                confirmHide(event.payload).catch(() => { });
             }),
         );
     });
