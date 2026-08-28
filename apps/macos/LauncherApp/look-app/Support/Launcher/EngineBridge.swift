@@ -993,13 +993,12 @@ final class EngineBridge: @unchecked Sendable {
     /// The user-declared block a row belongs to, with the exact steps Enter will
     /// perform. Reads the sources directory, so call it off the main thread.
     nonisolated func sourceBlock(
-        candidateID: String, rowID: String = "", rowTitle: String = "", rowPath: String = "",
-        ancestorsJSON: String = "[]"
+        candidateID: String, row: RowRef, ancestorsJSON: String = "[]"
     ) -> SourceBlock? {
         let ptr = candidateID.withCString { candidate in
-            rowID.withCString { id in
-                rowTitle.withCString { title in
-                    rowPath.withCString { path in
+            row.id.withCString { id in
+                row.title.withCString { title in
+                    row.path.withCString { path in
                         ancestorsJSON.withCString { ancestors in
                             look_source_block_json(candidate, id, title, path, ancestors)
                         }
@@ -1092,13 +1091,12 @@ final class EngineBridge: @unchecked Sendable {
     /// A block's declared `preview`, run against the selected row. Nil when the
     /// block declares none. Runs a command - call off the main thread.
     nonisolated func sourcePreview(
-        candidateID: String, rowID: String, rowTitle: String, rowPath: String,
-        ancestorsJSON: String = "[]"
+        candidateID: String, row: RowRef, ancestorsJSON: String = "[]"
     ) -> SourcePreview? {
         let ptr = candidateID.withCString { candidate in
-            rowID.withCString { id in
-                rowTitle.withCString { title in
-                    rowPath.withCString { path in
+            row.id.withCString { id in
+                row.title.withCString { title in
+                    row.path.withCString { path in
                         ancestorsJSON.withCString { ancestors in
                             look_source_preview_json(candidate, id, title, path, ancestors)
                         }
@@ -1128,17 +1126,15 @@ final class EngineBridge: @unchecked Sendable {
     /// is a level to descend into rather than something to run.
     nonisolated func performBlock(
         blockID: String,
-        rowID: String = "",
-        rowTitle: String = "",
-        rowPath: String = "",
+        row: RowRef,
         query: String = "",
         ancestorsJSON: String = "[]",
         asTarget: Bool = false
     ) -> PerformBlockOutcome {
         let ptr = blockID.withCString { block in
-            rowID.withCString { id in
-                rowTitle.withCString { title in
-                    rowPath.withCString { path in
+            row.id.withCString { id in
+                row.title.withCString { title in
+                    row.path.withCString { path in
                         query.withCString { query in
                             ancestorsJSON.withCString { ancestors in
                                 look_perform_block_json(
@@ -1391,6 +1387,25 @@ nonisolated struct ToolAction: Decodable {
     /// A block declared this action for its own rows, so `tool` names the
     /// block: "Open in Projects" is not a label worth showing.
     let fromBlock: Bool
+}
+
+/// The row a block's placeholders expand against. One struct because the three
+/// always travel together, mirroring `RowArgs` on the Tauri side - and because
+/// they used to be three defaulted parameters, which let a call site drop the
+/// row and render `shortcuts run ''` while Enter still ran the real command.
+nonisolated struct RowRef {
+    let id: String
+    let title: String
+    let path: String
+
+    /// The selected row as the engine takes it. `id` is the candidate id: core
+    /// strips the `src:<block>:` namespace, so a block asking for `{id}` gets
+    /// the row's own id rather than the whole thing.
+    init(_ result: LauncherResult) {
+        id = result.id
+        title = result.title
+        path = result.path
+    }
 }
 
 nonisolated struct SourceBlock: Decodable {

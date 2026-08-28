@@ -183,9 +183,13 @@ extension LauncherView {
     /// sources directory touches disk, so it happens off the main thread.
     private func revealDeclaringFile(for selected: LauncherResult) {
         let candidateID = selected.id
+        // Only `file` is read here, which no placeholder touches, but the row
+        // travels anyway: a call that can omit it is how the panel came to show
+        // `shortcuts run ''`.
+        let row = RowRef(selected)
         Task {
             let block = await Task.detached(priority: .userInitiated) {
-                EngineBridge.shared.sourceBlock(candidateID: candidateID)
+                EngineBridge.shared.sourceBlock(candidateID: candidateID, row: row)
             }.value
             await MainActor.run {
                 guard let file = block?.file, FileManager.default.fileExists(atPath: file) else {
@@ -215,20 +219,15 @@ extension LauncherView {
         hideLauncherWindow(restorePreviousApp: false)
 
         let name = selected.title
-        let row = (id: selected.id, title: selected.title, path: selected.path, query: query)
+        let row = RowRef(selected)
+        let typed = query
         // Inside a level the row's ancestors are what `{parent.*}` names, and
         // without them a command would act on nothing.
         let ancestors = selectedRowAncestorsJSON
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.performBlock(
-                    blockID: blockID,
-                    rowID: row.id,
-                    rowTitle: row.title,
-                    rowPath: row.path,
-                    query: row.query,
-                    ancestorsJSON: ancestors
-                )
+                    blockID: blockID, row: row, query: typed, ancestorsJSON: ancestors)
             }.value
             await MainActor.run {
                 if outcome.opensPath {
