@@ -39,6 +39,25 @@ pub(crate) fn look_quick_actions_launchpad_json_impl() -> *mut c_char {
     store_json_allocation(cstring)
 }
 
+/// Anything wrong with `~/.look/launchpad.toml`, as a JSON array of strings, or
+/// `[]` when it is fine, absent, or unreadable in a way already handled.
+///
+/// Its own call rather than a field beside the tiles, so the layout payload
+/// stays a bare JSON array: the Tauri shell decodes that array directly, and
+/// wrapping it would break a shell this change does not otherwise touch.
+/// Merging the two is for whenever that shell reads resolved coordinates too.
+///
+/// Resolves silently - the layout call has already printed these to stderr, and
+/// this exists to put them somewhere a user who did not launch from a terminal
+/// can see.
+pub(crate) fn look_launchpad_warnings_json_impl() -> *mut c_char {
+    let warnings = look_engine::launchpad::layout().warnings;
+    let json = serde_json::to_string(&warnings).unwrap_or_else(|_| JSON_EMPTY_ARRAY.to_string());
+    let cstring =
+        CString::new(json).unwrap_or_else(|_| CString::new(JSON_EMPTY_ARRAY).expect("valid"));
+    store_json_allocation(cstring)
+}
+
 #[cfg(test)]
 mod tests {
     /// The exact JSON both shells decode, as a file rather than an inline

@@ -379,7 +379,7 @@ extension LauncherView {
         // a reload is the point where an edited file should start showing. The
         // launchpad drawing is cached the same way and for the same reason.
         SourceBlockCatalog.invalidate()
-        reloadLaunchpad()
+        let launchpadWarnings = reloadLaunchpad()
         refreshRunBlocksInBackground()
 
         var message = successMessage
@@ -387,15 +387,19 @@ extension LauncherView {
         var duration: Double = successDuration
         var copyText: String? = nil
 
+        // One banner carries both: the launchpad is reloaded here too, and its
+        // drawing is the file most likely to be mid-edit when someone presses
+        // the reload chord.
+        let warnings = result.warnings + launchpadWarnings
         if !backendReloaded {
             message = "Backend config reload failed"
             style = .error
             duration = 4.0
-        } else if !result.warnings.isEmpty {
-            message = result.warnings.joined(separator: ", ")
+        } else if !warnings.isEmpty {
+            message = warnings.joined(separator: ", ")
             style = .warning
             duration = 5.0
-            copyText = result.warnings.joined(separator: "\n")
+            copyText = warnings.joined(separator: "\n")
         }
 
         showBanner(message, style: style, copyText: copyText, duration: duration)

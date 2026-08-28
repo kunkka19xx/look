@@ -886,6 +886,16 @@ pub extern "C" fn look_quick_actions_launchpad_json() -> *mut c_char {
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// JSON array of strings describing anything wrong with `~/.look/launchpad.toml`
+/// (or `[]`). Free the result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_launchpad_warnings_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        qactions_api::look_launchpad_warnings_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// Definitional entity JSON for `query` (a JSON string or `null`).
 #[unsafe(no_mangle)]
 pub extern "C" fn look_definitional_entity_json(query: *const c_char) -> *mut c_char {

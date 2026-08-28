@@ -13,6 +13,10 @@ extension LauncherView {
         if launchpadTiles.isEmpty {
             launchpadTiles = EngineBridge.shared.launchpadLayout()
             launchpadController.configure(tiles: launchpadTiles)
+            // Once per process, not per open: this branch is the first load, so
+            // a broken drawing says so when the launcher first appears without
+            // nagging on every summon after that.
+            showLaunchpadWarnings(EngineBridge.shared.launchpadWarnings())
         }
         // The controller cannot reach the view's banner directly; forward it.
         launchpadController.onBanner = { message in
@@ -28,21 +32,47 @@ extension LauncherView {
     /// Without this, every edit would appear to do nothing until the app was
     /// restarted, which reads as the feature being broken rather than as the
     /// layout being cached.
-    func reloadLaunchpad() {
-        guard themeStore.settings.superActionsEnabled else { return }
+    /// Returns what is wrong with the drawing rather than showing it, so the
+    /// caller folds it into one banner. `reloadConfig` warns that posting a
+    /// second one "would replace any config warnings reported here before the
+    /// user could read them", and a broken launchpad is exactly the case where
+    /// both have something to say.
+    @discardableResult
+    func reloadLaunchpad() -> [String] {
+        guard themeStore.settings.superActionsEnabled else { return [] }
 
         let reloaded = EngineBridge.shared.launchpadLayout()
         // Most reloads are about something else entirely, and the drawing is
         // usually untouched. Comparing first keeps those from re-reading every
         // adapter for a grid that did not move.
-        guard reloaded != launchpadTiles else { return }
+        if reloaded != launchpadTiles {
+            launchpadTiles = reloaded
+            launchpadController.configure(tiles: reloaded)
+            // A tile the drawing just added has never been read: its adapter
+            // state is resolved on launcher open, so without this it would sit
+            // on the placeholder until the window was closed and reopened.
+            refreshLaunchpadState()
+        }
 
-        launchpadTiles = reloaded
-        launchpadController.configure(tiles: reloaded)
-        // A tile the drawing just added has never been read: its adapter state
-        // is resolved on launcher open, so without this it would sit on the
-        // placeholder until the window was closed and reopened.
-        refreshLaunchpadState()
+        // Asked for even when nothing moved, because that is what a broken
+        // drawing looks like: it falls back to the default, so the tiles are
+        // unchanged and the warning is the only sign anything happened.
+        return EngineBridge.shared.launchpadWarnings()
+    }
+
+    /// Raises a launchpad config problem in the window. Nothing when the file
+    /// is fine, which is almost always.
+    func showLaunchpadWarnings(_ warnings: [String]) {
+        guard let first = warnings.first else { return }
+        // The count and the first message: the rest are on stderr and behind
+        // the banner's copy button, and a banner is not a log.
+        let message = warnings.count == 1 ? first : "\(first) (+\(warnings.count - 1) more)"
+        showBanner(
+            message,
+            style: .warning,
+            copyText: warnings.joined(separator: "\n"),
+            duration: 5.0
+        )
     }
 
     /// True while the empty-state launchpad is the visible content (empty query,
