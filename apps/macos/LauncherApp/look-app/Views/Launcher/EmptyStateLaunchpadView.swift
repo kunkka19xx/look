@@ -14,31 +14,14 @@ struct EmptyStateLaunchpadView: View {
 
     private typealias Const = AppConstants.Launcher.Launchpad
 
-    /// Reading-order position of each tile in the spawn cascade, so the grid
-    /// settles in top-left to bottom-right rather than all at once.
-    private enum RevealIndex {
-        static let slot = 0
-        static let bluetooth = 1
-        static let wifi = 2
-        static let battery = 3
-        static let theme = 4
-        static let keepAwake = 5
-        static let screensaver = 6
-        static let weather = 7
-        static let mic = 8
-        static let restart = 9
-        static let shutdown = 10
-        static let nowPlaying = 11
-    }
-
-    private var byID: [String: LaunchpadTileModel] {
-        Dictionary(tiles.map { ($0.actionId, $0) }, uniquingKeysWith: { first, _ in first })
+    /// Cells to points. Cheap enough to rebuild; it is four numbers.
+    private var grid: LaunchpadGrid {
+        LaunchpadGrid(tiles: tiles, rowHeight: Const.rowHeight, gap: Const.gap)
     }
 
     var body: some View {
         GeometryReader { geo in
-            let cell = cellWidth(total: geo.size.width)
-            layout(cell: cell)
+            layout(width: geo.size.width)
         }
         .frame(height: totalHeight)
         .padding(.top, Const.outerTopPadding)
@@ -54,84 +37,34 @@ struct EmptyStateLaunchpadView: View {
 
     // MARK: Geometry
 
-    private func cellWidth(total: CGFloat) -> CGFloat {
-        let gaps = Const.gap * CGFloat(Const.columns - 1)
-        return max(0, (total - gaps) / CGFloat(Const.columns))
-    }
-
-    private func width(columns: Int, cell: CGFloat) -> CGFloat {
-        CGFloat(columns) * cell + Const.gap * CGFloat(columns - 1)
-    }
-
-    private func height(rows: Int) -> CGFloat {
-        CGFloat(rows) * Const.rowHeight + Const.gap * CGFloat(rows - 1)
-    }
-
-    private var totalHeight: CGFloat { height(rows: 3) }
+    private var totalHeight: CGFloat { grid.height }
 
     // MARK: Layout
     //
-    // The spec's fixed order tiles a 6-column grid as three rows:
-    //   row 0/1 cols 0-1: L slot (2x2) | cols 2-4: BT, Wi-Fi, Battery
-    //                                   |          Theme, Keep Awake, Screensaver
-    //                                   | col 5:   Weather (1x2)
-    //   row 2 cols 0-5: Mic, Restart, Shut Down, Now Playing(3)
-    // SwiftUI has no cell spanning, so the arrangement is composed explicitly
-    // from the known order rather than auto-packed.
+    // Every tile is placed at the cell the core resolved for it. This used to be
+    // composed by hand - nested stacks naming each tile in the order the catalog
+    // happened to return them - because SwiftUI has no cell spanning and the
+    // arrangement was known in advance. It is not known in advance any more:
+    // ~/.look/launchpad.toml decides it, so the view offsets and sizes each tile
+    // from its own coordinates and never reconstructs an arrangement.
 
-    @ViewBuilder
-    private func layout(cell: CGFloat) -> some View {
-        VStack(spacing: Const.gap) {
-            HStack(alignment: .top, spacing: Const.gap) {
-                slot(cell: cell)
-                    .frame(width: width(columns: 2, cell: cell), height: height(rows: 2))
+    private func layout(width: CGFloat) -> some View {
+        let grid = self.grid
+        return ZStack(alignment: .topLeading) {
+            // Reading order, because that is the order the core sends. It is
+            // also the order the entrance cascade wants, so the index is the
+            // cascade position - no second table of who animates when.
+            ForEach(Array(tiles.enumerated()), id: \.element.actionId) { index, model in
+                let box = grid.frame(for: model, totalWidth: width)
+                tileContent(model)
+                    .frame(width: box.width, height: box.height)
+                    // On the container: symbol effects reach the images inside.
                     .symbolEffect(.bounce, value: revealToken)
-                    .spawnReveal(index: RevealIndex.slot, token: revealToken)
-
-                VStack(spacing: Const.gap) {
-                    HStack(spacing: Const.gap) {
-                        tileView(LaunchpadActionID.bluetooth, cell: cell, reveal: RevealIndex.bluetooth)
-                        tileView(LaunchpadActionID.wifi, cell: cell, reveal: RevealIndex.wifi)
-                        tileView(LaunchpadActionID.battery, cell: cell, reveal: RevealIndex.battery)
-                    }
-                    HStack(spacing: Const.gap) {
-                        tileView(LaunchpadActionID.theme, cell: cell, reveal: RevealIndex.theme)
-                        tileView(LaunchpadActionID.keepAwake, cell: cell, reveal: RevealIndex.keepAwake)
-                        tileView(LaunchpadActionID.screensaver, cell: cell, reveal: RevealIndex.screensaver)
-                    }
-                }
-
-                tileView(LaunchpadActionID.weather, cell: cell, reveal: RevealIndex.weather)
-            }
-
-            HStack(spacing: Const.gap) {
-                tileView(LaunchpadActionID.mic, cell: cell, reveal: RevealIndex.mic)
-                tileView(LaunchpadActionID.restart, cell: cell, reveal: RevealIndex.restart)
-                tileView(LaunchpadActionID.shutdown, cell: cell, reveal: RevealIndex.shutdown)
-                tileView(LaunchpadActionID.nowPlaying, cell: cell, reveal: RevealIndex.nowPlaying)
+                    .spawnReveal(index: index, token: revealToken)
+                    .offset(x: box.minX, y: box.minY)
             }
         }
-    }
-
-    @ViewBuilder
-    private func slot(cell: CGFloat) -> some View {
-        LaunchpadLSlotView(themeStore: themeStore)
-    }
-
-    /// Renders the tile for `actionID` at its natural size, sourcing labels and
-    /// the mnemonic from the decoded catalog model. `reveal` places it in the
-    /// spawn cascade.
-    @ViewBuilder
-    private func tileView(_ actionID: String, cell: CGFloat, reveal: Int) -> some View {
-        if let model = byID[actionID] {
-            let w = width(columns: model.columnSpan, cell: cell)
-            let h = height(rows: model.rowSpanCount)
-            tileContent(model)
-                .frame(width: w, height: h)
-                // On the container: symbol effects reach the images inside.
-                .symbolEffect(.bounce, value: revealToken)
-                .spawnReveal(index: reveal, token: revealToken)
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder
@@ -175,7 +108,10 @@ struct EmptyStateLaunchpadView: View {
                 themeStore: themeStore
             )
         case .slot:
-            EmptyView()
+            // Was placed by its own branch of the old hand-composed layout, and
+            // reached this switch only to render nothing. It is a tile like the
+            // rest now, so it can be moved, resized or left out of the drawing.
+            LaunchpadLSlotView(themeStore: themeStore)
         }
     }
 }
