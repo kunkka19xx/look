@@ -33,3 +33,84 @@ pub(crate) fn look_quick_actions_launchpad_json_impl() -> *mut c_char {
         CString::new(json).unwrap_or_else(|_| CString::new(JSON_EMPTY_ARRAY).expect("valid"));
     store_json_allocation(cstring)
 }
+
+#[cfg(test)]
+mod tests {
+    /// The exact JSON both shells decode, as a file rather than an inline
+    /// literal because the Swift and JS tests read this same one. A field
+    /// renamed here and nowhere else fails in all three places at once, which
+    /// is the only way this contract announces itself: both shells swallow a
+    /// mismatch. Swift decodes with `try?` and falls back to `[]`, and JS reads
+    /// keys straight off the object, so a rename renders an EMPTY launchpad
+    /// rather than an error.
+    const FIXTURE_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/launchpad_layout.json"
+    );
+
+    /// Every key a shell dereferences, spelled as the wire spells it.
+    ///
+    /// Swift decodes with `.convertFromSnakeCase`, so it reads `actionId` and
+    /// `onLabel`; the JS shell reads the raw object, so it reads `action_id`
+    /// and `on_label`. The two shells never read the same string, which is why
+    /// pinning the wire spelling is what protects both.
+    const WIRE_KEYS: [&str; 11] = [
+        "action_id",
+        "title",
+        "size",
+        "role",
+        "mnemonic",
+        "col",
+        "row",
+        "col_span",
+        "row_span",
+        "on_label",
+        "off_label",
+    ];
+
+    #[test]
+    fn the_launchpad_layout_survives_the_round_trip_to_both_shells() {
+        let live =
+            serde_json::to_value(look_qactions::launchpad_layout()).expect("the layout serialises");
+
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            let pretty = serde_json::to_string_pretty(&live).expect("serialises");
+            std::fs::write(FIXTURE_PATH, format!("{pretty}\n")).expect("fixture is writable");
+            return;
+        }
+
+        let fixture: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(FIXTURE_PATH).expect("fixture is there"))
+                .expect("the fixture is valid JSON");
+
+        assert_eq!(
+            live, fixture,
+            "the launchpad wire format changed. The Swift and JS tests read this \
+             same fixture, so update all three together: regenerate with \
+             UPDATE_FIXTURES=1 cargo test --manifest-path bridge/ffi/Cargo.toml"
+        );
+    }
+
+    #[test]
+    fn a_layout_that_decodes_to_nothing_is_indistinguishable_from_a_broken_one() {
+        let live =
+            serde_json::to_value(look_qactions::launchpad_layout()).expect("the layout serialises");
+        let tiles = live.as_array().expect("an array of tiles");
+
+        // Non-empty is the assertion that matters: both shells fall back to an
+        // empty list on a decode failure, so "no tiles" is exactly what a
+        // broken contract looks like from the outside.
+        assert!(!tiles.is_empty(), "an empty layout is the failure mode");
+
+        for tile in tiles {
+            let tile = tile.as_object().expect("a tile is an object");
+            for key in WIRE_KEYS {
+                assert!(
+                    tile.contains_key(key),
+                    "tile {:?} is missing {key}, which a shell reads by that exact name",
+                    tile.get("action_id")
+                );
+            }
+        }
+    }
+}

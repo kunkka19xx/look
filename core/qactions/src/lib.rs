@@ -107,15 +107,15 @@ pub fn descriptor(action_id: &str) -> Option<ActionDescriptor> {
     }
 }
 
-/// A launchpad tile's footprint in the 6-column bento grid.
+/// How a launchpad tile is DRESSED: which font sizes, paddings and glyph
+/// treatment it gets. Not how wide it is - that is `col_span`/`row_span`, which
+/// the core resolves. The two used to be the same thing, which is why an S tile
+/// standing two rows tall (Weather) needed an override to say so.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TileSize {
-    /// Large, 2 columns x 2 rows.
     L,
-    /// Medium, 2 columns x 1 row (unless overridden by `span`).
     M,
-    /// Small, 1 column x 1 row.
     S,
 }
 
@@ -152,110 +152,193 @@ pub struct LaunchpadTile {
     /// The keyboard-mnemonic character, triggered with the platform command
     /// modifier. `None` for non-actionable tiles (L slot, Battery).
     pub mnemonic: Option<char>,
-    /// Column span override, used by the Now Playing tile (spans 3). `None`
-    /// falls back to the natural width of `size`.
-    pub span: Option<u8>,
-    /// Row span override, used by the Weather tile (stands 2 rows tall in a
-    /// single column). `None` falls back to the natural height of `size`.
-    pub row_span: Option<u8>,
+    /// Where the tile sits, already solved here: the zero-based column and row
+    /// of its top-left cell, and how many cells it covers.
+    ///
+    /// Absolute rather than a hint. The spans these replaced were relative -
+    /// each shell turned them into placement itself, which meant the
+    /// arrangement was written once here and again in every shell. A shell now
+    /// offsets by `col`/`row` and sizes by the spans, and nothing re-derives an
+    /// arrangement from the order of this list.
+    pub col: u8,
+    pub row: u8,
+    pub col_span: u8,
+    pub row_span: u8,
     /// On/off captions for toggle tiles (e.g. Theme's Dark/Light), from the
     /// shared descriptor. `None` for non-toggle tiles.
     pub on_label: Option<String>,
     pub off_label: Option<String>,
 }
 
-fn tile(action_id: &str, size: TileSize, role: TileRole, mnemonic: Option<char>) -> LaunchpadTile {
+/// One entry of the layout table below. `title` is `None` when the catalog
+/// descriptor supplies it, and `Some` for the presentational tiles that have no
+/// descriptor to take it from (L slot, Battery, Weather, Now Playing).
+type Placed = (
+    &'static str,
+    Option<&'static str>,
+    TileSize,
+    TileRole,
+    Option<char>,
+    u8,
+    u8,
+    u8,
+    u8,
+);
+
+fn tile(placed: Placed) -> LaunchpadTile {
+    let (action_id, title, size, role, mnemonic, col, row, col_span, row_span) = placed;
     let descriptor = descriptor(action_id);
     LaunchpadTile {
         action_id: action_id.to_string(),
-        title: descriptor
-            .as_ref()
-            .map(|d| d.title.clone())
-            .unwrap_or_default(),
+        title: title.map(str::to_string).unwrap_or_else(|| {
+            descriptor
+                .as_ref()
+                .map(|d| d.title.clone())
+                .unwrap_or_default()
+        }),
         size,
         role,
         mnemonic,
-        span: None,
-        row_span: None,
+        col,
+        row,
+        col_span,
+        row_span,
         on_label: descriptor.as_ref().and_then(|d| d.on_label.clone()),
         off_label: descriptor.and_then(|d| d.off_label),
     }
 }
 
-/// The fixed empty-state launchpad layout, in placement order. This exact order
-/// and these sizes tile the 6-column grid with no gaps in every state:
+/// The default empty-state launchpad layout, every tile already placed.
 ///
-/// L slot -> BT -> Wi-Fi -> Battery -> Theme -> Keep Awake -> Screensaver ->
-/// Weather -> Mic -> Restart -> Shut Down -> Now Playing (M, span 3).
+/// The table below IS the grid, read as six columns by three rows:
 ///
-/// Battery and Theme are single-column (S); the freed column on the right of the
-/// middle block is filled by the Weather tile, which stands two rows tall.
+/// ```text
+/// lslot  lslot    bluetooth  wifi        battery      weather
+/// lslot  lslot    theme      keepawake   screensaver  weather
+/// mic    restart  shutdown   nowplaying  nowplaying   nowplaying
+/// ```
 ///
-/// The order and mnemonics are shared so every platform shell renders the same
-/// control strip; only the native state reads differ.
+/// Order carries no meaning any more. It used to: the list was in placement
+/// order and each shell re-encoded that same arrangement by hand, so the layout
+/// lived in three places and had to agree. Now a shell offsets each tile by its
+/// own `col`/`row` and never reconstructs anything.
+///
+/// `size` stays, but as presentation only - which font and padding a tile gets,
+/// not how wide it is. Width is `col_span`.
 pub fn launchpad_layout() -> Vec<LaunchpadTile> {
     use crate::action_id as id;
     use TileRole as role;
     use TileSize as size;
 
-    let now_playing = LaunchpadTile {
-        action_id: id::NOW_PLAYING.to_string(),
-        title: "Now Playing".to_string(),
-        size: size::M,
-        role: role::Media,
-        mnemonic: Some('P'),
-        span: Some(3),
-        row_span: None,
-        on_label: None,
-        off_label: None,
-    };
+    // id, title override, size, role, mnemonic, col, row, col_span, row_span
+    let placed: [Placed; 12] = [
+        (id::L_SLOT, Some(""), size::L, role::Slot, None, 0, 0, 2, 2),
+        (
+            id::BLUETOOTH,
+            None,
+            size::S,
+            role::Toggle,
+            Some('B'),
+            2,
+            0,
+            1,
+            1,
+        ),
+        (id::WIFI, None, size::S, role::Toggle, Some('W'), 3, 0, 1, 1),
+        (
+            id::BATTERY,
+            Some("Battery"),
+            size::S,
+            role::Info,
+            None,
+            4,
+            0,
+            1,
+            1,
+        ),
+        // Two rows tall in the column the single-width Battery and Screensaver
+        // tiles leave free on the right of the middle block.
+        (
+            id::WEATHER,
+            Some("Weather"),
+            size::S,
+            role::Weather,
+            None,
+            5,
+            0,
+            1,
+            2,
+        ),
+        (
+            id::THEME,
+            None,
+            size::S,
+            role::Toggle,
+            Some('T'),
+            2,
+            1,
+            1,
+            1,
+        ),
+        (
+            id::KEEP_AWAKE,
+            None,
+            size::S,
+            role::Toggle,
+            Some('K'),
+            3,
+            1,
+            1,
+            1,
+        ),
+        (
+            id::SCREENSAVER,
+            None,
+            size::S,
+            role::Action,
+            Some('S'),
+            4,
+            1,
+            1,
+            1,
+        ),
+        (id::MIC, None, size::S, role::Action, Some('M'), 0, 2, 1, 1),
+        (
+            id::RESTART,
+            None,
+            size::S,
+            role::Action,
+            Some('R'),
+            1,
+            2,
+            1,
+            1,
+        ),
+        (
+            id::SHUTDOWN,
+            None,
+            size::S,
+            role::Action,
+            Some('D'),
+            2,
+            2,
+            1,
+            1,
+        ),
+        (
+            id::NOW_PLAYING,
+            Some("Now Playing"),
+            size::M,
+            role::Media,
+            Some('P'),
+            3,
+            2,
+            3,
+            1,
+        ),
+    ];
 
-    let weather = LaunchpadTile {
-        action_id: id::WEATHER.to_string(),
-        title: "Weather".to_string(),
-        size: size::S,
-        role: role::Weather,
-        mnemonic: None,
-        span: None,
-        row_span: Some(2),
-        on_label: None,
-        off_label: None,
-    };
-
-    vec![
-        LaunchpadTile {
-            action_id: id::L_SLOT.to_string(),
-            title: String::new(),
-            size: size::L,
-            role: role::Slot,
-            mnemonic: None,
-            span: None,
-            row_span: None,
-            on_label: None,
-            off_label: None,
-        },
-        tile(id::BLUETOOTH, size::S, role::Toggle, Some('B')),
-        tile(id::WIFI, size::S, role::Toggle, Some('W')),
-        LaunchpadTile {
-            action_id: id::BATTERY.to_string(),
-            title: "Battery".to_string(),
-            size: size::S,
-            role: role::Info,
-            mnemonic: None,
-            span: None,
-            row_span: None,
-            on_label: None,
-            off_label: None,
-        },
-        tile(id::THEME, size::S, role::Toggle, Some('T')),
-        tile(id::KEEP_AWAKE, size::S, role::Toggle, Some('K')),
-        tile(id::SCREENSAVER, size::S, role::Action, Some('S')),
-        weather,
-        tile(id::MIC, size::S, role::Action, Some('M')),
-        tile(id::RESTART, size::S, role::Action, Some('R')),
-        tile(id::SHUTDOWN, size::S, role::Action, Some('D')),
-        now_playing,
-    ]
+    placed.into_iter().map(tile).collect()
 }
 
 /// Descriptors that apply to a search result. Resolves the (platform-specific)
@@ -322,25 +405,44 @@ mod tests {
     }
 
     #[test]
-    fn launchpad_layout_matches_the_fixed_spec_order() {
-        let layout = launchpad_layout();
-        let ids: Vec<&str> = layout.iter().map(|t| t.action_id.as_str()).collect();
+    fn the_default_layout_tiles_the_grid_with_no_gap_and_no_overlap() {
+        // This replaces an assertion on the exact ORDER of the twelve tiles.
+        // Order was the contract when the shells re-derived placement from it;
+        // now that each tile carries its own cell, order says nothing and a
+        // test on it would pass while the grid was wrong.
+        //
+        // What matters instead is the property the old fixed order existed to
+        // guarantee: the tiles cover the 6x3 grid exactly once. This is the
+        // regression felt on every launch, and the one a user-declared layout
+        // is allowed to break (a hole is their choice) but the DEFAULT is not.
+        const COLUMNS: u8 = 6;
+        const ROWS: u8 = 3;
+
+        let mut owner = std::collections::HashMap::new();
+        for tile in launchpad_layout() {
+            assert!(
+                tile.col_span >= 1 && tile.row_span >= 1,
+                "{} covers no cell",
+                tile.action_id
+            );
+            for row in tile.row..tile.row + tile.row_span {
+                for col in tile.col..tile.col + tile.col_span {
+                    assert!(
+                        col < COLUMNS && row < ROWS,
+                        "{} runs outside the grid at ({col},{row})",
+                        tile.action_id
+                    );
+                    if let Some(other) = owner.insert((col, row), tile.action_id.clone()) {
+                        panic!("{} overlaps {other} at ({col},{row})", tile.action_id);
+                    }
+                }
+            }
+        }
+
         assert_eq!(
-            ids,
-            vec![
-                action_id::L_SLOT,
-                action_id::BLUETOOTH,
-                action_id::WIFI,
-                action_id::BATTERY,
-                action_id::THEME,
-                action_id::KEEP_AWAKE,
-                action_id::SCREENSAVER,
-                action_id::WEATHER,
-                action_id::MIC,
-                action_id::RESTART,
-                action_id::SHUTDOWN,
-                action_id::NOW_PLAYING,
-            ]
+            owner.len(),
+            usize::from(COLUMNS) * usize::from(ROWS),
+            "the default layout leaves a hole"
         );
     }
 
@@ -365,26 +467,38 @@ mod tests {
         }
     }
 
+    fn placed(action_id: &str) -> LaunchpadTile {
+        launchpad_layout()
+            .into_iter()
+            .find(|t| t.action_id == action_id)
+            .unwrap_or_else(|| panic!("{action_id} is in the layout"))
+    }
+
     #[test]
-    fn now_playing_spans_three_columns() {
-        let layout = launchpad_layout();
-        let now_playing = layout
-            .iter()
-            .find(|t| t.action_id == action_id::NOW_PLAYING)
-            .expect("now playing tile present");
-        assert_eq!(now_playing.span, Some(3));
+    fn now_playing_fills_the_rest_of_the_bottom_row() {
+        let now_playing = placed(action_id::NOW_PLAYING);
+        assert_eq!(
+            (
+                now_playing.col,
+                now_playing.row,
+                now_playing.col_span,
+                now_playing.row_span
+            ),
+            (3, 2, 3, 1)
+        );
         assert_eq!(now_playing.role, TileRole::Media);
     }
 
     #[test]
-    fn weather_tile_stands_two_rows_tall() {
-        let layout = launchpad_layout();
-        let weather = layout
-            .iter()
-            .find(|t| t.action_id == action_id::WEATHER)
-            .expect("weather tile present");
+    fn weather_stands_two_rows_tall_in_the_last_column() {
+        let weather = placed(action_id::WEATHER);
+        assert_eq!(
+            (weather.col, weather.row, weather.col_span, weather.row_span),
+            (5, 0, 1, 2)
+        );
+        // `size` is presentation now, not width: an S tile that covers one
+        // column and two rows is exactly the case that separates the two.
         assert_eq!(weather.size, TileSize::S);
-        assert_eq!(weather.row_span, Some(2));
         assert_eq!(weather.role, TileRole::Weather);
     }
 
