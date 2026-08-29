@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock, RwLock};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 static ENGINE_CACHE: OnceLock<RwLock<QueryEngine>> = OnceLock::new();
 static JSON_ALLOCS: OnceLock<Mutex<HashMap<usize, CString>>> = OnceLock::new();
@@ -25,7 +25,16 @@ static INDEX_WATCHER_BOOTSTRAP_STARTED: OnceLock<()> = OnceLock::new();
 static INDEX_REFRESH_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 static INDEX_CHANGE_VERSION: AtomicU64 = AtomicU64::new(0);
 static INDEX_CLEARED_VERSION: AtomicU64 = AtomicU64::new(0);
-static INDEX_WATCHER_CONTROL: OnceLock<Mutex<Option<mpsc::Sender<()>>>> = OnceLock::new();
+static INDEX_WATCHER_CONTROL: OnceLock<Mutex<Option<mpsc::Sender<WatcherMessage>>>> =
+    OnceLock::new();
+
+/// Filesystem events and the stop sentinel share one channel so the watcher
+/// thread blocks on `recv` instead of polling a separate stop channel on a
+/// timeout, which woke it every second for the lifetime of the process.
+enum WatcherMessage {
+    Event(notify::Result<Event>),
+    Stop,
+}
 
 /// Scratch database the tests point at, in place of writing `LOOK_DB_PATH`.
 /// The suite shares one process and engine threads resolve the path while other
@@ -189,20 +198,19 @@ pub(crate) fn restart_index_watchers() {
         return;
     }
 
-    let (stop_tx, stop_rx) = mpsc::channel::<()>();
+    let (event_tx, event_rx) = mpsc::channel::<WatcherMessage>();
     let control = INDEX_WATCHER_CONTROL.get_or_init(|| Mutex::new(None));
     {
         let mut guard = control
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        *guard = Some(stop_tx);
+        *guard = Some(event_tx.clone());
     }
 
     thread::spawn(move || {
-        let (event_tx, event_rx) = mpsc::channel::<notify::Result<Event>>();
         let mut watcher = match RecommendedWatcher::new(
             move |result| {
-                let _ = event_tx.send(result);
+                let _ = event_tx.send(WatcherMessage::Event(result));
             },
             notify::Config::default(),
         ) {
@@ -234,21 +242,17 @@ pub(crate) fn restart_index_watchers() {
         log_info(&format!("index watcher active roots={watched_count}"));
 
         loop {
-            if stop_rx.try_recv().is_ok() {
-                break;
-            }
-
-            match event_rx.recv_timeout(Duration::from_secs(1)) {
-                Ok(Ok(event)) => {
+            match event_rx.recv() {
+                Ok(WatcherMessage::Stop) => break,
+                Ok(WatcherMessage::Event(Ok(event))) => {
                     if should_mark_dirty_from_event(&event) {
                         mark_index_dirty();
                     }
                 }
-                Ok(Err(err)) => {
+                Ok(WatcherMessage::Event(Err(err))) => {
                     log_error(&format!("index watcher event error={err}"));
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err(_) => {
                     log_error("index watcher channel disconnected");
                     break;
                 }
@@ -431,7 +435,7 @@ fn stop_index_watchers() {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(tx) = guard.take() {
-            let _ = tx.send(());
+            let _ = tx.send(WatcherMessage::Stop);
         }
     }
 }

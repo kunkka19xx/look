@@ -40,6 +40,9 @@ zbus = "5"
 # StreamExt for zbus signal streams.
 futures-util = { version = "0.3", default-features = false }
 webkit2gtk = "2.0"
+# dlopen for libgtk-layer-shell: absent on some distros, so it must not be a
+# link-time dependency.
+libloading = "0.8"
 # Owning the clipboard in-process, which is the only way to offer a path as
 # BOTH a file (for a file manager) and text (for everything else): wl-copy and
 # xclip each advertise a single MIME type per invocation. Pinned to the version

@@ -127,8 +127,188 @@
     box-shadow: 0 2px 8px rgba(var(--shadow), 0.2);
 }
 
+/* A block row's panel is a column all the way down, so the card is the same
+ * height whatever the block declared: header, what runs, then the declaration
+ * at the foot. Flex rather than height:100% - a percentage needs a definite
+ * parent, and a panel that cannot resolve one collapses to its content. */
+.preview-panel.is-block {
+    display: flex;
+    flex-direction: column;
+}
+
+.preview-panel.is-block > .preview-block {
+    flex: 1;
+    min-height: 0;
+}
+
+.preview-block {
+    display: flex;
+    flex-direction: column;
+}
+
+/* The middle takes the leftover and scrolls, the panel does not: macOS puts a
+ * ScrollView here so the declaration below it never leaves the screen.
+ * Scrollbars are hidden app-wide (reset.css), so this shows none. */
+.preview-block > .preview-slot {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.preview-block-footer {
+    flex-shrink: 0;
+}
+
+/* A file-backed block row: the file's own panel, with the block's section at
+ * the foot of it. Children keep their size and the panel scrolls as one, so a
+ * tall preview pushes the section down rather than squashing anything. */
+.preview-panel.has-block-extra {
+    display: flex;
+    flex-direction: column;
+}
+
+.preview-panel.has-block-extra > * {
+    flex-shrink: 0;
+}
+
+/* The file's own preview is the part that scrolls. Everything under it - the
+ * metadata and the block's section - stays on screen, so "Declared in" is
+ * never something you have to scroll a 2000-line file to reach. */
+.preview-panel.has-block-extra > .preview-slot {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* Inside that region the content is measured by the region, not by the window:
+ * the file preview's own viewport cap would overflow the panel again. */
+.preview-panel.has-block-extra .preview-code-text {
+    max-height: none;
+}
+
+/* What the block adds to a file's panel, always under the file's own rows and
+ * set off from them by a rule. */
+.preview-block-extra {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--divider-color);
+}
+
+/* Claimed before it is filled, so it must draw nothing until it is. */
+.preview-block-extra:empty {
+    display: none;
+}
+
+.preview-divider {
+    height: 1px;
+    margin-top: 14px;
+    background: var(--divider-color);
+    opacity: 0.5;
+}
+
+/* A chord and what it does. The key wears a cap, so it reads as something to
+ * press rather than as another fact about the row. */
+.preview-hint {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 2px;
+}
+
+.preview-hint-key {
+    min-width: 36px;
+    padding: 3px 8px;
+    text-align: center;
+    font-size: calc(var(--font-size) - 2px);
+    font-weight: 600;
+    color: var(--accent-color);
+    background: var(--control-fill);
+    border-radius: 6px;
+}
+
+.preview-hint-text {
+    font-size: calc(var(--font-size) - 1px);
+    font-weight: 500;
+    color: var(--font-secondary);
+}
+
+/* "Enter runs", above the steps it labels and above the scroll with them. */
+.preview-section-label {
+    flex-shrink: 0;
+    margin-top: 12px;
+    font-size: calc(var(--font-size) - 2px);
+    font-weight: 600;
+    color: var(--font-secondary);
+}
+
+/* The copy button floats over the steps rather than taking a header row of its
+ * own: the commands are what the panel is for. */
+.preview-steps {
+    position: relative;
+    margin-top: 6px;
+}
+
+/* Inside the block panel both code blocks are columns that scroll themselves,
+ * so neither can push the other out of view and no fixed line cap is needed. */
+.preview-block .preview-code {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.preview-block .preview-code-text {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+}
+
+/* As tall as the steps are, capped, and never shrunk: flex takes the shrink out
+ * of siblings in proportion to their content, so forty lines of `preview`
+ * beside two lines of steps leaves the steps at their padding and nothing else.
+ * macOS sizes the same block to its content instead (AICodeBlockView). */
+.preview-block .preview-steps {
+    flex: 0 0 auto;
+}
+
+/* Never wrapped, matching macOS: a long command reads better scrolled than
+ * folded, and the cap counts lines of the command rather than lines of fold. */
+.preview-block .preview-steps .preview-code-text {
+    white-space: pre;
+    overflow: auto;
+    /* Clears the copy button floating over the first line. */
+    padding-right: var(--steps-copy-gutter);
+    max-height: calc(var(--steps-expanded-lines) * var(--code-line-height) * 1em);
+}
+
+.preview-block.has-preview .preview-steps .preview-code-text {
+    max-height: calc(var(--steps-visible-lines) * var(--code-line-height) * 1em);
+}
+
+.preview-block .preview-code:not(.preview-steps) {
+    flex: 1 1 auto;
+}
+
+.preview-steps-copy {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 1;
+}
+
 /* Code/text file preview */
 .preview-code {
+    --code-line-height: 1.5;
+    /* macOS Layout.visibleStepLines / expandedStepLines: the steps are context
+     * for the row when a declared `preview` shares the panel, and its subject
+     * when nothing else is competing for the space. */
+    --steps-visible-lines: 2;
+    --steps-expanded-lines: 14;
+    /* The copy button, 22px inset by 6px. */
+    --steps-copy-gutter: 28px;
     margin-top: 12px;
     background: var(--control-fill);
     border-radius: 8px;
@@ -146,7 +326,7 @@
     max-height: calc(100vh - 280px);
     overflow-y: auto;
     user-select: text;
-    line-height: 1.5;
+    line-height: var(--code-line-height);
 }
 
 .preview-code-truncated {

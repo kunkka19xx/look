@@ -6,9 +6,16 @@ import Foundation
 nonisolated enum HighlightedTextCache {
     // NSCache is documented thread-safe; mark nonisolated(unsafe) to
     // satisfy Swift 6 strict-concurrency without an actor wrapper.
+    /// Attribute runs (one per highlighted token) dominate the real footprint,
+    /// so cost is estimated per character rather than counted per entry.
+    private static let cacheCountLimit = 32
+    private static let cacheCostLimitBytes = 16 * 1024 * 1024
+    private static let estimatedBytesPerCharacter = 10
+
     nonisolated(unsafe) private static let cache: NSCache<NSString, NSAttributedString> = {
         let c = NSCache<NSString, NSAttributedString>()
-        c.countLimit = 32
+        c.countLimit = cacheCountLimit
+        c.totalCostLimit = cacheCostLimitBytes
         return c
     }()
 
@@ -23,6 +30,16 @@ nonisolated enum HighlightedTextCache {
     }
 
     static func set(_ key: String, _ value: NSAttributedString) {
-        cache.setObject(value, forKey: key as NSString)
+        cache.setObject(
+            value,
+            forKey: key as NSString,
+            cost: value.length * estimatedBytesPerCharacter
+        )
+    }
+
+    /// Drops every cached preview. Called when the launcher hides so an idle
+    /// Look does not keep highlighted file contents resident.
+    static func purge() {
+        cache.removeAllObjects()
     }
 }

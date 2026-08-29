@@ -4,20 +4,20 @@
 
 > **Cross-platform shortcut note.** Examples are written with macOS modifiers (`Cmd+...`). On Windows and Linux, read `Cmd` as `Ctrl` - except the launcher toggle, which is `Alt+Space` (since `Win+Space` / `Super+Space` are reserved by the OS or desktop environment).
 >
-> | macOS           | Windows / Linux  |
-> | --------------- | ---------------- |
-> | `Cmd+Space`     | `Alt+Space`      |
-> | `Cmd+Enter`     | `Ctrl+Enter`     |
-> | `Cmd+F`         | `Ctrl+F`         |
-> | `Cmd+C`         | `Ctrl+C`         |
-> | `Cmd+/`         | `Ctrl+/`         |
-> | `Cmd+0`         | `Ctrl+0`         |
-> | `Cmd+1`…`Cmd+7` (command mode) | `Ctrl+1`…`Ctrl+7`|
-> | `Cmd+1`…`Cmd+9` (running-apps switcher) | `Alt+1`…`Alt+9` |
-> | `Cmd+P`         | `Ctrl+P`         |
-> | `Cmd+Shift+P`   | `Ctrl+Shift+P`   |
-> | `Cmd+Shift+,`   | `Ctrl+Shift+,`   |
-> | `Cmd+Shift+;`   | `Ctrl+Shift+;`   |
+> | macOS                                   | Windows / Linux   |
+> | --------------------------------------- | ----------------- |
+> | `Cmd+Space`                             | `Alt+Space`       |
+> | `Cmd+Enter`                             | `Ctrl+Enter`      |
+> | `Cmd+F`                                 | `Ctrl+F`          |
+> | `Cmd+C`                                 | `Ctrl+C`          |
+> | `Cmd+/`                                 | `Ctrl+/`          |
+> | `Cmd+0`                                 | `Ctrl+0`          |
+> | `Cmd+1`…`Cmd+7` (command mode)          | `Ctrl+1`…`Ctrl+7` |
+> | `Cmd+1`…`Cmd+9` (running-apps switcher) | `Alt+1`…`Alt+9`   |
+> | `Cmd+P`                                 | `Ctrl+P`          |
+> | `Cmd+Shift+P`                           | `Ctrl+Shift+P`    |
+> | `Cmd+Shift+,`                           | `Ctrl+Shift+,`    |
+> | `Cmd+Shift+;`                           | `Ctrl+Shift+;`    |
 >
 > "Reveal in Finder" reads as "Reveal in Explorer" on Windows and "Show in Files" on Linux.
 
@@ -57,10 +57,14 @@ Default search sources:
 - installed apps
 - local files/folders (from configured roots)
 - curated System Settings entries
+- anything you declared yourself (see [Your own sources](#your-own-sources))
 
 Useful actions:
 
-- `Cmd+F`: reveal selected app/file/folder in Finder
+- `Cmd+E`: edit the selected file or folder in your editor (see [Preferred tools](#preferred-tools))
+- `Cmd+T`: open a terminal at the selected folder, or at a file's parent
+- `Cmd+K`: open the action menu for the selected row, listing every verb it accepts
+- `Cmd+F`: reveal selected app/file/folder in Finder, or in the `file_manager` you declared
 - `Cmd+C`: copy selected file/folder
 - `Cmd+P`: toggle pick on the selected file/folder (multi-select); the picked set is written to the system pasteboard so you can paste them anywhere in Finder
 - `Cmd+Shift+P`: clear all picked items
@@ -71,21 +75,66 @@ When at least one item is picked, the right panel switches to the **Picked** lis
 
 **Trash.** Type `trash` to pin the Trash quick folder; `Enter` opens it in Finder. With the Trash folder selected, its preview shows the item count and `Cmd+D` **empties** the Trash. Emptying is permanent, so it asks you to confirm (`Y`/`Enter` to empty, `N`/`Esc` to cancel). Look empties the Trash through Finder, so the first time you do this macOS asks for permission to control Finder (see [Permissions](#permissions)).
 
+## Preferred tools
+
+Name the editor, terminal, and file manager Look should hand a row to, and `Cmd+E` / `Cmd+T` / `Cmd+F` act through them. Four optional keys in `~/.look/config`:
+
+```ini
+text_editor=nvim
+code_editor=zed
+terminal=ghostty
+file_manager=nautilus
+```
+
+| Key            | Used for                                            | Example values                                            |
+| -------------- | --------------------------------------------------- | --------------------------------------------------------- |
+| `text_editor`  | editing one file (`Cmd+E` on a file row)            | `nvim`, `hx`, `micro`, `vim`, `zed`                       |
+| `code_editor`  | opening a project folder (`Cmd+E` on a folder row)  | `zed`, `code`, `cursor`, `xcode`                          |
+| `terminal`     | `Cmd+T`, and the host for any terminal editor       | `ghostty`, `iterm`, `kitty`, `wezterm`, `gnome-terminal`   |
+| `file_manager` | the `Cmd+F` reveal target                           | `nautilus`, `dolphin`, `thunar`, `finder`                 |
+
+**Declare nothing and nothing changes.** An undeclared key means the system default, which is what Look did before these keys existed. They are config-file only, with no Settings control, so edit `~/.look/config` and reload with `Cmd+Shift+;`.
+
+**Name the tool, not a command.** A value is a tool *name*, never a command carrying its own arguments: `text_editor=nvim -u NONE` will not work. Look already knows how to drive each tool, including running a terminal editor inside your terminal, which is the whole reason you name one instead of writing a command. Case, a trailing `.app`, and a leading directory are forgiven, so `Zed`, `Zed.app`, and `/opt/homebrew/bin/zed` all mean `zed`. Spelling out a full path pins that exact build instead of whatever `PATH` finds first.
+
+Which key an action uses:
+
+- **Edit** takes `text_editor` on a file row and `code_editor` on a folder row: a file is a thing to edit, a folder is a project to open. Declaring only one of the two covers both.
+- **Open terminal here** on a folder opens that folder; on a file it opens the file's parent, because "here" never means the file.
+- **An app row gets neither.** Both actions are about a place you work in, and the folder holding an app is `/Applications`. Reveal still works on an app.
+- A [source block](#your-own-sources) declaring its own `open` / `edit` / `terminal` / `reveal` beats these keys, for that block's rows only.
+- `file_manager` opens the **containing folder**. Leave it undeclared if you want the file itself selected on arrival: only the platform's own manager can do that.
+
+**Terminal editors.** Naming a terminal editor (`nvim`, `helix`, `kakoune`, `micro`, `nano`) as `text_editor` needs `terminal` declared too. Look then opens the terminal and runs the editor inside it, at the right path, so `terminal=ghostty` plus `text_editor=nvim` gives you all three of edit-a-file, edit-a-folder, and terminal-here from two words of config.
+
+A value that cannot work says so instead of doing nothing:
+
+| What you set                     | What Look tells you                                                |
+| -------------------------------- | ------------------------------------------------------------------ |
+| a terminal editor, no `terminal` | _nvim runs in a terminal; set terminal in your Look config_        |
+| a terminal as `text_editor`      | _ghostty is a terminal; set text_editor to the editor it should run_ |
+| `terminal=warp`, `terminal=hyper` | _warp cannot be told to run a command_                             |
+| nothing at all                   | _Set text_editor in your Look config_                              |
+
+Warp and Hyper are named because neither offers a way to run a command in a new window. Every other terminal is either known or driven with the `-e` convention, and one nobody has listed simply works if it honors `-e`.
+
+**The action menu.** `Cmd+K` (or `Cmd+J`) on a file, folder, or app row lists every verb that row accepts, with the chord beside it and the declared tool's name filled in: *Edit in Zed*, *Open in Ghostty*, *Reveal in Finder*. `Cmd+J` / `Cmd+K` or the arrows move, `Enter` runs, `Esc` closes. On a row from a source block that declares `then` targets, the menu lists those targets instead, and the chords above keep working on the row.
+
 ## Super actions
 
 With an empty query, the home screen shows a strip of system controls instead of results. Fire a tile by clicking it, or with `Cmd`+letter (macOS) / `Alt`+letter (Linux, Windows), where the letter is the one highlighted on the tile:
 
-| Key | Tile         | Effect                        |
-| --- | ------------ | ----------------------------- |
-| `B` | Bluetooth    | Toggle on/off                 |
-| `W` | Wi-Fi        | Toggle on/off                 |
-| `T` | Theme        | Switch dark/light             |
-| `K` | Keep Awake   | Toggle sleep prevention       |
-| `S` | Screensaver  | Start it                      |
-| `M` | Mic          | Mute/unmute                   |
-| `P` | Now Playing  | Play/pause the current track  |
-| `R` | Restart      | Restart (press twice)         |
-| `D` | Shut Down    | Shut down (press twice)       |
+| Key | Tile        | Effect                       |
+| --- | ----------- | ---------------------------- |
+| `B` | Bluetooth   | Toggle on/off                |
+| `W` | Wi-Fi       | Toggle on/off                |
+| `T` | Theme       | Switch dark/light            |
+| `K` | Keep Awake  | Toggle sleep prevention      |
+| `S` | Screensaver | Start it                     |
+| `M` | Mic         | Mute/unmute                  |
+| `P` | Now Playing | Play/pause the current track |
+| `R` | Restart     | Restart (press twice)        |
+| `D` | Shut Down   | Shut down (press twice)      |
 
 Restart and Shut Down arm on the first press and only run on the second, so a stray key can't power the machine off. `Esc` or waiting a moment cancels the armed tile.
 
@@ -99,7 +148,7 @@ Look can answer questions and look things up without leaving the launcher. These
 
 - **Answer card.** A question, an entity that has no local match (e.g. `sir alex ferguson`), or an instant-answer pattern (weather, currency, crypto) shows a Spotlight-style card above the results. Sources resolve independently and each appears as it lands - **DuckDuckGo** and **Wikipedia**. Arithmetic doesn't answer here anymore - see the **Calculator row** under Query prefixes below. On macOS, when no web source has an answer it falls back to a streaming on-device **Apple Intelligence** answer. Click a source label to open it; the copy button copies that block.
 - **Search suggestions.** For plain text queries (2+ characters), Google autocomplete rows appear under the results. `Enter` on a suggestion (or `Cmd+Enter` on your query) runs a web search in your default browser.
-- **Query rewrite** *(macOS only)*. When a natural-language query finds nothing locally, the on-device model rewrites it into Look's prefix grammar and searches again. It never overrides results you can already see - it only runs when the raw query came up empty.
+- **Query rewrite** _(macOS only)_. When a natural-language query finds nothing locally, the on-device model rewrites it into Look's prefix grammar and searches again. It never overrides results you can already see - it only runs when the raw query came up empty.
 
 **Platform note.** The web answer card and Google suggestions are available on macOS, Linux, and Windows. The on-device LLM - query rewrite and the Apple Intelligence answer fallback - is **macOS-only**; there is no on-device model on Linux/Windows, so there the card uses web sources (DuckDuckGo, Wikipedia, currency/weather/crypto) only. The `ai_enabled` toggle is shared across platforms.
 
@@ -206,6 +255,47 @@ Behavior:
 - `Up` / `Down`: in `kill`, navigate process/app results
 - shell text containing `sudo` shows an orange warning cue
 
+## Your own sources
+
+Look indexes apps, files, and System Settings by default. **Sources** are how you add your own rows: your repos, your SSH hosts, your morning routine, your deploy script. They rank, preview, and act like every other row.
+
+> Needs Look v0.6.12 or newer.
+
+Declare them in TOML files under `~/.look/sources/`. Put as many files in there as you like: Look reads **every** `.toml` in the directory and merges them, so you can split by topic (`work.toml`, `git.toml`, `ssh.toml`) and delete one when you are done with it. Block ids have to be unique across all of them.
+
+Each `[block]` has a `name` you can type and exactly one producer key that says what it is:
+
+| Producer | Rows it makes                           |
+| -------- | --------------------------------------- |
+| `do`     | one row; `Enter` performs its steps     |
+| `dir`    | the children of one or more directories |
+| `file`   | the lines of a text file                |
+| `run`    | the lines a command prints              |
+
+```toml
+# ~/.look/sources/mine.toml
+
+[projects]
+name = "Projects"
+dir  = "~/dev"
+only = "dirs"
+edit = "nvim {path}"
+
+[work]
+name = "Work setup"
+do   = ["open -a Slack", "open -a Safari https://github.com"]
+```
+
+Reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux, Windows) and type `projects`.
+
+From there you can add `then` targets (actions and drill-downs reached with `Cmd+K`), a `preview` command for the right panel, a `confirm` question before anything destructive, per-row icons via `format = "json"`, and `aliases` / `bias` to place a block in the ranking.
+
+Commands are shell text, run by your login shell, so your own scripts are first-class: `run = "~/bin/my-repos"` or `do = ["~/bin/deploy.sh {path}"]`, in any language with a shebang, reading the row from `LOOK_ID` / `LOOK_TITLE` / `LOOK_PATH` if that suits it better than arguments. An executable dropped straight into `~/.look/sources/` needs no declaration at all: it _is_ a `run` block. One caveat worth knowing up front: a login shell reads `~/.zprofile` and `~/.zshenv`, not `~/.zshrc`, and fish/nu users fall back to `/bin/sh`.
+
+**Full guide: [Declaring your own sources](user-sources.md)** - every key, every placeholder, limits, troubleshooting, and recipes.
+
+**Ready-made ones: [lookbook](https://github.com/kunkka19xx/lookbook)** - copy a file into `~/.look/sources/`, reload, done. Also the place to share one you wrote.
+
 ## Settings and config
 
 Open settings with `Cmd+Shift+,`.
@@ -256,7 +346,7 @@ Two consequences worth knowing:
 - The glass follows `Blur Style`, not the theme name, so you can pick
   `Settings > Appearance > Blur Style > Liquid Glass` on any theme to get the
   glass surface with that theme's palette. Going the other way, selecting Liquid
-  and then a different blur style keeps Liquid's palette *and* its rounder
+  and then a different blur style keeps Liquid's palette _and_ its rounder
   corners, and swaps only the material for the classic blur.
 
 On Linux and Windows, Liquid is clear glass rather than frosted: the same
@@ -374,27 +464,26 @@ File-only settings (no Settings UI):
 These keys have no control in the Settings screens. Edit `~/.look/config` directly, then reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux/Windows), or restart Look. Out-of-range or unparseable values fall back to the listed default. More keys will be added here over time.
 
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
+- `text_editor`, `code_editor`, `terminal`, `file_manager` (the tools `Cmd+E` / `Cmd+T` / `Cmd+F` act through, see [Preferred tools](#preferred-tools); undeclared means the system default)
 
 - `ignored_patterns_<group>` uses gitignore-style path glob syntax: `*`, `**`, `?`, `[abc]`
-    - macOS/Linux normally use `/` paths like `~/Library/...` or `/home/name/...`
-    - Windows is verified with native absolute paths like `C:\Users\me\...`; `~` is expanded against your home directory before matching
-    - macOS works the same way; common roots are `~/Library/...`, `~/Documents/...`, `~/Downloads/...`
-    - values are separated with `|`, and all `ignored_patterns_*` entries are merged together
-    - patterns apply to files only; they do not exclude folders from traversal
+  - macOS/Linux normally use `/` paths like `~/Library/...` or `/home/name/...`
+  - Windows is verified with native absolute paths like `C:\Users\me\...`; `~` is expanded against your home directory before matching
+  - macOS works the same way; common roots are `~/Library/...`, `~/Documents/...`, `~/Downloads/...`
+  - values are separated with `|`, and all `ignored_patterns_*` entries are merged together
+  - patterns apply to files only; they do not exclude folders from traversal
 
-    Examples:
+  Examples:
+  - `ignored_patterns_macos=~/Library/Application Support/Code/logs/**/*.log|~/Library/Caches/**/*.tmp`
+  - `ignored_patterns_windows=C:\Users\me\AppData\Local\Temp\**\*.etl|C:\Users\me\Downloads\**\*.tmp`
+  - `ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp`
+  - `ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm`
+  - `ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part`
 
-    - `ignored_patterns_macos=~/Library/Application Support/Code/logs/**/*.log|~/Library/Caches/**/*.tmp`
-    - `ignored_patterns_windows=C:\Users\me\AppData\Local\Temp\**\*.etl|C:\Users\me\Downloads\**\*.tmp`
-    - `ignored_patterns_browser=~/AppData/Local/BraveSoftware/**/*.log|~/AppData/Local/Google/Chrome/**/*.tmp`
-    - `ignored_patterns_sqlite=~/Documents/git/project/**/*.db-wal|~/Documents/git/project/**/*.db-shm`
-    - `ignored_patterns_temp=~/Downloads/*.tmp|~/Downloads/**/*.part`
-
-    Quick matching guide:
-
-    - `*` matches within one path segment: `~/Downloads/*.tmp`
-    - `**` matches across nested folders: `~/Downloads/**/*.tmp`
-    - keep patterns path-scoped when possible; `*.log` works but is usually too broad
+  Quick matching guide:
+  - `*` matches within one path segment: `~/Downloads/*.tmp`
+  - `**` matches across nested folders: `~/Downloads/**/*.tmp`
+  - keep patterns path-scoped when possible; `*.log` works but is usually too broad
 
 Alias note:
 
@@ -449,12 +538,15 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Escape`: back/close (context dependent)
 - `Shift+Escape`: hide launcher
 - `Cmd+Enter`: web search
-- `Cmd+F`: reveal in Finder
+- `Cmd+E`: edit the selected file or folder in your `text_editor` / `code_editor`
+- `Cmd+T`: open your `terminal` at the selected folder, or at a file's parent
+- `Cmd+K` / `Cmd+J`: open the action menu for the selected row
+- `Cmd+F`: reveal in Finder, or in the `file_manager` you declared
 - `Cmd+C`: copy selected file/folder
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
 - `Cmd+Shift+,`: toggle settings panel
-- `Cmd+Shift+;`: reload config
+- `Cmd+Shift+;` (macOS) / `Ctrl+Shift+;` (Linux, Windows): reload config, and re-read your declared sources
 - `Cmd+Shift+H`: hide the selected app from Look
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
 
@@ -519,15 +611,19 @@ Manual install:
 rm -rf "/Applications/Look.app"
 ```
 
-Remove local state (optional - includes config, index, and usage history):
+Remove local state (optional - includes config, your declared sources, index, and usage history):
 
 ```bash
-rm -f "$HOME/.look.config"
+rm -rf "$HOME/.look"
 rm -rf "$HOME/Library/Application Support/look"
+rm -f "$HOME/.look.config"   # only if a pre-0.6 config was left behind
 ```
+
+Those are the default paths. If you moved anything with an environment override, remove it yourself as well: `LOOK_CONFIG_PATH` (the config file), `LOOK_SOURCES_DIR` (your declared sources), and `LOOK_ROWS_CACHE_DIR` (the rows a `run` block cached).
 
 ## Related docs
 
 - Architecture guide: `docs/architecture.md`
 - Feature status: `docs/features.md`
 - Backend contributor guide: `docs/backend-guide.md`
+- Declaring your own sources: `docs/user-sources.md`

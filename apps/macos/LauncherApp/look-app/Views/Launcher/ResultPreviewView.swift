@@ -626,9 +626,10 @@ struct ResultPreviewView: View {
         .task(id: result.id) {
             let candidateID = result.id
             let ancestors = rowAncestorsJSON
+            let row = RowRef(result)
             let block = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.sourceBlock(
-                    candidateID: candidateID, ancestorsJSON: ancestors)
+                    candidateID: candidateID, row: row, ancestorsJSON: ancestors)
             }.value
             // The detached read outlives a cancelled task, so a late answer must
             // not populate the panel of a row the user has already left.
@@ -647,15 +648,9 @@ struct ResultPreviewView: View {
             } catch {
                 return
             }
-            let row = (id: result.id, title: result.title, path: result.path)
             let preview = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.sourcePreview(
-                    candidateID: candidateID,
-                    rowID: row.id,
-                    rowTitle: row.title,
-                    rowPath: row.path,
-                    ancestorsJSON: ancestors
-                )
+                    candidateID: candidateID, row: row, ancestorsJSON: ancestors)
             }.value
             if Task.isCancelled { return }
             blockPreview = preview

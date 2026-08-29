@@ -15,6 +15,7 @@ import {
     commandSuggestionResults,
     webSuggestionResults,
     webUrlResult,
+    placeUrlRow,
     calcResult,
     WEB_URL_OPEN_SUBTITLE,
     WEB_URL_RECENT_SUBTITLE,
@@ -380,10 +381,8 @@ function publish(query, version) {
         combined = [...ranked, ...suggestionRows];
     } else {
         const liveRow = webUrlResult(liveUrl, WEB_URL_OPEN_SUBTITLE, 0);
-        combined =
-            lastUrlMatch.tier === 'structural'
-                ? [liveRow, ...ranked, ...suggestionRows]
-                : [...ranked, liveRow, ...suggestionRows];
+        const placed = placeUrlRow(liveRow, lastUrlMatch.tier !== 'structural', ranked);
+        combined = [...placed, ...suggestionRows];
     }
     // Above everything and takes the selection: an expression is a question,
     // and the answer outranks a file that fuzzy-matched some of its digits.
@@ -526,7 +525,7 @@ function prependQuickFolders(results, query) {
         // don't let the pin bump it out of first place. Surface the folder
         // right below it instead of dropping it, so it's still reachable.
         const rivalAppIndex = merged.findIndex(
-            (r) => r.kind === 'app' && r.title.toLowerCase() === folder.title.toLowerCase()
+            (r) => r.kind === 'app' && r.title.toLowerCase() === folder.title.toLowerCase(),
         );
         if (rivalAppIndex === -1) {
             merged.splice(insertAt, 0, quickFolderResult);

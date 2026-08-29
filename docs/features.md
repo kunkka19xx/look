@@ -96,6 +96,35 @@ This document tracks what `look` supports today and what is planned next.
 - toggled on/off via `Settings > Appearance > Super Actions`. Persisted as `super_actions_enabled` in `~/.look/config`
 - off hides the strip and disables its mnemonics
 
+### Preferred tools and row actions (v0.6.12)
+
+- `Cmd+K` / `Ctrl+K` on a file, folder, or app row opens an action menu listing what Look can do to it (open, edit, terminal here, reveal, copy path), each with its chord and the declared tool's name
+- **Edit** (`Cmd+E`) and **Open terminal here** (`Cmd+T`) act through tools named in `~/.look/config`: `text_editor`, `code_editor`, `terminal`, `file_manager`
+- a value is a tool name, never a command with its own arguments; Look owns how each tool is driven, including running a terminal editor inside the declared terminal
+- `text_editor` on a file row, `code_editor` on a folder row; declaring only one of the two covers both
+- terminal here opens the folder itself, or a file's parent; app rows get neither verb, reveal still applies
+- `file_manager` retargets `Cmd+F` to the containing folder; left undeclared, the platform's own manager selects the file itself
+- declare nothing and nothing changes: every undeclared key means the system default
+- a value that cannot work explains itself (a terminal editor with no `terminal`, a terminal named as `text_editor`, Warp/Hyper which cannot be told to run a command)
+- shared `core/tools` catalog and command composition on macOS, Linux, and Windows; resolving a tool to an installed app and spawning it are native per shell. See [`docs/user-guide.md`](user-guide.md#preferred-tools)
+
+### User-declared sources (v0.6.12)
+
+- your own rows from TOML files in `~/.look/sources/`, indexed and ranked alongside apps and files, with their own usage history
+- as many `.toml` files as you like in that directory, merged into one set of blocks (ids unique across all of them, `then` resolves across files); `LOOK_SOURCES_DIR` repoints the directory for dotfiles kept elsewhere
+- commands are shell text run by the user's login shell (`$SHELL -lc` on Unix, `cmd /D /S /C` on Windows), so a block can call the user's own script in any language; non-POSIX shells (fish, nu) fall back to `/bin/sh` rather than failing per-command
+- four block kinds, one producer key each: `do` (one row that performs steps), `dir` (children of one or more directories), `file` (lines of a text file), `run` (lines a command prints)
+- `dir` rows stay real files and folders, so preview, reveal, copy, and the file verbs keep working on them
+- per-block verbs (`open`, `edit`, `terminal`, `reveal`) overriding the global preferred tools for that block's rows only
+- `then` targets reached with `Cmd+K` / `Ctrl+K`: a target that performs steps is an action, a target that produces rows is a drill-down (levels stack 5 deep, `Esc` walks back)
+- placeholders in every declared command (`{id}`, `{title}`, `{path}`, `{dir}`, `{query}`, `{parent.*}`), shell-escaped on substitution, plus `LOOK_ID` / `LOOK_TITLE` / `LOOK_PATH` in the environment
+- `confirm` question before a destructive block acts; `preview` command whose output fills the right panel for the selected row
+- row wire formats: tab-separated lines (`id<TAB>title<TAB>subtitle`) or `format = "json"` for per-row `path` and `icon`
+- an executable dropped in the sources directory is a `run` block with everything inferred, no declaration needed
+- `aliases`, `bias`, `icon`, and `enabled` per block; unknown keys reported, never fatal
+- `run` rows are refreshed on reload (`Cmd+Shift+;`) and cached in `~/.look/cache/rows/`, so a failed command keeps the last good rows and their ranking
+- shared `core/sources` engine on macOS, Linux, and Windows. See [`docs/user-sources.md`](user-sources.md), and [lookbook](https://github.com/kunkka19xx/lookbook) for ready-made sources to copy
+
 ### Settings and runtime config
 
 - in-app settings panel (`Cmd+Shift+,`)

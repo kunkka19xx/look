@@ -370,7 +370,7 @@ pub fn activate_running_app(
             && let Some(desktop_path) = id.strip_prefix("app:")
             && crate::commands::try_focus_existing_pub(desktop_path)
         {
-            let _ = window.hide();
+            crate::commands::hide_now(&window);
             return Ok(true);
         }
         // Fallback: try focusing by exec binary name
@@ -385,7 +385,7 @@ pub fn activate_running_app(
             .and_then(|f| f.to_str())
             .unwrap_or("");
             if !bin.is_empty() && crate::commands::try_focus_window_pub(bin) {
-                let _ = window.hide();
+                crate::commands::hide_now(&window);
                 return Ok(true);
             }
         }
@@ -401,7 +401,7 @@ pub fn activate_running_app(
                 if let Ok(h) = raw.parse::<isize>()
                     && crate::platform::windows::window_focus::focus_hwnd(h)
                 {
-                    let _ = window.hide();
+                    crate::commands::hide_now(&window);
                     return Ok(true);
                 }
                 return Ok(false);
@@ -409,7 +409,7 @@ pub fn activate_running_app(
             if let Some(path) = id.strip_prefix("app:")
                 && crate::platform::windows::window_focus::try_focus_existing(path)
             {
-                let _ = window.hide();
+                crate::commands::hide_now(&window);
                 return Ok(true);
             }
         }

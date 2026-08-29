@@ -4,6 +4,9 @@ import {
     getAppVersion,
     deleteClipboardEntry,
     highlightFile,
+    highlightShell,
+    sourcePreview,
+    copyToClipboard,
     listFolder,
     openPath,
     processDetail,
@@ -19,7 +22,10 @@ import {
     settingIcon,
     globeLg,
     calculatorLg,
+    copy as copyIcon,
 } from '../icons.js';
+import * as sourceblocks from './sourceblocks.js';
+import * as banner from './banner.js';
 import { classifyResultId, WEB_URL_OPEN_SUBTITLE } from '../catalog.js';
 import * as qactions from './qactions.js';
 import * as actionmenu from './actionmenu.js';
@@ -51,8 +57,17 @@ export function update(result) {
         return;
     }
 
-    // Clipboard items use id as cache key (not path, since all share clipboard://history)
-    const cacheKey = result.kind === 'clipboard' ? result.id : result.path;
+    // Clipboard items use id as cache key (not path, since all share
+    // clipboard://history); so do block rows, which may name no path at all and
+    // would otherwise all share the empty one. A block row keys on `rowKey`
+    // rather than its id alone: what the panel shows is expanded against the
+    // levels above it as well, so the same id reached at two depths is two
+    // panels.
+    const cacheKey = sourceblocks.isSourceRow(result.id)
+        ? sourceblocks.rowKey(result)
+        : result.kind === 'clipboard' || result.kind === 'action'
+          ? result.id
+          : result.path;
     if (currentPath === cacheKey) return;
     currentPath = cacheKey;
     // The menu lists the SELECTED row's verbs, so it must not survive a move to
@@ -66,6 +81,7 @@ export function update(result) {
     }
     panel.hidden = false;
     panel.innerHTML = '';
+    panel.classList.remove('is-block', 'has-block-extra');
     currentProcPid = null;
     // The panel was wiped: invalidate any in-flight Quick Actions render so a
     // late response can't append a stale section for the previous result.
@@ -78,6 +94,19 @@ export function update(result) {
 
     if (result.kind === 'process') {
         renderProcessPreview(result);
+        return;
+    }
+
+    // A block's row with nothing on disk has no file to describe, so the panel
+    // answers the only question that matters before Enter: what is about to
+    // run. A row that names a path IS that file (`format = "json"`), so it
+    // previews like one, with what the block adds appended below.
+    if (result.kind === 'action' && sourceblocks.isSourceRow(result.id)) {
+        if (result.path) {
+            renderFileBackedBlock(result, cacheKey);
+        } else {
+            renderBlockPreview(result, cacheKey);
+        }
         return;
     }
 
@@ -101,6 +130,29 @@ export function update(result) {
             return;
     }
 
+    renderStandard(result, cacheKey);
+}
+
+/** Swaps the placeholder glyph for the real icon, unless the selection moved on. */
+function loadPreviewIcon(iconWrap, kind, path, id, cacheKey) {
+    getIcon(kind, path, id)
+        .then((res) => {
+            if (!res?.data_url || currentPath !== cacheKey) return;
+            const img = document.createElement('img');
+            img.src = res.data_url;
+            img.alt = '';
+            iconWrap.innerHTML = '';
+            iconWrap.style.background = 'none';
+            iconWrap.style.color = '';
+            iconWrap.appendChild(img);
+        })
+        // A refused read leaves the placeholder glyph, which is what the wrap
+        // already draws.
+        .catch((err) => console.warn('preview: could not read an icon', err));
+}
+
+/** The ordinary panel: icon, title, kind badge, then the file or app detail. */
+function renderStandard(result, cacheKey) {
     // Header: icon + title + badge + size
     const header = document.createElement('div');
     header.className = 'preview-header';
@@ -116,17 +168,7 @@ export function update(result) {
     iconWrap.style.color = 'var(--font-secondary)';
     header.appendChild(iconWrap);
 
-    getIcon(result.kind, result.path, result.id).then((res) => {
-        if (res?.data_url && currentPath === cacheKey) {
-            const img = document.createElement('img');
-            img.src = res.data_url;
-            img.alt = '';
-            iconWrap.innerHTML = '';
-            iconWrap.style.background = 'none';
-            iconWrap.style.color = '';
-            iconWrap.appendChild(img);
-        }
-    });
+    loadPreviewIcon(iconWrap, result.kind, result.path, result.id, cacheKey);
 
     const headerText = document.createElement('div');
     headerText.className = 'preview-header-text';
@@ -142,7 +184,10 @@ export function update(result) {
     const badge = document.createElement('span');
     badge.className = `preview-badge kind-${result.kind}`;
     const kindLabels = { app: 'App', file: 'File', folder: 'Folder', setting: 'Setting' };
-    badge.textContent = kindLabels[result.kind] || result.kind;
+    // A row a user's block produced says which block; the kind is on the icon
+    // and in the metadata below, and where it came from is what the list cannot
+    // otherwise tell you.
+    badge.textContent = sourceblocks.blockName(result.id) || kindLabels[result.kind] || result.kind;
     headerSub.appendChild(badge);
 
     headerText.appendChild(headerSub);
@@ -167,9 +212,9 @@ export function update(result) {
     panel.appendChild(metaWrap);
 
     if (result.kind === 'app') {
-        renderAppMeta(metaWrap, result, headerSub);
+        renderAppMeta(metaWrap, result, headerSub, cacheKey);
     } else {
-        renderFileMeta(metaWrap, previewSlot, result, headerSub);
+        renderFileMeta(metaWrap, previewSlot, result, headerSub, cacheKey);
     }
 
     // Quick Actions - interactive controls for results the shared catalog
@@ -274,17 +319,7 @@ function renderProcessPreview(result) {
 
     // App-backed process: swap the generic glyph for the real app icon.
     if (result.iconPath) {
-        getIcon('app', result.iconPath, result.id).then((res) => {
-            if (res?.data_url && currentPath === cacheKey) {
-                const img = document.createElement('img');
-                img.src = res.data_url;
-                img.alt = '';
-                iconWrap.innerHTML = '';
-                iconWrap.style.background = 'none';
-                iconWrap.style.color = '';
-                iconWrap.appendChild(img);
-            }
-        });
+        loadPreviewIcon(iconWrap, 'app', result.iconPath, result.id, cacheKey);
     }
 
     const headerText = document.createElement('div');
@@ -397,10 +432,10 @@ function formatStart(epoch) {
     });
 }
 
-function renderAppMeta(metaWrap, result, headerSub) {
+function renderAppMeta(metaWrap, result, headerSub, cacheKey) {
     // Async version lookup
     getAppVersion(result.path).then((version) => {
-        if (currentPath !== result.path) return;
+        if (currentPath !== cacheKey) return;
         if (version) {
             // Insert version as first row
             metaWrap.insertBefore(infoRow('Version', version), metaWrap.firstChild);
@@ -414,9 +449,7 @@ function renderAppMeta(metaWrap, result, headerSub) {
     }
 }
 
-function renderFileMeta(metaWrap, previewSlot, result, headerSub) {
-    const cacheKey = result.path;
-
+function renderFileMeta(metaWrap, previewSlot, result, headerSub, cacheKey) {
     // Metadata: size (in header), then Kind → Path → Modified (matches macOS order)
     getFileMeta(result.path).then((meta) => {
         if (currentPath !== cacheKey) return;
@@ -605,6 +638,241 @@ export function showClipboardHelp() {
       <div class="preview-clip-help-line">• Type <kbd>c"mail</kbd> to filter</div>
       <div class="preview-clip-help-line">• Press <kbd>Enter</kbd> to copy selected item</div>
     </div>`;
+}
+
+/**
+ * A block's row that names a path: the file's own panel, with what the block
+ * adds under it. The row IS that file, so everything a file row shows (the
+ * thumbnail, the text preview, the folder listing, size and modified) is what
+ * the user is looking for; the block only adds what Enter does and where it was
+ * declared.
+ */
+async function renderFileBackedBlock(result, cacheKey) {
+    let meta = null;
+    try {
+        meta = await getFileMeta(result.path);
+    } catch (err) {
+        console.warn('preview: could not stat a block row', err);
+    }
+    if (currentPath !== cacheKey) return;
+
+    // The block never says which it is, so the filesystem answers: a folder
+    // gets its listing, a file its preview.
+    renderStandard({ ...result, kind: meta?.is_dir ? 'folder' : 'file' }, cacheKey);
+
+    // The block's own section is claimed NOW, empty, so it always sits under the
+    // file's metadata. Filling it later would otherwise land above or below
+    // those rows depending on which read answered first - one file's panel
+    // ordered differently from the next one's.
+    const section = document.createElement('div');
+    section.className = 'preview-meta preview-block-extra';
+    // The panel becomes a column so the section sits at its FOOT, wherever the
+    // metadata above it ends: the declaration belongs in one place on every
+    // row, not wherever the content happens to stop.
+    panel.classList.add('has-block-extra');
+    panel.appendChild(section);
+
+    const block = await sourceblocks.loadDetail(result);
+    if (!block || currentPath !== cacheKey) return;
+
+    if (block.steps.length > 0) {
+        const label = document.createElement('div');
+        label.className = 'preview-section-label';
+        label.textContent = 'Enter runs';
+        section.appendChild(label);
+        section.appendChild(await stepsBlock(block.steps));
+        if (currentPath !== cacheKey) return;
+    }
+    if (block.file) {
+        section.appendChild(infoRow('Declared in', sourceblocks.tildePath(block.file)));
+    }
+
+    const preview = await readSourcePreview(result);
+    if (!preview || currentPath !== cacheKey) return;
+    section.appendChild(blockPreviewBody(preview));
+}
+
+/**
+ * The panel for a row a user-declared block produced.
+ *
+ * Two reads, in that order: the declaration is cheap and goes up first, then
+ * the declared `preview`, which runs a command. A late answer must not land in
+ * the panel of a row the user has already left, so both check the cache key.
+ */
+async function renderBlockPreview(result, cacheKey) {
+    // A column of its own: the declaring file sits at the BOTTOM of the panel
+    // (macOS puts a Spacer above it), and only this preview wants that.
+    const column = document.createElement('div');
+    column.className = 'preview-block';
+    panel.classList.add('is-block');
+    panel.appendChild(column);
+
+    const header = document.createElement('div');
+    header.className = 'preview-header';
+
+    const iconWrap = document.createElement('div');
+    iconWrap.className = 'preview-icon';
+    iconWrap.innerHTML = sourceblocks.declaredIconHtml(result) || sourceblocks.actionIconHtml;
+    iconWrap.style.background = 'var(--control-fill)';
+    iconWrap.style.color = 'var(--accent-color)';
+    const declaredPath = sourceblocks.declaredIconPath(result);
+    if (declaredPath) {
+        loadPreviewIcon(iconWrap, 'declared', declaredPath, result.id, cacheKey);
+    }
+    header.appendChild(iconWrap);
+
+    const headerText = document.createElement('div');
+    headerText.className = 'preview-header-text';
+    const title = document.createElement('div');
+    title.className = 'preview-title';
+    title.textContent = result.title;
+    headerText.appendChild(title);
+    // No kind badge: the subtitle is already the block's name, and the panel
+    // saying it twice reads as a bug rather than as emphasis (macOS
+    // ResultPreviewView.actionPreview shows title and subtitle only).
+    const headerSub = document.createElement('div');
+    headerSub.className = 'preview-header-sub';
+    const detail = document.createElement('span');
+    detail.className = 'preview-size';
+    detail.textContent = result.subtitle || sourceblocks.blockName(result.id) || '';
+    headerSub.appendChild(detail);
+    headerText.appendChild(headerSub);
+    header.appendChild(headerText);
+    column.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'preview-slot';
+    column.appendChild(body);
+
+    // Pushed to the bottom by its own margin, so a block with two steps and a
+    // block with a long preview both say where they came from in the same place.
+    const footer = document.createElement('div');
+    footer.className = 'preview-block-footer';
+    column.appendChild(footer);
+
+    const block = await sourceblocks.loadDetail(result);
+    if (!block || currentPath !== cacheKey) return;
+
+    if (block.steps.length > 0) {
+        // Above the scrolling region, not inside it: what Enter does should not
+        // scroll away from the commands it labels (macOS keeps the same line
+        // outside its ScrollView).
+        const label = document.createElement('div');
+        label.className = 'preview-section-label';
+        label.textContent = 'Enter runs';
+        column.insertBefore(label, body);
+        body.appendChild(await stepsBlock(block.steps));
+        if (currentPath !== cacheKey) return;
+    }
+
+    if (block.file) {
+        const divider = document.createElement('div');
+        divider.className = 'preview-divider';
+        footer.appendChild(divider);
+
+        const meta = document.createElement('div');
+        meta.className = 'preview-meta';
+        meta.appendChild(infoRow('Declared in', sourceblocks.tildePath(block.file)));
+        footer.appendChild(meta);
+
+        // A row that names its own path reveals that, like every other row with
+        // one, so the chord belongs to the declaration only when the row has
+        // nothing of its own to point at.
+        if (!result.path) footer.appendChild(hintRow('Ctrl+F', 'Reveal that file'));
+    }
+
+    // The declared `preview` runs a command, so it is read last and only after
+    // the cheap details are on screen.
+    const preview = await readSourcePreview(result);
+    if (!preview || currentPath !== cacheKey) return;
+    // Only real output shares the space: a block with none leaves the steps to
+    // fill it, and a failure is one line rather than a second pane.
+    if (!preview.error && preview.text) column.classList.add('has-preview');
+    body.appendChild(blockPreviewBody(preview));
+}
+
+/** The declared `preview` runs a command, so the backend can refuse to: a
+ *  rejection leaves the panel without that section rather than unhandled. */
+async function readSourcePreview(result) {
+    try {
+        return await sourcePreview(sourceblocks.rowPayload(result));
+    } catch (err) {
+        console.warn('preview: could not read a block preview', err);
+        return null;
+    }
+}
+
+/** The steps ARE shell, so they get what an AI answer's code gets: highlighted,
+ *  selectable, and copyable in one press. */
+async function stepsBlock(steps) {
+    const source = steps.join('\n');
+    const wrap = document.createElement('div');
+    wrap.className = 'preview-code preview-steps';
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'ai-card-copy preview-steps-copy';
+    copyButton.tabIndex = -1;
+    copyButton.title = 'Copy these steps';
+    copyButton.innerHTML = copyIcon;
+    copyButton.addEventListener('click', () => {
+        copyToClipboard(source)
+            .then(() => banner.show('Steps copied', 'success', 1.0))
+            .catch(() => banner.show('Copy failed', 'error', 1.2));
+    });
+    wrap.appendChild(copyButton);
+
+    const pre = document.createElement('pre');
+    pre.className = 'preview-code-text';
+    // Plain text first: highlighting is a round trip, and the steps must be on
+    // screen either way.
+    pre.textContent = source;
+    wrap.appendChild(pre);
+    try {
+        const highlighted = await highlightShell(source);
+        if (highlighted?.html) pre.innerHTML = highlighted.html;
+    } catch {
+        // The unhighlighted text is already there and says the same thing.
+    }
+    return wrap;
+}
+
+/** A block's `preview` output, or the reason it could not run. A failure is
+ *  shown rather than swallowed: a preview that silently does nothing reads as
+ *  the feature being broken. */
+function blockPreviewBody(preview) {
+    if (preview.error) {
+        const failed = document.createElement('div');
+        failed.className = 'preview-code-truncated';
+        failed.textContent = preview.error;
+        return failed;
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'preview-code';
+    const pre = document.createElement('pre');
+    pre.className = 'preview-code-text';
+    pre.textContent = preview.text;
+    wrap.appendChild(pre);
+    return wrap;
+}
+
+/** A chord and what it does: the key in a cap, the wording beside it. Not an
+ *  info row - that is a fact about the thing, this is something you can press. */
+function hintRow(key, text) {
+    const row = document.createElement('div');
+    row.className = 'preview-hint';
+
+    const cap = document.createElement('span');
+    cap.className = 'preview-hint-key';
+    cap.textContent = key;
+    row.appendChild(cap);
+
+    const label = document.createElement('span');
+    label.className = 'preview-hint-text';
+    label.textContent = text;
+    row.appendChild(label);
+
+    return row;
 }
 
 function infoRow(label, value) {

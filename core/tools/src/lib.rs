@@ -16,7 +16,7 @@ pub use catalog::{
     TTY_TOOLS, Terminal, command_style, entry, surface,
 };
 pub use compose::{Action, Launch, Target, Unavailable, edit, reveal, terminal_here};
-pub use quote::{applescript_quote, shell_quote};
+pub use quote::{applescript_quote, cmd_quote, shell_quote};
 pub use windows_terminals::{WINDOWS_TERMINALS, WindowsTerminal};
 
 pub use resolved::{

@@ -154,15 +154,19 @@ exec-once = lookapp
 # (Alt+Space, float, and border rules are injected automatically via hyprctl)
 ```
 
-niri has no API to add binds at runtime, so `Alt+Space` has to go in `~/.config/niri/config.kdl` yourself. Look shows the exact stanza for your system (the `gdbus` path differs on NixOS) in its setup notice on first run:
+niri has no API to add binds at runtime, so `Alt+Space` has to go in `~/.config/niri/config.kdl` yourself, or in any file that config includes. Look shows the exact stanza for your system (the `gdbus` path differs on NixOS) in its setup notice on first run:
 
 ```kdl
 spawn-at-startup "lookapp"
 
 binds {
-    Alt+Space { spawn "gdbus" "call" "--session" "--dest" "com.look.Desktop" "--object-path" "/com/look/Desktop" "--method" "com.look.Desktop.Toggle"; }
+    Alt+Space allow-inhibiting=false { spawn "gdbus" "call" "--session" "--dest" "com.look.Desktop" "--object-path" "/com/look/Desktop" "--method" "com.look.Desktop.Toggle"; }
 }
 ```
+
+`allow-inhibiting=false` matters: without it niri passes the key to a window holding a keyboard-shortcuts inhibitor, which fullscreen games, browsers and virtual machines all take, and Look never opens over them.
+
+Any key works, it is the same `spawn` line: Look only ever sees the D-Bus call. Bind a key niri already uses (`Mod+D` spawns fuzzel in the default config) and niri rejects the whole config as a duplicate keybind, keeping the last good one, so drop the existing bind first and check with `niri validate`, or `niri --config <path> validate` if you start niri with `-c`. The setup notice names the file Look actually read, which is that `-c` path, then `NIRI_CONFIG`, then `~/.config/niri/config.kdl`, then `/etc/niri/config.kdl` - niri loads one of them and never merges.
 
 Floating is applied at runtime over niri's IPC; add a rule only if you also want the focus ring and shadow off:
 
@@ -256,41 +260,36 @@ open "/Applications/Look.app"
 
 ## Essential shortcuts
 
-| Action                                                        | macOS            | Windows             | Linux            |
-| ------------------------------------------------------------- | ---------------- | ------------------- | ---------------- |
-| Toggle launcher                                               | `Cmd+Space`      | `Alt+Space`         | `Alt+Space`      |
-| Open / run                                                    | `Enter`          | `Enter`             | `Enter`          |
-| Web search                                                    | `Cmd+Enter`      | `Ctrl+Enter`        | `Ctrl+Enter`     |
-| Reveal in file manager                                        | `Cmd+F` (Finder) | `Ctrl+F` (Explorer) | `Ctrl+F` (Files) |
-| Move to Trash (or empty the Trash folder)                     | `Cmd+D`          | n/a                 | n/a              |
-| Command mode (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`)                | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
-| Settings                                                      | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
-| Back / hide                                                   | `Escape`         | `Escape`            | `Escape`         |
-| Switch to running app N (home screen)                         | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
-| Hide selected app from Look                                   | `Cmd+Shift+H`    | `Ctrl+Shift+H`      | `Ctrl+Shift+H`   |
-| Run selected app as admin                                     | n/a              | `Ctrl+Shift+Enter`  | n/a              |
-| Fire a super action (empty home screen)                       | `Cmd+<letter>`   | `Alt+<letter>`      | `Alt+<letter>`   |
+| Action                                                                 | macOS            | Windows             | Linux            |
+| ---------------------------------------------------------------------- | ---------------- | ------------------- | ---------------- |
+| Toggle launcher                                                        | `Cmd+Space`      | `Alt+Space`         | `Alt+Space`      |
+| Open / run                                                             | `Enter`          | `Enter`             | `Enter`          |
+| Web search                                                             | `Cmd+Enter`      | `Ctrl+Enter`        | `Ctrl+Enter`     |
+| Reveal in file manager                                                 | `Cmd+F` (Finder) | `Ctrl+F` (Explorer) | `Ctrl+F` (Files) |
+| Edit selected file/folder in your editor                               | `Cmd+E`          | `Ctrl+E`            | `Ctrl+E`         |
+| Open a terminal there                                                  | `Cmd+T`          | `Ctrl+T`            | `Ctrl+T`         |
+| Action menu for the selected row                                       | `Cmd+K`          | `Ctrl+K`            | `Ctrl+K`         |
+| Move to Trash (or empty the Trash folder)                              | `Cmd+D`          | n/a                 | n/a              |
+| Command mode (`calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`) | `Cmd+/`          | `Ctrl+/`            | `Ctrl+/`         |
+| Settings                                                               | `Cmd+Shift+,`    | `Ctrl+Shift+,`      | `Ctrl+Shift+,`   |
+| Back / hide                                                            | `Escape`         | `Escape`            | `Escape`         |
+| Switch to running app N (home screen)                                  | `Cmd+1`..`Cmd+9` | `Alt+1`..`Alt+9`    | `Alt+1`..`Alt+9` |
+| Hide selected app from Look                                            | `Cmd+Shift+H`    | `Ctrl+Shift+H`      | `Ctrl+Shift+H`   |
+| Run selected app as admin                                              | n/a              | `Ctrl+Shift+Enter`  | n/a              |
+| Fire a super action (empty home screen)                                | `Cmd+<letter>`   | `Alt+<letter>`      | `Alt+<letter>`   |
 
 (Throughout the rest of the docs, `Cmd+X` on macOS maps to `Ctrl+X` on Windows and Linux; the launcher-toggle hotkey uses `Alt+Space` on Windows/Linux instead of `Cmd+Space` because `Win+Space` / `Super+Space` are typically reserved by the OS or desktop environment.)
+
+`Cmd+E` and `Cmd+T` need a tool named in `~/.look/config` (`text_editor`, `code_editor`, `terminal`), and `file_manager` retargets `Cmd+F`. Declare nothing and each falls back to the system default: see [Preferred tools](docs/user-guide.md#preferred-tools).
 
 Full reference: [docs/user-guide.md](docs/user-guide.md).
 
 ## Themes
 
-Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, plus Custom. Kindle is the one light preset - paper, ink, and a serif face. Liquid renders on macOS 26's Liquid Glass and is hidden on older releases; on Linux and Windows it ships as clear glass - same palette and geometry, a specular rim instead of refraction, plus real behind-window blur wherever the compositor grants it (KDE, Hyprland 0.56+, Niri). Switch in `Settings > Appearance`.
-
-<p align="center">
-  <img src="assets/look-ui/1.png" width="45%" />
-  <img src="assets/look-ui/2.png" width="45%" />
-</p>
-<p align="center">
-  <img src="assets/look-ui/3.png" width="45%" />
-  <img src="assets/look-ui/4.png" width="45%" />
-</p>
-<p align="center">
-  <img src="assets/look-ui/5.png" width="45%" />
-  <img src="assets/look-ui/6.png" width="45%" />
-</p>
+Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, plus Custom.
+Kindle is the one light preset - paper, ink, and a serif face.
+Liquid renders on macOS 26's Liquid Glass and is hidden on older releases; on Linux and Windows it ships as clear glass - same palette and geometry, a specular rim instead of refraction, plus real behind-window blur wherever the compositor grants it (KDE, Hyprland 0.56+, Niri).
+Switch in `Settings > Appearance`.
 
 ## Documentation
 
@@ -299,6 +298,8 @@ Built-in: Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle
 - [Architecture](docs/architecture.md) - how the Swift app + Rust core fit together
 - [Features](docs/features.md) - what's shipped, what's planned
 - [Contributing](CONTRIBUTING.md) - how to contribute
+- [Your own sources](docs/user-sources.md) - declare custom rows from directories, files, and commands
+- [lookbook](https://github.com/kunkka19xx/lookbook) - ready-made sources to copy: git, ssh, docker, projects
 - [Writing a control](docs/writing-controls.md) - add a Quick Action toggle/button to the panel
 - [Development](DEVELOPMENT.md) - building locally, repo layout, release process
 

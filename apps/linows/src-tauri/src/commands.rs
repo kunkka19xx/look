@@ -16,6 +16,9 @@ pub struct SearchResult {
     pub subtitle: Option<String>,
     pub path: String,
     pub score: i64,
+    /// What the row declared, which beats its block's icon.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -52,6 +55,7 @@ pub fn search(state: State<'_, AppState>, query: String, limit: u32) -> SearchPa
             subtitle: candidate.subtitle.as_deref().map(str::to_string),
             path: candidate.path.to_string(),
             score,
+            icon: candidate.icon.as_deref().map(str::to_string),
         })
         .collect();
 
@@ -72,11 +76,20 @@ pub fn record_usage(
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    let valid_actions = ["open_app", "open_file", "open_folder"];
-    if !valid_actions.contains(&action.as_str()) {
+    if action.parse::<look_engine::UsageAction>().is_err() {
         return UsageResult {
             ok: false,
             error: Some(format!("Invalid action: {action}")),
+        };
+    }
+
+    // A drilled row is never written to `candidates`, which the `usage_events`
+    // foreign key requires, so there is nothing to record. Reporting a failure
+    // would show a storage error for behaving as designed.
+    if look_engine::sources::is_drilled_row(&candidate_id) {
+        return UsageResult {
+            ok: true,
+            error: None,
         };
     }
 
@@ -303,7 +316,7 @@ pub async fn open_elevated(
             // Declined, refused, or the task died: don't leave Look hidden.
             eprintln!("[open_elevated] {e}");
             show_launcher(&window);
-            let _ = window.set_focus();
+            focus_launcher(&window);
         }
         result
     }
@@ -333,14 +346,29 @@ pub fn reveal_path(path: String) -> Result<(), String> {
     outcome.map_err(|e| format!("Failed to reveal: {e}"))
 }
 
-#[tauri::command]
-pub fn reload_config(state: State<'_, AppState>) -> bool {
+/// Reload is the one refresh gesture: config, then the `run` blocks, then the
+/// index.
+///
+/// Async because a user's `run` block is a process, and that must not sit on
+/// the request thread. Returns what the blocks did, so a script that broke
+/// says so rather than quietly producing no rows.
+#[tauri::command(async)]
+pub fn reload_config(state: State<'_, AppState>) -> look_engine::sources::RefreshOutcome {
     // The engine caches the parsed `~/.look/config` across calls (skips a disk
     // read on every refresh). When the user explicitly reloads, drop the cache
     // so the next bootstrap picks up their edits.
     RuntimeConfig::invalidate_cache();
     crate::clipboard::reload_from_config();
-    state.request_index_refresh()
+    // Before the index pass, never after: the pass reads the rows these blocks
+    // write, and the other order indexes the previous run's.
+    let sources = look_engine::sources::refresh_run_blocks();
+    // Run rows land where no watcher covers, so nothing else marks them dirty.
+    if sources.changed {
+        state.force_index_refresh();
+    } else {
+        state.request_index_refresh();
+    }
+    sources
 }
 
 #[tauri::command]
@@ -416,7 +444,7 @@ pub fn hide_armed(window: &tauri::WebviewWindow) {
             .compare_exchange(arm, 0, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
         {
-            let _ = window.hide();
+            hide_now(&window);
         }
     });
 }
@@ -431,14 +459,51 @@ pub fn confirm_hide(window: tauri::WebviewWindow, arm: NonZeroU64) {
         .compare_exchange(arm.get(), 0, Ordering::Relaxed, Ordering::Relaxed)
         .is_ok()
     {
-        let _ = window.hide();
+        hide_now(&window);
     }
+}
+
+/// Take the launcher off screen. With layer shell attached, the surface on
+/// screen is not the one Tauri hands out.
+pub fn hide_now(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "linux")]
+    if crate::platform::linux::layer_shell::is_active() {
+        crate::platform::linux::layer_shell::hide();
+        return;
+    }
+    let _ = window.hide();
+}
+
+/// Give the launcher keyboard focus. A layer surface takes it on its own
+/// through `keyboard-interactivity`, and `set_focus` would be harmful there:
+/// it reaches `gtk_window_present` and maps the husk toplevel.
+pub fn focus_launcher(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "linux")]
+    if crate::platform::linux::layer_shell::is_active() {
+        return;
+    }
+    let _ = window.set_focus();
+}
+
+/// Whether the launcher is on screen. The husk toplevel never maps, so its own
+/// `is_visible` reports false for a launcher that is plainly up.
+pub fn launcher_visible(window: &tauri::WebviewWindow) -> bool {
+    #[cfg(target_os = "linux")]
+    if let Some(visible) = crate::platform::linux::layer_shell::visible() {
+        return visible;
+    }
+    window.is_visible().unwrap_or(false)
 }
 
 /// Drop any dismissal in flight, show, and keep niri from tiling the window.
 /// Every show goes through here.
 pub fn show_launcher(window: &tauri::WebviewWindow) {
     PENDING_HIDE.store(0, Ordering::Relaxed);
+    #[cfg(target_os = "linux")]
+    if crate::platform::linux::layer_shell::is_active() {
+        crate::platform::linux::layer_shell::show();
+        return;
+    }
     let _ = window.show();
     #[cfg(target_os = "linux")]
     if crate::platform::linux::wm::is_niri() {
@@ -448,11 +513,11 @@ pub fn show_launcher(window: &tauri::WebviewWindow) {
 
 #[tauri::command]
 pub fn toggle_window(window: tauri::WebviewWindow) {
-    if window.is_visible().unwrap_or(false) {
+    if launcher_visible(&window) {
         hide_armed(&window);
     } else {
         show_launcher(&window);
-        let _ = window.set_focus();
+        focus_launcher(&window);
     }
 }
 

@@ -22,6 +22,10 @@ pub struct FileMeta {
     pub size: Option<u64>,
     pub modified: Option<String>,
     pub is_image: bool,
+    /// A block's row says nothing about what it points at (`format = "json"`
+    /// carries a path and no kind), so the panel asks the filesystem which
+    /// preview to draw.
+    pub is_dir: bool,
 }
 
 const IMAGE_EXTENSIONS: &[&str] = &[
@@ -51,6 +55,7 @@ pub fn get_file_meta(path: String) -> FileMeta {
         size,
         modified,
         is_image,
+        is_dir: meta.as_ref().map(|m| m.is_dir()).unwrap_or(false),
     }
 }
 

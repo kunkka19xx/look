@@ -44,11 +44,7 @@ enum SourceBlockCatalog {
         Task {
             let targets = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.sourceBlock(
-                    candidateID: result.id,
-                    rowID: result.id,
-                    rowTitle: result.title,
-                    rowPath: result.path
-                )?.then ?? []
+                    candidateID: result.id, row: RowRef(result))?.then ?? []
             }.value
             await MainActor.run {
                 targetsByCandidateID[key] = targets
