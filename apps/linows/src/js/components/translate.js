@@ -30,7 +30,7 @@ export function showPlaceholder() {
         '<div class="translate-placeholder-icon">' +
         globeLg +
         '</div>' +
-        '<div class="translate-placeholder-text">Press Enter after finishing input to translate on web</div>';
+        '<div class="translate-placeholder-text">Press Enter to translate</div>';
     panel.appendChild(placeholder);
     container.appendChild(panel);
     layout.refresh();
