@@ -373,6 +373,14 @@ export async function getLookappVersion() {
     return invoke('get_lookapp_version');
 }
 
+export async function getInstallMethod() {
+    return invoke('get_install_method');
+}
+
+export async function startWindowsUpdate(version) {
+    return invoke('start_windows_update', { version });
+}
+
 export async function trashPaths(paths) {
     return invoke('trash_paths', { paths });
 }
