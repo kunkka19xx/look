@@ -27,8 +27,8 @@
 /* Rows and the pill that highlights them share one inset, or the pill cuts
  * into the row it covers (the AI two-column layout insets tighter). */
 .results-list {
-    --row-inset-left: var(--content-padding);
-    --row-inset-right: var(--content-padding);
+    --row-inset-left: var(--row-inset);
+    --row-inset-right: var(--row-inset);
 }
 
 /* The selection is a single pill that glides between rows (results.js
@@ -73,15 +73,15 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px var(--input-padding-x);
+    padding: 8px var(--row-padding-x);
     min-height: var(--row-height);
     cursor: default;
     border-radius: var(--control-radius);
-    margin: 0 var(--row-inset-right) 4px var(--row-inset-left);
+    margin: 0 var(--row-inset-right) var(--row-spacing) var(--row-inset-left);
 }
 
-/* Clean horizontal divider drawn as a pseudo-element so it sits full-width
- * under the row, clear of the rounded selection pill above it. */
+/* Hidden under the selection pill and after the last row, as on macOS
+ * (LauncherRowView.showsDivider). Opacity, so selection never reflows the list. */
 .result-row::after {
     content: "";
     position: absolute;
@@ -93,12 +93,15 @@
     opacity: 0.8;
 }
 
-.result-row:last-child::after {
-    display: none;
+.result-row:last-child::after,
+.result-row.selected::after {
+    opacity: 0;
 }
 
 /* Icon */
 .result-icon {
+    --glyph-box: var(--icon-size);
+    --glyph-scale: 0.8;
     width: var(--icon-size);
     height: var(--icon-size);
     flex-shrink: 0;
@@ -108,43 +111,65 @@
     border-radius: 4px;
     font-size: 12px;
     font-weight: 600;
-    color: var(--on-accent-color);
-    background: var(--accent-color);
+    /* No chip: a real app icon loads bare, and filling only the fallback rows
+     * makes a mixed list look striped. */
+    color: var(--font-secondary);
 }
 
-/* A block that declared an emoji draws it in the icon box, which otherwise
- * holds an SVG or an <img>. */
+/* A declared emoji, in the box that otherwise holds an SVG or an <img>. Sized
+ * off that box, or the 48px preview drew it at the 22px row size. */
 .result-icon-glyph {
-    font-size: calc(var(--icon-size) * 0.62);
+    font-size: calc(var(--glyph-box, var(--icon-size)) * var(--glyph-scale, 0.9));
     line-height: 1;
 }
 
+/* The same tile the preview header gives these rows. Only these: one on every
+ * row is what made the column look striped. */
+.result-row-source .result-icon {
+    border-radius: 6px;
+    background: var(--declared-fill);
+    box-shadow: inset 0 0 0 1px var(--declared-ring);
+}
+
+.result-row-source .result-icon svg {
+    color: var(--accent-color);
+}
+
+/* Bitmaps and inline glyphs share one optical size; at 100% against 72% a
+ * favicon out-weighed the glyph beside it. */
 .result-icon img {
-    width: 100%;
-    height: 100%;
+    width: 86%;
+    height: 86%;
     border-radius: 4px;
     object-fit: contain;
 }
 
-/* Inline Lucide SVGs render at their authored 16px, which looks shrunken next
- * to <img> icons that fill the 32px result-icon box. Scale them up to match
- * (slightly under 100% so the stroke has breathing room). */
 .result-icon svg {
-    width: 72%;
-    height: 72%;
+    width: 78%;
+    height: 78%;
 }
 
 /* Text content */
+/* Two lines, three slots. The title keeps line one with the kind pinned to its
+ * right, and the context gets line two to itself, left-aligned. Both columns
+ * that matter therefore have an edge: the kind reads down the right, and the
+ * paths of eleven `main.go` rows read down the left. */
 .result-text {
     flex: 1;
     min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    row-gap: 3px;
+    column-gap: 10px;
 }
 
 .result-title {
+    grid-area: 1 / 1;
+    /* 600, not the macOS row's .medium: WebKitGTK renders 500 noticeably
+     * thinner than CoreText does. */
     font-weight: 600;
+    min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -152,12 +177,25 @@
 }
 
 .result-path {
+    /* Line two, spanning both columns: nothing shares it, so a path is never
+     * squeezed by the title above it. */
+    grid-area: 2 / 1 / auto / span 2;
+    min-width: 0;
     font-size: calc(var(--font-size) - 2px);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--accent-color);
-    opacity: 0.8;
+    color: var(--font-muted);
+}
+
+/* One short word per row, so it never shrinks and never wraps: a column with an
+ * edge, which is what makes it readable as a column at all. */
+.result-kind {
+    grid-area: 1 / 2;
+    font-size: calc(var(--font-size) - 2px);
+    white-space: nowrap;
+    color: var(--font-muted);
+    opacity: 0.75;
 }
 
 /* Web-suggestion rows wrap their title to up to 3 lines instead of truncating
@@ -172,6 +210,17 @@
  * layout.css). */
 .result-row-web-suggest {
     align-items: flex-start;
+}
+
+.result-row-web-suggest .result-text {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+}
+
+.result-row-web-suggest .result-kind {
+    display: none;
 }
 
 .result-row-web-suggest .result-title {

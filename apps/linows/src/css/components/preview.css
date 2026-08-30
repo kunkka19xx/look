@@ -12,8 +12,9 @@
 }
 
 .preview-icon {
-    width: 48px;
-    height: 48px;
+    --glyph-box: 48px;
+    width: var(--glyph-box);
+    height: var(--glyph-box);
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -23,6 +24,13 @@
     font-weight: 600;
     color: var(--on-accent-color);
     background: var(--accent-color);
+}
+
+/* The tile the list gives the same rows (results.css). */
+.preview-icon-declared {
+    background: var(--declared-fill);
+    box-shadow: inset 0 0 0 1px var(--declared-ring);
+    color: var(--accent-color);
 }
 
 .preview-icon img {
@@ -92,9 +100,16 @@
     flex-shrink: 0;
 }
 
+/* Only with something above it: an empty slot leaves the header's own margin. */
+.preview-slot:not(:empty) + .preview-meta {
+    margin-top: 14px;
+}
+
+/* Two columns, not a justified pair: at opposite edges of a 480px panel the
+ * label and its value stop reading as one fact. */
 .preview-info-row {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: var(--preview-label-col) 1fr;
     align-items: baseline;
     padding: 5px 0;
     gap: 12px;
@@ -103,15 +118,30 @@
 .preview-info-label {
     font-size: calc(var(--font-size) - 1px);
     color: var(--font-muted);
-    flex-shrink: 0;
 }
 
 .preview-info-value {
     font-size: calc(var(--font-size) - 1px);
     color: var(--font-secondary);
-    text-align: right;
-    word-break: break-all;
     min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Flex only where a tail is protected: a flex container drops the ellipsis. */
+.preview-info-value.has-tail {
+    display: flex;
+}
+
+.preview-info-head {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.preview-info-tail {
+    flex: 0 0 auto;
 }
 
 .preview-image {
@@ -301,7 +331,9 @@
 
 /* Code/text file preview */
 .preview-code {
-    --code-line-height: 1.5;
+    /* 1.35, not the 1.5 body text wants: code is short lines, and the extra
+     * leading read as gaps between them rather than as rhythm. */
+    --code-line-height: 1.35;
     /* macOS Layout.visibleStepLines / expandedStepLines: the steps are context
      * for the row when a declared `preview` shares the panel, and its subject
      * when nothing else is competing for the space. */
@@ -317,7 +349,10 @@
 
 .preview-code-text {
     font-family: var(--font-mono);
-    font-size: calc(var(--font-size) - 1px);
+    /* A step below the row text rather than macOS's one, because no Linux mono
+     * is drawn to sit with the UI sans the way SF Mono is with SF Pro; at the
+     * same nominal size it carries visibly more ink per line. */
+    font-size: var(--font-mono-size);
     color: var(--font-secondary);
     white-space: pre-wrap;
     word-break: break-word;

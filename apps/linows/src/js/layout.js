@@ -132,9 +132,10 @@ function drawnImageRect(winRect) {
 }
 
 /** One rule for "empty query", shared by the layout gate and by the search and
- *  selection guards below. Whitespace still searches, so it is not empty. */
+ *  selection guards below. Trimmed, because search.js decides it that way: a
+ *  lone space was empty to one and not the other, and fell between them. */
 export function isEmptyQuery(query) {
-    return query === '';
+    return query.trim() === '';
 }
 
 /** True when an empty query leaves the results row off screen: the rest state,

@@ -336,25 +336,60 @@ function updatePickedIndicators() {
 // keeps the full string for scoring.
 const SETTINGS_SUBTITLE_PREFIXES = ['Windows Settings', 'System Settings'];
 
-function displaySubtitle(result) {
-    if (result.kind === 'clipboard') return result.subtitle;
-    // A row a user's block produced says WHICH block, not "action": the kind is
-    // already on the icon, and where the row came from is the thing the list
-    // cannot otherwise tell you. A row that named a path says where it is too,
-    // like every other row with one.
+// Mirrors macOS LauncherRowView.kindLabel.
+const KIND_LABELS = {
+    app: 'App',
+    file: 'File',
+    folder: 'Folder',
+    clipboard: 'Clipboard',
+    process: 'Process',
+    action: 'Action',
+};
+
+/** The last three components of the row's PARENT directory, as on macOS
+ *  (LauncherRowView.pathInfo). Its own name is already the title; where it
+ *  lives is what tells ten `main.go` rows apart. */
+function pathInfo(path) {
+    const parent = path.replace(/[/\\][^/\\]*$/, '');
+    const components = parent.split(/[/\\]/).filter(Boolean);
+    const tail = components.slice(-3).join('/');
+    if (!tail) return '/';
+    return components.length > 3 ? `.../${tail}` : `/${tail}`;
+}
+
+/**
+ * The row's two meta slots: what it is ABOUT, and what KIND it is.
+ *
+ * Split because they want different alignment. `context` shares the title's
+ * left edge, since eleven `main.go` rows only read as different if their paths
+ * line up; `kind` is one word, so it makes a right column with an edge.
+ */
+function rowMeta(result) {
+    if (result.kind === 'clipboard') {
+        return { context: result.subtitle || '', kind: KIND_LABELS.clipboard };
+    }
+    // A row a user's block produced says WHICH block: the kind is already on
+    // the icon, and where the row came from is the thing the list cannot
+    // otherwise tell you.
     if (sourceblocks.isSourceRow(result.id)) {
-        const label = result.subtitle || sourceblocks.blockName(result.id) || 'Action';
-        return result.path ? `${label}  \u2022  ${result.path}` : label;
+        const context = result.path ? pathInfo(result.path) : result.subtitle || '';
+        return { context, kind: sourceblocks.blockName(result.id) || KIND_LABELS.action };
+    }
+    // Before the subtitle, because core writes the kind word into it: "App"
+    // (platform/linux/apps.rs), "file" (index/files.rs).
+    if (result.kind === 'app') {
+        return { context: '', kind: KIND_LABELS.app };
+    }
+    if (result.path && (result.kind === 'file' || result.kind === 'folder')) {
+        return { context: pathInfo(result.path), kind: KIND_LABELS[result.kind] };
     }
     if (result.subtitle) {
         for (const prefix of SETTINGS_SUBTITLE_PREFIXES) {
-            if (result.subtitle.startsWith(prefix + ' ')) return prefix;
+            if (result.subtitle.startsWith(prefix + ' ')) return { context: '', kind: prefix };
         }
-        return result.subtitle;
+        return { context: result.subtitle, kind: '' };
     }
-    if (result.kind === 'file' || result.kind === 'folder') return result.path;
-    const kindLabels = { app: 'App', setting: 'Setting' };
-    return kindLabels[result.kind] || result.kind;
+    return { context: '', kind: KIND_LABELS[result.kind] || result.kind };
 }
 
 /**
@@ -376,6 +411,10 @@ function createRow(result, index) {
     // (matches macOS WebSuggestionPreviewView's 3-line title cap).
     if (classifyResultId(result.id)?.kind === 'webSuggestion') {
         row.classList.add('result-row-web-suggest');
+    }
+    // Marked as the user's own; the rest of the list is what Look found.
+    if (sourceblocks.isSourceRow(result.id)) {
+        row.classList.add('result-row-source');
     }
 
     // Icon (kind-based SVG fallback, async-load real icon)
@@ -410,8 +449,6 @@ function createRow(result, index) {
         declaredIcon ||
         windowsSettingsSvg ||
         (isLinuxSettings ? settingIcon : fallbacks[result.kind] || appIcon);
-    icon.style.background = 'var(--control-fill)';
-    icon.style.color = 'var(--font-secondary)';
     row.appendChild(icon);
 
     // Skip backend icon fetch for ms-settings entries - the Shell PNG would just
@@ -446,10 +483,19 @@ function createRow(result, index) {
     title.textContent = result.title;
     text.appendChild(title);
 
-    const subtitle = document.createElement('div');
-    subtitle.className = 'result-path';
-    subtitle.textContent = displaySubtitle(result);
-    text.appendChild(subtitle);
+    const meta = rowMeta(result);
+    if (meta.context) {
+        const context = document.createElement('div');
+        context.className = 'result-path';
+        context.textContent = meta.context;
+        text.appendChild(context);
+    }
+    if (meta.kind) {
+        const kind = document.createElement('div');
+        kind.className = 'result-kind';
+        kind.textContent = meta.kind;
+        text.appendChild(kind);
+    }
 
     row.appendChild(text);
 
@@ -498,6 +544,5 @@ function applyIcon(iconEl, dataUrl) {
     img.src = dataUrl;
     img.alt = '';
     iconEl.textContent = '';
-    iconEl.style.background = 'none';
     iconEl.appendChild(img);
 }

@@ -477,8 +477,43 @@ Your rows compete with apps and files on one scale, and they earn usage history 
 
 - **`name`** is the main handle. Every one of a block's rows carries the block name in its search keywords, so typing `projects` brings up the whole block and `projects look` narrows it.
 - **`aliases`** are extra words that find the same rows: `aliases = ["repo", "code"]`.
-- **`bias`** nudges a whole block. Negative keeps a big noisy block below your apps and files; positive lifts a small block you always want first. Start at `-10` or `10`; it is a score offset, not a priority level.
+- **`bias`** nudges a whole block. Negative keeps a big noisy block below your apps and files; positive lifts a small block you always want first. It is a score offset, not a priority level, so the size that helps depends on what you are trying to beat: see [How big a bias](#how-big-a-bias).
 - **`icon`** takes an emoji (`"🚀"`), an SF Symbol name (`"hammer.fill"`, macOS), or a path to an image.
+
+### Choose a name nothing else answers to
+
+This is the one that bites quietly. `name` and `aliases` are what you type to reach a block, and they compete with everything Look already indexes: your apps, your files and folders, System Settings, your history. Claim a word your machine already uses and every search for it gets muddier. Nothing breaks and nothing is reported.
+
+```toml
+name    = "tmux sessions"     # good: two words, both distinctive
+aliases = ["tm"]              # good: short, means nothing else
+
+name    = "Files"             # an app on macOS and on GNOME
+aliases = ["code", "git"]     # an editor, and a directory half of us have
+```
+
+Two rules cover it:
+
+- **Distinctive beats short.** `notes`, `files`, `code`, `git`, `downloads` and `settings` all collide on a normal machine. `zk`, `worktrees` and `standup` collide with nothing.
+- **Two words beat one.** `"tmux sessions"` is reachable by typing either word and matches far less than `sessions` alone.
+
+An alias earns its place only by being shorter than the name *and* colliding with less, so most blocks need none.
+
+The block **id** (the `[header]`) is a different thing and is never what you type. It only has to be unique inside the sources directory. Renaming one loses that block's ranking history, so pick it once and leave it.
+
+### How big a bias
+
+A block's rows match on its **name**, which is a subtitle match, while a file or page whose own title carries your word gets a title match. Those are not close:
+
+| What matched | Score |
+| --- | --- |
+| the row's own title contains your query | 1200 |
+| the row's title *starts with* your query | +200 more |
+| the block name (how your rows match) | 900 |
+
+So a row that happens to have your word in its title starts around 500 ahead of your block, before recency. `10` is enough to order two blocks that both match by name; beating a title match takes several hundred.
+
+Remember that `bias` applies to **every** query, not only the one you had in mind. If a single big block is the problem, sinking that block is usually better than lifting everything else past it.
 
 ## When things refresh
 

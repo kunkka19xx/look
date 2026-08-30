@@ -198,12 +198,14 @@
     animation: pill-gain var(--motion-zoom-ms) var(--motion-curve);
 }
 
-/* Held while selected; the pill's glide sets the pace. */
-.result-row .result-title {
+/* Held while selected; the pill's glide sets the pace. The whole text block
+ * moves, not just the title: macOS puts the offset on the VStack holding both
+ * lines, and shifting one of them slides it out of line with the other. */
+.result-row .result-text {
     transition: transform var(--motion-glide-ms) var(--motion-curve);
 }
 
-.result-row.selected .result-title {
+.result-row.selected .result-text {
     transform: translateX(var(--motion-title-shift));
 }
 
@@ -227,7 +229,7 @@
         opacity: 1;
     }
 
-    html:not([data-os="windows"]) .result-row .result-title {
+    html:not([data-os="windows"]) .result-row .result-text {
         transition: none;
     }
 }

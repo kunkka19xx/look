@@ -144,6 +144,10 @@ struct LauncherRowView: View {
         return "/\(tail)"
     }
 
+    private var metaFont: Font {
+        themeStore.uiFont(size: CGFloat(max(10, themeStore.settings.fontSize - 3)), weight: .regular)
+    }
+
     private var kindLabel: String {
         switch result.kind {
         case .app:
@@ -161,41 +165,33 @@ struct LauncherRowView: View {
         }
     }
 
-    private var metaLabel: String {
+    /// The row's two meta slots: what it is ABOUT, and what KIND it is.
+    ///
+    /// Split because they want different alignment. `context` shares the
+    /// title's left edge, since eleven `main.go` rows only read as different if
+    /// their paths line up; `kind` is one word, so it makes a right column with
+    /// an edge. Joined, the kind word shifted every path by a different amount.
+    private var meta: (context: String, kind: String) {
         if syntheticRow != nil {
-            return result.subtitle ?? ""
+            return (result.subtitle ?? "", "")
         }
         if result.kind == .clipboard {
-            return result.subtitle ?? kindLabel
+            return (result.subtitle ?? "", kindLabel)
         }
         if result.kind == .process {
             // "PID 1234 · :3000" - carries the pid and any listening ports.
-            return result.subtitle ?? kindLabel
+            return (result.subtitle ?? "", kindLabel)
         }
         if result.kind == .app {
-            return kindLabel
+            return ("", kindLabel)
         }
-        if result.kind == .action {
-            // A row that named a path is a real filesystem object, so it says
-            // where it is, like every other such row. Without one there is
-            // nothing to point at: "Action • 3 steps" says instead that pressing
-            // this will do several things.
-            if !result.path.isEmpty {
-                return [result.subtitle, pathInfo]
-                    .compactMap { $0 }
-                    .joined(separator: "  •  ")
-            }
-            return [kindLabel, result.subtitle]
-                .compactMap { $0 }
-                .joined(separator: "  •  ")
+        // A row a user's block produced says WHICH block: the kind is already
+        // on the icon, and its origin is what the list cannot otherwise say.
+        if result.isSourceRow {
+            let context = result.path.isEmpty ? (result.subtitle ?? "") : pathInfo
+            return (context, result.subtitle ?? kindLabel)
         }
-        // A row a user's block produced says WHICH block, not "Folder". The kind
-        // is already on the icon, and where the row came from is the thing the
-        // list cannot otherwise tell you.
-        if result.isSourceRow, let block = result.subtitle {
-            return "\(block)  •  \(pathInfo)"
-        }
-        return "\(kindLabel)  •  \(pathInfo)"
+        return (result.path.isEmpty ? "" : pathInfo, kindLabel)
     }
 
     var body: some View {
@@ -207,20 +203,41 @@ struct LauncherRowView: View {
                             .foregroundStyle(themeStore.selectionFillColor())
                             .frame(width: 14)
                     }
-                    RowIcon(image: rowIcon, isSelected: isSelected)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(result.title)
-                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
-                            .foregroundStyle(themeStore.fontColor())
-                        Text(metaLabel)
-                            .font(themeStore.uiFont(size: CGFloat(max(10, themeStore.settings.fontSize - 3)), weight: .regular))
-                            .foregroundStyle(themeStore.mutedTextColor())
-                            .lineLimit(1)
+                    RowIcon(
+                        image: rowIcon,
+                        isSelected: isSelected,
+                        isDeclared: result.isSourceRow,
+                        themeStore: themeStore)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text(result.title)
+                                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
+                                .foregroundStyle(themeStore.fontColor())
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            // Never truncated: that is what gives the column
+                            // its edge.
+                            if !meta.kind.isEmpty {
+                                Text(meta.kind)
+                                    .font(metaFont)
+                                    .foregroundStyle(themeStore.mutedTextColor())
+                                    .lineLimit(1)
+                                    .layoutPriority(1)
+                            }
+                        }
+                        if !meta.context.isEmpty {
+                            Text(meta.context)
+                                .font(metaFont)
+                                .foregroundStyle(themeStore.mutedTextColor())
+                                .lineLimit(1)
+                        }
                     }
+                    // Explicit: the Spacer that used to do this now sits in
+                    // the title row, pushing the kind right.
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     // Keyed on `isSelected` so it rides nav's glide transaction.
                     // Offset, not padding: the text must not reflow.
                     .offset(x: isSelected ? Motion.Selection.titleShift : 0)
-                    Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -251,11 +268,39 @@ private struct RowIcon: View {
     @Environment(\.isSelectionZoomed) private var zoomed
     let image: NSImage
     let isSelected: Bool
+    /// A row a user declared, which wears the tile the preview header already
+    /// gives it. Only these rows: one on every row looks striped.
+    let isDeclared: Bool
+    let themeStore: ThemeStore
+
+    private enum Tile {
+        static let size: CGFloat = 22
+        static let radius: CGFloat = 6
+        static let fill: Double = 0.16
+        static let ring: Double = 0.32
+        static let ringWidth: CGFloat = 1
+        static let inset: CGFloat = 3
+    }
 
     var body: some View {
         Image(nsImage: image)
             .resizable()
-            .frame(width: 22, height: 22)
+            .frame(
+                width: isDeclared ? Tile.size - Tile.inset * 2 : Tile.size,
+                height: isDeclared ? Tile.size - Tile.inset * 2 : Tile.size)
+            .frame(width: Tile.size, height: Tile.size)
+            .background {
+                if isDeclared {
+                    RoundedRectangle(cornerRadius: Tile.radius, style: .continuous)
+                        .fill(themeStore.accentColor().opacity(Tile.fill))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: Tile.radius, style: .continuous)
+                                .strokeBorder(
+                                    themeStore.accentColor().opacity(Tile.ring),
+                                    lineWidth: Tile.ringWidth)
+                        }
+                }
+            }
             .scaleEffect(isSelected && zoomed ? Motion.Selection.iconZoomScale : 1)
     }
 }

@@ -28,15 +28,13 @@ enum ThemeSurface {
     case classic
     case liquid
 
-    /// Glass reads as a lens; a tight corner makes it a clipped rectangle.
-    static let liquidRadiusScale: CGFloat = 1.5
+    /// One corner geometry for every surface. Glass reads as a lens and a tight
+    /// corner makes it a clipped rectangle, which is what liquid was raised for;
+    /// the classic surface is no better served by the tighter one, so both take
+    /// the same scale rather than the launcher changing shape with its theme.
+    static let radiusScale: CGFloat = 1.5
 
-    var cornerRadiusScale: CGFloat {
-        switch self {
-        case .classic: return 1
-        case .liquid: return Self.liquidRadiusScale
-        }
-    }
+    var cornerRadiusScale: CGFloat { Self.radiusScale }
 }
 
 struct BuiltinThemeStyle {

@@ -7,8 +7,6 @@
  * compositor grants it, comes from platform/linux/blur.rs. */
 
 [data-surface="liquid"] {
-    /* A tight corner makes a lens read as a clipped rectangle. */
-    --surface-radius-scale: 1.5;
     /* The rim states the edge that refraction cannot. */
     --glass-rim: rgba(var(--lift), 0.5);
     --glass-rim-soft: rgba(var(--lift), 0.12);

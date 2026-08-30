@@ -569,7 +569,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!translatePanel.isActive()) translatePanel.showPlaceholder();
             return;
         }
-        if (runningApps.isEnabled()) runningApps.refresh();
         translatePanel.hide();
 
         if (search.isClipboardMode()) {

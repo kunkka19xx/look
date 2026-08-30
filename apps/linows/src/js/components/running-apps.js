@@ -12,6 +12,10 @@ let container = null;
 let apps = []; // sorted alphabetically, max 9
 let enabled = true;
 let suspended = false; // temporarily hidden (e.g. command mode, settings)
+// What the strip currently shows. macOS lets SwiftUI diff its items; here the
+// diff is explicit, or an unchanged list still tears the strip down and
+// refetches every icon.
+let renderedSignature = null;
 
 export function init(containerEl) {
     container = containerEl;
@@ -29,8 +33,12 @@ export function isEnabled() {
 /** Temporarily hide the strip without changing the user's enabled preference.
  *  Used when entering non-main screens (command mode, settings, help). */
 export function setSuspended(on) {
+    if (suspended === on) return;
     suspended = on;
-    if (container && on) container.hidden = true;
+    if (!container) return;
+    // Symmetric: leaving a suspended screen shows what is already rendered.
+    // Hiding only, as before, is what forced a refresh per keystroke.
+    container.hidden = on || !enabled || apps.length === 0;
 }
 
 /** Refresh the running apps list from backend. */
@@ -44,6 +52,13 @@ export async function refresh() {
         if (!enabled || suspended || !container) return;
         // Already sorted alphabetically by backend, take first 9
         apps = procs.slice(0, MAX_ITEMS);
+
+        const signature = signatureOf(apps);
+        if (signature === renderedSignature) {
+            container.hidden = apps.length === 0;
+            return;
+        }
+        renderedSignature = signature;
         render();
     } catch (err) {
         console.error('[running-apps] refresh failed:', err);
@@ -75,6 +90,11 @@ function badgeKeys(total) {
 }
 
 // --- Rendering ---
+
+/** Identity of the whole strip: what a row draws, and the key it answers to. */
+function signatureOf(list) {
+    return list.map((app) => `${app.pid}\u0000${app.desktop_id || ''}\u0000${app.name}`).join('|');
+}
 
 function render() {
     container.innerHTML = '';
