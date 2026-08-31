@@ -22,6 +22,11 @@ pub const LAUNCHPAD_FILE_ENV: &str = "LOOK_LAUNCHPAD_FILE";
 /// one. Three is today's layout; five leaves room for a band of your own tiles.
 pub const MAX_ROWS: usize = 5;
 
+/// Every coordinate crosses the FFI as a `u8`, so a wider drawing cannot be
+/// represented: the column count and each tile's own would wrap and place the
+/// tiles somewhere else entirely.
+pub const MAX_COLUMNS: usize = u8::MAX as usize;
+
 /// A gap the user drew on purpose.
 const HOLE: &str = ".";
 
@@ -160,13 +165,23 @@ pub fn resolve(contents: &str) -> Resolved {
 
     // Ragged is structural: a row short of a token silently shifts everything
     // after it, so there is no partial reading of this that is safe to show.
-    let columns = grid[0].len();
+    let mut columns = grid[0].len();
     if let Some(index) = grid.iter().position(|row| row.len() != columns) {
         return Resolved::default_with(vec![format!(
             "launchpad.toml row {} has {} tokens but row 1 has {columns}, using the default layout",
             index + 1,
             grid[index].len()
         )]);
+    }
+
+    if columns > MAX_COLUMNS {
+        warnings.push(format!(
+            "launchpad.toml draws {columns} columns; only the first {MAX_COLUMNS} are shown"
+        ));
+        for row in &mut grid {
+            row.truncate(MAX_COLUMNS);
+        }
+        columns = MAX_COLUMNS;
     }
 
     let known: HashMap<String, LaunchpadTile> = look_qactions::launchpad_layout()
@@ -451,6 +466,18 @@ mod tests {
     fn an_empty_drawing_falls_back_to_the_whole_default() {
         assert!(is_default(&resolve("layout = []")));
         assert!(is_default(&resolve(r#"layout = [""]"#)));
+    }
+
+    #[test]
+    fn more_columns_than_the_cap_are_dropped_rather_than_refused() {
+        let mut tokens = vec!["mic"];
+        tokens.resize(MAX_COLUMNS + 1, HOLE);
+        let resolved = resolve(&format!("layout = [\"{}\"]", tokens.join(" ")));
+
+        assert_eq!(resolved.columns as usize, MAX_COLUMNS);
+        assert!(resolved.warnings[0].contains(&format!("first {MAX_COLUMNS}")));
+        // Still a working launchpad, not a fallback, exactly as with the rows.
+        assert!(!is_default(&resolved));
     }
 
     #[test]

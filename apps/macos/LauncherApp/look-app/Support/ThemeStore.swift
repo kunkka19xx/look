@@ -102,6 +102,10 @@ final class ThemeStore: ObservableObject {
                     if let parsed = Double(value), parsed <= 0 {
                         warnings.append("\(key)=\(value) invalid (must be > 0)")
                     }
+                case "inner_gap":
+                    appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.innerGapRange)
+                case "ui_surface_radius":
+                    appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.surfaceRadiusRange)
                 case "file_scan_depth":
                     if let parsed = Int(value), parsed < AppConstants.FileScan.minDepth || parsed > AppConstants.FileScan.maxDepth {
                         warnings.append("\(key)=\(value) invalid (must be \(AppConstants.FileScan.minDepth)-\(AppConstants.FileScan.maxDepth))")
@@ -134,6 +138,8 @@ final class ThemeStore: ObservableObject {
         let originalTintBlue = settings.tintBlue
         let originalTintOpacity = settings.tintOpacity
         let originalFontSize = settings.fontSize
+        let originalInnerGap = settings.innerGap
+        let originalSurfaceRadius = settings.surfaceRadius
 
         // Apply config
         applyThemeOverridesFromConfigFile()
@@ -153,6 +159,12 @@ final class ThemeStore: ObservableObject {
         }
         if warnings.contains(where: { $0.hasPrefix("ui_font_size") }) {
             settings.fontSize = originalFontSize
+        }
+        if warnings.contains(where: { $0.hasPrefix("inner_gap") }) {
+            settings.innerGap = originalInnerGap
+        }
+        if warnings.contains(where: { $0.hasPrefix("ui_surface_radius") }) {
+            settings.surfaceRadius = originalSurfaceRadius
         }
 
         _ = applyLaunchAtLoginSetting()
@@ -526,13 +538,13 @@ final class ThemeStore: ObservableObject {
                 }
             case "inner_gap":
                 if let parsed = Double(value) {
-                    settings.innerGap = min(max(parsed, 0), 24)
+                    settings.innerGap = clamped(parsed, to: AppConstants.ThemeUI.innerGapRange)
                 }
             case "ui_surface_radius":
                 // Clamped rather than parsePositiveDouble: 0 squares the corners
                 // and is a value the slider offers, which `> 0` would drop.
                 if let parsed = Double(value) {
-                    settings.surfaceRadius = min(max(parsed, 0), 2.5)
+                    settings.surfaceRadius = clamped(parsed, to: AppConstants.ThemeUI.surfaceRadiusRange)
                 }
             case "file_scan_depth":
                 if let parsed = parsePositiveInt(value) {
@@ -652,6 +664,27 @@ final class ThemeStore: ObservableObject {
         }
 
         try? repaired.write(to: path, atomically: true, encoding: .utf8)
+    }
+
+    private func clamped(_ value: Double, to range: ClosedRange<Double>) -> Double {
+        min(max(value, range.lowerBound), range.upperBound)
+    }
+
+    private func appendRangeWarning(
+        _ warnings: inout [String],
+        key: String,
+        value: String,
+        range: ClosedRange<Double>
+    ) {
+        guard let parsed = Double(value), !range.contains(parsed) else { return }
+        warnings.append(
+            "\(key)=\(value) invalid (expected \(formatted(range.lowerBound))-\(formatted(range.upperBound)))")
+    }
+
+    /// Drops the decimals a whole bound does not need, so a warning reads
+    /// "0-24" rather than "0.0-24.0".
+    private func formatted(_ bound: Double) -> String {
+        bound == bound.rounded() ? String(Int(bound)) : String(bound)
     }
 
     private func parseUnitDouble(_ value: String) -> Double? {

@@ -87,7 +87,7 @@ html:not([data-os="linux"]) .settings-linux-only {
     font-size: calc(var(--font-size) - 1px);
     font-weight: 500;
     padding: 4px 12px;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     border: 1px solid var(--divider-color);
     background: var(--control-fill);
     color: var(--font-color);
@@ -118,7 +118,7 @@ html:not([data-os="linux"]) .settings-linux-only {
     font-weight: 500;
     padding: 7px 0;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--control-radius);
     cursor: pointer;
     background: rgba(var(--lift), 0.06);
     color: var(--font-secondary);
@@ -253,7 +253,7 @@ html:not([data-os="linux"]) .settings-linux-only {
     font-size: calc(var(--font-size) - 1px);
     font-family: inherit;
     padding: 4px 10px;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     border: 1px solid var(--divider-color);
     background: rgba(var(--lift), 0.06);
     color: var(--font-color);
@@ -279,7 +279,7 @@ html:not([data-os="linux"]) .settings-linux-only {
     min-width: 100%;
     background: var(--overlay-surface);
     border: 1px solid var(--divider-color);
-    border-radius: 8px;
+    border-radius: var(--control-radius);
     padding: 4px 0;
     z-index: 100;
     box-shadow: 0 4px 16px rgba(var(--shadow), 0.4);
@@ -312,7 +312,7 @@ html:not([data-os="linux"]) .settings-linux-only {
     font-size: calc(var(--font-size) - 1px);
     font-family: inherit;
     padding: 4px 8px;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     border: 1px solid var(--divider-color);
     background: var(--control-fill);
     color: var(--font-color);
@@ -337,7 +337,7 @@ html:not([data-os="linux"]) .settings-linux-only {
     overflow-y: auto;
     background: var(--overlay-surface);
     border: 1px solid var(--divider-color);
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     z-index: 100;
     box-shadow: 0 4px 16px rgba(var(--shadow), 0.4);
 }
@@ -428,7 +428,7 @@ html:not([data-os="linux"]) .settings-linux-only {
     font-size: calc(var(--font-size) - 2px);
     font-weight: 500;
     padding: 5px 14px;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     border: 1px solid var(--divider-color);
     cursor: pointer;
     background: rgba(var(--lift), 0.08);
@@ -483,7 +483,7 @@ html:not([data-os="linux"]) .settings-linux-only {
     color: var(--font-muted);
     cursor: pointer;
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: var(--micro-radius);
     border: none;
     background: none;
     flex-shrink: 0;

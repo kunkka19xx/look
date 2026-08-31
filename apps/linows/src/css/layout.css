@@ -61,7 +61,7 @@ html[data-os="windows"] body {
 }
 
 html[data-os="windows"] .launcher-window {
-    border-radius: calc(16px * var(--surface-radius-scale));
+    border-radius: var(--panel-radius);
 }
 
 /* WebKitGTK ghost-rendering workaround. Hyprland users hit this automatically
@@ -389,7 +389,7 @@ html[data-os="windows"] .launcher-window {
     padding: 10px 12px;
     background: var(--bg-tint);
     border: 1px solid var(--divider-color);
-    border-radius: 10px;
+    border-radius: var(--bar-radius);
     cursor: default;
     z-index: 10;
 }
@@ -437,7 +437,7 @@ html[data-os="windows"] .launcher-window {
     color: #fff;
     background: #e05252;
     padding: 1px 5px;
-    border-radius: 3px;
+    border-radius: var(--micro-radius);
 }
 
 /* --- Floating "inner-gap" layout ---------------------------------------

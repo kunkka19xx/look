@@ -47,10 +47,16 @@ extension ThemeSettingsView {
 
                 sectionHeader("Layout")
 
-                LabeledSlider(title: "Inner Gap", value: $settings.innerGap, range: 0...24)
+                LabeledSlider(
+                    title: "Inner Gap",
+                    value: $settings.innerGap,
+                    range: AppConstants.ThemeUI.innerGapRange)
                     .help("i3-style gap between the top row, results list and preview. 0 = flat layout; higher turns each into its own card.")
 
-                LabeledSlider(title: "Corner Radius", value: $settings.surfaceRadius, range: 0...2.5)
+                LabeledSlider(
+                    title: "Corner Radius",
+                    value: $settings.surfaceRadius,
+                    range: AppConstants.ThemeUI.surfaceRadiusRange)
                     .help("Corner rounding, shared by every surface: the panel, the top bar, the launchpad tiles and the controls. 0 = square.")
 
                 sectionHeader("Tint Color")

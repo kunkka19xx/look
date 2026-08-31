@@ -113,7 +113,7 @@
     cursor: pointer;
     font-size: 14px;
     padding: 2px 4px;
-    border-radius: 4px;
+    border-radius: var(--micro-radius);
     color: var(--font-secondary);
     opacity: 0.7;
 }
@@ -155,7 +155,7 @@
     padding: 8px 10px;
     border-top: 1px solid var(--divider-color);
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
 }
 
 .translate-footer:hover {

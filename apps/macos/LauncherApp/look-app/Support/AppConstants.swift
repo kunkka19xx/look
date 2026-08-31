@@ -630,6 +630,10 @@ enum AppConstants {
     enum ThemeUI {
         static let labelWidth: CGFloat = 150
         static let pickerWidth: CGFloat = 140
+        /// Bounds shared by the slider, the config parser and the reload check,
+        /// so a value the slider cannot reach is reported rather than clamped.
+        static let innerGapRange: ClosedRange<Double> = 0...24
+        static let surfaceRadiusRange: ClosedRange<Double> = 0...2.5
         /// Dimming for a control the active theme has taken over, so the value
         /// stays readable while reading as not-yours-to-set.
         static let disabledControlOpacity: Double = 0.4
