@@ -40,8 +40,6 @@ import {
     searchKillTargets,
     killProcess,
     getIcon,
-    copyToClipboard,
-    deleteClipboardEntry,
     isDevBuild,
     getConfig,
 } from './ipc.js';
