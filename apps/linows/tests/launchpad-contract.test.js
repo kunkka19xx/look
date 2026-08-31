@@ -62,20 +62,15 @@ test('the toggle tiles carry the captions their state line reads', () => {
     assert.equal(typeof theme.off_label, 'string');
 });
 
-test('every id in the layout has a grid area to be placed into', async () => {
-    // AREA maps action_id -> the CSS grid-area in superactions.css. An id with
-    // no entry keeps a plain tile and escapes its area, so it lands wherever
-    // the grid auto-places it. This is the pairing that task #8 replaces with
-    // resolved coordinates; until then it has to stay exhaustive.
+test('no tile needs the shell to know its id in order to be placed', () => {
+    // There used to be an AREA map here: action_id -> a CSS grid-area, which had
+    // to list every tile or that tile escaped its cell and landed wherever the
+    // grid auto-placed it. It is gone, and so is the whole class of "the core
+    // shipped a tile the shell had never heard of".
     const source = readFileSync(
         fileURLToPath(new URL('../src/js/components/superactions.js', import.meta.url)),
         'utf8',
     );
-    const block = source.match(/const AREA = \{([\s\S]*?)\};/);
-    assert.ok(block, 'the AREA map is still in superactions.js');
-    const mapped = new Set([...block[1].matchAll(/^\s*(\w+):/gm)].map((m) => m[1]));
-
-    for (const tile of tiles) {
-        assert.ok(mapped.has(tile.action_id), `${tile.action_id} has no grid area`);
-    }
+    assert.ok(!/const AREA = \{/.test(source), 'the AREA map is gone');
+    assert.ok(!/pos-\$\{/.test(source), 'no pos-* placement class is assigned');
 });

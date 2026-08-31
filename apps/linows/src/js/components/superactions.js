@@ -69,6 +69,7 @@ import {
 import { statsWidgetHtml } from '../screens/commands/todo.js';
 import * as platform from '../platform.js';
 import * as banner from './banner.js';
+import { gridPlacement, gridShape } from './launchpad-grid.js';
 
 let container = null;
 let built = false;
@@ -164,23 +165,6 @@ const BATTERY_CHARGING_INFO_KEY = 'charging';
 const BATTERY_CHARGING_INFO_TEXT = 'charging';
 const CONTROL_INFO_KEYS = {
     battery: [BATTERY_CHARGING_INFO_KEY],
-};
-
-// action_id -> CSS grid-area suffix (pos-<area>) and glyph. The grid placement
-// lives in superactions.css; this maps the shared ids onto it.
-const AREA = {
-    lslot: 'todo',
-    bluetooth: 'bt',
-    wifi: 'wifi',
-    battery: 'batt',
-    theme: 'theme',
-    keepawake: 'keep',
-    screensaver: 'scr',
-    weather: 'weather',
-    mic: 'mic',
-    restart: 'rst',
-    shutdown: 'shut',
-    nowplaying: 'play',
 };
 
 const ICON = {
@@ -926,9 +910,29 @@ function render(tiles) {
 
     const grid = document.createElement('div');
     grid.className = 'control-strip-grid';
-    for (const tile of tiles) grid.appendChild(buildTile(tile));
 
-    // Per-tile index drives the entrance stagger (CSS animation-delay).
+    // The grid is whatever the drawing in ~/.look/launchpad.toml reaches. The
+    // CSS used to declare `grid-template-areas` and every tile's `grid-area`,
+    // which meant the arrangement was written once in the core and again here,
+    // and the two had to agree. The core resolves it now and this only draws.
+    //
+    // Derived from the tiles rather than sent alongside them, matching what the
+    // macOS shell does, because the payload is a bare array of tiles.
+    const shape = gridShape(tiles);
+    grid.style.setProperty('--ctl-cols', shape.columns);
+    grid.style.setProperty('--ctl-rows', shape.rows);
+
+    for (const tile of tiles) {
+        const el = buildTile(tile);
+        const at = gridPlacement(tile);
+        el.style.gridColumn = at.column;
+        el.style.gridRow = at.row;
+        grid.appendChild(el);
+    }
+
+    // Per-tile index drives the entrance stagger (CSS animation-delay). The core
+    // sends tiles in reading order, so this follows the screen rather than the
+    // order names happen to appear in the drawing.
     [...grid.children].forEach((el, i) => el.style.setProperty('--i', i));
 
     container.innerHTML = '';
@@ -963,16 +967,15 @@ function buildTile(tile) {
     }
 }
 
-// Base tile: a frosted card placed into its named grid area, tagged with the
-// role variant (and a tone for danger/active modifiers).
+// Base tile: a frosted card tagged with the role variant (and a tone for
+// danger/active modifiers). Placement is set by the caller from the tile's own
+// coordinates, so nothing here needs to know which tile this is.
 function tileEl(actionId, variant, tone) {
     const el = document.createElement('button');
     el.type = 'button';
     el.tabIndex = -1;
     el.dataset.id = actionId;
     el.className = `ctl-tile ctl-tile--${variant}`;
-    // An unknown catalog id keeps a plain tile rather than escaping its grid area.
-    if (AREA[actionId]) el.classList.add(`pos-${AREA[actionId]}`);
     if (tone) el.classList.add(`is-${tone}`);
     return el;
 }
