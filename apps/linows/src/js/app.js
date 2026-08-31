@@ -581,8 +581,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             setHint(hintMessage, HINT_TRANSLATE);
             return;
         }
-        translatePanel.hide();
-        if (runningApps.isEnabled()) runningApps.refresh();
 
         if (search.isClipboardMode()) {
             setHint(hintMessage, HINT_CLIPBOARD);
@@ -605,8 +603,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const empty = search.isRecentMode()
                 ? 'recent'
                 : lastAiState !== AiState.idle
-                    ? 'ai-suggestion'
-                    : 'default';
+                  ? 'ai-suggestion'
+                  : 'default';
             results.setEmptyState({ mode: empty });
         }
     });
@@ -718,7 +716,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // timeout.
         requestAnimationFrame(() =>
             requestAnimationFrame(() => {
-                confirmHide(event.payload).catch(() => { });
+                confirmHide(event.payload).catch(() => {});
             }),
         );
     });

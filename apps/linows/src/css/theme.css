@@ -79,6 +79,9 @@
     --input-padding-y: 10px;
     /* Shared by the icon, the flex gap and the placeholder overlay. */
     --search-icon-size: 16px;
+    /* Top row content height: field and running-apps icons both measure to it,
+     * so the bar is the same height with the strip on or off. */
+    --top-row-height: 26px;
     --search-gap: 10px;
     /* The label column every preview info row shares. */
     --preview-label-col: 96px;

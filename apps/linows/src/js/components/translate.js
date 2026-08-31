@@ -19,6 +19,13 @@ export function isActive() {
     return active;
 }
 
+// Floating, layout.js parks the hint text here; collapsed otherwise.
+function hintSlot() {
+    const slot = document.createElement('div');
+    slot.className = 'pane-footer';
+    return slot;
+}
+
 export function showPlaceholder() {
     hide();
     active = true;
@@ -32,6 +39,7 @@ export function showPlaceholder() {
         '</div>' +
         '<div class="translate-placeholder-text">Press Enter to translate</div>';
     panel.appendChild(placeholder);
+    panel.appendChild(hintSlot());
     container.appendChild(panel);
     layout.refresh();
 }
@@ -40,6 +48,7 @@ export function hide() {
     active = false;
     const panel = container.querySelector('.translate-panel');
     if (panel) {
+        layout.releaseHints();
         panel.remove();
         layout.refresh();
     }
@@ -51,7 +60,10 @@ export async function perform(text) {
 
     // Remove old panel
     let panel = container.querySelector('.translate-panel');
-    if (panel) panel.remove();
+    if (panel) {
+        layout.releaseHints();
+        panel.remove();
+    }
 
     panel = document.createElement('div');
     panel.className = 'translate-panel pane-tile';
@@ -123,6 +135,7 @@ export async function perform(text) {
         externalLink +
         '</span>';
     panel.appendChild(footer);
+    panel.appendChild(hintSlot());
     layout.refresh();
 
     // Translate all 3 in parallel
