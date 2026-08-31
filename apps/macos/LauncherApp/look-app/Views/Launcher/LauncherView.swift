@@ -574,7 +574,7 @@ struct LauncherView: View {
 
         switch command {
         case .network:
-            return "Press Enter after finishing input to translate on web"
+            return "Press Enter to translate"
         case .lookup:
             return nil
         }

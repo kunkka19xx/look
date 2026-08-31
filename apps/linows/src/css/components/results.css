@@ -126,6 +126,10 @@
 /* The same tile the preview header gives these rows. Only these: one on every
  * row is what made the column look striped. */
 .result-row-source .result-icon {
+    width: calc(var(--icon-size) + 2px);
+    height: calc(var(--icon-size) + 2px);
+    padding: 1px;
+    box-sizing: border-box;
     border-radius: 6px;
     background: var(--declared-fill);
     box-shadow: inset 0 0 0 1px var(--declared-ring);

@@ -238,11 +238,16 @@ html[data-os="windows"] .launcher-window {
     display: none;
     align-items: center;
     flex-shrink: 0;
-    padding: 6px 10px 2px;
+    padding: 6px var(--row-padding-x) 2px;
 }
 
-.floating-grid .pane-footer {
+/* Floating: both hints on the grid, one card takes both otherwise. */
+.floating .pane-footer {
     display: flex;
+}
+
+.floating:not(.floating-grid) .pane-footer {
+    justify-content: space-between;
 }
 
 #preview-footer {
@@ -518,7 +523,7 @@ html[data-os="windows"] .launcher-window {
 }
 
 .floating .pane-col {
-    padding: 6px;
+    padding: var(--row-inset);
 }
 
 .floating .preview-panel {
@@ -558,7 +563,8 @@ html[data-os="windows"] .launcher-window {
     display: none;
 }
 
-/* Floating grid: hints/copyright live in the card footers instead. */
-.floating-grid #hint-bar {
+/* Floating: hints live in the card footers; bare on the desktop they are
+ * unreadable. */
+.floating #hint-bar {
     display: none;
 }

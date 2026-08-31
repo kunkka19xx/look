@@ -40,8 +40,6 @@ import {
     searchKillTargets,
     killProcess,
     getIcon,
-    copyToClipboard,
-    deleteClipboardEntry,
     isDevBuild,
     getConfig,
 } from './ipc.js';
@@ -317,6 +315,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         },
     });
+    function syncSearchSurface() {
+        const translating = search.isTranslateMode();
+        resultsList.hidden = translating;
+        runningApps.setSuspended(translating);
+
+        if (translating) {
+            previewPanel.hidden = true;
+            if (!translatePanel.isActive()) translatePanel.showPlaceholder();
+            return;
+        }
+
+        translatePanel.hide();
+        previewPanel.hidden = false;
+    }
+
     // Shared "back to the empty home screen" reset, used when leaving
     // settings or command mode.
     function resetHomeQuery() {
@@ -328,6 +341,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         queryInput.value = '';
         search.handleQueryInput('');
         layout.setQuery({ empty: true, translate: false });
+        syncSearchSurface();
         renderMainHint();
         syncControlStrip();
         queryInput.focus();
@@ -560,16 +574,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const translating = search.isTranslateMode();
         layout.setQuery({ empty: layout.isEmptyQuery(value), translate: translating });
         syncControlStrip();
-        resultsList.hidden = translating;
-        runningApps.setSuspended(translating);
+        syncSearchSurface();
 
         if (translating) {
             setHint(hintMessage, HINT_TRANSLATE);
-            previewPanel.hidden = true;
-            if (!translatePanel.isActive()) translatePanel.showPlaceholder();
             return;
         }
-        translatePanel.hide();
 
         if (search.isClipboardMode()) {
             setHint(hintMessage, HINT_CLIPBOARD);
@@ -839,13 +849,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function exitCommandMode() {
+        // The surface itself is resetHomeQuery's job; setModal first, or the
+        // reset re-runs the layout still believing command mode is up.
         queryInput.parentElement.style.display = '';
-        resultsList.hidden = false;
-        previewPanel.hidden = false;
-        translatePanel.hide();
         layout.setModal('command', false);
         resetHomeQuery();
-        runningApps.setSuspended(false);
     }
 
     async function executeCommand(cmdId, input, gen) {
