@@ -201,6 +201,15 @@ extension ThemeStore {
         base * CGFloat(settings.surfaceRadius)
     }
 
+    /// `AppConstants.Radius` at the user's scale. Surfaces take these rather
+    /// than scaling a base themselves.
+    var panelRadius: CGFloat { surfaceCornerRadius(AppConstants.Radius.panel) }
+    var tileRadius: CGFloat { surfaceCornerRadius(AppConstants.Radius.tile) }
+    var barRadius: CGFloat { surfaceCornerRadius(AppConstants.Radius.bar) }
+    var controlRadius: CGFloat { surfaceCornerRadius(AppConstants.Radius.control) }
+    var chipRadius: CGFloat { surfaceCornerRadius(AppConstants.Radius.chip) }
+    var microRadius: CGFloat { surfaceCornerRadius(AppConstants.Radius.micro) }
+
     func borderColor() -> Color {
         Color(
             red: settings.borderRed,

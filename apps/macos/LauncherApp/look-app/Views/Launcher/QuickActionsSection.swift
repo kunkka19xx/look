@@ -75,7 +75,6 @@ private struct QuickActionControl: View {
         static let controlSpacing: CGFloat = 8
         static let horizontalPadding: CGFloat = 10
         static let verticalPadding: CGFloat = 8
-        static let cornerRadius: CGFloat = 8
         static let rowBackgroundOpacity = 0.18
         /// Matches the pending row's dim, and the linows `.is-busy` rule.
         static let busyOpacity = 0.5
@@ -107,7 +106,7 @@ private struct QuickActionControl: View {
         .padding(.vertical, Layout.verticalPadding)
         .background(
             themeStore.dividerColor().opacity(Layout.rowBackgroundOpacity),
-            in: RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
+            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
         )
     }
 
@@ -257,7 +256,6 @@ private struct ListItemRow: View {
         static let spacing: CGFloat = 8
         static let horizontalPadding: CGFloat = 10
         static let verticalPadding: CGFloat = 4
-        static let cornerRadius: CGFloat = 8
         static let dotSize: CGFloat = 7
         static let restOpacity = 0.10
         static let hoverOpacity = 0.28
@@ -287,7 +285,7 @@ private struct ListItemRow: View {
             .padding(.vertical, Layout.verticalPadding)
             .background(
                 themeStore.dividerColor().opacity(hovering && isActionable ? Layout.hoverOpacity : Layout.restOpacity),
-                in: RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
+                in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
             )
             .contentShape(Rectangle())
         }

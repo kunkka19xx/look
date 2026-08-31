@@ -74,6 +74,6 @@ struct PendingActionBar: View {
             .buttonStyle(.plain)
         }
         .padding(10)
-        .background(themeStore.controlFillColor().opacity(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(themeStore.controlFillColor().opacity(0.92), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 }

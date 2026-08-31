@@ -133,7 +133,7 @@ struct TodoInsightsStrip: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 14)
-        .todoCard(themeStore, cornerRadius: 12)
+        .todoCard(themeStore, cornerRadius: AppConstants.Radius.tile)
     }
 
     private func tile(_ label: String, _ value: String, help: String) -> some View {
@@ -169,7 +169,7 @@ struct TodoStatStrip: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 14)
-        .todoCard(themeStore, cornerRadius: 12)
+        .todoCard(themeStore, cornerRadius: AppConstants.Radius.tile)
     }
 
     private var divider: some View { TodoVDivider(themeStore: themeStore) }

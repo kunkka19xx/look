@@ -48,7 +48,7 @@ struct TextFilePreview: View {
         )
             .frame(maxWidth: .infinity, maxHeight: maxHeight)
             .background(themeStore.controlFillColor(),
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
             .task(id: path) {
                 let p = path
                 // Cache hit → paint immediately, no debounce / no I/O.

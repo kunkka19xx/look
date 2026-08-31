@@ -18,12 +18,11 @@ struct SelectionPill: View {
     var zoomed: Bool = false
 
     enum Metrics {
-        static let cornerRadius: CGFloat = 8
         static let borderWidth: CGFloat = 1
     }
 
     private var cornerRadius: CGFloat {
-        themeStore.surfaceCornerRadius(Metrics.cornerRadius)
+        themeStore.controlRadius
     }
 
     var body: some View {

@@ -176,6 +176,10 @@ extension ThemeSettingsView {
         }
     }
 
+    private var suggestionCornerRadius: CGFloat {
+        themeStore.controlRadius
+    }
+
     var fontSuggestionsDropdown: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 2) {
@@ -204,9 +208,12 @@ extension ThemeSettingsView {
         }
         .frame(width: 240, height: 320, alignment: .topLeading)
         .scrollIndicators(.hidden)
-        .background(themeStore.scrimColor(opacity: 0.72), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(
+            themeStore.scrimColor(opacity: 0.72),
+            in: RoundedRectangle(cornerRadius: suggestionCornerRadius, style: .continuous)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: suggestionCornerRadius, style: .continuous)
                 .stroke(themeStore.liftColor(opacity: 0.12), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.25), radius: 8, y: 4)

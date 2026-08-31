@@ -160,7 +160,7 @@ struct LookupDefinitionPanelView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
                     .background(themeStore.controlFillColor())
-                    .cornerRadius(4)
+                    .cornerRadius(themeStore.microRadius)
             }
 
             ForEach(Array(entry.senses.enumerated()), id: \.offset) { _, sense in
@@ -265,7 +265,7 @@ struct LookupDefinitionPanelView: View {
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
             .background(themeStore.controlFillColor())
-            .cornerRadius(8)
+            .cornerRadius(themeStore.controlRadius)
         }
         .buttonStyle(.plain)
     }
@@ -294,7 +294,7 @@ struct LookupDefinitionPanelView: View {
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
             .background(themeStore.controlFillColor())
-            .cornerRadius(8)
+            .cornerRadius(themeStore.controlRadius)
         }
         .buttonStyle(.plain)
     }

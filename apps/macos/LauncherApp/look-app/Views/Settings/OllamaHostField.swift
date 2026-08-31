@@ -71,7 +71,9 @@ struct OllamaHostField: View {
                 .padding(3)
                 .background(
                     themeStore.surfaceFill(0.9),
-                    in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    in: RoundedRectangle(
+                        cornerRadius: themeStore.chipRadius,
+                        style: .continuous))
             }
         }
         .onAppear { probe() }

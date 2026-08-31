@@ -68,7 +68,7 @@ struct FolderPreviewView: View {
                 }
             }
         }
-        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
         .frame(maxHeight: .infinity)
     }
 
@@ -141,6 +141,6 @@ struct TrashSummaryView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(themeStore.controlFillColor().opacity(0.4), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(themeStore.controlFillColor().opacity(0.4), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
     }
 }

@@ -52,7 +52,7 @@ struct AttachedFileCapsule: View {
             .padding(.vertical, 4)
             .background(
                 themeStore.accentColor().opacity(hovering ? 0.22 : 0.14),
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }

@@ -45,11 +45,11 @@ struct ActionPanelView: View {
         .padding(.vertical, 8)
         .background(
             isFocused ? themeStore.selectionFillColor() : .clear,
-            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
         )
         .overlay {
             if isFocused {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
                     .stroke(themeStore.dividerColor(), lineWidth: 1)
             }
         }

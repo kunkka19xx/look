@@ -183,10 +183,10 @@ struct ConfirmActionBar: View {
             .buttonStyle(.plain)
         }
         .padding(10)
-        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
+        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous)
                 .strokeBorder(themeStore.dangerColor().opacity(0.85), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.35), radius: 12, y: 4)

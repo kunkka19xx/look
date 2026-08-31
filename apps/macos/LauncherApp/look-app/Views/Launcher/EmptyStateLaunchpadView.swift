@@ -387,7 +387,7 @@ private struct LaunchpadActionTile: View {
     private var border: some View {
         // Same scaled radius as `frostedTile`, or the outline cuts the corners.
         let shape = RoundedRectangle(
-            cornerRadius: themeStore.surfaceCornerRadius(Const.cornerRadius),
+            cornerRadius: themeStore.tileRadius,
             style: .continuous
         )
         if confirming || micMuted {
@@ -477,7 +477,7 @@ private struct LaunchpadMediaTile: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background(themeStore.controlFillColor())
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
             }
             .buttonStyle(PressableSurfaceStyle())
             transportButton("forward.fill", action: onNext)
@@ -523,8 +523,7 @@ func frostedTile(
     tint: Color? = nil,
     tintOpacity: Double = 0
 ) -> some View {
-    let radius = cornerRadius
-        ?? themeStore.surfaceCornerRadius(AppConstants.Launcher.Launchpad.cornerRadius)
+    let radius = cornerRadius ?? themeStore.tileRadius
     return ZStack {
         ThemedBackdrop(themeStore: themeStore, blendingMode: blendingMode, cornerRadius: radius)
         themeStore.controlFillColor()
@@ -543,7 +542,7 @@ func frostedTile(
 private func tileBorder(isOn: Bool, themeStore: ThemeStore) -> some View {
     // Must track `frostedTile`'s radius, or the two disagree at the corners.
     let shape = RoundedRectangle(
-        cornerRadius: themeStore.surfaceCornerRadius(AppConstants.Launcher.Launchpad.cornerRadius),
+        cornerRadius: themeStore.tileRadius,
         style: .continuous
     )
     if isOn {

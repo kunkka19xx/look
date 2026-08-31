@@ -18,7 +18,6 @@ struct LauncherRowView: View {
         /// A title-only row would otherwise sit at the icon's height, well
         /// under the two-line rows around it. Matches the Linux `--row-height`.
         static let minHeight: CGFloat = 48
-        static let cornerRadius: CGFloat = 8
         static let borderWidth: CGFloat = 1
         static let dividerHeight: CGFloat = 1
         static let dividerInset: CGFloat = 6
@@ -280,7 +279,6 @@ private struct RowIcon: View {
 
     private enum Tile {
         static let size: CGFloat = 22
-        static let radius: CGFloat = 6
         static let fill: Double = 0.16
         static let ring: Double = 0.32
         static let ringWidth: CGFloat = 1
@@ -296,10 +294,10 @@ private struct RowIcon: View {
             .frame(width: Tile.size, height: Tile.size)
             .background {
                 if isDeclared {
-                    RoundedRectangle(cornerRadius: Tile.radius, style: .continuous)
+                    RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
                         .fill(themeStore.accentColor().opacity(Tile.fill))
                         .overlay {
-                            RoundedRectangle(cornerRadius: Tile.radius, style: .continuous)
+                            RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
                                 .strokeBorder(
                                     themeStore.accentColor().opacity(Tile.ring),
                                     lineWidth: Tile.ringWidth)
