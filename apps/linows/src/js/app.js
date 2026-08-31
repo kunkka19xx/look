@@ -846,7 +846,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         layout.setModal('command', false);
         resetHomeQuery();
         runningApps.setSuspended(false);
-        if (runningApps.isEnabled()) runningApps.refresh();
     }
 
     async function executeCommand(cmdId, input, gen) {

@@ -441,8 +441,7 @@ function renderAppMeta(metaWrap, result, headerSub, cacheKey) {
         }
     });
 
-    // On Linux this is the desktop entry's Exec line, not a file.
-    metaWrap.appendChild(infoRow(isFilesystemPath(result.path) ? 'Path' : 'Command', result.path));
+    metaWrap.appendChild(infoRow(isCommandLine(result.path) ? 'Command' : 'Path', result.path));
     lastUsedRow(metaWrap, result);
     if (canRunElevated(result)) {
         metaWrap.appendChild(infoRow('Run as admin', 'Ctrl+Shift+Enter'));
@@ -876,6 +875,14 @@ function hintRow(key, text) {
 /** Whether a row's `path` really names a place on disk. */
 function isFilesystemPath(value) {
     return /^([~/]|[A-Za-z]:[\\/])/.test(value || '');
+}
+
+const COMMAND_ARGUMENT = /(^|\s)(-{1,2}\w|%[a-zA-Z])/;
+
+/** Whether an app row's `path` is a command line, as Linux Exec lines are. */
+function isCommandLine(value) {
+    const text = value || '';
+    return !isFilesystemPath(text) || COMMAND_ARGUMENT.test(text);
 }
 
 /** When the row was last opened through Look. Omitted for one never opened. */

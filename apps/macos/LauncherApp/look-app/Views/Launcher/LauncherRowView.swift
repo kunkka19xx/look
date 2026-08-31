@@ -15,6 +15,9 @@ struct LauncherRowView: View {
     let onOpen: () -> Void
 
     private enum Layout {
+        /// A title-only row would otherwise sit at the icon's height, well
+        /// under the two-line rows around it. Matches the Linux `--row-height`.
+        static let minHeight: CGFloat = 48
         static let cornerRadius: CGFloat = 8
         static let borderWidth: CGFloat = 1
         static let dividerHeight: CGFloat = 1
@@ -216,13 +219,14 @@ struct LauncherRowView: View {
                                 .lineLimit(1)
                             Spacer(minLength: 0)
                             // Never truncated: that is what gives the column
-                            // its edge.
+                            // its edge. A source row's is user text, so it
+                            // yields to the title instead.
                             if !meta.kind.isEmpty {
                                 Text(meta.kind)
                                     .font(metaFont)
                                     .foregroundStyle(themeStore.mutedTextColor())
                                     .lineLimit(1)
-                                    .layoutPriority(1)
+                                    .layoutPriority(result.isSourceRow ? 0 : 1)
                             }
                         }
                         if !meta.context.isEmpty {
@@ -241,6 +245,7 @@ struct LauncherRowView: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
+                .frame(minHeight: Layout.minHeight)
             }
             .buttonStyle(.plain)
             .focusable(false)

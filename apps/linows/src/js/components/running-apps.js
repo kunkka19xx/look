@@ -39,6 +39,7 @@ export function setSuspended(on) {
     // Symmetric: leaving a suspended screen shows what is already rendered.
     // Hiding only, as before, is what forced a refresh per keystroke.
     container.hidden = on || !enabled || apps.length === 0;
+    if (!on) refresh();
 }
 
 /** Refresh the running apps list from backend. */

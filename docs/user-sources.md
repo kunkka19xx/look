@@ -499,7 +499,7 @@ Two rules cover it:
 
 An alias earns its place only by being shorter than the name *and* colliding with less, so most blocks need none.
 
-The block **id** (the `[header]`) is a different thing and is never what you type. It only has to be unique inside the sources directory. Renaming one loses that block's ranking history, so pick it once and leave it.
+The block **id** (the `[header]`) is what you type only when `name` is omitted, since `name` defaults to it. It has to be unique inside the sources directory. Renaming one loses that block's ranking history, so pick it once and leave it.
 
 ### How big a bias
 
@@ -509,9 +509,10 @@ A block's rows match on its **name**, which is a subtitle match, while a file or
 | --- | --- |
 | the row's own title contains your query | 1200 |
 | the row's title *starts with* your query | +200 more |
+| the row's title *is* your query | +500 more |
 | the block name (how your rows match) | 900 |
 
-So a row that happens to have your word in its title starts around 500 ahead of your block, before recency. `10` is enough to order two blocks that both match by name; beating a title match takes several hundred.
+So a row that happens to have your word in its title starts 300 ahead of your block, 500 ahead if its title also starts with that word, and 1000 ahead if the title is exactly it, all before recency. `10` is enough to order two blocks that both match by name; beating a title match takes several hundred.
 
 Remember that `bias` applies to **every** query, not only the one you had in mind. If a single big block is the problem, sinking that block is usually better than lifting everything else past it.
 
