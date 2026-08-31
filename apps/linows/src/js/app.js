@@ -329,6 +329,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         translatePanel.hide();
+        previewPanel.hidden = false;
     }
 
     // Shared "back to the empty home screen" reset, used when leaving

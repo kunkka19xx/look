@@ -4,6 +4,7 @@
     --translate-pad-y: 10px;
     /* Bottom rows bleed out of the card padding onto the pane-footer gutter. */
     --translate-bleed: calc(var(--row-inset) - var(--content-padding));
+
     flex: 1;
     display: flex;
     flex-direction: column;
