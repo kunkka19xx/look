@@ -849,13 +849,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function exitCommandMode() {
+        // The surface itself is resetHomeQuery's job; setModal first, or the
+        // reset re-runs the layout still believing command mode is up.
         queryInput.parentElement.style.display = '';
-        resultsList.hidden = false;
-        previewPanel.hidden = false;
-        translatePanel.hide();
         layout.setModal('command', false);
         resetHomeQuery();
-        runningApps.setSuspended(false);
     }
 
     async function executeCommand(cmdId, input, gen) {
