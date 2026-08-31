@@ -116,6 +116,7 @@ html[data-os="windows"] .launcher-window {
     position: relative;
     flex: 1;
     min-width: 0;
+    min-height: var(--top-row-height);
     display: flex;
     align-items: center;
     gap: var(--search-gap);

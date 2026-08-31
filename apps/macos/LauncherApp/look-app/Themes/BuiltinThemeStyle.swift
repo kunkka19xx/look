@@ -21,28 +21,9 @@ enum ThemeAppearance {
     }
 }
 
-/// How a preset renders its surfaces, as opposed to what colour they are. The
-/// second non-token axis a style carries, alongside `appearance`.
-enum ThemeSurface {
-    /// Blur plus tint.
-    case classic
-    case liquid
-
-    /// One corner geometry for every surface. Glass reads as a lens and a tight
-    /// corner makes it a clipped rectangle, which is what liquid was raised for;
-    /// the classic surface is no better served by the tighter one, so both take
-    /// the same scale rather than the launcher changing shape with its theme.
-    static let radiusScale: CGFloat = 1.5
-
-    var cornerRadiusScale: CGFloat { Self.radiusScale }
-}
-
 struct BuiltinThemeStyle {
     let themeName: String
     let appearance: ThemeAppearance
-    /// Not written into `ThemeSettings`: like `appearance`, read back off the
-    /// resolved style rather than stored per-key.
-    let surface: ThemeSurface
     let tintRed: Double
     let tintGreen: Double
     let tintBlue: Double
@@ -82,7 +63,6 @@ struct BuiltinThemeStyle {
 init(
         themeName: String = "",
         appearance: ThemeAppearance = .dark,
-        surface: ThemeSurface = .classic,
         tintRed: Double = 0.08,
         tintGreen: Double = 0.10,
         tintBlue: Double = 0.12,
@@ -116,7 +96,6 @@ init(
     ) {
         self.themeName = themeName
         self.appearance = appearance
-        self.surface = surface
         self.tintRed = tintRed
         self.tintGreen = tintGreen
         self.tintBlue = tintBlue

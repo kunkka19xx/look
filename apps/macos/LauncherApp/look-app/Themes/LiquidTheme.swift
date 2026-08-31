@@ -10,7 +10,6 @@ enum LiquidTheme {
     static let style = BuiltinThemeStyle(
         themeName: "liquid",
         appearance: .dark,
-        surface: .liquid,
         tintRed: 0.10,
         tintGreen: 0.13,
         tintBlue: 0.20,

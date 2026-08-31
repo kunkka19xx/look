@@ -232,6 +232,11 @@ final class ThemeStore: ObservableObject {
         // Running apps switcher
         ConfigFileLines.upsert(&lines, key: "running_apps_placement", value: settings.runningAppsPlacement.rawValue)
         ConfigFileLines.upsert(&lines, key: "inner_gap", value: String(format: "%.0f", settings.innerGap))
+        ConfigFileLines.upsert(
+            &lines,
+            key: "ui_surface_radius",
+            value: String(format: "%.2f", settings.surfaceRadius)
+        )
 
         // Apple Intelligence / AI features
         ConfigFileLines.upsert(&lines, key: "ai_enabled", value: settings.aiEnabled ? "true" : "false")
@@ -522,6 +527,12 @@ final class ThemeStore: ObservableObject {
             case "inner_gap":
                 if let parsed = Double(value) {
                     settings.innerGap = min(max(parsed, 0), 24)
+                }
+            case "ui_surface_radius":
+                // Clamped rather than parsePositiveDouble: 0 squares the corners
+                // and is a value the slider offers, which `> 0` would drop.
+                if let parsed = Double(value) {
+                    settings.surfaceRadius = min(max(parsed, 0), 2.5)
                 }
             case "file_scan_depth":
                 if let parsed = parsePositiveInt(value) {
@@ -866,6 +877,7 @@ running_apps_placement=right
 
 # Inner gap (points, 0-24) between the three home panes; 0 = classic flat layout
 inner_gap=7
+ui_surface_radius=1.50
 
 # Apple Intelligence / AI features. ai_provider: appleIntelligence | ollama
 ai_enabled=true
@@ -932,6 +944,9 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
         }
         if object["superActionsEnabled"] == nil {
             object["superActionsEnabled"] = ThemeSettings.default.superActionsEnabled
+        }
+        if object["surfaceRadius"] == nil {
+            object["surfaceRadius"] = ThemeSettings.default.surfaceRadius
         }
 
         guard
