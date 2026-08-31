@@ -37,8 +37,8 @@
 }
 
 .running-app-icon {
-    width: 26px;
-    height: 26px;
+    width: var(--top-row-height);
+    height: var(--top-row-height);
     border-radius: 22%;
     color: var(--font-muted);
     display: flex;

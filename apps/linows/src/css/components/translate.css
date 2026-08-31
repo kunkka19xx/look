@@ -1,12 +1,28 @@
 /* Translation panel - replaces the results row in the main-pane stack
  * (translate mode hides both result columns). */
 .translate-panel {
+    --translate-pad-y: 10px;
+    /* Bottom rows bleed out of the card padding onto the pane-footer gutter. */
+    --translate-bleed: calc(var(--row-inset) - var(--content-padding));
+
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 10px 14px;
+    padding: var(--translate-pad-y) var(--content-padding);
     overflow-y: auto;
     min-height: 0;
+}
+
+/* Floating: layout.js parks the hint here, so both closing rows land on the
+ * gutter the two-card grid uses. */
+.floating .translate-panel > .pane-footer,
+.floating .translate-footer {
+    margin-left: var(--translate-bleed);
+    margin-right: var(--translate-bleed);
+}
+
+.floating .translate-panel > .pane-footer {
+    margin-bottom: calc(var(--row-inset) - var(--translate-pad-y));
 }
 
 /* Placeholder (before Enter) */
