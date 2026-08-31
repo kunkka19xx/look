@@ -127,10 +127,12 @@ function render() {
         badge.textContent = keys[i];
         item.appendChild(badge);
 
-        // Click to activate
+        // The live row, not the one captured here: an unchanged signature skips
+        // render, but `apps` was replaced either way.
         item.addEventListener('click', (e) => {
             e.stopPropagation();
-            activateRunningApp(app.pid, app.desktop_id, app.exec).catch(() => {});
+            const live = apps[i] ?? app;
+            activateRunningApp(live.pid, live.desktop_id, live.exec).catch(() => {});
         });
 
         container.appendChild(item);
