@@ -243,6 +243,10 @@ export async function launchpadLayout() {
     return invoke('launchpad_layout');
 }
 
+export async function launchpadWarnings() {
+    return invoke('launchpad_warnings');
+}
+
 // Compact system uptime ("3d 4h"), shown in the launchpad info tile in place of
 // Battery on a machine with no battery. Null when unavailable.
 export async function systemUptime() {

@@ -219,6 +219,17 @@ pub fn launchpad_layout() -> Vec<look_qactions::LaunchpadTile> {
     look_engine::launchpad::layout_reported().tiles
 }
 
+/// Anything wrong with `~/.look/launchpad.toml`, or empty when it is fine.
+///
+/// Its own command rather than a field beside the tiles, so the layout payload
+/// stays a bare array - the same split `qactions_api` makes for the FFI shell.
+/// Resolves silently: `launchpad_layout` has already printed these to stderr,
+/// and this puts them where a user who did not launch from a terminal can see.
+#[tauri::command]
+pub fn launchpad_warnings() -> Vec<String> {
+    look_engine::launchpad::layout().warnings
+}
+
 /// Live state + info values for an action. `info_keys` are the descriptor's
 /// `value_key`s the frontend wants resolved.
 #[tauri::command]

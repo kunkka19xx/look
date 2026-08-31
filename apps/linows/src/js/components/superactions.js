@@ -51,6 +51,7 @@ import {
 } from '../icons.js';
 import {
     launchpadLayout,
+    launchpadWarnings,
     quickActionState,
     quickActionApply,
     weatherCurrent,
@@ -161,6 +162,9 @@ const WEATHER_ICON = {
 // window so a forgotten prompt never fires on a later stray press.
 const DANGER = new Set(['restart', 'shutdown']);
 const CONFIRM_TIMEOUT_MS = 3000;
+
+// Long enough to read a config error, which is longer than a toast.
+const WARNING_SECONDS = 5;
 const BATTERY_CHARGING_INFO_KEY = 'charging';
 const BATTERY_CHARGING_INFO_TEXT = 'charging';
 const CONTROL_INFO_KEYS = {
@@ -204,6 +208,9 @@ function ensureLayout() {
         layoutFetch = launchpadLayout()
             .then((tiles) => {
                 layoutTiles = tiles;
+                // Once per process, not per open: a broken drawing says so when
+                // the launchpad first appears, without nagging on every summon.
+                readWarnings().then(warningBanner);
             })
             .catch(() => {})
             .finally(() => {
@@ -211,6 +218,66 @@ function ensureLayout() {
             });
     }
     return layoutFetch.then(() => !!layoutTiles);
+}
+
+/** Anything wrong with the drawing. Empty on the happy path and on failure. */
+async function readWarnings() {
+    try {
+        return (await launchpadWarnings()) || [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Raise a drawing problem in the window, and say whether there was one - so a
+ * caller with its own success banner knows to stay quiet.
+ *
+ * The count and the first message: a banner is not a log, and the rest are on
+ * stderr.
+ */
+export function warningBanner(warnings) {
+    const [first, ...rest] = warnings;
+    if (!first) return false;
+    banner.show(
+        rest.length ? `${first} (+${rest.length} more)` : first,
+        'warning',
+        WARNING_SECONDS,
+    );
+    return true;
+}
+
+/**
+ * Re-read the drawing, for the Ctrl+Shift+; config reload.
+ *
+ * The tiles are fetched once per process, which was right while the grid was a
+ * compile-time constant. ~/.look/launchpad.toml decides it now, and arranging
+ * tiles is an edit-and-look loop: without this an edit does nothing until the
+ * app is restarted, which reads as the feature being broken.
+ *
+ * Returns the warnings rather than showing them, so the caller folds config and
+ * launchpad problems into one banner.
+ */
+export async function reload() {
+    if (!enabled) return [];
+    let tiles = null;
+    try {
+        tiles = await launchpadLayout();
+    } catch {
+        return [];
+    }
+    // Most reloads are about something else and leave the drawing untouched.
+    // Comparing first keeps those from re-reading every adapter for a grid that
+    // did not move.
+    if (tiles.length && JSON.stringify(tiles) !== JSON.stringify(layoutTiles)) {
+        layoutTiles = tiles;
+        built = false;
+        clearConfirm();
+        if (visible) await buildAndReveal();
+    }
+    // Asked for even when nothing moved: that is exactly what a broken drawing
+    // looks like, since it falls back to the default and the tiles never budge.
+    return readWarnings();
 }
 
 /**
