@@ -88,7 +88,9 @@ This document tracks what `look` supports today and what is planned next.
 ### Super actions
 
 - a control strip on the empty home screen (no query typed) with system toggles, one-shot actions and read-only info tiles
-- the tile set, order, sizes and mnemonics come from the shared `core/qactions` catalog, so macOS, Linux and Windows render the same strip; only the native state reads and control paths differ. On Linux the strip works across GNOME, KDE and tiling WMs including i3
+- the tile set, sizes and mnemonics come from the shared `core/qactions` catalog, so macOS, Linux and Windows render the same strip; only the native state reads and control paths differ. On Linux the strip works across GNOME, KDE and tiling WMs including i3
+- the arrangement is the user's, in `~/.look/launchpad.toml`: a drawing of the grid where each line is a row and each name a cell. Repeat a name to make a tile span, `.` for a deliberate gap, delete a name to hide that tile, up to five rows. Seeded on first run with the default layout, so the file documents itself; `rm` it to reset. Resolved once in the core, so both shells place from the same coordinates and neither works out a span for itself
+- a drawing that cannot be trusted never yields an empty strip: a bad tile is dropped and the rest renders, a structural error falls back to the whole default, and either way the reason is reported in the window and on stderr
 - tiles: L slot (Pomodoro session > remaining todos > clock), Bluetooth, Wi-Fi, Battery, Theme, Keep Awake, Screensaver, Weather, Mic, Restart, Shut Down, Now Playing
 - activation: click a tile, or press the platform modifier + its highlighted letter - `Cmd` (macOS) / `Alt` (Linux, Windows): `B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `R` Restart, `D` Shut Down, `P` Now Playing play/pause
 - Restart and Shut Down arm on the first press and fire on the second; `Esc` (macOS) or the auto-disarm timeout cancels
