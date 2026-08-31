@@ -56,6 +56,9 @@ function clampUiScale(v) {
 function applyFontSize() {
     const px = Math.round(baseFontSizePx * uiScale);
     document.documentElement.style.setProperty('--font-size', px + 'px');
+    // The slider without the zoom. Code previews size off this, so Ctrl+= grows
+    // the launcher without reflowing the file you are looking at, as on macOS.
+    document.documentElement.style.setProperty('--font-size-base', baseFontSizePx + 'px');
 }
 
 applyFontSize();

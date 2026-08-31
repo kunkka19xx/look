@@ -472,20 +472,12 @@ struct ResultPreviewView: View {
                     InfoRow(label: "Version", value: version)
                 }
 
-                InfoRow(label: "Kind", value: result.kind.rawValue.capitalized)
-
                 // Settings panes have a URL-scheme "path" and a meaningless file
                 // date; hide both for them (only the actions matter there).
                 if !isSetting {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Path")
-                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
-                            .foregroundStyle(themeStore.mutedTextColor())
-                        Text(result.path)
-                            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
-                            .foregroundStyle(themeStore.secondaryTextColor())
-                            .lineLimit(3)
-                    }
+                    // Middle truncation, so the one line keeps both the root it
+                    // starts from and the name it ends at.
+                    InfoRow(label: "Path", value: result.path, truncation: .middle)
 
                     if let modified = info.modified {
                         InfoRow(label: "Modified", value: modified)
@@ -612,7 +604,10 @@ struct ResultPreviewView: View {
 
             if let file = blockFile {
                 Divider().overlay(themeStore.secondaryTextColor().opacity(0.2))
-                InfoRow(label: "Declared in", value: (file as NSString).abbreviatingWithTildeInPath)
+                InfoRow(
+                    label: "Declared in",
+                    value: (file as NSString).abbreviatingWithTildeInPath,
+                    truncation: .middle)
                 // A row that names its own path reveals that, like every other
                 // row with one, so the chord belongs to the declaration only
                 // when the row has nothing of its own to point at.
@@ -746,7 +741,6 @@ struct ResultPreviewView: View {
             )
             .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-            InfoRow(label: "Kind", value: "Clipboard")
             InfoRow(label: "Captured", value: capturedAt)
 
             Spacer(minLength: 0)
@@ -875,6 +869,9 @@ struct InfoRow: View {
     @EnvironmentObject private var themeStore: ThemeStore
     let label: String
     let value: String
+    /// Which end a value too long for the row gives up. A path says `.middle`,
+    /// because both of its ends carry meaning.
+    var truncation: Text.TruncationMode = .tail
 
     var body: some View {
         HStack {
@@ -885,6 +882,8 @@ struct InfoRow: View {
             Text(value)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
                 .foregroundStyle(themeStore.secondaryTextColor())
+                .lineLimit(1)
+                .truncationMode(truncation)
         }
     }
 }

@@ -223,7 +223,8 @@ enum SourceBlockIcons {
         let image = NSImage(size: renderedSize)
         image.lockFocus()
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: renderedSize.height * 0.72)
+            // Fills its box like any other icon; at 0.72 it read as a blob.
+            .font: NSFont.systemFont(ofSize: renderedSize.height * 0.86)
         ]
         let string = text as NSString
         let bounds = string.size(withAttributes: attributes)

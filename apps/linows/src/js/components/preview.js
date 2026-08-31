@@ -297,7 +297,6 @@ function renderClipboardPreview(result) {
     // Info rows
     const metaWrap = document.createElement('div');
     metaWrap.className = 'preview-meta';
-    metaWrap.appendChild(infoRow('Kind', 'Clipboard'));
     metaWrap.appendChild(infoRow('Captured', result.clipDateMedium));
     panel.appendChild(metaWrap);
 }
@@ -442,8 +441,8 @@ function renderAppMeta(metaWrap, result, headerSub, cacheKey) {
         }
     });
 
-    metaWrap.appendChild(infoRow('Kind', 'App'));
-    metaWrap.appendChild(infoRow('Path', result.path));
+    metaWrap.appendChild(infoRow(isCommandLine(result.path) ? 'Command' : 'Path', result.path));
+    lastUsedRow(metaWrap, result);
     if (canRunElevated(result)) {
         metaWrap.appendChild(infoRow('Run as admin', 'Ctrl+Shift+Enter'));
     }
@@ -461,12 +460,12 @@ function renderFileMeta(metaWrap, previewSlot, result, headerSub, cacheKey) {
             headerSub.appendChild(sizeSpan);
         }
 
-        metaWrap.appendChild(infoRow('Kind', result.kind === 'folder' ? 'Folder' : 'File'));
         metaWrap.appendChild(infoRow('Path', result.path));
 
         if (meta.modified) {
             metaWrap.appendChild(infoRow('Modified', meta.modified));
         }
+        lastUsedRow(metaWrap, result);
 
         // Image preview - inserted into previewSlot (between header and metadata)
         if (meta.is_image) {
@@ -711,10 +710,8 @@ async function renderBlockPreview(result, cacheKey) {
     header.className = 'preview-header';
 
     const iconWrap = document.createElement('div');
-    iconWrap.className = 'preview-icon';
+    iconWrap.className = 'preview-icon preview-icon-declared';
     iconWrap.innerHTML = sourceblocks.declaredIconHtml(result) || sourceblocks.actionIconHtml;
-    iconWrap.style.background = 'var(--control-fill)';
-    iconWrap.style.color = 'var(--accent-color)';
     const declaredPath = sourceblocks.declaredIconPath(result);
     if (declaredPath) {
         loadPreviewIcon(iconWrap, 'declared', declaredPath, result.id, cacheKey);
@@ -875,6 +872,35 @@ function hintRow(key, text) {
     return row;
 }
 
+/** Whether a row's `path` really names a place on disk. */
+function isFilesystemPath(value) {
+    return /^([~/]|[A-Za-z]:[\\/])/.test(value || '');
+}
+
+const COMMAND_ARGUMENT = /(^|\s)(-{1,2}\w|%[a-zA-Z])/;
+
+/** Whether an app row's `path` is a command line, as Linux Exec lines are. */
+function isCommandLine(value) {
+    const text = value || '';
+    return !isFilesystemPath(text) || COMMAND_ARGUMENT.test(text);
+}
+
+/** When the row was last opened through Look. Omitted for one never opened. */
+function lastUsedRow(metaWrap, result) {
+    if (!result.lastUsedAtUnixS) return;
+    metaWrap.appendChild(infoRow('Last used', formatLastUsed(result.lastUsedAtUnixS)));
+}
+
+function formatLastUsed(epoch) {
+    return new Date(epoch * 1000).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+    });
+}
+
+const PATH_TAIL = /[/\\][^/\\]+$/;
+
 function infoRow(label, value) {
     const row = document.createElement('div');
     row.className = 'preview-info-row';
@@ -886,10 +912,25 @@ function infoRow(label, value) {
 
     const v = document.createElement('span');
     v.className = 'preview-info-value';
-    v.textContent = value;
+    // One line, and the name is the half that survives it.
+    const cut = isFilesystemPath(value) ? value.search(PATH_TAIL) : -1;
+    if (cut > 0) {
+        v.classList.add('has-tail');
+        v.appendChild(valueSpan('preview-info-head', value.slice(0, cut)));
+        v.appendChild(valueSpan('preview-info-tail', value.slice(cut)));
+    } else {
+        v.textContent = value;
+    }
     row.appendChild(v);
 
     return row;
+}
+
+function valueSpan(className, text) {
+    const el = document.createElement('span');
+    el.className = className;
+    el.textContent = text;
+    return el;
 }
 
 function formatSize(bytes) {

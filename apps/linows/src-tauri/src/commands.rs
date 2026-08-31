@@ -8,7 +8,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, State};
 
+/// camelCase for the frontend. Every field predating it is one lowercase word,
+/// so the rename only reaches the ones added since.
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchResult {
     pub id: String,
     pub kind: String,
@@ -19,6 +22,9 @@ pub struct SearchResult {
     /// What the row declared, which beats its block's icon.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// When the row was last opened through Look, for the preview's "Last used".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_used_at_unix_s: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -56,6 +62,7 @@ pub fn search(state: State<'_, AppState>, query: String, limit: u32) -> SearchPa
             path: candidate.path.to_string(),
             score,
             icon: candidate.icon.as_deref().map(str::to_string),
+            last_used_at_unix_s: candidate.last_used_at_unix_s,
         })
         .collect();
 
