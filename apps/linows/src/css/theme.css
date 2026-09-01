@@ -91,13 +91,19 @@
     --declared-ring: color-mix(in srgb, var(--accent-color) 32%, transparent);
 
     /* Every themed radius goes through the surface scale (macOS
-     * ThemeStore.surfaceCornerRadius); one that skips it desyncs from the fill
-     * behind it. */
+     * AppConstants.Radius, scaled by ThemeStore.surfaceCornerRadius); one that
+     * skips it desyncs from the fill behind it. A radius that follows an
+     * element's geometry - an icon mask, a pill, a progress bar - is not one of
+     * these and stays in px. */
     --surface-radius-scale: 1.5;
-    --corner-radius: 0;
-    --control-radius: calc(8px * var(--surface-radius-scale));
+    --panel-radius: calc(16px * var(--surface-radius-scale));
     --tile-radius: calc(12px * var(--surface-radius-scale));
     --bar-radius: calc(10px * var(--surface-radius-scale));
+    --control-radius: calc(8px * var(--surface-radius-scale));
+    --chip-radius: calc(6px * var(--surface-radius-scale));
+    --micro-radius: calc(4px * var(--surface-radius-scale));
+    /* Square until the environment is known to composite; see below. */
+    --corner-radius: 0;
 
     /* Floating "inner-gap" layout (0 = classic framed panel) */
     --inner-gap: 0px;
@@ -242,5 +248,5 @@
 /* Transparency-capable environments (macOS, Windows, Wayland, X11 with compositor) */
 [data-transparent="true"] {
     --bg-tint: rgba(30, 30, 46, 0.95);
-    --corner-radius: calc(16px * var(--surface-radius-scale));
+    --corner-radius: var(--panel-radius);
 }

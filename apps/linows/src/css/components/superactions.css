@@ -12,23 +12,47 @@ html.controls-open #hint-bar {
 }
 
 .control-strip {
+    /* A beat above the bento, on top of the bar's own gap (macOS
+     * Launchpad.outerTopPadding). The strip is a different kind of thing from
+     * the bar, so the seam wants more air than the tile-to-tile gaps. */
+    --ctl-outer-top: 8px;
     flex: 1;
     min-height: 0;
-    padding: 0 var(--content-padding) var(--content-padding);
+    padding: var(--ctl-outer-top) var(--content-padding) var(--content-padding);
     overflow: hidden;
 }
 
+/* The shape comes from the drawing in ~/.look/launchpad.toml: superactions.js
+ * sets --ctl-cols / --ctl-rows from the resolved tiles and gives each tile its
+ * own grid-column / grid-row. This used to declare `grid-template-areas` and a
+ * `.pos-*` rule per tile, which was the whole layout written a second time -
+ * the core said where every tile went, and so did this, and they had to agree.
+ *
+ * The fallbacks are the shipped default, for the moment before the script runs.
+ */
 .control-strip-grid {
+    --ctl-gap: 8px;
+    /* Was a flat 260px for the fixed three rows, which is 81.33px a row once
+     * the two gaps come out. Kept as that per-row figure so three rows still
+     * cap at exactly 260px and a taller drawing grows instead of being clipped
+     * by the strip's `overflow: hidden`. */
+    --ctl-row: 81.333px;
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    grid-template-rows: repeat(3, minmax(74px, 1fr));
-    grid-template-areas:
-        "todo todo bt    wifi batt weather"
-        "todo todo theme keep scr  weather"
-        "mic  rst  shut  play play play";
-    gap: 8px;
+    grid-template-columns: repeat(var(--ctl-cols, 6), 1fr);
+    grid-template-rows: repeat(var(--ctl-rows, 3), minmax(74px, 1fr));
+    gap: var(--ctl-gap);
     height: 100%;
-    max-height: 260px;
+    max-height: calc(
+        var(--ctl-rows, 3) * var(--ctl-row) + (var(--ctl-rows, 3) - 1) * var(--ctl-gap)
+    );
+}
+
+/* Floating, --inner-gap is every seam in the window and the bento is one of
+ * them: bar-to-bento and tile-to-tile have to match or the strip reads as a
+ * separate thing sitting below. Classic keeps the 8px - inside a framed panel
+ * there is no rhythm to match. */
+.floating .control-strip-grid {
+    --ctl-gap: var(--inner-gap);
 }
 
 /* Opaque panel: stack a todo-stats panel under the bento to fill the dead space.
@@ -254,7 +278,6 @@ html[data-transparent="false"] .control-strip-grid {
 
 /* --- Priority (Todo) L slot ------------------------------------------------ */
 .ctl-tile--priority {
-    grid-area: todo;
     flex-direction: column;
     align-items: stretch;
     justify-content: space-between;
@@ -410,17 +433,12 @@ html[data-transparent="false"] .control-strip-grid {
 }
 
 /* --- Info (Battery) -------------------------------------------------------- */
-.ctl-tile--info {
-    grid-area: batt;
-}
-
 .ctl-tile--info .ctl-text {
     gap: 3px;
 }
 
 /* --- Weather L slot -------------------------------------------------------- */
 .ctl-tile--weather {
-    grid-area: weather;
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
@@ -478,20 +496,6 @@ html[data-transparent="false"] .control-strip-grid {
     line-height: 1.15;
 }
 
-/* --- Toggle placements ----------------------------------------------------- */
-.pos-bt {
-    grid-area: bt;
-}
-.pos-wifi {
-    grid-area: wifi;
-}
-.pos-theme {
-    grid-area: theme;
-}
-.pos-keep {
-    grid-area: keep;
-}
-
 /* --- Action (S) tiles ------------------------------------------------------ */
 .ctl-tile--action {
     flex-direction: column;
@@ -509,19 +513,6 @@ html[data-transparent="false"] .control-strip-grid {
 .ctl-tile--action .ctl-label {
     font-size: 13px;
     font-weight: 600;
-}
-
-.pos-scr {
-    grid-area: scr;
-}
-.pos-mic {
-    grid-area: mic;
-}
-.pos-rst {
-    grid-area: rst;
-}
-.pos-shut {
-    grid-area: shut;
 }
 
 .ctl-tile--action.is-danger:hover {
@@ -554,7 +545,6 @@ html[data-transparent="false"] .control-strip-grid {
 
 /* --- Now Playing (media) --------------------------------------------------- */
 .ctl-tile--media {
-    grid-area: play;
     gap: 14px;
 }
 

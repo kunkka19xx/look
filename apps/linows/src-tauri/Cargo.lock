@@ -2473,6 +2473,7 @@ dependencies = [
  "ignore",
  "look-indexing",
  "look-matching",
+ "look-qactions",
  "look-ranking",
  "look-sources",
  "look-storage",
@@ -2482,6 +2483,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "toml 0.9.12+spec-1.1.0",
  "unicode-normalization",
  "windows 0.62.2",
 ]

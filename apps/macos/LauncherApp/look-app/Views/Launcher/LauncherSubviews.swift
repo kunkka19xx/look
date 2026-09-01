@@ -133,7 +133,7 @@ struct SearchInputBar: View {
         .padding(.vertical, 8)
         .background {
             if showsBackground {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous)
                     .fill(themeStore.controlFillColor())
             }
         }
@@ -183,7 +183,7 @@ struct CommandListView: View {
                     .background(
                         (selectedID == command.id || activeID == command.id)
                             ? themeStore.selectionFillColor() : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
                     )
                     .onTapGesture { onSelect(command.id) }
                 }
@@ -229,7 +229,7 @@ struct CommandInputBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 }
 
@@ -258,7 +258,7 @@ struct CommandHeaderBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 }
 
@@ -333,7 +333,7 @@ struct PickedItemsPanel: View {
                         Text("⇧↵")
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
-                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.microRadius, style: .continuous))
                             .foregroundStyle(themeStore.mutedTextColor())
                     }
                     .font(themeStore.uiFont(size: CGFloat(max(10, themeStore.settings.fontSize - 3)), weight: .regular))
@@ -378,7 +378,7 @@ struct PickedItemsPanel: View {
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 6)
-                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
                         }
                     }
                 }

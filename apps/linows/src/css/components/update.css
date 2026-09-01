@@ -80,7 +80,7 @@
     align-items: center;
     gap: 10px;
     padding: 8px 10px;
-    border-radius: 8px;
+    border-radius: var(--control-radius);
     background: var(--control-fill);
     border: 1px solid var(--accent-color, var(--divider-color));
 }

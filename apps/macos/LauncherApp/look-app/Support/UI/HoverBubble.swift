@@ -31,10 +31,10 @@ struct HoverBubbleModifier<BubbleContent: View>: ViewModifier {
                         .frame(width: width, alignment: .leading)
                         .background(
                             themeStore.commandModePanelColor(),
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
                                 .stroke(themeStore.borderColor(), lineWidth: 1)
                         )
                         .shadow(color: .black.opacity(0.35), radius: 10, y: 4)

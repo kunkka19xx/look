@@ -47,8 +47,17 @@ extension ThemeSettingsView {
 
                 sectionHeader("Layout")
 
-                LabeledSlider(title: "Inner Gap", value: $settings.innerGap, range: 0...24)
+                LabeledSlider(
+                    title: "Inner Gap",
+                    value: $settings.innerGap,
+                    range: AppConstants.ThemeUI.innerGapRange)
                     .help("i3-style gap between the top row, results list and preview. 0 = flat layout; higher turns each into its own card.")
+
+                LabeledSlider(
+                    title: "Corner Radius",
+                    value: $settings.surfaceRadius,
+                    range: AppConstants.ThemeUI.surfaceRadiusRange)
+                    .help("Corner rounding, shared by every surface: the panel, the top bar, the launchpad tiles and the controls. 0 = square.")
 
                 sectionHeader("Tint Color")
 
@@ -173,6 +182,10 @@ extension ThemeSettingsView {
         }
     }
 
+    private var suggestionCornerRadius: CGFloat {
+        themeStore.controlRadius
+    }
+
     var fontSuggestionsDropdown: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 2) {
@@ -201,9 +214,12 @@ extension ThemeSettingsView {
         }
         .frame(width: 240, height: 320, alignment: .topLeading)
         .scrollIndicators(.hidden)
-        .background(themeStore.scrimColor(opacity: 0.72), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(
+            themeStore.scrimColor(opacity: 0.72),
+            in: RoundedRectangle(cornerRadius: suggestionCornerRadius, style: .continuous)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: suggestionCornerRadius, style: .continuous)
                 .stroke(themeStore.liftColor(opacity: 0.12), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.25), radius: 8, y: 4)

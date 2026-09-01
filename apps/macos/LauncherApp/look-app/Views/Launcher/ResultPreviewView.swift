@@ -286,7 +286,7 @@ struct ResultPreviewView: View {
                 .foregroundStyle(themeStore.accentColor())
                 .frame(minWidth: 36)
                 .padding(.vertical, 4)
-                .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
             Text(text)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .medium))
                 .foregroundStyle(themeStore.secondaryTextColor())
@@ -739,7 +739,7 @@ struct ResultPreviewView: View {
                 font: previewFont,
                 defaultColor: NSColor(themeStore.secondaryTextColor())
             )
-            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
 
             InfoRow(label: "Captured", value: capturedAt)
 

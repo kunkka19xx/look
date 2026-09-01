@@ -335,7 +335,7 @@ struct PomoView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(themeStore.commandModePanelColor(), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(themeStore.commandModePanelColor(), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
     }
 
     // ── Timer + per-session label ──────────────────────────────────────
@@ -364,7 +364,7 @@ struct PomoView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(14)
-        .background(themeStore.commandModePanelColor(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(themeStore.commandModePanelColor(), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 
     // ── Controls ───────────────────────────────────────────────────────
@@ -379,7 +379,7 @@ struct PomoView: View {
                 Text(toggleLabel)
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
                     .padding(.horizontal, 14).padding(.vertical, 6)
-                    .background(toggleColor, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .background(toggleColor, in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
                     .foregroundStyle(themeStore.onAccentColor())
             }
             .buttonStyle(.plain)
@@ -391,7 +391,7 @@ struct PomoView: View {
                     Text("Skip ▸")
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
                         .foregroundStyle(themeStore.secondaryTextColor())
                 }
                 .buttonStyle(.plain)
@@ -402,7 +402,7 @@ struct PomoView: View {
                     Text("Reset (R)")
                         .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
                         .foregroundStyle(themeStore.dangerColor())
                 }
                 .buttonStyle(.plain)
@@ -452,7 +452,7 @@ struct PomoView: View {
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .semibold))
                     }
                     .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
                     .foregroundStyle(showSessionList ? themeStore.accentColor() : themeStore.secondaryTextColor())
                 }
                 .buttonStyle(.plain)
@@ -468,7 +468,7 @@ struct PomoView: View {
                         Text("+ Focus")
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
                             .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
                             .foregroundStyle(themeStore.dangerColor())
                     }
                     .buttonStyle(.plain)
@@ -479,7 +479,7 @@ struct PomoView: View {
                         Text("+ Break")
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
                             .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                            .background(themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
                             .foregroundStyle(themeStore.successColor())
                     }
                     .buttonStyle(.plain)
@@ -505,7 +505,7 @@ struct PomoView: View {
                         Text(style.title)
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
                             .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(state.timerStyle == style ? themeStore.accentColor() : themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                            .background(state.timerStyle == style ? themeStore.accentColor() : themeStore.controlFillColor(), in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
                             .foregroundStyle(state.timerStyle == style ? themeStore.onAccentColor() : themeStore.secondaryTextColor())
                     }
                     .buttonStyle(.plain)
@@ -513,7 +513,7 @@ struct PomoView: View {
             }
         }
         .padding(10)
-        .background(themeStore.commandModePanelColor(), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(themeStore.commandModePanelColor(), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
     }
 
     private var sessionListEditor: some View {
@@ -595,7 +595,7 @@ struct PomoView: View {
             }
         }
         .padding(10)
-        .background(themeStore.commandModePanelColor(), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(themeStore.commandModePanelColor(), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
     }
 
     private var musicTrackTitle: String {
@@ -696,7 +696,7 @@ private struct SessionRow: View {
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                 .foregroundStyle(themeStore.fontColor())
                 .padding(.horizontal, 4).padding(.vertical, 2)
-                .background(themeStore.panelFillColor(), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .background(themeStore.panelFillColor(), in: RoundedRectangle(cornerRadius: themeStore.microRadius, style: .continuous))
 
             Text("m")
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
@@ -716,7 +716,7 @@ private struct SessionRow: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 6).padding(.vertical, 4)
-        .background(isActive ? themeStore.selectionFillColor() : Color.clear, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .background(isActive ? themeStore.selectionFillColor() : Color.clear, in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
         .opacity(isPast ? 0.45 : 1.0)
     }
 }

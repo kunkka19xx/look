@@ -156,6 +156,7 @@ struct ThemeSettingsView: View {
 
     func tabButton(title: String, index: Int) -> some View {
         let isActive = selectedTab == index
+        let tabCornerRadius = themeStore.controlRadius
         return Button {
             selectedTab = index
             showsFontSuggestions = false
@@ -167,7 +168,7 @@ struct ThemeSettingsView: View {
                 .padding(.vertical, 7)
                 .background(
                     themeStore.liftColor(opacity: isActive ? Self.activeTabFillOpacity : Self.inactiveTabFillOpacity),
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: tabCornerRadius, style: .continuous)
                 )
         }
         .buttonStyle(.plain)

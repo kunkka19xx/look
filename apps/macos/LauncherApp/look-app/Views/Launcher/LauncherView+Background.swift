@@ -28,7 +28,8 @@ extension LauncherView {
                 themeStore: themeStore,
                 blurOpacityMultiplier: appUIState.showsThemeSettings
                     ? themeStore.settings.settingsBlurMultiplier : 1.0,
-                blendingMode: .behindWindow
+                blendingMode: .behindWindow,
+                cornerRadius: themeStore.panelRadius
             )
 
             // Above the backdrop, not below it: the blur samples what is behind

@@ -208,6 +208,10 @@ private func look_qactions_json(_ resultID: UnsafePointer<CChar>?, _ kind: Unsaf
 nonisolated
 private func look_quick_actions_launchpad_json() -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_launchpad_warnings_json")
+nonisolated
+private func look_launchpad_warnings_json() -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_definitional_entity_json")
 nonisolated
 private func look_definitional_entity_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -1253,16 +1257,30 @@ final class EngineBridge: @unchecked Sendable {
         return (try? decoder.decode([QuickActionDescriptor].self, from: data)) ?? []
     }
 
-    /// The empty-state launchpad layout from the shared `look_qactions` catalog:
-    /// fixed tile order, sizes, and mnemonics. Pure catalog lookup, cheap. Empty
-    /// only on an unexpected decode failure.
-    nonisolated func launchpadLayout() -> [LaunchpadTileModel] {
-        guard let ptr = look_quick_actions_launchpad_json() else { return [] }
+    /// The empty-state launchpad layout: the user's `~/.look/launchpad.toml`
+    /// when they have a usable one, else the shared catalog's default. Every
+    /// tile arrives knowing the cell it occupies. Reads a small file, so it is
+    /// cheap but not free - call it on a reload, not per frame. Empty only on
+    /// an unexpected decode failure.
+    nonisolated func launchpadLayout() -> LaunchpadLayout {
+        guard let ptr = look_quick_actions_launchpad_json() else { return .empty }
         defer { look_free_cstring(ptr) }
-        guard let data = String(cString: ptr).data(using: .utf8) else { return [] }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return .empty }
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return (try? decoder.decode([LaunchpadTileModel].self, from: data)) ?? []
+        return (try? decoder.decode(LaunchpadLayout.self, from: data)) ?? .empty
+    }
+
+    /// What is wrong with the user's `launchpad.toml`, empty when nothing is.
+    ///
+    /// The core prints these to stderr, which is invisible to anyone who did
+    /// not launch Look from a terminal - and this is the one config edited by
+    /// people who then immediately look at the window to see what it did.
+    nonisolated func launchpadWarnings() -> [String] {
+        guard let ptr = look_launchpad_warnings_json() else { return [] }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
     }
 
     /// The entity from a definitional query ("what is vim" -> "vim"), or nil.

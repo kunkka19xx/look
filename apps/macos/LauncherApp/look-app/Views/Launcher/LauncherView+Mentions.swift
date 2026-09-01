@@ -212,7 +212,7 @@ extension LauncherView {
             .padding(4)
             .background(
                 themeStore.surfaceFill(0.92),
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
             .padding(.horizontal, 4)
         }
     }

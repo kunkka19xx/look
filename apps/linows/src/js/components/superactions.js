@@ -51,6 +51,7 @@ import {
 } from '../icons.js';
 import {
     launchpadLayout,
+    launchpadWarnings,
     quickActionState,
     quickActionApply,
     weatherCurrent,
@@ -69,6 +70,7 @@ import {
 import { statsWidgetHtml } from '../screens/commands/todo.js';
 import * as platform from '../platform.js';
 import * as banner from './banner.js';
+import { gridPlacement, gridShape } from './launchpad-grid.js';
 
 let container = null;
 let built = false;
@@ -80,9 +82,10 @@ let statsEl = null;
 // never shows and its accelerators never fire; setVisible collapses to hidden.
 let enabled = true;
 
-// The shared catalog layout. Rendered from, never mutated. Fetched lazily and
-// retried until it lands (see ensureLayout); layoutFetch is the in-flight request.
-let layoutTiles = null;
+// The shared catalog layout: `{ tiles, columns, rows }`. Rendered from, never
+// mutated. Fetched lazily and retried until it lands (see ensureLayout);
+// layoutFetch is the in-flight request.
+let layout = null;
 let layoutFetch = null;
 // True while a reveal is awaiting the layout, so a second caller (init vs a
 // summon) doesn't run the reveal a second time and replay the animation.
@@ -160,27 +163,13 @@ const WEATHER_ICON = {
 // window so a forgotten prompt never fires on a later stray press.
 const DANGER = new Set(['restart', 'shutdown']);
 const CONFIRM_TIMEOUT_MS = 3000;
+
+// Long enough to read a config error, which is longer than a toast.
+const WARNING_SECONDS = 5;
 const BATTERY_CHARGING_INFO_KEY = 'charging';
 const BATTERY_CHARGING_INFO_TEXT = 'charging';
 const CONTROL_INFO_KEYS = {
     battery: [BATTERY_CHARGING_INFO_KEY],
-};
-
-// action_id -> CSS grid-area suffix (pos-<area>) and glyph. The grid placement
-// lives in superactions.css; this maps the shared ids onto it.
-const AREA = {
-    lslot: 'todo',
-    bluetooth: 'bt',
-    wifi: 'wifi',
-    battery: 'batt',
-    theme: 'theme',
-    keepawake: 'keep',
-    screensaver: 'scr',
-    weather: 'weather',
-    mic: 'mic',
-    restart: 'rst',
-    shutdown: 'shut',
-    nowplaying: 'play',
 };
 
 const ICON = {
@@ -215,18 +204,81 @@ export function init(containerEl) {
 // (the backend can be briefly unready at startup). Concurrent callers share one
 // request. Resolves to whether the layout is now available.
 function ensureLayout() {
-    if (layoutTiles) return Promise.resolve(true);
+    if (layout) return Promise.resolve(true);
     if (!layoutFetch) {
         layoutFetch = launchpadLayout()
-            .then((tiles) => {
-                layoutTiles = tiles;
+            .then((resolved) => {
+                layout = resolved;
+                // Once per process, not per open: a broken drawing says so when
+                // the launchpad first appears, without nagging on every summon.
+                readWarnings().then(warningBanner);
             })
             .catch(() => {})
             .finally(() => {
                 layoutFetch = null;
             });
     }
-    return layoutFetch.then(() => !!layoutTiles);
+    return layoutFetch.then(() => !!layout);
+}
+
+/** Anything wrong with the drawing. Empty on the happy path and on failure. */
+async function readWarnings() {
+    try {
+        return (await launchpadWarnings()) || [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Raise a drawing problem in the window, and say whether there was one - so a
+ * caller with its own success banner knows to stay quiet.
+ *
+ * The count and the first message: a banner is not a log, and the rest are on
+ * stderr.
+ */
+export function warningBanner(warnings) {
+    const [first, ...rest] = warnings;
+    if (!first) return false;
+    banner.show(
+        rest.length ? `${first} (+${rest.length} more)` : first,
+        'warning',
+        WARNING_SECONDS,
+    );
+    return true;
+}
+
+/**
+ * Re-read the drawing, for the Ctrl+Shift+; config reload.
+ *
+ * The tiles are fetched once per process, which was right while the grid was a
+ * compile-time constant. ~/.look/launchpad.toml decides it now, and arranging
+ * tiles is an edit-and-look loop: without this an edit does nothing until the
+ * app is restarted, which reads as the feature being broken.
+ *
+ * Returns the warnings rather than showing them, so the caller folds config and
+ * launchpad problems into one banner.
+ */
+export async function reload() {
+    if (!enabled) return [];
+    let reloaded = null;
+    try {
+        reloaded = await launchpadLayout();
+    } catch {
+        return [];
+    }
+    // Most reloads are about something else and leave the drawing untouched.
+    // Comparing first keeps those from re-reading every adapter for a grid that
+    // did not move.
+    if (reloaded.tiles.length && JSON.stringify(reloaded) !== JSON.stringify(layout)) {
+        layout = reloaded;
+        built = false;
+        clearConfirm();
+        if (visible) await buildAndReveal();
+    }
+    // Asked for even when nothing moved: that is exactly what a broken drawing
+    // looks like, since it falls back to the default and the tiles never budge.
+    return readWarnings();
 }
 
 /**
@@ -307,7 +359,7 @@ export function isEnabled() {
 // Fetches the layout first if needed, so a summon before/after a failed prefetch
 // still builds instead of no-opping forever.
 async function buildAndReveal() {
-    if (!layoutTiles) {
+    if (!layout) {
         if (revealPending) return; // another caller is already awaiting the layout
         revealPending = true;
         const ready = await ensureLayout();
@@ -316,7 +368,7 @@ async function buildAndReveal() {
     }
     if (!visible) return; // hidden again while the layout was in flight
     if (!built) {
-        render(layoutTiles);
+        render(layout);
         built = true;
     }
     refreshState();
@@ -401,7 +453,12 @@ function activate(id) {
     }
 
     flash(el);
-    if (!ctl?.wired) return true;
+    if (!ctl?.wired) {
+        // The adapter said why it cannot act (no screensaver service, no mic);
+        // silence here reads as a dead key.
+        if (ctl?.reason) banner.show(ctl.reason, 'info', 1.6);
+        return true;
+    }
     if (ctl.role === 'toggle') applyControl(id, ctl);
     else if (ctl.role === 'action') {
         if (ctl.toggleIntent) applyMic(id, ctl);
@@ -578,6 +635,7 @@ async function refreshControl(id, ctl, myToken) {
     if (myToken !== stateToken) return;
     const s = status?.state;
     const wired = !!s && s.state !== 'unavailable';
+    ctl.reason = wired ? null : s?.reason || null;
     if (ctl.role === 'toggle') {
         ctl.wired = wired;
         setToggleState(ctl, wired && s.state === 'on');
@@ -916,7 +974,8 @@ function todayKey() {
 
 // --- Rendering --------------------------------------------------------------
 
-function render(tiles) {
+function render(layout) {
+    const { tiles } = layout;
     tilesById = new Map();
     mnemonicIndex = new Map();
     controls = new Map();
@@ -926,9 +985,26 @@ function render(tiles) {
 
     const grid = document.createElement('div');
     grid.className = 'control-strip-grid';
-    for (const tile of tiles) grid.appendChild(buildTile(tile));
 
-    // Per-tile index drives the entrance stagger (CSS animation-delay).
+    // The grid is whatever the drawing in ~/.look/launchpad.toml reaches. The
+    // CSS used to declare `grid-template-areas` and every tile's `grid-area`,
+    // which meant the arrangement was written once in the core and again here,
+    // and the two had to agree. The core resolves it now and this only draws.
+    const shape = gridShape(tiles, layout);
+    grid.style.setProperty('--ctl-cols', shape.columns);
+    grid.style.setProperty('--ctl-rows', shape.rows);
+
+    for (const tile of tiles) {
+        const el = buildTile(tile);
+        const at = gridPlacement(tile);
+        el.style.gridColumn = at.column;
+        el.style.gridRow = at.row;
+        grid.appendChild(el);
+    }
+
+    // Per-tile index drives the entrance stagger (CSS animation-delay). The core
+    // sends tiles in reading order, so this follows the screen rather than the
+    // order names happen to appear in the drawing.
     [...grid.children].forEach((el, i) => el.style.setProperty('--i', i));
 
     container.innerHTML = '';
@@ -963,16 +1039,15 @@ function buildTile(tile) {
     }
 }
 
-// Base tile: a frosted card placed into its named grid area, tagged with the
-// role variant (and a tone for danger/active modifiers).
+// Base tile: a frosted card tagged with the role variant (and a tone for
+// danger/active modifiers). Placement is set by the caller from the tile's own
+// coordinates, so nothing here needs to know which tile this is.
 function tileEl(actionId, variant, tone) {
     const el = document.createElement('button');
     el.type = 'button';
     el.tabIndex = -1;
     el.dataset.id = actionId;
     el.className = `ctl-tile ctl-tile--${variant}`;
-    // An unknown catalog id keeps a plain tile rather than escaping its grid area.
-    if (AREA[actionId]) el.classList.add(`pos-${AREA[actionId]}`);
     if (tone) el.classList.add(`is-${tone}`);
     return el;
 }

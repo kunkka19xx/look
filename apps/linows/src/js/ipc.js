@@ -1,3 +1,5 @@
+import { normalizeLayout } from './components/launchpad-grid.js';
+
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
@@ -238,9 +240,13 @@ export async function quickActions(resultId, kind) {
     return invoke('quick_actions', { resultId, kind });
 }
 
-// The empty-state launchpad tile layout, from the shared qactions catalog.
+// The empty-state launchpad layout: tiles plus the shape the drawing declared.
 export async function launchpadLayout() {
-    return invoke('launchpad_layout');
+    return normalizeLayout(await invoke('launchpad_layout'));
+}
+
+export async function launchpadWarnings() {
+    return invoke('launchpad_warnings');
 }
 
 // Compact system uptime ("3d 4h"), shown in the launchpad info tile in place of

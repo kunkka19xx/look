@@ -142,6 +142,37 @@ The rest of the strip is read-only: **Battery**, **Weather**, and the large slot
 
 Turn the strip off in `Settings > Appearance > Super Actions`. Off hides it and disables the letter shortcuts. Saved as `super_actions_enabled=true|false` in `~/.look/config`.
 
+### Rearranging the strip
+
+The arrangement is yours, in `~/.look/launchpad.toml`. Look writes it on first run with the layout above, so the file is its own reference - open it and the format explains itself.
+
+It is a drawing of the screen. Each line is a row, each name is one cell:
+
+```toml
+layout = [
+    "lslot       lslot       bluetooth   wifi        battery     weather",
+    "lslot       lslot       theme       keepawake   screensaver weather",
+    "mic         restart     shutdown    nowplaying  nowplaying  nowplaying",
+]
+```
+
+Four edits, one mechanism:
+
+- **Hide** a tile by deleting its name. Nothing closes up behind it - you get a gap where it was, because you removed it.
+- **Move** one by putting its name somewhere else.
+- **Resize** one by repeating its name across more cells. `weather` above stands two rows tall because it appears in both. A tile's cells must form a rectangle.
+- **Leave a gap** on purpose with `.`.
+
+Three tiles need room to say anything, so they have a floor, in columns x rows: the big left slot 2x2, `weather` 1x2, `nowplaying` 2x1. Every other tile fits in one cell. Drawn smaller, a tile would be clipped rather than shrunk, so Look leaves it out and says which one. The seeded file lists each minimum beside its key.
+
+There is no column or row count to declare: the drawing is the count. Every row needs the same number of names, and there is a ceiling of five rows and six columns.
+
+The names are the tile ids - `lslot`, `bluetooth`, `wifi`, `battery`, `theme`, `keepawake`, `screensaver`, `weather`, `mic`, `restart`, `shutdown`, `nowplaying` - and the seeded file lists them with what each one does.
+
+`Cmd+Shift+;` reloads the file, so you can arrange the strip while looking at it. **Delete the file to go back to the default.**
+
+If the drawing is wrong, Look says so in the window rather than failing quietly. A problem with one tile drops that tile and keeps the rest; a problem with the file's structure - a row with the wrong number of names, or TOML it cannot read - falls back to the whole default layout, so the strip is never empty and never silent about why.
+
 ## AI answers and web suggestions (macOS, Linux, Windows)
 
 Look can answer questions and look things up without leaving the launcher. These features are **on by default** on macOS, Linux, and Windows. Toggle them in Settings or with `ai_enabled` in `~/.look/config`.
@@ -376,7 +407,7 @@ Behavior:
 
 Saved as `running_apps_placement=<value>` in `~/.look/config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
 
-**Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`.
+**Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/launchpad.toml`; see [Rearranging the strip](#rearranging-the-strip).
 
 ### Indexing Settings
 
@@ -531,7 +562,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+D` in AI mode (`>`): delete the highlighted conversation (same as `Cmd+Delete`; undo from the banner with `Cmd+Z`)
 - `Cmd+H` in AI mode (`>`): open the help screen on its **AI** topic without leaving the conversation. `Cmd+H`, `Esc`, or typing returns to it. The help screen's topic capsules (All / Main / AI / Prefixes / Command) also switch by click
 - `Cmd+1`..`Cmd+9` and `Cmd+0` in AI mode (`>`): open the listed conversation carrying that chip (`Cmd+0` is the tenth). The running-apps row is hidden on the AI screen, so the digits mean sessions there, and `Cmd+0` opens the tenth session rather than resetting the UI scale while the list is up. The list stops at ten because a `Cmd` chord is a single keypress; older conversations are found by typing, then Tab/arrows and Enter
-- `Cmd+<letter>` (macOS) / `Alt+<letter>` (Linux, Windows): on the empty home screen, fire the super action with that highlighted letter (`B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `P` play/pause, `R` Restart, `D` Shut Down), when `Super Actions` is on
+- `Cmd+<letter>` (macOS) / `Alt+<letter>` (Linux, Windows): on the empty home screen, fire the super action with that highlighted letter (`B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `P` play/pause, `R` Restart, `D` Shut Down), when `Super Actions` is on. A letter belongs to its tile, so one you have taken off the strip does nothing
 - `Space` / `R` / `P` (inside `/pomo`): start/pause session, reset, toggle music play/pause
 - `Cmd+N` / `Cmd+S` (inside `/todo`): switch Tasks/Stats page, save changes
 - `R` / `E` (inside `/speed`): run the test again, show or hide the public address
@@ -546,7 +577,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
 - `Cmd+Shift+,`: toggle settings panel
-- `Cmd+Shift+;` (macOS) / `Ctrl+Shift+;` (Linux, Windows): reload config, and re-read your declared sources
+- `Cmd+Shift+;` (macOS) / `Ctrl+Shift+;` (Linux, Windows): reload config, re-read your declared sources, and re-read `~/.look/launchpad.toml` so the strip can be arranged while you look at it
 - `Cmd+Shift+H`: hide the selected app from Look
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
 

@@ -12,6 +12,9 @@ use std::process::Command;
 const WP_SOURCE: &str = "@DEFAULT_AUDIO_SOURCE@";
 const PA_SOURCE: &str = "@DEFAULT_SOURCE@";
 const NO_MIC: &str = "No microphone";
+/// The line `wpctl get-volume` prints when it resolved a source at all.
+const WP_VOLUME: &str = "Volume:";
+const MONITOR_SUFFIX: &str = ".monitor";
 
 /// Mutes and reports the default capture source. Action id: `"mic"`.
 pub struct MicControl;
@@ -58,15 +61,30 @@ impl SystemControl for MicControl {
 /// Whether the default capture source is muted, via `wpctl` then `pactl`. `None`
 /// when neither backend answers (no server, no source, tool missing).
 fn read_muted() -> Option<bool> {
-    // "Volume: 0.40 [MUTED]" when muted.
-    if let Some(out) = output(host_command("wpctl").args(["get-volume", WP_SOURCE])) {
+    // "Volume: 0.40 [MUTED]" when muted. Checked for rather than trusting the
+    // exit code: with no default source wpctl still exits 0, printing its error
+    // on stderr and nothing on stdout, which reads as an unmuted mic.
+    if let Some(out) = output(host_command("wpctl").args(["get-volume", WP_SOURCE]))
+        && out.contains(WP_VOLUME)
+    {
         return Some(out.contains("[MUTED]"));
+    }
+    // A monitor is the loopback of an output, not a capture device: pulse falls
+    // back to one when the machine has no microphone at all.
+    if default_source_is_monitor() {
+        return None;
     }
     // "Mute: yes" / "Mute: no".
     if let Some(out) = output(host_command("pactl").args(["get-source-mute", PA_SOURCE])) {
         return Some(out.contains("yes"));
     }
     None
+}
+
+/// Whether pulse's default source is an output monitor.
+fn default_source_is_monitor() -> bool {
+    output(host_command("pactl").arg("get-default-source"))
+        .is_some_and(|name| name.trim().ends_with(MONITOR_SUFFIX))
 }
 
 /// Set the default source mute flag; true on success. Tries `wpctl`, then `pactl`.

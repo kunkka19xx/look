@@ -296,7 +296,7 @@ private struct LaunchpadSlotCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    RoundedRectangle(cornerRadius: themeStore.tileRadius, style: .continuous)
                         .fill(themeStore.selectionFillColor())
                     Image(systemName: iconName)
                         .font(.system(size: 20, weight: .medium))
@@ -320,7 +320,7 @@ private struct LaunchpadSlotCard<Content: View>: View {
         .overlay(
             // Same scaled radius as `frostedTile`, or the outline cuts the corners.
             RoundedRectangle(
-                cornerRadius: themeStore.surfaceCornerRadius(Const.cornerRadius),
+                cornerRadius: themeStore.tileRadius,
                 style: .continuous
             )
             .strokeBorder(themeStore.dividerColor().opacity(slotBorderOpacity), lineWidth: 1)

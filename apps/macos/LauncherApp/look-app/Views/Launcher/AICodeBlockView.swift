@@ -79,7 +79,7 @@ struct AICodeBlockView: View {
                 // weight muddies Liquid Glass (see ThemeStore.surfaceFill).
                 .background(
                     Color.black.opacity(themeStore.surfaceOpacity(0.18)),
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
 
             AnswerCopyButton(text: code, themeStore: themeStore, helpLabel: "Copy code")
                 .padding(6)

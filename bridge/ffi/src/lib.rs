@@ -875,13 +875,23 @@ pub extern "C" fn look_qactions_json(result_id: *const c_char, kind: *const c_ch
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// JSON array of launchpad tiles for the empty-state control strip (or `[]`).
+/// The empty-state launchpad layout as `{columns, rows, tiles}` (or `[]`).
 /// The layout is fixed and input-free, so this takes no arguments. Free the
 /// result with `look_free_cstring`.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_quick_actions_launchpad_json() -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(
         qactions_api::look_quick_actions_launchpad_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// JSON array of strings describing anything wrong with `~/.look/launchpad.toml`
+/// (or `[]`). Free the result with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_launchpad_warnings_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        qactions_api::look_launchpad_warnings_json_impl,
     ))
     .unwrap_or(std::ptr::null_mut())
 }

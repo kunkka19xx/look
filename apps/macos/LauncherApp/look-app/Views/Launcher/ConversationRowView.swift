@@ -59,7 +59,7 @@ struct ConversationRowView: View {
         .padding(.vertical, 8)
         .background {
             RoundedRectangle(
-                cornerRadius: themeStore.surfaceCornerRadius(SelectionPill.Metrics.cornerRadius),
+                cornerRadius: themeStore.controlRadius,
                 style: .continuous
             )
             .fill(themeStore.surfaceFill(0.55))

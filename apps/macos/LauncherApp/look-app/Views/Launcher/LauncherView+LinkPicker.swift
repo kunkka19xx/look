@@ -47,7 +47,9 @@ extension LauncherView {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background {
-                        RoundedRectangle(cornerRadius: SelectionPill.Metrics.cornerRadius, style: .continuous)
+                        RoundedRectangle(
+                            cornerRadius: themeStore.controlRadius,
+                            style: .continuous)
                             .fill(themeStore.surfaceFill(0.55))
                     }
                     .selectionPill(

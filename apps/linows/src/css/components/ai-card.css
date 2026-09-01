@@ -148,7 +148,7 @@
     background: transparent;
     color: var(--font-muted);
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--micro-radius);
 }
 .ai-card-copy:hover {
     color: var(--font-color);
@@ -164,7 +164,7 @@
 .ai-card-image {
     width: 96px;
     height: 96px;
-    border-radius: 8px;
+    border-radius: var(--control-radius);
     object-fit: cover;
     cursor: pointer;
     background: rgba(var(--lift), 0.04);

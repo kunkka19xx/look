@@ -2,6 +2,7 @@ pub mod action;
 pub mod config;
 pub mod config_path;
 pub mod index;
+pub mod launchpad;
 mod normalize;
 mod platform;
 mod query;

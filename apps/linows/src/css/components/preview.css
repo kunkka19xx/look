@@ -69,7 +69,7 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--micro-radius);
     background: var(--panel-fill);
 }
 
@@ -261,7 +261,7 @@
     font-weight: 600;
     color: var(--accent-color);
     background: var(--control-fill);
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
 }
 
 .preview-hint-text {
@@ -347,7 +347,7 @@
     --steps-copy-gutter: 28px;
     margin-top: 12px;
     background: var(--control-fill);
-    border-radius: 8px;
+    border-radius: var(--control-radius);
     overflow: hidden;
 }
 
@@ -397,7 +397,7 @@
 
 .preview-folder-list {
     background: var(--control-fill);
-    border-radius: 8px;
+    border-radius: var(--control-radius);
     overflow-y: auto;
     max-height: calc(100vh - 280px);
     padding: 4px;
@@ -410,7 +410,7 @@
     gap: 8px;
     padding: 6px 8px;
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
 }
 
 .preview-folder-item:nth-child(even) {
@@ -520,7 +520,7 @@
     font-size: calc(var(--font-size) - 1px);
     font-weight: 600;
     padding: 4px 12px;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     border: none;
     cursor: pointer;
     background: var(--color-danger);
@@ -553,7 +553,7 @@
 
 .preview-clip-card {
     background: var(--control-fill);
-    border-radius: 8px;
+    border-radius: var(--control-radius);
     padding: 10px;
     max-height: 200px;
     overflow-y: auto;
@@ -621,7 +621,7 @@
     padding: 1px 6px;
     margin: 0 2px;
     background: rgba(var(--lift), 0.12);
-    border-radius: 4px;
+    border-radius: var(--micro-radius);
 }
 
 /* Clipboard-empty "How to use" tips (pairs with the results list's
@@ -650,7 +650,7 @@
     padding: 1px 6px;
     margin: 0 2px;
     background: rgba(var(--lift), 0.12);
-    border-radius: 4px;
+    border-radius: var(--micro-radius);
 }
 
 /* ============ Quick Actions ============ */
@@ -675,7 +675,7 @@
     gap: 10px;
     padding: 8px 10px;
     background: var(--control-fill);
-    border-radius: 8px;
+    border-radius: var(--control-radius);
 }
 
 .qaction-title {
@@ -736,7 +736,7 @@
 .qaction-button {
     padding: 4px 10px;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     background: var(--selection-fill);
     color: var(--font-color);
     font-size: calc(var(--font-size) - 1px);
@@ -771,7 +771,7 @@
     width: 100%;
     padding: 4px 6px;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     background: none;
     color: inherit;
     font: inherit;

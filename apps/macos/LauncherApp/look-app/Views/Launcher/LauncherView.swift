@@ -137,9 +137,9 @@ struct LauncherView: View {
     @State var activeCommandID: String?
     @State var commandFeedback = ""
     @State var keyboardMonitor = KeyboardSelectionMonitor()
-    /// Empty-state launchpad: the decoded tile layout (from the shared catalog)
-    /// and the controller holding its interactive state.
-    @State var launchpadTiles: [LaunchpadTileModel] = []
+    /// Empty-state launchpad: the decoded payload (tiles plus the shape the
+    /// drawing declared) and the controller holding its interactive state.
+    @State var launchpadLayout: LaunchpadLayout = .empty
     @State var launchpadController = LaunchpadController()
     @State var speedTest = SpeedTestController()
     @State var searchTask: Task<Void, Never>?
@@ -184,13 +184,8 @@ struct LauncherView: View {
     /// Legibility floor for surfaces that float on the bare desktop while the
     /// material is Liquid Glass. Tune here: too low and light theme text
     /// disappears over a white window, too high and the refraction is lost.
-    /// Resting corner for a tile that floats free of its neighbours, and for the
-    /// seated variant that reads as part of one box. Both are scaled by the
-    /// active theme surface (Liquid rounds harder) at each use.
     /// First position in the spawn cascade, ahead of the launchpad grid.
     static let searchBarRevealIndex = 0
-    static let floatingTileCornerRadius: CGFloat = 12
-    static let seatedTileCornerRadius: CGFloat = 10
     /// Shorter than the stored title: a banner shares its line with the undo
     /// hint, and the pill is meant to read at a glance.
     static let bannerTitleLimit = 32
@@ -840,7 +835,8 @@ struct LauncherView: View {
     }
 
     var body: some View {
-        let windowCornerRadius = AppConstants.Launcher.windowCornerRadius
+        // Mirrored onto the window's layers in `WindowConfigurator`.
+        let windowCornerRadius = themeStore.panelRadius
         // When floating, use a single uniform gap between the top row and the
         // columns so it matches the horizontal gap between the columns (i3 style);
         // otherwise keep the classic fixed spacing.
@@ -1334,6 +1330,7 @@ struct LauncherView: View {
                 if isLaunchpadActive {
                     EmptyStateLaunchpadView(
                         tiles: launchpadTiles,
+                        shape: launchpadLayout.shape,
                         controller: launchpadController,
                         themeStore: themeStore,
                         revealToken: appearanceRevealToken
@@ -1646,7 +1643,7 @@ struct LauncherView: View {
                                         }
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 6)
-                                        .background(themeStore.surfaceFill(0.55), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                        .background(themeStore.surfaceFill(0.55), in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -1845,7 +1842,7 @@ struct LauncherView: View {
                         .padding(10)
                         .background(
                             themeStore.accentColor().opacity(0.14),
-                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
                     // What this question was asked ABOUT, kept with the turn so
                     // the transcript still says it after the bar is cleared.
                     ForEach(item.attachedPaths, id: \.self) { path in
@@ -1888,7 +1885,7 @@ struct LauncherView: View {
                 }
             }
             .padding(10)
-            .background(themeStore.surfaceFill(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(themeStore.surfaceFill(0.55), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
             // Floated into the bubble's own corner padding rather than added as
             // a row: a row reserves its full height on EVERY answer just to
             // hold one icon. Hidden mid-stream, when there is nothing whole to
@@ -1921,7 +1918,7 @@ struct LauncherView: View {
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(themeStore.surfaceFill(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(themeStore.surfaceFill(0.92), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 
     /// Stop the running generation without leaving the chat (Esc ends the whole
@@ -1950,7 +1947,7 @@ struct LauncherView: View {
                 .foregroundStyle(themeStore.mutedTextColor())
         }
         .padding(10)
-        .background(themeStore.surfaceFill(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(themeStore.surfaceFill(0.92), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 
     @ViewBuilder
@@ -2234,12 +2231,12 @@ struct LauncherView: View {
                 .padding(padding)
                 .background {
                     tileBackground(
-                        cornerRadius: themeStore.surfaceCornerRadius(Self.floatingTileCornerRadius),
+                        cornerRadius: themeStore.tileRadius,
                         floats: true
                     )
                 }
                 .overlay {
-                    tileBorder(cornerRadius: themeStore.surfaceCornerRadius(Self.floatingTileCornerRadius))
+                    tileBorder(cornerRadius: themeStore.tileRadius)
                 }
                 // Lift each pane off the backdrop so the three parts read as
                 // separate floating tiles rather than sections of one box.
@@ -2334,9 +2331,7 @@ struct LauncherView: View {
             .spawnReveal(index: Self.searchBarRevealIndex, token: appearanceRevealToken, scales: false)
             .background {
                 tileBackground(
-                    cornerRadius: themeStore.surfaceCornerRadius(
-                        floats ? Self.floatingTileCornerRadius : Self.seatedTileCornerRadius
-                    ),
+                    cornerRadius: floats ? themeStore.tileRadius : themeStore.barRadius,
                     floats: floats,
                     // Seated, the panel's backdrop already backs the bar.
                     substrate: floats
@@ -2344,7 +2339,7 @@ struct LauncherView: View {
             }
             .overlay {
                 if floats {
-                    tileBorder(cornerRadius: themeStore.surfaceCornerRadius(Self.floatingTileCornerRadius))
+                    tileBorder(cornerRadius: themeStore.tileRadius)
                 }
             }
             .shadow(color: floats ? .black.opacity(0.25) : .clear,

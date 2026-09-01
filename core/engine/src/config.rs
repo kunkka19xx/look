@@ -153,6 +153,12 @@ impl RuntimeConfig {
             config.apply_from_file(&path);
             config.ensure_default_file_scan_roots_present();
         }
+        // The launchpad layout is its own file and no part of RuntimeConfig,
+        // but this is the first-run hook. Seeding it here means a fresh install
+        // has a commented launchpad.toml sitting beside the config before the
+        // launcher is ever opened, which is what makes the layout editable
+        // without a docs page to find first.
+        crate::launchpad::ensure_default_file();
         config
     }
 

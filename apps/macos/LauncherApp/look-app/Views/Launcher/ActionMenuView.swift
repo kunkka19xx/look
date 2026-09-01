@@ -46,18 +46,22 @@ struct ActionMenuView: View {
         .overlay(menuBorder)
     }
 
+    private var menuCornerRadius: CGFloat {
+        themeStore.barRadius
+    }
+
     private var menuBackground: some View {
-        RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
+        RoundedRectangle(cornerRadius: menuCornerRadius, style: .continuous)
             .fill(.ultraThinMaterial)
             .background(
-                RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: menuCornerRadius, style: .continuous)
                     .fill(themeStore.panelFillColor())
             )
             .shadow(color: .black.opacity(0.45), radius: Layout.shadowRadius, x: 0, y: 8)
     }
 
     private var menuBorder: some View {
-        RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
+        RoundedRectangle(cornerRadius: menuCornerRadius, style: .continuous)
             .strokeBorder(themeStore.dividerColor(), lineWidth: 1)
     }
 
@@ -91,7 +95,7 @@ struct ActionMenuView: View {
     }
 
     private func rowBackground(isFocused: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
+        RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
             .fill(isFocused ? themeStore.selectionFillColor() : Color.clear)
     }
 

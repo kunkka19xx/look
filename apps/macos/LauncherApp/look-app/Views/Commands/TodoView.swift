@@ -182,7 +182,7 @@ struct TodoView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
                     .stroke(themeStore.borderColor(), lineWidth: 1)
             )
             .opacity(state.canAddDateGroup ? 1 : 0.5)
@@ -213,7 +213,7 @@ struct TodoView: View {
             .padding(.vertical, 4)
             .background(
                 state.dirty ? themeStore.accentColor() : themeStore.controlFillColor(),
-                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
             )
         }
         .buttonStyle(.plain)
@@ -227,10 +227,10 @@ struct TodoView: View {
         .padding(2)
         .background(
             themeStore.commandModeBackgroundColor(),
-            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous)
                 .stroke(themeStore.borderColor(), lineWidth: 1)
         )
     }
@@ -249,7 +249,7 @@ struct TodoView: View {
             .padding(.vertical, 3)
             .background(
                 active ? themeStore.selectionFillColor() : Color.clear,
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
             )
         }
         .buttonStyle(.plain)
@@ -460,7 +460,7 @@ struct TodoTaskRow: View {
                     .padding(.vertical, 1)
                     .background(
                         themeStore.warningColor().opacity(0.14),
-                        in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: themeStore.microRadius, style: .continuous))
             }
 
             if overdue && !editing {
@@ -471,7 +471,7 @@ struct TodoTaskRow: View {
                     .padding(.vertical, 1)
                     .background(
                         themeStore.dangerColor().opacity(0.14),
-                        in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: themeStore.microRadius, style: .continuous))
             }
 
             if !editing {
@@ -489,7 +489,7 @@ struct TodoTaskRow: View {
         .padding(.vertical, 6)
         .background(
             (editing || hover) ? themeStore.selectionFillColor() : Color.clear,
-            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
         )
         .onHover { hover = $0 }
     }
@@ -526,7 +526,7 @@ struct TodoAddRow: View {
     var body: some View {
         if atLimit {
             HStack(spacing: 8) {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
                     .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
                     .frame(width: 16, height: 16)
                     .foregroundStyle(themeStore.mutedTextColor())
@@ -539,7 +539,7 @@ struct TodoAddRow: View {
             .padding(.vertical, 6)
         } else if active {
             HStack(spacing: 9) {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
                     .strokeBorder(themeStore.accentColor(), lineWidth: 1.5)
                     .frame(width: 16, height: 16)
                 TextField("Task name, then ↵", text: $draft)
@@ -562,14 +562,14 @@ struct TodoAddRow: View {
             .padding(.vertical, 6)
             .background(
                 themeStore.selectionFillColor(),
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous))
         } else {
             Button {
                 active = true
                 DispatchQueue.main.async { focused = true }
             } label: {
                 HStack(spacing: 9) {
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
                         .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
                         .frame(width: 16, height: 16)
                         .overlay(Image(systemName: "plus").font(.system(size: 8, weight: .bold)))
@@ -618,11 +618,11 @@ struct TodoCheckbox: View {
     }
 
     private var box: some View {
-        RoundedRectangle(cornerRadius: 5, style: .continuous)
+        RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
             .fill(done ? themeStore.accentColor() : Color.clear)
             .frame(width: 16, height: 16)
             .overlay(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
                     .stroke(borderColor, lineWidth: 1.5)
             )
             .overlay {
@@ -679,7 +679,7 @@ struct TodoGhostButton: View {
                 .padding(4)
                 .background(
                     hover ? themeStore.controlFillColor() : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
                 )
         }
         .buttonStyle(.plain)
@@ -751,14 +751,19 @@ final class TodoKeyHostView: NSView {
 // Shared surface for /todo cards and controls: a control-fill background
 // with rounded corners and an optional hairline border.
 extension View {
-    func todoCard(_ themeStore: ThemeStore, cornerRadius: CGFloat = 10, bordered: Bool = true) -> some View {
-        background(
+    func todoCard(
+        _ themeStore: ThemeStore,
+        cornerRadius: CGFloat = AppConstants.Radius.bar,
+        bordered: Bool = true
+    ) -> some View {
+        let radius = themeStore.surfaceCornerRadius(cornerRadius)
+        return background(
             themeStore.controlFillColor(),
-            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            in: RoundedRectangle(cornerRadius: radius, style: .continuous)
         )
         .overlay {
             if bordered {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .stroke(themeStore.borderColor(), lineWidth: 1)
             }
         }

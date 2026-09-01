@@ -59,21 +59,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Build the launcher window in AppKit, host ContentView in it, and leave
     /// it hidden. WindowConfigurator (embedded in ContentView) restyles this
-    /// window on first appearance - corner radius, floating level, titlebar
-    /// hairline fix, multi-display autoscale - exactly as it did for the old
-    /// WindowGroup window, so nothing about the launcher's look changes.
+    /// window on first appearance - corner radius, floating level, multi-display
+    /// autoscale.
     private func makeLauncherWindow() {
         let baseSize = WindowAutoScale.baseSize()
         let (minW, minH) = (baseSize.width, baseSize.height)
         let content = ContentView()
             .frame(minWidth: minW, minHeight: minH)
-            .background(WindowConfigurator())
+            .background(WindowConfigurator(themeStore: .shared))
             .environmentObject(AppUIState.shared)
             .environmentObject(ThemeStore.shared)
 
-        let window = NSWindow(
+        let window = LauncherPanelWindow(
             contentRect: NSRect(x: 0, y: 0, width: minW, height: minH),
-            styleMask: [.titled, .fullSizeContentView],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )

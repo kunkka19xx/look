@@ -129,7 +129,7 @@ struct KillCommandView: View {
                         .background(
                             selectedIndex == candidate.number
                                 ? themeStore.selectionFillColor() : .clear,
-                            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            in: RoundedRectangle(cornerRadius: themeStore.chipRadius, style: .continuous)
                         )
                     }
                     .buttonStyle(.plain)
@@ -192,6 +192,6 @@ struct KillConfirmationBar: View {
             .buttonStyle(.plain)
         }
         .padding(10)
-        .background(themeStore.controlFillColor().opacity(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(themeStore.controlFillColor().opacity(0.92), in: RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous))
     }
 }

@@ -45,16 +45,16 @@ struct AIAnswerCardView: View {
             // the desktop, so over a light page the card had nothing to stand
             // against and its own text washed out (issue #398). The fill alone
             // is 0.30, which is a tint, not a substrate.
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous)
                 .fill(themeStore.commandModeBackgroundColor())
                 .opacity(Self.legibilityFloorOpacity)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous)
                         .fill(themeStore.controlFillColor())
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: themeStore.barRadius, style: .continuous)
                 .strokeBorder(themeStore.liftColor(opacity: 0.08), lineWidth: 1)
         )
     }
@@ -108,8 +108,8 @@ struct AIAnswerCardView: View {
                         }
                     }
                     .frame(width: 96, height: 96)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
                     .pointingHandCursor(enabled: url != nil)
                     .onTapGesture { open(url) }
                 }

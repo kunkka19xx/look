@@ -16,7 +16,7 @@
     gap: 8px;
     padding: 6px 8px;
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
 }
 
 .cmd-row-active {
@@ -102,7 +102,7 @@
     gap: 8px;
     padding: 10px 12px;
     background: var(--control-fill);
-    border-radius: 10px;
+    border-radius: var(--bar-radius);
     margin: 8px 18px 0;
 }
 
@@ -150,7 +150,7 @@
     gap: 8px;
     padding: 10px 12px;
     background: var(--control-fill);
-    border-radius: 10px;
+    border-radius: var(--bar-radius);
     margin: 8px 18px 0;
 }
 
@@ -194,7 +194,7 @@
     align-items: center;
     gap: 8px;
     padding: 7px 10px;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     cursor: pointer;
     font-size: var(--font-size);
 }
@@ -278,7 +278,7 @@
     font-weight: 700;
     font-size: calc(var(--font-size) - 1px);
     padding: 4px 12px;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     background: var(--color-danger);
     color: var(--on-accent-color);
 }
@@ -602,7 +602,7 @@
     font-size: calc(var(--font-size) - 1px);
     font-weight: 600;
     padding: 5px 14px;
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     border: none;
     cursor: pointer;
     color: var(--on-accent-color);
@@ -651,7 +651,7 @@
     padding: 6px 12px;
     margin: 0 8px;
     background: var(--control-fill);
-    border-radius: 8px;
+    border-radius: var(--control-radius);
 }
 
 .cmd-pomo-settings-label {
@@ -663,7 +663,7 @@
     font-size: calc(var(--font-size) - 1px);
     padding: 3px 10px;
     border: none;
-    border-radius: 5px;
+    border-radius: var(--chip-radius);
     cursor: pointer;
     background: transparent;
     color: var(--font-color);
@@ -683,7 +683,7 @@
     padding: 10px;
     margin: 0 8px 8px;
     background: var(--control-fill);
-    border-radius: 8px;
+    border-radius: var(--control-radius);
     flex-shrink: 0;
 }
 
@@ -730,7 +730,7 @@
     cursor: pointer;
     color: var(--font-secondary);
     padding: 2px 5px;
-    border-radius: 4px;
+    border-radius: var(--micro-radius);
     display: flex;
     align-items: center;
 }
@@ -833,7 +833,7 @@
     align-items: center;
     gap: 6px;
     padding: 4px 6px;
-    border-radius: 5px;
+    border-radius: var(--chip-radius);
     font-size: calc(var(--font-size) - 1px);
 }
 
@@ -869,7 +869,7 @@
     color: var(--font-color);
     font: inherit;
     padding: 2px 4px;
-    border-radius: 3px;
+    border-radius: var(--micro-radius);
 }
 
 .cmd-pomo-session-name-input:focus {
@@ -886,7 +886,7 @@
     font: inherit;
     font-family: var(--font-mono);
     padding: 2px;
-    border-radius: 3px;
+    border-radius: var(--micro-radius);
 }
 
 .cmd-pomo-session-dur-wrap {
@@ -923,7 +923,7 @@
 .cmd-pomo-session-type-btn {
     font-size: calc(var(--font-size) - 2px);
     padding: 1px 6px;
-    border-radius: 4px;
+    border-radius: var(--micro-radius);
     border: 1px solid var(--divider-color);
     cursor: pointer;
     background: none;
@@ -937,7 +937,7 @@
     color: var(--font-secondary);
     background: none;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--micro-radius);
     opacity: 0;
 }
 
@@ -954,7 +954,7 @@
 .cmd-pomo-add-btn {
     font-size: calc(var(--font-size) - 1px);
     padding: 3px 10px;
-    border-radius: 5px;
+    border-radius: var(--chip-radius);
     border: 1px dashed var(--divider-color);
     cursor: pointer;
     background: none;
@@ -1002,7 +1002,7 @@
 .cmd-todo-segmented {
     display: flex;
     background: var(--control-fill);
-    border-radius: 7px;
+    border-radius: var(--chip-radius);
     padding: 2px;
 }
 
@@ -1011,7 +1011,7 @@
     font-weight: 600;
     padding: 3px 10px;
     border: none;
-    border-radius: 5px;
+    border-radius: var(--chip-radius);
     cursor: pointer;
     background: transparent;
     color: var(--font-secondary);
@@ -1030,7 +1030,7 @@
     font-weight: 600;
     padding: 4px 10px;
     border: 1px solid var(--divider-color);
-    border-radius: 7px;
+    border-radius: var(--chip-radius);
     cursor: pointer;
     background: var(--control-fill);
     color: var(--font-secondary);
@@ -1107,7 +1107,7 @@
 .cmd-todo-day {
     background: var(--panel-fill);
     border: 1px solid var(--divider-color);
-    border-radius: 10px;
+    border-radius: var(--bar-radius);
     padding: 8px 12px 10px;
 }
 
@@ -1151,7 +1151,7 @@
     align-items: center;
     padding: 3px 5px;
     border: none;
-    border-radius: 5px;
+    border-radius: var(--chip-radius);
     cursor: pointer;
     background: none;
     color: var(--font-secondary);
@@ -1173,7 +1173,7 @@
     align-items: center;
     gap: 9px;
     padding: 4px 2px;
-    border-radius: 5px;
+    border-radius: var(--chip-radius);
 }
 
 .cmd-todo-task:hover {
@@ -1188,7 +1188,7 @@
     align-items: center;
     justify-content: center;
     border: 1.5px solid var(--font-muted);
-    border-radius: 4px;
+    border-radius: var(--chip-radius);
     cursor: pointer;
     background: transparent;
     color: var(--on-accent-color);
@@ -1250,7 +1250,7 @@
     font-size: 13px;
     padding: 0 5px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--micro-radius);
     cursor: pointer;
     background: none;
     color: var(--font-secondary);
@@ -1275,7 +1275,7 @@
     padding: 4px 6px;
     font-size: calc(var(--font-size) - 1px);
     border: 1px dashed var(--divider-color);
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     cursor: pointer;
     background: none;
     color: var(--font-muted);
@@ -1342,7 +1342,7 @@ button.cmd-todo-add:hover {
 .cmd-todo-card {
     background: var(--panel-fill);
     border: 1px solid var(--divider-color);
-    border-radius: 10px;
+    border-radius: var(--bar-radius);
     padding: 12px 14px;
 }
 
@@ -1481,7 +1481,7 @@ button.cmd-todo-add:hover {
     padding: 4px 8px;
     background: var(--bg-tint);
     border: 1px solid var(--divider-color);
-    border-radius: 6px;
+    border-radius: var(--chip-radius);
     font-size: calc(var(--font-size) - 3px);
     color: var(--font-color);
     white-space: nowrap;

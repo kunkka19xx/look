@@ -57,6 +57,18 @@ struct QuickFolderDefinition {
 }
 
 enum AppConstants {
+    /// Resting radii, scaled by the Corner Radius setting through
+    /// `ThemeStore`. A radius that follows an element's geometry instead - an
+    /// icon mask, a circular badge, a heatmap cell - is not one of these.
+    enum Radius {
+        static let panel: CGFloat = 16
+        static let tile: CGFloat = 12
+        static let bar: CGFloat = 10
+        static let control: CGFloat = 8
+        static let chip: CGFloat = 6
+        static let micro: CGFloat = 4
+    }
+
     enum Launcher {
         /// Search field placeholder shown in normal (non-command) mode.
         static let searchPlaceholder = "Type whatever you want"
@@ -325,7 +337,6 @@ enum AppConstants {
             static let moveHint = "⌘J / ⌘K or ⌃J / ⌃K move  •  ⏎ run"
             static let runHint = "↵"
             static let maxHeight: CGFloat = 240
-            static let cornerRadius: CGFloat = 10
             static let rowVerticalPadding: CGFloat = 7
             static let rowHorizontalPadding: CGFloat = 10
             static let shadowRadius: CGFloat = 14
@@ -443,7 +454,6 @@ enum AppConstants {
         // Shortest query that triggers debounced suggestion lookups (web search
         // autocomplete, recent URLs). Single characters match too much to be useful.
         static let minSuggestionQueryLength = 2
-        static let windowCornerRadius: CGFloat = 16
         static let commandListMaxHeight: CGFloat = 180
         static let commandResultFontSize: CGFloat = 18
         static let calcMaxMagnitude = 1_000_000_000_000.0
@@ -508,10 +518,11 @@ enum AppConstants {
         /// search bar when the query is empty. Sizing/timing only; the tile order,
         /// labels, and mnemonics come from the shared `look_qactions` catalog.
         enum Launchpad {
-            static let columns = 6
+            /// No `columns` here any more: the drawing in ~/.look/launchpad.toml
+            /// decides how many there are, and the core sends that shape beside
+            /// the tiles. A constant 6 would be a second answer.
             static let rowHeight: CGFloat = 76
             static let gap: CGFloat = 8
-            static let cornerRadius: CGFloat = 12
             static let outerTopPadding: CGFloat = 8
 
             /// The Todo tile cycles its next-task name at this cadence.
@@ -619,6 +630,10 @@ enum AppConstants {
     enum ThemeUI {
         static let labelWidth: CGFloat = 150
         static let pickerWidth: CGFloat = 140
+        /// Bounds shared by the slider, the config parser and the reload check,
+        /// so a value the slider cannot reach is reported rather than clamped.
+        static let innerGapRange: ClosedRange<Double> = 0...24
+        static let surfaceRadiusRange: ClosedRange<Double> = 0...2.5
         /// Dimming for a control the active theme has taken over, so the value
         /// stays readable while reading as not-yours-to-set.
         static let disabledControlOpacity: Double = 0.4

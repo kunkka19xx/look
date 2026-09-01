@@ -238,6 +238,15 @@ struct ThemeSettings: Codable, Equatable {
     /// `~/.look/config` under `inner_gap`.
     var innerGap: Double = 7
 
+    /// Multiplier on every surface's resting corner radius - the panel, the top
+    /// bar, the launchpad tiles and the controls. One geometry for all of them
+    /// rather than a per-surface shape: glass reads as a lens and a tight corner
+    /// makes it a clipped rectangle, and the classic surface is no better served
+    /// by the tighter one, so the launcher does not change shape with its theme.
+    /// `0` squares every corner. Persisted in `~/.look/config` under
+    /// `ui_surface_radius`.
+    var surfaceRadius: Double = 1.5
+
     /// Whether Apple Intelligence / AI-assisted features are enabled. Defaults to
     /// on; users can opt out via Settings → Appearance. Persisted in
     /// `~/.look/config` under `ai_enabled`.

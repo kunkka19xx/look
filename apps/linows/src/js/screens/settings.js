@@ -14,6 +14,7 @@ import * as banner from '../components/banner.js';
 import * as sourceblocks from '../components/sourceblocks.js';
 import * as platform from '../platform.js';
 import * as layout from '../layout.js';
+import * as superactions from '../components/superactions.js';
 
 let screen = null;
 let active = false;
@@ -114,6 +115,9 @@ const CSS_MAP = {
     ui_border_opacity: applyBorderColor,
     // Same key as macOS ThemeSettings.innerGap; layout.js clamps to 0-24.
     inner_gap: (v) => layout.setInnerGap(parseFloat(v)),
+    ui_surface_radius: (v) => {
+        document.documentElement.style.setProperty('--surface-radius-scale', v);
+    },
 };
 
 function markCustomTheme() {
@@ -634,6 +638,9 @@ export function isActive() {
 export async function reloadFromFile() {
     try {
         await sourceblocks.reload();
+        // The launchpad drawing is cached for the process for the same reason
+        // the source blocks are, so this is where an edited one starts showing.
+        const launchpadWarnings = await superactions.reload();
         const map = await loadConfigMap();
 
         // Background image - apply BEFORE the tint pass: effectiveBlurOpacity
@@ -665,8 +672,9 @@ export async function reloadFromFile() {
         // Border thickness
         if (map.ui_border_thickness) CSS_MAP.ui_border_thickness(map.ui_border_thickness);
 
-        // Floating layout gap
+        // Floating layout gap + corner rounding
         CSS_MAP.inner_gap(map.inner_gap || 0);
+        if (map.ui_surface_radius) CSS_MAP.ui_surface_radius(map.ui_surface_radius);
 
         // If settings screen is open, refresh the UI sliders too
         if (active) await loadConfig();
@@ -675,7 +683,11 @@ export async function reloadFromFile() {
         await forceIndexRefresh();
 
         if (onConfigReloadFn) onConfigReloadFn(map);
-        banner.show('Config reloaded from file', 'success', 1.2);
+        // One banner carries both: launchpad.toml is the file most likely to be
+        // mid-edit when someone reaches for the reload chord.
+        if (!superactions.warningBanner(launchpadWarnings)) {
+            banner.show('Config reloaded from file', 'success', 1.2);
+        }
     } catch {
         banner.show('Reload failed', 'error', 1.5);
     }
@@ -774,8 +786,9 @@ export async function restoreOnStartup() {
             CSS_MAP.ui_border_thickness(map.ui_border_thickness);
         }
 
-        // Floating layout gap
+        // Floating layout gap + corner rounding
         CSS_MAP.inner_gap(map.inner_gap || 0);
+        if (map.ui_surface_radius) CSS_MAP.ui_surface_radius(map.ui_surface_radius);
     } catch {
         // Config may not exist yet
     }
@@ -1146,6 +1159,7 @@ const USER_CONTROLLED_KEYS = new Set([
     'ui_font_opacity',
     'ui_border_opacity',
     'ui_border_thickness',
+    'ui_surface_radius',
 ]);
 
 // applyThemePreset skips these keys and then reads them back off the sliders,
