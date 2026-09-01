@@ -89,10 +89,14 @@ mod tests {
         "off_label",
     ];
 
-    /// The payload as the bridges send it.
+    /// The payload as the bridges send it, resolved from the seeded drawing
+    /// rather than from `layout_payload`: that reads the developer's own
+    /// ~/.look/launchpad.toml, which would fail this test on any customised
+    /// machine and write that private layout into the shared fixture.
     fn live_payload() -> serde_json::Value {
-        serde_json::to_value(look_engine::launchpad::layout_payload())
-            .expect("the layout serialises")
+        let resolved = look_engine::launchpad::resolve(look_engine::launchpad::default_contents());
+        let payload = look_engine::launchpad::LayoutPayload::from(resolved);
+        serde_json::to_value(payload).expect("the layout serialises")
     }
 
     #[test]

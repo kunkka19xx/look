@@ -1,3 +1,5 @@
+import { normalizeLayout } from './components/launchpad-grid.js';
+
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
@@ -239,11 +241,8 @@ export async function quickActions(resultId, kind) {
 }
 
 // The empty-state launchpad layout: tiles plus the shape the drawing declared.
-// A backend older than the shape answers with a bare array, normalised here.
 export async function launchpadLayout() {
-    const payload = await invoke('launchpad_layout');
-    if (Array.isArray(payload)) return { tiles: payload, columns: null, rows: null };
-    return payload;
+    return normalizeLayout(await invoke('launchpad_layout'));
 }
 
 export async function launchpadWarnings() {

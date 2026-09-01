@@ -57,6 +57,16 @@ final class LaunchpadContractTests: XCTestCase {
         XCTAssertNil(layout.shape, "there is no declared shape to read")
     }
 
+    func testTilesWithoutResolvedCellsDecodeToNothing() throws {
+        // A lib old enough to send a bare array may predate the coordinates
+        // too. The decode throws, `EngineBridge` turns that into `.empty`, and
+        // the launchpad stays off rather than placing tiles on nothing - the
+        // rule `normalizeLayout` applies on the linows side.
+        let json = #"[{"action_id":"mic","title":"Mic","size":"s","role":"toggle"}]"#
+        XCTAssertThrowsError(
+            try LaunchpadFixture.decode(LaunchpadLayout.self, from: Data(json.utf8)))
+    }
+
     func testEveryTileArrivesWithItsResolvedCell() throws {
         let byID = Dictionary(
             try fixtureTiles().map { ($0.actionId, $0) }, uniquingKeysWith: { first, _ in first })

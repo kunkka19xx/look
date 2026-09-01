@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { gridPlacement, gridShape } from '../src/js/components/launchpad-grid.js';
+import { gridPlacement, gridShape, normalizeLayout } from '../src/js/components/launchpad-grid.js';
 
 // The golden geometry of the empty-state launchpad.
 //
@@ -54,6 +54,20 @@ test('the golden tiles the grid with no gap and no overlap', () => {
 
 test('the shell reads the shape the payload declares', () => {
     assert.deepEqual(gridShape(layout, payload), { columns: golden.columns, rows: golden.rows });
+});
+
+test('a bare tile array normalises into a layout with no declared shape', () => {
+    // What a lib built before the shape joined the payload sends.
+    const normalised = normalizeLayout(layout);
+    assert.deepEqual(normalised.tiles, layout);
+    assert.equal(normalised.columns, null);
+});
+
+test('tiles with no resolved coordinates render nothing rather than a scrambled grid', () => {
+    // A lib old enough to send a bare array may also predate the coordinates,
+    // and a tile without them lands on NaN grid lines.
+    const normalised = normalizeLayout([{ action_id: 'mic', title: 'Mic' }]);
+    assert.deepEqual(normalised.tiles, []);
 });
 
 test('a declared shape keeps a trailing empty track', () => {

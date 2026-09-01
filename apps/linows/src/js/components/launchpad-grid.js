@@ -8,6 +8,27 @@
 // The core has already decided which cell every tile occupies; nothing here
 // works out an arrangement.
 
+// Every coordinate the grid places a tile by. A tile missing one cannot be
+// placed at all: NaN spans stack every tile in the same cell.
+const GEOMETRY_KEYS = ['col', 'row', 'col_span', 'row_span'];
+
+/**
+ * The layout payload in one form: `{ tiles, columns, rows }`.
+ *
+ * A backend older than the shape answers with a bare array, and one old enough
+ * for that may predate resolved coordinates too. Half a grid is worse than
+ * none, so a payload with an unplaceable tile renders nothing - which is what
+ * the macOS decoder does with the same payload.
+ */
+export function normalizeLayout(payload) {
+    const layout = Array.isArray(payload)
+        ? { tiles: payload, columns: null, rows: null }
+        : { columns: null, rows: null, ...payload };
+    const tiles = layout.tiles ?? [];
+    const placeable = tiles.every((tile) => GEOMETRY_KEYS.every((key) => Number.isInteger(tile[key])));
+    return placeable ? { ...layout, tiles } : { tiles: [], columns: null, rows: null };
+}
+
 /**
  * The shape the drawing declared, or how far the tiles reach without one.
  *

@@ -79,14 +79,19 @@ pub struct LayoutPayload {
     pub tiles: Vec<LaunchpadTile>,
 }
 
+impl From<Resolved> for LayoutPayload {
+    fn from(resolved: Resolved) -> Self {
+        Self {
+            columns: resolved.columns,
+            rows: resolved.rows,
+            tiles: resolved.tiles,
+        }
+    }
+}
+
 /// `layout_reported`, in the shape both bridges hand their shell.
 pub fn layout_payload() -> LayoutPayload {
-    let resolved = layout_reported();
-    LayoutPayload {
-        columns: resolved.columns,
-        rows: resolved.rows,
-        tiles: resolved.tiles,
-    }
+    layout_reported().into()
 }
 
 /// The user's layout, with anything wrong with it printed.
