@@ -97,6 +97,14 @@ nonisolated struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
     }
 }
 
+extension Collection where Element == LaunchpadTileModel {
+    /// Whether the drawing placed a tile of this role: the live reads are
+    /// per-role, and ~/.look/launchpad.toml can leave one out.
+    func contains(role: LaunchpadTileRole) -> Bool {
+        contains { $0.role == role }
+    }
+}
+
 /// The launchpad payload: the tiles and the shape the core resolved them
 /// against. `shape` is nil for the bare tile array a lib older than the shape
 /// sends, and the grid derives one then.

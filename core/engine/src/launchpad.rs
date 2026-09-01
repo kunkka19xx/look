@@ -260,11 +260,25 @@ pub fn resolve(contents: &str) -> Resolved {
             continue;
         };
 
+        let col_span = (c1 - c0 + 1) as u8;
+        let row_span = (r1 - r0 + 1) as u8;
+
+        // Dropped rather than grown: growing would cover cells given to
+        // another tile, and a tile under its minimum clips rather than shrinks.
+        let (min_col, min_row) = look_qactions::min_span(known.role);
+        if col_span < min_col || row_span < min_row {
+            warnings.push(format!(
+                "launchpad.toml: \"{name}\" needs at least {min_col}x{min_row} cells but is \
+                 drawn {col_span}x{row_span}, so it is not shown"
+            ));
+            continue;
+        }
+
         tiles.push(LaunchpadTile {
             col: c0 as u8,
             row: r0 as u8,
-            col_span: (c1 - c0 + 1) as u8,
-            row_span: (r1 - r0 + 1) as u8,
+            col_span,
+            row_span,
             ..known.clone()
         });
     }
@@ -353,21 +367,24 @@ layout = [
     "mic         restart     shutdown    nowplaying  nowplaying  nowplaying",
 ]
 
-# The built-in tiles, and the key that fires each one (with Cmd on macOS, Ctrl
-# elsewhere):
+# The built-in tiles, the key that fires each one (with Cmd on macOS, Ctrl
+# elsewhere), and the smallest area it can be drawn in:
 #
-#   lslot        the rotating Todo / Pomo / Clock slot    no key
-#   bluetooth    toggle                                   B
-#   wifi         toggle                                   W
-#   battery      read-only level                          no key
-#   theme        toggle, dark / light                     T
-#   keepawake    toggle                                   K
-#   screensaver  starts it                                S
-#   weather      read-only condition + temperature        no key
-#   mic          mute / unmute                            M
-#   restart      asks first                               R
-#   shutdown     asks first                               D
-#   nowplaying   track name + play/pause                  P
+#   lslot        the rotating Todo / Pomo / Clock slot    no key  2x2
+#   bluetooth    toggle                                   B       1x1
+#   wifi         toggle                                   W       1x1
+#   battery      read-only level                          no key  1x1
+#   theme        toggle, dark / light                     T       1x1
+#   keepawake    toggle                                   K       1x1
+#   screensaver  starts it                                S       1x1
+#   weather      read-only condition + temperature        no key  1x2
+#   mic          mute / unmute                            M       1x1
+#   restart      asks first                               R       1x1
+#   shutdown     asks first                               D       1x1
+#   nowplaying   track name + play/pause                  P       2x1
+#
+# Columns x rows. Bigger is fine; smaller is left out with a warning, since a
+# tile under its minimum clips rather than shrinks.
 #
 # Deleting a name removes that tile and leaves a gap where it was - the layout
 # is yours to arrange, so nothing closes up behind it.
@@ -576,6 +593,51 @@ mod tests {
     }
 
     #[test]
+    fn a_tile_drawn_under_its_minimum_is_dropped_and_the_rest_renders() {
+        // The shells dress by role, so a 1x1 nowplaying is a track title and
+        // three transport buttons clipped into one cell.
+        let resolved = resolve(
+            r#"layout = [
+                "nowplaying  theme  wifi",
+            ]"#,
+        );
+        assert!(cells(&resolved, "nowplaying").is_none());
+        assert_eq!(resolved.tiles.len(), 2);
+        assert!(
+            resolved.warnings[0].contains("needs at least 2x1 cells but is drawn 1x1"),
+            "{:?}",
+            resolved.warnings
+        );
+    }
+
+    #[test]
+    fn a_tile_drawn_at_exactly_its_minimum_is_kept() {
+        // The boundary, in both axes.
+        let resolved = resolve(
+            r#"layout = [
+                "lslot  lslot  weather",
+                "lslot  lslot  weather",
+            ]"#,
+        );
+        assert!(resolved.warnings.is_empty(), "{:?}", resolved.warnings);
+        assert_eq!(cells(&resolved, "lslot"), Some((0, 0, 2, 2)));
+        assert_eq!(cells(&resolved, "weather"), Some((2, 0, 1, 2)));
+    }
+
+    #[test]
+    fn a_tile_drawn_over_its_minimum_is_kept() {
+        // A floor, not a size.
+        let resolved = resolve(
+            r#"layout = [
+                "nowplaying  nowplaying  nowplaying",
+                "nowplaying  nowplaying  nowplaying",
+            ]"#,
+        );
+        assert!(resolved.warnings.is_empty(), "{:?}", resolved.warnings);
+        assert_eq!(cells(&resolved, "nowplaying"), Some((0, 0, 3, 2)));
+    }
+
+    #[test]
     fn a_drawing_that_places_nothing_falls_back_rather_than_rendering_empty() {
         // Every per-tile error at once. The rule is that the launchpad is never
         // empty, so the last resort is still the default.
@@ -678,55 +740,75 @@ mod tests {
         }
     }
 
+    /// A tile's legend line, and where its two right-hand columns sit: the key
+    /// that fires it, then the smallest area it can be drawn in.
+    fn legend(action_id: &str) -> (&'static str, (usize, &'static str), (usize, &'static str)) {
+        let line = DEFAULT_CONTENTS
+            .lines()
+            .find(|line| line.starts_with(&format!("#   {action_id} ")))
+            .unwrap_or_else(|| panic!("{action_id} has no legend line"));
+
+        let min = line.split_whitespace().last().expect("a minimum column");
+        let min_col = line.rfind(min).expect("the minimum is on the line");
+        let head = line[..min_col].trim_end();
+        let key = if head.ends_with("no key") {
+            "no key"
+        } else {
+            &head[head.len() - 1..]
+        };
+        (line, (head.len() - key.len(), key), (min_col, min))
+    }
+
     #[test]
     fn every_mnemonic_the_comment_claims_is_the_one_the_core_binds() {
         // The legend is documentation, and documentation that drifts is worse
         // than none: a user reads "D" and presses it expecting Shut Down.
         for tile in look_qactions::launchpad_layout() {
-            let line = DEFAULT_CONTENTS
-                .lines()
-                .find(|line| {
-                    line.trim_start()
-                        .starts_with(&format!("#   {} ", tile.action_id))
-                })
-                .unwrap_or_else(|| panic!("{} has no legend line", tile.action_id));
+            let (line, (_, key), _) = legend(&tile.action_id);
+            let expected = tile
+                .mnemonic
+                .map_or("no key".to_string(), |k| k.to_string());
+            assert_eq!(
+                key, expected,
+                "the legend for {} is wrong: {line}",
+                tile.action_id
+            );
+        }
+    }
 
-            match tile.mnemonic {
-                Some(key) => assert!(
-                    line.trim_end().ends_with(key),
-                    "the legend for {} does not end in {key}: {line}",
-                    tile.action_id
-                ),
-                None => assert!(
-                    line.trim_end().ends_with("no key"),
-                    "{} has no mnemonic but its legend claims one: {line}",
-                    tile.action_id
-                ),
-            }
+    #[test]
+    fn every_minimum_the_comment_claims_is_the_one_the_core_enforces() {
+        // Worse drift than the key: a user reads 1x1, draws it, and the tile
+        // they drew is the one that does not appear.
+        for tile in look_qactions::launchpad_layout() {
+            let (line, _, (_, min)) = legend(&tile.action_id);
+            let (col, row) = look_qactions::min_span(tile.role);
+            assert_eq!(
+                min,
+                format!("{col}x{row}"),
+                "the legend for {} is wrong: {line}",
+                tile.action_id
+            );
         }
     }
 
     #[test]
     fn the_legend_columns_line_up() {
         // This file is the documentation, and it is read in a text editor. A
-        // key one column out is invisible to a test that only checks the line
-        // ENDS with it, and obvious to everyone who opens the file.
-        let keys: Vec<usize> = DEFAULT_CONTENTS
-            .lines()
-            .filter_map(|line| {
-                let rest = line.strip_prefix("#   ")?;
-                let name = rest.split_whitespace().next()?;
-                look_qactions::launchpad_layout()
-                    .iter()
-                    .any(|t| t.action_id == name)
-                    .then(|| line.rfind("  ").map(|i| i + 2))?
+        // key one column out is invisible to a test that only checks the field
+        // itself, and obvious to everyone who opens the file.
+        let columns: Vec<(usize, usize)> = look_qactions::launchpad_layout()
+            .iter()
+            .map(|tile| {
+                let (_, (key, _), (min, _)) = legend(&tile.action_id);
+                (key, min)
             })
             .collect();
 
-        assert_eq!(keys.len(), 12, "one legend line per tile");
+        assert_eq!(columns.len(), 12, "one legend line per tile");
         assert!(
-            keys.iter().all(|column| *column == keys[0]),
-            "the key column is ragged: {keys:?}"
+            columns.iter().all(|pair| *pair == columns[0]),
+            "the legend columns are ragged: {columns:?}"
         );
     }
 

@@ -163,6 +163,8 @@ Four edits, one mechanism:
 - **Resize** one by repeating its name across more cells. `weather` above stands two rows tall because it appears in both. A tile's cells must form a rectangle.
 - **Leave a gap** on purpose with `.`.
 
+Three tiles need room to say anything, so they have a floor, in columns x rows: the big left slot 2x2, `weather` 1x2, `nowplaying` 2x1. Every other tile fits in one cell. Drawn smaller, a tile would be clipped rather than shrunk, so Look leaves it out and says which one. The seeded file lists each minimum beside its key.
+
 There is no column or row count to declare: the drawing is the count. Every row needs the same number of names, and there is a ceiling of five rows and six columns.
 
 The names are the tile ids - `lslot`, `bluetooth`, `wifi`, `battery`, `theme`, `keepawake`, `screensaver`, `weather`, `mic`, `restart`, `shutdown`, `nowplaying` - and the seeded file lists them with what each one does.

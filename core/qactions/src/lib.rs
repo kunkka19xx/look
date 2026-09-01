@@ -140,6 +140,18 @@ pub enum TileRole {
     Slot,
 }
 
+/// The smallest rectangle a role can be drawn in and still say what it means.
+/// Keyed off the role, not the id: the presentation is what needs the room.
+/// `launchpad::resolve` drops anything drawn under this.
+pub fn min_span(role: TileRole) -> (u8, u8) {
+    match role {
+        TileRole::Slot => (2, 2),
+        TileRole::Weather => (1, 2),
+        TileRole::Media => (2, 1),
+        TileRole::Toggle | TileRole::Info | TileRole::Action => (1, 1),
+    }
+}
+
 /// One tile in the empty-state launchpad. Carries everything the platform shell
 /// needs to place and label it; live state (toggle value, battery %, track) is
 /// resolved natively.

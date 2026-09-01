@@ -16,6 +16,8 @@ struct EmptyStateLaunchpadView: View {
 
     private typealias Const = AppConstants.Launcher.Launchpad
 
+    private var showsNowPlaying: Bool { tiles.contains(role: .media) }
+
     /// Cells to points. Cheap enough to rebuild; it is four numbers.
     private var grid: LaunchpadGrid {
         LaunchpadGrid(tiles: tiles, declared: shape, rowHeight: Const.rowHeight, gap: Const.gap)
@@ -29,7 +31,10 @@ struct EmptyStateLaunchpadView: View {
         .padding(.top, Const.outerTopPadding)
         // Poll system now-playing while the launchpad is on screen, so external
         // changes (pausing in a browser) are reflected. Cancelled on disappear.
-        .task {
+        // Keyed on the tile so an edit adding or removing it starts or stops
+        // the poll, rather than waking every few seconds to feed nothing.
+        .task(id: showsNowPlaying) {
+            guard showsNowPlaying else { return }
             while !Task.isCancelled {
                 await controller.refreshNowPlaying()
                 try? await Task.sleep(for: .seconds(Const.nowPlayingPollSeconds))

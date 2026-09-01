@@ -106,7 +106,9 @@ final class LaunchpadController {
     /// service already falls back to a compatible cache on failure, so a nil
     /// result means there is no usable reading and the tile should clear rather
     /// than keep a stale value (e.g. in the wrong unit after a region change).
+    /// Skipped when the drawing placed no weather tile: cheap is not free.
     func refreshWeather() async {
+        guard tiles.contains(role: .weather) else { return }
         weather = await weatherService.currentWeather()
     }
 
