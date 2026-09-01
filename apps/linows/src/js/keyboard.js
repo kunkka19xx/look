@@ -65,11 +65,15 @@ export function init(inputEl) {
         if (el !== inputEl) el.tabIndex = -1;
     });
 
-    // Track Shift key state independently (webview may strip shiftKey from Tab events)
+    // Track Shift key state independently (webview may strip shiftKey from Tab
+    // events). Only Tab needs the latch, so every other key re-syncs from the
+    // event: a keyup can land in another window (Shift still down when Look
+    // hides), and a stuck latch silently kills every Alt mnemonic.
     document.addEventListener(
         'keydown',
         (e) => {
             if (e.key === 'Shift') shiftHeld = true;
+            else if (!isTabKey(e)) shiftHeld = e.shiftKey;
         },
         true,
     );
@@ -80,6 +84,9 @@ export function init(inputEl) {
         },
         true,
     );
+    window.addEventListener('blur', () => {
+        shiftHeld = false;
+    });
 
     document.addEventListener('keydown', handleKeyDown, true);
 
@@ -431,6 +438,12 @@ function handleKeyDown(e) {
             }
             break;
     }
+}
+
+// WebKitGTK reports Shift+Tab as key="Unidentified" with code="Tab", which is
+// what the shiftHeld latch exists for.
+function isTabKey(e) {
+    return e.key === 'Tab' || e.code === 'Tab';
 }
 
 // The letter behind an Alt chord. Prefer e.key so it respects the layout (like

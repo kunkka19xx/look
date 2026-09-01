@@ -453,7 +453,12 @@ function activate(id) {
     }
 
     flash(el);
-    if (!ctl?.wired) return true;
+    if (!ctl?.wired) {
+        // The adapter said why it cannot act (no screensaver service, no mic);
+        // silence here reads as a dead key.
+        if (ctl?.reason) banner.show(ctl.reason, 'info', 1.6);
+        return true;
+    }
     if (ctl.role === 'toggle') applyControl(id, ctl);
     else if (ctl.role === 'action') {
         if (ctl.toggleIntent) applyMic(id, ctl);
@@ -630,6 +635,7 @@ async function refreshControl(id, ctl, myToken) {
     if (myToken !== stateToken) return;
     const s = status?.state;
     const wired = !!s && s.state !== 'unavailable';
+    ctl.reason = wired ? null : s?.reason || null;
     if (ctl.role === 'toggle') {
         ctl.wired = wired;
         setToggleState(ctl, wired && s.state === 'on');
