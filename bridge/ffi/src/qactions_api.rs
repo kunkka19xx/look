@@ -23,17 +23,16 @@ pub(crate) fn look_qactions_json_impl(
     store_json_allocation(cstring)
 }
 
-/// JSON array of `LaunchpadTile` describing the empty-state launchpad layout,
-/// every tile carrying the cell it was resolved to, or `[]` on any
-/// serialization failure.
+/// The empty-state launchpad layout as `{columns, rows, tiles}`, every tile
+/// carrying the cell it was resolved to, or `[]` on a serialization failure.
 ///
 /// Reads `~/.look/launchpad.toml` through the engine, which falls back to the
 /// built-in grid when there is no file or it cannot be trusted - so this never
 /// answers with an empty layout for a reason the user could have fixed. Still
 /// takes no arguments: the drawing is the only input and it is on disk.
 pub(crate) fn look_quick_actions_launchpad_json_impl() -> *mut c_char {
-    let tiles = look_engine::launchpad::layout_reported().tiles;
-    let json = serde_json::to_string(&tiles).unwrap_or_else(|_| JSON_EMPTY_ARRAY.to_string());
+    let payload = look_engine::launchpad::layout_payload();
+    let json = serde_json::to_string(&payload).unwrap_or_else(|_| JSON_EMPTY_ARRAY.to_string());
     let cstring =
         CString::new(json).unwrap_or_else(|_| CString::new(JSON_EMPTY_ARRAY).expect("valid"));
     store_json_allocation(cstring)
@@ -42,10 +41,8 @@ pub(crate) fn look_quick_actions_launchpad_json_impl() -> *mut c_char {
 /// Anything wrong with `~/.look/launchpad.toml`, as a JSON array of strings, or
 /// `[]` when it is fine, absent, or unreadable in a way already handled.
 ///
-/// Its own call rather than a field beside the tiles, so the layout payload
-/// stays a bare JSON array: the Tauri shell decodes that array directly, and
-/// wrapping it would break a shell this change does not otherwise touch.
-/// Merging the two is for whenever that shell reads resolved coordinates too.
+/// Its own call rather than a field beside the tiles: the layout is re-read on
+/// every reload, and these are wanted only when there is somewhere to show them.
 ///
 /// Resolves silently - the layout call has already printed these to stderr, and
 /// this exists to put them somewhere a user who did not launch from a terminal
@@ -92,10 +89,15 @@ mod tests {
         "off_label",
     ];
 
+    /// The payload as the bridges send it.
+    fn live_payload() -> serde_json::Value {
+        serde_json::to_value(look_engine::launchpad::layout_payload())
+            .expect("the layout serialises")
+    }
+
     #[test]
     fn the_launchpad_layout_survives_the_round_trip_to_both_shells() {
-        let live =
-            serde_json::to_value(look_qactions::launchpad_layout()).expect("the layout serialises");
+        let live = live_payload();
 
         if std::env::var_os("UPDATE_FIXTURES").is_some() {
             let pretty = serde_json::to_string_pretty(&live).expect("serialises");
@@ -117,9 +119,15 @@ mod tests {
 
     #[test]
     fn a_layout_that_decodes_to_nothing_is_indistinguishable_from_a_broken_one() {
-        let live =
-            serde_json::to_value(look_qactions::launchpad_layout()).expect("the layout serialises");
-        let tiles = live.as_array().expect("an array of tiles");
+        let live = live_payload();
+        let payload = live.as_object().expect("a payload object");
+        for key in ["columns", "rows", "tiles"] {
+            assert!(
+                payload.contains_key(key),
+                "the payload is missing {key}, which both shells read by that name"
+            );
+        }
+        let tiles = payload["tiles"].as_array().expect("an array of tiles");
 
         // Non-empty is the assertion that matters: both shells fall back to an
         // empty list on a decode failure, so "no tiles" is exactly what a

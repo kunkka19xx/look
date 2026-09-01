@@ -45,7 +45,7 @@ enum LaunchpadTileRole: String, Decodable {
 }
 
 /// A single launchpad tile, decoded from the shared catalog.
-struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
+nonisolated struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
     let actionId: String
     let title: String
     let size: LaunchpadTileSize
@@ -94,5 +94,37 @@ struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
         // serde serializes a `char` as a single-character string; take its first
         // character (nil when absent or empty).
         mnemonic = try container.decodeIfPresent(String.self, forKey: .mnemonic)?.first
+    }
+}
+
+/// The launchpad payload: the tiles and the shape the core resolved them
+/// against. `shape` is nil for the bare tile array a lib older than the shape
+/// sends, and the grid derives one then.
+nonisolated struct LaunchpadLayout: Decodable, Equatable {
+    let tiles: [LaunchpadTileModel]
+    let shape: LaunchpadGrid.Shape?
+
+    static let empty = LaunchpadLayout(tiles: [], shape: nil)
+
+    init(tiles: [LaunchpadTileModel], shape: LaunchpadGrid.Shape?) {
+        self.tiles = tiles
+        self.shape = shape
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case tiles
+    }
+
+    init(from decoder: Decoder) throws {
+        guard let container = try? decoder.container(keyedBy: CodingKeys.self),
+              let tiles = try? container.decode([LaunchpadTileModel].self, forKey: .tiles)
+        else {
+            self.tiles = try [LaunchpadTileModel](from: decoder)
+            shape = nil
+            return
+        }
+        self.tiles = tiles
+        // `columns` / `rows` sit beside `tiles`, in this same container.
+        shape = try? LaunchpadGrid.Shape(from: decoder)
     }
 }

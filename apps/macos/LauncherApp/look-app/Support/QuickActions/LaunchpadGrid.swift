@@ -15,20 +15,21 @@ struct LaunchpadGrid {
     private let rowHeight: CGFloat
     private let gap: CGFloat
 
-    /// The grid the tiles imply.
-    ///
-    /// Derived from how far they reach rather than declared, because the core
-    /// sends a bare array of tiles and the drawing's own width does not cross
-    /// the FFI. The one case this gets wrong is a deliberately empty trailing
-    /// column or row: a six-wide drawing whose last column is all "." reaches
-    /// only five, so every tile renders a sixth wider than drawn. Fixing it
-    /// means putting `columns`/`rows` on the wire, which is a change both
-    /// shells' decoders have to make together.
-    init(tiles: [LaunchpadTileModel], rowHeight: CGFloat, gap: CGFloat) {
+    /// The shape a drawing declared, as the core resolved it.
+    nonisolated struct Shape: Decodable, Equatable {
+        let columns: Int
+        let rows: Int
+    }
+
+    /// The declared shape, else how far the tiles reach. Deriving is the
+    /// fallback because it cannot see a trailing empty track: a six-wide drawing
+    /// whose last column is all "." reaches five, and every tile renders a sixth
+    /// too wide.
+    init(tiles: [LaunchpadTileModel], declared: Shape? = nil, rowHeight: CGFloat, gap: CGFloat) {
         // At least 1: an empty layout must not divide by zero. The core
         // guarantees it never sends one, and this does not depend on that.
-        columns = max(1, tiles.map { $0.col + $0.columnSpan }.max() ?? 0)
-        rows = max(1, tiles.map { $0.row + $0.rowSpanCount }.max() ?? 0)
+        columns = max(1, declared?.columns ?? tiles.map { $0.col + $0.columnSpan }.max() ?? 0)
+        rows = max(1, declared?.rows ?? tiles.map { $0.row + $0.rowSpanCount }.max() ?? 0)
         self.rowHeight = rowHeight
         self.gap = gap
     }

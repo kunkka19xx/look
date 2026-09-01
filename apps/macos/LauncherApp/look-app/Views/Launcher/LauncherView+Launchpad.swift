@@ -5,13 +5,16 @@ import Foundation
 /// key presses to it. Rendering lives in `EmptyStateLaunchpadView`; the mock
 /// interactive state lives in `LaunchpadController`.
 extension LauncherView {
+    /// The tiles alone, for everything that places or activates one.
+    var launchpadTiles: [LaunchpadTileModel] { launchpadLayout.tiles }
+
     /// Decodes the shared launchpad layout once and wires the controller's
     /// banner sink. Idempotent, so it is safe to call from `onAppear`. Skipped
     /// entirely while Settings → Appearance → Super Actions is off.
     func configureLaunchpadIfNeeded() {
         guard themeStore.settings.superActionsEnabled else { return }
         if launchpadTiles.isEmpty {
-            launchpadTiles = EngineBridge.shared.launchpadLayout()
+            launchpadLayout = EngineBridge.shared.launchpadLayout()
             launchpadController.configure(tiles: launchpadTiles)
             // Once per process, not per open: this branch is the first load, so
             // a broken drawing says so when the launcher first appears without
@@ -45,9 +48,9 @@ extension LauncherView {
         // Most reloads are about something else entirely, and the drawing is
         // usually untouched. Comparing first keeps those from re-reading every
         // adapter for a grid that did not move.
-        if reloaded != launchpadTiles {
-            launchpadTiles = reloaded
-            launchpadController.configure(tiles: reloaded)
+        if reloaded != launchpadLayout {
+            launchpadLayout = reloaded
+            launchpadController.configure(tiles: reloaded.tiles)
             // A tile the drawing just added has never been read: its adapter
             // state is resolved on launcher open, so without this it would sit
             // on the placeholder until the window was closed and reopened.

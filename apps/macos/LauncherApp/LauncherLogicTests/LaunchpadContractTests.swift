@@ -16,23 +16,20 @@ import XCTest
 ///
 ///     UPDATE_FIXTURES=1 cargo test --manifest-path bridge/ffi/Cargo.toml
 final class LaunchpadContractTests: XCTestCase {
-    private func fixtureJSON() throws -> Data {
-        // Up from LauncherLogicTests/ to the repo root: LauncherApp, macos,
-        // apps, then the root itself.
-        var root = URL(fileURLWithPath: #filePath)
-        for _ in 0..<5 { root.deleteLastPathComponent() }
-        let fixture = root.appendingPathComponent("bridge/ffi/tests/fixtures/launchpad_layout.json")
-        return try Data(contentsOf: fixture)
+    private func fixtureTiles() throws -> [LaunchpadTileModel] {
+        try LaunchpadFixture.layout().tiles
     }
 
-    private func decode(_ data: Data) throws -> [LaunchpadTileModel] {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode([LaunchpadTileModel].self, from: data)
+    /// The payload as a lib built before the shape joined it sends: the tile
+    /// array on its own.
+    private func bareTileArray() throws -> Data {
+        let object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: LaunchpadFixture.json()) as? [String: Any])
+        return try JSONSerialization.data(withJSONObject: XCTUnwrap(object["tiles"]))
     }
 
     func testTheCoresLayoutDecodesIntoTiles() throws {
-        let tiles = try decode(fixtureJSON())
+        let tiles = try fixtureTiles()
 
         // Non-empty is the whole point: `[]` is exactly what the shipping
         // decode path produces when the contract is broken, so a test that
@@ -44,9 +41,25 @@ final class LaunchpadContractTests: XCTestCase {
         }
     }
 
+    func testTheLayoutArrivesWithTheShapeTheDrawingDeclared() throws {
+        // Derived from the tiles this would also be 6x3, which is the point: a
+        // drawing whose last column is empty only differs from its own extent,
+        // so the declared shape has to be what the payload carries.
+        XCTAssertEqual(try LaunchpadFixture.layout().shape, LaunchpadGrid.Shape(columns: 6, rows: 3))
+    }
+
+    func testABareTileArrayStillDecodes() throws {
+        // An app bundle linked against an older liblook_ffi.a sends this. It
+        // has to keep rendering, with the grid deriving its own shape.
+        let layout = try LaunchpadFixture.decode(LaunchpadLayout.self, from: bareTileArray())
+
+        XCTAssertFalse(layout.tiles.isEmpty, "the tiles still decode without the wrapper")
+        XCTAssertNil(layout.shape, "there is no declared shape to read")
+    }
+
     func testEveryTileArrivesWithItsResolvedCell() throws {
         let byID = Dictionary(
-            try decode(fixtureJSON()).map { ($0.actionId, $0) }, uniquingKeysWith: { first, _ in first })
+            try fixtureTiles().map { ($0.actionId, $0) }, uniquingKeysWith: { first, _ in first })
 
         func cell(_ id: String) -> [Int]? {
             byID[id].map { [$0.col, $0.row, $0.columnSpan, $0.rowSpanCount] }
@@ -63,7 +76,7 @@ final class LaunchpadContractTests: XCTestCase {
     }
 
     func testTheDecodedGridTilesWithNoGapOrOverlap() throws {
-        let tiles = try decode(fixtureJSON())
+        let tiles = try fixtureTiles()
         var owner: [String: String] = [:]
 
         for tile in tiles {
@@ -84,7 +97,7 @@ final class LaunchpadContractTests: XCTestCase {
 
     func testMnemonicsAndLabelsSurviveTheSnakeCaseConversion() throws {
         let byID = Dictionary(
-            try decode(fixtureJSON()).map { ($0.actionId, $0) }, uniquingKeysWith: { first, _ in first })
+            try fixtureTiles().map { ($0.actionId, $0) }, uniquingKeysWith: { first, _ in first })
 
         // `mnemonic` decodes from a one-character string, and Cmd+<char> is
         // dead rather than wrong when it arrives nil.

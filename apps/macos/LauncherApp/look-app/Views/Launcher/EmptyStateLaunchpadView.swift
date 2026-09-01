@@ -7,6 +7,8 @@ import SwiftUI
 /// slot, which reads the live Todo / Pomo stores.
 struct EmptyStateLaunchpadView: View {
     let tiles: [LaunchpadTileModel]
+    /// The shape the drawing declared, when the payload carries one.
+    var shape: LaunchpadGrid.Shape?
     var controller: LaunchpadController
     var themeStore: ThemeStore
     /// Changes each time the launcher opens, replaying the spawn cascade.
@@ -16,7 +18,7 @@ struct EmptyStateLaunchpadView: View {
 
     /// Cells to points. Cheap enough to rebuild; it is four numbers.
     private var grid: LaunchpadGrid {
-        LaunchpadGrid(tiles: tiles, rowHeight: Const.rowHeight, gap: Const.gap)
+        LaunchpadGrid(tiles: tiles, declared: shape, rowHeight: Const.rowHeight, gap: Const.gap)
     }
 
     var body: some View {

@@ -82,9 +82,10 @@ let statsEl = null;
 // never shows and its accelerators never fire; setVisible collapses to hidden.
 let enabled = true;
 
-// The shared catalog layout. Rendered from, never mutated. Fetched lazily and
-// retried until it lands (see ensureLayout); layoutFetch is the in-flight request.
-let layoutTiles = null;
+// The shared catalog layout: `{ tiles, columns, rows }`. Rendered from, never
+// mutated. Fetched lazily and retried until it lands (see ensureLayout);
+// layoutFetch is the in-flight request.
+let layout = null;
 let layoutFetch = null;
 // True while a reveal is awaiting the layout, so a second caller (init vs a
 // summon) doesn't run the reveal a second time and replay the animation.
@@ -203,11 +204,11 @@ export function init(containerEl) {
 // (the backend can be briefly unready at startup). Concurrent callers share one
 // request. Resolves to whether the layout is now available.
 function ensureLayout() {
-    if (layoutTiles) return Promise.resolve(true);
+    if (layout) return Promise.resolve(true);
     if (!layoutFetch) {
         layoutFetch = launchpadLayout()
-            .then((tiles) => {
-                layoutTiles = tiles;
+            .then((resolved) => {
+                layout = resolved;
                 // Once per process, not per open: a broken drawing says so when
                 // the launchpad first appears, without nagging on every summon.
                 readWarnings().then(warningBanner);
@@ -217,7 +218,7 @@ function ensureLayout() {
                 layoutFetch = null;
             });
     }
-    return layoutFetch.then(() => !!layoutTiles);
+    return layoutFetch.then(() => !!layout);
 }
 
 /** Anything wrong with the drawing. Empty on the happy path and on failure. */
@@ -260,17 +261,17 @@ export function warningBanner(warnings) {
  */
 export async function reload() {
     if (!enabled) return [];
-    let tiles = null;
+    let reloaded = null;
     try {
-        tiles = await launchpadLayout();
+        reloaded = await launchpadLayout();
     } catch {
         return [];
     }
     // Most reloads are about something else and leave the drawing untouched.
     // Comparing first keeps those from re-reading every adapter for a grid that
     // did not move.
-    if (tiles.length && JSON.stringify(tiles) !== JSON.stringify(layoutTiles)) {
-        layoutTiles = tiles;
+    if (reloaded.tiles.length && JSON.stringify(reloaded) !== JSON.stringify(layout)) {
+        layout = reloaded;
         built = false;
         clearConfirm();
         if (visible) await buildAndReveal();
@@ -358,7 +359,7 @@ export function isEnabled() {
 // Fetches the layout first if needed, so a summon before/after a failed prefetch
 // still builds instead of no-opping forever.
 async function buildAndReveal() {
-    if (!layoutTiles) {
+    if (!layout) {
         if (revealPending) return; // another caller is already awaiting the layout
         revealPending = true;
         const ready = await ensureLayout();
@@ -367,7 +368,7 @@ async function buildAndReveal() {
     }
     if (!visible) return; // hidden again while the layout was in flight
     if (!built) {
-        render(layoutTiles);
+        render(layout);
         built = true;
     }
     refreshState();
@@ -967,7 +968,8 @@ function todayKey() {
 
 // --- Rendering --------------------------------------------------------------
 
-function render(tiles) {
+function render(layout) {
+    const { tiles } = layout;
     tilesById = new Map();
     mnemonicIndex = new Map();
     controls = new Map();
@@ -982,10 +984,7 @@ function render(tiles) {
     // CSS used to declare `grid-template-areas` and every tile's `grid-area`,
     // which meant the arrangement was written once in the core and again here,
     // and the two had to agree. The core resolves it now and this only draws.
-    //
-    // Derived from the tiles rather than sent alongside them, matching what the
-    // macOS shell does, because the payload is a bare array of tiles.
-    const shape = gridShape(tiles);
+    const shape = gridShape(tiles, layout);
     grid.style.setProperty('--ctl-cols', shape.columns);
     grid.style.setProperty('--ctl-rows', shape.rows);
 

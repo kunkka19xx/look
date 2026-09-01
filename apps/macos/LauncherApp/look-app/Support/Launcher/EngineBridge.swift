@@ -1262,13 +1262,13 @@ final class EngineBridge: @unchecked Sendable {
     /// tile arrives knowing the cell it occupies. Reads a small file, so it is
     /// cheap but not free - call it on a reload, not per frame. Empty only on
     /// an unexpected decode failure.
-    nonisolated func launchpadLayout() -> [LaunchpadTileModel] {
-        guard let ptr = look_quick_actions_launchpad_json() else { return [] }
+    nonisolated func launchpadLayout() -> LaunchpadLayout {
+        guard let ptr = look_quick_actions_launchpad_json() else { return .empty }
         defer { look_free_cstring(ptr) }
-        guard let data = String(cString: ptr).data(using: .utf8) else { return [] }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return .empty }
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return (try? decoder.decode([LaunchpadTileModel].self, from: data)) ?? []
+        return (try? decoder.decode(LaunchpadLayout.self, from: data)) ?? .empty
     }
 
     /// What is wrong with the user's `launchpad.toml`, empty when nothing is.

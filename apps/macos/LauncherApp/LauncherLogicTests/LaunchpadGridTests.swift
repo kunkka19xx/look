@@ -17,23 +17,20 @@ final class LaunchpadGridTests: XCTestCase {
     private let rowHeight: CGFloat = 76
     private let gap: CGFloat = 8
 
-    /// The default layout exactly as the core ships it.
-    ///
-    /// Read from the shared fixture rather than typed out here: a copy of the
-    /// grid in this file would be a third place the layout lives, and the whole
-    /// point of the change is that there is one.
+    /// The default layout exactly as the core ships it. Read from the shared
+    /// fixture: a copy here would be a third place the layout lives.
     private func defaultTiles() -> [LaunchpadTileModel] {
-        var root = URL(fileURLWithPath: #filePath)
-        for _ in 0..<5 { root.deleteLastPathComponent() }
-        let fixture = root.appendingPathComponent("bridge/ffi/tests/fixtures/launchpad_layout.json")
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try! decoder.decode(
-            [LaunchpadTileModel].self, from: try! Data(contentsOf: fixture))
+        try! LaunchpadFixture.layout().tiles
     }
 
-    private func grid(_ tiles: [LaunchpadTileModel]) -> LaunchpadGrid {
-        LaunchpadGrid(tiles: tiles, rowHeight: rowHeight, gap: gap)
+    /// One 1x1 tile at the origin, spelled the way the wire spells one.
+    private func singleTile() -> LaunchpadTileModel {
+        let json = #"{"action_id":"mic","title":"Mic","size":"s","role":"toggle","mnemonic":"M","col":0,"row":0,"col_span":1,"row_span":1,"on_label":null,"off_label":null}"#
+        return try! LaunchpadFixture.decode(LaunchpadTileModel.self, from: Data(json.utf8))
+    }
+
+    private func grid(_ tiles: [LaunchpadTileModel], declared: LaunchpadGrid.Shape? = nil) -> LaunchpadGrid {
+        LaunchpadGrid(tiles: tiles, declared: declared, rowHeight: rowHeight, gap: gap)
     }
 
     func testTheDefaultLayoutIsSixColumnsByThreeRows() {
@@ -43,6 +40,24 @@ final class LaunchpadGridTests: XCTestCase {
         // Three rows of 76 with two 8pt gaps. The height used to be hardcoded
         // to exactly this; it is derived now, so it has to still land here.
         XCTAssertEqual(grid.height, 3 * 76 + 2 * 8)
+    }
+
+    func testADeclaredShapeKeepsATrailingEmptyTrack() {
+        // `layout = ["mic . ."]`: one tile, two holes. Derived from the tile it
+        // reaches one column and `mic` fills the strip; declared, it is a third
+        // of it, which is what the drawing says.
+        let grid = grid([singleTile()], declared: LaunchpadGrid.Shape(columns: 3, rows: 1))
+
+        XCTAssertEqual(grid.columns, 3)
+        XCTAssertEqual(grid.rows, 1)
+        XCTAssertEqual(grid.cellWidth(total: 3 * 100 + 2 * gap), 100, accuracy: 0.001)
+    }
+
+    func testWithoutADeclaredShapeTheTilesStillImplyOne() {
+        // The fallback for an older payload: the extent, exactly as before.
+        let grid = grid(defaultTiles())
+        XCTAssertEqual(grid.columns, 6)
+        XCTAssertEqual(grid.rows, 3)
     }
 
     func testTilesTileTheWidthWithoutGapOrOverlap() {

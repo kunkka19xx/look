@@ -238,9 +238,12 @@ export async function quickActions(resultId, kind) {
     return invoke('quick_actions', { resultId, kind });
 }
 
-// The empty-state launchpad tile layout, from the shared qactions catalog.
+// The empty-state launchpad layout: tiles plus the shape the drawing declared.
+// A backend older than the shape answers with a bare array, normalised here.
 export async function launchpadLayout() {
-    return invoke('launchpad_layout');
+    const payload = await invoke('launchpad_layout');
+    if (Array.isArray(payload)) return { tiles: payload, columns: null, rows: null };
+    return payload;
 }
 
 export async function launchpadWarnings() {

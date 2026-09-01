@@ -85,7 +85,10 @@ final class ThemeStore: ObservableObject {
         // First, scan raw config for invalid values before applying
         if let raw = try? String(contentsOf: configPath, encoding: .utf8) {
             for line in raw.split(whereSeparator: \ .isNewline) {
-                let stripped = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Stripped as the apply pass strips it below: a trailing
+                // `# note` would fail to parse here and be clamped there, silently.
+                let stripped = ConfigFileLines.stripComment(String(line))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
                 guard stripped.firstIndex(of: "=") != nil else { continue }
 
                 let parts = stripped.split(separator: "=", maxSplits: 1)

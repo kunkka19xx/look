@@ -875,7 +875,7 @@ pub extern "C" fn look_qactions_json(result_id: *const c_char, kind: *const c_ch
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// JSON array of launchpad tiles for the empty-state control strip (or `[]`).
+/// The empty-state launchpad layout as `{columns, rows, tiles}` (or `[]`).
 /// The layout is fixed and input-free, so this takes no arguments. Free the
 /// result with `look_free_cstring`.
 #[unsafe(no_mangle)]

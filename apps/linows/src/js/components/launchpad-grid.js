@@ -9,16 +9,16 @@
 // works out an arrangement.
 
 /**
- * The grid the tiles imply.
+ * The shape the drawing declared, or how far the tiles reach without one.
  *
- * Derived from how far they reach rather than sent alongside them, because the
- * layout payload is a bare array of tiles. The one case this gets wrong is a
- * deliberately empty trailing column or row: a six-wide drawing whose last
- * column is all "." reaches only five, so every tile renders a sixth wider than
- * drawn. The macOS shell derives it the same way and is wrong the same way, so
- * the two at least agree; fixing it means putting the shape on the wire.
+ * Deriving is the fallback because it cannot see a trailing empty track: a
+ * six-wide drawing whose last column is all "." reaches five, and every tile
+ * renders a sixth too wide. Mirrored in LaunchpadGrid.swift.
  */
-export function gridShape(tiles) {
+export function gridShape(tiles, declared) {
+    if (declared?.columns && declared?.rows) {
+        return { columns: declared.columns, rows: declared.rows };
+    }
     if (!tiles || tiles.length === 0) return { columns: 1, rows: 1 };
     return {
         columns: Math.max(1, ...tiles.map((t) => t.col + t.col_span)),

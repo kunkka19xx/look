@@ -19,9 +19,10 @@ const root = new URL('../../../', import.meta.url);
 const golden = JSON.parse(
     readFileSync(fileURLToPath(new URL('bridge/ffi/tests/fixtures/launchpad_geometry.json', root)), 'utf8'),
 );
-const layout = JSON.parse(
+const payload = JSON.parse(
     readFileSync(fileURLToPath(new URL('bridge/ffi/tests/fixtures/launchpad_layout.json', root)), 'utf8'),
 );
+const layout = payload.tiles;
 
 test('the core places every tile where the golden says', () => {
     const fromCore = Object.fromEntries(
@@ -51,8 +52,23 @@ test('the golden tiles the grid with no gap and no overlap', () => {
     assert.equal(seen.size, golden.columns * golden.rows, 'every cell is covered');
 });
 
-test('the shell derives the grid the drawing actually reaches', () => {
-    assert.deepEqual(gridShape(layout), { columns: golden.columns, rows: golden.rows });
+test('the shell reads the shape the payload declares', () => {
+    assert.deepEqual(gridShape(layout, payload), { columns: golden.columns, rows: golden.rows });
+});
+
+test('a declared shape keeps a trailing empty track', () => {
+    // `layout = ["mic . ."]`: one tile, two holes. Derived from the tile it is
+    // one column wide and mic fills the strip; declared, it is a third of it.
+    const tiles = [{ action_id: 'mic', col: 0, row: 0, col_span: 1, row_span: 1 }];
+    assert.deepEqual(gridShape(tiles, { columns: 3, rows: 1 }), { columns: 3, rows: 1 });
+});
+
+test('without a declared shape the tiles still imply one', () => {
+    // The fallback for a backend older than the shape.
+    assert.deepEqual(gridShape(layout, { columns: null, rows: null }), {
+        columns: golden.columns,
+        rows: golden.rows,
+    });
 });
 
 test('an empty layout cannot produce a zero-track grid', () => {

@@ -20,13 +20,22 @@ const FIXTURE = fileURLToPath(
     new URL('../../../bridge/ffi/tests/fixtures/launchpad_layout.json', import.meta.url),
 );
 
-const tiles = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+const payload = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+const tiles = payload.tiles;
 
 test('the core layout is not empty', () => {
     // `[]` is what a broken contract looks like from the outside, so this is
     // the assertion the rest depend on rather than a formality.
-    assert.ok(Array.isArray(tiles), 'the layout is an array');
+    assert.ok(Array.isArray(tiles), 'the tiles are an array');
     assert.ok(tiles.length > 0, 'an empty layout is the failure mode, not a pass');
+});
+
+test('the payload carries the shape the drawing declared', () => {
+    // Derived from these tiles it would also be 6x3; the point is that a
+    // drawing whose last column is empty differs from its own extent, so the
+    // shape has to travel rather than be worked out here.
+    assert.equal(typeof payload.columns, 'number', 'columns');
+    assert.equal(typeof payload.rows, 'number', 'rows');
 });
 
 test('every tile carries the keys superactions.js dereferences', () => {

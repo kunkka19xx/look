@@ -163,7 +163,7 @@ Four edits, one mechanism:
 - **Resize** one by repeating its name across more cells. `weather` above stands two rows tall because it appears in both. A tile's cells must form a rectangle.
 - **Leave a gap** on purpose with `.`.
 
-There is no column or row count to declare: the drawing is the count. Every row needs the same number of names, and there is a ceiling of five rows.
+There is no column or row count to declare: the drawing is the count. Every row needs the same number of names, and there is a ceiling of five rows and six columns.
 
 The names are the tile ids - `lslot`, `bluetooth`, `wifi`, `battery`, `theme`, `keepawake`, `screensaver`, `weather`, `mic`, `restart`, `shutdown`, `nowplaying` - and the seeded file lists them with what each one does.
 

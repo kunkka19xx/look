@@ -11,6 +11,7 @@
 //! grid is, and this module owns what the user asked for.
 
 use look_qactions::LaunchpadTile;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -22,10 +23,9 @@ pub const LAUNCHPAD_FILE_ENV: &str = "LOOK_LAUNCHPAD_FILE";
 /// one. Three is today's layout; five leaves room for a band of your own tiles.
 pub const MAX_ROWS: usize = 5;
 
-/// Every coordinate crosses the FFI as a `u8`, so a wider drawing cannot be
-/// represented: the column count and each tile's own would wrap and place the
-/// tiles somewhere else entirely.
-pub const MAX_COLUMNS: usize = u8::MAX as usize;
+/// The strip is one panel wide, so past six the tiles stop being legible. Also
+/// keeps every coordinate inside the `u8` it crosses the FFI as.
+pub const MAX_COLUMNS: usize = 6;
 
 /// A gap the user drew on purpose.
 const HOLE: &str = ".";
@@ -67,6 +67,26 @@ fn extent(tiles: &[LaunchpadTile]) -> (u8, u8) {
     let columns = tiles.iter().map(|t| t.col + t.col_span).max().unwrap_or(0);
     let rows = tiles.iter().map(|t| t.row + t.row_span).max().unwrap_or(0);
     (columns, rows)
+}
+
+/// What a shell decodes. The shape travels rather than being derived from how
+/// far the tiles reach, which cannot see a trailing empty track: `mic . .`
+/// would come out one column wide, stretched across the strip.
+#[derive(Debug, Clone, Serialize)]
+pub struct LayoutPayload {
+    pub columns: u8,
+    pub rows: u8,
+    pub tiles: Vec<LaunchpadTile>,
+}
+
+/// `layout_reported`, in the shape both bridges hand their shell.
+pub fn layout_payload() -> LayoutPayload {
+    let resolved = layout_reported();
+    LayoutPayload {
+        columns: resolved.columns,
+        rows: resolved.rows,
+        tiles: resolved.tiles,
+    }
 }
 
 /// The user's layout, with anything wrong with it printed.
@@ -319,8 +339,8 @@ const DEFAULT_CONTENTS: &str = r#"# Your launchpad - the screen shown when the s
 # cells to make that tile span them; its cells must form a rectangle. Use "."
 # for a deliberate gap. Every row needs the same number of tokens.
 #
-# There is no column or row count to declare: the drawing is the count. Delete
-# this file to go back to these defaults.
+# There is no column or row count to declare: the drawing is the count, up to
+# 5 rows and 6 columns. Delete this file to go back to these defaults.
 
 layout = [
     "lslot       lslot       bluetooth   wifi        battery     weather",
@@ -347,7 +367,7 @@ layout = [
 # Deleting a name removes that tile and leaves a gap where it was - the layout
 # is yours to arrange, so nothing closes up behind it.
 #
-# Up to 5 rows. More are ignored, with a warning on the next open.
+# Up to 5 rows and 6 columns. More are ignored, with a warning on the next open.
 "#;
 
 #[cfg(test)]
@@ -469,13 +489,26 @@ mod tests {
     }
 
     #[test]
-    fn more_columns_than_the_cap_are_dropped_rather_than_refused() {
-        let mut tokens = vec!["mic"];
-        tokens.resize(MAX_COLUMNS + 1, HOLE);
-        let resolved = resolve(&format!("layout = [\"{}\"]", tokens.join(" ")));
+    fn a_trailing_hole_is_a_column_the_shape_still_declares() {
+        let resolved = resolve(r#"layout = ["mic . ."]"#);
 
-        assert_eq!(resolved.columns as usize, MAX_COLUMNS);
-        assert!(resolved.warnings[0].contains(&format!("first {MAX_COLUMNS}")));
+        assert_eq!(resolved.columns, 3);
+        assert_eq!(resolved.tiles.len(), 1);
+        // How far the tiles reach, which is what the shells drew before the
+        // shape travelled with them: one column, mic across the whole strip.
+        let tile = &resolved.tiles[0];
+        assert_eq!(tile.col + tile.col_span, 1);
+    }
+
+    #[test]
+    fn more_columns_than_the_cap_are_dropped_rather_than_refused() {
+        // Spelled out rather than derived from MAX_COLUMNS: a test that builds
+        // its input and its expectation from the constant passes whatever the
+        // constant says, which is the one thing worth catching here.
+        let resolved = resolve(r#"layout = ["mic . . . . . ."]"#);
+
+        assert_eq!(resolved.columns, 6);
+        assert!(resolved.warnings[0].contains("first 6"));
         // Still a working launchpad, not a fallback, exactly as with the rows.
         assert!(!is_default(&resolved));
     }

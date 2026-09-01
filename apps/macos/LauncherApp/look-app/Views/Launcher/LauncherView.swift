@@ -137,9 +137,9 @@ struct LauncherView: View {
     @State var activeCommandID: String?
     @State var commandFeedback = ""
     @State var keyboardMonitor = KeyboardSelectionMonitor()
-    /// Empty-state launchpad: the decoded tile layout (from the shared catalog)
-    /// and the controller holding its interactive state.
-    @State var launchpadTiles: [LaunchpadTileModel] = []
+    /// Empty-state launchpad: the decoded payload (tiles plus the shape the
+    /// drawing declared) and the controller holding its interactive state.
+    @State var launchpadLayout: LaunchpadLayout = .empty
     @State var launchpadController = LaunchpadController()
     @State var speedTest = SpeedTestController()
     @State var searchTask: Task<Void, Never>?
@@ -1330,6 +1330,7 @@ struct LauncherView: View {
                 if isLaunchpadActive {
                     EmptyStateLaunchpadView(
                         tiles: launchpadTiles,
+                        shape: launchpadLayout.shape,
                         controller: launchpadController,
                         themeStore: themeStore,
                         revealToken: appearanceRevealToken
