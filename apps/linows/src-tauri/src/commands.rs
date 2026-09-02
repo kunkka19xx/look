@@ -413,16 +413,34 @@ fn mark_hide_requested_now() {
     *hidden_at = Some(Instant::now());
 }
 
-fn should_clear_query_on_show() -> bool {
-    let hidden_at = LAST_HIDE_REQUESTED_AT
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .take();
+fn take_hide_timestamp_if_shown(
+    hidden_at: &mut Option<Instant>,
+    show_succeeded: bool,
+) -> Option<Instant> {
+    if !show_succeeded {
+        return None;
+    }
+    hidden_at.take()
+}
+
+fn query_clear_decision_after_show(show_succeeded: bool) -> Option<bool> {
+    let hidden_at = {
+        let mut hidden_at = LAST_HIDE_REQUESTED_AT
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        take_hide_timestamp_if_shown(&mut hidden_at, show_succeeded)
+    };
+    if !show_succeeded {
+        return None;
+    }
     let Some(hidden_at) = hidden_at else {
-        return false;
+        return Some(false);
     };
     let timeout_secs = crate::config::launcher_query_clear_after_hide_seconds();
-    query_clear_timeout_elapsed(hidden_at.elapsed(), timeout_secs)
+    Some(query_clear_timeout_elapsed(
+        hidden_at.elapsed(),
+        timeout_secs,
+    ))
 }
 
 fn query_clear_timeout_elapsed(hidden_for: Duration, timeout_secs: i64) -> bool {
@@ -498,22 +516,36 @@ pub fn launcher_visible(window: &tauri::WebviewWindow) -> bool {
     window.is_visible().unwrap_or(false)
 }
 
-/// Drop any dismissal in flight, show, and keep niri from tiling the window.
-/// Every show goes through here.
+/// Default show path when no native geometry adjustment is needed before the
+/// frontend event.
 pub fn show_launcher(window: &tauri::WebviewWindow) {
+    show_launcher_before_event(window, || {});
+}
+
+/// Show the launcher, apply any final native geometry, then notify the frontend.
+/// Tiling WMs can only reposition a mapped window, so their toggle path uses
+/// this hook to recenter after `show` but before focus and reveal animations.
+/// Every show ultimately goes through here.
+pub fn show_launcher_before_event(window: &tauri::WebviewWindow, before_event: impl FnOnce()) {
     PENDING_HIDE.store(0, Ordering::Relaxed);
-    let clear_query = should_clear_query_on_show();
     #[cfg(target_os = "linux")]
     if crate::platform::linux::layer_shell::is_active() {
         crate::platform::linux::layer_shell::show();
+        before_event();
+        let Some(clear_query) = query_clear_decision_after_show(true) else {
+            return;
+        };
         let _ = window.emit(crate::consts::EVENT_WINDOW_SHOWN, clear_query);
         return;
     }
-    let _ = window.show();
+    let Some(clear_query) = query_clear_decision_after_show(window.show().is_ok()) else {
+        return;
+    };
     #[cfg(target_os = "linux")]
     if crate::platform::linux::wm::is_niri() {
         crate::platform::linux::niri::ensure_self_floating();
     }
+    before_event();
     let _ = window.emit(crate::consts::EVENT_WINDOW_SHOWN, clear_query);
 }
 
@@ -1093,8 +1125,29 @@ fn find_desktop_file(id_path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::query_clear_timeout_elapsed;
-    use std::time::Duration;
+    use super::{query_clear_timeout_elapsed, take_hide_timestamp_if_shown};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn failed_show_preserves_hide_timestamp_for_next_attempt() {
+        let expected = Instant::now();
+        let mut hidden_at = Some(expected);
+
+        assert_eq!(take_hide_timestamp_if_shown(&mut hidden_at, false), None);
+        assert_eq!(hidden_at, Some(expected));
+    }
+
+    #[test]
+    fn successful_show_consumes_hide_timestamp() {
+        let expected = Instant::now();
+        let mut hidden_at = Some(expected);
+
+        assert_eq!(
+            take_hide_timestamp_if_shown(&mut hidden_at, true),
+            Some(expected)
+        );
+        assert_eq!(hidden_at, None);
+    }
 
     #[test]
     fn query_clear_timeout_preserves_query_before_boundary() {

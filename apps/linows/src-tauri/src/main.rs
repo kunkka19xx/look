@@ -141,10 +141,11 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
             }
             let _ = window.set_always_on_top(true);
         }
-        commands::show_launcher(&window);
-        if !placed_by_compositor && tiling {
-            recenter_window(&window);
-        }
+        commands::show_launcher_before_event(&window, || {
+            if !placed_by_compositor && tiling {
+                recenter_window(&window);
+            }
+        });
         // For X11 windows (native X11, or XWayland when the AppImage forces
         // GDK_BACKEND=x11), bypass the compositor's focus-stealing
         // prevention by bumping _NET_WM_USER_TIME before activation.
