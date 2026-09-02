@@ -71,6 +71,30 @@ test('the toggle tiles carry the captions their state line reads', () => {
     assert.equal(typeof theme.off_label, 'string');
 });
 
+test('a tile the user declared is drawn rather than falling through', () => {
+    // Before this, `custom` hit buildTile's default: and rendered a bare
+    // frosted card - right cell, no contents. Harmless next to what macOS did
+    // (one user tile emptied the whole strip), but still a blank tile.
+    const custom = JSON.parse(
+        readFileSync(
+            fileURLToPath(new URL('../../../bridge/ffi/tests/fixtures/launchpad_custom_tile.json', import.meta.url)),
+            'utf8',
+        ),
+    );
+    const tile = custom.tiles[0];
+    assert.equal(tile.role, 'custom');
+    assert.equal(tile.action_id, 'ci');
+    assert.equal(tile.title, 'Ci', 'the name was title-cased into a label');
+    assert.equal(tile.mnemonic, 'C');
+
+    const source = readFileSync(
+        fileURLToPath(new URL('../src/js/components/superactions.js', import.meta.url)),
+        'utf8',
+    );
+    assert.ok(/case 'custom':/.test(source), 'buildTile handles the role');
+    assert.ok(/function buildCustom\(/.test(source), 'and has a builder for it');
+});
+
 test('no tile needs the shell to know its id in order to be placed', () => {
     // There used to be an AREA map here: action_id -> a CSS grid-area, which had
     // to list every tile or that tile escaped its cell and landed wherever the

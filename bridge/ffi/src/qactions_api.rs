@@ -9,6 +9,12 @@ use std::os::raw::c_char;
 
 const JSON_EMPTY_ARRAY: &str = "[]";
 
+/// Hands `json` to the shells, falling back to `empty` if it holds a NUL.
+fn store_json(json: String, empty: &str) -> *mut c_char {
+    let cstring = CString::new(json).unwrap_or_else(|_| CString::new(empty).expect("valid"));
+    store_json_allocation(cstring)
+}
+
 /// JSON array of `ActionDescriptor` for the result `(result_id, kind)`, or `[]`.
 pub(crate) fn look_qactions_json_impl(
     result_id: *const c_char,
@@ -55,6 +61,35 @@ pub(crate) fn look_launchpad_warnings_json_impl() -> *mut c_char {
     store_json_allocation(cstring)
 }
 
+/// What each user tile currently shows. Reads the cache; runs nothing, so it is
+/// safe on the path that draws the strip.
+pub(crate) fn look_launchpad_tile_values_json_impl() -> *mut c_char {
+    let values = look_engine::launchpad_values::cached();
+    store_json(
+        serde_json::to_string(&values).unwrap_or_else(|_| "{}".to_string()),
+        "{}",
+    )
+}
+
+/// Runs every stale tile and stores what it prints. Spawns and blocks: never on
+/// the thread the launchpad is drawn on.
+pub(crate) fn look_launchpad_refresh_tiles_json_impl() -> *mut c_char {
+    let outcome = look_engine::launchpad_values::refresh();
+    let payload = serde_json::json!({
+        "refreshed": outcome.refreshed,
+        "errors": outcome.errors,
+    });
+    store_json(payload.to_string(), "{}")
+}
+
+/// Runs a user tile's `press`, named by the tile. The command never crosses this
+/// boundary, so a shell cannot run something the drawing did not declare.
+pub(crate) fn look_launchpad_press_tile_json_impl(name: *const c_char) -> *mut c_char {
+    let name = cstr_to_string(name);
+    let error = look_engine::launchpad_values::press(&name).err();
+    store_json(serde_json::json!({ "error": error }).to_string(), "{}")
+}
+
 #[cfg(test)]
 mod tests {
     /// The exact JSON both shells decode, as a file rather than an inline
@@ -75,7 +110,7 @@ mod tests {
     /// `onLabel`; the JS shell reads the raw object, so it reads `action_id`
     /// and `on_label`. The two shells never read the same string, which is why
     /// pinning the wire spelling is what protects both.
-    const WIRE_KEYS: [&str; 11] = [
+    const WIRE_KEYS: [&str; 14] = [
         "action_id",
         "title",
         "size",
@@ -87,6 +122,9 @@ mod tests {
         "row_span",
         "on_label",
         "off_label",
+        "pressable",
+        "has_value",
+        "confirm",
     ];
 
     /// The payload as the bridges send it, resolved from the seeded drawing
@@ -99,26 +137,59 @@ mod tests {
         serde_json::to_value(payload).expect("the layout serialises")
     }
 
-    #[test]
-    fn the_launchpad_layout_survives_the_round_trip_to_both_shells() {
-        let live = live_payload();
+    /// Its own fixture because the default has no user tile, and that gap hid a
+    /// real break: an unknown `role` failed the whole decode on macOS and
+    /// `try?` swallowed it, emptying the launchpad silently.
+    const CUSTOM_FIXTURE_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/launchpad_custom_tile.json"
+    );
 
+    fn custom_payload() -> serde_json::Value {
+        let resolved = look_engine::launchpad::resolve(
+            r#"
+layout = ["ci  ci"]
+
+[tiles.ci]
+value    = "~/.look/bin/ci"
+press    = "open https://ci.example.com"
+mnemonic = "C"
+"#,
+        );
+        let payload = look_engine::launchpad::LayoutPayload::from(resolved);
+        serde_json::to_value(payload).expect("the layout serialises")
+    }
+
+    /// Compares against the checked-in fixture, or rewrites it under
+    /// UPDATE_FIXTURES. Both shells' tests read these same files, so a wire
+    /// change fails in all three places at once.
+    fn assert_matches_fixture(live: &serde_json::Value, path: &str) {
         if std::env::var_os("UPDATE_FIXTURES").is_some() {
-            let pretty = serde_json::to_string_pretty(&live).expect("serialises");
-            std::fs::write(FIXTURE_PATH, format!("{pretty}\n")).expect("fixture is writable");
+            let pretty = serde_json::to_string_pretty(live).expect("serialises");
+            std::fs::write(path, format!("{pretty}\n")).expect("fixture is writable");
             return;
         }
-
         let fixture: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(FIXTURE_PATH).expect("fixture is there"))
+            serde_json::from_str(&std::fs::read_to_string(path).expect("fixture is there"))
                 .expect("the fixture is valid JSON");
-
         assert_eq!(
-            live, fixture,
-            "the launchpad wire format changed. The Swift and JS tests read this \
-             same fixture, so update all three together: regenerate with \
-             UPDATE_FIXTURES=1 cargo test --manifest-path bridge/ffi/Cargo.toml"
+            live, &fixture,
+            "the launchpad wire format changed. Regenerate with UPDATE_FIXTURES=1 \
+             cargo test --manifest-path bridge/ffi/Cargo.toml"
         );
+    }
+
+    #[test]
+    fn a_user_tile_survives_the_round_trip_to_both_shells() {
+        let live = custom_payload();
+        // The tile really is the user's, not a built-in that happens to parse.
+        assert_eq!(live["tiles"][0]["role"], "custom");
+        assert_matches_fixture(&live, CUSTOM_FIXTURE_PATH);
+    }
+
+    #[test]
+    fn the_launchpad_layout_survives_the_round_trip_to_both_shells() {
+        assert_matches_fixture(&live_payload(), FIXTURE_PATH);
     }
 
     #[test]

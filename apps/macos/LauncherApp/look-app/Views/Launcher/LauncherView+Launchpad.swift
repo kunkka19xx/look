@@ -27,19 +27,13 @@ extension LauncherView {
         }
     }
 
-    /// Re-reads the layout, ignoring the "already loaded" guard above.
+    /// Re-reads the layout, ignoring the "already loaded" guard above:
+    /// arranging tiles is an edit-and-look loop, and without this every edit
+    /// would appear to do nothing until the app restarted.
     ///
-    /// The tiles are decoded once per process, which was right while the grid
-    /// was a compile-time constant. It is not any more: ~/.look/launchpad.toml
-    /// decides the arrangement, and arranging tiles is an edit-and-look loop.
-    /// Without this, every edit would appear to do nothing until the app was
-    /// restarted, which reads as the feature being broken rather than as the
-    /// layout being cached.
-    /// Returns what is wrong with the drawing rather than showing it, so the
-    /// caller folds it into one banner. `reloadConfig` warns that posting a
-    /// second one "would replace any config warnings reported here before the
-    /// user could read them", and a broken launchpad is exactly the case where
-    /// both have something to say.
+    /// Returns the warnings rather than showing them, so the caller folds them
+    /// into one banner - a second banner would replace the config warnings
+    /// before the user could read them.
     @discardableResult
     func reloadLaunchpad() -> [String] {
         guard themeStore.settings.superActionsEnabled else { return [] }
@@ -92,6 +86,8 @@ extension LauncherView {
         guard themeStore.settings.superActionsEnabled else { return }
         Task { await launchpadController.refreshStates() }
         Task { await launchpadController.refreshWeather() }
+        // Off the main thread; the strip draws from the cache meanwhile.
+        Task { await launchpadController.refreshCustomValues() }
     }
 
     /// Builds and refreshes the launchpad when the Super Actions setting is

@@ -51,7 +51,10 @@ import {
 } from '../icons.js';
 import {
     launchpadLayout,
+    launchpadTileValues,
     launchpadWarnings,
+    refreshLaunchpadTiles,
+    pressLaunchpadTile,
     quickActionState,
     quickActionApply,
     weatherCurrent,
@@ -117,6 +120,7 @@ let lunarKey = null;
 let weatherEls = null;
 let mediaEls = null;
 let weatherToken = 0;
+let customToken = 0;
 let mediaToken = 0;
 // 'internal' (pomo) or 'mpris': the source that last actually played. Breaks the
 // tie when both are paused so the tile resumes whichever the user last used.
@@ -440,6 +444,30 @@ function activate(id) {
         return true;
     }
 
+    // No adapter: the core holds the command and runs it by name.
+    if (ctl?.role === 'custom') {
+        if (!ctl.pressable) return true;
+        // Its own `confirm`, through the same arm-then-fire prompt the
+        // destructive built-ins use, so "are you sure" looks the same wherever
+        // it came from.
+        if (ctl.confirm && pendingConfirmId !== id) {
+            // Same arm-then-fire prompt the destructive built-ins use: the tile
+            // says "Confirm?" on its own face, because there is no dialog and
+            // if the tile does not show it, nothing does.
+            armConfirm(id, ctl);
+            return true;
+        }
+        clearConfirm();
+        flash(el);
+        pressLaunchpadTile(id)
+            .then((error) => {
+                if (error) banner.show(error, 'error');
+                else refreshCustomTiles((customToken += 1));
+            })
+            .catch(() => {});
+        return true;
+    }
+
     // Destructive buttons arm on the first press and fire on the second.
     if (ctl?.wired && ctl.role === 'action' && ctl.danger) {
         if (pendingConfirmId === id) {
@@ -597,6 +625,9 @@ function refreshState() {
     const myToken = (stateToken += 1);
     for (const [id, ctl] of controls) refreshControl(id, ctl, myToken);
     refreshWeather((weatherToken += 1));
+    // Shares the summon token: a superseded open must not let a late
+    // value land on tiles that have since been torn down.
+    refreshCustomTiles((customToken += 1));
     refreshNowPlaying((mediaToken += 1));
 }
 
@@ -1034,7 +1065,12 @@ function buildTile(tile) {
             return buildAction(tile);
         case 'media':
             return buildMedia(tile);
+        case 'custom':
+            return buildCustom(tile);
         default:
+            // A role this build has never heard of. A bare tile keeps its cell
+            // rather than escaping the grid, which is the same bargain the
+            // shape fallback makes for a payload from an older core.
             return tileEl(tile.action_id, 'action');
     }
 }
@@ -1196,6 +1232,119 @@ function buildInfo(tile) {
         valueEl: text.querySelector('.ctl-value'),
     });
     return el;
+}
+
+// A tile the user declared in ~/.look/launchpad.toml. Same anatomy as the tiles
+// beside it; the core runs the command and this only draws the result.
+function buildCustom(tile) {
+    // A tile that only acts is drawn like Mic and Screensaver: a glyph over a
+    // name. A placeholder would be a permanent "--".
+    if (!tile.has_value) {
+        const el = tileEl(tile.action_id, 'action');
+        el.appendChild(iconSpan(ICON[tile.action_id] || power));
+        const label = document.createElement('span');
+        label.className = 'ctl-label';
+        label.innerHTML = labelHTML(tile.title, tile.mnemonic);
+        el.appendChild(label);
+        controls.set(tile.action_id, {
+            role: 'custom',
+            el,
+            title: tile.title,
+            actionId: tile.action_id,
+            pressable: Boolean(tile.pressable),
+            confirm: tile.confirm || null,
+            mnemonic: tile.mnemonic || null,
+            labelEl: label,
+        });
+        // Without this the tile has no tilesById entry, so activate() bails on
+        // its first line and neither click nor mnemonic reaches it.
+        bindActionable(el, tile);
+        return el;
+    }
+
+    const el = tileEl(tile.action_id, 'custom');
+    el.appendChild(iconSpan(''));
+
+    const text = document.createElement('span');
+    text.className = 'ctl-text';
+    // One cell fits the headline alone.
+    const roomy = tile.row_span > 1 || tile.col_span > 1;
+    text.innerHTML =
+        `<span class="ctl-caps">${labelHTML(tile.title, tile.mnemonic)}</span>` +
+        `<span class="ctl-value">--</span>` +
+        (roomy ? '<span class="ctl-custom-caption"></span><span class="ctl-custom-lines"></span>' : '');
+    el.appendChild(text);
+
+    controls.set(tile.action_id, {
+        role: 'custom',
+        el,
+        title: tile.title,
+        actionId: tile.action_id,
+        // A tile with no `press` is a readout.
+        pressable: Boolean(tile.pressable),
+        confirm: tile.confirm || null,
+        // Decides whether the caption may replace the name.
+        mnemonic: tile.mnemonic || null,
+        // Also the label an armed confirm writes into.
+        labelEl: text.querySelector('.ctl-caps'),
+        iconEl: el.querySelector('.ctl-icon'),
+        valueEl: text.querySelector('.ctl-value'),
+        captionEl: text.querySelector('.ctl-custom-caption'),
+        linesEl: text.querySelector('.ctl-custom-lines'),
+    });
+    bindActionable(el, tile);
+    return el;
+}
+
+// Two calls on purpose: the first reads a cache and returns at once, so the
+// strip never waits on a command to paint; the second spawns.
+async function refreshCustomTiles(myToken) {
+    const custom = [...controls.values()].filter((c) => c.role === 'custom' && c.valueEl);
+    if (custom.length === 0) return;
+
+    const apply = (values) => {
+        if (myToken !== customToken) return;
+        for (const ctl of custom) {
+            const v = values?.[ctl.actionId];
+            // No entry: never run, or printed nothing - which hides the tile.
+            ctl.el.hidden = !v;
+            if (!v) continue;
+            ctl.valueEl.textContent = v.value ?? '--';
+            ctl.el.classList.toggle('is-active', (v.state || '').toLowerCase() === 'on');
+            if (ctl.iconEl) ctl.iconEl.innerHTML = v.icon ? (ICON[v.icon] || '') : '';
+            // The command's caption wins over the tile's name, as Weather shows
+            // the condition. Unless the tile has a key: that letter is in the name.
+            if (!ctl.mnemonic && v.caption) {
+                ctl.labelEl.textContent = v.caption;
+            }
+            if (ctl.captionEl) {
+                ctl.captionEl.textContent = ctl.mnemonic ? v.caption || '' : '';
+            }
+            if (ctl.linesEl) {
+                ctl.linesEl.innerHTML = '';
+                for (const line of (v.lines || []).slice(0, 3)) {
+                    const el = document.createElement('span');
+                    el.textContent = line;
+                    ctl.linesEl.appendChild(el);
+                }
+            }
+        }
+    };
+
+    try {
+        apply(await launchpadTileValues());
+    } catch (_) {
+        return; // a core too old to answer leaves the placeholders alone
+    }
+
+    try {
+        const [refreshed, errors] = await refreshLaunchpadTiles();
+        for (const message of errors || []) banner.show(message, 'error');
+        // Only when something ran: most opens are inside every tile's window.
+        if (refreshed > 0) apply(await launchpadTileValues());
+    } catch (_) {
+        // A failed refresh keeps whatever the tiles already showed.
+    }
 }
 
 // L info (1x2): the weather stack. Filled from the external feed by

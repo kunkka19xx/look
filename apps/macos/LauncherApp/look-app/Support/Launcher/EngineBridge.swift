@@ -212,6 +212,18 @@ private func look_quick_actions_launchpad_json() -> UnsafeMutablePointer<CChar>?
 nonisolated
 private func look_launchpad_warnings_json() -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_launchpad_tile_values_json")
+nonisolated
+private func look_launchpad_tile_values_json() -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_launchpad_refresh_tiles_json")
+nonisolated
+private func look_launchpad_refresh_tiles_json() -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_launchpad_press_tile_json")
+nonisolated
+private func look_launchpad_press_tile_json(_ name: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_definitional_entity_json")
 nonisolated
 private func look_definitional_entity_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -1269,6 +1281,32 @@ final class EngineBridge: @unchecked Sendable {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return (try? decoder.decode(LaunchpadLayout.self, from: data)) ?? .empty
+    }
+
+    /// What each user tile shows. Reads a cache; runs nothing.
+    nonisolated func launchpadTileValues() -> [String: LaunchpadTileValue] {
+        guard let ptr = look_launchpad_tile_values_json() else { return [:] }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return [:] }
+        return (try? JSONDecoder().decode([String: LaunchpadTileValue].self, from: data)) ?? [:]
+    }
+
+    /// Spawns and blocks: never on the main thread.
+    nonisolated func refreshLaunchpadTiles() -> LaunchpadTileRefresh {
+        guard let ptr = look_launchpad_refresh_tiles_json() else { return .init() }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return .init() }
+        return (try? JSONDecoder().decode(LaunchpadTileRefresh.self, from: data)) ?? .init()
+    }
+
+    /// Runs a user tile's `press`.
+    nonisolated func pressLaunchpadTile(_ name: String) -> String? {
+        let ptr = name.withCString { look_launchpad_press_tile_json($0) }
+        guard let ptr else { return "the core did not answer" }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        struct PressResult: Decodable { let error: String? }
+        return (try? JSONDecoder().decode(PressResult.self, from: data))?.error
     }
 
     /// What is wrong with the user's `launchpad.toml`, empty when nothing is.

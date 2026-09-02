@@ -42,6 +42,47 @@ enum LaunchpadTileRole: String, Decodable {
     case media
     case weather
     case slot
+    /// Declared in `~/.look/launchpad.toml`: no descriptor, no adapter.
+    case custom
+}
+
+/// How a tile refresh went. `errors` are already worded for display.
+nonisolated struct LaunchpadTileRefresh: Decodable {
+    let refreshed: Int
+    let errors: [String]
+
+    init(refreshed: Int = 0, errors: [String] = []) {
+        self.refreshed = refreshed
+        self.errors = errors
+    }
+}
+
+/// What a user tile's `value` command printed. Only `value` is required.
+nonisolated struct LaunchpadTileValue: Decodable, Equatable {
+    let value: String
+    let caption: String?
+    let lines: [String]
+    /// An SF Symbol name the tile asked for, if any.
+    let icon: String?
+    /// `"on"` / `"off"`, so a tile that reads as a toggle can take the same
+    /// active treatment the built-in toggles use.
+    let state: String?
+
+    var isOn: Bool { state?.lowercased() == "on" }
+
+    private enum CodingKeys: String, CodingKey {
+        case value, caption, lines, icon, state
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        value = try container.decode(String.self, forKey: .value)
+        caption = try container.decodeIfPresent(String.self, forKey: .caption)
+        lines = try container.decodeIfPresent([String].self, forKey: .lines) ?? []
+        icon = try container.decodeIfPresent(String.self, forKey: .icon)
+        state = try container.decodeIfPresent(String.self, forKey: .state)
+    }
+
 }
 
 /// A single launchpad tile, decoded from the shared catalog.
@@ -64,6 +105,14 @@ nonisolated struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
     /// non-toggle tiles, which fall back to a generic On/Off.
     let onLabel: String?
     let offLabel: String?
+    /// Whether pressing it does anything. Battery and Weather are readouts, and
+    /// so is a user tile that declared no `press`.
+    let pressable: Bool
+    /// Asked before a user tile's press runs, in the words the user wrote.
+    let confirm: String?
+    /// False for a tile that only acts. Distinguishes "nothing to show" from
+    /// "has not run yet".
+    let hasValue: Bool
 
     var id: String { actionId }
 
@@ -77,6 +126,7 @@ nonisolated struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case actionId, title, size, role, mnemonic, col, row, colSpan, rowSpan, onLabel, offLabel
+        case pressable, confirm, hasValue
     }
 
     init(from decoder: Decoder) throws {
@@ -91,6 +141,11 @@ nonisolated struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
         rowSpan = try container.decode(Int.self, forKey: .rowSpan)
         onLabel = try container.decodeIfPresent(String.self, forKey: .onLabel)
         offLabel = try container.decodeIfPresent(String.self, forKey: .offLabel)
+        // Defaulted: a payload from an older core still renders.
+        pressable = try container.decodeIfPresent(Bool.self, forKey: .pressable) ?? false
+        confirm = try container.decodeIfPresent(String.self, forKey: .confirm)
+
+        hasValue = try container.decodeIfPresent(Bool.self, forKey: .hasValue) ?? true
         // serde serializes a `char` as a single-character string; take its first
         // character (nil when absent or empty).
         mnemonic = try container.decodeIfPresent(String.self, forKey: .mnemonic)?.first

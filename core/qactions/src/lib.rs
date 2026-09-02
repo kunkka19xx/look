@@ -138,6 +138,9 @@ pub enum TileRole {
     Weather,
     /// The rotating Todo / Pomo / Clock slot; rendered entirely by the shell.
     Slot,
+    /// A tile the user declared in `~/.look/launchpad.toml`. No descriptor and
+    /// no native adapter, so `title` has to arrive already filled in.
+    Custom,
 }
 
 /// The smallest rectangle a role can be drawn in and still say what it means.
@@ -148,7 +151,8 @@ pub fn min_span(role: TileRole) -> (u8, u8) {
         TileRole::Slot => (2, 2),
         TileRole::Weather => (1, 2),
         TileRole::Media => (2, 1),
-        TileRole::Toggle | TileRole::Info | TileRole::Action => (1, 1),
+        // The user drew it, so the size they drew is the size they meant.
+        TileRole::Toggle | TileRole::Info | TileRole::Action | TileRole::Custom => (1, 1),
     }
 }
 
@@ -180,6 +184,16 @@ pub struct LaunchpadTile {
     /// shared descriptor. `None` for non-toggle tiles.
     pub on_label: Option<String>,
     pub off_label: Option<String>,
+    /// Whether pressing it does anything. Battery and Weather are readouts, and
+    /// so is a user tile that declared no `press` - none of them should offer a
+    /// button's affordances for something that will not happen.
+    pub pressable: bool,
+    /// Whether it has anything to display, as opposed to only acting. Without
+    /// it a shell cannot tell "nothing to show" from "has not run yet", and
+    /// would leave a button on a placeholder forever.
+    pub has_value: bool,
+    /// Asked before the press runs, in the words the user wrote.
+    pub confirm: Option<String>,
 }
 
 /// One entry of the layout table below. `title` is `None` when the catalog
@@ -217,6 +231,10 @@ fn tile(placed: Placed) -> LaunchpadTile {
         row_span,
         on_label: descriptor.as_ref().and_then(|d| d.on_label.clone()),
         off_label: descriptor.and_then(|d| d.off_label),
+        pressable: matches!(role, TileRole::Toggle | TileRole::Action | TileRole::Media),
+        has_value: !matches!(role, TileRole::Action),
+        // Restart and Shut Down ask through their own inline confirm.
+        confirm: None,
     }
 }
 

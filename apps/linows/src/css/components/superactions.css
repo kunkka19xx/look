@@ -259,8 +259,9 @@ html[data-transparent="false"] .control-strip-grid {
     font-weight: 500;
 }
 
-/* Small-caps info label (Battery / weather condition). */
-.ctl-caps {
+/* Small-caps info label (Battery, weather condition, a custom tile's). */
+.ctl-caps,
+.ctl-custom-caption {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.06em;
@@ -435,6 +436,32 @@ html[data-transparent="false"] .control-strip-grid {
 /* --- Info (Battery) -------------------------------------------------------- */
 .ctl-tile--info .ctl-text {
     gap: 3px;
+}
+
+/* --- Custom (a tile from ~/.look/launchpad.toml), dressed like Info -------- */
+.ctl-tile--custom {
+    align-items: flex-start;
+    padding: 12px;
+}
+
+.ctl-tile--custom .ctl-text {
+    gap: 2px;
+    min-width: 0;
+}
+
+.ctl-custom-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    font-size: 11px;
+    color: var(--font-secondary);
+    /* A glance, not a pane. */
+    overflow: hidden;
+}
+
+/* No empty gutter when no icon was asked for. */
+.ctl-tile--custom .ctl-icon:empty {
+    display: none;
 }
 
 /* --- Weather L slot -------------------------------------------------------- */

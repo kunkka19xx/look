@@ -207,6 +207,29 @@ pub fn quick_actions(result_id: String, kind: String) -> Vec<look_qactions::Acti
     look_qactions::descriptors_for(&result_id, &kind)
 }
 
+/// What each user tile currently shows. Reads the cache; runs nothing.
+#[tauri::command]
+pub fn launchpad_tile_values()
+-> std::collections::HashMap<String, look_engine::launchpad::TileValue> {
+    look_engine::launchpad_values::cached()
+}
+
+/// Re-runs stale tile commands. Spawns, so `async`.
+///
+/// Returns `refreshed` as well as the errors: the frontend re-reads the values
+/// only when something actually ran, which is the uncommon case.
+#[tauri::command(async)]
+pub fn refresh_launchpad_tiles() -> (usize, Vec<String>) {
+    let outcome = look_engine::launchpad_values::refresh();
+    (outcome.refreshed, outcome.errors)
+}
+
+/// Runs a user tile's press, named by the tile.
+#[tauri::command(async)]
+pub fn press_launchpad_tile(name: String) -> Option<String> {
+    look_engine::launchpad_values::press(&name).err()
+}
+
 /// The empty-state launchpad's tile layout: the user's `~/.look/launchpad.toml`
 /// when they have one, else the shared catalog's default.
 ///
