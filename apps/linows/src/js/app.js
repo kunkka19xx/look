@@ -668,8 +668,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    // When window shown via global hotkey, focus input and select all
-    onWindowShown(() => {
+    // When the launcher is shown, optionally clear an expired query before the
+    // usual focus/refresh/reveal pass runs.
+    onWindowShown((event) => {
+        if (event.payload === true) {
+            // Reuse the full "back to home" reset so query-owned UI like the
+            // translate surface, preview visibility, and running-apps strip all
+            // return to the normal empty-query state together.
+            resetHomeQuery();
+        }
         queryInput.focus();
         queryInput.select();
         smoothcaret.refresh(queryInput);
@@ -683,9 +690,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Re-read todos when nothing would be lost, so the quick view stays
         // fresh across day rollovers and edits from other Look clients.
         todoCmd.reloadIfClean();
-        // The window keeps its query across hide/show; re-assert the strip so an
-        // empty-query re-open lands back on the launchpad, replaying its
-        // entrance so it animates in each time Look is summoned.
+        // Most re-opens keep the query and selection; an expired hide first
+        // returns to the empty-query home state, then this re-asserts the strip
+        // and its entrance animation.
         syncControlStrip();
         superactions.replayEnter();
         // Last: the reveal is the frame the rest of the cascade lands in.

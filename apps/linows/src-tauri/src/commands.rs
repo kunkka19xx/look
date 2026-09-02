@@ -4,8 +4,9 @@ use crate::state::AppState;
 use look_engine::config::RuntimeConfig;
 use serde::Serialize;
 use std::num::NonZeroU64;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, State};
 
 /// camelCase for the frontend. Every field predating it is one lowercase word,
@@ -403,6 +404,30 @@ const HIDE_ARM_GRACE: std::time::Duration = std::time::Duration::from_millis(60)
 /// fallback the user already undid can't pull the window back down.
 static PENDING_HIDE: AtomicU64 = AtomicU64::new(0);
 static HIDE_COUNTER: AtomicU64 = AtomicU64::new(0);
+static LAST_HIDE_REQUESTED_AT: Mutex<Option<Instant>> = Mutex::new(None);
+
+fn mark_hide_requested_now() {
+    let mut hidden_at = LAST_HIDE_REQUESTED_AT
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    *hidden_at = Some(Instant::now());
+}
+
+fn should_clear_query_on_show() -> bool {
+    let hidden_at = LAST_HIDE_REQUESTED_AT
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take();
+    let Some(hidden_at) = hidden_at else {
+        return false;
+    };
+    let timeout_secs = crate::config::launcher_query_clear_after_hide_seconds();
+    query_clear_timeout_elapsed(hidden_at.elapsed(), timeout_secs)
+}
+
+fn query_clear_timeout_elapsed(hidden_for: Duration, timeout_secs: i64) -> bool {
+    timeout_secs >= 0 && hidden_for >= Duration::from_secs(timeout_secs as u64)
+}
 
 /// Arm the entrance, then hide once the frontend has painted that frame.
 ///
@@ -411,6 +436,7 @@ static HIDE_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// revealed panel to flash on the next summon before the entrance rewinds and
 /// replays. Every dismiss goes through here.
 pub fn hide_armed(window: &tauri::WebviewWindow) {
+    mark_hide_requested_now();
     let arm = HIDE_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
     PENDING_HIDE.store(arm, Ordering::Relaxed);
     let _ = window.emit(crate::consts::EVENT_WINDOW_HIDDEN, arm);
@@ -476,9 +502,11 @@ pub fn launcher_visible(window: &tauri::WebviewWindow) -> bool {
 /// Every show goes through here.
 pub fn show_launcher(window: &tauri::WebviewWindow) {
     PENDING_HIDE.store(0, Ordering::Relaxed);
+    let clear_query = should_clear_query_on_show();
     #[cfg(target_os = "linux")]
     if crate::platform::linux::layer_shell::is_active() {
         crate::platform::linux::layer_shell::show();
+        let _ = window.emit(crate::consts::EVENT_WINDOW_SHOWN, clear_query);
         return;
     }
     let _ = window.show();
@@ -486,6 +514,7 @@ pub fn show_launcher(window: &tauri::WebviewWindow) {
     if crate::platform::linux::wm::is_niri() {
         crate::platform::linux::niri::ensure_self_floating();
     }
+    let _ = window.emit(crate::consts::EVENT_WINDOW_SHOWN, clear_query);
 }
 
 #[tauri::command]
@@ -1060,4 +1089,31 @@ fn find_desktop_file(id_path: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::query_clear_timeout_elapsed;
+    use std::time::Duration;
+
+    #[test]
+    fn query_clear_timeout_preserves_query_before_boundary() {
+        assert!(!query_clear_timeout_elapsed(Duration::from_secs(3), 5));
+        assert!(!query_clear_timeout_elapsed(
+            Duration::from_millis(4_999),
+            5
+        ));
+    }
+
+    #[test]
+    fn query_clear_timeout_clears_at_and_after_boundary() {
+        assert!(query_clear_timeout_elapsed(Duration::from_secs(5), 5));
+        assert!(query_clear_timeout_elapsed(Duration::from_secs(8), 5));
+    }
+
+    #[test]
+    fn query_clear_timeout_negative_one_never_clears() {
+        assert!(!query_clear_timeout_elapsed(Duration::from_secs(5), -1));
+        assert!(!query_clear_timeout_elapsed(Duration::from_secs(60), -1));
+    }
 }

@@ -131,6 +131,10 @@ fn default_config_contents() -> String {
         "# Running apps switcher: none, right\n\
          running_apps_placement=right\n\
          \n\
+         # Seconds hidden before clearing the main launcher query. -1 keeps the\n\
+         # current behavior; positive values below 5 fall back to -1.\n\
+         launcher_query_clear_after_hide_seconds=-1\n\
+         \n\
          # Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
          clipboard_history_limit=10\n\
          \n\
@@ -160,6 +164,9 @@ const CLIPBOARD_HISTORY_LIMIT_KEY: &str = "clipboard_history_limit";
 pub const CLIPBOARD_HISTORY_LIMIT_DEFAULT: usize = 10;
 pub const CLIPBOARD_HISTORY_LIMIT_MIN: usize = 10;
 pub const CLIPBOARD_HISTORY_LIMIT_MAX: usize = 100;
+const LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_KEY: &str = "launcher_query_clear_after_hide_seconds";
+pub const LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_DEFAULT: i64 = -1;
+pub const LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_MIN: i64 = 5;
 
 /// Drops a trailing comment. `#` only starts one at the beginning of the line or after
 /// whitespace, so it survives inside a value: cutting at the first `#` anywhere would
@@ -186,6 +193,17 @@ pub fn clipboard_history_limit() -> usize {
         return CLIPBOARD_HISTORY_LIMIT_DEFAULT;
     };
     parse_clipboard_history_limit(&contents)
+}
+
+/// How long the launcher may stay hidden before the main query is cleared on
+/// the next reopen. `-1` keeps the current behavior forever; positive values
+/// below 5 are treated as too aggressive for now and fall back to `-1`.
+pub fn launcher_query_clear_after_hide_seconds() -> i64 {
+    let path = config_file_path();
+    let Ok(contents) = std::fs::read_to_string(&path) else {
+        return LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_DEFAULT;
+    };
+    parse_launcher_query_clear_after_hide_seconds(&contents)
 }
 
 /// Parses `clipboard_history_limit` out of raw config file contents. Split from
@@ -218,6 +236,34 @@ fn parse_clipboard_history_limit(contents: &str) -> usize {
         }
     }
     CLIPBOARD_HISTORY_LIMIT_DEFAULT
+}
+
+/// Parses `launcher_query_clear_after_hide_seconds` out of raw config contents.
+/// The last assignment wins; returns the default when the key is absent,
+/// unparseable, or below the current minimum positive threshold.
+fn parse_launcher_query_clear_after_hide_seconds(contents: &str) -> i64 {
+    let mut last_value: Option<&str> = None;
+    for raw_line in contents.lines() {
+        let line = strip_inline_comment(raw_line).trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=')
+            && key.trim() == LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_KEY
+        {
+            last_value = Some(value.trim());
+        }
+    }
+    let Some(value) = last_value else {
+        return LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_DEFAULT;
+    };
+    match value.parse::<i64>() {
+        Ok(LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_DEFAULT) => {
+            LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_DEFAULT
+        }
+        Ok(parsed) if parsed >= LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_MIN => parsed,
+        _ => LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_DEFAULT,
+    }
 }
 
 /// The config file to read and write, migrating a legacy `~/.look.config` into
@@ -357,6 +403,104 @@ mod tests {
                 "clipboard_history_limit=50\nclipboard_history_limit=oops\n"
             ),
             CLIPBOARD_HISTORY_LIMIT_DEFAULT
+        );
+    }
+
+    #[test]
+    fn query_clear_timeout_missing_key_falls_back_to_default() {
+        assert_eq!(
+            parse_launcher_query_clear_after_hide_seconds(""),
+            LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_DEFAULT
+        );
+        assert_eq!(
+            parse_launcher_query_clear_after_hide_seconds(
+                "file_scan_limit=8000\nai_enabled=true\n"
+            ),
+            LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_DEFAULT
+        );
+    }
+
+    #[test]
+    fn query_clear_timeout_accepts_negative_one_and_minimum_positive() {
+        assert_eq!(
+            parse_launcher_query_clear_after_hide_seconds(
+                "launcher_query_clear_after_hide_seconds=-1\n"
+            ),
+            -1
+        );
+        assert_eq!(
+            parse_launcher_query_clear_after_hide_seconds(
+                "launcher_query_clear_after_hide_seconds=5\n"
+            ),
+            5
+        );
+        assert_eq!(
+            parse_launcher_query_clear_after_hide_seconds(
+                "launcher_query_clear_after_hide_seconds=12\n"
+            ),
+            12
+        );
+    }
+
+    #[test]
+    fn query_clear_timeout_rejects_invalid_and_too_small_values() {
+        for raw in [
+            "launcher_query_clear_after_hide_seconds=-2\n",
+            "launcher_query_clear_after_hide_seconds=0\n",
+            "launcher_query_clear_after_hide_seconds=3\n",
+            "launcher_query_clear_after_hide_seconds=abc\n",
+            "launcher_query_clear_after_hide_seconds=1.5\n",
+            "launcher_query_clear_after_hide_seconds=\n",
+        ] {
+            assert_eq!(
+                parse_launcher_query_clear_after_hide_seconds(raw),
+                LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_DEFAULT,
+                "raw={raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn query_clear_timeout_ignores_whitespace_and_comments() {
+        assert_eq!(
+            parse_launcher_query_clear_after_hide_seconds(
+                "  launcher_query_clear_after_hide_seconds = 7   # tested value\n"
+            ),
+            7
+        );
+        assert_eq!(
+            parse_launcher_query_clear_after_hide_seconds(
+                "# launcher_query_clear_after_hide_seconds=9\n"
+            ),
+            LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_DEFAULT
+        );
+    }
+
+    #[test]
+    fn query_clear_timeout_key_must_match_exactly() {
+        assert_eq!(
+            parse_launcher_query_clear_after_hide_seconds(
+                "my_launcher_query_clear_after_hide_seconds=9\n"
+            ),
+            LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_DEFAULT
+        );
+    }
+
+    #[test]
+    fn query_clear_timeout_last_assignment_wins() {
+        assert_eq!(
+            parse_launcher_query_clear_after_hide_seconds(
+                "launcher_query_clear_after_hide_seconds=-1\n\
+                 launcher_query_clear_after_hide_seconds=8\n"
+            ),
+            8
+        );
+        assert_eq!(
+            parse_launcher_query_clear_after_hide_seconds(
+                "launcher_query_clear_after_hide_seconds=8\n\
+                 launcher_query_clear_after_hide_seconds=3\n"
+            ),
+            LAUNCHER_QUERY_CLEAR_AFTER_HIDE_SECONDS_DEFAULT
         );
     }
 }
