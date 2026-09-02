@@ -103,10 +103,10 @@ fn custom_tile(
     let title = def.title.clone().unwrap_or_else(|| title_cased(name));
 
     let mnemonic = def.mnemonic.and_then(|key| {
-        if key == 'Q' {
+        if let Some(owner) = look_qactions::chord_owner(key) {
             warnings.push(format!(
-                "launchpad.toml: \"{name}\" wants Cmd+Q, which quits Look before a tile ever \
-                 sees it, so it has no key"
+                "launchpad.toml: \"{name}\" wants Cmd+{key}, which belongs to {owner} before a \
+                 tile ever sees it, so it has no key"
             ));
             return None;
         }
@@ -387,12 +387,42 @@ pub fn layout() -> Resolved {
         return Resolved::default_with(Vec::new());
     }
 
-    match std::fs::read_to_string(&path) {
+    // Memoized on the file's mtime. A launcher open asks for this up to three
+    // times - the layout, its warnings, and the tile refresh - and the seeded
+    // file is 4 KB of mostly comments, so without this every open reparses it
+    // twice over to reach the same answer. An edit changes the mtime, so the
+    // reload loop still sees it immediately.
+    let stamp = std::fs::metadata(&path)
+        .and_then(|meta| meta.modified())
+        .ok();
+    let cache = memo().lock().unwrap_or_else(|err| err.into_inner());
+    if let Some((cached_stamp, cached)) = &*cache
+        && stamp.is_some()
+        && *cached_stamp == stamp
+    {
+        return cached.clone();
+    }
+    drop(cache);
+
+    let resolved = match std::fs::read_to_string(&path) {
         Ok(contents) => resolve(&contents),
         Err(err) => {
             Resolved::default_with(vec![format!("{} could not be read: {err}", path.display())])
         }
+    };
+
+    if stamp.is_some() {
+        *memo().lock().unwrap_or_else(|err| err.into_inner()) = Some((stamp, resolved.clone()));
     }
+    resolved
+}
+
+/// The last parse, and the mtime it was parsed from.
+type Memo = Option<(Option<std::time::SystemTime>, Resolved)>;
+
+fn memo() -> &'static std::sync::Mutex<Memo> {
+    static MEMO: std::sync::OnceLock<std::sync::Mutex<Memo>> = std::sync::OnceLock::new();
+    MEMO.get_or_init(|| std::sync::Mutex::new(None))
 }
 
 /// The parse, split from the file so it can be tested without a home directory.
@@ -725,6 +755,12 @@ layout = [
 # Printing nothing hides the tile: that is how a "next meeting" tile disappears
 # on a day with no meetings.
 #
+# Keep `value` light. It runs unattended, so it is capped at two seconds and
+# 16 KB - past that it is killed, along with anything it started, and the tile
+# keeps its last good reading. Read something and print it. Anything that has to
+# fetch, build or wait belongs behind `press`, or in a script that caches to a
+# file this only reads.
+#
 # A letter already used by a tile on the screen is not given away, and Cmd+Q
 # belongs to quitting Look. Either way the tile still works, it just has no key,
 # and the reason is reported on the next open.
@@ -845,6 +881,48 @@ refresh = "60s"
             resolved.warnings
         );
     }
+
+    #[test]
+    fn a_reparse_is_skipped_until_the_file_changes() {
+        let _guard = ENV_GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let dir = std::env::temp_dir().join(format!("look-memo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("launchpad.toml");
+        std::fs::write(&path, "layout = [\"mic\"]\n").expect("write");
+        unsafe { std::env::set_var(LAUNCHPAD_FILE_ENV, &path) };
+
+        assert_eq!(layout().tiles.len(), 1);
+
+        // Same mtime: the memo answers and the new contents are not seen.
+        let stamp = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .expect("mtime");
+        std::fs::write(&path, "layout = [\"mic  theme\"]\n").expect("rewrite");
+        // Exactly the original mtime, so the memo must treat it as unchanged.
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .and_then(|f| f.set_modified(stamp))
+            .expect("rewind mtime");
+        assert_eq!(
+            layout().tiles.len(),
+            1,
+            "an unchanged mtime is not reparsed"
+        );
+
+        // A real edit moves the mtime, so the reload loop still works.
+        std::fs::write(&path, "layout = [\"mic  theme\"]\n").expect("rewrite");
+        assert_eq!(layout().tiles.len(), 2, "an edit is picked up");
+
+        unsafe { std::env::remove_var(LAUNCHPAD_FILE_ENV) };
+        *memo().lock().unwrap_or_else(|err| err.into_inner()) = None;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// LAUNCHPAD_FILE_ENV is process-global, so every test that points it
+    /// somewhere takes this first. Without it two such tests interleave and one
+    /// reads the developer's real launchpad.toml.
+    static ENV_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn a_tile_that_only_acts_needs_nothing_to_display() {
@@ -1041,7 +1119,10 @@ mnemonic = "Q"
         );
         assert_eq!(tile(&resolved, "quit").unwrap().mnemonic, None);
         assert!(
-            resolved.warnings.iter().any(|w| w.contains("quits Look")),
+            resolved
+                .warnings
+                .iter()
+                .any(|w| w.contains("quitting Look")),
             "{:?}",
             resolved.warnings
         );
@@ -1527,6 +1608,7 @@ mnemonic = "Cmd+C"
     /// global, and two tests setting it would race under the parallel runner.
     #[test]
     fn seeding_writes_the_default_once_and_never_touches_it_again() {
+        let _guard = ENV_GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let dir = std::env::temp_dir().join(format!("look-launchpad-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
         let path = dir.join("launchpad.toml");

@@ -173,6 +173,51 @@ The names are the tile ids - `lslot`, `bluetooth`, `wifi`, `battery`, `theme`, `
 
 If the drawing is wrong, Look says so in the window rather than failing quietly. A problem with one tile drops that tile and keeps the rest; a problem with the file's structure - a row with the wrong number of names, or TOML it cannot read - falls back to the whole default layout, so the strip is never empty and never silent about why.
 
+### Tiles of your own
+
+A tile of your own is a name in the drawing plus an entry below it. Nothing changes in `~/.look/sources/` - a tile is declared whole, in this one file, and needs no source at all.
+
+```toml
+layout = [
+    "lslot   lslot   ci      weather",
+    "lslot   lslot   lock    weather",
+]
+
+[tiles.ci]
+value    = "~/bin/ci-status"          # prints the JSON below
+refresh  = "5m"                       # how stale it may get
+mnemonic = "I"                        # optional: Cmd+I / Ctrl+I
+
+[tiles.lock]
+press    = "pmset displaysleepnow"    # what pressing it runs
+confirm  = "Lock the screen?"         # optional: asked first
+title    = "Lock"
+```
+
+**`value` prints one JSON object.** Only `value` is required, so a shell one-liner is a whole tile:
+
+```json
+{"value": "3 failing"}
+```
+
+A tile drawn bigger than one cell can say as much as Weather does:
+
+```json
+{"value":   "3 failing",
+ "caption": "MAIN",
+ "lines":   ["api: green", "web: red"],
+ "icon":    "hammer",
+ "state":   "off"}
+```
+
+Printing nothing hides the tile - that is how a "next meeting" tile disappears on a day with no meetings.
+
+**`press` is what a click or the tile's key runs.** A tile with `press` and no `value` is a button: it shows its name and never runs anything until you press it. A tile with `value` and no `press` is a readout. `confirm` arms the tile on the first press and fires on the second, the way Restart and Shut Down do.
+
+**Keep the command light.** `value` runs unattended - the point of a live tile - so it is capped: **two seconds**, then it is killed along with anything it started, and 16 KB of output. Within a tile's `refresh` window nothing runs at all, so most opens cost nothing. Read something and print it; a slow command will be cut off and the tile keeps its last good reading. Anything that needs to fetch, build, or wait belongs behind `press`, or in a script that caches to a file the tile just reads.
+
+A tile that fails says so and keeps what it last showed - one broken tile never blanks the strip. Its key follows the same rules as the built-ins: a letter already used by a tile on the screen is not given away, `Cmd+Q` belongs to quitting Look, and either way the tile still works, it just has no key.
+
 ## AI answers and web suggestions (macOS, Linux, Windows)
 
 Look can answer questions and look things up without leaving the launcher. These features are **on by default** on macOS, Linux, and Windows. Toggle them in Settings or with `ai_enabled` in `~/.look/config`.

@@ -255,15 +255,19 @@ final class LaunchpadController {
             pendingConfirmActionID = nil
         }
 
-        if tile.actionId == LaunchpadActionID.restart || tile.actionId == LaunchpadActionID.shutdown {
-            if pendingConfirmActionID == tile.actionId {
-                confirmPending()
-            } else {
-                pendingConfirmActionID = tile.actionId
-            }
+        // One gate, whatever the tile is: a first press on anything that asks
+        // arms it, a second fires. Restart and Shut Down used to be named here
+        // by id, which meant the same two ids were listed in three places.
+        if tile.confirm?.isEmpty == false, pendingConfirmActionID != tile.actionId {
+            pendingConfirmActionID = tile.actionId
             return
         }
+        pendingConfirmActionID = nil
+        dispatch(tile)
+    }
 
+    /// What a tile does once anything it wanted to ask has been answered.
+    private func dispatch(_ tile: LaunchpadTileModel) {
         // Now Playing reflects and controls the system-wide media (any app), not a
         // SystemControl adapter, so the play/pause key routes a transport command.
         if tile.actionId == LaunchpadActionID.nowPlaying {
@@ -274,12 +278,6 @@ final class LaunchpadController {
         // No adapter: the core holds the command and runs it by name.
         if tile.role == .custom {
             guard tile.pressable else { return }
-            // The same two-press prompt Restart and Shut Down use.
-            if tile.confirm?.isEmpty == false, pendingConfirmActionID != tile.actionId {
-                pendingConfirmActionID = tile.actionId
-                return
-            }
-            pendingConfirmActionID = nil
             pressCustom(tile)
             return
         }
@@ -291,17 +289,13 @@ final class LaunchpadController {
         }
     }
 
-    /// Fires the pending destructive action, then clears the prompt. Routes to a
-    /// native adapter when one is registered; otherwise reports a demo banner.
+    /// Fires the armed tile, then clears the prompt.
     func confirmPending() {
-        guard let actionID = pendingConfirmActionID else { return }
+        guard let actionID = pendingConfirmActionID,
+              let tile = tiles.first(where: { $0.actionId == actionID })
+        else { return }
         pendingConfirmActionID = nil
-        if let adapter = ActionAdapterRegistry.adapter(for: actionID) {
-            perform(.run, on: adapter, actionID: actionID)
-        } else {
-            let label = actionID == LaunchpadActionID.restart ? "Restart" : "Shut Down"
-            onBanner?("\(label) (demo)")
-        }
+        dispatch(tile)
     }
 
     /// Cancels the inline confirm. Returns true if a prompt was actually

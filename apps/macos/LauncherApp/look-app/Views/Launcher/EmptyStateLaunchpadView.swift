@@ -325,7 +325,7 @@ private struct LaunchpadCustomTile: View {
                 .font(.system(size: 24, weight: .medium))
                 .foregroundColor(confirming ? themeStore.dangerColor() : themeStore.accentColor())
             mnemonicText(
-                confirming ? "Confirm?" : model.title,
+                confirming ? (model.confirm ?? "Confirm?") : model.title,
                 mnemonic: confirming ? nil : model.mnemonic,
                 font: themeStore.uiFont(size: Const.titleFontSize, weight: .semibold),
                 base: confirming ? themeStore.dangerColor() : themeStore.fontColor(),
@@ -355,7 +355,7 @@ private struct LaunchpadCustomTile: View {
                         .contentTransition(.symbolEffect(.replace))
                 }
                 mnemonicText(
-                    confirming ? "CONFIRM?" : label,
+                    confirming ? (model.confirm?.uppercased() ?? "CONFIRM?") : label,
                     mnemonic: confirming ? nil : model.mnemonic,
                     font: themeStore.uiFont(size: Const.captionFontSize - 1, weight: .medium),
                     base: themeStore.mutedTextColor(),
@@ -505,7 +505,7 @@ private struct LaunchpadActionTile: View {
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(tint)
                 mnemonicText(
-                    confirming ? "Confirm?" : model.title,
+                    confirming ? (model.confirm ?? "Confirm?") : model.title,
                     mnemonic: confirming ? nil : model.mnemonic,
                     font: themeStore.uiFont(size: Const.smallLabelFontSize, weight: .semibold),
                     base: confirming ? themeStore.dangerColor() : themeStore.secondaryTextColor(),

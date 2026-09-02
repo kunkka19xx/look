@@ -162,10 +162,7 @@ const WEATHER_ICON = {
     thunder: cloudLightning,
 };
 
-// Destructive one-shot actions carry the danger tone and gate on an inline
-// confirm: first press arms the tile, second fires. Auto-disarms after this
-// window so a forgotten prompt never fires on a later stray press.
-const DANGER = new Set(['restart', 'shutdown']);
+// A forgotten prompt must not fire on a later stray press.
 const CONFIRM_TIMEOUT_MS = 3000;
 
 // Long enough to read a config error, which is longer than a toast.
@@ -444,20 +441,17 @@ function activate(id) {
         return true;
     }
 
+    // One gate, whatever the tile is: a first press on anything that asks arms
+    // it, a second fires. Restart and Shut Down used to be named here by id.
+    if (ctl?.confirm && pendingConfirmId !== id) {
+        armConfirm(id, ctl);
+        return true;
+    }
+    clearConfirm();
+
     // No adapter: the core holds the command and runs it by name.
     if (ctl?.role === 'custom') {
         if (!ctl.pressable) return true;
-        // Its own `confirm`, through the same arm-then-fire prompt the
-        // destructive built-ins use, so "are you sure" looks the same wherever
-        // it came from.
-        if (ctl.confirm && pendingConfirmId !== id) {
-            // Same arm-then-fire prompt the destructive built-ins use: the tile
-            // says "Confirm?" on its own face, because there is no dialog and
-            // if the tile does not show it, nothing does.
-            armConfirm(id, ctl);
-            return true;
-        }
-        clearConfirm();
         flash(el);
         pressLaunchpadTile(id)
             .then((error) => {
@@ -465,18 +459,6 @@ function activate(id) {
                 else refreshCustomTiles((customToken += 1));
             })
             .catch(() => {});
-        return true;
-    }
-
-    // Destructive buttons arm on the first press and fire on the second.
-    if (ctl?.wired && ctl.role === 'action' && ctl.danger) {
-        if (pendingConfirmId === id) {
-            clearConfirm();
-            flash(el);
-            runAction(id, ctl);
-        } else {
-            armConfirm(id, ctl);
-        }
         return true;
     }
 
@@ -501,7 +483,7 @@ function armConfirm(id, ctl) {
     clearConfirm();
     pendingConfirmId = id;
     ctl.el.classList.add('is-confirming');
-    ctl.labelEl.textContent = 'Confirm?';
+    ctl.labelEl.textContent = ctl.confirm || 'Confirm?';
     confirmTimer = setTimeout(clearConfirm, CONFIRM_TIMEOUT_MS);
 }
 
@@ -1371,7 +1353,7 @@ function buildWeather(tile) {
 // one-shot, Restart / Shut Down via inline confirm, Mic as a mute toggle (it
 // carries an off caption). Danger tone for the destructive ones.
 function buildAction(tile) {
-    const danger = DANGER.has(tile.action_id);
+    const danger = Boolean(tile.confirm);
     const el = tileEl(tile.action_id, 'action', danger ? 'danger' : null);
     const icon = iconSpan(ICON[tile.action_id]);
     el.appendChild(icon);
@@ -1391,6 +1373,8 @@ function buildAction(tile) {
         // firing once (Screensaver, Restart, Shut Down). Mirrors macOS.
         toggleIntent: tile.off_label != null,
         danger,
+        // The question this tile asks before it fires, from the core.
+        confirm: tile.confirm || null,
         wired: false,
     });
     return el;

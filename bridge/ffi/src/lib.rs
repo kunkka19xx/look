@@ -950,8 +950,19 @@ mod tests {
 
     /// Config the whole binary runs against, so no test reads the developer's
     /// real `~/.look/config`.
+    /// `lazy_indexing_enabled=false` is the load-bearing line: it is the only
+    /// thing that stops `restart_index_watchers` starting real filesystem
+    /// watchers on the developer's home directory. Blanking the roots below does
+    /// NOT do it - `ensure_default_file_scan_roots_present` puts the defaults
+    /// back on every load, by design.
+    ///
+    /// With watchers running, any file changing under those roots mid-test (a
+    /// cargo build writing to target/, say) triggers an index pass against the
+    /// scratch database, which rebuilds `candidates` and drops the fake row the
+    /// test just inserted. `look_record_usage` then fails its foreign key, and
+    /// the smoke test fails about one run in eight.
     const TEST_CONFIG: &str =
-        "lazy_indexing_enabled=true\nfile_scan_roots=\nfile_scan_extra_roots=\napp_scan_roots=\n";
+        "lazy_indexing_enabled=false\nfile_scan_roots=\nfile_scan_extra_roots=\napp_scan_roots=\n";
 
     /// Serializes the tests that share process-global state, and publishes the
     /// scratch config path exactly once, inside the `OnceLock` initializer: every
