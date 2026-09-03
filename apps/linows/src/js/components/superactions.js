@@ -1077,6 +1077,30 @@ function iconSpan(svg) {
     return el;
 }
 
+// Paint an icon into a span: a built-in glyph by name, or a user's own image,
+// which the backend has already read off disk and inlined as a data URL. The
+// file is drawn as a CSS mask rather than an <img> so it takes the tile's
+// colour the way an inline glyph does, including the active and danger tints;
+// the alternative arrives in its own palette and reads as pasted on. Nothing
+// recognised leaves the span empty, which CSS then collapses.
+function applyIcon(el, name, fallback = '') {
+    if (!el) return;
+    const glyph = ICON[name];
+    const inlined = typeof name === 'string' && name.startsWith('data:');
+    const src = !glyph && inlined ? name : null;
+    el.innerHTML = glyph || (src ? '' : fallback);
+    el.classList.toggle('ctl-icon--file', Boolean(src));
+    if (src) el.style.setProperty('--ctl-icon-src', `url("${src}")`);
+    else el.style.removeProperty('--ctl-icon-src');
+}
+
+// An icon span already carrying `name`, for the tiles built with one.
+function iconSpanFor(name, fallback) {
+    const el = iconSpan('');
+    applyIcon(el, name, fallback);
+    return el;
+}
+
 // Index a tile by id (and its accelerator char) so activate() / handleMnemonic()
 // can find it. Registration is separate from click-wiring: the media tile is
 // indexed (for Alt+P) but stays click-inert.
@@ -1223,7 +1247,7 @@ function buildCustom(tile) {
     // name. A placeholder would be a permanent "--".
     if (!tile.has_value) {
         const el = tileEl(tile.action_id, 'action');
-        el.appendChild(iconSpan(ICON[tile.action_id] || ICON[tile.icon] || power));
+        el.appendChild(iconSpanFor(tile.icon, power));
         const label = document.createElement('span');
         label.className = 'ctl-label';
         label.innerHTML = labelHTML(tile.title, tile.mnemonic);
@@ -1246,18 +1270,34 @@ function buildCustom(tile) {
     }
 
     const el = tileEl(tile.action_id, 'custom');
+    // One cell fits the headline alone.
+    const roomy = tile.row_span > 1 || tile.col_span > 1;
     // Shows before the first reading lands; a reading's own icon replaces it.
-    el.appendChild(iconSpan(ICON[tile.icon] || ''));
+    const icon = iconSpanFor(tile.icon);
 
     const text = document.createElement('span');
     text.className = 'ctl-text';
-    // One cell fits the headline alone.
-    const roomy = tile.row_span > 1 || tile.col_span > 1;
     text.innerHTML =
         `<span class="ctl-caps">${labelHTML(tile.title, tile.mnemonic)}</span>` +
         `<span class="ctl-value">--</span>` +
-        (roomy ? '<span class="ctl-custom-caption"></span><span class="ctl-custom-lines"></span>' : '');
-    el.appendChild(text);
+        (roomy
+            ? '<span class="ctl-custom-caption"></span><span class="ctl-custom-lines"></span>'
+            : '');
+
+    if (roomy) {
+        // Only the name shares the icon's row. The reading and its lines start
+        // at the tile's edge rather than in a gutter the icon opened, which a
+        // one-cell tile has no room to do and a tall one no reason to.
+        const head = document.createElement('span');
+        head.className = 'ctl-custom-head';
+        head.appendChild(icon);
+        head.appendChild(text.querySelector('.ctl-caps'));
+        text.prepend(head);
+        el.appendChild(text);
+    } else {
+        el.appendChild(icon);
+        el.appendChild(text);
+    }
 
     controls.set(tile.action_id, {
         role: 'custom',
@@ -1297,7 +1337,7 @@ async function refreshCustomTiles(myToken) {
             if (!v) continue;
             ctl.valueEl.textContent = v.value ?? '--';
             ctl.el.classList.toggle('is-active', (v.state || '').toLowerCase() === 'on');
-            if (ctl.iconEl) ctl.iconEl.innerHTML = ICON[v.icon || ctl.icon] || '';
+            applyIcon(ctl.iconEl, v.icon || ctl.icon);
             // The command's caption wins over the tile's name, as Weather shows
             // the condition. Unless the tile has a key: that letter is in the name.
             if (!ctl.mnemonic && v.caption) {

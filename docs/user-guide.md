@@ -222,7 +222,17 @@ Printing nothing hides the tile - that is how a "next meeting" tile disappears o
 
 **`icon` names the symbol drawn on the tile.** A tile that only acts runs no command, so there is no JSON for an icon to arrive in and this key is its only way to be anything but the generic mark. A tile with a `value` can use either, and an icon in the printed JSON wins, since that one can change with what was read.
 
-On macOS the name is an SF Symbol, so anything in that set works (`lock.fill`, `internaldrive`, `calendar`). On Linux and Windows the strip draws from its own small icon set and unrecognised names simply draw nothing, so check there before relying on one.
+On macOS the name is an SF Symbol, so anything in that set works (`lock.fill`, `internaldrive`, `calendar`).
+
+On Linux the name is either one of the strip's own glyphs - `bluetooth`, `wifi`, `theme`, `keepawake`, `battery`, `screensaver`, `mic`, `restart`, `shutdown` - or a path to an image of your own:
+
+```toml
+icon = "~/.look/icons/nixos.svg"
+```
+
+The file is read when the strip resolves its layout and drawn as a mask, so it takes the tile's colour like every other glyph rather than arriving in its own, and follows the active tint when a reading says `"state": "on"`. SVG, PNG, and the other formats an icon theme uses all work, up to 256 KB. Because it is a mask, only the shape survives: a flat silhouette reads at 16px, a detailed illustration collapses into a blob. Windows draws from the built-in names only.
+
+An unrecognised name draws nothing at all rather than a placeholder, so a tile with a typo in its `icon` looks like a tile that asked for none.
 
 **`press` is what a click or the tile's key runs.** A tile with `press` and no `value` is a button: it shows its name and never runs anything until you press it. A tile with `value` and no `press` is a readout. `confirm` arms the tile on the first press and fires on the second, the way Restart and Shut Down do.
 
