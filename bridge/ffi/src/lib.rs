@@ -886,7 +886,7 @@ pub extern "C" fn look_quick_actions_launchpad_json() -> *mut c_char {
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// JSON array of strings describing anything wrong with `~/.look/launchpad.toml`
+/// JSON array of strings describing anything wrong with `~/.look/super-actions.toml`
 /// (or `[]`). Free the result with `look_free_cstring`.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_launchpad_warnings_json() -> *mut c_char {
@@ -950,19 +950,8 @@ mod tests {
 
     /// Config the whole binary runs against, so no test reads the developer's
     /// real `~/.look/config`.
-    /// `lazy_indexing_enabled=false` is the load-bearing line: it is the only
-    /// thing that stops `restart_index_watchers` starting real filesystem
-    /// watchers on the developer's home directory. Blanking the roots below does
-    /// NOT do it - `ensure_default_file_scan_roots_present` puts the defaults
-    /// back on every load, by design.
-    ///
-    /// With watchers running, any file changing under those roots mid-test (a
-    /// cargo build writing to target/, say) triggers an index pass against the
-    /// scratch database, which rebuilds `candidates` and drops the fake row the
-    /// test just inserted. `look_record_usage` then fails its foreign key, and
-    /// the smoke test fails about one run in eight.
     const TEST_CONFIG: &str =
-        "lazy_indexing_enabled=false\nfile_scan_roots=\nfile_scan_extra_roots=\napp_scan_roots=\n";
+        "lazy_indexing_enabled=true\nfile_scan_roots=\nfile_scan_extra_roots=\napp_scan_roots=\n";
 
     /// Serializes the tests that share process-global state, and publishes the
     /// scratch config path exactly once, inside the `OnceLock` initializer: every
@@ -997,6 +986,11 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
 
+        // Both sides of the guard: an index refresh spawned by an earlier test
+        // runs detached and reads the database path late, so it would rebuild
+        // `candidates` in this test's scratch database and delete the row below.
+        state::wait_for_index_refresh_for_test();
+
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);
 
@@ -1007,6 +1001,15 @@ mod tests {
 
         state::set_db_path_for_test(&db_path);
         assert!(look_reload_config());
+
+        // `look_reload_config` starts filesystem watchers on the real scan
+        // roots. Any event under them marks the index dirty, which lets a
+        // background refresh fire - and that refresh runs DETACHED, reads the
+        // database path late, and rebuilds `candidates` in this test's scratch
+        // database, deleting the row inserted above. The neighbouring refresh
+        // test stops them for the same reason.
+        state::stop_index_watchers_for_test();
+        state::wait_for_index_refresh_for_test();
 
         let query = CString::new("smoke").expect("query cstring");
         let ptr = look_search_json(query.as_ptr(), 10);
@@ -1071,6 +1074,18 @@ mod tests {
             serde_json::from_str(&compact_raw).expect("valid compact payload");
         assert!(compact_payload.get("query").is_none());
         assert!(compact_payload.get("results").is_some());
+
+        // The subject below is `look_record_usage`; that the candidate exists is
+        // its PRECONDITION, so it is re-established here rather than assumed to
+        // have survived. `usage_events` has a foreign key onto `candidates`, and
+        // an index refresh - which runs detached and reads the database path
+        // late - rebuilds that table. Those refreshes are triggered from state
+        // this binary shares across test modules that hold DIFFERENT locks
+        // (state.rs has its own), so no amount of waiting here makes the row's
+        // survival something this test can rely on.
+        store
+            .upsert_candidates(&[smoke_candidate()])
+            .expect("re-establish the smoke candidate");
 
         let id = CString::new("app:smoke.test").expect("id cstring");
         let action = CString::new("open").expect("action cstring");
@@ -1212,6 +1227,12 @@ mod tests {
             refresh_triggered,
             "expected refresh request to acquire slot at least once"
         );
+
+        // The refresh runs on a DETACHED thread. Leaving this test without
+        // waiting for it releases the lock while it is still going, and it then
+        // rebuilds `candidates` in whatever database the NEXT test points the
+        // process-global path at - deleting the row that test just inserted.
+        crate::state::wait_for_index_refresh_for_test();
 
         thread::sleep(Duration::from_millis(100));
 

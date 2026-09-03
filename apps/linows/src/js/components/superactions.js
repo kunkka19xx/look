@@ -253,7 +253,7 @@ export function warningBanner(warnings) {
  * Re-read the drawing, for the Ctrl+Shift+; config reload.
  *
  * The tiles are fetched once per process, which was right while the grid was a
- * compile-time constant. ~/.look/launchpad.toml decides it now, and arranging
+ * compile-time constant. ~/.look/super-actions.toml decides it now, and arranging
  * tiles is an edit-and-look loop: without this an edit does nothing until the
  * app is restarted, which reads as the feature being broken.
  *
@@ -999,7 +999,7 @@ function render(layout) {
     const grid = document.createElement('div');
     grid.className = 'control-strip-grid';
 
-    // The grid is whatever the drawing in ~/.look/launchpad.toml reaches. The
+    // The grid is whatever the drawing in ~/.look/super-actions.toml reaches. The
     // CSS used to declare `grid-template-areas` and every tile's `grid-area`,
     // which meant the arrangement was written once in the core and again here,
     // and the two had to agree. The core resolves it now and this only draws.
@@ -1216,7 +1216,7 @@ function buildInfo(tile) {
     return el;
 }
 
-// A tile the user declared in ~/.look/launchpad.toml. Same anatomy as the tiles
+// A tile the user declared in ~/.look/super-actions.toml. Same anatomy as the tiles
 // beside it; the core runs the command and this only draws the result.
 function buildCustom(tile) {
     // A tile that only acts is drawn like Mic and Screensaver: a glyph over a

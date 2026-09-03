@@ -230,7 +230,7 @@ pub fn press_launchpad_tile(name: String) -> Option<String> {
     look_engine::launchpad_values::press(&name).err()
 }
 
-/// The empty-state launchpad's tile layout: the user's `~/.look/launchpad.toml`
+/// The empty-state launchpad's tile layout: the user's `~/.look/super-actions.toml`
 /// when they have one, else the shared catalog's default.
 ///
 /// One source of truth across shells, and resolved entirely in the core - the
@@ -242,7 +242,7 @@ pub fn launchpad_layout() -> look_engine::launchpad::LayoutPayload {
     look_engine::launchpad::layout_payload()
 }
 
-/// Anything wrong with `~/.look/launchpad.toml`, or empty when it is fine.
+/// Anything wrong with `~/.look/super-actions.toml`, or empty when it is fine.
 ///
 /// Its own command rather than a field beside the tiles - the same split
 /// `qactions_api` makes for the FFI shell.

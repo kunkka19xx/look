@@ -22,7 +22,7 @@ html.controls-open #hint-bar {
     overflow: hidden;
 }
 
-/* The shape comes from the drawing in ~/.look/launchpad.toml: superactions.js
+/* The shape comes from the drawing in ~/.look/super-actions.toml: superactions.js
  * sets --ctl-cols / --ctl-rows from the resolved tiles and gives each tile its
  * own grid-column / grid-row. This used to declare `grid-template-areas` and a
  * `.pos-*` rule per tile, which was the whole layout written a second time -
@@ -438,7 +438,7 @@ html[data-transparent="false"] .control-strip-grid {
     gap: 3px;
 }
 
-/* --- Custom (a tile from ~/.look/launchpad.toml), dressed like Info -------- */
+/* --- Custom (a tile from ~/.look/super-actions.toml), dressed like Info -------- */
 .ctl-tile--custom {
     align-items: flex-start;
     padding: 12px;

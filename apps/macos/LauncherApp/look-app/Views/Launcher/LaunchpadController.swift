@@ -85,7 +85,7 @@ final class LaunchpadController {
     /// screen from the cache, and a late value belongs to a tile still there.
     func refreshCustomValues() async {
         // Cheap is not free: without this every open reads and parses
-        // launchpad.toml to discover there is nothing to run.
+        // super-actions.toml to discover there is nothing to run.
         guard tiles.contains(role: .custom) else { return }
 
         let outcome = await Task.detached(priority: .utility) {

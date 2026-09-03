@@ -138,7 +138,7 @@ pub enum TileRole {
     Weather,
     /// The rotating Todo / Pomo / Clock slot; rendered entirely by the shell.
     Slot,
-    /// A tile the user declared in `~/.look/launchpad.toml`. No descriptor and
+    /// A tile the user declared in `~/.look/super-actions.toml`. No descriptor and
     /// no native adapter, so `title` has to arrive already filled in.
     Custom,
 }

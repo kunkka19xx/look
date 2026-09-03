@@ -52,7 +52,7 @@ struct EmptyStateLaunchpadView: View {
     // composed by hand - nested stacks naming each tile in the order the catalog
     // happened to return them - because SwiftUI has no cell spanning and the
     // arrangement was known in advance. It is not known in advance any more:
-    // ~/.look/launchpad.toml decides it, so the view offsets and sizes each tile
+    // ~/.look/super-actions.toml decides it, so the view offsets and sizes each tile
     // from its own coordinates and never reconstructs an arrangement.
 
     private func layout(width: CGFloat) -> some View {
@@ -282,7 +282,7 @@ private struct LaunchpadInfoTile: View {
     }
 }
 
-/// A tile the user declared in `~/.look/launchpad.toml`. Same anatomy as the
+/// A tile the user declared in `~/.look/super-actions.toml`. Same anatomy as the
 /// tiles beside it; how much shows is how big the user drew it. Placeholder
 /// until the first run resolves, like Battery and Weather.
 private struct LaunchpadCustomTile: View {

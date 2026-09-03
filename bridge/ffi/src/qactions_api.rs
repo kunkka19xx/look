@@ -32,7 +32,7 @@ pub(crate) fn look_qactions_json_impl(
 /// The empty-state launchpad layout as `{columns, rows, tiles}`, every tile
 /// carrying the cell it was resolved to, or `[]` on a serialization failure.
 ///
-/// Reads `~/.look/launchpad.toml` through the engine, which falls back to the
+/// Reads `~/.look/super-actions.toml` through the engine, which falls back to the
 /// built-in grid when there is no file or it cannot be trusted - so this never
 /// answers with an empty layout for a reason the user could have fixed. Still
 /// takes no arguments: the drawing is the only input and it is on disk.
@@ -44,7 +44,7 @@ pub(crate) fn look_quick_actions_launchpad_json_impl() -> *mut c_char {
     store_json_allocation(cstring)
 }
 
-/// Anything wrong with `~/.look/launchpad.toml`, as a JSON array of strings, or
+/// Anything wrong with `~/.look/super-actions.toml`, as a JSON array of strings, or
 /// `[]` when it is fine, absent, or unreadable in a way already handled.
 ///
 /// Its own call rather than a field beside the tiles: the layout is re-read on
@@ -129,7 +129,7 @@ mod tests {
 
     /// The payload as the bridges send it, resolved from the seeded drawing
     /// rather than from `layout_payload`: that reads the developer's own
-    /// ~/.look/launchpad.toml, which would fail this test on any customised
+    /// ~/.look/super-actions.toml, which would fail this test on any customised
     /// machine and write that private layout into the shared fixture.
     fn live_payload() -> serde_json::Value {
         let resolved = look_engine::launchpad::resolve(look_engine::launchpad::default_contents());

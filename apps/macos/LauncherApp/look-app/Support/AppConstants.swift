@@ -518,7 +518,7 @@ enum AppConstants {
         /// search bar when the query is empty. Sizing/timing only; the tile order,
         /// labels, and mnemonics come from the shared `look_qactions` catalog.
         enum Launchpad {
-            /// No `columns` here any more: the drawing in ~/.look/launchpad.toml
+            /// No `columns` here any more: the drawing in ~/.look/super-actions.toml
             /// decides how many there are, and the core sends that shape beside
             /// the tiles. A constant 6 would be a second answer.
             static let rowHeight: CGFloat = 76

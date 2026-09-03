@@ -42,7 +42,7 @@ enum LaunchpadTileRole: String, Decodable {
     case media
     case weather
     case slot
-    /// Declared in `~/.look/launchpad.toml`: no descriptor, no adapter.
+    /// Declared in `~/.look/super-actions.toml`: no descriptor, no adapter.
     case custom
 }
 
@@ -154,7 +154,7 @@ nonisolated struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
 
 extension Collection where Element == LaunchpadTileModel {
     /// Whether the drawing placed a tile of this role: the live reads are
-    /// per-role, and ~/.look/launchpad.toml can leave one out.
+    /// per-role, and ~/.look/super-actions.toml can leave one out.
     func contains(role: LaunchpadTileRole) -> Bool {
         contains { $0.role == role }
     }

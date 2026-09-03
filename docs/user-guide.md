@@ -144,7 +144,7 @@ Turn the strip off in `Settings > Appearance > Super Actions`. Off hides it and 
 
 ### Rearranging the strip
 
-The arrangement is yours, in `~/.look/launchpad.toml`. Look writes it on first run with the layout above, so the file is its own reference - open it and the format explains itself.
+The arrangement is yours, in `~/.look/super-actions.toml`. Look writes it on first run with the layout above, so the file is its own reference - open it and the format explains itself.
 
 It is a drawing of the screen. Each line is a row, each name is one cell:
 
@@ -452,7 +452,7 @@ Behavior:
 
 Saved as `running_apps_placement=<value>` in `~/.look/config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
 
-**Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/launchpad.toml`; see [Rearranging the strip](#rearranging-the-strip).
+**Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/super-actions.toml`; see [Rearranging the strip](#rearranging-the-strip).
 
 ### Indexing Settings
 
@@ -622,7 +622,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
 - `Cmd+Shift+,`: toggle settings panel
-- `Cmd+Shift+;` (macOS) / `Ctrl+Shift+;` (Linux, Windows): reload config, re-read your declared sources, and re-read `~/.look/launchpad.toml` so the strip can be arranged while you look at it
+- `Cmd+Shift+;` (macOS) / `Ctrl+Shift+;` (Linux, Windows): reload config, re-read your declared sources, and re-read `~/.look/super-actions.toml` so the strip can be arranged while you look at it
 - `Cmd+Shift+H`: hide the selected app from Look
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
 

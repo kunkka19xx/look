@@ -1,4 +1,7 @@
-//! The user's launchpad layout, `~/.look/launchpad.toml`.
+//! The user's Super Actions layout, `~/.look/super-actions.toml`.
+//!
+//! Named `launchpad` throughout the code, which is the internal word for this
+//! screen; `Super Actions` is what Settings and the docs call it.
 //!
 //! Here rather than in `look_qactions` for one reason: that crate is the
 //! platform-neutral action catalog and has no way to find a home directory.
@@ -105,7 +108,7 @@ fn custom_tile(
     let mnemonic = def.mnemonic.and_then(|key| {
         if let Some(owner) = look_qactions::chord_owner(key) {
             warnings.push(format!(
-                "launchpad.toml: \"{name}\" wants Cmd+{key}, which belongs to {owner} before a \
+                "super-actions.toml: \"{name}\" wants Cmd+{key}, which belongs to {owner} before a \
                  tile ever sees it, so it has no key"
             ));
             return None;
@@ -113,7 +116,7 @@ fn custom_tile(
         match claimed.get(&key) {
             Some(owner) => {
                 warnings.push(format!(
-                    "launchpad.toml: \"{name}\" wants Cmd+{key}, which belongs to \"{owner}\", \
+                    "super-actions.toml: \"{name}\" wants Cmd+{key}, which belongs to \"{owner}\", \
                      so it has no key"
                 ));
                 None
@@ -131,7 +134,7 @@ fn custom_tile(
         && !title.to_ascii_uppercase().contains(key)
     {
         warnings.push(format!(
-            "launchpad.toml: \"{name}\" has mnemonic \"{key}\", which is not in its title \
+            "super-actions.toml: \"{name}\" has mnemonic \"{key}\", which is not in its title \
              \"{title}\", so the key works but is not shown on the tile"
         ));
     }
@@ -187,7 +190,7 @@ fn legend(table: &toml::Value) -> (HashMap<String, TileDef>, Vec<String>) {
 
     for (name, entry) in entries {
         let Some(entry) = entry.as_table() else {
-            warnings.push(format!("launchpad.toml: [tiles.{name}] is not a table"));
+            warnings.push(format!("super-actions.toml: [tiles.{name}] is not a table"));
             continue;
         };
 
@@ -208,7 +211,7 @@ fn legend(table: &toml::Value) -> (HashMap<String, TileDef>, Vec<String>) {
         // `value` alone is a readout, `press` alone is a button.
         if value.is_none() && press.is_none() {
             warnings.push(format!(
-                "launchpad.toml: [tiles.{name}] has neither a `value` to show nor a `press` to \
+                "super-actions.toml: [tiles.{name}] has neither a `value` to show nor a `press` to \
                  run, so it is not shown"
             ));
             continue;
@@ -219,7 +222,7 @@ fn legend(table: &toml::Value) -> (HashMap<String, TileDef>, Vec<String>) {
         // value - but the user wrote it expecting to be asked something.
         if confirm.is_some() && press.is_none() {
             warnings.push(format!(
-                "launchpad.toml: [tiles.{name}] has a `confirm` but no `press`, so nothing asks it"
+                "super-actions.toml: [tiles.{name}] has a `confirm` but no `press`, so nothing asks it"
             ));
         }
 
@@ -229,7 +232,7 @@ fn legend(table: &toml::Value) -> (HashMap<String, TileDef>, Vec<String>) {
             .and_then(|raw| {
                 look_sources::parse_duration(raw).ok().or_else(|| {
                     warnings.push(format!(
-                        "launchpad.toml: [tiles.{name}] has refresh = \"{raw}\", which is not a \
+                        "super-actions.toml: [tiles.{name}] has refresh = \"{raw}\", which is not a \
                          duration like \"60s\", \"5m\" or \"2h\""
                     ));
                     None
@@ -247,7 +250,7 @@ fn legend(table: &toml::Value) -> (HashMap<String, TileDef>, Vec<String>) {
                     (Some(key), None) => Some(key.to_ascii_uppercase()),
                     _ => {
                         warnings.push(format!(
-                            "launchpad.toml: [tiles.{name}] has mnemonic = \"{raw}\", which is \
+                            "super-actions.toml: [tiles.{name}] has mnemonic = \"{raw}\", which is \
                              not a single character"
                         ));
                         None
@@ -431,14 +434,14 @@ pub fn resolve(contents: &str) -> Resolved {
         Ok(value) => value,
         Err(err) => {
             return Resolved::default_with(vec![format!(
-                "launchpad.toml is not valid TOML, using the default layout: {err}"
+                "super-actions.toml is not valid TOML, using the default layout: {err}"
             )]);
         }
     };
 
     let Some(drawn) = table.get("layout").and_then(|v| v.as_array()) else {
         return Resolved::default_with(vec![
-            "launchpad.toml has no `layout` drawing, using the default layout".to_string(),
+            "super-actions.toml has no `layout` drawing, using the default layout".to_string(),
         ]);
     };
 
@@ -447,7 +450,7 @@ pub fn resolve(contents: &str) -> Resolved {
     for (index, line) in drawn.iter().enumerate() {
         let Some(text) = line.as_str() else {
             return Resolved::default_with(vec![format!(
-                "launchpad.toml row {} is not a string, using the default layout",
+                "super-actions.toml row {} is not a string, using the default layout",
                 index + 1
             )]);
         };
@@ -456,13 +459,13 @@ pub fn resolve(contents: &str) -> Resolved {
 
     if grid.is_empty() || grid[0].is_empty() {
         return Resolved::default_with(vec![
-            "launchpad.toml draws no tiles, using the default layout".to_string(),
+            "super-actions.toml draws no tiles, using the default layout".to_string(),
         ]);
     }
 
     if grid.len() > MAX_ROWS {
         warnings.push(format!(
-            "launchpad.toml draws {} rows; only the first {MAX_ROWS} are shown",
+            "super-actions.toml draws {} rows; only the first {MAX_ROWS} are shown",
             grid.len()
         ));
         grid.truncate(MAX_ROWS);
@@ -473,7 +476,7 @@ pub fn resolve(contents: &str) -> Resolved {
     let mut columns = grid[0].len();
     if let Some(index) = grid.iter().position(|row| row.len() != columns) {
         return Resolved::default_with(vec![format!(
-            "launchpad.toml row {} has {} tokens but row 1 has {columns}, using the default layout",
+            "super-actions.toml row {} has {} tokens but row 1 has {columns}, using the default layout",
             index + 1,
             grid[index].len()
         )]);
@@ -481,7 +484,7 @@ pub fn resolve(contents: &str) -> Resolved {
 
     if columns > MAX_COLUMNS {
         warnings.push(format!(
-            "launchpad.toml draws {columns} columns; only the first {MAX_COLUMNS} are shown"
+            "super-actions.toml draws {columns} columns; only the first {MAX_COLUMNS} are shown"
         ));
         for row in &mut grid {
             row.truncate(MAX_COLUMNS);
@@ -550,7 +553,7 @@ pub fn resolve(contents: &str) -> Resolved {
         let rectangular = (r0..=r1).all(|row| (c0..=c1).all(|col| grid[row][col] == name));
         if !rectangular {
             warnings.push(format!(
-                "launchpad.toml: \"{name}\" must form a rectangle, so it is not shown"
+                "super-actions.toml: \"{name}\" must form a rectangle, so it is not shown"
             ));
             continue;
         }
@@ -566,7 +569,7 @@ pub fn resolve(contents: &str) -> Resolved {
             None => {
                 let Some(def) = defs.get(name) else {
                     warnings.push(format!(
-                        "launchpad.toml: \"{name}\" is not a tile Look knows and has no \
+                        "super-actions.toml: \"{name}\" is not a tile Look knows and has no \
                          [tiles.{name}] entry, so it is not shown"
                     ));
                     continue;
@@ -580,7 +583,7 @@ pub fn resolve(contents: &str) -> Resolved {
         let (min_col, min_row) = look_qactions::min_span(known.role);
         if col_span < min_col || row_span < min_row {
             warnings.push(format!(
-                "launchpad.toml: \"{name}\" needs at least {min_col}x{min_row} cells but is \
+                "super-actions.toml: \"{name}\" needs at least {min_col}x{min_row} cells but is \
                  drawn {col_span}x{row_span}, so it is not shown"
             ));
             continue;
@@ -596,7 +599,7 @@ pub fn resolve(contents: &str) -> Resolved {
     }
 
     if tiles.is_empty() {
-        warnings.push("launchpad.toml placed no tiles, using the default layout".to_string());
+        warnings.push("super-actions.toml placed no tiles, using the default layout".to_string());
         return Resolved::default_with(warnings);
     }
 
@@ -626,7 +629,7 @@ pub fn resolve(contents: &str) -> Resolved {
     }
 }
 
-const LAUNCHPAD_FILE_NAME: &str = ".look/launchpad.toml";
+const LAUNCHPAD_FILE_NAME: &str = ".look/super-actions.toml";
 
 /// Where the layout lives. Beside `~/.look/config` rather than inside it: the
 /// drawing is long enough to dominate a shared file, and it is the one config a
@@ -672,12 +675,12 @@ pub fn ensure_default_file() {
 /// The seeded file. It reproduces today's layout exactly, so a fresh install
 /// looks identical to an upgraded one, and the file IS the documentation -
 /// there is nothing to look up before editing it, and "reset to default" is
-/// `rm ~/.look/launchpad.toml`.
+/// `rm ~/.look/super-actions.toml`.
 pub fn default_contents() -> &'static str {
     DEFAULT_CONTENTS
 }
 
-const DEFAULT_CONTENTS: &str = r#"# Your launchpad - the screen shown when the search bar is empty.
+const DEFAULT_CONTENTS: &str = r#"# Your Super Actions strip - the screen shown when the search bar is empty.
 #
 # Each line below is a row, and each token is one cell. Repeat a name across
 # cells to make that tile span them; its cells must form a rectangle. Use "."
@@ -887,7 +890,7 @@ refresh = "60s"
         let _guard = ENV_GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let dir = std::env::temp_dir().join(format!("look-memo-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
-        let path = dir.join("launchpad.toml");
+        let path = dir.join("super-actions.toml");
         std::fs::write(&path, "layout = [\"mic\"]\n").expect("write");
         unsafe { std::env::set_var(LAUNCHPAD_FILE_ENV, &path) };
 
@@ -921,7 +924,7 @@ refresh = "60s"
 
     /// LAUNCHPAD_FILE_ENV is process-global, so every test that points it
     /// somewhere takes this first. Without it two such tests interleave and one
-    /// reads the developer's real launchpad.toml.
+    /// reads the developer's real super-actions.toml.
     static ENV_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
@@ -1611,7 +1614,7 @@ mnemonic = "Cmd+C"
         let _guard = ENV_GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let dir = std::env::temp_dir().join(format!("look-launchpad-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
-        let path = dir.join("launchpad.toml");
+        let path = dir.join("super-actions.toml");
         let _ = std::fs::remove_file(&path);
 
         unsafe { std::env::set_var(LAUNCHPAD_FILE_ENV, &path) };

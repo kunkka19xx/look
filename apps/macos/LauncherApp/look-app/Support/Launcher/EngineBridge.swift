@@ -1269,7 +1269,7 @@ final class EngineBridge: @unchecked Sendable {
         return (try? decoder.decode([QuickActionDescriptor].self, from: data)) ?? []
     }
 
-    /// The empty-state launchpad layout: the user's `~/.look/launchpad.toml`
+    /// The empty-state launchpad layout: the user's `~/.look/super-actions.toml`
     /// when they have a usable one, else the shared catalog's default. Every
     /// tile arrives knowing the cell it occupies. Reads a small file, so it is
     /// cheap but not free - call it on a reload, not per frame. Empty only on
@@ -1309,7 +1309,7 @@ final class EngineBridge: @unchecked Sendable {
         return (try? JSONDecoder().decode(PressResult.self, from: data))?.error
     }
 
-    /// What is wrong with the user's `launchpad.toml`, empty when nothing is.
+    /// What is wrong with the user's `super-actions.toml`, empty when nothing is.
     ///
     /// The core prints these to stderr, which is invisible to anyone who did
     /// not launch Look from a terminal - and this is the one config edited by

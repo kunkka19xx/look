@@ -144,7 +144,7 @@ pub fn refresh() -> RefreshOutcome {
 }
 
 /// The refresh, against a given set of tiles, so it can be tested without a
-/// launchpad.toml.
+/// super-actions.toml.
 pub fn refresh_defs(defs: &HashMap<String, TileDef>) -> RefreshOutcome {
     let mut outcome = RefreshOutcome::default();
 
