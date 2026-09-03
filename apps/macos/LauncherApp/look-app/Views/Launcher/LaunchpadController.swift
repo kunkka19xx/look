@@ -368,9 +368,8 @@ final class LaunchpadController {
                 onBanner?(failure)
                 return
             }
-            // Read straight from the cache the press just wrote. Going through
-            // `refreshCustomValues` would find nothing stale - the core read
-            // this tile as part of the press - and so re-read nothing.
+            // Straight from the cache the press just wrote: a refresh pass would
+            // find nothing stale, the core having read this tile already.
             customValues = await Task.detached(priority: .utility) {
                 EngineBridge.shared.launchpadTileValues()
             }.value

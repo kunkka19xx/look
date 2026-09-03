@@ -213,9 +213,8 @@ pub struct LaunchpadTile {
     pub has_value: bool,
     /// Asked before the press runs, in the words the user wrote.
     pub confirm: Option<String>,
-    /// The symbol a user tile asked for, when it did. A built-in's symbol stays
-    /// with the shell that draws it: these are platform names, and the two
-    /// shells do not spell them the same way.
+    /// The symbol a user tile asked for. A built-in's stays with the shell that
+    /// draws it: these are platform names, spelled differently in each.
     pub icon: Option<String>,
 }
 
@@ -263,8 +262,7 @@ fn tile(placed: Placed) -> LaunchpadTile {
             crate::action_id::SHUTDOWN => Some("Shut down?".to_string()),
             _ => None,
         },
-        // A built-in's symbol belongs to the shell drawing it, which already
-        // knows this id.
+        // The shell drawing it already knows this id.
         icon: None,
     }
 }

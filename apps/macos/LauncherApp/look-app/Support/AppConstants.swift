@@ -540,8 +540,7 @@ enum AppConstants {
             /// Shown in a read-only info tile (e.g. Battery) before its adapter
             /// resolves a value, or when the value is unavailable.
             static let infoPlaceholderValue = "--"
-            /// Drawn on a user tile that named no `icon`. Generic on purpose: it
-            /// says "this does something" without claiming to say what.
+            /// Drawn on a user tile that named no `icon`.
             static let customTileFallbackIcon = "bolt"
             /// Now Playing caption when nothing is playing on the system.
             static let nowPlayingIdleTitle = "Nothing playing"

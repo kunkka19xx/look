@@ -28,9 +28,8 @@ struct UwpAppPayload {
 // `delete_stale_candidates(run_started_at)` sweep leaves these rows alone, which
 // is also why they need the explicit prune below rather than ageing out.
 //
-// Windows app discovery now enumerates AppsFolder itself, in
-// `core/engine/src/platform/windows/uwp.rs`, and builds the same `app:uwp:<AUMID>`
-// ids, so the same rows reach the table by that route too.
+// Windows app discovery also enumerates AppsFolder itself, in
+// `core/engine/src/platform/windows/uwp.rs`, building the same ids.
 pub(crate) fn look_seed_uwp_apps_json_impl(json: *const c_char) -> bool {
     let json = cstr_to_string(json);
     if json.trim().is_empty() {

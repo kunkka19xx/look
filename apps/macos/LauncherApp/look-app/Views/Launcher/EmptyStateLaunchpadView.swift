@@ -346,9 +346,8 @@ private struct LaunchpadCustomTile: View {
     }
 
     private var body_: some View {
-        // Battery's anatomy, and the Linux/Windows strip's: the icon in a column
-        // of its own, caption and value stacked beside it. A user readout is the
-        // same kind of thing as Battery, so it is drawn the same way.
+        // Battery's anatomy, and the Linux/Windows strip's: icon in a column of
+        // its own, caption and value stacked beside it.
         HStack(spacing: 10) {
             if let icon = (value?.icon ?? model.icon), !icon.isEmpty {
                 Image(systemName: icon)

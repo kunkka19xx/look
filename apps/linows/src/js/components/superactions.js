@@ -1246,8 +1246,7 @@ function buildCustom(tile) {
     }
 
     const el = tileEl(tile.action_id, 'custom');
-    // The declared icon shows before the first reading lands; a reading that
-    // names one of its own replaces it below.
+    // Shows before the first reading lands; a reading's own icon replaces it.
     el.appendChild(iconSpan(ICON[tile.icon] || ''));
 
     const text = document.createElement('span');
@@ -1270,8 +1269,7 @@ function buildCustom(tile) {
         confirm: tile.confirm || null,
         // Decides whether the caption may replace the name.
         mnemonic: tile.mnemonic || null,
-        // What the drawing asked for, kept so a reading without an icon of its
-        // own does not wipe it.
+        // Kept so a reading with no icon of its own does not wipe it.
         icon: tile.icon || null,
         // Also the label an armed confirm writes into.
         labelEl: text.querySelector('.ctl-caps'),

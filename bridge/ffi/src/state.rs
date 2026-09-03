@@ -183,10 +183,9 @@ pub(crate) fn stop_index_watchers_for_test() {
 #[cfg(test)]
 const REFRESH_WAIT_POLL: std::time::Duration = std::time::Duration::from_millis(10);
 
-/// Generous on purpose. The loop returns the moment the flag clears, so a wide
-/// budget costs a fast machine nothing and keeps a slow one from failing a test
-/// over scheduling. Past it the wait has genuinely failed, and returning would
-/// hand the next test a database this worker still writes to.
+/// Generous: the loop returns the moment the flag clears, so a wide budget
+/// costs a fast machine nothing and keeps a slow one from failing over
+/// scheduling.
 #[cfg(test)]
 const REFRESH_WAIT_POLLS: u32 = 1_000;
 
@@ -199,8 +198,7 @@ pub(crate) fn wait_for_index_refresh_for_test() {
         std::thread::sleep(REFRESH_WAIT_POLL);
     }
     // Never a silent return: that releases the lock with the worker still
-    // running, which is the exact corruption this function exists to prevent.
-    // A test that fails here is a bug report; one that passes anyway is noise.
+    // running, the corruption this exists to prevent.
     panic!(
         "index refresh still running after {:?}",
         REFRESH_WAIT_POLL * REFRESH_WAIT_POLLS

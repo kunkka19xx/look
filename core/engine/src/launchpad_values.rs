@@ -43,10 +43,7 @@ fn cache_dir() -> Option<PathBuf> {
 
 /// Whether a tile's name can stand as a filename in the cache. The name comes
 /// from the drawing, so `..` or a slash in it would write outside the cache.
-///
-/// Public to the crate because the drawing is where a bad name can still be
-/// reported. Down here the only options are to write outside the cache or to
-/// say nothing, and the second is what left a tile blank with no reason given.
+/// Crate-public because the drawing is where a bad one can still be reported.
 pub(crate) fn is_cacheable_name(name: &str) -> bool {
     !name.is_empty()
         && name
@@ -221,14 +218,9 @@ fn press_def(name: &str, def: &TileDef) -> Result<(), String> {
         .find_map(|step| step.error)
         .map_or(Ok(()), Err)?;
 
-    // Read again rather than wait out the refresh window: a press changes the
-    // thing the tile reports, and a tile on a long `refresh` would otherwise
-    // show the pre-press value for minutes. Through `run_one`, so a read that
-    // fails keeps the last good value like any other refresh.
-    //
-    // `press` is detached, so a command still settling can be read too early.
-    // The alternative is waiting on it, which is the whole reason a press
-    // detaches - so the next refresh, not this one, is where that lands.
+    // Read again rather than wait out the refresh window: a press changes what
+    // the tile reports. Through `run_one`, so a failed read keeps the last good
+    // value. A press is detached, so a command still settling lands next time.
     let _ = run_one(name, def);
     Ok(())
 }

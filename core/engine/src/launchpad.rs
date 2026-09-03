@@ -82,10 +82,8 @@ pub struct TileDef {
     /// What it is called. The drawing's token is an id, so without this the
     /// name is title-cased into a label.
     pub title: Option<String>,
-    /// The symbol drawn on it. A tile that only acts never runs a command, so
-    /// this is the sole way it can be anything but the generic default; a tile
-    /// with a `value` can also say `icon` in its JSON, and that wins, being the
-    /// one that changes with what was read.
+    /// The symbol drawn on it, and the only route to one for a tile that just
+    /// acts. An `icon` in a `value`'s JSON wins, changing with what was read.
     pub icon: Option<String>,
     /// The key that fires it, with Cmd / Alt. Requested, not granted: a
     /// built-in's letter is never given away.
@@ -398,11 +396,9 @@ pub fn layout() -> Resolved {
     resolved
 }
 
-/// The file this one used to be called. Nothing reads it, so someone who
-/// arranged a layout there sees Look ignore every edit with nothing said. One
-/// line in the window is the whole fix: the rename is recent enough that the
-/// old name was never in a release, so there is no layout out there to migrate,
-/// only dev machines with a file that has quietly stopped counting.
+/// The file this one used to be called. Nothing reads it, so an edit there
+/// looks like Look ignoring the layout. Never shipped under that name, so there
+/// is nothing to migrate - only something to say.
 const LEGACY_FILE_NAME: &str = ".look/launchpad.toml";
 
 fn legacy_file_warning(home: &Path) -> Option<String> {
@@ -598,10 +594,9 @@ pub fn resolve(contents: &str) -> Resolved {
         // built-in around - needs no legend at all.
         let known = match known.get(name) {
             Some(built_in) => {
-                // The built-in wins: its letter and its press are Look's to
-                // define, and a legend entry must not repoint them. Said out
-                // loud because the alternative is a `value` command that runs
-                // on every refresh and renders nowhere.
+                // The built-in wins: its letter and press are Look's to define.
+                // Said out loud, or the entry's `value` runs on every refresh
+                // and renders nowhere.
                 if defs.contains_key(name) {
                     warnings.push(format!(
                         "super-actions.toml: \"{name}\" is a built-in tile, so its [tiles.{name}] \
@@ -619,9 +614,8 @@ pub fn resolve(contents: &str) -> Resolved {
                     continue;
                 };
                 // A `value` is read back from a file named after the tile, so a
-                // name that cannot be a filename is a readout that could never
-                // appear. Refused here, where there is somewhere to say it: the
-                // cache can only decline to write and leave the tile blank.
+                // name that cannot be a filename could never show one. Refused
+                // here, where there is somewhere to say so.
                 if def.value.is_some() && !crate::launchpad_values::is_cacheable_name(name) {
                     warnings.push(format!(
                         "super-actions.toml: \"{name}\" has a `value` to show but its name cannot \
@@ -848,9 +842,8 @@ mod tests {
 
     // --- user tiles ---------------------------------------------------------
 
-    /// A built-in's letter and press are Look's to define, so the drawing wins
-    /// and the entry is refused out loud. Silence here used to mean the `value`
-    /// command ran on every refresh into a tile that could never show it.
+    /// The drawing wins and the entry is refused out loud. Silence here meant a
+    /// `value` running on every refresh into a tile that could never show it.
     #[test]
     fn a_legend_entry_for_a_built_in_is_refused_rather_than_obeyed() {
         let resolved = resolve(
@@ -883,10 +876,8 @@ press = "echo never-runs"
         );
     }
 
-    /// The counterpart to `a_name_that_would_escape_the_cache_directory_is_refused`
-    /// over in the value cache: that one proves the cache refuses the name, this
-    /// one proves the refusal reaches the user instead of showing as a tile that
-    /// never fills in.
+    /// The value cache already refuses such a name; this proves the refusal
+    /// reaches the user rather than showing as a tile that never fills in.
     #[test]
     fn a_value_whose_name_cannot_be_cached_is_refused_rather_than_left_blank() {
         let resolved = resolve(
@@ -1054,11 +1045,9 @@ refresh = "60s"
         );
 
         // A real edit moves the mtime, so the reload loop still works. Moved
-        // explicitly, the way it was rewound: a rewrite on its own does not
-        // reliably move the mtime on Windows, where the file-time clock
-        // advances in ~15ms steps and every write here lands within one. The
-        // memo then answers from the old parse and the reload looks broken
-        // when it is not.
+        // explicitly, the way it was rewound: on Windows the file-time clock
+        // advances in ~15ms steps and every write here lands within one, so a
+        // rewrite alone can leave the mtime where the memo already saw it.
         std::fs::write(&path, "layout = [\"mic  theme\"]\n").expect("rewrite");
         std::fs::File::options()
             .write(true)
@@ -1784,8 +1773,7 @@ mnemonic = "Cmd+C"
         );
     }
 
-    /// The old name is a file the user may still be editing, so its presence is
-    /// worth a line even though nothing reads it.
+    /// A file the user may still be editing, so its presence is worth a line.
     #[test]
     fn the_file_this_one_replaced_is_pointed_out_while_it_still_exists() {
         let _guard = ENV_GUARD.lock().unwrap_or_else(|err| err.into_inner());

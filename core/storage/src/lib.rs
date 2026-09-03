@@ -188,17 +188,10 @@ impl InMemorySettingsStore {
 }
 
 impl SqliteStore {
-    /// Every transaction in this store writes, so each one takes the write lock
-    /// up front instead of the default DEFERRED.
-    ///
-    /// A deferred transaction locks at its first statement. When that statement
-    /// reads - a `SELECT` of the rows about to be deleted, or the schema lookup
-    /// a temp table needs - the transaction holds a read lock, and the first
-    /// write then has to upgrade. If another writer committed in between,
-    /// SQLite refuses that upgrade with `SQLITE_BUSY` immediately and
-    /// regardless of `busy_timeout`: waiting cannot make the stale read
-    /// snapshot current, so there is nothing to wait for. Taking the write lock
-    /// at `BEGIN` is what lets `busy_timeout` apply.
+    /// IMMEDIATE, not the default DEFERRED. Every transaction here writes, and a
+    /// deferred one that opens with a read has to upgrade later: SQLite refuses
+    /// that with `SQLITE_BUSY` at once, ignoring `busy_timeout`, because waiting
+    /// cannot make a stale read snapshot current.
     fn write_tx(&mut self) -> StorageResult<rusqlite::Transaction<'_>> {
         Ok(self
             .conn
@@ -830,15 +823,10 @@ impl SqliteStore {
 
     fn migrate(&self) -> StorageResult<()> {
         self.conn.execute_batch(
+            // No `busy_timeout`: rusqlite already sets 5s on every connection
+            // it opens, before any of this runs.
             "PRAGMA foreign_keys = ON;
              PRAGMA journal_mode = WAL;
-             -- WAL lets a reader and a writer coexist, but not two writers, and
-             -- Look has more than one: a foreground call and a detached index
-             -- refresh reach the same file. With no timeout the second one gets
-             -- SQLITE_BUSY on its first statement, which callers that ignore a
-             -- write result read as success - a delete that never happened.
-             -- Wait for the other writer instead.
-             PRAGMA busy_timeout = 5000;
              -- Keep the seen-id temp table used by delete_unseen_candidates in RAM.
              PRAGMA temp_store = MEMORY;
 
@@ -1645,6 +1633,42 @@ mod tests {
             )
             .expect("count usage events");
         assert_eq!(usage_count, 0);
+    }
+
+    /// Passes on rusqlite's own 5s busy timeout, so it guards against that being
+    /// taken away rather than proving anything the store does. The WAL
+    /// conversion in `migrate` is the exclusive-lock step it blocks on.
+    #[test]
+    fn an_open_waits_for_a_database_someone_else_is_holding() {
+        /// Long enough to be blocked when released, far under the 5s timeout.
+        const HOLD: std::time::Duration = std::time::Duration::from_millis(200);
+
+        let dir = std::env::temp_dir().join(format!("look-store-busy-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("contended.db");
+        let _ = std::fs::remove_file(&path);
+
+        // A plain connection, so the file exists and is NOT yet in WAL.
+        let blocker = Connection::open(&path).expect("blocker connection");
+        blocker
+            .execute_batch("BEGIN EXCLUSIVE; CREATE TABLE probe(x);")
+            .expect("take the lock");
+
+        let opening = {
+            let path = path.clone();
+            std::thread::spawn(move || SqliteStore::open(&path).is_ok())
+        };
+
+        std::thread::sleep(HOLD);
+        blocker.execute_batch("COMMIT").expect("release the lock");
+
+        assert!(
+            opening.join().expect("the opening thread"),
+            "an open must wait for the other writer rather than fail"
+        );
+
+        drop(blocker);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

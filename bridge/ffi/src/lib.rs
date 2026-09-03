@@ -1340,10 +1340,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-        // Both sides of the guard, for the reason the smoke test above gives: a
-        // refresh spawned by an earlier test runs detached and reads the
-        // database path late, so it would rebuild `candidates` in this test's
-        // scratch database.
+        // Both sides of the guard, for the reason the smoke test above gives.
         state::wait_for_index_refresh_for_test();
 
         let db_path = unique_test_db_path();
@@ -1351,9 +1348,12 @@ mod tests {
 
         state::set_db_path_for_test(&db_path);
         assert!(look_reload_config());
+        // The reload restarts the watchers and can spawn a refresh of its own,
+        // neither wanted while this seeds and prunes the same database.
+        state::stop_index_watchers_for_test();
+        state::wait_for_index_refresh_for_test();
 
-        // The JSON shape the seeding API accepts: snake_case keys, one object
-        // per app.
+        // The JSON shape the seeding API accepts.
         let json = CString::new(
             r#"[
                 {"aumid": "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", "title": "Terminal"},
