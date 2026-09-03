@@ -195,7 +195,13 @@ pub fn press(name: &str) -> Result<(), String> {
     let Some(def) = crate::launchpad::layout().defs.remove(name) else {
         return Err(format!("\"{name}\" is not a tile that does anything"));
     };
-    let Some(command) = def.press else {
+    press_def(name, &def)
+}
+
+/// The press, against a given tile, so it can be tested without a
+/// super-actions.toml. Split the way `refresh_defs` is split from `refresh`.
+fn press_def(name: &str, def: &TileDef) -> Result<(), String> {
+    let Some(command) = def.press.clone() else {
         return Err(format!("\"{name}\" has no press command"));
     };
     // No row context: a tile is not a row, so there are no placeholders to
@@ -203,7 +209,18 @@ pub fn press(name: &str) -> Result<(), String> {
     look_sources::perform(&[command], None)
         .into_iter()
         .find_map(|step| step.error)
-        .map_or(Ok(()), Err)
+        .map_or(Ok(()), Err)?;
+
+    // Read again rather than wait out the refresh window: a press changes the
+    // thing the tile reports, and a tile on a long `refresh` would otherwise
+    // show the pre-press value for minutes. Through `run_one`, so a read that
+    // fails keeps the last good value like any other refresh.
+    //
+    // `press` is detached, so a command still settling can be read too early.
+    // The alternative is waiting on it, which is the whole reason a press
+    // detaches - so the next refresh, not this one, is where that lands.
+    let _ = run_one(name, def);
+    Ok(())
 }
 
 /// Drops values for tiles the drawing no longer names.
@@ -332,6 +349,39 @@ mod tests {
         );
         assert_eq!(outcome.errors.len(), 1);
         assert!(outcome.errors[0].contains("ci"), "{:?}", outcome.errors);
+    }
+
+    #[test]
+    fn a_press_reads_the_tile_again_rather_than_waiting_out_its_window() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new("pressed");
+
+        // An hour, so a refresh pass on its own would run nothing at all.
+        let readout = |value: &str| TileDef {
+            value: Some(value.to_string()),
+            refresh: Some(Duration::from_secs(3600)),
+            press: Some("true".to_string()),
+            ..Default::default()
+        };
+        let one = |def: TileDef| -> HashMap<String, TileDef> {
+            [("ci".to_string(), def)].into_iter().collect()
+        };
+
+        refresh_defs(&one(readout(r#"printf '{"value":"before"}'"#)));
+        assert_eq!(cached()["ci"].value, "before");
+
+        let changed = readout(r#"printf '{"value":"after"}'"#);
+        assert_eq!(
+            refresh_defs(&one(changed.clone())).refreshed,
+            0,
+            "inside the window there is nothing for a refresh to do"
+        );
+        assert_eq!(cached()["ci"].value, "before");
+
+        // A press changes what the tile reports, so it reads its own tile back
+        // rather than showing the old value until the window runs out.
+        press_def("ci", &changed).expect("the press ran");
+        assert_eq!(cached()["ci"].value, "after");
     }
 
     #[test]

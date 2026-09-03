@@ -356,7 +356,7 @@ final class LaunchpadController {
         }
     }
 
-        /// Runs a press off the main thread, then re-reads: a press usually
+    /// Runs a press off the main thread, then re-reads: a press usually
     /// changes the thing the tile reports.
     private func pressCustom(_ tile: LaunchpadTileModel) {
         let name = tile.actionId
@@ -368,7 +368,12 @@ final class LaunchpadController {
                 onBanner?(failure)
                 return
             }
-            await refreshCustomValues()
+            // Read straight from the cache the press just wrote. Going through
+            // `refreshCustomValues` would find nothing stale - the core read
+            // this tile as part of the press - and so re-read nothing.
+            customValues = await Task.detached(priority: .utility) {
+                EngineBridge.shared.launchpadTileValues()
+            }.value
         }
     }
 

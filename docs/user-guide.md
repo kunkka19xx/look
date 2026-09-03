@@ -14,6 +14,7 @@
 > | `Cmd+0`                                 | `Ctrl+0`          |
 > | `Cmd+1`…`Cmd+7` (command mode)          | `Ctrl+1`…`Ctrl+7` |
 > | `Cmd+1`…`Cmd+9` (running-apps switcher) | `Alt+1`…`Alt+9`   |
+> | `Cmd+<letter>` (super-action tiles)     | `Alt+<letter>`    |
 > | `Cmd+P`                                 | `Ctrl+P`          |
 > | `Cmd+Shift+P`                           | `Ctrl+Shift+P`    |
 > | `Cmd+Shift+,`                           | `Ctrl+Shift+,`    |
@@ -197,7 +198,7 @@ refresh = "5m"
 press    = "pmset displaysleepnow"
 title    = "Lock"
 confirm  = "Lock the screen?"
-mnemonic = "L"   # Cmd+L, and the L in "Lock" is highlighted
+mnemonic = "L"   # Cmd+L (Alt+L elsewhere), and the L in "Lock" is highlighted
 ```
 
 **`value` prints one JSON object.** Only `value` is required, so a shell one-liner is a whole tile:
@@ -222,7 +223,7 @@ Printing nothing hides the tile - that is how a "next meeting" tile disappears o
 
 **Keep the command light.** `value` runs unattended - the point of a live tile - so it is capped: **two seconds**, then it is killed along with anything it started, and 16 KB of output. Within a tile's `refresh` window nothing runs at all, so most opens cost nothing. Read something and print it; a slow command will be cut off and the tile keeps its last good reading. Anything that needs to fetch, build, or wait belongs behind `press`, or in a script that caches to a file the tile just reads.
 
-A tile that fails says so and keeps what it last showed - one broken tile never blanks the strip. Its key follows the same rules as the built-ins: a letter already used by a tile on the screen is not given away, `Cmd+Q` belongs to quitting Look, and either way the tile still works, it just has no key.
+A tile that fails says so and keeps what it last showed - one broken tile never blanks the strip. Its key follows the same rules as the built-ins: it fires with `Cmd` on macOS and `Alt` on Linux/Windows, a letter already used by a tile on the screen is not given away, `Cmd+Q` belongs to quitting Look, and either way the tile still works, it just has no key.
 
 ## AI answers and web suggestions (macOS, Linux, Windows)
 

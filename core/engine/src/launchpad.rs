@@ -82,7 +82,7 @@ pub struct TileDef {
     /// What it is called. The drawing's token is an id, so without this the
     /// name is title-cased into a label.
     pub title: Option<String>,
-    /// The key that fires it, with Cmd / Ctrl. Requested, not granted: a
+    /// The key that fires it, with Cmd / Alt. Requested, not granted: a
     /// built-in's letter is never given away.
     pub mnemonic: Option<char>,
 }
@@ -382,8 +382,32 @@ pub fn layout() -> Resolved {
     let Some(home) = crate::config::user_home_dir() else {
         return Resolved::default_with(Vec::new());
     };
-    let path = launchpad_path(Path::new(&home));
+    let home = Path::new(&home);
+    let mut resolved = layout_at(&launchpad_path(home));
+    if let Some(warning) = legacy_file_warning(home) {
+        resolved.warnings.push(warning);
+    }
+    resolved
+}
 
+/// The file this one used to be called. Nothing reads it, so someone who
+/// arranged a layout there sees Look ignore every edit with nothing said. One
+/// line in the window is the whole fix: the rename is recent enough that the
+/// old name was never in a release, so there is no layout out there to migrate,
+/// only dev machines with a file that has quietly stopped counting.
+const LEGACY_FILE_NAME: &str = ".look/launchpad.toml";
+
+fn legacy_file_warning(home: &Path) -> Option<String> {
+    // A caller that named its own file has already said which one it means.
+    if std::env::var_os(LAUNCHPAD_FILE_ENV).is_some_and(|value| !value.is_empty()) {
+        return None;
+    }
+    home.join(LEGACY_FILE_NAME).exists().then(|| {
+        format!("~/{LEGACY_FILE_NAME} is no longer read - the layout now lives in ~/{LAUNCHPAD_FILE_NAME}")
+    })
+}
+
+fn layout_at(path: &Path) -> Resolved {
     // No file is the ordinary state of someone who never opened one, and of
     // every install between seeding failing and now. Not worth a word.
     if !path.exists() {
@@ -395,7 +419,7 @@ pub fn layout() -> Resolved {
     // file is 4 KB of mostly comments, so without this every open reparses it
     // twice over to reach the same answer. An edit changes the mtime, so the
     // reload loop still sees it immediately.
-    let stamp = std::fs::metadata(&path)
+    let stamp = std::fs::metadata(path)
         .and_then(|meta| meta.modified())
         .ok();
     let cache = memo().lock().unwrap_or_else(|err| err.into_inner());
@@ -407,7 +431,7 @@ pub fn layout() -> Resolved {
     }
     drop(cache);
 
-    let resolved = match std::fs::read_to_string(&path) {
+    let resolved = match std::fs::read_to_string(path) {
         Ok(contents) => resolve(&contents),
         Err(err) => {
             Resolved::default_with(vec![format!("{} could not be read: {err}", path.display())])
@@ -565,7 +589,19 @@ pub fn resolve(contents: &str) -> Resolved {
         // the user's own, defined entirely there. The common case - moving a
         // built-in around - needs no legend at all.
         let known = match known.get(name) {
-            Some(built_in) => built_in.clone(),
+            Some(built_in) => {
+                // The built-in wins: its letter and its press are Look's to
+                // define, and a legend entry must not repoint them. Said out
+                // loud because the alternative is a `value` command that runs
+                // on every refresh and renders nowhere.
+                if defs.contains_key(name) {
+                    warnings.push(format!(
+                        "super-actions.toml: \"{name}\" is a built-in tile, so its [tiles.{name}] \
+                         entry is ignored"
+                    ));
+                }
+                built_in.clone()
+            }
             None => {
                 let Some(def) = defs.get(name) else {
                     warnings.push(format!(
@@ -614,6 +650,7 @@ pub fn resolve(contents: &str) -> Resolved {
     // run a command for a tile that is not on screen.
     let placed: HashMap<String, TileDef> = tiles
         .iter()
+        .filter(|tile| tile.role == look_qactions::TileRole::Custom)
         .filter_map(|tile| {
             defs.get(&tile.action_id)
                 .map(|def| (tile.action_id.clone(), def.clone()))
@@ -695,7 +732,7 @@ layout = [
     "mic         restart     shutdown    nowplaying  nowplaying  nowplaying",
 ]
 
-# The built-in tiles, the key that fires each one (with Cmd on macOS, Ctrl
+# The built-in tiles, the key that fires each one (with Cmd on macOS, Alt
 # elsewhere), and the smallest area it can be drawn in:
 #
 #   lslot        the rotating Todo / Pomo / Clock slot    no key  2x2
@@ -737,7 +774,7 @@ layout = [
 #     press    = "~/.look/bin/meeting-join"    # optional: what pressing it runs
 #     confirm  = "Join the meeting?"           # optional: asked before press
 #     title    = "Next up"                     # optional: else the name, cased
-#     mnemonic = "N"                           # optional: Cmd+N / Ctrl+N
+#     mnemonic = "N"                           # optional: Cmd+N / Alt+N
 #
 # `value` prints one JSON object. Only `value` is required, so a one-liner is a
 # whole tile:
@@ -790,6 +827,41 @@ mod tests {
     }
 
     // --- user tiles ---------------------------------------------------------
+
+    /// A built-in's letter and press are Look's to define, so the drawing wins
+    /// and the entry is refused out loud. Silence here used to mean the `value`
+    /// command ran on every refresh into a tile that could never show it.
+    #[test]
+    fn a_legend_entry_for_a_built_in_is_refused_rather_than_obeyed() {
+        let resolved = resolve(
+            r#"
+layout = ["mic  wifi"]
+
+[tiles.mic]
+value = "echo never-runs"
+press = "echo never-runs"
+"#,
+        );
+
+        let mic = tile(&resolved, "mic").expect("the drawn tile");
+        assert_eq!(
+            mic.role,
+            look_qactions::TileRole::Action,
+            "still the built-in"
+        );
+        assert!(
+            !resolved.defs.contains_key("mic"),
+            "a built-in must not carry a command into the value cache"
+        );
+        assert!(
+            resolved
+                .warnings
+                .iter()
+                .any(|w| w.contains("mic") && w.contains("built-in")),
+            "{:?}",
+            resolved.warnings
+        );
+    }
 
     #[test]
     fn a_name_with_a_legend_entry_becomes_a_tile_of_the_users_own() {
@@ -1605,6 +1677,35 @@ mnemonic = "Cmd+C"
             columns.iter().all(|pair| *pair == columns[0]),
             "the legend columns are ragged: {columns:?}"
         );
+    }
+
+    /// The old name is a file the user may still be editing, so its presence is
+    /// worth a line even though nothing reads it.
+    #[test]
+    fn the_file_this_one_replaced_is_pointed_out_while_it_still_exists() {
+        let _guard = ENV_GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let home = std::env::temp_dir().join(format!("look-legacy-{}", std::process::id()));
+        let legacy = home.join(LEGACY_FILE_NAME);
+        std::fs::create_dir_all(legacy.parent().expect("the .look directory")).expect("temp home");
+
+        unsafe { std::env::remove_var(LAUNCHPAD_FILE_ENV) };
+        assert_eq!(
+            legacy_file_warning(&home),
+            None,
+            "no old file, nothing to say"
+        );
+
+        std::fs::write(&legacy, "layout = [\"mic\"]").expect("legacy file");
+        let warning = legacy_file_warning(&home).expect("the old file is there");
+        assert!(warning.contains(LEGACY_FILE_NAME), "{warning}");
+        assert!(warning.contains(LAUNCHPAD_FILE_NAME), "{warning}");
+
+        // A caller that named its own file has already answered the question.
+        unsafe { std::env::set_var(LAUNCHPAD_FILE_ENV, home.join("elsewhere.toml")) };
+        assert_eq!(legacy_file_warning(&home), None, "an override settles it");
+        unsafe { std::env::remove_var(LAUNCHPAD_FILE_ENV) };
+
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     /// Both halves in one test on purpose: `LAUNCHPAD_FILE_ENV` is process

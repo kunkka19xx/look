@@ -854,20 +854,31 @@ mod tests {
             // on a command line: `sleep 45 | grep <marker>` only puts the marker
             // in the grep's argv, so a check by name would watch the wrong half
             // of the pipeline and pass while the sleep leaked.
+            // Wide on purpose. The deadline only has to land between the step
+            // recording its pid and `sleep 45` ending, and a step runs under
+            // `-lc`: a login shell on a loaded two-core runner does not always
+            // reach its first command inside a couple of hundred milliseconds,
+            // which arrives here as a missing pid file rather than as a slow
+            // start. Nothing about the leak this guards against is timing
+            // sensitive, so the budget buys determinism for wall time.
+            const DEADLINE: Duration = Duration::from_secs(2);
+
             let pid_file = std::env::temp_dir().join(format!("look-orphan-{}", std::process::id()));
             let _ = std::fs::remove_file(&pid_file);
 
             let err = capture(
                 &format!("sleep 45 & echo $! > {} ; wait", pid_file.display()),
                 None,
-                Duration::from_millis(200),
+                DEADLINE,
                 1024,
             )
             .unwrap_err();
             assert!(err.contains("timed out"), "{err}");
 
             let child: i32 = std::fs::read_to_string(&pid_file)
-                .expect("the step recorded the pid it started")
+                .unwrap_or_else(|err| {
+                    panic!("the step never recorded a pid in {DEADLINE:?}: {err}")
+                })
                 .trim()
                 .parse()
                 .expect("a pid");

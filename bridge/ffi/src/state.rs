@@ -181,13 +181,28 @@ pub(crate) fn stop_index_watchers_for_test() {
 /// which reads the path late - rebuilds `candidates` in it, deleting rows the
 /// new test just inserted.
 #[cfg(test)]
+const REFRESH_WAIT_POLL: std::time::Duration = std::time::Duration::from_millis(10);
+
+/// Long enough for any refresh a test starts; past it the wait has failed and
+/// returning would hand the next test a database this worker still writes to.
+#[cfg(test)]
+const REFRESH_WAIT_POLLS: u32 = 200;
+
+#[cfg(test)]
 pub(crate) fn wait_for_index_refresh_for_test() {
-    for _ in 0..200 {
+    for _ in 0..REFRESH_WAIT_POLLS {
         if !INDEX_REFRESH_IN_PROGRESS.load(Ordering::Acquire) {
             return;
         }
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::thread::sleep(REFRESH_WAIT_POLL);
     }
+    // Never a silent return: that releases the lock with the worker still
+    // running, which is the exact corruption this function exists to prevent.
+    // A test that fails here is a bug report; one that passes anyway is noise.
+    panic!(
+        "index refresh still running after {:?}",
+        REFRESH_WAIT_POLL * REFRESH_WAIT_POLLS
+    );
 }
 
 pub(crate) fn restart_index_watchers() {
