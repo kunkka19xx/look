@@ -41,14 +41,24 @@ fn cache_dir() -> Option<PathBuf> {
     crate::index::cache_dir_named(CACHE_DIR_ENV, CACHE_DIR_NAME)
 }
 
-/// One file per tile. The name comes from the drawing, so `..` or a slash in it
-/// would write outside the cache.
-fn cache_path(name: &str) -> Option<PathBuf> {
-    let safe = !name.is_empty()
+/// Whether a tile's name can stand as a filename in the cache. The name comes
+/// from the drawing, so `..` or a slash in it would write outside the cache.
+///
+/// Public to the crate because the drawing is where a bad name can still be
+/// reported. Down here the only options are to write outside the cache or to
+/// say nothing, and the second is what left a tile blank with no reason given.
+pub(crate) fn is_cacheable_name(name: &str) -> bool {
+    !name.is_empty()
         && name
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    safe.then(cache_dir)?.map(|dir| dir.join(name))
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// One file per tile, named for the tile.
+fn cache_path(name: &str) -> Option<PathBuf> {
+    is_cacheable_name(name)
+        .then(cache_dir)?
+        .map(|dir| dir.join(name))
 }
 
 /// Tiles whose command is running right now.

@@ -183,10 +183,12 @@ pub(crate) fn stop_index_watchers_for_test() {
 #[cfg(test)]
 const REFRESH_WAIT_POLL: std::time::Duration = std::time::Duration::from_millis(10);
 
-/// Long enough for any refresh a test starts; past it the wait has failed and
-/// returning would hand the next test a database this worker still writes to.
+/// Generous on purpose. The loop returns the moment the flag clears, so a wide
+/// budget costs a fast machine nothing and keeps a slow one from failing a test
+/// over scheduling. Past it the wait has genuinely failed, and returning would
+/// hand the next test a database this worker still writes to.
 #[cfg(test)]
-const REFRESH_WAIT_POLLS: u32 = 200;
+const REFRESH_WAIT_POLLS: u32 = 1_000;
 
 #[cfg(test)]
 pub(crate) fn wait_for_index_refresh_for_test() {

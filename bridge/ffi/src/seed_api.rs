@@ -13,21 +13,24 @@ struct UwpAppPayload {
     title: String,
 }
 
-// Seeds UWP shell:AppsFolder entries into the Rust candidates table so they
-// participate in normal ranking (rank_score, kind_bias, recency, use_count) instead
-// of going through a parallel C# scoring path. C# UwpAppService enumerates AppsFolder
-// once on app start and posts the results here as JSON: [{"aumid": "...", "title": "..."}, ...]
+// Seeds UWP shell:AppsFolder entries into the candidates table so they take part
+// in normal ranking (rank_score, kind_bias, recency, use_count) rather than being
+// scored on their own. Entries arrive over the C ABI as JSON:
+// [{"aumid": "...", "title": "..."}, ...]
 //
 // Each entry is upserted as:
 //   id    = app:uwp:<AUMID>          - `app:` prefix so look_record_usage accepts it
 //   kind  = App
 //   title = <DisplayName>            - e.g. "Terminal", "Notepad"
-//   path  = shell:AppsFolder\<AUMID> - ShellExecuteService dispatches via explorer.exe
+//   path  = shell:AppsFolder\<AUMID> - launched through explorer.exe
 //
 // indexed_at_unix_s is set to i64::MAX so QueryEngine::bootstrap_sqlite's
-// `delete_stale_candidates(run_started_at)` sweep (core/engine/src/lib.rs:163) leaves
-// these rows alone - the Rust app discovery stream never produces UWP entries, so
-// without the MAX sentinel they'd be pruned on every index refresh.
+// `delete_stale_candidates(run_started_at)` sweep leaves these rows alone, which
+// is also why they need the explicit prune below rather than ageing out.
+//
+// Windows app discovery now enumerates AppsFolder itself, in
+// `core/engine/src/platform/windows/uwp.rs`, and builds the same `app:uwp:<AUMID>`
+// ids, so the same rows reach the table by that route too.
 pub(crate) fn look_seed_uwp_apps_json_impl(json: *const c_char) -> bool {
     let json = cstr_to_string(json);
     if json.trim().is_empty() {

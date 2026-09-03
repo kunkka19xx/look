@@ -610,6 +610,17 @@ pub fn resolve(contents: &str) -> Resolved {
                     ));
                     continue;
                 };
+                // A `value` is read back from a file named after the tile, so a
+                // name that cannot be a filename is a readout that could never
+                // appear. Refused here, where there is somewhere to say it: the
+                // cache can only decline to write and leave the tile blank.
+                if def.value.is_some() && !crate::launchpad_values::is_cacheable_name(name) {
+                    warnings.push(format!(
+                        "super-actions.toml: \"{name}\" has a `value` to show but its name cannot \
+                         be cached (letters, digits, - and _ only), so it is not shown"
+                    ));
+                    continue;
+                }
                 custom_tile(name, def, &mut claimed, &mut warnings)
             }
         };
@@ -863,6 +874,50 @@ press = "echo never-runs"
         );
     }
 
+    /// The counterpart to `a_name_that_would_escape_the_cache_directory_is_refused`
+    /// over in the value cache: that one proves the cache refuses the name, this
+    /// one proves the refusal reaches the user instead of showing as a tile that
+    /// never fills in.
+    #[test]
+    fn a_value_whose_name_cannot_be_cached_is_refused_rather_than_left_blank() {
+        let resolved = resolve(
+            r#"
+layout = ["ci/status  mic"]
+
+[tiles."ci/status"]
+value = "echo hi"
+"#,
+        );
+
+        assert!(tile(&resolved, "ci/status").is_none(), "not shown");
+        assert!(
+            !resolved.defs.contains_key("ci/status"),
+            "nothing for the cache to fail at later"
+        );
+        assert!(
+            resolved
+                .warnings
+                .iter()
+                .any(|w| w.contains("ci/status") && w.contains("cached")),
+            "{:?}",
+            resolved.warnings
+        );
+        assert!(tile(&resolved, "mic").is_some(), "the rest still renders");
+
+        // Only a `value` needs a filename. A button caches nothing, so its name
+        // is never written anywhere and the drawing is free to say it.
+        let button = resolve(
+            r#"
+layout = ["ci/status  mic"]
+
+[tiles."ci/status"]
+press = "echo hi"
+"#,
+        );
+        assert!(button.warnings.is_empty(), "{:?}", button.warnings);
+        assert!(tile(&button, "ci/status").is_some());
+    }
+
     #[test]
     fn a_name_with_a_legend_entry_becomes_a_tile_of_the_users_own() {
         let resolved = resolve(
@@ -959,6 +1014,10 @@ refresh = "60s"
 
     #[test]
     fn a_reparse_is_skipped_until_the_file_changes() {
+        /// Any distance the memo can tell apart; the value carries no meaning
+        /// beyond being larger than every filesystem's timestamp granularity.
+        const MTIME_STEP: Duration = Duration::from_secs(1);
+
         let _guard = ENV_GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let dir = std::env::temp_dir().join(format!("look-memo-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
@@ -985,8 +1044,18 @@ refresh = "60s"
             "an unchanged mtime is not reparsed"
         );
 
-        // A real edit moves the mtime, so the reload loop still works.
+        // A real edit moves the mtime, so the reload loop still works. Moved
+        // explicitly, the way it was rewound: a rewrite on its own does not
+        // reliably move the mtime on Windows, where the file-time clock
+        // advances in ~15ms steps and every write here lands within one. The
+        // memo then answers from the old parse and the reload looks broken
+        // when it is not.
         std::fs::write(&path, "layout = [\"mic  theme\"]\n").expect("rewrite");
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .and_then(|f| f.set_modified(stamp + MTIME_STEP))
+            .expect("advance mtime");
         assert_eq!(layout().tiles.len(), 2, "an edit is picked up");
 
         unsafe { std::env::remove_var(LAUNCHPAD_FILE_ENV) };

@@ -1,5 +1,5 @@
 use look_indexing::{Candidate, CandidateKind};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::path::Path;
@@ -188,6 +188,23 @@ impl InMemorySettingsStore {
 }
 
 impl SqliteStore {
+    /// Every transaction in this store writes, so each one takes the write lock
+    /// up front instead of the default DEFERRED.
+    ///
+    /// A deferred transaction locks at its first statement. When that statement
+    /// reads - a `SELECT` of the rows about to be deleted, or the schema lookup
+    /// a temp table needs - the transaction holds a read lock, and the first
+    /// write then has to upgrade. If another writer committed in between,
+    /// SQLite refuses that upgrade with `SQLITE_BUSY` immediately and
+    /// regardless of `busy_timeout`: waiting cannot make the stale read
+    /// snapshot current, so there is nothing to wait for. Taking the write lock
+    /// at `BEGIN` is what lets `busy_timeout` apply.
+    fn write_tx(&mut self) -> StorageResult<rusqlite::Transaction<'_>> {
+        Ok(self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?)
+    }
+
     pub fn open(path: impl AsRef<Path>) -> StorageResult<Self> {
         let path = path.as_ref();
         if let Some(parent) = path.parent() {
@@ -280,7 +297,7 @@ impl SqliteStore {
         candidates: &[Candidate],
         indexed_at_unix_s: Option<i64>,
     ) -> StorageResult<()> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
         {
             let mut stmt = tx.prepare(
                 // Interim write-reduction (see specs/indexing-scale.md): the `WHERE`
@@ -333,7 +350,7 @@ impl SqliteStore {
     }
 
     pub fn replace_candidates(&mut self, candidates: &[Candidate]) -> StorageResult<()> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
         tx.execute("DELETE FROM usage_events", [])?;
         tx.execute("DELETE FROM candidates", [])?;
 
@@ -389,7 +406,7 @@ impl SqliteStore {
     }
 
     pub fn save_search_settings(&mut self, settings: SearchSettings) -> StorageResult<()> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
         tx.execute(
             "INSERT INTO settings(key, value) VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -608,7 +625,7 @@ impl SqliteStore {
     }
 
     pub fn delete_stale_candidates(&mut self, older_than_unix_s: i64) -> StorageResult<usize> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
         tx.execute(
             "DELETE FROM usage_events
              WHERE candidate_id IN (
@@ -657,7 +674,7 @@ impl SqliteStore {
             .map(|p| format!("{}%", like_escape(p)))
             .collect();
 
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
         tx.execute_batch(
             "CREATE TEMP TABLE IF NOT EXISTS _seen_ids (id TEXT PRIMARY KEY);
              DELETE FROM _seen_ids;",
@@ -717,7 +734,7 @@ impl SqliteStore {
             .collect::<Vec<_>>()
             .join(" OR ");
 
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
 
         let mut bindings: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(1 + escaped.len());
         bindings.push(&older_than_unix_s);
@@ -756,7 +773,7 @@ impl SqliteStore {
         prefix: &str,
         keep_ids: &HashSet<&str>,
     ) -> StorageResult<usize> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
         let like_pattern = format!("{}%", like_escape(prefix));
 
         let stale_ids: Vec<String> = {
@@ -815,6 +832,13 @@ impl SqliteStore {
         self.conn.execute_batch(
             "PRAGMA foreign_keys = ON;
              PRAGMA journal_mode = WAL;
+             -- WAL lets a reader and a writer coexist, but not two writers, and
+             -- Look has more than one: a foreground call and a detached index
+             -- refresh reach the same file. With no timeout the second one gets
+             -- SQLITE_BUSY on its first statement, which callers that ignore a
+             -- write result read as success - a delete that never happened.
+             -- Wait for the other writer instead.
+             PRAGMA busy_timeout = 5000;
              -- Keep the seen-id temp table used by delete_unseen_candidates in RAM.
              PRAGMA temp_store = MEMORY;
 

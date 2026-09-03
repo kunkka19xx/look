@@ -1340,14 +1340,20 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
 
+        // Both sides of the guard, for the reason the smoke test above gives: a
+        // refresh spawned by an earlier test runs detached and reads the
+        // database path late, so it would rebuild `candidates` in this test's
+        // scratch database.
+        state::wait_for_index_refresh_for_test();
+
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);
 
         state::set_db_path_for_test(&db_path);
         assert!(look_reload_config());
 
-        // Mirror the JSON format the C# UwpAppService produces (System.Text.Json with
-        // [JsonPropertyName] attributes → snake_case keys).
+        // The JSON shape the seeding API accepts: snake_case keys, one object
+        // per app.
         let json = CString::new(
             r#"[
                 {"aumid": "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", "title": "Terminal"},
@@ -1440,6 +1446,7 @@ mod tests {
             "Notepad should have been pruned after disappearing from the seed"
         );
 
+        state::wait_for_index_refresh_for_test();
         let _ = fs::remove_file(&db_path);
     }
 }
