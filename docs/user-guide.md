@@ -179,34 +179,40 @@ A tile of your own is a name in the drawing plus an entry below it. Nothing chan
 
 ```toml
 layout = [
-    "lslot   lslot   ci      weather",
+    "lslot   lslot   disk    weather",
     "lslot   lslot   lock    weather",
 ]
 
-[tiles.ci]
-value    = "~/bin/ci-status"          # prints the JSON below
-refresh  = "5m"                       # how stale it may get
-mnemonic = "I"                        # optional: Cmd+I / Ctrl+I
+[tiles.disk]
+value   = '''printf '{"value":"%s","caption":"DISK FREE","icon":"internaldrive","lines":["of %s"]}' "$(df -h / | awk 'NR==2 {print $4}')" "$(df -h / | awk 'NR==2 {print $2}')"'''
+refresh = "5m"
+
+# A tile that only ACTS. No `value`, so nothing runs until you press it and
+# there is nothing to display - it draws like Mic and Screensaver do.
+#
+# `pmset displaysleepnow` sleeps the display, which locks the Mac when
+# System Settings > Lock Screen is set to ask for a password after sleep.
 
 [tiles.lock]
-press    = "pmset displaysleepnow"    # what pressing it runs
-confirm  = "Lock the screen?"         # optional: asked first
+press    = "pmset displaysleepnow"
 title    = "Lock"
+confirm  = "Lock the screen?"
+mnemonic = "L"   # Cmd+L, and the L in "Lock" is highlighted
 ```
 
 **`value` prints one JSON object.** Only `value` is required, so a shell one-liner is a whole tile:
 
 ```json
-{"value": "3 failing"}
+{"value": "84Gi"}
 ```
 
 A tile drawn bigger than one cell can say as much as Weather does:
 
 ```json
-{"value":   "3 failing",
- "caption": "MAIN",
- "lines":   ["api: green", "web: red"],
- "icon":    "hammer",
+{"value":   "84Gi",
+ "caption": "DISK FREE",
+ "lines":   ["of 460Gi"],
+ "icon":    "internaldrive",
  "state":   "off"}
 ```
 

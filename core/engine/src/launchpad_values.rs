@@ -308,13 +308,22 @@ mod tests {
         );
     }
 
+    /// A command that writes to stderr and exits non-zero, in each shell's own
+    /// language. `cmd` reads `;` as an argument rather than a separator, so the
+    /// POSIX spelling exits zero there with nothing on stdout - which is the
+    /// signal for "printed nothing", the opposite of what this test is about.
+    #[cfg(not(windows))]
+    const FAILING_COMMAND: &str = "echo boom >&2; exit 1";
+    #[cfg(windows)]
+    const FAILING_COMMAND: &str = "echo boom 1>&2& exit 1";
+
     #[test]
     fn a_failing_command_keeps_the_last_good_value_and_says_why() {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let _fixture = Fixture::new("fails");
 
         refresh_defs(&defs(&[("ci", r#"printf '{"value":"green"}'"#)]));
-        let outcome = refresh_defs(&defs(&[("ci", "echo boom >&2; exit 1")]));
+        let outcome = refresh_defs(&defs(&[("ci", FAILING_COMMAND)]));
 
         assert_eq!(
             cached()["ci"].value,
