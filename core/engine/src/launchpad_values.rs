@@ -341,7 +341,18 @@ mod tests {
         let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
         let _fixture = Fixture::new("fails");
 
-        refresh_defs(&defs(&[("ci", r#"printf '{"value":"green"}'"#)]));
+        // Seeded by writing the value rather than by running a command that
+        // prints it: that a good run is cached is
+        // `a_tile_shows_what_its_command_printed`'s subject, and a second shell
+        // here is one more spawn that can miss the two-second cap on a loaded
+        // machine - which lands as "no entry found for key" three lines below,
+        // blaming the assertion rather than the seed.
+        std::fs::write(
+            cache_path("ci").expect("a cache path"),
+            r#"{"value":"green"}"#,
+        )
+        .expect("a seeded value");
+
         let outcome = refresh_defs(&defs(&[("ci", FAILING_COMMAND)]));
 
         assert_eq!(
