@@ -113,6 +113,9 @@ nonisolated struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
     /// False for a tile that only acts. Distinguishes "nothing to show" from
     /// "has not run yet".
     let hasValue: Bool
+    /// The SF Symbol a user tile asked for. Nil for a built-in, whose symbol
+    /// this shell resolves from the action id.
+    let icon: String?
 
     var id: String { actionId }
 
@@ -126,7 +129,7 @@ nonisolated struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case actionId, title, size, role, mnemonic, col, row, colSpan, rowSpan, onLabel, offLabel
-        case pressable, confirm, hasValue
+        case pressable, confirm, hasValue, icon
     }
 
     init(from decoder: Decoder) throws {
@@ -146,6 +149,7 @@ nonisolated struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
         confirm = try container.decodeIfPresent(String.self, forKey: .confirm)
 
         hasValue = try container.decodeIfPresent(Bool.self, forKey: .hasValue) ?? true
+        icon = try container.decodeIfPresent(String.self, forKey: .icon)
         // serde serializes a `char` as a single-character string; take its first
         // character (nil when absent or empty).
         mnemonic = try container.decodeIfPresent(String.self, forKey: .mnemonic)?.first

@@ -198,6 +198,7 @@ refresh = "5m"
 press    = "pmset displaysleepnow"
 title    = "Lock"
 confirm  = "Lock the screen?"
+icon     = "lock.fill"
 mnemonic = "L"   # Cmd+L (Alt+L elsewhere), and the L in "Lock" is highlighted
 ```
 
@@ -218,6 +219,10 @@ A tile drawn bigger than one cell can say as much as Weather does:
 ```
 
 Printing nothing hides the tile - that is how a "next meeting" tile disappears on a day with no meetings.
+
+**`icon` names the symbol drawn on the tile.** A tile that only acts runs no command, so there is no JSON for an icon to arrive in and this key is its only way to be anything but the generic mark. A tile with a `value` can use either, and an icon in the printed JSON wins, since that one can change with what was read.
+
+On macOS the name is an SF Symbol, so anything in that set works (`lock.fill`, `internaldrive`, `calendar`). On Linux and Windows the strip draws from its own small icon set and unrecognised names simply draw nothing, so check there before relying on one.
 
 **`press` is what a click or the tile's key runs.** A tile with `press` and no `value` is a button: it shows its name and never runs anything until you press it. A tile with `value` and no `press` is a readout. `confirm` arms the tile on the first press and fires on the second, the way Restart and Shut Down do.
 

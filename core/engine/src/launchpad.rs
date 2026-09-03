@@ -82,6 +82,11 @@ pub struct TileDef {
     /// What it is called. The drawing's token is an id, so without this the
     /// name is title-cased into a label.
     pub title: Option<String>,
+    /// The symbol drawn on it. A tile that only acts never runs a command, so
+    /// this is the sole way it can be anything but the generic default; a tile
+    /// with a `value` can also say `icon` in its JSON, and that wins, being the
+    /// one that changes with what was read.
+    pub icon: Option<String>,
     /// The key that fires it, with Cmd / Alt. Requested, not granted: a
     /// built-in's letter is never given away.
     pub mnemonic: Option<char>,
@@ -157,6 +162,7 @@ fn custom_tile(
         pressable: def.press.is_some(),
         has_value: def.value.is_some(),
         confirm: def.confirm.clone(),
+        icon: def.icon.clone(),
     }
 }
 
@@ -218,6 +224,7 @@ fn legend(table: &toml::Value) -> (HashMap<String, TileDef>, Vec<String>) {
         }
 
         let confirm = str_key("confirm");
+        let icon = str_key("icon");
         // A question nothing ever asks. Not fatal - the tile still shows its
         // value - but the user wrote it expecting to be asked something.
         if confirm.is_some() && press.is_none() {
@@ -262,6 +269,7 @@ fn legend(table: &toml::Value) -> (HashMap<String, TileDef>, Vec<String>) {
             name.clone(),
             TileDef {
                 value,
+                icon,
                 refresh,
                 press,
                 confirm,
@@ -785,6 +793,7 @@ layout = [
 #     press    = "~/.look/bin/meeting-join"    # optional: what pressing it runs
 #     confirm  = "Join the meeting?"           # optional: asked before press
 #     title    = "Next up"                     # optional: else the name, cased
+#     icon     = "calendar"                    # optional: the symbol drawn on it
 #     mnemonic = "N"                           # optional: Cmd+N / Alt+N
 #
 # `value` prints one JSON object. Only `value` is required, so a one-liner is a
@@ -1067,6 +1076,33 @@ refresh = "60s"
     /// somewhere takes this first. Without it two such tests interleave and one
     /// reads the developer's real super-actions.toml.
     static ENV_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// The only route a symbol has onto a button: it runs no command, so there
+    /// is no JSON for one to arrive in.
+    #[test]
+    fn a_tile_can_name_its_own_symbol() {
+        let resolved = resolve(
+            r#"
+layout = ["lock  mic"]
+
+[tiles.lock]
+press = "pmset displaysleepnow"
+icon  = "lock.fill"
+"#,
+        );
+        assert!(resolved.warnings.is_empty(), "{:?}", resolved.warnings);
+        assert_eq!(
+            tile(&resolved, "lock")
+                .expect("the drawn tile")
+                .icon
+                .as_deref(),
+            Some("lock.fill")
+        );
+        assert_eq!(resolved.defs["lock"].icon.as_deref(), Some("lock.fill"));
+
+        // A built-in's symbol stays with the shell that draws it.
+        assert_eq!(tile(&resolved, "mic").expect("built-in").icon, None);
+    }
 
     #[test]
     fn a_tile_that_only_acts_needs_nothing_to_display() {

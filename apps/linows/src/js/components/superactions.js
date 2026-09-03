@@ -1223,7 +1223,7 @@ function buildCustom(tile) {
     // name. A placeholder would be a permanent "--".
     if (!tile.has_value) {
         const el = tileEl(tile.action_id, 'action');
-        el.appendChild(iconSpan(ICON[tile.action_id] || power));
+        el.appendChild(iconSpan(ICON[tile.action_id] || ICON[tile.icon] || power));
         const label = document.createElement('span');
         label.className = 'ctl-label';
         label.innerHTML = labelHTML(tile.title, tile.mnemonic);
@@ -1238,6 +1238,7 @@ function buildCustom(tile) {
             mnemonic: tile.mnemonic || null,
             labelEl: label,
         });
+
         // Without this the tile has no tilesById entry, so activate() bails on
         // its first line and neither click nor mnemonic reaches it.
         bindActionable(el, tile);
@@ -1245,7 +1246,9 @@ function buildCustom(tile) {
     }
 
     const el = tileEl(tile.action_id, 'custom');
-    el.appendChild(iconSpan(''));
+    // The declared icon shows before the first reading lands; a reading that
+    // names one of its own replaces it below.
+    el.appendChild(iconSpan(ICON[tile.icon] || ''));
 
     const text = document.createElement('span');
     text.className = 'ctl-text';
@@ -1267,6 +1270,9 @@ function buildCustom(tile) {
         confirm: tile.confirm || null,
         // Decides whether the caption may replace the name.
         mnemonic: tile.mnemonic || null,
+        // What the drawing asked for, kept so a reading without an icon of its
+        // own does not wipe it.
+        icon: tile.icon || null,
         // Also the label an armed confirm writes into.
         labelEl: text.querySelector('.ctl-caps'),
         iconEl: el.querySelector('.ctl-icon'),
@@ -1293,7 +1299,7 @@ async function refreshCustomTiles(myToken) {
             if (!v) continue;
             ctl.valueEl.textContent = v.value ?? '--';
             ctl.el.classList.toggle('is-active', (v.state || '').toLowerCase() === 'on');
-            if (ctl.iconEl) ctl.iconEl.innerHTML = v.icon ? (ICON[v.icon] || '') : '';
+            if (ctl.iconEl) ctl.iconEl.innerHTML = ICON[v.icon || ctl.icon] || '';
             // The command's caption wins over the tile's name, as Weather shows
             // the condition. Unless the tile has a key: that letter is in the name.
             if (!ctl.mnemonic && v.caption) {

@@ -321,7 +321,7 @@ private struct LaunchpadCustomTile: View {
     /// would be a permanent "--" for something never going to fill in.
     private var button: some View {
         VStack(spacing: 8) {
-            Image(systemName: value?.icon ?? "bolt")
+            Image(systemName: value?.icon ?? model.icon ?? Const.customTileFallbackIcon)
                 .font(.system(size: 24, weight: .medium))
                 .foregroundColor(confirming ? themeStore.dangerColor() : themeStore.accentColor())
             mnemonicText(
@@ -346,14 +346,18 @@ private struct LaunchpadCustomTile: View {
     }
 
     private var body_: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
-                if let icon = value?.icon, !icon.isEmpty {
-                    Image(systemName: icon)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(themeStore.accentColor())
-                        .contentTransition(.symbolEffect(.replace))
-                }
+        // Battery's anatomy, and the Linux/Windows strip's: the icon in a column
+        // of its own, caption and value stacked beside it. A user readout is the
+        // same kind of thing as Battery, so it is drawn the same way.
+        HStack(spacing: 10) {
+            if let icon = (value?.icon ?? model.icon), !icon.isEmpty {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(themeStore.accentColor())
+                    .contentTransition(.symbolEffect(.replace))
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
                 mnemonicText(
                     confirming ? (model.confirm?.uppercased() ?? "CONFIRM?") : label,
                     mnemonic: confirming ? nil : model.mnemonic,
@@ -362,37 +366,37 @@ private struct LaunchpadCustomTile: View {
                     highlight: themeStore.warningColor()
                 )
                 .lineLimit(1)
-                Spacer(minLength: 0)
+
+                Text(value?.value ?? Const.infoPlaceholderValue)
+                    .font(themeStore.uiFont(size: Const.valueFontSize - 6, weight: .bold))
+                    .foregroundColor(themeStore.fontColor())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .contentTransition(.numericText())
+                    .animation(Motion.Value.rollDigits, value: value?.value ?? "")
+
+                if showsDetail {
+                    if let detailCaption {
+                        Text(detailCaption)
+                            .font(themeStore.uiFont(size: Const.captionFontSize - 1, weight: .medium))
+                            .foregroundColor(themeStore.mutedTextColor())
+                            .lineLimit(1)
+                    }
+                    // Clipped, not scrolled: a tile is a glance, not a pane.
+                    let extra = Array((value?.lines ?? []).prefix(3))
+                    ForEach(Array(extra.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(themeStore.uiFont(size: Const.smallLabelFontSize - 0.5, weight: .regular))
+                            .foregroundColor(themeStore.secondaryTextColor())
+                            .lineLimit(1)
+                    }
+                }
             }
 
-            Text(value?.value ?? Const.infoPlaceholderValue)
-                .font(themeStore.uiFont(size: Const.valueFontSize - 6, weight: .bold))
-                .foregroundColor(themeStore.fontColor())
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .contentTransition(.numericText())
-                .animation(Motion.Value.rollDigits, value: value?.value ?? "")
-
-            if showsDetail {
-                if let detailCaption {
-                    Text(detailCaption)
-                        .font(themeStore.uiFont(size: Const.captionFontSize - 1, weight: .medium))
-                        .foregroundColor(themeStore.mutedTextColor())
-                        .lineLimit(1)
-                }
-                // Clipped, not scrolled: a tile is a glance, not a pane.
-                let extra = Array((value?.lines ?? []).prefix(3))
-                ForEach(Array(extra.enumerated()), id: \.offset) { _, line in
-                    Text(line)
-                        .font(themeStore.uiFont(size: Const.smallLabelFontSize - 0.5, weight: .regular))
-                        .foregroundColor(themeStore.secondaryTextColor())
-                        .lineLimit(1)
-                }
-            }
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        // Centred, like Battery beside it.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(frostedTile(themeStore: themeStore))
         .overlay(tileBorder(isOn: value?.isOn ?? false, themeStore: themeStore))

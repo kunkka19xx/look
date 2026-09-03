@@ -8,6 +8,7 @@
       "col_span": 2,
       "confirm": null,
       "has_value": true,
+      "icon": null,
       "mnemonic": "C",
       "off_label": null,
       "on_label": null,
