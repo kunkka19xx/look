@@ -265,7 +265,7 @@ extension LauncherView {
     func reloadQueryRetentionPolicy() {
         let path = ConfigPathResolver.resolvedPath()
         guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else {
-            queryRetentionSeconds = AppConstants.Launcher.QueryRetention.disabled
+            queryRetentionSeconds = AppConstants.Launcher.QueryRetention.defaultSeconds
             return
         }
         queryRetentionSeconds = QueryRetentionPolicy.resolveSeconds(

@@ -428,13 +428,14 @@ enum AppConstants {
         }
 
         /// How long the launcher may stay hidden before the next open returns to
-        /// the empty home state. `disabled` keeps the query for as long as the
-        /// process lives and is the default; a positive value below
-        /// `minimumSeconds` clears too eagerly to be useful, so it falls back to
-        /// `disabled` rather than being clamped up. See QueryRetentionPolicy.
+        /// the empty home state. `never` is the opt-out and the one accepted
+        /// value below `minimumSeconds`; anything else too small to be useful
+        /// falls back to `defaultSeconds`, which is what an undeclared key gets.
+        /// See QueryRetentionPolicy.
         enum QueryRetention {
             static let configKey = "query_retention_seconds"
-            static let disabled = -1
+            static let defaultSeconds = 5
+            static let never = -1
             static let minimumSeconds = 5
         }
 

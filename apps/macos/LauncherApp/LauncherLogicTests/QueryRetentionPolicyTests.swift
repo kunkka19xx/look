@@ -6,29 +6,33 @@ import XCTest
 /// the linows parser for the same key.
 final class QueryRetentionPolicyTests: XCTestCase {
     private let key = AppConstants.Launcher.QueryRetention.configKey
-    private let disabled = AppConstants.Launcher.QueryRetention.disabled
+    private let fallback = AppConstants.Launcher.QueryRetention.defaultSeconds
+    private let never = AppConstants.Launcher.QueryRetention.never
 
-    func testAMissingKeyKeepsTheQuery() {
-        XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [:]), disabled)
+    /// An undeclared key clears rather than preserving: that is the shipped
+    /// behavior, and the whole point of the default.
+    func testAMissingKeyFallsBackToClearing() {
+        XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [:]), fallback)
         XCTAssertEqual(
             QueryRetentionPolicy.resolveSeconds(from: ["clipboard_history_limit": "10"]),
-            disabled)
+            fallback)
+        XCTAssertNotEqual(fallback, never)
+        XCTAssertGreaterThanOrEqual(fallback, AppConstants.Launcher.QueryRetention.minimumSeconds)
     }
 
-    func testMinusOneAndValuesAtOrAboveTheMinimumAreAccepted() {
-        XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: "-1"]), -1)
+    /// The sentinel sits below the accepted minimum, so it only survives if it is
+    /// checked for before the range check.
+    func testTheNeverSentinelAndValuesAtOrAboveTheMinimumAreAccepted() {
+        XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: "-1"]), never)
         XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: "5"]), 5)
         XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: "12"]), 12)
         XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: " 7 "]), 7)
     }
 
-    /// A too-eager value falls back to "never clear" rather than being clamped up
-    /// to the minimum: silently clearing at 5s for someone who asked for 1s is a
-    /// behavior they did not choose.
     func testUnparseableAndTooSmallValuesFallBack() {
         for raw in ["-2", "0", "3", "4", "abc", "1.5", ""] {
             XCTAssertEqual(
-                QueryRetentionPolicy.resolveSeconds(from: [key: raw]), disabled,
+                QueryRetentionPolicy.resolveSeconds(from: [key: raw]), fallback,
                 "raw=\(raw)")
         }
     }
@@ -50,7 +54,7 @@ final class QueryRetentionPolicyTests: XCTestCase {
                 hiddenAt: hiddenAt, seconds: 5, now: hiddenAt.addingTimeInterval(3600)))
     }
 
-    func testMinusOneNeverClears() {
+    func testTheNeverSentinelNeverClears() {
         let hiddenAt = Date()
         XCTAssertFalse(
             QueryRetentionPolicy.shouldClear(

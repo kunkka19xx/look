@@ -132,8 +132,8 @@ fn default_config_contents() -> String {
          running_apps_placement=right\n\
          \n\
          # How long the main query survives while Look is hidden, in seconds. -1\n\
-         # keeps it indefinitely; positive values below 5 fall back to -1.\n\
-         query_retention_seconds=-1\n\
+         # keeps it indefinitely; positive values below 5 fall back to 5.\n\
+         query_retention_seconds=5\n\
          \n\
          # Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
          clipboard_history_limit=10\n\
@@ -165,7 +165,11 @@ pub const CLIPBOARD_HISTORY_LIMIT_DEFAULT: usize = 10;
 pub const CLIPBOARD_HISTORY_LIMIT_MIN: usize = 10;
 pub const CLIPBOARD_HISTORY_LIMIT_MAX: usize = 100;
 const QUERY_RETENTION_SECONDS_KEY: &str = "query_retention_seconds";
-pub const QUERY_RETENTION_SECONDS_DEFAULT: i64 = -1;
+/// Undeclared, the query is dropped once Look has been hidden this long.
+pub const QUERY_RETENTION_SECONDS_DEFAULT: i64 = 5;
+/// The opt-out, and the one accepted value below the minimum: keep the query for
+/// as long as the process lives.
+pub const QUERY_RETENTION_SECONDS_NEVER: i64 = -1;
 pub const QUERY_RETENTION_SECONDS_MIN: i64 = 5;
 
 /// Drops a trailing comment. `#` only starts one at the beginning of the line or after
@@ -197,7 +201,7 @@ pub fn clipboard_history_limit() -> usize {
 
 /// How long the main query survives while the launcher is hidden. `-1` keeps it
 /// for as long as the process lives; positive values below 5 are too aggressive
-/// to be useful and fall back to `-1`.
+/// to be useful and fall back to the default.
 pub fn query_retention_seconds() -> i64 {
     let path = config_file_path();
     let Ok(contents) = std::fs::read_to_string(&path) else {
@@ -258,6 +262,8 @@ fn parse_query_retention_seconds(contents: &str) -> i64 {
         return QUERY_RETENTION_SECONDS_DEFAULT;
     };
     match value.parse::<i64>() {
+        // Ahead of the minimum check, which the opt-out sentinel is below.
+        Ok(QUERY_RETENTION_SECONDS_NEVER) => QUERY_RETENTION_SECONDS_NEVER,
         Ok(parsed) if parsed >= QUERY_RETENTION_SECONDS_MIN => parsed,
         _ => QUERY_RETENTION_SECONDS_DEFAULT,
     }
@@ -404,6 +410,15 @@ mod tests {
     }
 
     #[test]
+    fn query_retention_defaults_to_clearing_not_to_never() {
+        assert_ne!(
+            QUERY_RETENTION_SECONDS_DEFAULT,
+            QUERY_RETENTION_SECONDS_NEVER
+        );
+        assert!(QUERY_RETENTION_SECONDS_DEFAULT >= QUERY_RETENTION_SECONDS_MIN);
+    }
+
+    #[test]
     fn query_retention_missing_key_falls_back_to_default() {
         assert_eq!(
             parse_query_retention_seconds(""),
@@ -415,11 +430,13 @@ mod tests {
         );
     }
 
+    /// The sentinel sits below the accepted minimum, so it only survives if the
+    /// parser checks for it before the range check.
     #[test]
-    fn query_retention_accepts_negative_one_and_minimum_positive() {
+    fn query_retention_accepts_the_never_sentinel_and_minimum_positive() {
         assert_eq!(
             parse_query_retention_seconds("query_retention_seconds=-1\n"),
-            -1
+            QUERY_RETENTION_SECONDS_NEVER
         );
         assert_eq!(
             parse_query_retention_seconds("query_retention_seconds=5\n"),

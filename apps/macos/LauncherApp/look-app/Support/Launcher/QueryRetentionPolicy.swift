@@ -7,19 +7,20 @@ import Foundation
 /// the way every other file-only key on this platform reads its value.
 enum QueryRetentionPolicy {
     /// Resolves the configured timeout from already-parsed config values.
-    /// Falls back to `disabled` when the key is missing, unparseable, or a
-    /// positive value below the accepted minimum.
+    /// Falls back to the default when the key is missing, unparseable, or too
+    /// small to be useful.
     static func resolveSeconds(from values: [String: String]) -> Int {
-        let disabled = AppConstants.Launcher.QueryRetention.disabled
+        let fallback = AppConstants.Launcher.QueryRetention.defaultSeconds
         guard let raw = values[AppConstants.Launcher.QueryRetention.configKey],
             let parsed = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines))
         else {
-            return disabled
+            return fallback
         }
-        if parsed == disabled {
-            return disabled
+        // Ahead of the minimum check, which the opt-out sentinel is below.
+        if parsed == AppConstants.Launcher.QueryRetention.never {
+            return parsed
         }
-        return parsed >= AppConstants.Launcher.QueryRetention.minimumSeconds ? parsed : disabled
+        return parsed >= AppConstants.Launcher.QueryRetention.minimumSeconds ? parsed : fallback
     }
 
     /// Wall clock rather than a monotonic clock: a Mac spends most of its hidden

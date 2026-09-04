@@ -171,7 +171,7 @@ struct LauncherView: View {
     /// before the next open drops the query. Read once at launch and re-read on
     /// config reload, so the show path never touches the filesystem.
     @State var lastHiddenAt: Date?
-    @State var queryRetentionSeconds = AppConstants.Launcher.QueryRetention.disabled
+    @State var queryRetentionSeconds = AppConstants.Launcher.QueryRetention.defaultSeconds
     @StateObject var runningAppsService = RunningAppsService()
     @StateObject var processModel = ProcessFinderModel()
 
