@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::num::NonZeroU64;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, State};
 
 /// camelCase for the frontend. Every field predating it is one lowercase word,
@@ -404,46 +404,37 @@ const HIDE_ARM_GRACE: std::time::Duration = std::time::Duration::from_millis(60)
 /// fallback the user already undid can't pull the window back down.
 static PENDING_HIDE: AtomicU64 = AtomicU64::new(0);
 static HIDE_COUNTER: AtomicU64 = AtomicU64::new(0);
-static LAST_HIDE_REQUESTED_AT: Mutex<Option<Instant>> = Mutex::new(None);
+/// Wall clock, not `Instant`: the monotonic clock stops while the machine is
+/// suspended, so a launcher hidden overnight would come back reporting only the
+/// minutes the machine was awake and keep a query the user left a day ago.
+static LAST_HIDDEN_AT: Mutex<Option<SystemTime>> = Mutex::new(None);
 
-fn mark_hide_requested_now() {
-    let mut hidden_at = LAST_HIDE_REQUESTED_AT
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
-    *hidden_at = Some(Instant::now());
-}
-
-fn take_hide_timestamp_if_shown(
-    hidden_at: &mut Option<Instant>,
-    show_succeeded: bool,
-) -> Option<Instant> {
-    if !show_succeeded {
-        return None;
-    }
-    hidden_at.take()
+fn mark_hidden_now() {
+    let mut hidden_at = LAST_HIDDEN_AT.lock().unwrap_or_else(|p| p.into_inner());
+    *hidden_at = Some(SystemTime::now());
 }
 
 fn query_clear_decision_after_show(show_succeeded: bool) -> Option<bool> {
-    let hidden_at = {
-        let mut hidden_at = LAST_HIDE_REQUESTED_AT
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        take_hide_timestamp_if_shown(&mut hidden_at, show_succeeded)
-    };
     if !show_succeeded {
         return None;
     }
+    let hidden_at = LAST_HIDDEN_AT
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take();
     let Some(hidden_at) = hidden_at else {
         return Some(false);
     };
-    let timeout_secs = crate::config::launcher_query_clear_after_hide_seconds();
-    Some(query_clear_timeout_elapsed(
-        hidden_at.elapsed(),
+    let timeout_secs = crate::config::query_retention_seconds();
+    // A clock moved backwards under a hidden launcher reads as no time passed,
+    // which keeps the query. Preserving is the safe answer.
+    Some(query_retention_expired(
+        hidden_at.elapsed().unwrap_or_default(),
         timeout_secs,
     ))
 }
 
-fn query_clear_timeout_elapsed(hidden_for: Duration, timeout_secs: i64) -> bool {
+fn query_retention_expired(hidden_for: Duration, timeout_secs: i64) -> bool {
     timeout_secs >= 0 && hidden_for >= Duration::from_secs(timeout_secs as u64)
 }
 
@@ -454,7 +445,6 @@ fn query_clear_timeout_elapsed(hidden_for: Duration, timeout_secs: i64) -> bool 
 /// revealed panel to flash on the next summon before the entrance rewinds and
 /// replays. Every dismiss goes through here.
 pub fn hide_armed(window: &tauri::WebviewWindow) {
-    mark_hide_requested_now();
     let arm = HIDE_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
     PENDING_HIDE.store(arm, Ordering::Relaxed);
     let _ = window.emit(crate::consts::EVENT_WINDOW_HIDDEN, arm);
@@ -487,6 +477,10 @@ pub fn confirm_hide(window: tauri::WebviewWindow, arm: NonZeroU64) {
 /// Take the launcher off screen. With layer shell attached, the surface on
 /// screen is not the one Tauri hands out.
 pub fn hide_now(window: &tauri::WebviewWindow) {
+    // Every route off screen lands here - the armed path, its grace-timeout
+    // fallback, and `focus_existing_window`, which hides without arming - so
+    // this is the only place the hidden-since clock can be wound once each.
+    mark_hidden_now();
     #[cfg(target_os = "linux")]
     if crate::platform::linux::layer_shell::is_active() {
         crate::platform::linux::layer_shell::hide();
@@ -1125,48 +1119,34 @@ fn find_desktop_file(id_path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{query_clear_timeout_elapsed, take_hide_timestamp_if_shown};
-    use std::time::{Duration, Instant};
+    use super::{query_clear_decision_after_show, query_retention_expired};
+    use std::time::Duration;
 
     #[test]
-    fn failed_show_preserves_hide_timestamp_for_next_attempt() {
-        let expected = Instant::now();
-        let mut hidden_at = Some(expected);
-
-        assert_eq!(take_hide_timestamp_if_shown(&mut hidden_at, false), None);
-        assert_eq!(hidden_at, Some(expected));
+    fn failed_show_reaches_no_decision() {
+        assert_eq!(query_clear_decision_after_show(false), None);
     }
 
     #[test]
-    fn successful_show_consumes_hide_timestamp() {
-        let expected = Instant::now();
-        let mut hidden_at = Some(expected);
-
-        assert_eq!(
-            take_hide_timestamp_if_shown(&mut hidden_at, true),
-            Some(expected)
-        );
-        assert_eq!(hidden_at, None);
+    fn show_with_no_recorded_hide_keeps_the_query() {
+        assert_eq!(query_clear_decision_after_show(true), Some(false));
     }
 
     #[test]
-    fn query_clear_timeout_preserves_query_before_boundary() {
-        assert!(!query_clear_timeout_elapsed(Duration::from_secs(3), 5));
-        assert!(!query_clear_timeout_elapsed(
-            Duration::from_millis(4_999),
-            5
-        ));
+    fn query_retention_preserves_query_before_boundary() {
+        assert!(!query_retention_expired(Duration::from_secs(3), 5));
+        assert!(!query_retention_expired(Duration::from_millis(4_999), 5));
     }
 
     #[test]
-    fn query_clear_timeout_clears_at_and_after_boundary() {
-        assert!(query_clear_timeout_elapsed(Duration::from_secs(5), 5));
-        assert!(query_clear_timeout_elapsed(Duration::from_secs(8), 5));
+    fn query_retention_clears_at_and_after_boundary() {
+        assert!(query_retention_expired(Duration::from_secs(5), 5));
+        assert!(query_retention_expired(Duration::from_secs(8), 5));
     }
 
     #[test]
-    fn query_clear_timeout_negative_one_never_clears() {
-        assert!(!query_clear_timeout_elapsed(Duration::from_secs(5), -1));
-        assert!(!query_clear_timeout_elapsed(Duration::from_secs(60), -1));
+    fn query_retention_negative_one_never_clears() {
+        assert!(!query_retention_expired(Duration::from_secs(5), -1));
+        assert!(!query_retention_expired(Duration::from_secs(60), -1));
     }
 }

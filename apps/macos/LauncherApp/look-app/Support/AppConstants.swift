@@ -427,6 +427,17 @@ enum AppConstants {
             static let commandModeInfoBanner = "Help is available in app list mode"
         }
 
+        /// How long the launcher may stay hidden before the next open returns to
+        /// the empty home state. `disabled` keeps the query for as long as the
+        /// process lives and is the default; a positive value below
+        /// `minimumSeconds` clears too eagerly to be useful, so it falls back to
+        /// `disabled` rather than being clamped up. See QueryRetentionPolicy.
+        enum QueryRetention {
+            static let configKey = "query_retention_seconds"
+            static let disabled = -1
+            static let minimumSeconds = 5
+        }
+
         /// Virtual key codes (`NSEvent.keyCode`). These are physical positions on a
         /// US layout, not characters, so a handler that must follow the printed
         /// letter on other layouts matches `charactersIgnoringModifiers` as well.
