@@ -134,8 +134,7 @@ extension LauncherView {
         }
 
         hotkeyLog.notice("toggle: -> SHOW branch")
-        // Before the window is ordered front, so a query dropped here is never
-        // painted into the panel the user is about to see.
+        // Before the window is ordered front, so a dropped query is never painted.
         clearQueryIfRetentionExpired()
         // Re-arm the spawn cascade so the launchpad tiles and quick actions
         // settle in fresh on every open, not just the first per process.
@@ -235,10 +234,8 @@ extension LauncherView {
         // The AI session intentionally survives hide/recall (Cmd+Space away and
         // back must not lose the conversation). Only Esc ends and archives it.
         let wasVisible = window.isVisible
-        // Every dismissal reaches this function, so this is the one place the
-        // hidden-since clock has to be wound. Only on a real visible-to-hidden
-        // transition: a hide arriving at an already-hidden window would
-        // otherwise restart the clock and defer the clear that was due.
+        // Only a real visible-to-hidden transition winds the clock: a repeat
+        // hide would otherwise restart it and defer the clear that was due.
         if wasVisible {
             lastHiddenAt = Date()
         }
@@ -260,8 +257,8 @@ extension LauncherView {
         refreshClipboardMonitoringMode()
     }
 
-    /// Re-reads `query_retention_seconds`. Called at launch and
-    /// on config reload so the show path only ever compares two dates.
+    /// Called at launch and on config reload, so the show path only ever
+    /// compares two dates.
     func reloadQueryRetentionPolicy() {
         let path = ConfigPathResolver.resolvedPath()
         guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else {
@@ -272,22 +269,19 @@ extension LauncherView {
             from: ConfigFileLines.keyValues(raw))
     }
 
-    /// A hide that outlasted the configured timeout sends the next open back to
-    /// the empty home state. The stamp is consumed either way, so a show that
-    /// was too early cannot make a later one clear on a stale hide.
+    /// The stamp is consumed either way, so an early show cannot leave a later
+    /// one clearing on a stale hide.
     func clearQueryIfRetentionExpired() {
         let expired = QueryRetentionPolicy.shouldClear(
             hiddenAt: lastHiddenAt, seconds: queryRetentionSeconds)
         lastHiddenAt = nil
         guard expired else { return }
-        // Levels need no handling: `hideLauncherWindow` drops them on every hide.
-        // Command mode carries its own input, which `query` alone would strand.
+        // Levels are already gone. Command mode carries its own input, which
+        // clearing `query` alone would strand.
         exitCommandMode()
         if isAIMode {
-            // The conversation survives hide/recall by design, and only Esc ends
-            // it. What goes stale is the half-typed message, so that is all this
-            // clears - silently, or the compose handler would cancel the chat's
-            // own in-flight work.
+            // The conversation survives hide/recall by design; only the stale
+            // draft goes. Silently, or the compose handler cancels the chat's work.
             clearQuerySilently()
         } else {
             query = ""

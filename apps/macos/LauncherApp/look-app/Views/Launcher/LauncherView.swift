@@ -167,9 +167,8 @@ struct LauncherView: View {
     @State var appearanceRevealToken: UInt64 = 0
     @State var lookupDefinition: LookupDefinition?
     @State var pidToRestoreOnHide: pid_t?
-    /// When the launcher was last hidden, and how long it may stay that way
-    /// before the next open drops the query. Read once at launch and re-read on
-    /// config reload, so the show path never touches the filesystem.
+    /// Read at launch and on config reload, so the show path never touches the
+    /// filesystem.
     @State var lastHiddenAt: Date?
     @State var queryRetentionSeconds = AppConstants.Launcher.QueryRetention.defaultSeconds
     @StateObject var runningAppsService = RunningAppsService()
@@ -1025,11 +1024,15 @@ struct LauncherView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookActivateLauncherRequested)) { _ in
-            // A reopen puts the window up before this runs, so the timeout is not
-            // applied here - clearing now would repaint a panel already on screen.
-            // The stamp still goes, or the next toggle would judge this open by a
-            // hide that ended long before it.
-            lastHiddenAt = nil
+            // AppDelegate posts this after ordering the window front, where
+            // clearing would repaint a visible panel; PomoMenuBarItem posts it
+            // while still hidden, which is the moment the timeout is for. The
+            // stamp goes either way, or a later open would judge an old hide.
+            if launcherWindow()?.isVisible == true {
+                lastHiddenAt = nil
+            } else {
+                clearQueryIfRetentionExpired()
+            }
             activateLauncherModeAndFocus()
             refreshClipboardMonitoringMode()
         }

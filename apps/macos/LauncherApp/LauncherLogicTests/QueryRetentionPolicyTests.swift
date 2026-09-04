@@ -2,15 +2,12 @@ import XCTest
 
 @testable import LauncherLogic
 
-/// The `query_retention_seconds` rule, which has to agree with
-/// the linows parser for the same key.
+/// The `query_retention_seconds` rule, which has to agree with the linows parser.
 final class QueryRetentionPolicyTests: XCTestCase {
     private let key = AppConstants.Launcher.QueryRetention.configKey
     private let fallback = AppConstants.Launcher.QueryRetention.defaultSeconds
     private let never = AppConstants.Launcher.QueryRetention.never
 
-    /// An undeclared key clears rather than preserving: that is the shipped
-    /// behavior, and the whole point of the default.
     func testAMissingKeyFallsBackToClearing() {
         XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [:]), fallback)
         XCTAssertEqual(
@@ -20,8 +17,6 @@ final class QueryRetentionPolicyTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(fallback, AppConstants.Launcher.QueryRetention.minimumSeconds)
     }
 
-    /// The sentinel sits below the accepted minimum, so it only survives if it is
-    /// checked for before the range check.
     func testTheNeverSentinelAndValuesAtOrAboveTheMinimumAreAccepted() {
         XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: "-1"]), never)
         XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: "5"]), 5)
@@ -65,8 +60,6 @@ final class QueryRetentionPolicyTests: XCTestCase {
         XCTAssertFalse(QueryRetentionPolicy.shouldClear(hiddenAt: nil, seconds: 5))
     }
 
-    /// A clock moved backwards under a hidden launcher yields a negative
-    /// interval; preserving the query is the safe answer.
     func testAClockMovedBackwardsKeepsTheQuery() {
         let hiddenAt = Date()
         XCTAssertFalse(

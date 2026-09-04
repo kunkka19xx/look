@@ -404,14 +404,15 @@ const HIDE_ARM_GRACE: std::time::Duration = std::time::Duration::from_millis(60)
 /// fallback the user already undid can't pull the window back down.
 static PENDING_HIDE: AtomicU64 = AtomicU64::new(0);
 static HIDE_COUNTER: AtomicU64 = AtomicU64::new(0);
-/// Wall clock, not `Instant`: the monotonic clock stops while the machine is
-/// suspended, so a launcher hidden overnight would come back reporting only the
-/// minutes the machine was awake and keep a query the user left a day ago.
+/// Wall clock: `Instant` stops during suspend, so a launcher hidden overnight
+/// would report only the minutes the machine was awake.
 static LAST_HIDDEN_AT: Mutex<Option<SystemTime>> = Mutex::new(None);
 
 fn mark_hidden_now() {
     let mut hidden_at = LAST_HIDDEN_AT.lock().unwrap_or_else(|p| p.into_inner());
-    *hidden_at = Some(SystemTime::now());
+    // A repeat dismissal must not restart the clock. A show consumes the stamp,
+    // so `None` means on screen - `is_visible` would not, under layer shell.
+    hidden_at.get_or_insert_with(SystemTime::now);
 }
 
 fn query_clear_decision_after_show(show_succeeded: bool) -> Option<bool> {
@@ -426,8 +427,7 @@ fn query_clear_decision_after_show(show_succeeded: bool) -> Option<bool> {
         return Some(false);
     };
     let timeout_secs = crate::config::query_retention_seconds();
-    // A clock moved backwards under a hidden launcher reads as no time passed,
-    // which keeps the query. Preserving is the safe answer.
+    // A backwards clock reads as no time passed, and so keeps the query.
     Some(query_retention_expired(
         hidden_at.elapsed().unwrap_or_default(),
         timeout_secs,
@@ -477,9 +477,7 @@ pub fn confirm_hide(window: tauri::WebviewWindow, arm: NonZeroU64) {
 /// Take the launcher off screen. With layer shell attached, the surface on
 /// screen is not the one Tauri hands out.
 pub fn hide_now(window: &tauri::WebviewWindow) {
-    // Every route off screen lands here - the armed path, its grace-timeout
-    // fallback, and `focus_existing_window`, which hides without arming - so
-    // this is the only place the hidden-since clock can be wound once each.
+    // The one point every route off screen passes through, armed or not.
     mark_hidden_now();
     #[cfg(target_os = "linux")]
     if crate::platform::linux::layer_shell::is_active() {
@@ -1120,7 +1118,7 @@ fn find_desktop_file(id_path: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{query_clear_decision_after_show, query_retention_expired};
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime};
 
     #[test]
     fn failed_show_reaches_no_decision() {
@@ -1130,6 +1128,13 @@ mod tests {
     #[test]
     fn show_with_no_recorded_hide_keeps_the_query() {
         assert_eq!(query_clear_decision_after_show(true), Some(false));
+    }
+
+    #[test]
+    fn a_repeat_hide_keeps_the_first_timestamp() {
+        let mut hidden_at = Some(SystemTime::UNIX_EPOCH);
+        hidden_at.get_or_insert_with(SystemTime::now);
+        assert_eq!(hidden_at, Some(SystemTime::UNIX_EPOCH));
     }
 
     #[test]

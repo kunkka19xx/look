@@ -165,10 +165,8 @@ pub const CLIPBOARD_HISTORY_LIMIT_DEFAULT: usize = 10;
 pub const CLIPBOARD_HISTORY_LIMIT_MIN: usize = 10;
 pub const CLIPBOARD_HISTORY_LIMIT_MAX: usize = 100;
 const QUERY_RETENTION_SECONDS_KEY: &str = "query_retention_seconds";
-/// Undeclared, the query is dropped once Look has been hidden this long.
 pub const QUERY_RETENTION_SECONDS_DEFAULT: i64 = 5;
-/// The opt-out, and the one accepted value below the minimum: keep the query for
-/// as long as the process lives.
+/// The opt-out, and the one accepted value below the minimum.
 pub const QUERY_RETENTION_SECONDS_NEVER: i64 = -1;
 pub const QUERY_RETENTION_SECONDS_MIN: i64 = 5;
 
@@ -200,8 +198,7 @@ pub fn clipboard_history_limit() -> usize {
 }
 
 /// How long the main query survives while the launcher is hidden. `-1` keeps it
-/// for as long as the process lives; positive values below 5 are too aggressive
-/// to be useful and fall back to the default.
+/// indefinitely; values below the minimum fall back to the default.
 pub fn query_retention_seconds() -> i64 {
     let path = config_file_path();
     let Ok(contents) = std::fs::read_to_string(&path) else {
@@ -244,7 +241,7 @@ fn parse_clipboard_history_limit(contents: &str) -> usize {
 
 /// Parses `query_retention_seconds` out of raw config contents. The last
 /// assignment wins; returns the default when the key is absent, unparseable, or
-/// below the minimum positive threshold.
+/// below the minimum.
 fn parse_query_retention_seconds(contents: &str) -> i64 {
     let mut last_value: Option<&str> = None;
     for raw_line in contents.lines() {
@@ -430,8 +427,6 @@ mod tests {
         );
     }
 
-    /// The sentinel sits below the accepted minimum, so it only survives if the
-    /// parser checks for it before the range check.
     #[test]
     fn query_retention_accepts_the_never_sentinel_and_minimum_positive() {
         assert_eq!(

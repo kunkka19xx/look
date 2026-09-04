@@ -427,11 +427,9 @@ enum AppConstants {
             static let commandModeInfoBanner = "Help is available in app list mode"
         }
 
-        /// How long the launcher may stay hidden before the next open returns to
-        /// the empty home state. `never` is the opt-out and the one accepted
-        /// value below `minimumSeconds`; anything else too small to be useful
-        /// falls back to `defaultSeconds`, which is what an undeclared key gets.
-        /// See QueryRetentionPolicy.
+        /// How long the launcher may stay hidden before the next open returns
+        /// to the empty home state. `never` is the opt-out, and the one accepted
+        /// value below `minimumSeconds`.
         enum QueryRetention {
             static let configKey = "query_retention_seconds"
             static let defaultSeconds = 5
