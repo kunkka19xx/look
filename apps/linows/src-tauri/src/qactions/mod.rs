@@ -221,6 +221,14 @@ fn resolve_icon(icon: Option<String>) -> Option<String> {
 /// every layout fetch, so this is the ceiling on what that costs.
 const MAX_ICON_BYTES: u64 = 256 * 1024;
 
+/// Whether an `icon` names a file rather than one of the window's glyphs.
+/// `Path::is_absolute` covers the native spelling on each OS; a leading slash
+/// is added back because Windows reads that as rooted-but-relative, and a
+/// config written on Linux still means a path there.
+fn names_a_file(icon: &str) -> bool {
+    icon.starts_with('/') || std::path::Path::new(icon).is_absolute()
+}
+
 /// The resolution itself, against a given home, so it is testable without
 /// touching the process environment.
 ///
@@ -235,7 +243,7 @@ fn resolve_icon_in(icon: Option<String>, home: Option<String>) -> Option<String>
         Some(rest) => format!("{}/{rest}", home?.trim_end_matches('/')),
         // Not a path at all: one of the window's own glyph names, which it
         // resolves for itself.
-        None if !icon.starts_with('/') => return Some(icon),
+        None if !names_a_file(&icon) => return Some(icon),
         None => icon,
     };
 
