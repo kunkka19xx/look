@@ -119,6 +119,7 @@ This document tracks what `look` supports today and what is planned next.
 - `dir` rows stay real files and folders, so preview, reveal, copy, and the file verbs keep working on them
 - per-block verbs (`open`, `edit`, `terminal`, `reveal`) overriding the global preferred tools for that block's rows only
 - `then` targets reached with `Cmd+K` / `Ctrl+K`: a target that performs steps is an action, a target that produces rows is a drill-down (levels stack 5 deep, `Esc` walks back)
+- `applies` on a `do` block makes it an action on rows it did not produce: `"files"` / `"dirs"` / `"paths"` / `"apps"`, or `{ ext = [...] }` / `{ match = [...] }`, so a verb joins the `Cmd+K` menu of every matching row the index already found. Appended after the built-in verbs, capped at 10 per row, ordered by `bias`
 - placeholders in every declared command (`{id}`, `{title}`, `{path}`, `{dir}`, `{query}`, `{parent.*}`), shell-escaped on substitution, plus `LOOK_ID` / `LOOK_TITLE` / `LOOK_PATH` in the environment
 - `confirm` question before a destructive block acts; `preview` command whose output fills the right panel for the selected row
 - row wire formats: tab-separated lines (`id<TAB>title<TAB>subtitle`) or `format = "json"` for per-row `path` and `icon`

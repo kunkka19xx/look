@@ -8,7 +8,8 @@
 //
 // A row a block produced also carries what the block declared: its own
 // `edit` / `terminal` / `reveal` beat the user's global tool, and its `then`
-// targets join this list.
+// targets join this list. Any row at all can carry an action a `do` block
+// declared with `applies`, whatever produced the row.
 
 import { toolActions, performToolAction } from '../ipc.js';
 import * as results from './results.js';
@@ -100,23 +101,21 @@ function actionableSelection() {
  * A block that declared `then` targets shows those instead of the verb list:
  * declared beats default in the menu exactly as it does when running, and the
  * chords still carry every verb regardless.
+ *
+ * An action declared for rows LIKE this one (`applies`) is not that block's
+ * choice about that row, so it joins the list rather than replacing it, and
+ * goes last: a user's own blocks must never move Ctrl+E out from under them.
  */
 export async function descriptorsFor() {
     const selected = actionableSelection();
     if (!selected) return [];
 
     const block = await sourceblocks.loadDetail(selected);
-    const targets = (block?.then || []).map((target) => ({
-        id: sourceblocks.actionIdFor(target.id),
-        // The ellipsis says this one lists rather than runs: it opens a level.
-        title: target.performs ? target.name : `${target.name}…`,
-        // Already expanded against the row, so the question names what will
-        // actually happen. The menu asks it in place of the action list.
-        confirm: target.confirm,
-    }));
-    if (targets.length > 0) return targets;
+    const targets = describe(block?.then);
+    const declared = describe(block?.globals);
+    if (targets.length > 0) return [...targets, ...declared];
 
-    if (!selected.path) return [];
+    if (!selected.path) return declared;
     const offered = CATALOG.filter((entry) => !entry.tool || applies(entry.tool, selected.kind));
     const asked = offered.filter((entry) => entry.tool).map((entry) => entry.tool);
     const resolved = asked.length
@@ -124,12 +123,26 @@ export async function descriptorsFor() {
         : [];
     const tools = new Map(asked.map((action, index) => [action, resolved[index]]));
 
-    return offered.map((entry) => ({
-        id: entry.id,
-        title: label(entry, entry.tool && tools.get(entry.tool)),
-        // The chord that already performs this, set beside the label rather
-        // than trailing it, so the keys line up down one edge.
-        chord: entry.chord,
+    return [
+        ...offered.map((entry) => ({
+            id: entry.id,
+            title: label(entry, entry.tool && tools.get(entry.tool)),
+            // The chord that already performs this, set beside the label rather
+            // than trailing it, so the keys line up down one edge.
+            chord: entry.chord,
+        })),
+        ...declared,
+    ];
+}
+
+function describe(targets) {
+    return (targets || []).map((target) => ({
+        id: sourceblocks.actionIdFor(target.id),
+        // The ellipsis says this one lists rather than runs: it opens a level.
+        title: target.performs ? target.name : `${target.name}…`,
+        // Already expanded against the row, so the question names what will
+        // actually happen. The menu asks it in place of the action list.
+        confirm: target.confirm,
     }));
 }
 

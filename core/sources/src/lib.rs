@@ -18,8 +18,9 @@ pub use collect::{
     CollectError, Collected, MAX_ROWS_PER_SOURCE, collect, collect_for_row, expand_home,
 };
 pub use def::{
-    Block, DEFAULT_FOLDER_DEPTH, KEY_DIR, KEY_DO, KEY_FILE, KEY_RUN, Only, ParsedFile, Producer,
-    RowFormat, Verbs, inferred, parse_duration, parse_file,
+    Applies, AppliesOnly, Block, DEFAULT_FOLDER_DEPTH, KEY_APPLIES, KEY_DIR, KEY_DO, KEY_FILE,
+    KEY_RUN, Only, ParsedFile, Producer, RowFormat, RowKind, Verbs, inferred, parse_duration,
+    parse_file,
 };
 pub use load::{Loaded, Problem, SOURCES_DIR_ENV, load_dir, sources_dir};
 pub use rows::{SourceRow, parse_rows};

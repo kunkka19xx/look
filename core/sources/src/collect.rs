@@ -243,7 +243,7 @@ fn collect_list(file: &Path, format: RowFormat) -> Result<Collected, CollectErro
     })
 }
 
-fn build_globs(patterns: &[String]) -> Result<Option<GlobSet>, CollectError> {
+pub(crate) fn build_globs(patterns: &[String]) -> Result<Option<GlobSet>, CollectError> {
     if patterns.is_empty() {
         return Ok(None);
     }
