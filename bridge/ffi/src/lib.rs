@@ -886,13 +886,40 @@ pub extern "C" fn look_quick_actions_launchpad_json() -> *mut c_char {
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// JSON array of strings describing anything wrong with `~/.look/launchpad.toml`
+/// JSON array of strings describing anything wrong with `~/.look/super-actions.toml`
 /// (or `[]`). Free the result with `look_free_cstring`.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_launchpad_warnings_json() -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(
         qactions_api::look_launchpad_warnings_json_impl,
     ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_launchpad_tile_values_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        qactions_api::look_launchpad_tile_values_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Spawns and blocks: call off the UI thread. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_launchpad_refresh_tiles_json() -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        qactions_api::look_launchpad_refresh_tiles_json_impl,
+    ))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Returns `{"error": ...}`. Free with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_launchpad_press_tile_json(name: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        qactions_api::look_launchpad_press_tile_json_impl(name)
+    }))
     .unwrap_or(std::ptr::null_mut())
 }
 
@@ -959,6 +986,11 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
 
+        // Both sides of the guard: an index refresh spawned by an earlier test
+        // runs detached and reads the database path late, so it would rebuild
+        // `candidates` in this test's scratch database and delete the row below.
+        state::wait_for_index_refresh_for_test();
+
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);
 
@@ -969,6 +1001,15 @@ mod tests {
 
         state::set_db_path_for_test(&db_path);
         assert!(look_reload_config());
+
+        // `look_reload_config` starts filesystem watchers on the real scan
+        // roots. Any event under them marks the index dirty, which lets a
+        // background refresh fire - and that refresh runs DETACHED, reads the
+        // database path late, and rebuilds `candidates` in this test's scratch
+        // database, deleting the row inserted above. The neighbouring refresh
+        // test stops them for the same reason.
+        state::stop_index_watchers_for_test();
+        state::wait_for_index_refresh_for_test();
 
         let query = CString::new("smoke").expect("query cstring");
         let ptr = look_search_json(query.as_ptr(), 10);
@@ -1033,6 +1074,18 @@ mod tests {
             serde_json::from_str(&compact_raw).expect("valid compact payload");
         assert!(compact_payload.get("query").is_none());
         assert!(compact_payload.get("results").is_some());
+
+        // The subject below is `look_record_usage`; that the candidate exists is
+        // its PRECONDITION, so it is re-established here rather than assumed to
+        // have survived. `usage_events` has a foreign key onto `candidates`, and
+        // an index refresh - which runs detached and reads the database path
+        // late - rebuilds that table. Those refreshes are triggered from state
+        // this binary shares across test modules that hold DIFFERENT locks
+        // (state.rs has its own), so no amount of waiting here makes the row's
+        // survival something this test can rely on.
+        store
+            .upsert_candidates(&[smoke_candidate()])
+            .expect("re-establish the smoke candidate");
 
         let id = CString::new("app:smoke.test").expect("id cstring");
         let action = CString::new("open").expect("action cstring");
@@ -1175,6 +1228,12 @@ mod tests {
             "expected refresh request to acquire slot at least once"
         );
 
+        // The refresh runs on a DETACHED thread. Leaving this test without
+        // waiting for it releases the lock while it is still going, and it then
+        // rebuilds `candidates` in whatever database the NEXT test points the
+        // process-global path at - deleting the row that test just inserted.
+        crate::state::wait_for_index_refresh_for_test();
+
         thread::sleep(Duration::from_millis(100));
 
         let text = CString::new("hello").expect("text cstring");
@@ -1281,14 +1340,20 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
 
+        // Both sides of the guard, for the reason the smoke test above gives.
+        state::wait_for_index_refresh_for_test();
+
         let db_path = unique_test_db_path();
         let _ = fs::remove_file(&db_path);
 
         state::set_db_path_for_test(&db_path);
         assert!(look_reload_config());
+        // The reload restarts the watchers and can spawn a refresh of its own,
+        // neither wanted while this seeds and prunes the same database.
+        state::stop_index_watchers_for_test();
+        state::wait_for_index_refresh_for_test();
 
-        // Mirror the JSON format the C# UwpAppService produces (System.Text.Json with
-        // [JsonPropertyName] attributes → snake_case keys).
+        // The JSON shape the seeding API accepts.
         let json = CString::new(
             r#"[
                 {"aumid": "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", "title": "Terminal"},
@@ -1381,6 +1446,7 @@ mod tests {
             "Notepad should have been pruned after disappearing from the seed"
         );
 
+        state::wait_for_index_refresh_for_test();
         let _ = fs::remove_file(&db_path);
     }
 }

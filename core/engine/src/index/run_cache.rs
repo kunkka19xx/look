@@ -24,13 +24,19 @@ const CACHE_DIR_NAME: &str = ".look/cache/rows";
 pub const CACHE_DIR_ENV: &str = "LOOK_ROWS_CACHE_DIR";
 
 fn cache_dir() -> Option<PathBuf> {
-    if let Ok(custom) = std::env::var(CACHE_DIR_ENV) {
+    cache_dir_named(CACHE_DIR_ENV, CACHE_DIR_NAME)
+}
+
+/// A cache directory under the user's home, or whatever `env_var` names.
+/// Shared so every cache resolves its home the same way.
+pub(crate) fn cache_dir_named(env_var: &str, dir_name: &str) -> Option<PathBuf> {
+    if let Ok(custom) = std::env::var(env_var) {
         let trimmed = custom.trim();
         if !trimmed.is_empty() {
             return Some(PathBuf::from(trimmed));
         }
     }
-    Some(PathBuf::from(crate::config::user_home_dir()?).join(CACHE_DIR_NAME))
+    Some(PathBuf::from(crate::config::user_home_dir()?).join(dir_name))
 }
 
 /// Same ceiling the collectors use, applied again on read: a cache file edited

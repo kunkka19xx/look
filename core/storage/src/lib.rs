@@ -1,5 +1,5 @@
 use look_indexing::{Candidate, CandidateKind};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::path::Path;
@@ -188,6 +188,16 @@ impl InMemorySettingsStore {
 }
 
 impl SqliteStore {
+    /// IMMEDIATE, not the default DEFERRED. Every transaction here writes, and a
+    /// deferred one that opens with a read has to upgrade later: SQLite refuses
+    /// that with `SQLITE_BUSY` at once, ignoring `busy_timeout`, because waiting
+    /// cannot make a stale read snapshot current.
+    fn write_tx(&mut self) -> StorageResult<rusqlite::Transaction<'_>> {
+        Ok(self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?)
+    }
+
     pub fn open(path: impl AsRef<Path>) -> StorageResult<Self> {
         let path = path.as_ref();
         if let Some(parent) = path.parent() {
@@ -280,7 +290,7 @@ impl SqliteStore {
         candidates: &[Candidate],
         indexed_at_unix_s: Option<i64>,
     ) -> StorageResult<()> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
         {
             let mut stmt = tx.prepare(
                 // Interim write-reduction (see specs/indexing-scale.md): the `WHERE`
@@ -333,7 +343,7 @@ impl SqliteStore {
     }
 
     pub fn replace_candidates(&mut self, candidates: &[Candidate]) -> StorageResult<()> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
         tx.execute("DELETE FROM usage_events", [])?;
         tx.execute("DELETE FROM candidates", [])?;
 
@@ -389,7 +399,7 @@ impl SqliteStore {
     }
 
     pub fn save_search_settings(&mut self, settings: SearchSettings) -> StorageResult<()> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
         tx.execute(
             "INSERT INTO settings(key, value) VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -608,7 +618,7 @@ impl SqliteStore {
     }
 
     pub fn delete_stale_candidates(&mut self, older_than_unix_s: i64) -> StorageResult<usize> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
         tx.execute(
             "DELETE FROM usage_events
              WHERE candidate_id IN (
@@ -657,7 +667,7 @@ impl SqliteStore {
             .map(|p| format!("{}%", like_escape(p)))
             .collect();
 
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
         tx.execute_batch(
             "CREATE TEMP TABLE IF NOT EXISTS _seen_ids (id TEXT PRIMARY KEY);
              DELETE FROM _seen_ids;",
@@ -717,7 +727,7 @@ impl SqliteStore {
             .collect::<Vec<_>>()
             .join(" OR ");
 
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
 
         let mut bindings: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(1 + escaped.len());
         bindings.push(&older_than_unix_s);
@@ -756,7 +766,7 @@ impl SqliteStore {
         prefix: &str,
         keep_ids: &HashSet<&str>,
     ) -> StorageResult<usize> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_tx()?;
         let like_pattern = format!("{}%", like_escape(prefix));
 
         let stale_ids: Vec<String> = {
@@ -813,6 +823,8 @@ impl SqliteStore {
 
     fn migrate(&self) -> StorageResult<()> {
         self.conn.execute_batch(
+            // No `busy_timeout`: rusqlite already sets 5s on every connection
+            // it opens, before any of this runs.
             "PRAGMA foreign_keys = ON;
              PRAGMA journal_mode = WAL;
              -- Keep the seen-id temp table used by delete_unseen_candidates in RAM.
@@ -1621,6 +1633,42 @@ mod tests {
             )
             .expect("count usage events");
         assert_eq!(usage_count, 0);
+    }
+
+    /// Passes on rusqlite's own 5s busy timeout, so it guards against that being
+    /// taken away rather than proving anything the store does. The WAL
+    /// conversion in `migrate` is the exclusive-lock step it blocks on.
+    #[test]
+    fn an_open_waits_for_a_database_someone_else_is_holding() {
+        /// Long enough to be blocked when released, far under the 5s timeout.
+        const HOLD: std::time::Duration = std::time::Duration::from_millis(200);
+
+        let dir = std::env::temp_dir().join(format!("look-store-busy-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("contended.db");
+        let _ = std::fs::remove_file(&path);
+
+        // A plain connection, so the file exists and is NOT yet in WAL.
+        let blocker = Connection::open(&path).expect("blocker connection");
+        blocker
+            .execute_batch("BEGIN EXCLUSIVE; CREATE TABLE probe(x);")
+            .expect("take the lock");
+
+        let opening = {
+            let path = path.clone();
+            std::thread::spawn(move || SqliteStore::open(&path).is_ok())
+        };
+
+        std::thread::sleep(HOLD);
+        blocker.execute_batch("COMMIT").expect("release the lock");
+
+        assert!(
+            opening.join().expect("the opening thread"),
+            "an open must wait for the other writer rather than fail"
+        );
+
+        drop(blocker);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

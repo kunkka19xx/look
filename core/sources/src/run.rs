@@ -406,6 +406,9 @@ pub fn capture(
                 .map(str::to_string)
                 .unwrap_or_else(root_dir),
         );
+    // Before the spawn, so the shell leads its own group from its first
+    // instruction and the deadline below has a whole tree to aim at.
+    lead_process_group(&mut shell);
     let mut spawned = shell.spawn().map_err(|err| spawn_failure(&shell, err))?;
 
     // Both pipes are drained on their own threads for the whole run. Polling
@@ -424,7 +427,7 @@ pub fn capture(
             Ok(Some(status)) => break status,
             Ok(None) => {
                 if Instant::now() >= deadline {
-                    let _ = spawned.kill();
+                    kill_tree(&mut spawned);
                     let _ = spawned.wait();
                     return Err(format!("timed out after {}s", timeout.as_secs()));
                 }
@@ -521,6 +524,66 @@ fn libc_setsid() {
     unsafe {
         setsid();
     }
+}
+
+/// The shell in a process group of its own, so a deadline can reach everything
+/// it started and not just the shell.
+///
+/// The same `setsid` call `detach` makes, for the opposite reason: there it
+/// keeps the launcher's exit from reaching a step, here it makes the step's
+/// whole subtree reachable by one signal.
+#[cfg(unix)]
+fn lead_process_group(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+
+    // Runs between fork and exec, where only async-signal-safe calls are legal.
+    // `setsid` is one; nothing else belongs in this closure.
+    unsafe {
+        command.pre_exec(|| {
+            libc_setsid();
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(unix))]
+fn lead_process_group(_command: &mut Command) {}
+
+/// Kills the shell and everything it started.
+///
+/// `Child::kill` signals the shell alone. A step is usually a pipeline or a
+/// chain, so the thing actually doing the work - `sqlite3`, a `curl`, a `brew` -
+/// is a separate process that survives, orphaned and still holding whatever it
+/// held. A `run` block fires once per reload, so one stray is a nuisance nobody
+/// notices. Anything on a path the user waits on, or worse fires every time a
+/// window opens, accumulates them for as long as the app is up.
+#[cfg(unix)]
+fn kill_tree(spawned: &mut std::process::Child) {
+    unsafe extern "C" {
+        fn getpgid(pid: i32) -> i32;
+        fn killpg(pgrp: i32, sig: i32) -> i32;
+    }
+    const SIGKILL: i32 = 9;
+
+    let group = unsafe { getpgid(spawned.id() as i32) };
+    // Never signal our own group. If `setsid` did not take, the shell is still
+    // in the launcher's group, and killpg would take the launcher down with it.
+    if group > 0 && group != unsafe { getpgid(0) } {
+        unsafe {
+            killpg(group, SIGKILL);
+        }
+    }
+    // Still kill the shell directly: the group call is skipped in exactly the
+    // case where it would be unsafe, and this is what that case falls back to.
+    let _ = spawned.kill();
+}
+
+/// Windows kills the shell only. Reaching the rest of the tree needs a job
+/// object, which is a different piece of work from this one; `cmd` steps are
+/// also less often pipelines, so the exposure is smaller.
+#[cfg(not(unix))]
+fn kill_tree(spawned: &mut std::process::Child) {
+    let _ = spawned.kill();
 }
 
 /// Same intent as the Unix `setsid`, plus the console suppression `cmd` needs:
@@ -778,6 +841,63 @@ mod tests {
         fn a_hung_command_is_killed_rather_than_waited_on() {
             let err = capture("sleep 30", None, Duration::from_millis(150), 1024).unwrap_err();
             assert!(err.contains("timed out"), "{err}");
+        }
+
+        #[test]
+        fn a_timeout_takes_what_the_step_started_with_it() {
+            // A step is usually a pipeline or a chain, so the process doing the
+            // work is not the shell we hold. Killing only the shell leaves that
+            // one running, orphaned, for as long as it likes - and nothing ever
+            // reports it, because from the outside the timeout looks handled.
+            //
+            // The step reports its own child's pid rather than the test matching
+            // on a command line: `sleep 45 | grep <marker>` only puts the marker
+            // in the grep's argv, so a check by name would watch the wrong half
+            // of the pipeline and pass while the sleep leaked.
+            // Wide on purpose: it only has to land between the step recording
+            // its pid and `sleep 45` ending. A step runs under `-lc`, and a
+            // login shell on a loaded runner does not always reach its first
+            // command inside a couple of hundred milliseconds.
+            const DEADLINE: Duration = Duration::from_secs(2);
+
+            let pid_file = std::env::temp_dir().join(format!("look-orphan-{}", std::process::id()));
+            let _ = std::fs::remove_file(&pid_file);
+
+            let err = capture(
+                &format!("sleep 45 & echo $! > {} ; wait", pid_file.display()),
+                None,
+                DEADLINE,
+                1024,
+            )
+            .unwrap_err();
+            assert!(err.contains("timed out"), "{err}");
+
+            let child: i32 = std::fs::read_to_string(&pid_file)
+                .unwrap_or_else(|err| {
+                    panic!("the step never recorded a pid in {DEADLINE:?}: {err}")
+                })
+                .trim()
+                .parse()
+                .expect("a pid");
+            let _ = std::fs::remove_file(&pid_file);
+
+            // The kill and the reparenting are not instant.
+            std::thread::sleep(Duration::from_millis(300));
+
+            // `kill(pid, 0)` asks whether the process exists and signals
+            // nothing. Not `ps -p`: on macOS that lists only processes on the
+            // current terminal, and an orphan has none - so it reports every
+            // leaked process as gone, which is precisely the answer that would
+            // make this test pass while the bug was present.
+            unsafe extern "C" {
+                fn kill(pid: i32, sig: i32) -> i32;
+            }
+            let alive = unsafe { kill(child, 0) } == 0;
+
+            assert!(
+                !alive,
+                "the process the step started ({child}) outlived the timeout"
+            );
         }
 
         #[test]

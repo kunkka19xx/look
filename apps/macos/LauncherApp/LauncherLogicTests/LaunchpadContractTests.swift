@@ -41,6 +41,53 @@ final class LaunchpadContractTests: XCTestCase {
         }
     }
 
+    func testAUserTileDoesNotBlankTheWholeLaunchpad() throws {
+        // The failure this exists for, and it was real: `LaunchpadTileRole` had
+        // no `custom` case and no fallback, so one user tile failed to decode,
+        // which failed the tiles array, which fell through to decoding the
+        // payload as a bare array and threw - and the shipping call swallows
+        // that with `try?`. A single [tiles.x] entry emptied the entire strip,
+        // silently, on the screen shown at every launch.
+        //
+        // The default fixture has no user tile in it, which is exactly why the
+        // round-trip test could not see this.
+        let layout = try LaunchpadFixture.customTileLayout()
+
+        XCTAssertEqual(layout.tiles.count, 1, "the user tile survived the decode")
+        let tile = try XCTUnwrap(layout.tiles.first)
+        XCTAssertEqual(tile.role, .custom)
+        XCTAssertEqual(tile.actionId, "ci")
+        XCTAssertEqual(tile.title, "Ci", "the name was title-cased into a label")
+        XCTAssertEqual(tile.mnemonic, "C")
+        XCTAssertEqual(tile.columnSpan, 2, "and it kept the cell it was drawn in")
+    }
+
+    func testAUserTilesValueCarriesTheAnatomyABuiltInShows() throws {
+        // Weather shows a temperature, a condition and two more lines. A user
+        // tile beside it decodes the same shape, or it reads as a lesser thing.
+        let rich = try LaunchpadFixture.decode(
+            LaunchpadTileValue.self,
+            from: Data(
+                #"{"value":"29°","caption":"PARTLY CLOUDY","lines":["H 32° L 23°","41%"],"icon":"cloud.sun","state":"on"}"#
+                    .utf8))
+
+        XCTAssertEqual(rich.value, "29°")
+        XCTAssertEqual(rich.caption, "PARTLY CLOUDY")
+        XCTAssertEqual(rich.lines, ["H 32° L 23°", "41%"])
+        XCTAssertEqual(rich.icon, "cloud.sun")
+        XCTAssertTrue(rich.isOn)
+
+        // And the common case: one number out of a shell one-liner. Every field
+        // but `value` is optional, so a script that knows nothing else stays
+        // valid when a field is added later.
+        let plain = try LaunchpadFixture.decode(
+            LaunchpadTileValue.self, from: Data(#"{"value":"3 failing"}"#.utf8))
+        XCTAssertEqual(plain.value, "3 failing")
+        XCTAssertNil(plain.caption)
+        XCTAssertTrue(plain.lines.isEmpty)
+        XCTAssertFalse(plain.isOn)
+    }
+
     func testTheLayoutArrivesWithTheShapeTheDrawingDeclared() throws {
         // Derived from the tiles this would also be 6x3, which is the point: a
         // drawing whose last column is empty only differs from its own extent,

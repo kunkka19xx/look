@@ -245,6 +245,18 @@ export async function launchpadLayout() {
     return normalizeLayout(await invoke('launchpad_layout'));
 }
 
+export async function launchpadTileValues() {
+    return invoke('launchpad_tile_values');
+}
+
+export async function refreshLaunchpadTiles() {
+    return invoke('refresh_launchpad_tiles');
+}
+
+export async function pressLaunchpadTile(name) {
+    return invoke('press_launchpad_tile', { name });
+}
+
 export async function launchpadWarnings() {
     return invoke('launchpad_warnings');
 }

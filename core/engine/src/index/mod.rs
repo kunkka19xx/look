@@ -3,6 +3,7 @@ use crate::config::RuntimeConfig;
 mod apps;
 mod files;
 mod run_cache;
+pub(crate) use run_cache::cache_dir_named;
 mod settings;
 mod sources;
 

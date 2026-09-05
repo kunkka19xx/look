@@ -207,7 +207,97 @@ pub fn quick_actions(result_id: String, kind: String) -> Vec<look_qactions::Acti
     look_qactions::descriptors_for(&result_id, &kind)
 }
 
-/// The empty-state launchpad's tile layout: the user's `~/.look/launchpad.toml`
+/// A tile icon that names a file rather than one of the shell's glyphs, with
+/// `~` expanded.
+///
+/// Done here rather than in the window: the core passes the name through
+/// untouched (macOS reads it as an SF Symbol), and the frontend has no home
+/// directory to expand against, so this is the one place that knows both.
+fn resolve_icon(icon: Option<String>) -> Option<String> {
+    resolve_icon_in(icon, crate::files::get_home_dir())
+}
+
+/// How big a tile icon may be: a glyph at 16px, not an illustration. Read on
+/// every layout fetch, so this is the ceiling on what that costs.
+const MAX_ICON_BYTES: u64 = 256 * 1024;
+
+/// Whether an `icon` names a file rather than one of the window's glyphs.
+/// `Path::is_absolute` covers the native spelling on each OS; a leading slash
+/// is added back because Windows reads that as rooted-but-relative, and a
+/// config written on Linux still means a path there.
+fn names_a_file(icon: &str) -> bool {
+    icon.starts_with('/') || std::path::Path::new(icon).is_absolute()
+}
+
+/// The resolution itself, against a given home, so it is testable without
+/// touching the process environment.
+///
+/// Inlined as a `data:` URL rather than served over the asset protocol: the
+/// window draws a file icon as a CSS mask, and a custom URI scheme there is the
+/// one place WebKitGTK is unreliable about them. Inlining also frees the file
+/// from the protocol's `$HOME` scope, which is a rule a user has no way to see.
+/// An icon is a few hundred bytes, so the copy costs nothing.
+fn resolve_icon_in(icon: Option<String>, home: Option<String>) -> Option<String> {
+    let icon = icon?;
+    let path = match icon.strip_prefix("~/") {
+        Some(rest) => format!("{}/{rest}", home?.trim_end_matches('/')),
+        // Not a path at all: one of the window's own glyph names, which it
+        // resolves for itself.
+        None if !names_a_file(&icon) => return Some(icon),
+        None => icon,
+    };
+
+    let size = match std::fs::metadata(&path) {
+        Ok(meta) => meta.len(),
+        Err(err) => {
+            eprintln!("look: tile icon \"{path}\" cannot be read ({err})");
+            return None;
+        }
+    };
+    if size > MAX_ICON_BYTES {
+        eprintln!("look: tile icon \"{path}\" is {size} bytes, over the {MAX_ICON_BYTES} limit");
+        return None;
+    }
+
+    // Same reader the app-icon pipeline uses, so a tile accepts the formats an
+    // icon theme does and refuses the ones a window cannot draw.
+    let inlined = crate::platform::shared::read_icon_file(&path);
+    if inlined.is_none() {
+        eprintln!("look: tile icon \"{path}\" is not an image the window can draw");
+    }
+    inlined
+}
+
+/// What each user tile currently shows. Reads the cache; runs nothing.
+#[tauri::command]
+pub fn launchpad_tile_values()
+-> std::collections::HashMap<String, look_engine::launchpad::TileValue> {
+    let mut values = look_engine::launchpad_values::cached();
+    // A reading may carry an icon of its own, so it needs the same expansion
+    // the layout's does.
+    for value in values.values_mut() {
+        value.icon = resolve_icon(value.icon.take());
+    }
+    values
+}
+
+/// Re-runs stale tile commands. Spawns, so `async`.
+///
+/// Returns `refreshed` as well as the errors: the frontend re-reads the values
+/// only when something actually ran, which is the uncommon case.
+#[tauri::command(async)]
+pub fn refresh_launchpad_tiles() -> (usize, Vec<String>) {
+    let outcome = look_engine::launchpad_values::refresh();
+    (outcome.refreshed, outcome.errors)
+}
+
+/// Runs a user tile's press, named by the tile.
+#[tauri::command(async)]
+pub fn press_launchpad_tile(name: String) -> Option<String> {
+    look_engine::launchpad_values::press(&name).err()
+}
+
+/// The empty-state launchpad's tile layout: the user's `~/.look/super-actions.toml`
 /// when they have one, else the shared catalog's default.
 ///
 /// One source of truth across shells, and resolved entirely in the core - the
@@ -216,10 +306,14 @@ pub fn quick_actions(result_id: String, kind: String) -> Vec<look_qactions::Acti
 /// back to the default rather than rendering an empty strip.
 #[tauri::command]
 pub fn launchpad_layout() -> look_engine::launchpad::LayoutPayload {
-    look_engine::launchpad::layout_payload()
+    let mut payload = look_engine::launchpad::layout_payload();
+    for tile in &mut payload.tiles {
+        tile.icon = resolve_icon(tile.icon.take());
+    }
+    payload
 }
 
-/// Anything wrong with `~/.look/launchpad.toml`, or empty when it is fine.
+/// Anything wrong with `~/.look/super-actions.toml`, or empty when it is fine.
 ///
 /// Its own command rather than a field beside the tiles - the same split
 /// `qactions_api` makes for the FFI shell.
@@ -278,4 +372,106 @@ pub async fn quick_action_apply_item(
     .unwrap_or_else(|_| ActionOutcome::Failed {
         message: "Action failed".to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_icon_in;
+
+    /// A directory of this test's own, so two tests never share a file.
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("look-icon-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a scratch directory");
+        dir
+    }
+
+    fn write(dir: &std::path::Path, name: &str, bytes: &[u8]) {
+        std::fs::write(dir.join(name), bytes).expect("a scratch file");
+    }
+
+    const SVG: &[u8] = b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>";
+
+    #[test]
+    fn a_glyph_name_is_left_alone() {
+        // Only a path is resolved here; "battery" is the window's own glyph and
+        // must reach it spelled exactly as the user wrote it.
+        assert_eq!(
+            resolve_icon_in(Some("battery".into()), None),
+            Some("battery".into())
+        );
+        assert_eq!(resolve_icon_in(None, None), None);
+    }
+
+    #[test]
+    fn a_home_relative_icon_is_read_and_inlined() {
+        // The window has no home directory of its own and no way to read a
+        // file, so both have to happen here.
+        let dir = scratch("home");
+        write(&dir, "disk.svg", SVG);
+
+        let resolved = resolve_icon_in(
+            Some("~/disk.svg".into()),
+            Some(dir.to_string_lossy().into_owned()),
+        )
+        .expect("an inlined icon");
+        assert!(
+            resolved.starts_with("data:image/svg+xml;base64,"),
+            "{resolved}"
+        );
+    }
+
+    #[test]
+    fn a_trailing_slash_on_home_does_not_double_up() {
+        let dir = scratch("slash");
+        write(&dir, "disk.svg", SVG);
+
+        assert!(
+            resolve_icon_in(
+                Some("~/disk.svg".into()),
+                Some(format!("{}/", dir.to_string_lossy())),
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn an_absolute_icon_needs_no_home() {
+        let dir = scratch("absolute");
+        write(&dir, "disk.svg", SVG);
+
+        assert!(
+            resolve_icon_in(
+                Some(dir.join("disk.svg").to_string_lossy().into_owned()),
+                None
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn a_missing_file_draws_nothing_rather_than_a_path() {
+        // The window would treat a leftover path as a glyph name, miss, and
+        // draw nothing anyway - but silently, with no line saying why.
+        assert_eq!(resolve_icon_in(Some("/nope/disk.svg".into()), None), None);
+    }
+
+    #[test]
+    fn an_icon_over_the_size_limit_is_refused() {
+        // A tile icon is drawn at 16px. Anything this big is a photograph, and
+        // it would be re-encoded on every layout fetch.
+        let dir = scratch("huge");
+        write(
+            &dir,
+            "huge.png",
+            &vec![0u8; super::MAX_ICON_BYTES as usize + 1],
+        );
+
+        assert_eq!(
+            resolve_icon_in(
+                Some(dir.join("huge.png").to_string_lossy().into_owned()),
+                None
+            ),
+            None
+        );
+    }
 }

@@ -755,6 +755,9 @@ fn main() {
             // qactions/controls, see docs/writing-controls.md)
             qactions::quick_actions,
             qactions::launchpad_layout,
+            qactions::launchpad_tile_values,
+            qactions::refresh_launchpad_tiles,
+            qactions::press_launchpad_tile,
             qactions::launchpad_warnings,
             qactions::quick_action_state,
             qactions::quick_action_apply,
