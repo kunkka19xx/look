@@ -216,6 +216,7 @@ If the command fails, times out, or prints nothing, **the rows it produced last 
 | Key | Type | Belongs to | Notes |
 | --- | --- | --- | --- |
 | `do` | list of strings | `do` | The steps, run in order |
+| `applies` | word or table | `do` | Rows this action joins even though it did not produce them. See [Actions on any row](#actions-on-any-row-applies) |
 | `dir` | string | `dir` | One root |
 | `dirs` | list of strings | `dir` | More roots. `dir` and `dirs` combine |
 | `depth` | integer | `dir` | Default `1`, immediate children |
@@ -318,6 +319,37 @@ Look at `[branches]` twice, because this is the one thing that trips people up:
 Levels stack up to five deep. If you need six, you have stopped using a launcher.
 
 A `then` target may live in another file; names are resolved after everything is loaded, so only a genuine typo is reported.
+
+## Actions on any row (`applies`)
+
+`then` gives a verb to the rows of one block. `applies` gives one to rows **anything** produced, including the files and folders Look already indexes:
+
+```toml
+[optimize]
+name    = "Optimize"
+applies = { ext = ["png"] }
+do      = ["oxipng -o4 {path}"]
+```
+
+Select any `.png` anywhere, press `Cmd+K` / `Ctrl+K`, and Optimize is there. No `[images]` block, no folder to keep the pictures in.
+
+Only a `do` block can declare it. A block that produces rows is a list, and a list is not a verb.
+
+| Written as | Matches |
+| --- | --- |
+| `applies = "files"` | any row whose path is not a directory |
+| `applies = "dirs"` | any row whose path is a directory |
+| `applies = "paths"` | any row with a path, apps included |
+| `applies = "apps"` | app rows |
+| `applies = { ext = ["png"] }` | that extension, any case, written without the dot. Files only |
+| `applies = { match = ["*.tar.gz"] }` | a glob on the file **name**, not the whole path |
+| `applies = { only = "dirs", match = ["*.xcodeproj"] }` | both at once |
+
+A row with nothing on disk (a settings pane) matches nothing, since `{path}` would be empty.
+
+**Where these land.** After the standard verbs, never in place of them: `Ctrl+E` still edits and `Ctrl+F` still reveals. A row of a block that declares `then` shows that block's own targets first, and these after.
+
+**Keep them narrow.** Every `applies = "paths"` block puts one more entry on every row in the launcher, forever. Ten per row is the ceiling; past that the rest are dropped, highest `bias` first, and the overflow is reported.
 
 ## Asking before acting (`confirm`)
 
@@ -670,6 +702,17 @@ gh run list --limit 20 --json databaseId,displayTitle,conclusion,url |
                 subtitle: .conclusion,
                 icon: (if .conclusion == "success" then "✅" else "❌" end)}'
 ```
+
+**One verb for every archive you ever download**
+
+```toml
+[unpack]
+name    = "Unpack here"
+applies = { match = ["*.tar.gz", "*.tgz", "*.tar.xz"] }
+do      = ["tar -xf {path} -C {dir}"]
+```
+
+No list to declare and nothing to keep up to date: it appears on the archive wherever the file index found it.
 
 **Search your notes and open the match**
 

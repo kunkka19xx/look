@@ -83,15 +83,23 @@ extension LauncherView {
         // A block's `then` targets are actions on this row, so they join the
         // same Cmd+K menu as the compiled controls. They are declared at parse
         // time rather than build time; that is the only difference.
-        let blockTargets = sourceBlockTargets(for: result)
-        descriptors.append(contentsOf: blockTargets)
+        // Read synchronously, from a per-row memo: the panel is built during a
+        // selection change, and an async load that appended later would make
+        // the action list grow under the user's cursor.
+        let targets = SourceBlockCatalog.targets(for: result)
+        descriptors.append(contentsOf: sourceBlockDescriptors(targets.own))
 
         // Declared beats default in the panel exactly as it does when running
         // (`specs/preferred-tools.md` §7.1): a block that named its own actions
         // keeps them unburied, and its rows keep every chord regardless.
-        if blockTargets.isEmpty {
+        if targets.own.isEmpty {
             descriptors.append(contentsOf: rowActionDescriptors(for: result))
         }
+        // An action declared for rows LIKE this one is not that block's choice
+        // about this row, so it joins the list rather than replacing it, and
+        // goes last: a user's own blocks must never move Cmd+E out from under
+        // them.
+        descriptors.append(contentsOf: sourceBlockDescriptors(targets.global))
         quickActionDescriptors = descriptors
 
         // Only a *different* result invalidates what the panel is showing. Re-reading

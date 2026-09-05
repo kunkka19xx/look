@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use look_indexing::CandidateIdKind;
-use look_sources::{Block, Producer, RowContext, load_dir, sources_dir};
+use look_sources::{Block, Producer, RowContext, RowKind, load_dir, sources_dir};
 use serde::Serialize;
 
 /// Fallback limits for a captured command, when the block names none. A source
@@ -38,6 +38,11 @@ const REFRESH_TIME_BUDGET: Duration = Duration::from_secs(60);
 /// Below this a block is skipped rather than handed a sliver, which would come
 /// back as a timeout it did not earn.
 const MIN_BLOCK_SLICE: Duration = Duration::from_secs(1);
+
+/// The most global actions one row's menu may carry. Six blocks declaring
+/// `applies = "paths"` would otherwise put six extra entries on every row in
+/// the launcher, forever.
+const MAX_GLOBAL_TARGETS: usize = 10;
 
 /// How deep a stack of levels may go. A launcher six levels deep has stopped
 /// being a launcher.
@@ -78,6 +83,12 @@ pub struct BlockDetail {
     /// than through another block's `then` is the same row and the same risk.
     pub confirm: Option<String>,
     pub then: Vec<ThenTarget>,
+    /// Actions a user declared for rows LIKE this one (`applies`), rather than
+    /// for rows of this block. Kept apart from `then` because the two land
+    /// differently in the menu: a block's own targets replace the built-in
+    /// verbs, since the author chose that row's vocabulary, while these join
+    /// them, since a file row still needs Edit and Reveal.
+    pub globals: Vec<ThenTarget>,
     /// Whether a `preview` command will run for this row. Answered with the
     /// cheap details rather than by waiting for the command, so the panel can
     /// lay itself out before knowing what the output says - or that there will
@@ -157,30 +168,49 @@ pub struct RefreshOutcome {
     pub changed: bool,
 }
 
-/// `{id, name, steps, file, then}` for the block a candidate id belongs to, or
-/// `None` when it is not a block row or no longer exists.
+/// `{id, name, steps, file, then, globals}` for a row: the block that produced
+/// it, when one did, and the actions a user declared for rows like it.
+///
+/// `None` when there is neither, which is every row until someone declares an
+/// `applies` block.
 pub fn block_detail(candidate_id: &str, row: &RowContext) -> Option<BlockDetail> {
-    let block_id = CandidateIdKind::source_id_of(candidate_id)?;
     let blocks = load_dir(&sources_dir(&home_dir()?)).blocks;
-    let block = blocks.iter().find(|block| block.id == block_id)?;
+    let block = CandidateIdKind::source_id_of(candidate_id)
+        .and_then(|block_id| blocks.iter().find(|block| block.id == block_id));
 
-    let then = block
-        .then
-        .iter()
-        .filter_map(|target| blocks.iter().find(|block| &block.id == target))
-        .map(|target| ThenTarget {
-            id: target.id.clone(),
-            name: target.name.clone(),
-            icon: target.icon.clone(),
-            performs: target.is_bundle(),
-            // Expanded here so the question names the row the user is looking
-            // at ("Delete main?"), not the template.
-            confirm: target
-                .confirm
-                .as_deref()
-                .map(|question| look_sources::expand(question, row)),
+    let then: Vec<ThenTarget> = block
+        .map(|block| {
+            block
+                .then
+                .iter()
+                .filter_map(|target| blocks.iter().find(|block| &block.id == target))
+                .map(|target| then_target(target, row))
+                .collect()
         })
-        .collect();
+        .unwrap_or_default();
+
+    // The row's own targets are resolved first because a block already named in
+    // `then` is excluded from the globals BEFORE the cap: counted against it, a
+    // duplicate would spend a slot and hide a distinct action behind it.
+    let globals = global_targets(&blocks, candidate_id, row, &then);
+
+    let Some(block) = block else {
+        // Not a block's row. It has nothing else to say about itself, but a
+        // declared action still belongs on it.
+        if globals.is_empty() {
+            return None;
+        }
+        return Some(BlockDetail {
+            id: String::new(),
+            name: String::new(),
+            steps: Vec::new(),
+            file: None,
+            confirm: None,
+            then: Vec::new(),
+            globals,
+            has_preview: false,
+        });
+    };
 
     Some(BlockDetail {
         id: block.id.clone(),
@@ -192,8 +222,97 @@ pub fn block_detail(candidate_id: &str, row: &RowContext) -> Option<BlockDetail>
             .as_deref()
             .map(|question| look_sources::expand(question, row)),
         then,
+        globals,
         has_preview: block.preview.is_some(),
     })
+}
+
+fn then_target(target: &Block, row: &RowContext) -> ThenTarget {
+    ThenTarget {
+        id: target.id.clone(),
+        name: target.name.clone(),
+        icon: target.icon.clone(),
+        performs: target.is_bundle(),
+        // Expanded here so the question names the row the user is looking at
+        // ("Delete main?"), not the template.
+        confirm: target
+            .confirm
+            .as_deref()
+            .map(|question| look_sources::expand(question, row)),
+    }
+}
+
+/// The blocks that declared themselves actions on rows like this one, most
+/// biased first so a user can rank their own. `already` is what the row's own
+/// block offers, which such a block must not repeat.
+fn global_targets(
+    blocks: &[Block],
+    candidate_id: &str,
+    row: &RowContext,
+    already: &[ThenTarget],
+) -> Vec<ThenTarget> {
+    let kind = row_kind(candidate_id, &row.path);
+    if kind == RowKind::Other {
+        return Vec::new();
+    }
+    let basename = basename_of(&row.path);
+
+    let mut matched: Vec<&Block> = blocks
+        .iter()
+        .filter(|block| {
+            block.enabled
+                && !already.iter().any(|own| own.id == block.id)
+                && block.applies_to(kind, basename)
+        })
+        .collect();
+    // `bias` is what the format already hands the author for ordering, so it
+    // orders these too rather than introducing a second knob.
+    matched.sort_by(|left, right| right.bias.cmp(&left.bias).then(left.id.cmp(&right.id)));
+
+    if matched.len() > MAX_GLOBAL_TARGETS {
+        // Said rather than silently dropped: an action that is declared and
+        // never appears reads as the feature being broken.
+        eprintln!(
+            "look sources: {} actions apply to \"{}\", showing the first {MAX_GLOBAL_TARGETS}",
+            matched.len(),
+            row.title
+        );
+        matched.truncate(MAX_GLOBAL_TARGETS);
+    }
+
+    matched
+        .into_iter()
+        .map(|block| then_target(block, row))
+        .collect()
+}
+
+/// What the selected row is, for `applies`. The id prefix already says which
+/// for everything the launcher indexes itself; a block's row only says which
+/// block made it, so the filesystem is what answers, once per menu open.
+fn row_kind(candidate_id: &str, path: &str) -> RowKind {
+    if path.is_empty() {
+        return RowKind::Other;
+    }
+    match CandidateIdKind::from_candidate_id(candidate_id) {
+        Some(CandidateIdKind::App) => RowKind::App,
+        Some(CandidateIdKind::File) => RowKind::File,
+        Some(CandidateIdKind::Folder) => RowKind::Dir,
+        Some(CandidateIdKind::Source) => {
+            if Path::new(path).is_dir() {
+                RowKind::Dir
+            } else {
+                RowKind::File
+            }
+        }
+        _ => RowKind::Other,
+    }
+}
+
+fn basename_of(path: &str) -> &str {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path)
 }
 
 /// Every declared block as `{id, name, icon}`. The shell caches this once per
@@ -1115,6 +1234,149 @@ mod tests {
                 .as_deref(),
             Some(format!("Delete local branch {}?", quote("main")).as_str())
         );
+    }
+
+    #[test]
+    fn an_action_that_declares_applies_joins_the_rows_it_names() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let _fixture = Fixture::new(
+            "applies",
+            "[optimize]\nname = \"Optimize\"\napplies = { ext = [\"png\"] }\ndo = [\"oxipng {path}\"]\n\n[deploy]\nname = \"Deploy\"\napplies = \"dirs\"\nconfirm = \"Deploy {title}?\"\ndo = [\"make -C {path} deploy\"]\n",
+        );
+
+        // A row the file index produced, which no block declared: it has no
+        // block of its own, and the action still reaches it.
+        let shot = row_context(
+            "file:/tmp/shot.png",
+            "shot.png",
+            "/tmp/shot.png",
+            "",
+            Vec::new(),
+        );
+        let detail = block_detail("file:/tmp/shot.png", &shot).expect("a declared action");
+        assert!(detail.id.is_empty(), "no block produced this row");
+        assert!(detail.then.is_empty());
+        assert_eq!(detail.globals.len(), 1);
+        assert_eq!(detail.globals[0].id, "optimize");
+
+        // The same action, on a row of the wrong shape.
+        let notes = row_context(
+            "file:/tmp/notes.md",
+            "notes.md",
+            "/tmp/notes.md",
+            "",
+            Vec::new(),
+        );
+        assert!(block_detail("file:/tmp/notes.md", &notes).is_none());
+
+        // A folder row gets the folder action, with its question expanded
+        // against the row like any other target's.
+        let dev = row_context("folder:/tmp/look", "look", "/tmp/look", "", Vec::new());
+        let detail = block_detail("folder:/tmp/look", &dev).expect("a declared action");
+        assert_eq!(detail.globals.len(), 1);
+        assert_eq!(
+            detail.globals[0].confirm.as_deref(),
+            Some(format!("Deploy {}?", quote("look")).as_str())
+        );
+
+        // A settings pane has no path, so a user's `{path}` would be empty.
+        let pane = row_context("setting:displays", "Displays", "", "", Vec::new());
+        assert!(block_detail("setting:displays", &pane).is_none());
+    }
+
+    #[test]
+    fn a_block_row_keeps_its_own_targets_and_gains_the_declared_ones() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let fixture = Fixture::new(
+            "applies-block",
+            "[projects]\ndir = \"/tmp\"\nthen = [\"logs\"]\n\n[logs]\nname = \"Commits\"\nrun = \"git log\"\n\n[send]\nname = \"Send to laptop\"\napplies = \"files\"\ndo = [\"rsync {path} laptop:\"]\n",
+        );
+
+        let declared = fixture.dir.join("blocks.toml");
+        let path = declared.to_string_lossy().into_owned();
+        let row = row_context(
+            "src:projects:blocks.toml",
+            "blocks.toml",
+            &path,
+            "",
+            Vec::new(),
+        );
+        let detail = block_detail("src:projects:blocks.toml", &row).expect("a declared block");
+
+        // What the block chose for its rows, and what a user declared for rows
+        // like this one, in two lists: the shells place them differently.
+        assert_eq!(
+            detail
+                .then
+                .iter()
+                .map(|target| target.id.as_str())
+                .collect::<Vec<_>>(),
+            ["logs"]
+        );
+        assert_eq!(
+            detail
+                .globals
+                .iter()
+                .map(|target| target.id.as_str())
+                .collect::<Vec<_>>(),
+            ["send"]
+        );
+    }
+
+    #[test]
+    fn a_row_never_carries_more_declared_actions_than_the_cap() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        let declarations: String = (0..MAX_GLOBAL_TARGETS + 2)
+            .map(|index| {
+                format!(
+                    "[a{index:02}]\nbias = {index}\napplies = \"files\"\ndo = [\"ls {{path}}\"]\n\n"
+                )
+            })
+            .collect();
+        let _fixture = Fixture::new("applies-cap", &declarations);
+
+        let row = row_context("file:/tmp/x.txt", "x.txt", "/tmp/x.txt", "", Vec::new());
+        let detail = block_detail("file:/tmp/x.txt", &row).expect("declared actions");
+        assert_eq!(detail.globals.len(), MAX_GLOBAL_TARGETS);
+        // Ordered by the bias the format already hands the author, so which
+        // ones survive the cap is the user's choice rather than the loader's.
+        assert_eq!(
+            detail.globals[0].id,
+            format!("a{:02}", MAX_GLOBAL_TARGETS + 1)
+        );
+    }
+
+    #[test]
+    fn a_target_the_row_already_offers_spends_no_room_under_the_cap() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        // `dup` is reachable both ways: named in the row's own `then`, and
+        // declaring `applies`. Its high bias would put it first among the
+        // globals, so a cap applied before the duplicate is dropped would spend
+        // a slot on it and hide the least biased action behind it.
+        let mut declarations = String::from(
+            "[rows]\ndir = \"/tmp\"\nthen = [\"dup\"]\n\n[dup]\nbias = 100\napplies = \"files\"\ndo = [\"ls {path}\"]\n\n",
+        );
+        for index in 0..MAX_GLOBAL_TARGETS {
+            declarations.push_str(&format!(
+                "[a{index:02}]\nbias = {index}\napplies = \"files\"\ndo = [\"ls {{path}}\"]\n\n"
+            ));
+        }
+        let fixture = Fixture::new("applies-overlap", &declarations);
+
+        let declared = fixture.dir.join("blocks.toml");
+        let path = declared.to_string_lossy().into_owned();
+        let row = row_context("src:rows:blocks.toml", "blocks.toml", &path, "", Vec::new());
+        let detail = block_detail("src:rows:blocks.toml", &row).expect("a declared block");
+
+        assert_eq!(detail.then.len(), 1, "the row's own target");
+        assert_eq!(detail.globals.len(), MAX_GLOBAL_TARGETS);
+        assert!(
+            !detail.globals.iter().any(|target| target.id == "dup"),
+            "an action the row already offers is not offered twice"
+        );
+        // The least biased action still made it in, which it could not have
+        // done had the duplicate been counted against the cap.
+        assert_eq!(detail.globals.last().expect("a target").id, "a00");
     }
 
     #[test]

@@ -1,6 +1,19 @@
 import AppKit
 import ImageIO
 
+/// One row's declared actions, kept together because one read answers both.
+///
+/// Two lists rather than one because they land differently in the menu: a
+/// block's own targets replace the built-in verbs, since the author chose that
+/// row's vocabulary, while an action declared for rows LIKE this one joins
+/// them, since a file row still needs Edit and Reveal.
+nonisolated struct SourceBlockRowTargets {
+    let own: [SourceBlockTarget]
+    let global: [SourceBlockTarget]
+
+    static let none = SourceBlockRowTargets(own: [], global: [])
+}
+
 /// What each declared block asked to be drawn as, keyed by block id.
 ///
 /// Rows render synchronously and there are many of them, so this is read on
@@ -10,7 +23,7 @@ import ImageIO
 @MainActor
 enum SourceBlockCatalog {
     private static var iconsByBlockID: [String: String]?
-    private static var targetsByCandidateID: [String: [SourceBlockTarget]] = [:]
+    private static var targetsByCandidateID: [String: SourceBlockRowTargets] = [:]
     private static var targetsInFlight: Set<String> = []
 
     static func invalidate() {
@@ -20,17 +33,26 @@ enum SourceBlockCatalog {
         prefill()
     }
 
-    /// The `then` targets for one row.
+    /// The declared actions for one row: its block's `then` targets, and the
+    /// ones a user declared for rows like it.
+    ///
+    /// Asked for every row, not only a block's own: a `do` block that declared
+    /// `applies` acts on rows it did not produce, and core is what says which.
     ///
     /// Keyed on the candidate rather than the block, because a target's confirm
     /// question is expanded against the row ("Delete main?"). Memoised because
     /// this is read while building the panel on every selection change, and
     /// arrow-keying down a list should not re-read the sources directory once
-    /// per row. `invalidate()` on config reload picks up an edited `then`.
-    static func targets(for result: LauncherResult) -> [SourceBlockTarget] {
+    /// per row. `invalidate()` on config reload picks up an edited declaration.
+    static func targets(for result: LauncherResult) -> SourceBlockRowTargets {
+        // Nothing to ask about: a block's row carries its declaration, and a
+        // declared action needs a path to act on. Every other row is answered
+        // without a disk read, which matters because the panel is rebuilt on
+        // every selection change.
+        guard result.isSourceRow || !result.path.isEmpty else { return .none }
         if let cached = targetsByCandidateID[cacheKey(for: result)] { return cached }
         loadTargets(for: result)
-        return []
+        return .none
     }
 
     /// Reads one row's targets off the main actor and caches them. The panel
@@ -43,8 +65,11 @@ enum SourceBlockCatalog {
 
         Task {
             let targets = await Task.detached(priority: .userInitiated) {
-                EngineBridge.shared.sourceBlock(
-                    candidateID: result.id, row: RowRef(result))?.then ?? []
+                () -> SourceBlockRowTargets in
+                guard let block = EngineBridge.shared.sourceBlock(
+                    candidateID: result.id, row: RowRef(result))
+                else { return .none }
+                return SourceBlockRowTargets(own: block.then, global: block.globals)
             }.value
             await MainActor.run {
                 targetsByCandidateID[key] = targets
