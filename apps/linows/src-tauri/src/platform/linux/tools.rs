@@ -128,7 +128,7 @@ fn show_items(path: &str) -> bool {
         return false;
     };
 
-    super::dbus::runtime().block_on(async {
+    super::dbus::block_on(async {
         // Bounded: an unowned but D-Bus-activatable name would otherwise hold
         // the user's reveal for zbus's default 25s before the fallback runs.
         tokio::time::timeout(

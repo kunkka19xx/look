@@ -74,11 +74,11 @@ pub fn try_focus(candidates: &[&str]) -> bool {
     let (tx, rx) = channel();
     *REPORT_SLOT.lock().unwrap() = Some((token, tx));
 
-    let script_obj = dbus::runtime().block_on(load_and_run(conn, &script_path));
+    let script_obj = dbus::block_on(load_and_run(conn, &script_path));
     let matched = script_obj.is_some() && rx.recv_timeout(REPORT_TIMEOUT).unwrap_or(false);
 
     if let Some(obj) = script_obj {
-        dbus::runtime().block_on(async {
+        dbus::block_on(async {
             let _ = conn
                 .call_method(
                     Some(KWIN_BUS),
@@ -105,7 +105,7 @@ fn ensure_report_object(conn: &'static zbus::Connection) -> bool {
     if REGISTERED.load(Ordering::Acquire) {
         return true;
     }
-    let ok = dbus::runtime().block_on(async {
+    let ok = dbus::block_on(async {
         conn.object_server()
             .at(REPORT_PATH, FocusReport)
             .await

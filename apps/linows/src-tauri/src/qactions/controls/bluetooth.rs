@@ -179,20 +179,19 @@ fn snapshot() -> Result<Snapshot, String> {
     let Some(conn) = dbus::system() else {
         return Err(NO_SERVICE.to_string());
     };
-    let objects: ManagedObjects = dbus::runtime()
-        .block_on(async {
-            conn.call_method(
-                Some(BLUEZ_DEST),
-                "/",
-                Some(OBJECT_MANAGER_IFACE),
-                "GetManagedObjects",
-                &(),
-            )
-            .await?
-            .body()
-            .deserialize()
-        })
-        .map_err(|_| NO_SERVICE.to_string())?;
+    let objects: ManagedObjects = dbus::block_on(async {
+        conn.call_method(
+            Some(BLUEZ_DEST),
+            "/",
+            Some(OBJECT_MANAGER_IFACE),
+            "GetManagedObjects",
+            &(),
+        )
+        .await?
+        .body()
+        .deserialize()
+    })
+    .map_err(|_| NO_SERVICE.to_string())?;
 
     let (adapter_path, adapter_props) = objects
         .iter()
@@ -232,7 +231,7 @@ fn snapshot() -> Result<Snapshot, String> {
 /// Read one device's live `Connected` state and display name by object path.
 fn device_state(path: &str) -> Option<(bool, String)> {
     let conn = dbus::system()?;
-    dbus::runtime().block_on(async {
+    dbus::block_on(async {
         let proxy = zbus::Proxy::new(conn, BLUEZ_DEST, path, DEVICE_IFACE)
             .await
             .ok()?;
@@ -252,7 +251,7 @@ fn set_device_connected(path: &str, connect: bool) -> bool {
         return false;
     };
     let method = if connect { "Connect" } else { "Disconnect" };
-    dbus::runtime().block_on(async {
+    dbus::block_on(async {
         let Ok(proxy) = zbus::Proxy::new(conn, BLUEZ_DEST, path, DEVICE_IFACE).await else {
             return false;
         };
@@ -276,14 +275,13 @@ fn set_powered(adapter_path: &OwnedObjectPath, on: bool) -> Result<(), String> {
     let Some(conn) = dbus::system() else {
         return Err(NO_SERVICE.to_string());
     };
-    dbus::runtime()
-        .block_on(async {
-            zbus::Proxy::new(conn, BLUEZ_DEST, adapter_path.as_str(), ADAPTER_IFACE)
-                .await?
-                .set_property("Powered", on)
-                .await
-        })
-        .map_err(|err| friendly_set_error(&err, on))
+    dbus::block_on(async {
+        zbus::Proxy::new(conn, BLUEZ_DEST, adapter_path.as_str(), ADAPTER_IFACE)
+            .await?
+            .set_property("Powered", on)
+            .await
+    })
+    .map_err(|err| friendly_set_error(&err, on))
 }
 
 fn friendly_set_error(err: &zbus::fdo::Error, target: bool) -> String {
@@ -314,12 +312,11 @@ fn wait_for_power_state(adapter_path: &OwnedObjectPath, target: bool) -> bool {
 
 fn read_powered(adapter_path: &OwnedObjectPath) -> Option<bool> {
     let conn = dbus::system()?;
-    dbus::runtime()
-        .block_on(async {
-            zbus::Proxy::new(conn, BLUEZ_DEST, adapter_path.as_str(), ADAPTER_IFACE)
-                .await?
-                .get_property::<bool>("Powered")
-                .await
-        })
-        .ok()
+    dbus::block_on(async {
+        zbus::Proxy::new(conn, BLUEZ_DEST, adapter_path.as_str(), ADAPTER_IFACE)
+            .await?
+            .get_property::<bool>("Powered")
+            .await
+    })
+    .ok()
 }

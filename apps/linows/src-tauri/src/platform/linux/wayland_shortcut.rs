@@ -135,6 +135,37 @@ fn detect_compositor() -> Compositor {
     Compositor::Other
 }
 
+/// Runs the toggle on a thread of its own rather than on whichever one
+/// signalled it.
+///
+/// Both signals - our `Toggle` method and KDE's kglobalaccel - are delivered
+/// inside the tokio runtime `start` builds below, and showing the window makes
+/// D-Bus calls of its own, which cannot block on a runtime from within one.
+/// Answering off the runtime also returns the D-Bus call immediately instead of
+/// holding the caller for as long as the window takes to place and map.
+///
+/// One worker rather than one thread per signal keeps toggles in the order they
+/// arrived: a fast hide/show pair must not land reversed.
+fn off_runtime<F>(on_toggle: F) -> impl Fn() + Send + Sync + 'static
+where
+    F: Fn() + Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        while rx.recv().is_ok() {
+            on_toggle();
+        }
+    });
+    // A Sender is Send but not Sync, and the D-Bus service holds its callback
+    // behind a shared reference.
+    let tx = Mutex::new(tx);
+    move || {
+        if let Ok(tx) = tx.lock() {
+            let _ = tx.send(());
+        }
+    }
+}
+
 /// Start a background thread that:
 /// 1. Registers a compositor-specific keybinding for Alt+Space
 /// 2. Registers a D-Bus service to listen for Toggle calls
@@ -143,6 +174,7 @@ where
     F: Fn() + Send + Sync + 'static,
 {
     let compositor = detect_compositor();
+    let on_toggle = off_runtime(on_toggle);
 
     std::thread::spawn(move || {
         // Reported before registration: health::report keeps the first message

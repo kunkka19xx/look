@@ -62,7 +62,7 @@ mod imp {
 
     pub fn current() -> Option<NowPlayingSnapshot> {
         let conn = dbus::session()?;
-        dbus::runtime().block_on(async {
+        dbus::block_on(async {
             let (name, status) = active_player(conn).await?;
             read_snapshot(conn, &name, &status).await
         })
@@ -78,7 +78,7 @@ mod imp {
         let Some(conn) = dbus::session() else {
             return false;
         };
-        dbus::runtime().block_on(async {
+        dbus::block_on(async {
             let name = match target {
                 Some(name) => name.to_string(),
                 None => match active_player(conn).await {

@@ -95,12 +95,11 @@ fn banner(on: bool) -> String {
 /// the lock to hold.
 fn acquire() -> Result<OwnedFd, String> {
     let conn = dbus::system().ok_or_else(|| "Requires systemd-logind".to_string())?;
-    dbus::runtime()
-        .block_on(async {
-            zbus::Proxy::new(conn, LOGIN1_DEST, LOGIN1_PATH, MANAGER_IFACE)
-                .await?
-                .call("Inhibit", &("idle", "Look", "Keep Awake", "block"))
-                .await
-        })
-        .map_err(|_: zbus::Error| "Could not hold a keep-awake lock".to_string())
+    dbus::block_on(async {
+        zbus::Proxy::new(conn, LOGIN1_DEST, LOGIN1_PATH, MANAGER_IFACE)
+            .await?
+            .call("Inhibit", &("idle", "Look", "Keep Awake", "block"))
+            .await
+    })
+    .map_err(|_: zbus::Error| "Could not hold a keep-awake lock".to_string())
 }
