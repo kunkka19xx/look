@@ -51,7 +51,10 @@ import {
 } from '../icons.js';
 import {
     launchpadLayout,
+    launchpadTileValues,
     launchpadWarnings,
+    refreshLaunchpadTiles,
+    pressLaunchpadTile,
     quickActionState,
     quickActionApply,
     weatherCurrent,
@@ -117,6 +120,7 @@ let lunarKey = null;
 let weatherEls = null;
 let mediaEls = null;
 let weatherToken = 0;
+let customToken = 0;
 let mediaToken = 0;
 // 'internal' (pomo) or 'mpris': the source that last actually played. Breaks the
 // tie when both are paused so the tile resumes whichever the user last used.
@@ -158,10 +162,7 @@ const WEATHER_ICON = {
     thunder: cloudLightning,
 };
 
-// Destructive one-shot actions carry the danger tone and gate on an inline
-// confirm: first press arms the tile, second fires. Auto-disarms after this
-// window so a forgotten prompt never fires on a later stray press.
-const DANGER = new Set(['restart', 'shutdown']);
+// A forgotten prompt must not fire on a later stray press.
 const CONFIRM_TIMEOUT_MS = 3000;
 
 // Long enough to read a config error, which is longer than a toast.
@@ -252,7 +253,7 @@ export function warningBanner(warnings) {
  * Re-read the drawing, for the Ctrl+Shift+; config reload.
  *
  * The tiles are fetched once per process, which was right while the grid was a
- * compile-time constant. ~/.look/launchpad.toml decides it now, and arranging
+ * compile-time constant. ~/.look/super-actions.toml decides it now, and arranging
  * tiles is an edit-and-look loop: without this an edit does nothing until the
  * app is restarted, which reads as the feature being broken.
  *
@@ -440,15 +441,24 @@ function activate(id) {
         return true;
     }
 
-    // Destructive buttons arm on the first press and fire on the second.
-    if (ctl?.wired && ctl.role === 'action' && ctl.danger) {
-        if (pendingConfirmId === id) {
-            clearConfirm();
-            flash(el);
-            runAction(id, ctl);
-        } else {
-            armConfirm(id, ctl);
-        }
+    // One gate, whatever the tile is: a first press on anything that asks arms
+    // it, a second fires. Restart and Shut Down used to be named here by id.
+    if (ctl?.confirm && pendingConfirmId !== id) {
+        armConfirm(id, ctl);
+        return true;
+    }
+    clearConfirm();
+
+    // No adapter: the core holds the command and runs it by name.
+    if (ctl?.role === 'custom') {
+        if (!ctl.pressable) return true;
+        flash(el);
+        pressLaunchpadTile(id)
+            .then((error) => {
+                if (error) banner.show(error, 'error');
+                else refreshCustomTiles((customToken += 1));
+            })
+            .catch(() => {});
         return true;
     }
 
@@ -473,7 +483,7 @@ function armConfirm(id, ctl) {
     clearConfirm();
     pendingConfirmId = id;
     ctl.el.classList.add('is-confirming');
-    ctl.labelEl.textContent = 'Confirm?';
+    ctl.labelEl.textContent = ctl.confirm || 'Confirm?';
     confirmTimer = setTimeout(clearConfirm, CONFIRM_TIMEOUT_MS);
 }
 
@@ -597,6 +607,9 @@ function refreshState() {
     const myToken = (stateToken += 1);
     for (const [id, ctl] of controls) refreshControl(id, ctl, myToken);
     refreshWeather((weatherToken += 1));
+    // Shares the summon token: a superseded open must not let a late
+    // value land on tiles that have since been torn down.
+    refreshCustomTiles((customToken += 1));
     refreshNowPlaying((mediaToken += 1));
 }
 
@@ -986,7 +999,7 @@ function render(layout) {
     const grid = document.createElement('div');
     grid.className = 'control-strip-grid';
 
-    // The grid is whatever the drawing in ~/.look/launchpad.toml reaches. The
+    // The grid is whatever the drawing in ~/.look/super-actions.toml reaches. The
     // CSS used to declare `grid-template-areas` and every tile's `grid-area`,
     // which meant the arrangement was written once in the core and again here,
     // and the two had to agree. The core resolves it now and this only draws.
@@ -1034,7 +1047,12 @@ function buildTile(tile) {
             return buildAction(tile);
         case 'media':
             return buildMedia(tile);
+        case 'custom':
+            return buildCustom(tile);
         default:
+            // A role this build has never heard of. A bare tile keeps its cell
+            // rather than escaping the grid, which is the same bargain the
+            // shape fallback makes for a payload from an older core.
             return tileEl(tile.action_id, 'action');
     }
 }
@@ -1056,6 +1074,30 @@ function iconSpan(svg) {
     const el = document.createElement('span');
     el.className = 'ctl-icon';
     el.innerHTML = svg || '';
+    return el;
+}
+
+// Paint an icon into a span: a built-in glyph by name, or a user's own image,
+// which the backend has already read off disk and inlined as a data URL. The
+// file is drawn as a CSS mask rather than an <img> so it takes the tile's
+// colour the way an inline glyph does, including the active and danger tints;
+// the alternative arrives in its own palette and reads as pasted on. Nothing
+// recognised leaves the span empty, which CSS then collapses.
+function applyIcon(el, name, fallback = '') {
+    if (!el) return;
+    const glyph = ICON[name];
+    const inlined = typeof name === 'string' && name.startsWith('data:');
+    const src = !glyph && inlined ? name : null;
+    el.innerHTML = glyph || (src ? '' : fallback);
+    el.classList.toggle('ctl-icon--file', Boolean(src));
+    if (src) el.style.setProperty('--ctl-icon-src', `url("${src}")`);
+    else el.style.removeProperty('--ctl-icon-src');
+}
+
+// An icon span already carrying `name`, for the tiles built with one.
+function iconSpanFor(name, fallback) {
+    const el = iconSpan('');
+    applyIcon(el, name, fallback);
     return el;
 }
 
@@ -1198,6 +1240,139 @@ function buildInfo(tile) {
     return el;
 }
 
+// A tile the user declared in ~/.look/super-actions.toml. Same anatomy as the tiles
+// beside it; the core runs the command and this only draws the result.
+function buildCustom(tile) {
+    // A tile that only acts is drawn like Mic and Screensaver: a glyph over a
+    // name. A placeholder would be a permanent "--".
+    if (!tile.has_value) {
+        const el = tileEl(tile.action_id, 'action');
+        el.appendChild(iconSpanFor(tile.icon, power));
+        const label = document.createElement('span');
+        label.className = 'ctl-label';
+        label.innerHTML = labelHTML(tile.title, tile.mnemonic);
+        el.appendChild(label);
+        controls.set(tile.action_id, {
+            role: 'custom',
+            el,
+            title: tile.title,
+            actionId: tile.action_id,
+            pressable: Boolean(tile.pressable),
+            confirm: tile.confirm || null,
+            mnemonic: tile.mnemonic || null,
+            labelEl: label,
+        });
+
+        // Without this the tile has no tilesById entry, so activate() bails on
+        // its first line and neither click nor mnemonic reaches it.
+        bindActionable(el, tile);
+        return el;
+    }
+
+    const el = tileEl(tile.action_id, 'custom');
+    // One cell fits the headline alone.
+    const roomy = tile.row_span > 1 || tile.col_span > 1;
+    // Shows before the first reading lands; a reading's own icon replaces it.
+    const icon = iconSpanFor(tile.icon);
+
+    const text = document.createElement('span');
+    text.className = 'ctl-text';
+    text.innerHTML =
+        `<span class="ctl-caps">${labelHTML(tile.title, tile.mnemonic)}</span>` +
+        `<span class="ctl-value">--</span>` +
+        (roomy
+            ? '<span class="ctl-custom-caption"></span><span class="ctl-custom-lines"></span>'
+            : '');
+
+    if (roomy) {
+        // Only the name shares the icon's row. The reading and its lines start
+        // at the tile's edge rather than in a gutter the icon opened, which a
+        // one-cell tile has no room to do and a tall one no reason to.
+        const head = document.createElement('span');
+        head.className = 'ctl-custom-head';
+        head.appendChild(icon);
+        head.appendChild(text.querySelector('.ctl-caps'));
+        text.prepend(head);
+        el.appendChild(text);
+    } else {
+        el.appendChild(icon);
+        el.appendChild(text);
+    }
+
+    controls.set(tile.action_id, {
+        role: 'custom',
+        el,
+        title: tile.title,
+        actionId: tile.action_id,
+        // A tile with no `press` is a readout.
+        pressable: Boolean(tile.pressable),
+        confirm: tile.confirm || null,
+        // Decides whether the caption may replace the name.
+        mnemonic: tile.mnemonic || null,
+        // Kept so a reading with no icon of its own does not wipe it.
+        icon: tile.icon || null,
+        // Also the label an armed confirm writes into.
+        labelEl: text.querySelector('.ctl-caps'),
+        iconEl: el.querySelector('.ctl-icon'),
+        valueEl: text.querySelector('.ctl-value'),
+        captionEl: text.querySelector('.ctl-custom-caption'),
+        linesEl: text.querySelector('.ctl-custom-lines'),
+    });
+    bindActionable(el, tile);
+    return el;
+}
+
+// Two calls on purpose: the first reads a cache and returns at once, so the
+// strip never waits on a command to paint; the second spawns.
+async function refreshCustomTiles(myToken) {
+    const custom = [...controls.values()].filter((c) => c.role === 'custom' && c.valueEl);
+    if (custom.length === 0) return;
+
+    const apply = (values) => {
+        if (myToken !== customToken) return;
+        for (const ctl of custom) {
+            const v = values?.[ctl.actionId];
+            // No entry: never run, or printed nothing - which hides the tile.
+            ctl.el.hidden = !v;
+            if (!v) continue;
+            ctl.valueEl.textContent = v.value ?? '--';
+            ctl.el.classList.toggle('is-active', (v.state || '').toLowerCase() === 'on');
+            applyIcon(ctl.iconEl, v.icon || ctl.icon);
+            // The command's caption wins over the tile's name, as Weather shows
+            // the condition. Unless the tile has a key: that letter is in the name.
+            if (!ctl.mnemonic && v.caption) {
+                ctl.labelEl.textContent = v.caption;
+            }
+            if (ctl.captionEl) {
+                ctl.captionEl.textContent = ctl.mnemonic ? v.caption || '' : '';
+            }
+            if (ctl.linesEl) {
+                ctl.linesEl.innerHTML = '';
+                for (const line of (v.lines || []).slice(0, 3)) {
+                    const el = document.createElement('span');
+                    el.textContent = line;
+                    ctl.linesEl.appendChild(el);
+                }
+            }
+        }
+    };
+
+    try {
+        apply(await launchpadTileValues());
+    } catch (_) {
+        return; // a core too old to answer leaves the placeholders alone
+    }
+
+    try {
+        const [refreshed, errors] = await refreshLaunchpadTiles();
+        for (const message of errors || []) banner.show(message, 'error');
+        // Only when something ran: most opens are inside every tile's window.
+        if (refreshed > 0) apply(await launchpadTileValues());
+    } catch (_) {
+        // A failed refresh keeps whatever the tiles already showed.
+    }
+}
+
 // L info (1x2): the weather stack. Filled from the external feed by
 // refreshWeather; shows placeholder dashes until the first reading lands.
 function buildWeather(tile) {
@@ -1222,7 +1397,7 @@ function buildWeather(tile) {
 // one-shot, Restart / Shut Down via inline confirm, Mic as a mute toggle (it
 // carries an off caption). Danger tone for the destructive ones.
 function buildAction(tile) {
-    const danger = DANGER.has(tile.action_id);
+    const danger = Boolean(tile.confirm);
     const el = tileEl(tile.action_id, 'action', danger ? 'danger' : null);
     const icon = iconSpan(ICON[tile.action_id]);
     el.appendChild(icon);
@@ -1242,6 +1417,8 @@ function buildAction(tile) {
         // firing once (Screensaver, Restart, Shut Down). Mirrors macOS.
         toggleIntent: tile.off_label != null,
         danger,
+        // The question this tile asks before it fires, from the core.
+        confirm: tile.confirm || null,
         wired: false,
     });
     return el;

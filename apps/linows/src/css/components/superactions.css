@@ -22,7 +22,7 @@ html.controls-open #hint-bar {
     overflow: hidden;
 }
 
-/* The shape comes from the drawing in ~/.look/launchpad.toml: superactions.js
+/* The shape comes from the drawing in ~/.look/super-actions.toml: superactions.js
  * sets --ctl-cols / --ctl-rows from the resolved tiles and gives each tile its
  * own grid-column / grid-row. This used to declare `grid-template-areas` and a
  * `.pos-*` rule per tile, which was the whole layout written a second time -
@@ -213,6 +213,23 @@ html[data-transparent="false"] .control-strip-grid {
     height: 22px;
 }
 
+/* A user's own icon file (--ctl-icon-src, set by applyIcon). Masked rather than
+   drawn, so it inherits `color` like the inline glyphs beside it and follows
+   the active and danger tints instead of arriving in its own palette. */
+.ctl-icon--file {
+    width: 22px;
+    height: 22px;
+    background-color: currentColor;
+    -webkit-mask-image: var(--ctl-icon-src);
+    mask-image: var(--ctl-icon-src);
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+}
+
 .ctl-tile.is-active .ctl-icon {
     color: var(--accent-color);
 }
@@ -259,8 +276,9 @@ html[data-transparent="false"] .control-strip-grid {
     font-weight: 500;
 }
 
-/* Small-caps info label (Battery / weather condition). */
-.ctl-caps {
+/* Small-caps info label (Battery, weather condition, a custom tile's). */
+.ctl-caps,
+.ctl-custom-caption {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.06em;
@@ -435,6 +453,52 @@ html[data-transparent="false"] .control-strip-grid {
 /* --- Info (Battery) -------------------------------------------------------- */
 .ctl-tile--info .ctl-text {
     gap: 3px;
+}
+
+/* --- Custom (a tile from ~/.look/super-actions.toml), dressed like Info -------- */
+.ctl-tile--custom {
+    align-items: flex-start;
+    padding: 12px;
+}
+
+.ctl-tile--custom .ctl-text {
+    gap: 2px;
+    min-width: 0;
+}
+
+/* A tall tile's first row: the icon and the name, and nothing else. Whatever
+   follows starts at the tile's padding edge, so a reading is never indented by
+   a gutter that belongs to the icon. */
+.ctl-custom-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* 18px, the size the macOS tile draws this icon at. Enough to carry a shape
+   next to the 11px name, without competing with the reading below it. */
+.ctl-custom-head .ctl-icon svg,
+.ctl-custom-head .ctl-icon--file {
+    width: 18px;
+    height: 18px;
+}
+
+.ctl-custom-lines {
+    display: flex;
+    flex-direction: column;
+    /* Matches the 2pt VStack spacing the macOS tile stacks these with. */
+    gap: 2px;
+    font-size: 12px;
+    color: var(--font-secondary);
+    /* A glance, not a pane. */
+    overflow: hidden;
+}
+
+/* No empty gutter when no icon was asked for. A masked file is empty by
+   design, so it is excluded rather than collapsed. */
+.ctl-tile--custom .ctl-icon:empty:not(.ctl-icon--file) {
+    display: none;
 }
 
 /* --- Weather L slot -------------------------------------------------------- */

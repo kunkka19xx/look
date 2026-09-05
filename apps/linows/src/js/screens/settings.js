@@ -683,7 +683,7 @@ export async function reloadFromFile() {
         await forceIndexRefresh();
 
         if (onConfigReloadFn) onConfigReloadFn(map);
-        // One banner carries both: launchpad.toml is the file most likely to be
+        // One banner carries both: super-actions.toml is the file most likely to be
         // mid-edit when someone reaches for the reload chord.
         if (!superactions.warningBanner(launchpadWarnings)) {
             banner.show('Config reloaded from file', 'success', 1.2);

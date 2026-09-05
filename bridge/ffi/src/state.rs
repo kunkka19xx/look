@@ -173,6 +173,38 @@ pub(crate) fn stop_index_watchers_for_test() {
     stop_index_watchers();
 }
 
+/// Blocks until any background index refresh has finished.
+///
+/// `request_background_index_refresh` spawns a DETACHED thread, so without this
+/// a test that triggers one releases its lock while the refresh is still
+/// running. The next test then sets its own database path, and that thread -
+/// which reads the path late - rebuilds `candidates` in it, deleting rows the
+/// new test just inserted.
+#[cfg(test)]
+const REFRESH_WAIT_POLL: std::time::Duration = std::time::Duration::from_millis(10);
+
+/// Generous: the loop returns the moment the flag clears, so a wide budget
+/// costs a fast machine nothing and keeps a slow one from failing over
+/// scheduling.
+#[cfg(test)]
+const REFRESH_WAIT_POLLS: u32 = 1_000;
+
+#[cfg(test)]
+pub(crate) fn wait_for_index_refresh_for_test() {
+    for _ in 0..REFRESH_WAIT_POLLS {
+        if !INDEX_REFRESH_IN_PROGRESS.load(Ordering::Acquire) {
+            return;
+        }
+        std::thread::sleep(REFRESH_WAIT_POLL);
+    }
+    // Never a silent return: that releases the lock with the worker still
+    // running, the corruption this exists to prevent.
+    panic!(
+        "index refresh still running after {:?}",
+        REFRESH_WAIT_POLL * REFRESH_WAIT_POLLS
+    );
+}
+
 pub(crate) fn restart_index_watchers() {
     stop_index_watchers();
 

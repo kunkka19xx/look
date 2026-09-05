@@ -1,0 +1,23 @@
+{
+  "columns": 2,
+  "rows": 1,
+  "tiles": [
+    {
+      "action_id": "ci",
+      "col": 0,
+      "col_span": 2,
+      "confirm": null,
+      "has_value": true,
+      "icon": null,
+      "mnemonic": "C",
+      "off_label": null,
+      "on_label": null,
+      "pressable": true,
+      "role": "custom",
+      "row": 0,
+      "row_span": 1,
+      "size": "s",
+      "title": "Ci"
+    }
+  ]
+}

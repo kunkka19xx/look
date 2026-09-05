@@ -52,7 +52,7 @@ struct EmptyStateLaunchpadView: View {
     // composed by hand - nested stacks naming each tile in the order the catalog
     // happened to return them - because SwiftUI has no cell spanning and the
     // arrangement was known in advance. It is not known in advance any more:
-    // ~/.look/launchpad.toml decides it, so the view offsets and sizes each tile
+    // ~/.look/super-actions.toml decides it, so the view offsets and sizes each tile
     // from its own coordinates and never reconstructs an arrangement.
 
     private func layout(width: CGFloat) -> some View {
@@ -119,6 +119,14 @@ struct EmptyStateLaunchpadView: View {
             // reached this switch only to render nothing. It is a tile like the
             // rest now, so it can be moved, resized or left out of the drawing.
             LaunchpadLSlotView(themeStore: themeStore)
+        case .custom:
+            LaunchpadCustomTile(
+                model: model,
+                value: controller.customValue(for: model.actionId),
+                isPressable: model.pressable,
+                confirming: controller.pendingConfirmActionID == model.actionId,
+                themeStore: themeStore
+            ) { controller.activate(model) }
         }
     }
 }
@@ -274,6 +282,141 @@ private struct LaunchpadInfoTile: View {
     }
 }
 
+/// A tile the user declared in `~/.look/super-actions.toml`. Same anatomy as the
+/// tiles beside it; how much shows is how big the user drew it. Placeholder
+/// until the first run resolves, like Battery and Weather.
+private struct LaunchpadCustomTile: View {
+    let model: LaunchpadTileModel
+    /// Nil until the tile's command has produced something.
+    let value: LaunchpadTileValue?
+    /// Whether pressing it does anything. A tile with no `press` is a readout.
+    let isPressable: Bool
+    /// Armed by a first press. There is no dialog: if the tile does not show
+    /// it, nothing does.
+    let confirming: Bool
+    var themeStore: ThemeStore
+    let onPress: () -> Void
+
+    private typealias Const = AppConstants.Launcher.Launchpad
+
+    /// One cell fits the headline alone.
+    private var showsDetail: Bool { model.rowSpanCount > 1 || model.columnSpan > 1 }
+
+    /// The command's caption wins over the tile's name - the rule Weather uses,
+    /// showing the condition rather than the word "Weather". Unless the tile
+    /// has a key: that letter lives in the name.
+    private var label: String {
+        let text = model.mnemonic == nil ? (value?.caption ?? model.title) : model.title
+        // Uppercased to sit level with BATTERY and CLEAR beside it.
+        return text.uppercased()
+    }
+
+    /// The caption line, only when it is not already doing duty as the label.
+    private var detailCaption: String? {
+        guard showsDetail, let caption = value?.caption, model.mnemonic != nil else { return nil }
+        return caption.uppercased()
+    }
+
+    /// A tile that only acts, drawn like Mic and Screensaver. A placeholder
+    /// would be a permanent "--" for something never going to fill in.
+    private var button: some View {
+        VStack(spacing: 8) {
+            Image(systemName: value?.icon ?? model.icon ?? Const.customTileFallbackIcon)
+                .font(.system(size: 24, weight: .medium))
+                .foregroundColor(confirming ? themeStore.dangerColor() : themeStore.accentColor())
+            mnemonicText(
+                confirming ? (model.confirm ?? "Confirm?") : model.title,
+                mnemonic: confirming ? nil : model.mnemonic,
+                font: themeStore.uiFont(size: Const.titleFontSize, weight: .semibold),
+                base: confirming ? themeStore.dangerColor() : themeStore.fontColor(),
+                highlight: themeStore.warningColor()
+            )
+            .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            frostedTile(
+                themeStore: themeStore,
+                tint: confirming ? themeStore.dangerColor() : nil,
+                tintOpacity: confirming ? launchpadAlertTintOpacity : 0
+            )
+        )
+        .overlay(tileBorder(isOn: false, themeStore: themeStore))
+    }
+
+    private var body_: some View {
+        // Battery's anatomy, and the Linux/Windows strip's: icon in a column of
+        // its own, caption and value stacked beside it.
+        HStack(spacing: 10) {
+            if let icon = (value?.icon ?? model.icon), !icon.isEmpty {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(themeStore.accentColor())
+                    .contentTransition(.symbolEffect(.replace))
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                mnemonicText(
+                    confirming ? (model.confirm?.uppercased() ?? "CONFIRM?") : label,
+                    mnemonic: confirming ? nil : model.mnemonic,
+                    font: themeStore.uiFont(size: Const.captionFontSize - 1, weight: .medium),
+                    base: themeStore.mutedTextColor(),
+                    highlight: themeStore.warningColor()
+                )
+                .lineLimit(1)
+
+                Text(value?.value ?? Const.infoPlaceholderValue)
+                    .font(themeStore.uiFont(size: Const.valueFontSize - 6, weight: .bold))
+                    .foregroundColor(themeStore.fontColor())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .contentTransition(.numericText())
+                    .animation(Motion.Value.rollDigits, value: value?.value ?? "")
+
+                if showsDetail {
+                    if let detailCaption {
+                        Text(detailCaption)
+                            .font(themeStore.uiFont(size: Const.captionFontSize - 1, weight: .medium))
+                            .foregroundColor(themeStore.mutedTextColor())
+                            .lineLimit(1)
+                    }
+                    // Clipped, not scrolled: a tile is a glance, not a pane.
+                    let extra = Array((value?.lines ?? []).prefix(3))
+                    ForEach(Array(extra.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(themeStore.uiFont(size: Const.smallLabelFontSize - 0.5, weight: .regular))
+                            .foregroundColor(themeStore.secondaryTextColor())
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(frostedTile(themeStore: themeStore))
+        .overlay(tileBorder(isOn: value?.isOn ?? false, themeStore: themeStore))
+    }
+
+    @ViewBuilder
+    private var face: some View {
+        if model.hasValue { body_ } else { button }
+    }
+
+    var body: some View {
+        // Decided by the tile, not by whether a value has arrived yet.
+        if isPressable {
+            Button(action: onPress) { face }
+                .buttonStyle(PressableSurfaceStyle())
+        } else {
+            face
+        }
+    }
+}
+
 /// A read-only weather tile: a tall single-column tile stacking a condition
 /// icon, the temperature, the condition, and today's high/low and rain chance.
 /// Shows a placeholder icon and value until the first reading resolves.
@@ -365,7 +508,7 @@ private struct LaunchpadActionTile: View {
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(tint)
                 mnemonicText(
-                    confirming ? "Confirm?" : model.title,
+                    confirming ? (model.confirm ?? "Confirm?") : model.title,
                     mnemonic: confirming ? nil : model.mnemonic,
                     font: themeStore.uiFont(size: Const.smallLabelFontSize, weight: .semibold),
                     base: confirming ? themeStore.dangerColor() : themeStore.secondaryTextColor(),

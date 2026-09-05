@@ -118,7 +118,7 @@ test('every tile in the layout gets a placement inside the grid', () => {
 test('the stylesheet no longer holds a second copy of the layout', () => {
     // The change this file exists to protect: placement used to be declared
     // here AND in the core, and the two had to agree. If either comes back,
-    // the drawing in launchpad.toml is being silently overruled for that tile.
+    // the drawing in super-actions.toml is being silently overruled for that tile.
     const css = readFileSync(
         fileURLToPath(new URL('../src/css/components/superactions.css', import.meta.url)),
         'utf8',

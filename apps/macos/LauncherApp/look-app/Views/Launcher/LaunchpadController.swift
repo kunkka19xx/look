@@ -40,6 +40,9 @@ final class LaunchpadController {
     /// Latest resolved weather for the Weather tile, or nil until the first
     /// successful fetch (the tile shows a placeholder meanwhile).
     private(set) var weather: WeatherSnapshot?
+    /// Last value each user tile's command printed, keyed by the name in the
+    /// drawing. Filled by the value cache.
+    private(set) var customValues: [String: LaunchpadTileValue] = [:]
 
     private let weatherService = WeatherService.shared
 
@@ -72,6 +75,31 @@ final class LaunchpadController {
 
     func configure(tiles: [LaunchpadTileModel]) {
         self.tiles = tiles
+        // So a tile with a value shows it on this frame, not a placeholder.
+        if tiles.contains(role: .custom) {
+            customValues = EngineBridge.shared.launchpadTileValues()
+        }
+    }
+
+    /// Re-runs stale tile commands. Detached: the launchpad is already on
+    /// screen from the cache, and a late value belongs to a tile still there.
+    func refreshCustomValues() async {
+        // Cheap is not free: without this every open reads and parses
+        // super-actions.toml to discover there is nothing to run.
+        guard tiles.contains(role: .custom) else { return }
+
+        let outcome = await Task.detached(priority: .utility) {
+            EngineBridge.shared.refreshLaunchpadTiles()
+        }.value
+
+        if outcome.refreshed > 0 {
+            customValues = await Task.detached(priority: .utility) {
+                EngineBridge.shared.launchpadTileValues()
+            }.value
+        }
+        for failure in outcome.errors {
+            onBanner?(failure)
+        }
     }
 
     /// Bumped by every write to `systemStates`. Each `state()` read suspends, so
@@ -203,6 +231,12 @@ final class LaunchpadController {
         return nil
     }
 
+    /// What a user tile's `value` command last printed. Nil before the first
+    /// run, which is the normal first state - the same as Battery's.
+    func customValue(for actionID: String) -> LaunchpadTileValue? {
+        customValues[actionID]
+    }
+
     /// True only once the adapter has reported the tile as genuinely unavailable
     /// (e.g. Battery on a desktop Mac), as opposed to not-yet-read. Lets the
     /// Battery tile fall back to showing uptime instead of a dead "--".
@@ -221,19 +255,30 @@ final class LaunchpadController {
             pendingConfirmActionID = nil
         }
 
-        if tile.actionId == LaunchpadActionID.restart || tile.actionId == LaunchpadActionID.shutdown {
-            if pendingConfirmActionID == tile.actionId {
-                confirmPending()
-            } else {
-                pendingConfirmActionID = tile.actionId
-            }
+        // One gate, whatever the tile is: a first press on anything that asks
+        // arms it, a second fires. Restart and Shut Down used to be named here
+        // by id, which meant the same two ids were listed in three places.
+        if tile.confirm?.isEmpty == false, pendingConfirmActionID != tile.actionId {
+            pendingConfirmActionID = tile.actionId
             return
         }
+        pendingConfirmActionID = nil
+        dispatch(tile)
+    }
 
+    /// What a tile does once anything it wanted to ask has been answered.
+    private func dispatch(_ tile: LaunchpadTileModel) {
         // Now Playing reflects and controls the system-wide media (any app), not a
         // SystemControl adapter, so the play/pause key routes a transport command.
         if tile.actionId == LaunchpadActionID.nowPlaying {
             nowPlayingToggle()
+            return
+        }
+
+        // No adapter: the core holds the command and runs it by name.
+        if tile.role == .custom {
+            guard tile.pressable else { return }
+            pressCustom(tile)
             return
         }
 
@@ -244,17 +289,13 @@ final class LaunchpadController {
         }
     }
 
-    /// Fires the pending destructive action, then clears the prompt. Routes to a
-    /// native adapter when one is registered; otherwise reports a demo banner.
+    /// Fires the armed tile, then clears the prompt.
     func confirmPending() {
-        guard let actionID = pendingConfirmActionID else { return }
+        guard let actionID = pendingConfirmActionID,
+              let tile = tiles.first(where: { $0.actionId == actionID })
+        else { return }
         pendingConfirmActionID = nil
-        if let adapter = ActionAdapterRegistry.adapter(for: actionID) {
-            perform(.run, on: adapter, actionID: actionID)
-        } else {
-            let label = actionID == LaunchpadActionID.restart ? "Restart" : "Shut Down"
-            onBanner?("\(label) (demo)")
-        }
+        dispatch(tile)
     }
 
     /// Cancels the inline confirm. Returns true if a prompt was actually
@@ -315,7 +356,27 @@ final class LaunchpadController {
         }
     }
 
-    /// Fallback behavior for a toggle tile without a native adapter: flip local
+    /// Runs a press off the main thread, then re-reads: a press usually
+    /// changes the thing the tile reports.
+    private func pressCustom(_ tile: LaunchpadTileModel) {
+        let name = tile.actionId
+        Task {
+            let failure = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.pressLaunchpadTile(name)
+            }.value
+            if let failure {
+                onBanner?(failure)
+                return
+            }
+            // Straight from the cache the press just wrote: a refresh pass would
+            // find nothing stale, the core having read this tile already.
+            customValues = await Task.detached(priority: .utility) {
+                EngineBridge.shared.launchpadTileValues()
+            }.value
+        }
+    }
+
+/// Fallback behavior for a toggle tile without a native adapter: flip local
     /// state. Unused while every launchpad toggle is adapter-backed; kept as the
     /// framework's graceful path for a future tile added ahead of its adapter.
     private func activateMock(_ tile: LaunchpadTileModel) {

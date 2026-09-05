@@ -14,6 +14,7 @@
 > | `Cmd+0`                                 | `Ctrl+0`          |
 > | `Cmd+1`…`Cmd+7` (command mode)          | `Ctrl+1`…`Ctrl+7` |
 > | `Cmd+1`…`Cmd+9` (running-apps switcher) | `Alt+1`…`Alt+9`   |
+> | `Cmd+<letter>` (super-action tiles)     | `Alt+<letter>`    |
 > | `Cmd+P`                                 | `Ctrl+P`          |
 > | `Cmd+Shift+P`                           | `Ctrl+Shift+P`    |
 > | `Cmd+Shift+,`                           | `Ctrl+Shift+,`    |
@@ -144,7 +145,7 @@ Turn the strip off in `Settings > Appearance > Super Actions`. Off hides it and 
 
 ### Rearranging the strip
 
-The arrangement is yours, in `~/.look/launchpad.toml`. Look writes it on first run with the layout above, so the file is its own reference - open it and the format explains itself.
+The arrangement is yours, in `~/.look/super-actions.toml`. Look writes it on first run with the layout above, so the file is its own reference - open it and the format explains itself.
 
 It is a drawing of the screen. Each line is a row, each name is one cell:
 
@@ -172,6 +173,72 @@ The names are the tile ids - `lslot`, `bluetooth`, `wifi`, `battery`, `theme`, `
 `Cmd+Shift+;` reloads the file, so you can arrange the strip while looking at it. **Delete the file to go back to the default.**
 
 If the drawing is wrong, Look says so in the window rather than failing quietly. A problem with one tile drops that tile and keeps the rest; a problem with the file's structure - a row with the wrong number of names, or TOML it cannot read - falls back to the whole default layout, so the strip is never empty and never silent about why.
+
+### Tiles of your own
+
+A tile of your own is a name in the drawing plus an entry below it. Nothing changes in `~/.look/sources/` - a tile is declared whole, in this one file, and needs no source at all.
+
+```toml
+layout = [
+    "lslot   lslot   disk    weather",
+    "lslot   lslot   lock    weather",
+]
+
+[tiles.disk]
+value   = '''printf '{"value":"%s","caption":"DISK FREE","icon":"internaldrive","lines":["of %s"]}' "$(df -h / | awk 'NR==2 {print $4}')" "$(df -h / | awk 'NR==2 {print $2}')"'''
+refresh = "5m"
+
+# A tile that only ACTS. No `value`, so nothing runs until you press it and
+# there is nothing to display - it draws like Mic and Screensaver do.
+#
+# `pmset displaysleepnow` sleeps the display, which locks the Mac when
+# System Settings > Lock Screen is set to ask for a password after sleep.
+
+[tiles.lock]
+press    = "pmset displaysleepnow"
+title    = "Lock"
+confirm  = "Lock the screen?"
+icon     = "lock.fill"
+mnemonic = "L"   # Cmd+L (Alt+L elsewhere), and the L in "Lock" is highlighted
+```
+
+**`value` prints one JSON object.** Only `value` is required, so a shell one-liner is a whole tile:
+
+```json
+{"value": "84Gi"}
+```
+
+A tile drawn bigger than one cell can say as much as Weather does:
+
+```json
+{"value":   "84Gi",
+ "caption": "DISK FREE",
+ "lines":   ["of 460Gi"],
+ "icon":    "internaldrive",
+ "state":   "off"}
+```
+
+Printing nothing hides the tile - that is how a "next meeting" tile disappears on a day with no meetings.
+
+**`icon` names the symbol drawn on the tile.** A tile that only acts runs no command, so there is no JSON for an icon to arrive in and this key is its only way to be anything but the generic mark. A tile with a `value` can use either, and an icon in the printed JSON wins, since that one can change with what was read.
+
+On macOS the name is an SF Symbol, so anything in that set works (`lock.fill`, `internaldrive`, `calendar`).
+
+On Linux the name is either one of the strip's own glyphs - `bluetooth`, `wifi`, `theme`, `keepawake`, `battery`, `screensaver`, `mic`, `restart`, `shutdown` - or a path to an image of your own:
+
+```toml
+icon = "~/.look/icons/nixos.svg"
+```
+
+The file is read when the strip resolves its layout and drawn as a mask, so it takes the tile's colour like every other glyph rather than arriving in its own, and follows the active tint when a reading says `"state": "on"`. SVG, PNG, and the other formats an icon theme uses all work, up to 256 KB. Because it is a mask, only the shape survives: a flat silhouette reads at 16px, a detailed illustration collapses into a blob. Windows draws from the built-in names only.
+
+An unrecognised name draws nothing at all rather than a placeholder, so a tile with a typo in its `icon` looks like a tile that asked for none.
+
+**`press` is what a click or the tile's key runs.** A tile with `press` and no `value` is a button: it shows its name and never runs anything until you press it. A tile with `value` and no `press` is a readout. `confirm` arms the tile on the first press and fires on the second, the way Restart and Shut Down do.
+
+**Keep the command light.** `value` runs unattended - the point of a live tile - so it is capped: **two seconds**, then it is killed along with anything it started, and 16 KB of output. Within a tile's `refresh` window nothing runs at all, so most opens cost nothing. Read something and print it; a slow command will be cut off and the tile keeps its last good reading. Anything that needs to fetch, build, or wait belongs behind `press`, or in a script that caches to a file the tile just reads.
+
+A tile that fails says so and keeps what it last showed - one broken tile never blanks the strip. Its key follows the same rules as the built-ins: it fires with `Cmd` on macOS and `Alt` on Linux/Windows, a letter already used by a tile on the screen is not given away, `Cmd+Q` belongs to quitting Look, and either way the tile still works, it just has no key.
 
 ## AI answers and web suggestions (macOS, Linux, Windows)
 
@@ -407,7 +474,7 @@ Behavior:
 
 Saved as `running_apps_placement=<value>` in `~/.look/config` (`none` = off, any other value = on; legacy `top`/`right`/`bottom` values still load as "on"). New keys are auto-appended to existing config files on next Save Config.
 
-**Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/launchpad.toml`; see [Rearranging the strip](#rearranging-the-strip).
+**Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/super-actions.toml`; see [Rearranging the strip](#rearranging-the-strip).
 
 ### Indexing Settings
 
@@ -577,7 +644,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
 - `Cmd+Shift+,`: toggle settings panel
-- `Cmd+Shift+;` (macOS) / `Ctrl+Shift+;` (Linux, Windows): reload config, re-read your declared sources, and re-read `~/.look/launchpad.toml` so the strip can be arranged while you look at it
+- `Cmd+Shift+;` (macOS) / `Ctrl+Shift+;` (Linux, Windows): reload config, re-read your declared sources, and re-read `~/.look/super-actions.toml` so the strip can be arranged while you look at it
 - `Cmd+Shift+H`: hide the selected app from Look
 - `Cmd+-`, `Cmd+=`, `Cmd+0`: temporary UI zoom out/in/reset
 

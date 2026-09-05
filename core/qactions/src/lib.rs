@@ -138,6 +138,28 @@ pub enum TileRole {
     Weather,
     /// The rotating Todo / Pomo / Clock slot; rendered entirely by the shell.
     Slot,
+    /// A tile the user declared in `~/.look/super-actions.toml`. No descriptor and
+    /// no native adapter, so `title` has to arrive already filled in.
+    Custom,
+}
+
+/// Who owns a plain Cmd/Ctrl + letter chord before the launchpad ever sees it.
+///
+/// The start of one answer to "is this chord taken, and by whom". Today that
+/// question has three answers in three places: menu `keyboardShortcut`s in the
+/// macOS shell, ~20 positional handlers in its key monitor, and this catalog.
+/// A menu shortcut is dispatched by the OS before Look's own monitor runs, so a
+/// tile holding one would silently never fire - the failure a name here turns
+/// into a warning.
+///
+/// Only chords that win EVERYWHERE belong here. The result-oriented ones
+/// (Cmd+F reveal, Cmd+P pick) are deliberately absent: they sit below the
+/// launchpad mnemonic in the monitor, so on the empty screen they are free.
+pub fn chord_owner(key: char) -> Option<&'static str> {
+    match key.to_ascii_uppercase() {
+        'Q' => Some("quitting Look"),
+        _ => None,
+    }
 }
 
 /// The smallest rectangle a role can be drawn in and still say what it means.
@@ -148,7 +170,8 @@ pub fn min_span(role: TileRole) -> (u8, u8) {
         TileRole::Slot => (2, 2),
         TileRole::Weather => (1, 2),
         TileRole::Media => (2, 1),
-        TileRole::Toggle | TileRole::Info | TileRole::Action => (1, 1),
+        // The user drew it, so the size they drew is the size they meant.
+        TileRole::Toggle | TileRole::Info | TileRole::Action | TileRole::Custom => (1, 1),
     }
 }
 
@@ -180,6 +203,19 @@ pub struct LaunchpadTile {
     /// shared descriptor. `None` for non-toggle tiles.
     pub on_label: Option<String>,
     pub off_label: Option<String>,
+    /// Whether pressing it does anything. Battery and Weather are readouts, and
+    /// so is a user tile that declared no `press` - none of them should offer a
+    /// button's affordances for something that will not happen.
+    pub pressable: bool,
+    /// Whether it has anything to display, as opposed to only acting. Without
+    /// it a shell cannot tell "nothing to show" from "has not run yet", and
+    /// would leave a button on a placeholder forever.
+    pub has_value: bool,
+    /// Asked before the press runs, in the words the user wrote.
+    pub confirm: Option<String>,
+    /// The symbol a user tile asked for. A built-in's stays with the shell that
+    /// draws it: these are platform names, spelled differently in each.
+    pub icon: Option<String>,
 }
 
 /// One entry of the layout table below. `title` is `None` when the catalog
@@ -217,6 +253,17 @@ fn tile(placed: Placed) -> LaunchpadTile {
         row_span,
         on_label: descriptor.as_ref().and_then(|d| d.on_label.clone()),
         off_label: descriptor.and_then(|d| d.off_label),
+        pressable: matches!(role, TileRole::Toggle | TileRole::Action | TileRole::Media),
+        has_value: !matches!(role, TileRole::Action),
+        // What a tile asks before it acts, wherever it came from. The shells
+        // gate on this field alone rather than on a list of ids.
+        confirm: match action_id {
+            crate::action_id::RESTART => Some("Restart?".to_string()),
+            crate::action_id::SHUTDOWN => Some("Shut down?".to_string()),
+            _ => None,
+        },
+        // The shell drawing it already knows this id.
+        icon: None,
     }
 }
 
@@ -512,6 +559,31 @@ mod tests {
         // column and two rows is exactly the case that separates the two.
         assert_eq!(weather.size, TileSize::S);
         assert_eq!(weather.role, TileRole::Weather);
+    }
+
+    #[test]
+    fn every_reserved_chord_names_who_holds_it() {
+        // The point of the registry: a refusal can say why. A reserved chord
+        // with no owner would produce "it has no key" and no reason.
+        assert_eq!(chord_owner('Q'), Some("quitting Look"));
+        assert_eq!(chord_owner('q'), chord_owner('Q'), "case-insensitive");
+        assert_eq!(chord_owner('F'), None, "free on the empty screen");
+    }
+
+    #[test]
+    fn no_built_in_tile_wants_a_reserved_chord() {
+        // A built-in claiming one would never fire either, and nothing would
+        // report it - the warning path only covers user tiles.
+        for tile in launchpad_layout() {
+            if let Some(key) = tile.mnemonic {
+                assert_eq!(
+                    chord_owner(key),
+                    None,
+                    "{} wants Cmd+{key}, which is reserved",
+                    tile.action_id
+                );
+            }
+        }
     }
 
     #[test]

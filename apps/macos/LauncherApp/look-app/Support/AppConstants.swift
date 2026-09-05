@@ -518,7 +518,7 @@ enum AppConstants {
         /// search bar when the query is empty. Sizing/timing only; the tile order,
         /// labels, and mnemonics come from the shared `look_qactions` catalog.
         enum Launchpad {
-            /// No `columns` here any more: the drawing in ~/.look/launchpad.toml
+            /// No `columns` here any more: the drawing in ~/.look/super-actions.toml
             /// decides how many there are, and the core sends that shape beside
             /// the tiles. A constant 6 would be a second answer.
             static let rowHeight: CGFloat = 76
@@ -540,6 +540,8 @@ enum AppConstants {
             /// Shown in a read-only info tile (e.g. Battery) before its adapter
             /// resolves a value, or when the value is unavailable.
             static let infoPlaceholderValue = "--"
+            /// Drawn on a user tile that named no `icon`.
+            static let customTileFallbackIcon = "bolt"
             /// Now Playing caption when nothing is playing on the system.
             static let nowPlayingIdleTitle = "Nothing playing"
             /// How often to re-read system now-playing while the launcher is open,
