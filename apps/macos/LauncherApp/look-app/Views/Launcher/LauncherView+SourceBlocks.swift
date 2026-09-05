@@ -20,15 +20,10 @@ enum SourceBlockAction {
 }
 
 extension LauncherView {
-    /// The `then` targets of the block behind `result`, as panel descriptors.
-    ///
-    /// Read synchronously, from a per-block memo: the panel is built during a
-    /// selection change, and an async load that appends later would make the
-    /// action list grow under the user's cursor.
-    func sourceBlockTargets(for result: LauncherResult) -> [QuickActionDescriptor] {
-        guard result.isSourceRow else { return [] }
-
-        return SourceBlockCatalog.targets(for: result).map { target in
+    /// Declared targets as panel entries. The ellipsis says one lists rather
+    /// than runs: it opens a level.
+    func sourceBlockDescriptors(_ targets: [SourceBlockTarget]) -> [QuickActionDescriptor] {
+        targets.map { target in
             QuickActionDescriptor(
                 actionId: SourceBlockAction.actionID(forBlockID: target.id),
                 title: target.performs ? target.name : "\(target.name)…",

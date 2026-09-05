@@ -1007,7 +1007,8 @@ final class EngineBridge: @unchecked Sendable {
     }
 
     /// The user-declared block a row belongs to, with the exact steps Enter will
-    /// perform. Reads the sources directory, so call it off the main thread.
+    /// perform, and the actions declared for rows like it. Reads the sources
+    /// directory, so call it off the main thread.
     nonisolated func sourceBlock(
         candidateID: String, row: RowRef, ancestorsJSON: String = "[]"
     ) -> SourceBlock? {
@@ -1472,6 +1473,11 @@ nonisolated struct SourceBlock: Decodable {
     let file: String?
     /// Where a row of this block can go next.
     let then: [SourceBlockTarget]
+    /// Actions a user declared for rows LIKE this one (`applies`) rather than
+    /// for rows of this block. Apart from `then` because the two land
+    /// differently in the menu: a block's own targets replace the built-in
+    /// verbs, while these join them.
+    let globals: [SourceBlockTarget]
     /// Whether a `preview` command will run, known before it does.
     let hasPreview: Bool
 }

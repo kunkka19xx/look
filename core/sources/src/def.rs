@@ -47,6 +47,110 @@ pub enum RowFormat {
     Json,
 }
 
+/// What a row turned out to be, for deciding whether a declared action belongs
+/// on it. `Other` is everything with nothing on disk (a settings pane, a bundle
+/// row): handing one to a user's command would substitute an empty `{path}`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowKind {
+    App,
+    File,
+    Dir,
+    Other,
+}
+
+/// The shape of row an action accepts, before `ext` and `match` narrow it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppliesOnly {
+    Files,
+    Dirs,
+    Paths,
+    Apps,
+}
+
+impl AppliesOnly {
+    pub const FILES: &'static str = "files";
+    pub const DIRS: &'static str = "dirs";
+    pub const PATHS: &'static str = "paths";
+    pub const APPS: &'static str = "apps";
+
+    fn named(word: &str) -> Result<Self, String> {
+        match word.trim() {
+            Self::FILES => Ok(Self::Files),
+            Self::DIRS => Ok(Self::Dirs),
+            Self::PATHS => Ok(Self::Paths),
+            Self::APPS => Ok(Self::Apps),
+            other => Err(format!(
+                "`{KEY_APPLIES}` has no \"{other}\", only {}, {}, {}, and {}",
+                Self::FILES,
+                Self::DIRS,
+                Self::PATHS,
+                Self::APPS
+            )),
+        }
+    }
+
+    fn keeps(self, kind: RowKind) -> bool {
+        match self {
+            Self::Files => kind == RowKind::File,
+            Self::Dirs => kind == RowKind::Dir,
+            Self::Paths => matches!(kind, RowKind::File | RowKind::Dir | RowKind::App),
+            Self::Apps => kind == RowKind::App,
+        }
+    }
+}
+
+/// A `do` block's claim on rows it did not produce: it joins the action menu of
+/// every row the index already found that looks like this.
+///
+/// `ext` is its own key rather than a glob because `ext = ["png"]` is what
+/// people mean and `match = ["*.png"]` is what they would otherwise have to
+/// write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Applies {
+    pub only: AppliesOnly,
+    /// Lowercased and without the dot, so "PNG", ".png" and "png" are one
+    /// declaration.
+    pub ext: Vec<String>,
+    /// Globs on the row's file name, never its whole path: an action declared
+    /// for `*.png` must not fire on every row under a folder called that.
+    pub globs: Vec<String>,
+}
+
+impl Applies {
+    /// Whether this action belongs on a row of `kind` called `basename`. Every
+    /// declared filter is ANDed: a narrower declaration never matches more.
+    pub fn matches(&self, kind: RowKind, basename: &str) -> bool {
+        if !self.only.keeps(kind) {
+            return false;
+        }
+        if !self.ext.is_empty() && !self.ext.iter().any(|ext| has_extension(basename, ext)) {
+            return false;
+        }
+        if !self.globs.is_empty() && !matches_any_glob(basename, &self.globs) {
+            return false;
+        }
+        true
+    }
+}
+
+/// A leading dot is the name, not an extension: `.gitignore` is not a
+/// `gitignore` file.
+fn has_extension(basename: &str, ext: &str) -> bool {
+    basename
+        .rsplit_once('.')
+        .is_some_and(|(stem, found)| !stem.is_empty() && found.eq_ignore_ascii_case(ext))
+}
+
+/// Compiled here rather than kept on the block: the patterns were validated
+/// when the block was parsed, and this runs once per action menu rather than
+/// once per row rendered.
+fn matches_any_glob(basename: &str, patterns: &[String]) -> bool {
+    crate::collect::build_globs(patterns)
+        .ok()
+        .flatten()
+        .is_some_and(|globs| globs.is_match(basename))
+}
+
 /// Parses a duration such as `30s`, `5m`, `1h`, `2d`.
 pub fn parse_duration(value: &str) -> Result<Duration, String> {
     let trimmed = value.trim();
@@ -109,6 +213,9 @@ pub const KEY_DO: &str = "do";
 pub const KEY_DIR: &str = "dir";
 pub const KEY_FILE: &str = "file";
 pub const KEY_RUN: &str = "run";
+/// Not a producer: the key that makes a `do` block an action on rows it did
+/// not produce.
+pub const KEY_APPLIES: &str = "applies";
 
 /// The standard things a user does to a row. Each has one key across the whole
 /// app, so Cmd+E edits whatever the row is and wherever it came from. A block
@@ -173,6 +280,11 @@ pub struct Block {
     /// The target's own producer decides which, so `then` stays a plain list of
     /// names with no mode to declare.
     pub then: Vec<String>,
+    /// Rows this block acts on although it did not produce them. A `do` block
+    /// declaring one joins the action menu of every matching row in the index,
+    /// so a verb can be added to what the launcher already finds rather than to
+    /// a list the user had to declare to carry it.
+    pub applies: Option<Applies>,
     pub aliases: Vec<String>,
     pub bias: i64,
     pub icon: Option<String>,
@@ -207,6 +319,13 @@ impl Block {
         })
     }
 
+    /// Whether this block declared itself an action on rows like this one.
+    pub fn applies_to(&self, kind: RowKind, basename: &str) -> bool {
+        self.applies
+            .as_ref()
+            .is_some_and(|applies| applies.matches(kind, basename))
+    }
+
     /// Everything the producer needs before it can make a row. `cwd` counts:
     /// it is where the command runs, so a command naming no row from a
     /// directory that does is still a block about one selected row.
@@ -237,6 +356,9 @@ struct RawBlock {
     #[serde(rename = "do")]
     steps: Option<Vec<String>>,
     then: Option<Vec<String>>,
+    /// Left as a raw value: it is a word or a table, and the two shapes read
+    /// better hand-parsed than as an untagged enum behind a flattened map.
+    applies: Option<toml::Value>,
 
     dir: Option<String>,
     dirs: Option<Vec<String>>,
@@ -337,6 +459,19 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
         ));
     }
 
+    // A block that produces rows is a list, and a list is not a verb. Letting
+    // one declare `applies` would make it an action and a level at once, which
+    // is the ambiguity `perform_block`'s `as_target` already exists to settle.
+    let applies = match raw.applies {
+        Some(_) if !matches!(producer, Producer::Bundle { .. }) => {
+            return Err(format!(
+                "`{KEY_APPLIES}` says which rows an action joins, so only a `{KEY_DO}` block can declare it"
+            ));
+        }
+        Some(value) => Some(applies_from(&value)?),
+        None => None,
+    };
+
     Ok(Block {
         id: id.to_string(),
         name: raw.name.unwrap_or_else(|| id.to_string()),
@@ -348,6 +483,7 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
             .into_iter()
             .filter(|name| !name.trim().is_empty())
             .collect(),
+        applies,
         aliases: raw.aliases.unwrap_or_default(),
         bias: raw.bias.unwrap_or_default(),
         icon: raw.icon,
@@ -357,6 +493,89 @@ fn build(id: &str, raw: RawBlock) -> Result<Block, String> {
         source_file: None,
         unknown_keys: raw.extra.keys().cloned().collect(),
     })
+}
+
+/// `applies = "files"`, or `applies = { ext = ["png"], only = "files" }`. One
+/// key in two shapes, so the common case is a word and nothing has to be
+/// restructured to narrow it later.
+fn applies_from(value: &toml::Value) -> Result<Applies, String> {
+    const KEY_ONLY: &str = "only";
+    const KEY_EXT: &str = "ext";
+    const KEY_MATCH: &str = "match";
+
+    if let Some(word) = value.as_str() {
+        return Ok(Applies {
+            only: AppliesOnly::named(word)?,
+            ext: Vec::new(),
+            globs: Vec::new(),
+        });
+    }
+    let Some(table) = value.as_table() else {
+        return Err(format!(
+            "`{KEY_APPLIES}` is a word like \"{}\", or a table of {KEY_ONLY}, {KEY_EXT}, and {KEY_MATCH}",
+            AppliesOnly::FILES
+        ));
+    };
+    if let Some(unknown) = table
+        .keys()
+        .find(|key| ![KEY_ONLY, KEY_EXT, KEY_MATCH].contains(&key.as_str()))
+    {
+        return Err(format!(
+            "`{KEY_APPLIES}` has no key \"{unknown}\", only {KEY_ONLY}, {KEY_EXT}, and {KEY_MATCH}"
+        ));
+    }
+
+    let ext: Vec<String> = applies_list(table.get(KEY_EXT), KEY_EXT)?
+        .into_iter()
+        .map(|value| value.trim().trim_start_matches('.').to_lowercase())
+        .filter(|value| !value.is_empty())
+        .collect();
+    let globs: Vec<String> = applies_list(table.get(KEY_MATCH), KEY_MATCH)?
+        .into_iter()
+        .filter(|pattern| !pattern.trim().is_empty())
+        .collect();
+    // Compiled now so a typo is reported against the block that wrote it,
+    // rather than silently matching nothing every time a menu opens.
+    if let Err(err) = crate::collect::build_globs(&globs) {
+        return Err(format!("`{KEY_APPLIES}` {KEY_MATCH} {err}"));
+    }
+
+    let only = match table.get(KEY_ONLY) {
+        Some(value) => AppliesOnly::named(value.as_str().ok_or_else(|| {
+            format!(
+                "`{KEY_APPLIES}` {KEY_ONLY} is a word like \"{}\"",
+                AppliesOnly::FILES
+            )
+        })?)?,
+        // `ext` is about files and `match` is about anything with a name, so
+        // the narrow key implies the narrow shape and neither has to be
+        // spelled out twice.
+        None if !ext.is_empty() => AppliesOnly::Files,
+        None if !globs.is_empty() => AppliesOnly::Paths,
+        None => {
+            return Err(format!(
+                "`{KEY_APPLIES}` needs {KEY_ONLY}, {KEY_EXT}, or {KEY_MATCH}"
+            ));
+        }
+    };
+    Ok(Applies { only, ext, globs })
+}
+
+fn applies_list(value: Option<&toml::Value>, key: &str) -> Result<Vec<String>, String> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let items = value
+        .as_array()
+        .ok_or_else(|| format!("`{KEY_APPLIES}` {key} is a list, like [\"png\"]"))?;
+    items
+        .iter()
+        .map(|item| {
+            item.as_str()
+                .map(str::to_string)
+                .ok_or_else(|| format!("`{KEY_APPLIES}` {key} holds text, like \"png\""))
+        })
+        .collect()
 }
 
 fn producer_from(raw: &RawBlock) -> Result<Producer, String> {
@@ -515,6 +734,104 @@ edit = "nvim {path}"
     }
 
     #[test]
+    fn applies_says_which_rows_an_action_joins() {
+        let word = one("[deploy]\ndo = [\"make deploy\"]\napplies = \"dirs\"\n");
+        let table = one("[deploy]\ndo = [\"make deploy\"]\napplies = { only = \"dirs\" }\n");
+        // The word and the table are the same declaration written two ways.
+        assert_eq!(word.applies, table.applies);
+        assert_eq!(
+            word.applies.as_ref().map(|applies| applies.only),
+            Some(AppliesOnly::Dirs)
+        );
+
+        assert!(word.applies_to(RowKind::Dir, "look"));
+        assert!(!word.applies_to(RowKind::File, "notes.md"));
+        assert!(!word.applies_to(RowKind::Other, ""));
+    }
+
+    #[test]
+    fn every_shape_of_applies_matches_what_it_names() {
+        let applies = |declaration: &str| {
+            one(&format!("[a]\ndo = [\"ls\"]\napplies = {declaration}\n"))
+                .applies
+                .expect("a declared applies")
+        };
+
+        let files = applies("\"files\"");
+        assert!(files.matches(RowKind::File, "notes.md"));
+        assert!(!files.matches(RowKind::Dir, "dev"));
+
+        let paths = applies("\"paths\"");
+        assert!(paths.matches(RowKind::File, "notes.md"));
+        assert!(paths.matches(RowKind::Dir, "dev"));
+        assert!(paths.matches(RowKind::App, "Safari.app"));
+
+        let apps = applies("\"apps\"");
+        assert!(apps.matches(RowKind::App, "Safari.app"));
+        assert!(!apps.matches(RowKind::File, "Safari.app"));
+
+        // A glob reads the file name, and saying so is enough to mean paths.
+        let named = applies("{ match = [\"*.tar.gz\"] }");
+        assert_eq!(named.only, AppliesOnly::Paths);
+        assert!(named.matches(RowKind::File, "look-1.0.tar.gz"));
+        assert!(!named.matches(RowKind::File, "look-1.0.zip"));
+
+        // Both keys narrow together rather than either one being enough.
+        let both = applies("{ ext = [\"png\"], match = [\"shot-*\"] }");
+        assert!(both.matches(RowKind::File, "shot-1.png"));
+        assert!(!both.matches(RowKind::File, "logo.png"));
+        assert!(!both.matches(RowKind::File, "shot-1.jpg"));
+    }
+
+    #[test]
+    fn an_extension_is_matched_without_its_dot_and_without_its_case() {
+        let block = one("[a]\ndo = [\"ls\"]\napplies = { ext = [\".PNG\", \"jpg\"] }\n");
+        let applies = block.applies.expect("a declared applies");
+        // Naming an extension is about files, so nothing else has to be said.
+        assert_eq!(applies.only, AppliesOnly::Files);
+        assert_eq!(applies.ext, vec!["png", "jpg"]);
+
+        assert!(applies.matches(RowKind::File, "logo.png"));
+        assert!(applies.matches(RowKind::File, "LOGO.PNG"));
+        assert!(applies.matches(RowKind::File, "photo.jpg"));
+        assert!(!applies.matches(RowKind::File, "notes.md"));
+        // The whole name, not an extension: a dotfile is not a `png` file.
+        assert!(!applies.matches(RowKind::File, ".png"));
+    }
+
+    #[test]
+    fn only_a_do_block_can_declare_applies() {
+        for producer in ["dir = \"~/dev\"", "file = \"~/rows.txt\"", "run = \"ls\""] {
+            let parsed =
+                parse_file(&format!("[projects]\n{producer}\napplies = \"files\"\n")).unwrap();
+            assert!(parsed.blocks.is_empty(), "{producer}");
+            assert!(
+                parsed.problems[0].contains("projects") && parsed.problems[0].contains(KEY_APPLIES),
+                "{:?}",
+                parsed.problems
+            );
+        }
+    }
+
+    #[test]
+    fn a_broken_applies_is_reported_rather_than_guessed_at() {
+        let problem = |declaration: &str| {
+            let parsed =
+                parse_file(&format!("[a]\ndo = [\"ls\"]\napplies = {declaration}\n")).unwrap();
+            assert!(parsed.blocks.is_empty(), "{declaration}");
+            parsed.problems.into_iter().next().expect("one problem")
+        };
+
+        assert!(problem("\"folders\"").contains("folders"));
+        assert!(problem("{ match = [\"[\"] }").contains(KEY_APPLIES));
+        assert!(problem("{ ext = \"png\" }").contains("list"));
+        assert!(problem("{ extension = [\"png\"] }").contains("extension"));
+        // A table that narrows nothing says nothing, so it is a mistake rather
+        // than an action on every row in the launcher.
+        assert!(problem("{ }").contains(KEY_APPLIES));
+    }
+
+    #[test]
     fn name_falls_back_to_the_block_header() {
         assert_eq!(
             one("[downloads]\ndir = \"~/Downloads\"\n").name,
@@ -629,6 +946,7 @@ run = "git for-each-ref --format='{\"id\":\"%(refname:short)\"}' refs/heads"
                 "drop-branch",
                 "ghostty",
                 "hosts",
+                "optimize",
                 "projects",
                 "repos",
                 "work"

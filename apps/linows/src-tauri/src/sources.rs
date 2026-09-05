@@ -53,8 +53,9 @@ impl RowArgs {
 }
 
 /// The block behind a row: its name, the exact steps Enter will perform, the
-/// file that declared it, and where the row can go next. `null` when the row is
-/// not a block row.
+/// file that declared it, and where the row can go next, plus the actions a
+/// user declared for rows LIKE it (`applies`). `null` when the row is not a
+/// block row and nothing was declared for it.
 #[tauri::command(async)]
 pub fn source_block(row: RowArgs) -> Option<BlockDetail> {
     look_engine::sources::block_detail(&row.candidate_id, &row.context())

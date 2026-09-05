@@ -164,14 +164,20 @@ export function detailFor(result) {
     return (result && detailByRow.get(readKey(result))) || null;
 }
 
-/** The `then` targets already read for this row. */
+/** Everything the menu can run for this row: what its block chose for its own
+ *  rows, then what a user declared for rows like it (`applies`). */
 export function targetsFor(result) {
-    return detailFor(result)?.then || [];
+    const detail = detailFor(result);
+    return [...(detail?.then || []), ...(detail?.globals || [])];
 }
 
 /**
  * The block behind one row: its name, the steps Enter will run, the file that
  * declared it, and where the row can go next.
+ *
+ * Asked for every row, not only a block's own: a `do` block that declared
+ * `applies` is an action on rows it did not produce, and core is what says
+ * which. A row nothing claims answers null, as it always did.
  *
  * Awaited rather than answered empty while it loads: an empty first answer
  * would show the row's verbs in the menu, and the targets that beat them a
@@ -179,7 +185,10 @@ export function targetsFor(result) {
  * the same promise.
  */
 export async function loadDetail(result) {
-    if (!isSourceRow(result?.id)) return null;
+    // Nothing to ask about: a block's row carries its declaration, and a
+    // declared action needs a path to act on. Every other row is answered
+    // without a disk read, which matters because the menu asks per selection.
+    if (!result?.id || (!result.path && !isSourceRow(result.id))) return null;
     const key = readKey(result);
     if (detailByRow.has(key)) return detailByRow.get(key);
     if (!detailInFlight.has(key)) {

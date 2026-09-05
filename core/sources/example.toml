@@ -68,6 +68,24 @@ name = "Open in Ghostty"
 do   = ["open -a Ghostty {path}"]
 
 
+# ----------------------------------------------------------------- applies --
+# A `do` block that names `applies` is an action on rows it did NOT produce. It
+# joins the Cmd+K menu of every matching row Look already found, so teaching
+# Look a verb for a kind of file needs no list declared to carry it.
+#
+#   applies = "files"                  # or "dirs", "paths", "apps"
+#   applies = { ext = ["png"] }        # case-insensitive, written without the dot
+#   applies = { match = ["*.tar.gz"] } # glob on the file name
+#
+# Only a `do` block may declare it: a block that produces rows is a list, and a
+# list is not a verb.
+
+[optimize]
+name    = "Optimize"
+applies = { ext = ["png", "jpg", "jpeg"] }
+do      = ["oxipng -o4 {path}"]
+
+
 # -------------------------------------------------------------------- file --
 # Rows from a text file, one per line: id<TAB>title<TAB>subtitle
 # A bare line is both id and title. The id is what verbs and `then` receive, so
