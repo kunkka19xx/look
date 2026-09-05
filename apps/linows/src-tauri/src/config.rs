@@ -131,8 +131,8 @@ fn default_config_contents() -> String {
         "# Running apps switcher: none, right\n\
          running_apps_placement=right\n\
          \n\
-         # How long the main query survives while Look is hidden, in seconds. -1\n\
-         # keeps it indefinitely; positive values below 5 fall back to 5.\n\
+         # How long the main query survives while Look is hidden, in seconds. 0\n\
+         # clears it on every hide; a negative value keeps it indefinitely.\n\
          query_retention_seconds=5\n\
          \n\
          # Clipboard history size (10-100). Out-of-range values fall back to 10.\n\
@@ -166,9 +166,8 @@ pub const CLIPBOARD_HISTORY_LIMIT_MIN: usize = 10;
 pub const CLIPBOARD_HISTORY_LIMIT_MAX: usize = 100;
 const QUERY_RETENTION_SECONDS_KEY: &str = "query_retention_seconds";
 pub const QUERY_RETENTION_SECONDS_DEFAULT: i64 = 5;
-/// The opt-out, and the one accepted value below the minimum.
+/// The opt-out every negative value normalizes to.
 pub const QUERY_RETENTION_SECONDS_NEVER: i64 = -1;
-pub const QUERY_RETENTION_SECONDS_MIN: i64 = 5;
 
 /// Drops a trailing comment. `#` only starts one at the beginning of the line or after
 /// whitespace, so it survives inside a value: cutting at the first `#` anywhere would
@@ -197,8 +196,8 @@ pub fn clipboard_history_limit() -> usize {
     parse_clipboard_history_limit(&contents)
 }
 
-/// How long the main query survives while the launcher is hidden. `-1` keeps it
-/// indefinitely; values below the minimum fall back to the default.
+/// How long the main query survives while the launcher is hidden. A negative
+/// value keeps it indefinitely.
 pub fn query_retention_seconds() -> i64 {
     let path = config_file_path();
     let Ok(contents) = std::fs::read_to_string(&path) else {
@@ -240,8 +239,8 @@ fn parse_clipboard_history_limit(contents: &str) -> usize {
 }
 
 /// Parses `query_retention_seconds` out of raw config contents. The last
-/// assignment wins; returns the default when the key is absent, unparseable, or
-/// below the minimum.
+/// assignment wins; returns the default only when the key is absent or
+/// unparseable, so any number the user writes is the number they get.
 fn parse_query_retention_seconds(contents: &str) -> i64 {
     let mut last_value: Option<&str> = None;
     for raw_line in contents.lines() {
@@ -259,10 +258,9 @@ fn parse_query_retention_seconds(contents: &str) -> i64 {
         return QUERY_RETENTION_SECONDS_DEFAULT;
     };
     match value.parse::<i64>() {
-        // Ahead of the minimum check, which the opt-out sentinel is below.
-        Ok(QUERY_RETENTION_SECONDS_NEVER) => QUERY_RETENTION_SECONDS_NEVER,
-        Ok(parsed) if parsed >= QUERY_RETENTION_SECONDS_MIN => parsed,
-        _ => QUERY_RETENTION_SECONDS_DEFAULT,
+        Ok(parsed) if parsed < 0 => QUERY_RETENTION_SECONDS_NEVER,
+        Ok(parsed) => parsed,
+        Err(_) => QUERY_RETENTION_SECONDS_DEFAULT,
     }
 }
 
@@ -412,7 +410,7 @@ mod tests {
             QUERY_RETENTION_SECONDS_DEFAULT,
             QUERY_RETENTION_SECONDS_NEVER
         );
-        assert!(QUERY_RETENTION_SECONDS_DEFAULT >= QUERY_RETENTION_SECONDS_MIN);
+        assert!(QUERY_RETENTION_SECONDS_DEFAULT > 0);
     }
 
     #[test]
@@ -428,14 +426,14 @@ mod tests {
     }
 
     #[test]
-    fn query_retention_accepts_the_never_sentinel_and_minimum_positive() {
+    fn query_retention_honors_every_value_the_user_writes() {
         assert_eq!(
-            parse_query_retention_seconds("query_retention_seconds=-1\n"),
-            QUERY_RETENTION_SECONDS_NEVER
+            parse_query_retention_seconds("query_retention_seconds=0\n"),
+            0
         );
         assert_eq!(
-            parse_query_retention_seconds("query_retention_seconds=5\n"),
-            5
+            parse_query_retention_seconds("query_retention_seconds=3\n"),
+            3
         );
         assert_eq!(
             parse_query_retention_seconds("query_retention_seconds=12\n"),
@@ -444,11 +442,23 @@ mod tests {
     }
 
     #[test]
-    fn query_retention_rejects_invalid_and_too_small_values() {
+    fn query_retention_normalizes_every_negative_to_never() {
         for raw in [
+            "query_retention_seconds=-1\n",
             "query_retention_seconds=-2\n",
-            "query_retention_seconds=0\n",
-            "query_retention_seconds=3\n",
+            "query_retention_seconds=-900\n",
+        ] {
+            assert_eq!(
+                parse_query_retention_seconds(raw),
+                QUERY_RETENTION_SECONDS_NEVER,
+                "raw={raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn query_retention_rejects_unparseable_values() {
+        for raw in [
             "query_retention_seconds=abc\n",
             "query_retention_seconds=1.5\n",
             "query_retention_seconds=\n",
@@ -495,7 +505,7 @@ mod tests {
                 "query_retention_seconds=8\n\
                  query_retention_seconds=3\n"
             ),
-            QUERY_RETENTION_SECONDS_DEFAULT
+            3
         );
     }
 }

@@ -14,18 +14,26 @@ final class QueryRetentionPolicyTests: XCTestCase {
             QueryRetentionPolicy.resolveSeconds(from: ["clipboard_history_limit": "10"]),
             fallback)
         XCTAssertNotEqual(fallback, never)
-        XCTAssertGreaterThanOrEqual(fallback, AppConstants.Launcher.QueryRetention.minimumSeconds)
+        XCTAssertGreaterThan(fallback, 0)
     }
 
-    func testTheNeverSentinelAndValuesAtOrAboveTheMinimumAreAccepted() {
-        XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: "-1"]), never)
-        XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: "5"]), 5)
+    func testEveryValueTheUserWritesIsHonored() {
+        XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: "0"]), 0)
+        XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: "3"]), 3)
         XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: "12"]), 12)
         XCTAssertEqual(QueryRetentionPolicy.resolveSeconds(from: [key: " 7 "]), 7)
     }
 
-    func testUnparseableAndTooSmallValuesFallBack() {
-        for raw in ["-2", "0", "3", "4", "abc", "1.5", ""] {
+    func testEveryNegativeNormalizesToNever() {
+        for raw in ["-1", "-2", "-900"] {
+            XCTAssertEqual(
+                QueryRetentionPolicy.resolveSeconds(from: [key: raw]), never,
+                "raw=\(raw)")
+        }
+    }
+
+    func testUnparseableValuesFallBack() {
+        for raw in ["abc", "1.5", ""] {
             XCTAssertEqual(
                 QueryRetentionPolicy.resolveSeconds(from: [key: raw]), fallback,
                 "raw=\(raw)")

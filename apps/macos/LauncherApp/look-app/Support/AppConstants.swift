@@ -428,13 +428,12 @@ enum AppConstants {
         }
 
         /// How long the launcher may stay hidden before the next open returns
-        /// to the empty home state. `never` is the opt-out, and the one accepted
-        /// value below `minimumSeconds`.
+        /// to the empty home state. `never` is the opt-out every negative value
+        /// normalizes to.
         enum QueryRetention {
             static let configKey = "query_retention_seconds"
             static let defaultSeconds = 5
             static let never = -1
-            static let minimumSeconds = 5
         }
 
         /// Virtual key codes (`NSEvent.keyCode`). These are physical positions on a
