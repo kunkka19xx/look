@@ -82,7 +82,7 @@ do   = ["open -a Ghostty {path}"]
 
 [optimize]
 name    = "Optimize"
-applies = { ext = ["png", "jpg", "jpeg"] }
+applies = { ext = ["png"] }        # oxipng is PNG only, so the filter is too
 do      = ["oxipng -o4 {path}"]
 
 

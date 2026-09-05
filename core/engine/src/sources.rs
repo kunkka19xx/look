@@ -175,11 +175,26 @@ pub struct RefreshOutcome {
 /// `applies` block.
 pub fn block_detail(candidate_id: &str, row: &RowContext) -> Option<BlockDetail> {
     let blocks = load_dir(&sources_dir(&home_dir()?)).blocks;
-    let globals = global_targets(&blocks, candidate_id, row);
+    let block = CandidateIdKind::source_id_of(candidate_id)
+        .and_then(|block_id| blocks.iter().find(|block| block.id == block_id));
 
-    let Some(block) = CandidateIdKind::source_id_of(candidate_id)
-        .and_then(|block_id| blocks.iter().find(|block| block.id == block_id))
-    else {
+    let then: Vec<ThenTarget> = block
+        .map(|block| {
+            block
+                .then
+                .iter()
+                .filter_map(|target| blocks.iter().find(|block| &block.id == target))
+                .map(|target| then_target(target, row))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // The row's own targets are resolved first because a block already named in
+    // `then` is excluded from the globals BEFORE the cap: counted against it, a
+    // duplicate would spend a slot and hide a distinct action behind it.
+    let globals = global_targets(&blocks, candidate_id, row, &then);
+
+    let Some(block) = block else {
         // Not a block's row. It has nothing else to say about itself, but a
         // declared action still belongs on it.
         if globals.is_empty() {
@@ -197,13 +212,6 @@ pub fn block_detail(candidate_id: &str, row: &RowContext) -> Option<BlockDetail>
         });
     };
 
-    let then: Vec<ThenTarget> = block
-        .then
-        .iter()
-        .filter_map(|target| blocks.iter().find(|block| &block.id == target))
-        .map(|target| then_target(target, row))
-        .collect();
-
     Some(BlockDetail {
         id: block.id.clone(),
         name: block.name.clone(),
@@ -213,13 +221,8 @@ pub fn block_detail(candidate_id: &str, row: &RowContext) -> Option<BlockDetail>
             .confirm
             .as_deref()
             .map(|question| look_sources::expand(question, row)),
-        // A block that names an action in `then` already offers it, so the same
-        // one must not arrive twice because it also declared `applies`.
-        globals: globals
-            .into_iter()
-            .filter(|global| !then.iter().any(|own| own.id == global.id))
-            .collect(),
         then,
+        globals,
         has_preview: block.preview.is_some(),
     })
 }
@@ -240,8 +243,14 @@ fn then_target(target: &Block, row: &RowContext) -> ThenTarget {
 }
 
 /// The blocks that declared themselves actions on rows like this one, most
-/// biased first so a user can rank their own.
-fn global_targets(blocks: &[Block], candidate_id: &str, row: &RowContext) -> Vec<ThenTarget> {
+/// biased first so a user can rank their own. `already` is what the row's own
+/// block offers, which such a block must not repeat.
+fn global_targets(
+    blocks: &[Block],
+    candidate_id: &str,
+    row: &RowContext,
+    already: &[ThenTarget],
+) -> Vec<ThenTarget> {
     let kind = row_kind(candidate_id, &row.path);
     if kind == RowKind::Other {
         return Vec::new();
@@ -250,7 +259,11 @@ fn global_targets(blocks: &[Block], candidate_id: &str, row: &RowContext) -> Vec
 
     let mut matched: Vec<&Block> = blocks
         .iter()
-        .filter(|block| block.enabled && block.applies_to(kind, basename))
+        .filter(|block| {
+            block.enabled
+                && !already.iter().any(|own| own.id == block.id)
+                && block.applies_to(kind, basename)
+        })
         .collect();
     // `bias` is what the format already hands the author for ordering, so it
     // orders these too rather than introducing a second knob.
@@ -1331,6 +1344,39 @@ mod tests {
             detail.globals[0].id,
             format!("a{:02}", MAX_GLOBAL_TARGETS + 1)
         );
+    }
+
+    #[test]
+    fn a_target_the_row_already_offers_spends_no_room_under_the_cap() {
+        let _guard = GUARD.lock().unwrap_or_else(|err| err.into_inner());
+        // `dup` is reachable both ways: named in the row's own `then`, and
+        // declaring `applies`. Its high bias would put it first among the
+        // globals, so a cap applied before the duplicate is dropped would spend
+        // a slot on it and hide the least biased action behind it.
+        let mut declarations = String::from(
+            "[rows]\ndir = \"/tmp\"\nthen = [\"dup\"]\n\n[dup]\nbias = 100\napplies = \"files\"\ndo = [\"ls {path}\"]\n\n",
+        );
+        for index in 0..MAX_GLOBAL_TARGETS {
+            declarations.push_str(&format!(
+                "[a{index:02}]\nbias = {index}\napplies = \"files\"\ndo = [\"ls {{path}}\"]\n\n"
+            ));
+        }
+        let fixture = Fixture::new("applies-overlap", &declarations);
+
+        let declared = fixture.dir.join("blocks.toml");
+        let path = declared.to_string_lossy().into_owned();
+        let row = row_context("src:rows:blocks.toml", "blocks.toml", &path, "", Vec::new());
+        let detail = block_detail("src:rows:blocks.toml", &row).expect("a declared block");
+
+        assert_eq!(detail.then.len(), 1, "the row's own target");
+        assert_eq!(detail.globals.len(), MAX_GLOBAL_TARGETS);
+        assert!(
+            !detail.globals.iter().any(|target| target.id == "dup"),
+            "an action the row already offers is not offered twice"
+        );
+        // The least biased action still made it in, which it could not have
+        // done had the duplicate been counted against the cap.
+        assert_eq!(detail.globals.last().expect("a target").id, "a00");
     }
 
     #[test]

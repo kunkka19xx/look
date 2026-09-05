@@ -327,7 +327,7 @@ A `then` target may live in another file; names are resolved after everything is
 ```toml
 [optimize]
 name    = "Optimize"
-applies = { ext = ["png", "jpg"] }
+applies = { ext = ["png"] }
 do      = ["oxipng -o4 {path}"]
 ```
 
