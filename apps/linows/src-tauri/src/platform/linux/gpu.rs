@@ -66,27 +66,37 @@ pub fn detect_and_disable_virtual_gpu() -> bool {
     detected
 }
 
-/// Read the `arch_disable_gpu` config key. User-opt-in workaround for
-/// the WebKitGTK ghost-rendering bug observed on Arch GNOME 50 + webkit
-/// 2.52.3 (other stacks with same webkit version, e.g. Ubuntu 26.04, are
-/// unaffected, so we don't auto-detect - toggle lives in Advanced settings).
-pub fn arch_disable_gpu_from_config() -> bool {
+/// Read the `disable_gpu_compositing` config key, falling back to the
+/// `arch_disable_gpu` name it shipped under. User-opt-in workaround for the
+/// WebKitGTK ghost-rendering bug first seen on Arch GNOME 50 + webkit 2.52.3,
+/// since reported on Ubuntu and in VMs; the affected stacks share no property
+/// we can test for, so it stays a toggle in Advanced settings.
+pub fn disable_gpu_from_config() -> bool {
     let path = config::config_file_path();
     let Ok(contents) = std::fs::read_to_string(&path) else {
         return false;
     };
+    // Last value wins, as get_config's entries do once the frontend folds them
+    // into a map - a duplicated key must not mean one thing here and another in
+    // Settings.
+    let mut current = None;
+    let mut legacy = None;
     for line in contents.lines() {
         let line = line.trim();
         if line.starts_with('#') {
             continue;
         }
-        if let Some((k, v)) = line.split_once('=')
-            && k.trim() == "arch_disable_gpu"
-        {
-            return v.trim().eq_ignore_ascii_case("true");
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        let on = v.trim().eq_ignore_ascii_case("true");
+        match k.trim() {
+            consts::KEY_DISABLE_GPU => current = Some(on),
+            consts::KEY_DISABLE_GPU_LEGACY => legacy = Some(on),
+            _ => {}
         }
     }
-    false
+    current.or(legacy).unwrap_or(false)
 }
 
 /// Disable hardware acceleration via WebKitGTK API for VM GPUs.

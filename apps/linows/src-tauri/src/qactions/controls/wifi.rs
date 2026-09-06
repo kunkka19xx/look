@@ -87,7 +87,7 @@ fn on_off(on: bool) -> &'static str {
 /// hard-blocked (rfkill) or the machine has no Wi-Fi at all.
 fn read_enabled() -> Result<(bool, bool), String> {
     let conn = dbus::system().ok_or_else(|| NO_SERVICE.to_string())?;
-    dbus::runtime().block_on(async {
+    dbus::block_on(async {
         let proxy = zbus::Proxy::new(conn, NM_DEST, NM_PATH, NM_IFACE)
             .await
             .map_err(|_| NO_SERVICE.to_string())?;
@@ -105,14 +105,13 @@ fn read_enabled() -> Result<(bool, bool), String> {
 
 fn set_enabled(on: bool) -> Result<(), String> {
     let conn = dbus::system().ok_or_else(|| NO_SERVICE.to_string())?;
-    dbus::runtime()
-        .block_on(async {
-            zbus::Proxy::new(conn, NM_DEST, NM_PATH, NM_IFACE)
-                .await?
-                .set_property("WirelessEnabled", on)
-                .await
-        })
-        .map_err(|_| format!("Could not turn Wi-Fi {}", on_off(on)))
+    dbus::block_on(async {
+        zbus::Proxy::new(conn, NM_DEST, NM_PATH, NM_IFACE)
+            .await?
+            .set_property("WirelessEnabled", on)
+            .await
+    })
+    .map_err(|_| format!("Could not turn Wi-Fi {}", on_off(on)))
 }
 
 /// Polls `WirelessEnabled` until it reaches `target` or the settle timeout. Runs

@@ -19,3 +19,11 @@ pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// long enough for the app to have received the input and drawn. Used by the
 /// file/URL open path and by the preferred-tools launcher on both platforms.
 pub const HANDLER_FOCUS_DELAY_MS: u64 = 150;
+
+/// Rendering workarounds (Linux only). Both shipped as `arch_*` before the
+/// ghosting turned out to be a WebKitGTK trait rather than an Arch one; the
+/// old names are still read so an existing config keeps its setting.
+#[cfg(target_os = "linux")]
+pub const KEY_DISABLE_GPU: &str = "disable_gpu_compositing";
+#[cfg(target_os = "linux")]
+pub const KEY_DISABLE_GPU_LEGACY: &str = "arch_disable_gpu";

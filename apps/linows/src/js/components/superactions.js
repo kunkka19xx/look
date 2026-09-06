@@ -70,17 +70,15 @@ import {
     musicSnapshot,
     musicCommand,
 } from '../screens/commands/pomo.js';
-import { statsWidgetHtml } from '../screens/commands/todo.js';
 import * as platform from '../platform.js';
 import * as banner from './banner.js';
 import { gridPlacement, gridShape } from './launchpad-grid.js';
 
 let container = null;
 let built = false;
+// What the user asked for, before the platform gets a say (see applyEnabled).
+let configEnabled = true;
 let visible = false;
-// Todo-stats panel filling the dead space below the bento on the opaque
-// (no-transparency) panel. Null elsewhere. Populated by refreshTodo.
-let statsEl = null;
 // User setting (Settings -> Appearance -> Super Actions). When off the strip
 // never shows and its accelerators never fire; setVisible collapses to hidden.
 let enabled = true;
@@ -347,13 +345,36 @@ export function isVisible() {
 // its accelerators stop firing; turning it on lets the next syncControlStrip
 // reveal it on the empty home screen.
 export function setEnabled(on) {
-    if (enabled === on) return;
-    enabled = on;
-    if (!on) setVisible(false);
+    configEnabled = on;
+    applyEnabled();
+}
+
+// Re-derive after something moved the floating gate at runtime - the blur
+// fallback toggle is the one thing that does.
+export function refreshAvailability() {
+    applyEnabled();
+}
+
+// Same rule as the inner gap: the launchpad is the empty home screen's resting
+// state, and a stack that cannot render that (platform.floatingSupported)
+// shows the results list there instead. The config value is never touched, so
+// the launchpad comes back by itself on a capable setup.
+function applyEnabled() {
+    const next = configEnabled && platform.floatingSupported();
+    if (enabled === next) return;
+    enabled = next;
+    if (!next) setVisible(false);
 }
 
 export function isEnabled() {
     return enabled;
+}
+
+// Drop the built DOM so the next reveal rebuilds it. The stats block below the
+// bento exists only where the panel stays opaque, and the blur toggle flips
+// that (platform.floatingSupported) while the strip is already built.
+export function invalidate() {
+    built = false;
 }
 
 // Build (once) then reveal: read live state, start the timers, play the cascade.
@@ -791,15 +812,6 @@ async function refreshTodo() {
     openTasks = mine.filter((t) => !t.done).map((t) => t.name);
     taskCursor = 0;
     renderSlot();
-    renderStatsWidget(tasks);
-}
-
-// Reuses the priority slot's todoList() rows. width = card content (minus 30px
-// chrome: 2x14 padding + 2x1 border) so the heatmap cells scale to fit.
-function renderStatsWidget(tasks) {
-    if (!statsEl) return;
-    const width = Math.max(280, statsEl.clientWidth - 30);
-    statsEl.innerHTML = statsWidgetHtml(tasks || [], width);
 }
 
 // Rotate through the open tasks so a long day's list all gets a turn, matching
@@ -1022,15 +1034,6 @@ function render(layout) {
 
     container.innerHTML = '';
     container.appendChild(grid);
-
-    // Opaque panel only: fill the dead space below the bento with todo stats.
-    // Transparent/floating panels leave it see-through, so nothing to fill.
-    statsEl = null;
-    if (!platform.hasCompositor()) {
-        statsEl = document.createElement('div');
-        statsEl.className = 'control-strip-stats';
-        container.appendChild(statsEl);
-    }
 }
 
 function buildTile(tile) {

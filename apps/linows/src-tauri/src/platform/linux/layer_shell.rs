@@ -157,7 +157,7 @@ pub fn attach(window: &tauri::WebviewWindow, size: Option<(i32, i32)>) -> bool {
 
     // Anchored nowhere, so the compositor centres it; the size is whatever the
     // widget asks for, and there is no set_position counterpart.
-    let (width, height) = size.unwrap_or_else(|| fallback_size(window));
+    let (width, height) = usable_size(size.unwrap_or_else(|| fallback_size(window)));
     layer.set_default_size(width, height);
     layer.set_size_request(width, height);
 
@@ -182,6 +182,19 @@ fn fallback_size(window: &tauri::WebviewWindow) -> (i32, i32) {
             (logical.width, logical.height)
         })
         .unwrap_or_default()
+}
+
+/// A zero in either axis reaches the compositor as "you pick", and an
+/// unanchored layer surface then gets handed the whole output - the launcher
+/// rendered full-width and top-aligned. Both sources can produce one: the
+/// monitor scan may find no monitor, and `inner_size` reads back 0 on a Wayland
+/// window the compositor has not configured yet.
+fn usable_size((width, height): (i32, i32)) -> (i32, i32) {
+    if width > 0 && height > 0 {
+        return (width, height);
+    }
+    eprintln!("[look:layer-shell] no usable size ({width}x{height}), falling back to the default");
+    (crate::BASE_W as i32, crate::BASE_H as i32)
 }
 
 pub fn is_active() -> bool {

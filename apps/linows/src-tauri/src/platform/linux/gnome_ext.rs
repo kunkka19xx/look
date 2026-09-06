@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use super::dbus::{runtime as dbus_runtime, session as dbus_conn};
+use super::dbus::{block_on as dbus_block_on, session as dbus_conn};
 
 const EXT_UUID: &str = "look-integration@lookapp";
 const DBUS_NAME: &str = "com.look.ShellIntegration";
@@ -114,7 +114,7 @@ fn verify_running_later(changed: bool) {
         };
         // ListWindowedApps is the newest method Rust calls: an old extension
         // still loaded in memory answers other calls but fails this one.
-        let err = dbus_runtime().block_on(async {
+        let err = dbus_block_on(async {
             conn.call_method(
                 Some(DBUS_NAME),
                 DBUS_PATH,
@@ -211,7 +211,7 @@ fn build_extension_zip(path: &std::path::Path) -> std::io::Result<()> {
 /// Works on Wayland where Tauri's cursor_position() is unavailable.
 pub fn get_pointer() -> Option<(i32, i32)> {
     let conn = dbus_conn()?;
-    dbus_runtime().block_on(async {
+    dbus_block_on(async {
         let reply: (i32, i32) = conn
             .call_method(
                 Some(DBUS_NAME),
@@ -261,7 +261,7 @@ fn classify_dbus_error(err: &zbus::Error) -> ExtensionError {
 /// `Some(vec![])` if the extension answered but no apps have windows.
 pub fn list_windowed_apps() -> Option<Vec<String>> {
     let conn = dbus_conn()?;
-    dbus_runtime().block_on(async {
+    dbus_block_on(async {
         match conn
             .call_method(
                 Some(DBUS_NAME),
@@ -308,24 +308,23 @@ pub fn try_focus_app(desktop_id: &str) -> bool {
         return false;
     };
     let id = desktop_id.to_string();
-    dbus_runtime()
-        .block_on(async {
-            let reply: (bool,) = conn
-                .call_method(
-                    Some(DBUS_NAME),
-                    DBUS_PATH,
-                    Some(DBUS_IFACE),
-                    "FocusApp",
-                    &id,
-                )
-                .await
-                .ok()?
-                .body()
-                .deserialize()
-                .ok()?;
-            Some(reply.0)
-        })
-        .unwrap_or(false)
+    dbus_block_on(async {
+        let reply: (bool,) = conn
+            .call_method(
+                Some(DBUS_NAME),
+                DBUS_PATH,
+                Some(DBUS_IFACE),
+                "FocusApp",
+                &id,
+            )
+            .await
+            .ok()?
+            .body()
+            .deserialize()
+            .ok()?;
+        Some(reply.0)
+    })
+    .unwrap_or(false)
 }
 
 fn extension_dir() -> PathBuf {

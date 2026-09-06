@@ -67,7 +67,7 @@ fn available() -> bool {
     let Some(conn) = dbus::session() else {
         return false;
     };
-    dbus::runtime().block_on(async {
+    dbus::block_on(async {
         conn.call_method(
             Some(DBUS_DEST),
             DBUS_PATH,
@@ -85,7 +85,7 @@ fn set_active() -> bool {
     let Some(conn) = dbus::session() else {
         return false;
     };
-    dbus::runtime().block_on(async {
+    dbus::block_on(async {
         let Ok(proxy) = zbus::Proxy::new(conn, SS_DEST, SS_PATH, SS_IFACE).await else {
             return false;
         };

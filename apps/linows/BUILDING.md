@@ -53,6 +53,8 @@ cargo tauri dev
 
 > `base-devel` provides `gcc` / `cc`, without it the Rust build fails with `error: linker 'cc' not found` on a fresh Arch install.
 
+> `gtk-layer-shell` is not needed to build - it is dlopened at runtime, and only under sway / niri / Hyprland. Install it from the optional dependencies in [README.md](README.md#optional-dependencies) if you develop on one of those; without it the app logs `libgtk-layer-shell.so.0 not loadable` and uses a normal toplevel window.
+
 ### NixOS
 
 ```bash

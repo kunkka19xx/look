@@ -83,7 +83,7 @@ fn call(method: &str) -> bool {
     let Some(conn) = dbus::system() else {
         return false;
     };
-    dbus::runtime().block_on(async {
+    dbus::block_on(async {
         let Ok(proxy) = zbus::Proxy::new(conn, LOGIN1_DEST, LOGIN1_PATH, MANAGER_IFACE).await
         else {
             return false;
