@@ -72,8 +72,9 @@ fn supports_transparency() -> bool {
     }
 }
 
-const BASE_W: f64 = 860.0;
-const BASE_H: f64 = 600.0;
+/// tauri.conf's window size, and the 1.0x rung of `scaled_window_size`.
+pub(crate) const BASE_W: f64 = 860.0;
+pub(crate) const BASE_H: f64 = 600.0;
 /// Grace period (ms) after show - ignore focus-loss within this window.
 const AUTO_HIDE_GRACE_MS: u64 = 300;
 /// Guard (ms) to prevent re-showing after auto-hide (GNOME X11 race).
@@ -557,7 +558,7 @@ fn main() {
     setup_dev_env();
 
     #[cfg(target_os = "linux")]
-    let disable_gpu = gpu::detect_and_disable_virtual_gpu() || gpu::arch_disable_gpu_from_config();
+    let disable_gpu = gpu::detect_and_disable_virtual_gpu() || gpu::disable_gpu_from_config();
 
     sync_autostart();
 

@@ -30,7 +30,7 @@ sudo apt-get install -y \
   libglib2.0-dev libcairo2-dev libpango1.0-dev \
   libgdk-pixbuf-2.0-dev libharfbuzz-dev libdbus-1-dev \
   libasound2-dev librsvg2-dev libssl-dev \
-  libappindicator3-dev pkg-config
+  libappindicator3-dev pkg-config libgtk-layer-shell0
 
 cd apps/linows
 cargo tauri dev
@@ -42,7 +42,8 @@ cargo tauri dev
 sudo pacman -S --needed \
   base-devel rustup \
   webkit2gtk-4.1 gtk3 libsoup3 glib2 cairo pango \
-  gdk-pixbuf2 harfbuzz dbus alsa-lib librsvg openssl pkg-config
+  gdk-pixbuf2 harfbuzz dbus alsa-lib librsvg openssl pkg-config \
+  gtk-layer-shell
 
 rustup default stable
 cargo install tauri-cli --version "^2" --locked
@@ -52,6 +53,8 @@ cargo tauri dev
 ```
 
 > `base-devel` provides `gcc` / `cc`, without it the Rust build fails with `error: linker 'cc' not found` on a fresh Arch install.
+
+> `gtk-layer-shell` is a runtime dep, dlopened rather than linked. Without it the app starts and logs `libgtk-layer-shell.so.0 not loadable`, then falls back to a normal toplevel window that a fullscreen window can cover. It only matters under sway / niri / Hyprland; mutter has no `wlr-layer-shell` to use it with.
 
 ### NixOS
 

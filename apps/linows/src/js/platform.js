@@ -34,27 +34,26 @@ export function compositorBlur() {
 }
 
 // True when the blur fallback is forced by the platform (VM GPU) rather than
-// the arch_disable_blur config toggle. Settings must not remove the
+// the disable_blur_effect config toggle. Settings must not remove the
 // attribute in this case.
 export function blurForcedOff() {
     return info?.virtual_gpu ?? false;
 }
 
-// The floating inner-gap layout depends on see-through gaps and frosted
-// tiles, so it needs WebKitGTK to composite translucency faithfully. That
-// rules out the same environments applytint() degrades on: no compositor
-// (bare X11/i3 - "transparent" pixels come out opaque, gaps read as empty
-// boxes), the VM software-rendering fallback, and the ghost-rendering
-// stacks where blur is dropped (Hyprland auto, Arch toggle). Those render
-// the classic framed panel regardless of the inner_gap setting; the config
-// value stays untouched and applies again on a capable setup.
+// The floating inner-gap layout needs see-through gaps, so it needs a
+// compositor: without one (bare X11/i3) "transparent" pixels come out opaque
+// and the gaps read as empty boxes. That is now the whole requirement. The VM
+// software-rendering fallback and the ghost-rendering stacks (Hyprland auto,
+// Arch toggle) used to be excluded too, because the tiles were frosted with
+// backdrop-filter - but no Linux surface carries one since layout.css made it
+// Windows-only, and a tint gradient in transparent gaps is the same drawing
+// those stacks already do for the window itself.
+//
+// An unsupported environment renders the classic framed panel regardless of
+// the inner_gap setting; the config value stays untouched and applies again
+// on a capable setup.
 export function floatingSupported() {
-    return (
-        hasCompositor() &&
-        !blurForcedOff() &&
-        compositor() !== 'hyprland' &&
-        !document.documentElement.hasAttribute('data-disable-blur')
-    );
+    return hasCompositor();
 }
 
 export function os() {

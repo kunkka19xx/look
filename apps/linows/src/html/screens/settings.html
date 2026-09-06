@@ -808,29 +808,31 @@
 
                 <div class="settings-divider settings-linux-only"></div>
 
-                <!-- Arch: workarounds for WebKitGTK ghost rendering. Linux-only. -->
+                <!-- Rendering: workarounds for WebKitGTK ghost rendering. Not one
+             distro's problem - reported on Arch, Ubuntu and in VMs. Linux-only. -->
                 <div class="settings-section-header settings-linux-only">
-                    <span class="settings-section-arrow">&#9654;</span><span>Arch</span>
+                    <span class="settings-section-arrow">&#9654;</span><span>Rendering</span>
                 </div>
                 <div class="settings-section settings-linux-only">
                     <div class="settings-row">
                         <label class="settings-label">Disable GPU compositing</label>
                         <label class="settings-toggle">
-                            <input type="checkbox" id="settings-arch-disable-gpu" />
+                            <input type="checkbox" id="settings-disable-gpu" />
                             <span class="settings-toggle-track"></span>
                         </label>
                         <span class="settings-hint-text"
-                            >Fixes ghost slider trails on Arch. Requires restart.</span
+                            >Fixes ghost trails on WebKitGTK stacks that smear. Requires
+                            restart.</span
                         >
                     </div>
                     <div class="settings-row">
                         <label class="settings-label">Disable blur effect</label>
                         <label class="settings-toggle">
-                            <input type="checkbox" id="settings-arch-disable-blur" />
+                            <input type="checkbox" id="settings-disable-blur" />
                             <span class="settings-toggle-track"></span>
                         </label>
                         <span class="settings-hint-text"
-                            >Fallback if GPU toggle doesn't help. Drops blur, keeps tint.</span
+                            >Fallback if the GPU toggle doesn't help. Drops blur, keeps tint.</span
                         >
                     </div>
                 </div>

@@ -4,8 +4,6 @@
     flex-direction: column;
     height: 100vh;
     background: var(--bg-tint);
-    backdrop-filter: blur(var(--blur-radius, 0px));
-    -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
     border: var(--border-thickness) solid var(--border-color);
     border-radius: var(--corner-radius);
     overflow: hidden;
@@ -64,25 +62,23 @@ html[data-os="windows"] .launcher-window {
     border-radius: var(--panel-radius);
 }
 
-/* WebKitGTK ghost-rendering workaround. Hyprland users hit this automatically
- * (their compositor + webkit combo triggers it); Arch GNOME users opt in via
- * the Advanced > Arch > "Disable blur effect" toggle which sets
- * data-disable-blur on documentElement. Either way: drop backdrop-filter,
- * applytint() forces a near-opaque tint so the window stays readable. */
-[data-compositor="hyprland"] .launcher-window,
-[data-compositor="hyprland"] .launcher-window::before,
-[data-disable-blur] .launcher-window,
-[data-disable-blur] .launcher-window::before {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
+/* The window backdrop is WebView2's alone. A backdrop-filter samples the page
+ * painted under the element, and on Linux nothing is: a non-zero --blur-radius
+ * means a compositor was found, which is the same test that makes html/body
+ * transparent, so the panel and the floating tiles sit on nothing. WebKitGTK
+ * still builds the filter layer and re-samples it every frame, and the sample
+ * it takes is the frame before - the accumulating blurred ghosts of #256, #330
+ * and #411. Linux frost is the ::before image's own `filter`, plus the
+ * compositor region in platform/linux/blur.rs where one is granted. */
+html[data-os="windows"] .launcher-window:not(.bar-free),
+html[data-os="windows"] .bar-free .pane-tile {
+    backdrop-filter: blur(var(--blur-radius, 0px));
+    -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
 }
 
-/* Same guard for the floating tiles. Readability without blur is already
- * covered: applytint() forces a near-opaque --bg-tint in these environments,
- * and the tiles reuse it as their tint layer. */
-[data-compositor="hyprland"] .pane-tile,
+/* The action menu is the one surface with real page content behind it, so it
+ * keeps the filter - and keeps the opt-out for the stacks that ghost. */
 [data-compositor="hyprland"] .action-menu,
-[data-disable-blur] .pane-tile,
 [data-disable-blur] .action-menu {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -448,12 +444,11 @@ html[data-os="windows"] .launcher-window {
  *   .floating-grid - floating two-card state: hints move into card footers
  */
 
-/* barFloatsFree: no window backdrop box; tiles float on the bare desktop. */
+/* barFloatsFree: no window backdrop box; tiles float on the bare desktop. The
+ * filter is already off here - the rule above excludes .bar-free. */
 .launcher-window.bar-free {
     background: transparent;
     border-color: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
 }
 
 .launcher-window.bar-free::before {
@@ -476,8 +471,6 @@ html[data-os="windows"] .launcher-window {
     background-image:
         linear-gradient(var(--control-fill), var(--control-fill)),
         linear-gradient(var(--bg-tint), var(--bg-tint));
-    backdrop-filter: blur(var(--blur-radius, 0px));
-    -webkit-backdrop-filter: blur(var(--blur-radius, 0px));
     border: var(--border-thickness) solid var(--border-color);
     border-radius: var(--tile-radius);
     box-shadow: 0 3px 7px rgba(var(--shadow), 0.25);

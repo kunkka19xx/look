@@ -118,12 +118,14 @@ fn default_config_contents() -> String {
     // the keys are inert on Windows, so don't seed them there.
     #[cfg(target_os = "linux")]
     out.push_str(
-        "# Arch (and other affected stacks) - workarounds for WebKitGTK ghost rendering.\n\
-         # arch_disable_gpu forces HardwareAccelerationPolicy::Never (needs restart);\n\
-         # arch_disable_blur drops backdrop-filter for an opaque tint. Both default off;\n\
-         # flip if you see slider trails or overlapping popovers.\n\
-         arch_disable_gpu=false\n\
-         arch_disable_blur=false\n\
+        "# Rendering - workarounds for WebKitGTK ghost rendering (Arch, Ubuntu, VMs).\n\
+         # disable_gpu_compositing forces HardwareAccelerationPolicy::Never (needs\n\
+         # restart); disable_blur_effect drops the remaining filters for an opaque\n\
+         # tint. Both default off; flip if you see slider trails or overlapping\n\
+         # popovers. Configs written before 0.1.1 use arch_disable_gpu /\n\
+         # arch_disable_blur, which are still read.\n\
+         disable_gpu_compositing=false\n\
+         disable_blur_effect=false\n\
          \n",
     );
 

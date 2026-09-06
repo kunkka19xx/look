@@ -151,8 +151,8 @@ export function hidesResultsForEmptyQuery() {
     return onHome() && (platform.floatingSupported() || superactions.isEnabled());
 }
 
-// Re-evaluate the floating gate after environment state changes at runtime
-// (the settings blur-fallback toggle flips data-disable-blur).
+// Re-apply after the settings blur-fallback toggle: the gate itself no longer
+// reads it, but the tint and the blur region behind the tiles change with it.
 export function refresh() {
     apply();
 }
@@ -164,9 +164,9 @@ function onHome() {
 
 function apply() {
     if (!win) return;
-    // Degraded-rendering environments keep the classic framed panel: both the
+    // A setup without a compositor keeps the classic framed panel: both the
     // gaps and the resting bar depend on real transparency. Still coarse -
-    // platform info is static and the attribute only flips from settings.
+    // platform info is static.
     const supported = platform.floatingSupported();
     const home = onHome();
     const floating = supported && innerGap > 0 && home; // showsFloatingCards
