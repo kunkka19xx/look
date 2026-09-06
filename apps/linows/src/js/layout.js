@@ -168,6 +168,13 @@ function apply() {
     // gaps and the resting bar depend on real transparency. Still coarse -
     // platform info is static and the attribute only flips from settings.
     const supported = platform.floatingSupported();
+    // The classic framed panel keeps its box whatever the query does, so the
+    // launchpad fills the space under the bento with todo stats instead of
+    // leaving a column of empty tint (css/components/superactions.css).
+    const root = document.documentElement;
+    if (root.hasAttribute('data-framed') === supported) {
+        root.toggleAttribute('data-framed', !supported);
+    }
     const home = onHome();
     const floating = supported && innerGap > 0 && home; // showsFloatingCards
     const resting = supported && queryEmpty && home; // macOS hidesResultsForEmptyQuery, as a CSS state

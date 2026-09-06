@@ -356,6 +356,13 @@ export function isEnabled() {
     return enabled;
 }
 
+// Drop the built DOM so the next reveal rebuilds it. The stats block below the
+// bento exists only where the panel stays opaque, and the blur toggle flips
+// that (platform.floatingSupported) while the strip is already built.
+export function invalidate() {
+    built = false;
+}
+
 // Build (once) then reveal: read live state, start the timers, play the cascade.
 // Fetches the layout first if needed, so a summon before/after a failed prefetch
 // still builds instead of no-opping forever.
@@ -1025,8 +1032,12 @@ function render(layout) {
 
     // Opaque panel only: fill the dead space below the bento with todo stats.
     // Transparent/floating panels leave it see-through, so nothing to fill.
+    // The test is floatingSupported, not hasCompositor: every stack that keeps
+    // the classic framed panel has the same dead space, whether it lacks a
+    // compositor (i3) or renders translucency too badly to rest on it (VMs,
+    // Hyprland, the blur toggle).
     statsEl = null;
-    if (!platform.hasCompositor()) {
+    if (!platform.floatingSupported()) {
         statsEl = document.createElement('div');
         statsEl.className = 'control-strip-stats';
         container.appendChild(statsEl);

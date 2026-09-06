@@ -427,6 +427,7 @@ export function init(exitFn) {
         saveConfig({ disable_blur_effect: on ? 'true' : 'false' });
         applytint();
         updateInnerGapAvailability();
+        superactions.invalidate();
         layout.refresh();
     });
 
