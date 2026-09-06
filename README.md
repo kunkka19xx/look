@@ -282,6 +282,8 @@ open "/Applications/Look.app"
 
 `Cmd+E` and `Cmd+T` need a tool named in `~/.look/config` (`text_editor`, `code_editor`, `terminal`), and `file_manager` retargets `Cmd+F`. Declare nothing and each falls back to the system default: see [Preferred tools](docs/user-guide.md#preferred-tools).
 
+Which super actions are on the strip, where they sit, and any tiles of your own is a drawing in `~/.look/super-actions.toml`, seeded on first run: see [Super actions](docs/user-guide.md#super-actions).
+
 Full reference: [docs/user-guide.md](docs/user-guide.md).
 
 ## Themes
