@@ -1359,7 +1359,8 @@ struct LauncherView: View {
                         shape: launchpadLayout.shape,
                         controller: launchpadController,
                         themeStore: themeStore,
-                        revealToken: appearanceRevealToken
+                        revealToken: appearanceRevealToken,
+                        onArrange: launchpadArranged
                     )
                 }
                 Spacer(minLength: 0)

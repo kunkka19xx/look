@@ -99,6 +99,34 @@ extension LauncherView {
         refreshLaunchpadState()
     }
 
+    /// Writes an arrangement the user dragged into place back to the drawing,
+    /// then reads it again. Shown at once and confirmed by the file: the strip
+    /// is what `~/.look/super-actions.toml` says, and a drag is one more way
+    /// of editing that file.
+    func launchpadArranged(_ tiles: [LaunchpadTileModel]) {
+        typealias Const = AppConstants.Launcher.Launchpad
+        let grid = LaunchpadGrid(
+            tiles: tiles, declared: launchpadLayout.shape, rowHeight: Const.rowHeight, gap: Const.gap)
+        let shape = LaunchpadGrid.Shape(columns: grid.columns, rows: grid.rows)
+
+        launchpadLayout = LaunchpadLayout(tiles: tiles, shape: launchpadLayout.shape)
+        // Mnemonics resolve through the controller's own copy of the layout.
+        launchpadController.configure(tiles: tiles)
+
+        Task {
+            let failure = await Task.detached(priority: .userInitiated) {
+                EngineBridge.shared.saveLaunchpadLayout(tiles, shape: shape)
+            }.value
+            if let failure {
+                showBanner(failure, style: .error, duration: 4.0)
+            }
+            // The file is the truth either way: a refused write re-reads the
+            // drawing the tiles came from and they spring back; a good one
+            // re-reads exactly what was written, which changes nothing.
+            reloadLaunchpad()
+        }
+    }
+
     /// Routes a Command-mnemonic character to the launchpad. Returns true when a
     /// tile handled it (so the key monitor swallows the event).
     func handleLaunchpadMnemonic(_ character: Character) -> Bool {
