@@ -103,6 +103,12 @@ extension LauncherView {
     /// then reads it again. Shown at once and confirmed by the file: the strip
     /// is what `~/.look/super-actions.toml` says, and a drag is one more way
     /// of editing that file.
+    ///
+    /// Saves run one after another, in drop order, and only the newest drop
+    /// reads the file back. Two drops closer together than the disk is slow -
+    /// a home on a network share, a scanner hooking every write - would
+    /// otherwise race: the older save could land last, and its reload would
+    /// put that arrangement over the newer one without a word.
     func launchpadArranged(_ tiles: [LaunchpadTileModel]) {
         typealias Const = AppConstants.Launcher.Launchpad
         let grid = LaunchpadGrid(
@@ -113,13 +119,21 @@ extension LauncherView {
         // Mnemonics resolve through the controller's own copy of the layout.
         launchpadController.configure(tiles: tiles)
 
-        Task {
+        launchpadSaveGeneration &+= 1
+        let generation = launchpadSaveGeneration
+        let previous = launchpadSave
+        launchpadSave = Task {
+            await previous?.value
             let failure = await Task.detached(priority: .userInitiated) {
                 EngineBridge.shared.saveLaunchpadLayout(tiles, shape: shape)
             }.value
             if let failure {
                 showBanner(failure, style: .error, duration: 4.0)
             }
+            // A newer drop is waiting its turn, and its reload is the one that
+            // counts: reading the file back now would show this arrangement
+            // over the one the user last dropped, until that one lands.
+            guard generation == launchpadSaveGeneration else { return }
             // The file is the truth either way: a refused write re-reads the
             // drawing the tiles came from and they spring back; a good one
             // re-reads exactly what was written, which changes nothing.

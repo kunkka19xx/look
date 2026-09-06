@@ -951,6 +951,12 @@ pub fn with_drawing(contents: &str, drawing: &[String]) -> Result<String, String
     Ok(document.to_string())
 }
 
+/// Held for the whole of a save, so saves from one process never interleave.
+fn save_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
 /// Every name the drawing in `contents` places, in first-seen order. Empty for
 /// a file with no readable drawing: there is nothing there to lose.
 fn drawn_names(contents: &str) -> Vec<String> {
@@ -998,6 +1004,12 @@ pub fn save_layout_at(
     rows: u8,
 ) -> Result<(), String> {
     let drawing = draw(placements, columns, rows)?;
+
+    // One writer at a time. The read below, the staging file and the rename
+    // are one edit; two saves interleaving them could rename each other's
+    // staging file away, or persist the older of the two last.
+    let _one_at_a_time = save_lock().lock().unwrap_or_else(|err| err.into_inner());
+
     let theirs = path
         .exists()
         .then(|| std::fs::read_to_string(path))
