@@ -77,6 +77,8 @@ import { gridPlacement, gridShape } from './launchpad-grid.js';
 
 let container = null;
 let built = false;
+// What the user asked for, before the platform gets a say (see applyEnabled).
+let configEnabled = true;
 let visible = false;
 // Todo-stats panel filling the dead space below the bento on the opaque
 // (no-transparency) panel. Null elsewhere. Populated by refreshTodo.
@@ -347,9 +349,25 @@ export function isVisible() {
 // its accelerators stop firing; turning it on lets the next syncControlStrip
 // reveal it on the empty home screen.
 export function setEnabled(on) {
-    if (enabled === on) return;
-    enabled = on;
-    if (!on) setVisible(false);
+    configEnabled = on;
+    applyEnabled();
+}
+
+// Re-derive after something moved the floating gate at runtime - the blur
+// fallback toggle is the one thing that does.
+export function refreshAvailability() {
+    applyEnabled();
+}
+
+// Same rule as the inner gap: the launchpad is the empty home screen's resting
+// state, and a stack that cannot render that (platform.floatingSupported)
+// shows the results list there instead. The config value is never touched, so
+// the launchpad comes back by itself on a capable setup.
+function applyEnabled() {
+    const next = configEnabled && platform.floatingSupported();
+    if (enabled === next) return;
+    enabled = next;
+    if (!next) setVisible(false);
 }
 
 export function isEnabled() {

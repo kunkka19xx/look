@@ -427,7 +427,9 @@ export function init(exitFn) {
         saveConfig({ disable_blur_effect: on ? 'true' : 'false' });
         applytint();
         updateInnerGapAvailability();
+        updateSuperActionsAvailability();
         superactions.invalidate();
+        superactions.refreshAvailability();
         layout.refresh();
     });
 
@@ -867,10 +869,26 @@ function updateInnerGapAvailability() {
     row.classList.toggle('settings-row-disabled', !ok);
 }
 
+// Same gate, same deal for the launchpad: where it can't render, the empty home
+// screen shows the results list instead and the toggle is inert until that
+// changes. It shares a row with Running Apps, so only its own label and switch
+// dim.
+function updateSuperActionsAvailability() {
+    const input = document.getElementById('settings-super-actions');
+    if (!input) return;
+    const ok = platform.floatingSupported();
+    input.disabled = !ok;
+    input.closest('.settings-toggle')?.classList.toggle('settings-row-disabled', !ok);
+    document
+        .getElementById('settings-super-actions-label')
+        ?.classList.toggle('settings-row-disabled', !ok);
+}
+
 async function loadConfig() {
     try {
         const cfg = await getConfig();
         updateInnerGapAvailability();
+        updateSuperActionsAvailability();
 
         const map = {};
         for (const entry of cfg.entries) map[entry.key] = entry.value;
