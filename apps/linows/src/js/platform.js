@@ -40,20 +40,29 @@ export function blurForcedOff() {
     return info?.virtual_gpu ?? false;
 }
 
-// The floating inner-gap layout needs see-through gaps, so it needs a
-// compositor: without one (bare X11/i3) "transparent" pixels come out opaque
-// and the gaps read as empty boxes. That is now the whole requirement. The VM
-// software-rendering fallback and the ghost-rendering stacks (Hyprland auto,
-// Arch toggle) used to be excluded too, because the tiles were frosted with
-// backdrop-filter - but no Linux surface carries one since layout.css made it
-// Windows-only, and a tint gradient in transparent gaps is the same drawing
-// those stacks already do for the window itself.
+// The floating inner-gap layout depends on see-through gaps and frosted
+// tiles, so it needs WebKitGTK to composite translucency faithfully. That
+// rules out: no compositor (bare X11/i3 - "transparent" pixels come out
+// opaque, gaps read as empty boxes), the VM software-rendering fallback, and
+// the ghost-rendering stacks where blur is dropped (Hyprland auto, Arch
+// toggle). Those render the classic framed panel regardless of the inner_gap
+// setting; the config value stays untouched and applies again on a capable
+// setup.
 //
-// An unsupported environment renders the classic framed panel regardless of
-// the inner_gap setting; the config value stays untouched and applies again
-// on a capable setup.
+// The frosting is gone (layout.css made backdrop-filter Windows-only) but the
+// gate is not just about frosting: .bar-free drops the window's opaque tint,
+// and on a stack that leaves stale pixels in the window buffer that opaque
+// fill is the only thing overwriting them each frame. Verified 2026-09-06 in
+// the Arch VM - allowing floating there painted the launchpad and a stale
+// results list on top of each other. Do not widen this without a fix for the
+// buffer itself.
 export function floatingSupported() {
-    return hasCompositor();
+    return (
+        hasCompositor() &&
+        !blurForcedOff() &&
+        compositor() !== 'hyprland' &&
+        !document.documentElement.hasAttribute('data-disable-blur')
+    );
 }
 
 export function os() {
