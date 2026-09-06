@@ -820,6 +820,265 @@ layout = [
 # and the reason is reported on the next open.
 "#;
 
+// ---------------------------------------------------------------- writing --
+//
+// The drawing is edited by hand, and now also by dragging a tile on macOS.
+// The second route ends here: the shell reports where every tile landed, this
+// draws that as the same strings a person would type, and only the `layout`
+// array changes. Anything else in the file - the comments the seed ships, a
+// `[tiles.<name>]` entry, a blank line - is the user's and stays.
+
+/// One tile as a shell hands it back after a drag: the name in the drawing and
+/// the cells it now covers. The same numbers `LaunchpadTile` carries out, so a
+/// shell reports what it was given, moved, and never invents a size.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct Placement {
+    pub action_id: String,
+    pub col: u8,
+    pub row: u8,
+    pub col_span: u8,
+    pub row_span: u8,
+}
+
+impl From<&LaunchpadTile> for Placement {
+    fn from(tile: &LaunchpadTile) -> Self {
+        Self {
+            action_id: tile.action_id.clone(),
+            col: tile.col,
+            row: tile.row,
+            col_span: tile.col_span,
+            row_span: tile.row_span,
+        }
+    }
+}
+
+/// The drawing for `placements` on a `columns` x `rows` grid: one string per
+/// row, a hole wherever nothing is placed, tokens padded so the columns line
+/// up the way the seeded file's do. `Err` names the first thing that cannot be
+/// drawn - two tiles on one cell, a tile past the edge, a name the tokenizer
+/// would split - because a drawing with any of those would read back as
+/// something other than what was dropped.
+pub fn draw(placements: &[Placement], columns: u8, rows: u8) -> Result<Vec<String>, String> {
+    let (columns, rows) = (columns as usize, rows as usize);
+    if columns == 0 || rows == 0 || columns > MAX_COLUMNS || rows > MAX_ROWS {
+        return Err(format!(
+            "a drawing is 1 to {MAX_COLUMNS} columns by 1 to {MAX_ROWS} rows, not {columns}x{rows}"
+        ));
+    }
+    // Refused rather than written as a grid of dots: the file would then read
+    // "placed no tiles" and fall back to the default, which is not what an
+    // empty arrangement asked for. Deleting the file is how that is said.
+    if placements.is_empty() {
+        return Err("an arrangement with no tiles is not saved".to_string());
+    }
+
+    let mut grid: Vec<Vec<&str>> = vec![vec![HOLE; columns]; rows];
+    for placement in placements {
+        let name = placement.action_id.as_str();
+        // `resolve` splits rows on whitespace, so a name with any in it would
+        // come back as two tiles. Never true of a name the resolver produced.
+        if name.is_empty() || name == HOLE || name.split_whitespace().ne([name]) {
+            return Err(format!("\"{name}\" cannot be a name in the drawing"));
+        }
+        if placement.col_span == 0 || placement.row_span == 0 {
+            return Err(format!("\"{name}\" covers no cells"));
+        }
+        let (c0, r0) = (placement.col as usize, placement.row as usize);
+        let (c1, r1) = (
+            c0 + placement.col_span as usize,
+            r0 + placement.row_span as usize,
+        );
+        if c1 > columns || r1 > rows {
+            return Err(format!("\"{name}\" reaches past the {columns}x{rows} grid"));
+        }
+        for (row, cells) in grid.iter_mut().enumerate().take(r1).skip(r0) {
+            for (col, cell) in cells.iter_mut().enumerate().take(c1).skip(c0) {
+                if *cell != HOLE {
+                    return Err(format!(
+                        "\"{name}\" and \"{cell}\" both claim column {}, row {}",
+                        col + 1,
+                        row + 1
+                    ));
+                }
+                *cell = name;
+            }
+        }
+    }
+
+    // One width for every column - the longest name plus a space - which is
+    // how the seed is laid out, so the default arrangement writes back as the
+    // seed, byte for byte. The last token on a row is not padded: trailing
+    // spaces are invisible and travel badly through editors.
+    let width = grid.iter().flatten().map(|t| t.len()).max().unwrap_or(0) + 1;
+    Ok(grid
+        .iter()
+        .map(|row| {
+            let mut line = String::new();
+            for (index, token) in row.iter().enumerate() {
+                if index + 1 == row.len() {
+                    line.push_str(token);
+                } else {
+                    line.push_str(&format!("{token:<width$}"));
+                }
+            }
+            line
+        })
+        .collect())
+}
+
+/// `contents` with its `layout` replaced by `drawing` and nothing else
+/// touched: every comment and every `[tiles.<name>]` entry stays where it
+/// was, because the file is the user's and the seeded one is its own
+/// documentation. A file this cannot parse is left alone - rewriting it would
+/// trade a broken drawing the user can fix for a lost one.
+pub fn with_drawing(contents: &str, drawing: &[String]) -> Result<String, String> {
+    let mut document = contents.parse::<toml_edit::DocumentMut>().map_err(|err| {
+        format!("super-actions.toml is not valid TOML, so the arrangement was not saved: {err}")
+    })?;
+
+    let mut rows = toml_edit::Array::new();
+    for line in drawing {
+        let mut value = toml_edit::Value::from(line.as_str());
+        value.decor_mut().set_prefix("\n    ");
+        rows.push_formatted(value);
+    }
+    rows.set_trailing_comma(true);
+    rows.set_trailing("\n");
+
+    // A root key, so a file that lost its `layout` gets one back ahead of its
+    // tables, where the resolver looks for it.
+    document["layout"] = toml_edit::value(rows);
+    Ok(document.to_string())
+}
+
+/// Held for the whole of a save, so saves from one process never interleave.
+fn save_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
+/// Every name the drawing in `contents` places, in first-seen order. Empty for
+/// a file with no readable drawing: there is nothing there to lose.
+fn drawn_names(contents: &str) -> Vec<String> {
+    let Ok(table) = toml::from_str::<toml::Value>(contents) else {
+        return Vec::new();
+    };
+    let Some(rows) = table.get("layout").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = Vec::new();
+    for token in rows
+        .iter()
+        .filter_map(|row| row.as_str())
+        .flat_map(str::split_whitespace)
+    {
+        if token != HOLE && !names.iter().any(|name| name == token) {
+            names.push(token.to_string());
+        }
+    }
+    names
+}
+
+/// Writes the drawing for `placements` into `~/.look/super-actions.toml`.
+/// `Err` is worded for a banner: this is the one write a user makes by hand
+/// gesture and then looks at the result of.
+pub fn save_layout(placements: &[Placement], columns: u8, rows: u8) -> Result<(), String> {
+    let Some(home) = crate::config::user_home_dir() else {
+        return Err("no home directory to save the arrangement in".to_string());
+    };
+    save_layout_at(&launchpad_path(Path::new(&home)), placements, columns, rows)
+}
+
+/// `save_layout` against a named file. Seeds from the default when there is
+/// none, so a user who deleted the file to reset gets the comments back along
+/// with their first drag.
+///
+/// Read back before it is written: `resolve` is the only judge of what a
+/// drawing means, and a placement it would drop or move - a tile under its
+/// minimum, say - is a save the user would see as Look losing a tile. Refused
+/// here, with the resolver's own reason, while the file is still untouched.
+pub fn save_layout_at(
+    path: &Path,
+    placements: &[Placement],
+    columns: u8,
+    rows: u8,
+) -> Result<(), String> {
+    let drawing = draw(placements, columns, rows)?;
+
+    // One writer at a time. The read below, the staging file and the rename
+    // are one edit; two saves interleaving them could rename each other's
+    // staging file away, or persist the older of the two last.
+    let _one_at_a_time = save_lock().lock().unwrap_or_else(|err| err.into_inner());
+
+    let theirs = path
+        .exists()
+        .then(|| std::fs::read_to_string(path))
+        .transpose()
+        .map_err(|err| format!("{} could not be read: {err}", path.display()))?;
+
+    // What is on screen is what gets drawn, so a name their file has and the
+    // strip does not - a tile the resolver dropped, with a warning - would be
+    // erased by this write. Refused instead: the user was told the tile is
+    // wrong, and losing it from the drawing is not the fix. The seed is not
+    // theirs, so a missing file is not held to this.
+    if let Some(theirs) = &theirs {
+        let placed: std::collections::HashSet<&str> = placements
+            .iter()
+            .map(|placement| placement.action_id.as_str())
+            .collect();
+        if let Some(missing) = drawn_names(theirs)
+            .into_iter()
+            .find(|name| !placed.contains(name.as_str()))
+        {
+            return Err(format!(
+                "the arrangement was not saved: \"{missing}\" is in the drawing but not on the \
+                 strip - fix it or take it out of ~/.look/super-actions.toml first"
+            ));
+        }
+    }
+    let current = theirs.unwrap_or_else(|| DEFAULT_CONTENTS.to_string());
+
+    let next = with_drawing(&current, &drawing)?;
+
+    let resolved = resolve(&next);
+    for wanted in placements {
+        let landed = resolved.tiles.iter().any(|tile| {
+            tile.action_id == wanted.action_id
+                && tile.col == wanted.col
+                && tile.row == wanted.row
+                && tile.col_span == wanted.col_span
+                && tile.row_span == wanted.row_span
+        });
+        if !landed {
+            let quoted = format!("\"{}\"", wanted.action_id);
+            let why = resolved
+                .warnings
+                .iter()
+                .find(|warning| warning.contains(&quoted))
+                .cloned()
+                .unwrap_or_else(|| format!("{quoted} would not be shown where it was dropped"));
+            return Err(format!("the arrangement was not saved: {why}"));
+        }
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("{} could not be created: {err}", parent.display()))?;
+    }
+    // Whole or not at all: a crash mid-write must not leave half a drawing for
+    // the next open to fall back from.
+    let staging = path.with_extension("toml.tmp");
+    std::fs::write(&staging, &next)
+        .map_err(|err| format!("{} could not be written: {err}", staging.display()))?;
+    std::fs::rename(&staging, path)
+        .map_err(|err| format!("{} could not be replaced: {err}", path.display()))?;
+
+    // The memo keys on mtime, which has moved; cleared anyway so a write that
+    // lands inside the clock's granularity cannot serve the old drawing.
+    *memo().lock().unwrap_or_else(|err| err.into_inner()) = None;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1833,6 +2092,197 @@ mnemonic = "Cmd+C"
         );
 
         unsafe { std::env::remove_var(LAUNCHPAD_FILE_ENV) };
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // --- writing the drawing back -------------------------------------------
+
+    fn scratch_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("look-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        dir
+    }
+
+    fn placement(name: &str, col: u8, row: u8, col_span: u8, row_span: u8) -> Placement {
+        Placement {
+            action_id: name.to_string(),
+            col,
+            row,
+            col_span,
+            row_span,
+        }
+    }
+
+    /// The rows the seed ships, read the way the resolver reads them.
+    fn seeded_rows() -> Vec<String> {
+        let table: toml::Value = toml::from_str(DEFAULT_CONTENTS).expect("the seed parses");
+        table["layout"]
+            .as_array()
+            .expect("an array")
+            .iter()
+            .map(|row| row.as_str().expect("a string").to_string())
+            .collect()
+    }
+
+    /// The property the writer rests on: the default arrangement writes back
+    /// as the seed, byte for byte, so a drag that ends where it began changes
+    /// nothing in the file.
+    #[test]
+    fn the_default_layout_draws_as_the_seeded_file() {
+        let tiles = look_qactions::launchpad_layout();
+        let placements: Vec<Placement> = tiles.iter().map(Placement::from).collect();
+        let (columns, rows) = extent(&tiles);
+
+        assert_eq!(
+            draw(&placements, columns, rows).expect("draws"),
+            seeded_rows()
+        );
+    }
+
+    #[test]
+    fn a_hole_is_drawn_as_a_dot_and_a_trailing_track_survives() {
+        // Holes take the same column width as names, so a dot lines up under
+        // the name above it in a taller drawing.
+        let drawn = draw(&[placement("mic", 0, 0, 1, 1)], 3, 1).expect("draws");
+        assert_eq!(drawn, vec!["mic .   .".to_string()]);
+    }
+
+    #[test]
+    fn two_tiles_on_one_cell_are_refused() {
+        let err = draw(
+            &[placement("mic", 0, 0, 1, 1), placement("wifi", 0, 0, 1, 1)],
+            2,
+            1,
+        )
+        .expect_err("refused");
+        assert!(err.contains("both claim"), "{err}");
+    }
+
+    #[test]
+    fn a_tile_past_the_edge_is_refused() {
+        let err = draw(&[placement("nowplaying", 5, 0, 2, 1)], 6, 1).expect_err("refused");
+        assert!(err.contains("past"), "{err}");
+    }
+
+    #[test]
+    fn a_rewrite_keeps_every_comment_and_legend_entry() {
+        let theirs = "# my strip\n\nlayout = [\n    \"mic   wifi\",\n]\n\n# what it runs\n[tiles.disk]\nvalue = \"echo hi\"   # trailing\n";
+
+        let next = with_drawing(theirs, &["wifi mic".to_string()]).expect("rewrites");
+
+        for kept in ["# my strip", "# what it runs", "[tiles.disk]", "# trailing"] {
+            assert!(next.contains(kept), "{kept:?} was lost:\n{next}");
+        }
+        assert!(
+            next.contains("layout = [\n    \"wifi mic\",\n]"),
+            "the drawing is written the way the seed is:\n{next}"
+        );
+        assert!(
+            !next.contains("mic   wifi"),
+            "the old drawing is gone:\n{next}"
+        );
+
+        let resolved = resolve(&next);
+        assert_eq!(cells(&resolved, "wifi"), Some((0, 0, 1, 1)));
+        assert_eq!(cells(&resolved, "mic"), Some((1, 0, 1, 1)));
+    }
+
+    #[test]
+    fn a_file_that_is_not_toml_is_left_alone() {
+        let err = with_drawing("layout = [", &["mic".to_string()]).expect_err("refused");
+        assert!(err.contains("not valid TOML"), "{err}");
+    }
+
+    #[test]
+    fn a_file_without_a_drawing_gets_one_ahead_of_its_tables() {
+        let next = with_drawing("[tiles.disk]\nvalue = \"echo hi\"\n", &["disk".to_string()])
+            .expect("rewrites");
+
+        let layout_at = next.find("layout = [").expect("a drawing");
+        let table_at = next.find("[tiles.disk]").expect("the table");
+        assert!(layout_at < table_at, "root keys come first:\n{next}");
+        assert_eq!(cells(&resolve(&next), "disk"), Some((0, 0, 1, 1)));
+    }
+
+    #[test]
+    fn a_save_seeds_a_missing_file_and_the_next_read_sees_the_move() {
+        let dir = scratch_dir("save");
+        let path = dir.join("super-actions.toml");
+
+        // Mic and Restart trade places on the bottom row.
+        let mut placements: Vec<Placement> = resolve(DEFAULT_CONTENTS)
+            .tiles
+            .iter()
+            .map(Placement::from)
+            .collect();
+        for placement in &mut placements {
+            match placement.action_id.as_str() {
+                "mic" => placement.col = 1,
+                "restart" => placement.col = 0,
+                _ => {}
+            }
+        }
+
+        save_layout_at(&path, &placements, 6, 3).expect("saves");
+
+        let written = std::fs::read_to_string(&path).expect("written");
+        assert!(
+            written.contains("# Your Super Actions strip"),
+            "seeded from the default, comments and all:\n{written}"
+        );
+        let resolved = resolve(&written);
+        assert_eq!(cells(&resolved, "restart"), Some((0, 2, 1, 1)));
+        assert_eq!(cells(&resolved, "mic"), Some((1, 2, 1, 1)));
+        assert!(resolved.warnings.is_empty(), "{:?}", resolved.warnings);
+        assert!(
+            !path.with_extension("toml.tmp").exists(),
+            "nothing half-written is left behind"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_save_that_would_lose_a_tile_is_refused_before_the_file_is_touched() {
+        let dir = scratch_dir("refuse");
+        let path = dir.join("super-actions.toml");
+
+        // Weather drawn 1x1, under its 1x2 floor: the resolver would drop it.
+        let err =
+            save_layout_at(&path, &[placement("weather", 0, 0, 1, 1)], 1, 1).expect_err("refused");
+
+        assert!(err.contains("weather") && err.contains("at least"), "{err}");
+        assert!(!path.exists(), "nothing was written");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A tile the file draws but the strip does not show is not on screen to
+    /// be dragged, so writing the screen would erase it. The user has already
+    /// been told the tile is wrong; this keeps it there for them to fix.
+    #[test]
+    fn a_save_that_would_erase_a_name_the_strip_does_not_show_is_refused() {
+        let dir = scratch_dir("erase");
+        let path = dir.join("super-actions.toml");
+        // Weather 1x1 is under its floor: resolved as mic alone, with a warning.
+        let theirs = "layout = [\"mic weather\"]\n";
+        std::fs::write(&path, theirs).expect("write");
+        assert_eq!(resolve(theirs).tiles.len(), 1, "weather is dropped");
+
+        let err =
+            save_layout_at(&path, &[placement("mic", 1, 0, 1, 1)], 2, 1).expect_err("refused");
+
+        assert!(
+            err.contains("\"weather\"") && err.contains("not on the strip"),
+            "{err}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("still there"),
+            theirs,
+            "the file is untouched"
+        );
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

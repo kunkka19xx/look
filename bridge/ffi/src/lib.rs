@@ -923,6 +923,18 @@ pub extern "C" fn look_launchpad_press_tile_json(name: *const c_char) -> *mut c_
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// Writes an arrangement back to `~/.look/super-actions.toml`, as
+/// `{columns, rows, tiles: [{action_id, col, row, col_span, row_span}]}`.
+/// Returns `{"error": ...}`. Touches the disk: call off the UI thread. Free
+/// with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_launchpad_save_layout_json(json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        qactions_api::look_launchpad_save_layout_json_impl(json)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// Definitional entity JSON for `query` (a JSON string or `null`).
 #[unsafe(no_mangle)]
 pub extern "C" fn look_definitional_entity_json(query: *const c_char) -> *mut c_char {

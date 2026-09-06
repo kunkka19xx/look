@@ -42,6 +42,7 @@ let package = Package(
                 "Models/LauncherResult.swift",
                 "Support/QuickActions/LaunchpadTileModel.swift",
                 "Support/QuickActions/LaunchpadGrid.swift",
+                "Support/QuickActions/LaunchpadArrangement.swift",
                 "Models/SourceLevel.swift",
                 "Support/Launcher/SourceLevelStack.swift",
             ]

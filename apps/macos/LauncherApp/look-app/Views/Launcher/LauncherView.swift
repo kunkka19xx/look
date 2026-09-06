@@ -140,6 +140,12 @@ struct LauncherView: View {
     /// Empty-state launchpad: the decoded payload (tiles plus the shape the
     /// drawing declared) and the controller holding its interactive state.
     @State var launchpadLayout: LaunchpadLayout = .empty
+    /// The save a drop started most recently; the next one waits for it, so
+    /// drops reach the file in the order they happened.
+    @State var launchpadSave: Task<Void, Never>?
+    /// Bumped per drop, so a save can tell whether it is still the newest one
+    /// and therefore the one that reads the file back.
+    @State var launchpadSaveGeneration: UInt64 = 0
     @State var launchpadController = LaunchpadController()
     @State var speedTest = SpeedTestController()
     @State var searchTask: Task<Void, Never>?
@@ -1359,7 +1365,8 @@ struct LauncherView: View {
                         shape: launchpadLayout.shape,
                         controller: launchpadController,
                         themeStore: themeStore,
-                        revealToken: appearanceRevealToken
+                        revealToken: appearanceRevealToken,
+                        onArrange: launchpadArranged
                     )
                 }
                 Spacer(minLength: 0)

@@ -224,6 +224,10 @@ private func look_launchpad_refresh_tiles_json() -> UnsafeMutablePointer<CChar>?
 nonisolated
 private func look_launchpad_press_tile_json(_ name: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
 
+@_silgen_name("look_launchpad_save_layout_json")
+nonisolated
+private func look_launchpad_save_layout_json(_ json: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_definitional_entity_json")
 nonisolated
 private func look_definitional_entity_json(_ query: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
@@ -1308,6 +1312,22 @@ final class EngineBridge: @unchecked Sendable {
         guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
         struct PressResult: Decodable { let error: String? }
         return (try? JSONDecoder().decode(PressResult.self, from: data))?.error
+    }
+
+    /// Writes an arrangement back to `~/.look/super-actions.toml`: the tiles at
+    /// their new cells, on the shape the drawing already has. Nil on success,
+    /// else a message worded for a banner. Touches the disk, so never on the
+    /// main thread.
+    nonisolated func saveLaunchpadLayout(_ tiles: [LaunchpadTileModel], shape: LaunchpadGrid.Shape) -> String? {
+        guard let data = LaunchpadArrangement.saveRequest(tiles, shape: shape),
+              let json = String(data: data, encoding: .utf8)
+        else { return "the arrangement could not be encoded" }
+        let ptr = json.withCString { look_launchpad_save_layout_json($0) }
+        guard let ptr else { return "the core did not answer" }
+        defer { look_free_cstring(ptr) }
+        guard let reply = String(cString: ptr).data(using: .utf8) else { return nil }
+        struct SaveResult: Decodable { let error: String? }
+        return (try? JSONDecoder().decode(SaveResult.self, from: reply))?.error
     }
 
     /// What is wrong with the user's `super-actions.toml`, empty when nothing is.

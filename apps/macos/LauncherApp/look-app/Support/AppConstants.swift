@@ -534,6 +534,28 @@ enum AppConstants {
             static let gap: CGFloat = 8
             static let outerTopPadding: CGFloat = 8
 
+            /// Hold a tile this long to pick it up for rearranging. Long enough
+            /// that a click still reads as a click (toggling Wi-Fi, arming a
+            /// confirm), short enough to feel like a lift rather than a wait.
+            static let reorderHoldSeconds: Double = 0.35
+            /// Pointer slack allowed during that hold before it reads as a drag
+            /// on the launcher window instead of a press on the tile.
+            static let reorderHoldSlop: CGFloat = 6
+            /// A click landing within this long after a rearrange is the mouse-up
+            /// that ended the drag, not a new press, so it must not also fire the
+            /// tile's action.
+            static let reorderClickSuppressSeconds: TimeInterval = 0.25
+            /// A lifted tile grows and casts a shadow so it reads as floating
+            /// above the ones it is dragged over. Overshoots what the lift alone
+            /// would need: a tile still held by its button is also being scaled
+            /// *down* by `Motion.Press`, which eats part of this.
+            static let reorderLiftScale: CGFloat = 1.08
+            static let reorderLiftShadowRadius: CGFloat = 14
+            static let reorderLiftShadowOpacity: Double = 0.28
+            /// Tiles a lifted one cannot trade places with dim, so a refused drop
+            /// is visible before release rather than after.
+            static let reorderBlockedOpacity: Double = 0.55
+
             /// The Todo tile cycles its next-task name at this cadence.
             static let todoTaskRotateSeconds: TimeInterval = 2.6
             /// The Clock tile only needs minute resolution; refresh coarsely.
