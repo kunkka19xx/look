@@ -76,7 +76,11 @@ pub fn disable_gpu_from_config() -> bool {
     let Ok(contents) = std::fs::read_to_string(&path) else {
         return false;
     };
-    let mut legacy = false;
+    // Last value wins, as get_config's entries do once the frontend folds them
+    // into a map - a duplicated key must not mean one thing here and another in
+    // Settings.
+    let mut current = None;
+    let mut legacy = None;
     for line in contents.lines() {
         let line = line.trim();
         if line.starts_with('#') {
@@ -85,13 +89,14 @@ pub fn disable_gpu_from_config() -> bool {
         let Some((k, v)) = line.split_once('=') else {
             continue;
         };
+        let on = v.trim().eq_ignore_ascii_case("true");
         match k.trim() {
-            consts::KEY_DISABLE_GPU => return v.trim().eq_ignore_ascii_case("true"),
-            consts::KEY_DISABLE_GPU_LEGACY => legacy = v.trim().eq_ignore_ascii_case("true"),
+            consts::KEY_DISABLE_GPU => current = Some(on),
+            consts::KEY_DISABLE_GPU_LEGACY => legacy = Some(on),
             _ => {}
         }
     }
-    legacy
+    current.or(legacy).unwrap_or(false)
 }
 
 /// Disable hardware acceleration via WebKitGTK API for VM GPUs.

@@ -887,8 +887,6 @@ function updateSuperActionsAvailability() {
 async function loadConfig() {
     try {
         const cfg = await getConfig();
-        updateInnerGapAvailability();
-        updateSuperActionsAvailability();
 
         const map = {};
         for (const entry of cfg.entries) map[entry.key] = entry.value;
@@ -978,6 +976,12 @@ async function loadConfig() {
         } else if (!platform.blurForcedOff()) {
             document.documentElement.removeAttribute('data-disable-blur');
         }
+
+        // After the blur attribute above: both read floatingSupported, which
+        // depends on it, so a reset or a reload that changes blur would leave
+        // them describing the previous state.
+        updateInnerGapAvailability();
+        updateSuperActionsAvailability();
 
         // Dir lists
         configCache.file_scan_extra_roots = map.file_scan_extra_roots || '';
