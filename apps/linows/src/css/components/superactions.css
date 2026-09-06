@@ -55,36 +55,6 @@ html.controls-open #hint-bar {
     --ctl-gap: var(--inner-gap);
 }
 
-/* Framed panel: stack a todo-stats panel under the bento to fill the dead space.
- * data-framed is set by js/layout.js from platform.floatingSupported, so every
- * stack that cannot rest on a transparent window gets the fill - not just the
- * ones with no compositor at all.
- * :not([hidden]) is load-bearing: the strip hides on the first keystroke via the
- * `hidden` attribute, and a bare display:flex here outranks it and pins the bento
- * open under the results. */
-html[data-framed] .control-strip:not([hidden]) {
-    display: flex;
-    flex-direction: column;
-}
-
-html[data-framed] .control-strip-grid {
-    height: auto;
-    flex: 0 0 auto;
-}
-
-/* Charts can't grow (square heatmap cells, fixed insight row), so spread them
- * to fill the leftover height. */
-.control-strip-stats {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: 8px;
-    margin-top: var(--content-padding);
-    overflow: hidden;
-}
-
 /* Entrance: each tile eases up + fades in, staggered by its grid index (--i)
  * so the launchpad cascades in when summoned. `backwards` fill holds the tile
  * hidden through its delay, then hands transform back to the base rule so
