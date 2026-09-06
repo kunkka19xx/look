@@ -236,18 +236,22 @@ disables hardware acceleration via the WebKitGTK API (`set_hardware_acceleration
 WEBKIT_DISABLE_COMPOSITING_MODE=1 cargo tauri dev
 ```
 
-**Known issue on Arch: ghost slider trails / overlapping popovers:**
+**Known issue: ghost slider trails / overlapping popovers:**
 
-On some Arch installs (observed on GNOME 50 + webkit2gtk 2.52.3 + GTK 3.24.49), dragging a
-slider in Settings leaves a trail of past thumb positions, and the theme dropdown shows old
-text under the new label. Same webkit version on Ubuntu 26.04 / NixOS 2.50.6 doesn't show
-this, so it's some webkit × GTK/mutter/mesa interaction we can't auto-detect yet.
+On some WebKitGTK stacks, dragging a slider in Settings leaves a trail of past thumb
+positions, and the theme dropdown shows old text under the new label. Reported on Arch,
+Ubuntu and inside VMs, while identical webkit versions elsewhere don't show it, so it's some
+webkit x GTK/mutter/mesa interaction we can't auto-detect yet.
 
-If you hit it, open **Settings > Advanced > Arch** and flip one of:
+If you hit it, open **Settings > Advanced > Rendering** and flip one of:
 
-- **Disable GPU compositing**: keeps blur, fixes the ghost via the same API path VMs already
-  use. Requires restart.
-- **Disable blur effect**: drops `backdrop-filter`, keeps tint. Live; no restart.
+- **Disable GPU compositing** (`disable_gpu_compositing`): keeps blur, fixes the ghost via the
+  same API path VMs already use. Requires restart.
+- **Disable blur effect** (`disable_blur_effect`): drops the remaining filters, keeps tint.
+  Live; no restart.
+
+Both default off. Configs written before the rename use `arch_disable_gpu` /
+`arch_disable_blur`, which are still read.
 
 If neither helps, please open an issue with: `pacman -Q webkit2gtk-4.1 gtk3 mutter mesa`,
 `lspci -nn | grep VGA`, and `echo $XDG_SESSION_TYPE`.

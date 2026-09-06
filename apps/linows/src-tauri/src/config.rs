@@ -122,8 +122,8 @@ fn default_config_contents() -> String {
          # disable_gpu_compositing forces HardwareAccelerationPolicy::Never (needs\n\
          # restart); disable_blur_effect drops the remaining filters for an opaque\n\
          # tint. Both default off; flip if you see slider trails or overlapping\n\
-         # popovers. Configs written before 0.1.1 use arch_disable_gpu /\n\
-         # arch_disable_blur, which are still read.\n\
+         # popovers. Older configs use arch_disable_gpu / arch_disable_blur,\n\
+         # which are still read.\n\
          disable_gpu_compositing=false\n\
          disable_blur_effect=false\n\
          \n",
@@ -412,7 +412,7 @@ mod tests {
             QUERY_RETENTION_SECONDS_DEFAULT,
             QUERY_RETENTION_SECONDS_NEVER
         );
-        assert!(QUERY_RETENTION_SECONDS_DEFAULT > 0);
+        const { assert!(QUERY_RETENTION_SECONDS_DEFAULT > 0) };
     }
 
     #[test]
