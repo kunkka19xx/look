@@ -63,7 +63,12 @@ fn main() {
     }
 }
 
-/// The `[tiles.<name>]` entries the file declares, in the order written.
+/// The `[tiles.<name>]` entries the file declares, sorted by name.
+///
+/// Sorted rather than in the order written because `toml` is not built here
+/// with `preserve_order`, so its table is a `BTreeMap` and hands them over
+/// alphabetically. That suits a checker anyway: the same file always reports
+/// in the same order, whatever the author moved around.
 ///
 /// Unparseable TOML is already the loudest warning `resolve` produces, so this
 /// stays quiet and yields nothing rather than complaining a second time.
