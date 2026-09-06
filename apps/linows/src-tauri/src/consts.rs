@@ -2,6 +2,9 @@
 
 pub const MAIN_WINDOW: &str = "main";
 pub const EVENT_INDEX_READY: &str = "index-ready";
+/// Emitted every time the launcher is shown. Carries show-time decisions the
+/// frontend should apply before replaying focus/animations.
+pub const EVENT_WINDOW_SHOWN: &str = "window-shown";
 /// Emitted right before the launcher window hides, so the frontend can pin the
 /// launchpad to its entrance-start pose while the webview can still paint. Keeps
 /// the next summon from flashing the fully-visible strip then rewinding it (see

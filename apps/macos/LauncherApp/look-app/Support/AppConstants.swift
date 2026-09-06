@@ -427,6 +427,15 @@ enum AppConstants {
             static let commandModeInfoBanner = "Help is available in app list mode"
         }
 
+        /// How long the launcher may stay hidden before the next open returns
+        /// to the empty home state. `never` is the opt-out every negative value
+        /// normalizes to.
+        enum QueryRetention {
+            static let configKey = "query_retention_seconds"
+            static let defaultSeconds = 5
+            static let never = -1
+        }
+
         /// Virtual key codes (`NSEvent.keyCode`). These are physical positions on a
         /// US layout, not characters, so a handler that must follow the printed
         /// letter on other layouts matches `charactersIgnoringModifiers` as well.

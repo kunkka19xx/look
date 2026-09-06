@@ -167,6 +167,10 @@ struct LauncherView: View {
     @State var appearanceRevealToken: UInt64 = 0
     @State var lookupDefinition: LookupDefinition?
     @State var pidToRestoreOnHide: pid_t?
+    /// Read at launch and on config reload, so the show path never touches the
+    /// filesystem.
+    @State var lastHiddenAt: Date?
+    @State var queryRetentionSeconds = AppConstants.Launcher.QueryRetention.defaultSeconds
     @StateObject var runningAppsService = RunningAppsService()
     @StateObject var processModel = ProcessFinderModel()
 
@@ -861,6 +865,7 @@ struct LauncherView: View {
             startKeyboardNavigationIfNeeded()
             focusActiveInput()
             refreshClipboardMonitoringMode()
+            reloadQueryRetentionPolicy()
             runningAppsService.refresh()
             actionController.pickedFilePaths = pickedFilePathsForTextOp()
         }
@@ -1019,6 +1024,15 @@ struct LauncherView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookActivateLauncherRequested)) { _ in
+            // AppDelegate posts this after ordering the window front, where
+            // clearing would repaint a visible panel; PomoMenuBarItem posts it
+            // while still hidden, which is the moment the timeout is for. The
+            // stamp goes either way, or a later open would judge an old hide.
+            if launcherWindow()?.isVisible == true {
+                lastHiddenAt = nil
+            } else {
+                clearQueryIfRetentionExpired()
+            }
             activateLauncherModeAndFocus()
             refreshClipboardMonitoringMode()
         }

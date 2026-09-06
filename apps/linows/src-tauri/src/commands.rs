@@ -4,8 +4,9 @@ use crate::state::AppState;
 use look_engine::config::RuntimeConfig;
 use serde::Serialize;
 use std::num::NonZeroU64;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, State};
 
 /// camelCase for the frontend. Every field predating it is one lowercase word,
@@ -403,6 +404,39 @@ const HIDE_ARM_GRACE: std::time::Duration = std::time::Duration::from_millis(60)
 /// fallback the user already undid can't pull the window back down.
 static PENDING_HIDE: AtomicU64 = AtomicU64::new(0);
 static HIDE_COUNTER: AtomicU64 = AtomicU64::new(0);
+/// Wall clock: `Instant` stops during suspend, so a launcher hidden overnight
+/// would report only the minutes the machine was awake.
+static LAST_HIDDEN_AT: Mutex<Option<SystemTime>> = Mutex::new(None);
+
+fn mark_hidden_now() {
+    let mut hidden_at = LAST_HIDDEN_AT.lock().unwrap_or_else(|p| p.into_inner());
+    // A repeat dismissal must not restart the clock. A show consumes the stamp,
+    // so `None` means on screen - `is_visible` would not, under layer shell.
+    hidden_at.get_or_insert_with(SystemTime::now);
+}
+
+fn query_clear_decision_after_show(show_succeeded: bool) -> Option<bool> {
+    if !show_succeeded {
+        return None;
+    }
+    let hidden_at = LAST_HIDDEN_AT
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take();
+    let Some(hidden_at) = hidden_at else {
+        return Some(false);
+    };
+    let timeout_secs = crate::config::query_retention_seconds();
+    // A backwards clock reads as no time passed, and so keeps the query.
+    Some(query_retention_expired(
+        hidden_at.elapsed().unwrap_or_default(),
+        timeout_secs,
+    ))
+}
+
+fn query_retention_expired(hidden_for: Duration, timeout_secs: i64) -> bool {
+    timeout_secs >= 0 && hidden_for >= Duration::from_secs(timeout_secs as u64)
+}
 
 /// Arm the entrance, then hide once the frontend has painted that frame.
 ///
@@ -443,6 +477,8 @@ pub fn confirm_hide(window: tauri::WebviewWindow, arm: NonZeroU64) {
 /// Take the launcher off screen. With layer shell attached, the surface on
 /// screen is not the one Tauri hands out.
 pub fn hide_now(window: &tauri::WebviewWindow) {
+    // The one point every route off screen passes through, armed or not.
+    mark_hidden_now();
     #[cfg(target_os = "linux")]
     if crate::platform::linux::layer_shell::is_active() {
         crate::platform::linux::layer_shell::hide();
@@ -472,20 +508,37 @@ pub fn launcher_visible(window: &tauri::WebviewWindow) -> bool {
     window.is_visible().unwrap_or(false)
 }
 
-/// Drop any dismissal in flight, show, and keep niri from tiling the window.
-/// Every show goes through here.
+/// Default show path when no native geometry adjustment is needed before the
+/// frontend event.
 pub fn show_launcher(window: &tauri::WebviewWindow) {
+    show_launcher_before_event(window, || {});
+}
+
+/// Show the launcher, apply any final native geometry, then notify the frontend.
+/// Tiling WMs can only reposition a mapped window, so their toggle path uses
+/// this hook to recenter after `show` but before focus and reveal animations.
+/// Every show ultimately goes through here.
+pub fn show_launcher_before_event(window: &tauri::WebviewWindow, before_event: impl FnOnce()) {
     PENDING_HIDE.store(0, Ordering::Relaxed);
     #[cfg(target_os = "linux")]
     if crate::platform::linux::layer_shell::is_active() {
         crate::platform::linux::layer_shell::show();
+        before_event();
+        let Some(clear_query) = query_clear_decision_after_show(true) else {
+            return;
+        };
+        let _ = window.emit(crate::consts::EVENT_WINDOW_SHOWN, clear_query);
         return;
     }
-    let _ = window.show();
+    let Some(clear_query) = query_clear_decision_after_show(window.show().is_ok()) else {
+        return;
+    };
     #[cfg(target_os = "linux")]
     if crate::platform::linux::wm::is_niri() {
         crate::platform::linux::niri::ensure_self_floating();
     }
+    before_event();
+    let _ = window.emit(crate::consts::EVENT_WINDOW_SHOWN, clear_query);
 }
 
 #[tauri::command]
@@ -1060,4 +1113,45 @@ fn find_desktop_file(id_path: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{query_clear_decision_after_show, query_retention_expired};
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn failed_show_reaches_no_decision() {
+        assert_eq!(query_clear_decision_after_show(false), None);
+    }
+
+    #[test]
+    fn show_with_no_recorded_hide_keeps_the_query() {
+        assert_eq!(query_clear_decision_after_show(true), Some(false));
+    }
+
+    #[test]
+    fn a_repeat_hide_keeps_the_first_timestamp() {
+        let mut hidden_at = Some(SystemTime::UNIX_EPOCH);
+        hidden_at.get_or_insert_with(SystemTime::now);
+        assert_eq!(hidden_at, Some(SystemTime::UNIX_EPOCH));
+    }
+
+    #[test]
+    fn query_retention_preserves_query_before_boundary() {
+        assert!(!query_retention_expired(Duration::from_secs(3), 5));
+        assert!(!query_retention_expired(Duration::from_millis(4_999), 5));
+    }
+
+    #[test]
+    fn query_retention_clears_at_and_after_boundary() {
+        assert!(query_retention_expired(Duration::from_secs(5), 5));
+        assert!(query_retention_expired(Duration::from_secs(8), 5));
+    }
+
+    #[test]
+    fn query_retention_negative_one_never_clears() {
+        assert!(!query_retention_expired(Duration::from_secs(5), -1));
+        assert!(!query_retention_expired(Duration::from_secs(60), -1));
+    }
 }

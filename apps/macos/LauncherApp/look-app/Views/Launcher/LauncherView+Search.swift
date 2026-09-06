@@ -375,6 +375,7 @@ extension LauncherView {
         let result = themeStore.reloadFromConfig()
         let backendReloaded = bridge.reloadConfig()
         clipboardStore.reloadFromConfig()
+        reloadQueryRetentionPolicy()
         // Declared block icons and `then` targets are cached for the process, so
         // a reload is the point where an edited file should start showing. The
         // launchpad drawing is cached the same way and for the same reason.
