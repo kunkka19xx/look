@@ -25,6 +25,7 @@ pub enum TranslateError {
     EmptyText,
     InvalidTargetLang,
     RequestFailed,
+    RateLimited,
     ParseFailed,
     EmptyResult,
 }
@@ -35,6 +36,7 @@ impl TranslateError {
             Self::EmptyText => "empty_text",
             Self::InvalidTargetLang => "invalid_target_lang",
             Self::RequestFailed => "translate_request_failed",
+            Self::RateLimited => "translate_rate_limited",
             Self::ParseFailed => "translate_parse_failed",
             Self::EmptyResult => "translate_empty_result",
         }
@@ -45,6 +47,7 @@ impl TranslateError {
             Self::EmptyText => "Type text after t\" to translate",
             Self::InvalidTargetLang => "Invalid target language code",
             Self::RequestFailed => "Translation request failed",
+            Self::RateLimited => "Translation is rate limited, try again shortly",
             Self::ParseFailed => "Translation response parse failed",
             Self::EmptyResult => "Translation returned empty result",
         }
@@ -83,10 +86,18 @@ pub fn translate(text: &str, target_lang: &str) -> Translation {
         target_lang.trim(),
         http::encode(&text)
     );
-    let Some(body) = http::get(&url, TIMEOUT_SECS, USER_AGENT, &[ACCEPT_LANGUAGE]) else {
+    let Some(response) = http::get(&url, TIMEOUT_SECS, USER_AGENT, &[ACCEPT_LANGUAGE]) else {
         return Translation::failed(text, TranslateError::RequestFailed);
     };
-    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body) else {
+    // Google answers a throttled caller with an HTML apology page, which would
+    // otherwise read as an unparseable response from a healthy service.
+    if response.is_rate_limited() {
+        return Translation::failed(text, TranslateError::RateLimited);
+    }
+    if !response.is_success() {
+        return Translation::failed(text, TranslateError::RequestFailed);
+    }
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&response.body) else {
         return Translation::failed(text, TranslateError::ParseFailed);
     };
     let translated = extract_translation(&parsed);

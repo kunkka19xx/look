@@ -9,6 +9,7 @@ enum BridgeErrorCode: String {
     case decodeFailed = "decode_failed"
     case invalidTargetLang = "invalid_target_lang"
     case translateRequestFailed = "translate_request_failed"
+    case translateRateLimited = "translate_rate_limited"
     case translateExecFailed = "translate_exec_failed"
     case translateParseFailed = "translate_parse_failed"
     case translateDecodeFailed = "translate_decode_failed"
@@ -35,6 +36,8 @@ nonisolated enum BridgeErrorMapping {
             return "Language selection is not supported."
         case .translateRequestFailed, .translateExecFailed:
             return "Translation service is temporarily unavailable."
+        case .translateRateLimited:
+            return "Translation is rate limited. Try again shortly."
         case .translateParseFailed, .translateDecodeFailed, .translateEmptyResult:
             return "Could not read translation response."
         case .serializeFailed:
