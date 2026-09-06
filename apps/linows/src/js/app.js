@@ -60,10 +60,9 @@ import {
 // colon + bold-bullet format, macOS keeps its space-separated form.
 //
 // Every line here has to fit the left card footer in one row when the panes
-// float, which is the narrowest place a hint is shown. That budget is what
-// dropped "Ctrl+F: Reveal" and "Ctrl+/: Command mode" from the home hints, and
-// what keeps the clipboard hint to its first two items - all three still work
-// and are still listed in Settings > Shortcuts.
+// float, which is the narrowest place a hint is shown. That budget is three
+// items at most, matched by macOS (LauncherView.hintItemBudget); the keys left
+// out still work and are still listed in Settings > Shortcuts.
 const HINT_MAIN = 'Enter: Open \u2022 Ctrl+K: Actions \u2022 Ctrl+H: Help';
 // Inside a level the way out is the thing to say.
 const HINT_LEVEL = 'Enter: Open \u2022 Ctrl+K: Actions \u2022 Esc: Back';
@@ -72,10 +71,8 @@ const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Ctrl+D: Remove clip';
 const HINT_PROCESS = 'Enter: CPU \u2022 Ctrl+D: Kill \u2022 Ctrl+C: Copy PID';
 // Discovery-menu hints \u2014 mirror macOS prefixSuggestion / commandSuggestion
 // hint bars (LauncherView.swift hintItems).
-const HINT_PREFIX_DISCOVERY =
-    'Enter: Pick prefix \u2022 Up/Down: Move \u2022 Esc: Clear \u2022 Ctrl+H: Help';
-const HINT_COMMAND_DISCOVERY =
-    'Enter: Run command \u2022 Up/Down: Move \u2022 Esc: Clear \u2022 Ctrl+H: Help';
+const HINT_PREFIX_DISCOVERY = 'Enter: Pick prefix \u2022 Up/Down: Move \u2022 Esc: Clear';
+const HINT_COMMAND_DISCOVERY = 'Enter: Run command \u2022 Up/Down: Move \u2022 Esc: Clear';
 
 // "Ctrl+1-7: Switch", derived from the catalog so a new command can't leave the
 // hint stale (mirrors the macOS commandSwitchHint).
@@ -84,13 +81,13 @@ const SWITCH_HINT = `Ctrl+1-${COMMAND_ENTRIES.length}: Switch`;
 // Per-command hint lines while command mode is active; `shell` doubles as
 // the fallback for commands without a dedicated line.
 const COMMAND_HINTS = {
-    pomo: `Space: Start/pause \u2022 R: Reset \u2022 P: Music \u2022 Esc: Back \u2022 Tab/${SWITCH_HINT}`,
-    todo: `Ctrl+N: Switch page \u2022 Ctrl+S: Save \u2022 Tab/${SWITCH_HINT} \u2022 Esc: Back`,
-    speed: `R: Rerun \u2022 E: Show IP \u2022 Esc: Back \u2022 Tab/${SWITCH_HINT}`,
-    kill: `Y: Confirm \u2022 N: Cancel \u2022 Tab/${SWITCH_HINT} \u2022 Esc: Back`,
-    sys: `Esc: Back \u2022 Tab/${SWITCH_HINT} \u2022 Ctrl+/: Command mode \u2022 Ctrl+Shift+,: Settings`,
-    calc: `Enter: Evaluate \u2022 Tab: Select \u2022 ${SWITCH_HINT} \u2022 Esc: Back`,
-    shell: `Enter: Run \u2022 Tab: Select \u2022 ${SWITCH_HINT} \u2022 Esc: Back`,
+    pomo: 'Space: Start/pause \u2022 R: Reset \u2022 Esc: Back',
+    todo: 'Ctrl+N: Switch page \u2022 Ctrl+S: Save \u2022 Esc: Back',
+    speed: 'R: Rerun \u2022 E: Show IP \u2022 Esc: Back',
+    kill: 'Y: Confirm \u2022 N: Cancel \u2022 Esc: Back',
+    sys: `Tab/${SWITCH_HINT} \u2022 Ctrl+Shift+,: Settings \u2022 Esc: Back`,
+    calc: 'Enter: Evaluate \u2022 Tab: Select \u2022 Esc: Back',
+    shell: 'Enter: Run \u2022 Tab: Select \u2022 Esc: Back',
 };
 
 // Hint constants are static, authored in code \u2014 safe to set as innerHTML so
