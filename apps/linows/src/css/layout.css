@@ -505,14 +505,23 @@ html[data-os="windows"] .bar-free .pane-tile {
     margin-bottom: var(--inner-gap);
 }
 
-/* Classic columns run flush to the window, so the pill's outer edge takes the
- * top bar's inset; inner edges keep --row-inset for the divider. */
-.launcher-window:not(.floating) #results-col .results-list {
-    --row-inset-left: var(--content-padding);
+/* Classic columns run flush to the window, so the chrome around them takes the
+ * rows' inset rather than --content-padding: every left edge in the panel lines
+ * up and each keeps equal gutters. Floating and resting inset the bar as a
+ * tile, so they keep the wider one. */
+.launcher-window:not(.bar-free) .top-bar {
+    margin-left: var(--row-inset);
+    margin-right: var(--row-inset);
 }
 
-.launcher-window:not(.floating) #preview-col .results-list {
-    --row-inset-right: var(--content-padding);
+.launcher-window:not(.bar-free) .hint-bar {
+    padding-left: var(--row-inset);
+    padding-right: var(--row-inset);
+}
+
+.launcher-window:not(.bar-free) .ai-card {
+    margin-left: var(--row-inset);
+    margin-right: var(--row-inset);
 }
 
 /* Unlike the classic row: a rectangular clip slices tile shadows and footer
