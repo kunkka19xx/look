@@ -147,6 +147,8 @@ Turn the strip off in `Settings > Appearance > Super Actions`. Off hides it and 
 
 The arrangement is yours, in `~/.look/super-actions.toml`. Look writes it on first run with the layout above, so the file is its own reference - open it and the format explains itself.
 
+Ready-made tiles to paste in: [lookbook's `tiles/`](https://github.com/kunkka19xx/lookbook/tree/main/tiles), which is also the place to share one you wrote.
+
 It is a drawing of the screen. Each line is a row, each name is one cell:
 
 ```toml
@@ -407,6 +409,8 @@ The Appearance tab controls:
 - **Font** - name and size for launcher text
 - **Font Color** - text color (RGB + opacity)
 - **Border** - border thickness and color
+- **Inner Gap** - gap between the top row, results list and preview, `0` to `24` in the platform's own unit (points on macOS, pixels on Linux and Windows). `0` is the classic framed panel; above 0 each becomes its own floating card. Fresh configs ship `7`, and an absent key means 0. Saved as `inner_gap`
+- **Corner Radius** - one multiplier on the resting corner rounding of every surface at once: the window, the top bar, the super-action tiles, the controls. Range `0` to `2.5`, default `1.5`; `0` is square. Saved as `ui_surface_radius`. One setting rather than one per surface, so they cannot disagree with each other
 
 Built-in theme presets are available:
 
