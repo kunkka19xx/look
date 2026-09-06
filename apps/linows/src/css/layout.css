@@ -505,6 +505,16 @@ html[data-os="windows"] .bar-free .pane-tile {
     margin-bottom: var(--inner-gap);
 }
 
+/* Classic columns run flush to the window, so the pill's outer edge takes the
+ * top bar's inset; inner edges keep --row-inset for the divider. */
+.launcher-window:not(.floating) #results-col .results-list {
+    --row-inset-left: var(--content-padding);
+}
+
+.launcher-window:not(.floating) #preview-col .results-list {
+    --row-inset-right: var(--content-padding);
+}
+
 /* Unlike the classic row: a rectangular clip slices tile shadows and footer
  * popovers along a straight line, which at a rounded corner reads as a sharp
  * angle. Nothing escapes anyway - tiles scroll their own content, and the
