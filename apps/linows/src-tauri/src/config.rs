@@ -157,16 +157,16 @@ fn default_config_contents() -> String {
     );
 
     out.push_str(
-        "\n# Self-update: 0 = disabled, 1 = enabled (default).\n\
-         # Currently implemented on Windows only; macOS/Linux support is pending.\n\
+        "\n# Automatic update at startup: 0 = disabled, 1 = enabled (default).\n\
+         # Manual Check/Update stays available. Windows NSIS/Scoop only for now.\n\
          auto_update_enable=1\n",
     );
 
     out
 }
 
-/// Shared preference for all platforms. Read on each request so edits also
-/// apply before starting an update; platform support is handled by the caller.
+/// Shared startup auto-update preference. Manual updates are independent.
+/// Platform support is handled by the caller.
 #[tauri::command]
 pub fn auto_update_enabled() -> bool {
     let contents = std::fs::read_to_string(config_file_path()).unwrap_or_default();

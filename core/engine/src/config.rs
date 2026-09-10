@@ -473,8 +473,8 @@ clipboard_history_limit=10\n\
 # it on every hide; a negative value keeps it indefinitely.\n\
 query_retention_seconds=5\n\
 \n\
-# Self-update: 0 = disabled, 1 = enabled (default).\n\
-# Currently implemented on Windows only; macOS/Linux support is pending.\n\
+# Automatic update at startup: 0 = disabled, 1 = enabled (default).\n\
+# Manual Check/Update stays available. Windows NSIS/Scoop only for now.\n\
 auto_update_enable=1\n\
 \n\
 # Preferred tools. Name the tool, not a command: Look knows how to drive it,\n\

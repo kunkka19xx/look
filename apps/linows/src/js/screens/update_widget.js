@@ -1,7 +1,6 @@
 // Update widget mounted in Settings ("About" footer) and Help.
 // Linux stays notify-only because install paths vary too much; Windows can
-// offer a manual user-triggered update button for the shipped per-user NSIS
-// install after the user checks and a newer release is found.
+// update NSIS and Scoop installs automatically at startup or on user request.
 //
 // The check itself runs in the webview via `fetch()` (no Rust HTTP/TLS
 // dep); cross-origin works because `tauri.conf.json` has `csp: null`.
@@ -35,45 +34,49 @@ const state = {
     currentVersion: '',
     isDev: false,
     installMethod: '',
-    autoUpdateEnabled: false,
     available: null,
     status: '',
     isChecking: false,
+    isUpdating: false,
 };
+let initialization;
 
 export async function mountUpdateWidget(container, { label = '' } = {}) {
     if (!container) return;
     container.classList.add('update-widget');
     widgets.set(container, label);
-    await refreshUpdatePreference();
     render(container);
-    if (!state.currentVersion) {
-        try {
-            const loadInstallMethod =
-                platform.os() === 'windows' ? getInstallMethod() : Promise.resolve('');
-            [state.currentVersion, state.isDev, state.installMethod] = await Promise.all([
-                getLookappVersion(),
-                isDevBuild(),
-                loadInstallMethod,
-            ]);
-        } catch {
-            state.currentVersion = '';
-            state.isDev = false;
-            state.installMethod = '';
-        }
-        renderAll();
-    }
+    // Settings and Help mount concurrently. Initialize and auto-update once.
+    initialization ??= initialize();
+    await initialization;
+    render(container);
 }
 
-async function refreshUpdatePreference() {
-    state.autoUpdateEnabled = await autoUpdateEnabled().catch(() => false);
+async function initialize() {
+    try {
+        const loadInstallMethod =
+            platform.os() === 'windows' ? getInstallMethod() : Promise.resolve('');
+        [state.currentVersion, state.isDev, state.installMethod] = await Promise.all([
+            getLookappVersion(),
+            isDevBuild(),
+            loadInstallMethod,
+        ]);
+    } catch {
+        state.currentVersion = '';
+        state.isDev = false;
+        state.installMethod = '';
+    }
     renderAll();
+    if (supportsSelfUpdate() && await autoUpdateEnabled().catch(() => false)) {
+        await handleCheck();
+        await handleUpdate();
+    }
 }
 
 function supportsSelfUpdate() {
     switch (platform.os()) {
         case 'windows':
-            return state.installMethod === 'nsis';
+            return !state.isDev && ['nsis', 'scoop'].includes(state.installMethod);
         case 'linux':
             // TODO: implement Linux self-update.
             return false;
@@ -83,12 +86,11 @@ function supportsSelfUpdate() {
 }
 
 async function handleCheck() {
-    if (state.isChecking) return;
+    if (state.isChecking || state.isUpdating) return;
     state.isChecking = true;
     state.status = 'Checking…';
     renderAll();
     try {
-        await refreshUpdatePreference();
         const result = await performCheck(state.currentVersion, true);
         state.available = result.available;
         state.status = result.status;
@@ -119,14 +121,14 @@ function handleNotes() {
 }
 
 async function handleUpdate() {
-    if (!state.available || state.installMethod !== 'nsis') return;
-    await refreshUpdatePreference();
-    if (!state.autoUpdateEnabled) return;
+    if (!state.available || !supportsSelfUpdate() || state.isChecking || state.isUpdating) return;
+    state.isUpdating = true;
     state.status = 'Preparing update…';
     renderAll();
     try {
         await startWindowsUpdate(state.available.version);
     } catch (error) {
+        state.isUpdating = false;
         state.status = error?.message || String(error || "Couldn't start the update");
         renderAll();
     }
@@ -227,7 +229,8 @@ function render(container) {
     const versionLabel = currentVersion
         ? `Look ${escapeHtml(currentVersion)}${devSuffix}`
         : 'Look …';
-    const canSelfUpdate = supportsSelfUpdate() && state.autoUpdateEnabled && !!available;
+    const canSelfUpdate = supportsSelfUpdate() && !!available;
+    const busy = isChecking || state.isUpdating;
     // Suppress only the duplicated "Update available" line; keep real progress
     // or errors visible while the banner is shown.
     const showStatus =
@@ -241,7 +244,7 @@ function render(container) {
     <div class="update-row">
       <span class="update-version">${versionLabel}</span>
       ${showStatus ? `<span class="update-status">${escapeHtml(status)}</span>` : ''}
-      <button class="update-pill" type="button" data-action="check"${isChecking ? ' disabled' : ''}>
+      <button class="update-pill" type="button" data-action="check"${busy ? ' disabled' : ''}>
         ${isChecking ? 'Checking…' : 'Check for Updates'}
       </button>
     </div>
@@ -251,7 +254,7 @@ function render(container) {
         html += `
       <div class="update-banner">
         <span class="update-banner-text">Update available: Look ${escapeHtml(available.version)}</span>
-        ${canSelfUpdate ? `<button class="update-pill" type="button" data-action="update"${isChecking ? ' disabled' : ''}>Update</button>` : ''}
+        ${canSelfUpdate ? `<button class="update-pill" type="button" data-action="update"${busy ? ' disabled' : ''}>Update</button>` : ''}
         <button class="update-pill" type="button" data-action="notes">Notes</button>
         <button class="update-pill update-pill-muted" type="button" data-action="dismiss">Dismiss</button>
       </div>
@@ -260,13 +263,13 @@ function render(container) {
         if (os === 'windows' && installMethod === 'scoop') {
             html += `
         <div class="update-hint">
-          Update in PowerShell: <code>scoop update look</code>
+          Update opens PowerShell and runs <code>scoop update look</code> automatically.
         </div>
       `;
         } else if (os === 'windows' && installMethod === 'nsis') {
             html += `
         <div class="update-hint">
-          Update on Windows: rerun the installer from <a class="update-hint-link" href="#" data-action="install-hint">install instructions</a>. Look must close before the installer can replace it.
+          Update opens PowerShell to download and run the installer. Look closes and reopens after installation.
         </div>
       `;
         } else if (INSTALL_HINT_URLS[os]) {
