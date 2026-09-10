@@ -36,6 +36,9 @@ pub fn detect_install_method() -> InstallMethod {
 }
 
 pub fn start(app: AppHandle, version: &str) -> Result<(), String> {
+    if !crate::config::auto_update_enabled() {
+        return Err("Self-update is disabled by auto_update_enable=0 in config".into());
+    }
     if cfg!(debug_assertions) {
         return Err("Self-update is disabled in dev builds".into());
     }
@@ -129,7 +132,8 @@ fn build_helper_script(
     let exe_path = ps_single_quoted(&exe_path.to_string_lossy());
     let work_dir = ps_single_quoted(&work_dir.to_string_lossy());
     let repo = ps_single_quoted(REPO);
-    let mut script = String::new();
+    // Windows PowerShell needs a UTF-8 BOM to decode non-ASCII paths correctly.
+    let mut script = String::from("\u{feff}");
     script.push_str("$ErrorActionPreference = 'Stop'\n");
     script.push_str("$ProgressPreference = 'SilentlyContinue'\n");
     let _ = writeln!(script, "$Version = '{version}'");
@@ -194,8 +198,34 @@ fn ps_single_quoted(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{InstallMethod, detect_install_method_for_path, is_valid_release_version};
+    use super::{
+        InstallMethod, build_helper_script, detect_install_method_for_path,
+        is_valid_release_version,
+    };
     use std::path::Path;
+
+    #[test]
+    fn helper_script_has_utf8_bom_and_preserves_unicode_paths() {
+        let script = build_helper_script(
+            "0.6.11",
+            123,
+            Path::new(r"C:\Users\Nguyễn\AppData\Local\Programs\Look"),
+            Path::new(r"C:\Users\Nguyễn\AppData\Local\Programs\Look\lookapp.exe"),
+            Path::new(r"C:\Users\Nguyễn\AppData\Local\Temp\更新"),
+        );
+
+        let bytes = script.as_bytes();
+        assert!(bytes.starts_with(&[0xEF, 0xBB, 0xBF]));
+        let decoded = std::str::from_utf8(&bytes[3..]).unwrap();
+        assert!(decoded.starts_with("$ErrorActionPreference = 'Stop'\n"));
+        for expected in [
+            r"$InstallDir = 'C:\Users\Nguyễn\AppData\Local\Programs\Look'",
+            r"$ExePath = 'C:\Users\Nguyễn\AppData\Local\Programs\Look\lookapp.exe'",
+            r"$WorkDir = 'C:\Users\Nguyễn\AppData\Local\Temp\更新'",
+        ] {
+            assert!(decoded.lines().any(|line| line == expected), "{expected}");
+        }
+    }
 
     #[test]
     fn classifies_scoop_paths() {

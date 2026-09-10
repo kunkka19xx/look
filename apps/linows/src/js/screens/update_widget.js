@@ -6,7 +6,7 @@
 // The check itself runs in the webview via `fetch()` (no Rust HTTP/TLS
 // dep); cross-origin works because `tauri.conf.json` has `csp: null`.
 // Dismissed versions persist in `localStorage`.
-import { getInstallMethod, getLookappVersion, openPath, isDevBuild, startWindowsUpdate } from '../ipc.js';
+import { autoUpdateEnabled, getInstallMethod, getLookappVersion, openPath, isDevBuild, startWindowsUpdate } from '../ipc.js';
 import * as platform from '../platform.js';
 
 const RELEASES_API_URL = 'https://api.github.com/repos/kunkka19xx/look/releases/latest';
@@ -28,6 +28,7 @@ const state = {
     currentVersion: '',
     isDev: false,
     installMethod: '',
+    autoUpdateEnabled: false,
     available: null,
     status: '',
     isChecking: false,
@@ -37,6 +38,7 @@ export async function mountUpdateWidget(container, { label = '' } = {}) {
     if (!container) return;
     container.classList.add('update-widget');
     widgets.set(container, label);
+    await refreshUpdatePreference();
     render(container);
     if (!state.currentVersion) {
         try {
@@ -57,12 +59,30 @@ export async function mountUpdateWidget(container, { label = '' } = {}) {
     }
 }
 
+async function refreshUpdatePreference() {
+    state.autoUpdateEnabled = await autoUpdateEnabled().catch(() => false);
+    renderAll();
+}
+
+function supportsSelfUpdate() {
+    switch (platform.os()) {
+        case 'windows':
+            return state.installMethod === 'nsis';
+        case 'linux':
+            // TODO: implement Linux self-update.
+            return false;
+        default:
+            return false;
+    }
+}
+
 async function handleCheck() {
     if (state.isChecking) return;
     state.isChecking = true;
     state.status = 'Checking…';
     renderAll();
     try {
+        await refreshUpdatePreference();
         const result = await performCheck(state.currentVersion, true);
         state.available = result.available;
         state.status = result.status;
@@ -94,6 +114,8 @@ function handleNotes() {
 
 async function handleUpdate() {
     if (!state.available || state.installMethod !== 'nsis') return;
+    await refreshUpdatePreference();
+    if (!state.autoUpdateEnabled) return;
     state.status = 'Preparing update…';
     renderAll();
     try {
@@ -199,7 +221,7 @@ function render(container) {
     const versionLabel = currentVersion
         ? `Look ${escapeHtml(currentVersion)}${devSuffix}`
         : 'Look …';
-    const canSelfUpdate = platform.os() === 'windows' && installMethod === 'nsis' && !!available;
+    const canSelfUpdate = supportsSelfUpdate() && state.autoUpdateEnabled && !!available;
     // Suppress only the duplicated "Update available" line; keep real progress
     // or errors visible while the banner is shown.
     const showStatus = status && (!available || status !== `Update available: Look ${available.version}`);

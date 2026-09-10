@@ -473,6 +473,10 @@ clipboard_history_limit=10\n\
 # it on every hide; a negative value keeps it indefinitely.\n\
 query_retention_seconds=5\n\
 \n\
+# Self-update: 0 = disabled, 1 = enabled (default).\n\
+# Currently implemented on Windows only; macOS/Linux support is pending.\n\
+auto_update_enable=1\n\
+\n\
 # Preferred tools. Name the tool, not a command: Look knows how to drive it,\n\
 # including running a terminal editor inside your terminal. Declare nothing and\n\
 # nothing changes. Editing uses text_editor on a file and code_editor on a\n\

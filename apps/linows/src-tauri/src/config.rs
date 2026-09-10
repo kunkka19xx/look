@@ -159,7 +159,7 @@ fn default_config_contents() -> String {
     out.push_str(
         "\n# Self-update: 0 = disabled, 1 = enabled (default).\n\
          # Currently implemented on Windows only; macOS/Linux support is pending.\n\
-         auto_update_enable=0\n",
+         auto_update_enable=1\n",
     );
 
     out
@@ -307,6 +307,14 @@ pub fn config_file_path() -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_config_enables_self_update_by_default() {
+        let contents = default_config_contents();
+
+        assert!(contents.lines().any(|line| line == "auto_update_enable=1"));
+        assert!(parse_auto_update_enabled(&contents));
+    }
 
     #[test]
     fn auto_update_config_honors_numeric_switch_and_comments() {
