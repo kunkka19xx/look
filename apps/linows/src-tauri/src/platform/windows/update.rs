@@ -388,8 +388,14 @@ mod tests {
         )
         .unwrap();
         let wrapper = root.join("test.ps1");
+        // PowerShell can expand TEMP's 8.3 aliases in $PSScriptRoot, whereas
+        // Rust keeps the supplied path (e.g. RUNNER~1). Assert against the
+        // fixture paths passed to the helper, not PowerShell's spelling.
         let prelude = format!(
-            "$InstallerExitCode = {exit_code}\n$BadChecksum = ${bad_checksum}\n$NoChange = ${no_change}\n"
+            "$InstallerExitCode = {exit_code}\n$BadChecksum = ${bad_checksum}\n$NoChange = ${no_change}\n\
+             $ExpectedInstallDir = '{}'\n$ExpectedExePath = '{}'\n",
+            super::ps_single_quoted(&root.to_string_lossy()),
+            super::ps_single_quoted(&exe.to_string_lossy()),
         );
         let stubs = r#"
 $ErrorActionPreference = 'Stop'
@@ -417,15 +423,15 @@ function Start-Process {
     }
     if ($FilePath.EndsWith('-setup.exe')) {
         if (-not $Wait -or -not $PassThru) { throw 'Installer must be awaited' }
-        if ($ArgumentList[0] -ne '/S' -or $ArgumentList[1] -ne "/D=$PSScriptRoot") {
-            throw 'Wrong installer arguments'
+        if ($ArgumentList.Count -ne 2 -or $ArgumentList[0] -ne '/S' -or $ArgumentList[1] -ne "/D=$ExpectedInstallDir") {
+            throw "Wrong installer arguments: $($ArgumentList -join ' | '); expected /S | /D=$ExpectedInstallDir"
         }
         Add-Content (Join-Path $PSScriptRoot 'events') 'install'
         return [pscustomobject]@{ ExitCode = $InstallerExitCode }
     }
     if ($FilePath -eq 'notepad.exe') {
         Add-Content (Join-Path $PSScriptRoot 'events') 'error'
-    } elseif ($FilePath -eq (Join-Path $PSScriptRoot 'lookapp.exe')) {
+    } elseif ($FilePath -eq $ExpectedExePath) {
         Add-Content (Join-Path $PSScriptRoot 'events') 'restart'
     } else { throw "Unexpected process: $FilePath" }
 }
