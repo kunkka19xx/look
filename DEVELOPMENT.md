@@ -114,6 +114,18 @@ lookdev --list-modes
 
 Install it on its own with `make dev-cli`. It reads `LOOK_DEV_APP` and `LOOK_DEV_CONFIG` if you keep them elsewhere.
 
+On Linux there is no `lookdev`. The debug binary is the handle, and it already points at the dev config and database:
+
+```bash
+cd apps/linows
+nix develop -c cargo build --manifest-path src-tauri/Cargo.toml   # NixOS; elsewhere plain cargo build
+./src-tauri/target/debug/lookapp --list-modes    # prints and exits, no window
+./src-tauri/target/debug/lookapp clipboard       # cold start
+./src-tauri/target/debug/lookapp files report    # run again while it is up: the warm path
+```
+
+Both routes end at the same parked query (`take_launch_query`), but they reach it differently, so a mode is worth trying from cold and from a running instance. Under `cargo tauri dev` the arguments need two separators: `cargo tauri dev -- -- clipboard`.
+
 On Linux and Windows, a debug build separates its config and database (`setup_dev_env`) but shares `identifier` with the release build, and the single-instance plugin keys its lock on that. Debug builds therefore register under `com.look.desktop.dev` so a running release does not swallow a dev build's arguments (`lookapp <mode>`, see the README). That override is Linux-only: Windows derives its mutex from the identifier with no way to change it, so quit the installed app before testing a dev build there.
 
 Override the macOS dev config path:

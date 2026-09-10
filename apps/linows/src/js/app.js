@@ -28,7 +28,6 @@ import { load } from './html-loader.js';
 import {
     onWindowShown,
     onWindowHidden,
-    onLaunchQuery,
     takeLaunchQuery,
     confirmHide,
     onIndexReady,
@@ -696,6 +695,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         superactions.replayEnter();
         // Last: the reveal is the frame the rest of the cascade lands in.
         motion.playReveal();
+        // A launch mode waits here, after the reset and select() above: pushed
+        // any earlier it would be cleared or left selected.
+        takeLaunchQuery().then(applyLaunchQuery);
     });
 
     // Launch modes: `lookapp clipboard` puts `c"` in the input and searches.
@@ -703,17 +705,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     function applyLaunchQuery(text) {
         if (!text) return;
         queryInput.value = text;
-        // Caret to the end, not selected: window-shown just ran select(), so
-        // the first keystroke would otherwise replace the mode.
+        // Through the listener, not straight to search: the prefix jump, the
+        // layout swap out of the launchpad and the hint bar all hang off it.
+        queryInput.dispatchEvent(new Event('input'));
+        // A `:cmd ` jump moved into the command panel and cleared the input.
+        if (queryInput.value !== text) return;
+        queryInput.focus();
+        // Caret at the end, not selected: a selected mode would be replaced by
+        // the first keystroke.
         const end = text.length;
         queryInput.setSelectionRange(end, end);
-        queryInput.focus();
         smoothcaret.refresh(queryInput);
-        search.handleQueryInput(text);
     }
 
-    onLaunchQuery((event) => applyLaunchQuery(event.payload));
-    // Cold start: this listener did not exist when the backend ran.
+    // Cold start: the show ran before this frontend existed, so no
+    // window-shown pull is coming.
     takeLaunchQuery().then(applyLaunchQuery);
 
     // Hold the launchpad at its entrance-start pose before hiding, so the stale

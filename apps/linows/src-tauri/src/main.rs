@@ -37,7 +37,7 @@ use state::AppState;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
 /// Timestamp (ms) of last window show, used to debounce focus-loss auto-hide.
 static LAST_SHOWN_AT: AtomicU64 = AtomicU64::new(0);
@@ -548,11 +548,14 @@ fn focus_loss_means_dismiss() -> bool {
     !cfg!(target_os = "linux")
 }
 
-/// A cold-start launch query, parked for the frontend to pull.
+/// A launch query, parked for the frontend to pull.
 ///
-/// Cold start cannot push: at `setup()` the webview is still booting, so an
-/// emitted event has no listener and Tauri does not buffer it. The mode would
-/// vanish on the launch that matters most, the first keypress after login.
+/// Parked on every path rather than pushed: cold start cannot push at all (at
+/// `setup()` the webview is still booting, so an emitted event has no listener
+/// and Tauri does not buffer it), and on a warm launch a pushed event races
+/// `window-shown`, whose reset clears the query and whose `select()` leaves it
+/// selected for the next keystroke to replace. The frontend pulls after that
+/// reset, so the show always runs first.
 static PENDING_LAUNCH: Mutex<Option<String>> = Mutex::new(None);
 
 #[tauri::command]
@@ -563,14 +566,14 @@ fn take_launch_query() -> Option<String> {
         .take()
 }
 
-/// Called after the show, not before: `window-shown` focuses and selects the
-/// input, so an earlier query would sit selected and be replaced by the next
-/// keystroke.
-fn apply_launch(window: &tauri::WebviewWindow, launch: modes::Launch) {
+/// Park before showing: the pull hangs off `window-shown`.
+fn park_launch(launch: &modes::Launch) {
     // Toggle is not implemented yet, so `--no-toggle` parses but changes
     // nothing: every launch shows.
     if let modes::Launch::Query { text, .. } = launch {
-        let _ = window.emit(consts::EVENT_LAUNCH_QUERY, text);
+        *PENDING_LAUNCH
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(text.clone());
     }
 }
 
@@ -609,10 +612,11 @@ fn main() {
         tauri_plugin_single_instance::Builder::<tauri::Wry>::new().callback(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window(consts::MAIN_WINDOW) {
                 LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
+                // The second launch's argv, discarded here until now. Parked
+                // before the show, which is what the frontend pulls on.
+                park_launch(&modes::parse_args(args.iter().skip(1)));
                 commands::show_launcher(&window);
                 commands::focus_launcher(&window);
-                // The second launch's argv, discarded here until now.
-                apply_launch(&window, modes::parse_args(args.iter().skip(1)));
             }
         });
     // The plugin keys its lock on tauri.conf.json's `identifier`, which dev and
@@ -728,10 +732,8 @@ fn main() {
 
             // Only when a mode was named: a normal launch keeps whatever
             // startup visibility it has today.
-            if let modes::Launch::Query { text, .. } = &launch {
-                *PENDING_LAUNCH
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(text.clone());
+            if matches!(launch, modes::Launch::Query { .. }) {
+                park_launch(&launch);
                 commands::show_launcher(&window);
             }
 

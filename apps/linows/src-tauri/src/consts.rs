@@ -10,10 +10,6 @@ pub const EVENT_WINDOW_SHOWN: &str = "window-shown";
 /// the next summon from flashing the fully-visible strip then rewinding it (see
 /// superactions.armEntrance). Paired with the show-side `window-shown`.
 pub const EVENT_WINDOW_HIDDEN: &str = "window-hidden";
-/// Text a command line asked to put in the input (`lookapp clipboard`). Its own
-/// event rather than a wider `window-shown` payload, which every ordinary
-/// summon would then carry and ignore.
-pub const EVENT_LAUNCH_QUERY: &str = "launch-query";
 
 /// Windows process creation flag to suppress console windows.
 #[cfg(target_os = "windows")]
