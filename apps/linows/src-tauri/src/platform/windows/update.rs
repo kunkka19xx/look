@@ -108,8 +108,17 @@ fn helper_work_dir(pid: u32) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn spawn_helper(script_path: &Path) -> Result<(), String> {
+fn powershell_command() -> std::process::Command {
     let mut cmd = std::process::Command::new("powershell.exe");
+    // When launched via cargo/app from pwsh, Windows PowerShell can inherit
+    // PS7 module paths and fail to load built-ins such as Get-FileHash.
+    // Let Windows PowerShell reconstruct its own module search path.
+    cmd.env_remove("PSModulePath");
+    cmd
+}
+
+fn spawn_helper(script_path: &Path) -> Result<(), String> {
+    let mut cmd = powershell_command();
     cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
         .arg(script_path)
         // A visible shell shows update progress without requiring users to type commands.
@@ -359,7 +368,6 @@ mod tests {
         expected_error: Option<&str>,
     ) {
         use std::fs;
-        use std::process::Command;
 
         let root = super::helper_work_dir(std::process::id())
             .unwrap()
@@ -424,7 +432,7 @@ function Start-Process {
 . (Join-Path $PSScriptRoot 'helper.ps1')
 "#;
         fs::write(&wrapper, format!("\u{feff}{prelude}{stubs}")).unwrap();
-        let output = Command::new("powershell.exe")
+        let output = super::powershell_command()
             .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
             .arg(&wrapper)
             .output()
@@ -441,6 +449,9 @@ function Start-Process {
                 assert!(!events.contains(&"install"));
             }
         } else {
+            if let Ok(log) = fs::read_to_string(root.join("update-error.log")) {
+                panic!("Update helper failed unexpectedly:\n{log}");
+            }
             if scoop {
                 assert_eq!(events, ["wait", "scoop", "restart"]);
             } else {
@@ -449,7 +460,6 @@ function Start-Process {
                     ["wait", "download", "download", "install", "restart"]
                 );
             }
-            assert!(!root.join("update-error.log").exists());
             assert!(!root.join("Look_0.6.11_x64-setup.exe").exists());
             assert!(!root.join("Look-0.6.11-windows-checksums.txt").exists());
         }
