@@ -6,7 +6,14 @@
 // The check itself runs in the webview via `fetch()` (no Rust HTTP/TLS
 // dep); cross-origin works because `tauri.conf.json` has `csp: null`.
 // Dismissed versions persist in `localStorage`.
-import { autoUpdateEnabled, getInstallMethod, getLookappVersion, openPath, isDevBuild, startWindowsUpdate } from '../ipc.js';
+import {
+    autoUpdateEnabled,
+    getInstallMethod,
+    getLookappVersion,
+    openPath,
+    isDevBuild,
+    startWindowsUpdate,
+} from '../ipc.js';
 import * as platform from '../platform.js';
 
 const RELEASES_API_URL = 'https://api.github.com/repos/kunkka19xx/look/releases/latest';
@@ -42,9 +49,8 @@ export async function mountUpdateWidget(container, { label = '' } = {}) {
     render(container);
     if (!state.currentVersion) {
         try {
-            const loadInstallMethod = platform.os() === 'windows'
-                ? getInstallMethod()
-                : Promise.resolve('');
+            const loadInstallMethod =
+                platform.os() === 'windows' ? getInstallMethod() : Promise.resolve('');
             [state.currentVersion, state.isDev, state.installMethod] = await Promise.all([
                 getLookappVersion(),
                 isDevBuild(),
@@ -224,7 +230,8 @@ function render(container) {
     const canSelfUpdate = supportsSelfUpdate() && state.autoUpdateEnabled && !!available;
     // Suppress only the duplicated "Update available" line; keep real progress
     // or errors visible while the banner is shown.
-    const showStatus = status && (!available || status !== `Update available: Look ${available.version}`);
+    const showStatus =
+        status && (!available || status !== `Update available: Look ${available.version}`);
 
     let html = '';
     if (label) {
@@ -234,8 +241,8 @@ function render(container) {
     <div class="update-row">
       <span class="update-version">${versionLabel}</span>
       ${showStatus ? `<span class="update-status">${escapeHtml(status)}</span>` : ''}
-      <button class="update-pill" type="button" data-action="${canSelfUpdate ? 'update' : 'check'}"${isChecking ? ' disabled' : ''}>
-        ${isChecking ? 'Checking…' : (canSelfUpdate ? 'Update' : 'Check for Updates')}
+      <button class="update-pill" type="button" data-action="check"${isChecking ? ' disabled' : ''}>
+        ${isChecking ? 'Checking…' : 'Check for Updates'}
       </button>
     </div>
   `;
@@ -244,7 +251,8 @@ function render(container) {
         html += `
       <div class="update-banner">
         <span class="update-banner-text">Update available: Look ${escapeHtml(available.version)}</span>
-        <button class="update-pill" type="button" data-action="notes">Release Notes</button>
+        ${canSelfUpdate ? `<button class="update-pill" type="button" data-action="update"${isChecking ? ' disabled' : ''}>Update</button>` : ''}
+        <button class="update-pill" type="button" data-action="notes">Notes</button>
         <button class="update-pill update-pill-muted" type="button" data-action="dismiss">Dismiss</button>
       </div>
     `;
