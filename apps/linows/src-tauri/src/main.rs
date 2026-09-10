@@ -30,12 +30,14 @@ mod trash;
 mod weather;
 mod weburl;
 
+use look_engine::modes;
 #[cfg(target_os = "linux")]
 use platform::linux::gpu;
 use state::AppState;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// Timestamp (ms) of last window show, used to debounce focus-loss auto-hide.
 static LAST_SHOWN_AT: AtomicU64 = AtomicU64::new(0);
@@ -546,12 +548,53 @@ fn focus_loss_means_dismiss() -> bool {
     !cfg!(target_os = "linux")
 }
 
+/// A cold-start launch query, parked for the frontend to pull.
+///
+/// Cold start cannot push: at `setup()` the webview is still booting, so an
+/// emitted event has no listener and Tauri does not buffer it. The mode would
+/// vanish on the launch that matters most, the first keypress after login.
+static PENDING_LAUNCH: Mutex<Option<String>> = Mutex::new(None);
+
+#[tauri::command]
+fn take_launch_query() -> Option<String> {
+    PENDING_LAUNCH
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+}
+
+/// Called after the show, not before: `window-shown` focuses and selects the
+/// input, so an earlier query would sit selected and be replaced by the next
+/// keystroke.
+fn apply_launch(window: &tauri::WebviewWindow, launch: modes::Launch) {
+    // Toggle is not implemented yet, so `--no-toggle` parses but changes
+    // nothing: every launch shows.
+    if let modes::Launch::Query { text, .. } = launch {
+        let _ = window.emit(consts::EVENT_LAUNCH_QUERY, text);
+    }
+}
+
 fn main() {
     crash::install_panic_hook();
 
     if std::env::args().any(|a| a == "--version" || a == "-V") {
         println!("lookapp {}", env!("APP_VERSION"));
         return;
+    }
+
+    // Answered before the app starts, so asking what you can bind never costs
+    // a window.
+    let launch = modes::parse_args(std::env::args().skip(1));
+    match &launch {
+        modes::Launch::ListModes => {
+            print!("{}", modes::list_text());
+            return;
+        }
+        modes::Launch::UnknownMode(name) => {
+            eprintln!("lookapp: unknown mode \"{name}\"\n\n{}", modes::list_text());
+            std::process::exit(2);
+        }
+        _ => {}
     }
 
     #[cfg(debug_assertions)]
@@ -562,14 +605,27 @@ fn main() {
 
     sync_autostart();
 
-    let mut builder = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    let single_instance =
+        tauri_plugin_single_instance::Builder::<tauri::Wry>::new().callback(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window(consts::MAIN_WINDOW) {
                 LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
                 commands::show_launcher(&window);
                 commands::focus_launcher(&window);
+                // The second launch's argv, discarded here until now.
+                apply_launch(&window, modes::parse_args(args.iter().skip(1)));
             }
-        }))
+        });
+    // The plugin keys its lock on tauri.conf.json's `identifier`, which dev and
+    // release share, so an installed release would swallow a dev build's argv
+    // (`setup_dev_env` separates the config and DB but not this). Only the debug
+    // name is set: release keeps the plugin default, leaving the identifier the
+    // single source of truth. Linux only - Windows derives its mutex from the
+    // identifier with no override, so there the release app has to be quit.
+    #[cfg(debug_assertions)]
+    let single_instance = single_instance.dbus_id("com.look.desktop.dev");
+
+    let mut builder = tauri::Builder::default()
+        .plugin(single_instance.build())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
         .manage(platform::IconCache::new());
@@ -670,6 +726,15 @@ fn main() {
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
             }
 
+            // Only when a mode was named: a normal launch keeps whatever
+            // startup visibility it has today.
+            if let modes::Launch::Query { text, .. } = &launch {
+                *PENDING_LAUNCH
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(text.clone());
+                commands::show_launcher(&window);
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -684,6 +749,7 @@ fn main() {
             commands::force_index_refresh,
             commands::toggle_window,
             commands::hide_window,
+            take_launch_query,
             commands::confirm_hide,
             commands::set_blur_region,
             commands::quit_app,

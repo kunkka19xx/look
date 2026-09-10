@@ -334,6 +334,16 @@ export async function onWindowHidden(callback) {
     return listen('window-hidden', callback);
 }
 
+// Launch modes: the warm path pushes an event, a cold start parks the query
+// for takeLaunchQuery.
+export async function onLaunchQuery(callback) {
+    return listen('launch-query', callback);
+}
+
+export async function takeLaunchQuery() {
+    return invoke('take_launch_query');
+}
+
 export async function getHealthIssues() {
     return invoke('get_health_issues');
 }

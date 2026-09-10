@@ -36,28 +36,28 @@ REAL_DB_PATH := $(HOME)/Library/Application Support/look/look.db
 DEV_CONFIG_PATH ?= $(HOME)/.look/config.dev
 DEV_OPEN_ENV = env -u LOOK_DB_PATH LOOK_CONFIG_PATH="$(DEV_CONFIG_PATH)" LOOK_DEV_HINT=1 LOOK_LOG_LEVEL=debug LOOK_UI_DEBUG_EVENTS=1
 
-.PHONY: help core-check ffi-check ffi-build ffi-build-release ffi-unstale app-build app-ensure-bundle app-stop app-run app-open app-install-dev app-run-dev app-uninstall-dev app-logs app-logs-all symbols db-path db-status db-shell db-reset db-refresh ffi-run
+.PHONY: help core-check ffi-check ffi-build ffi-build-release ffi-unstale app-build app-ensure-bundle app-stop app-run app-install-dev app-run-dev app-uninstall-dev dev-cli app-logs app-logs-all symbols db-path db-status db-shell db-reset db-refresh
 
 help:
 	@printf "look developer tasks\n\n"
 	@printf "build/check\n"
 	@printf "  make core-check          - cargo check core workspace\n"
 	@printf "  make ffi-check          - cargo check ffi crate\n"
-	@printf "  make ffi-build          - build Rust FFI dll (debug) - Windows\n"
-	@printf "  make ffi-build-release  - build Rust FFI dll (release)\n"
+	@printf "  make ffi-build          - build the ffi crate alone (link check; the app builds its own)\n"
+	@printf "  make ffi-build-release  - same, release profile\n"
 	@printf "  make app-build          - xcodebuild app (macOS, includes rust ffi build/link)\n"
 	@printf "  make ffi-unstale        - drop RustBuild/liblook_ffi.a when the Rust build identity changes\n"
 	@printf "  make symbols            - verify ffi symbols in app binary\n\n"
 	@printf "run app\n"
 	@printf "  make app-stop     - stop running Look app process\n"
 	@printf "  make app-run      - stop running app, then open local app with dev config\n"
-	@printf "  make app-open     - open built app bundle\n"
 	@printf "  make app-install-dev - install side-by-side /Applications/$(DEV_APP_NAME).app\n"
 	@printf "  make app-run-dev  - install+open side-by-side dev app with dev config\n"
 	@printf "  make app-uninstall-dev - remove side-by-side dev app from /Applications\n"
+	@printf "  make dev-cli      - install the lookdev command (done by app-install-dev)\n"
 	@printf "  make app-logs     - stream app logs (predicate: $(LOG_PREDICATE))\n"
 	@printf "  make app-logs-all - stream all logs for process Look\n"
-	@printf "  (override config) make app-run DEV_CONFIG_PATH=\"$$HOME/.look/config.dev\"\n\n"
+	@printf "  (override config) make app-run DEV_CONFIG_PATH=\"$$HOME/.look/config.qa\"\n\n"
 	@printf "database\n"
 	@printf "  make db-path      - print real db path\n"
 	@printf "  make db-status    - inspect candidates/usage tables\n"
@@ -106,9 +106,6 @@ app-run: app-build app-stop app-ensure-bundle
 	@echo "Opening local app with config: $(DEV_CONFIG_PATH)"
 	@$(DEV_OPEN_ENV) open -n "$(APP_BUNDLE)"
 
-app-open: app-build app-ensure-bundle
-	@open "$(APP_BUNDLE)"
-
 app-install-dev: app-build app-ensure-bundle
 	@echo "Installing side-by-side dev app: $(DEV_APP_INSTALL_BUNDLE)"
 	@osascript -e 'tell application id "$(DEV_APP_ID)" to quit' >/dev/null 2>&1 || true
@@ -128,6 +125,15 @@ app-install-dev: app-build app-ensure-bundle
 		"$(DEV_APP_INSTALL_BUNDLE)" >/dev/null
 	@"$(LSREGISTER)" -f "$(DEV_APP_INSTALL_BUNDLE)" >/dev/null
 	@echo "Installed $(DEV_APP_NAME) with bundle id $(DEV_APP_ID)"
+	@$(MAKE) --no-print-directory dev-cli
+
+# Beside whatever directory `lookapp` already lives in.
+dev-cli:
+	@dir=$$(dirname "$$(command -v lookapp 2>/dev/null || echo /opt/homebrew/bin/lookapp)"); \
+	if [ ! -w "$$dir" ]; then dir="$$HOME/.local/bin"; mkdir -p "$$dir"; fi; \
+	ln -sf "$(CURDIR)/scripts/lookdev" "$$dir/lookdev"; \
+	echo "Installed $$dir/lookdev"; \
+	case ":$$PATH:" in *":$$dir:"*) ;; *) echo "Add to PATH: export PATH=\"$$dir:\$$PATH\"" ;; esac
 
 app-run-dev: app-install-dev app-stop
 	@echo "Opening side-by-side dev app with config: $(DEV_CONFIG_PATH)"

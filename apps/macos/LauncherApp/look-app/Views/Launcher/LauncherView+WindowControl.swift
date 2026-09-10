@@ -181,7 +181,7 @@ extension LauncherView {
         revealLauncherWindowIfHidden()
     }
 
-    private func revealLauncherWindowIfHidden() {
+    func revealLauncherWindowIfHidden() {
         guard let window = launcherWindow(), !window.isVisible else { return }
 
         // Only when nothing is stored yet: the launcher is frontmost whenever the

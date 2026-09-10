@@ -28,6 +28,8 @@ import { load } from './html-loader.js';
 import {
     onWindowShown,
     onWindowHidden,
+    onLaunchQuery,
+    takeLaunchQuery,
     confirmHide,
     onIndexReady,
     requestIndexRefresh,
@@ -695,6 +697,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Last: the reveal is the frame the rest of the cascade lands in.
         motion.playReveal();
     });
+
+    // Launch modes: `lookapp clipboard` puts `c"` in the input and searches.
+    // The text only ever lands in the input, never acts.
+    function applyLaunchQuery(text) {
+        if (!text) return;
+        queryInput.value = text;
+        // Caret to the end, not selected: window-shown just ran select(), so
+        // the first keystroke would otherwise replace the mode.
+        const end = text.length;
+        queryInput.setSelectionRange(end, end);
+        queryInput.focus();
+        smoothcaret.refresh(queryInput);
+        search.handleQueryInput(text);
+    }
+
+    onLaunchQuery((event) => applyLaunchQuery(event.payload));
+    // Cold start: this listener did not exist when the backend ran.
+    takeLaunchQuery().then(applyLaunchQuery);
 
     // Hold the launchpad at its entrance-start pose before hiding, so the stale
     // buffer the compositor presents on the next summon matches frame 0 instead
