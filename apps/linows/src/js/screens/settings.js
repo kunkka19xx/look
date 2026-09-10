@@ -27,6 +27,10 @@ const TABS = ['appearance', 'advanced', 'shortcuts'];
 // Sentinel the Font field falls back to: "let the theme decide", not a family.
 const DEFAULT_FONT_NAME = 'system-ui';
 
+// No config file yet: land on the floating tiles, same as macOS
+// ThemeSettings.innerGap and the template Reset writes.
+const INNER_GAP_DEFAULT = 7;
+
 const SAVE_MSG_MS = 1600;
 let saveMsgTimer = null;
 
@@ -676,7 +680,7 @@ export async function reloadFromFile() {
         if (map.ui_border_thickness) CSS_MAP.ui_border_thickness(map.ui_border_thickness);
 
         // Floating layout gap + corner rounding
-        CSS_MAP.inner_gap(map.inner_gap || 0);
+        CSS_MAP.inner_gap(map.inner_gap || INNER_GAP_DEFAULT);
         if (map.ui_surface_radius) CSS_MAP.ui_surface_radius(map.ui_surface_radius);
 
         // If settings screen is open, refresh the UI sliders too
@@ -790,7 +794,7 @@ export async function restoreOnStartup() {
         }
 
         // Floating layout gap + corner rounding
-        CSS_MAP.inner_gap(map.inner_gap || 0);
+        CSS_MAP.inner_gap(map.inner_gap || INNER_GAP_DEFAULT);
         if (map.ui_surface_radius) CSS_MAP.ui_surface_radius(map.ui_surface_radius);
     } catch {
         // Config may not exist yet
