@@ -101,6 +101,10 @@ const BANNER_DURATION_SHORT = 1.0;
 const BANNER_DURATION_MEDIUM = 1.2;
 const BANNER_DURATION_LONG = 1.5;
 const KILL_FEEDBACK_DELAY_MS = 300;
+// How long a just-applied launch mode outranks the retention reset. The
+// cold-start pull can resolve just before a `window-shown` lands, and the reset
+// would wipe exactly what was asked for.
+const LAUNCH_QUERY_GRACE_MS = 500;
 
 // Layout modes applied to #results-area when the AI card is visible.
 // Stacked: card capped above results in col 1.
@@ -666,10 +670,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
+    let launchQueryAppliedAt = 0;
+
     // When the launcher is shown, optionally clear an expired query before the
     // usual focus/refresh/reveal pass runs.
     onWindowShown((event) => {
-        if (event.payload === true) {
+        if (event.payload === true && Date.now() - launchQueryAppliedAt >= LAUNCH_QUERY_GRACE_MS) {
             // Reuse the full "back to home" reset so query-owned UI like the
             // translate surface, preview visibility, and running-apps strip all
             // return to the normal empty-query state together.
@@ -704,6 +710,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // The text only ever lands in the input, never acts.
     function applyLaunchQuery(text) {
         if (!text) return;
+        launchQueryAppliedAt = Date.now();
         queryInput.value = text;
         // Through the listener, not straight to search: the prefix jump, the
         // layout swap out of the launchpad and the hint bar all hang off it.

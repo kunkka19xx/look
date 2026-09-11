@@ -42,6 +42,11 @@ enum LaunchModes {
                 Data("lookapp: unknown mode \"\(name)\"\n\n\(listText())".utf8))
             return 2
 
+        case .unavailableMode(let name):
+            FileHandle.standardError.write(
+                Data("lookapp: mode \"\(name)\" is not available on this platform\n".utf8))
+            return 2
+
         case .query(let text):
             guard isSameAppAlreadyRunning() else {
                 pendingQuery = text
@@ -58,6 +63,7 @@ enum LaunchModes {
         case query(String)
         case listModes
         case unknownMode(String)
+        case unavailableMode(String)
     }
 
     private struct Decision: Decodable {
@@ -83,6 +89,7 @@ enum LaunchModes {
         case "query": return decoded.text.map(Launch.query) ?? .normal
         case "list_modes": return .listModes
         case "unknown_mode": return .unknownMode(decoded.name ?? "")
+        case "unavailable_mode": return .unavailableMode(decoded.name ?? "")
         default: return .normal
         }
     }

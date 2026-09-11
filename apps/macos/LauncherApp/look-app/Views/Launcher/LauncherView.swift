@@ -1590,7 +1590,17 @@ struct LauncherView: View {
     }
 
     /// Only ever the input: it waits for an Enter a person has to press.
+    ///
+    /// Whatever the launcher was showing has to be left first. A warm
+    /// `lookapp clipboard` can land while command mode, the AI session, help or
+    /// settings owns the panel, and each of those would swallow the prefix:
+    /// command mode types into `commandInput`, AI into the session, and
+    /// `focusActiveInput` routes to the settings field.
     private func applyLaunchQuery(_ text: String) {
+        exitCommandMode()
+        exitAIToHome()
+        showsHelpScreen = false
+        appUIState.showsThemeSettings = false
         query = text
         focusActiveInput()
     }

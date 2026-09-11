@@ -568,9 +568,7 @@ fn take_launch_query() -> Option<String> {
 
 /// Park before showing: the pull hangs off `window-shown`.
 fn park_launch(launch: &modes::Launch) {
-    // Toggle is not implemented yet, so `--no-toggle` parses but changes
-    // nothing: every launch shows.
-    if let modes::Launch::Query { text, .. } = launch {
+    if let modes::Launch::Query { text } = launch {
         *PENDING_LAUNCH
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(text.clone());
@@ -595,6 +593,10 @@ fn main() {
         }
         modes::Launch::UnknownMode(name) => {
             eprintln!("lookapp: unknown mode \"{name}\"\n\n{}", modes::list_text());
+            std::process::exit(2);
+        }
+        modes::Launch::UnavailableMode(name) => {
+            eprintln!("lookapp: mode \"{name}\" is not available on this platform");
             std::process::exit(2);
         }
         _ => {}

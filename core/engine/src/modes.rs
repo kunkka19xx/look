@@ -20,6 +20,13 @@ impl Platforms {
             Platforms::MacOnly => Some("macOS only"),
         }
     }
+
+    pub fn available_here(self) -> bool {
+        match self {
+            Platforms::All => true,
+            Platforms::MacOnly => cfg!(target_os = "macos"),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -74,7 +81,7 @@ pub const MODES: &[Mode] = &[
         name: "recent",
         aliases: &[],
         prefix: "rc\"",
-        platforms: Platforms::MacOnly,
+        platforms: Platforms::All,
         about: "recent files and folders, newest first",
     },
     Mode {
@@ -83,6 +90,13 @@ pub const MODES: &[Mode] = &[
         prefix: "r\"",
         platforms: Platforms::All,
         about: "regex search",
+    },
+    Mode {
+        name: "processes",
+        aliases: &["ps"],
+        prefix: "ps\"",
+        platforms: Platforms::All,
+        about: "find and kill running processes",
     },
     Mode {
         name: "translate",
@@ -95,7 +109,7 @@ pub const MODES: &[Mode] = &[
         name: "dictionary",
         aliases: &["dict"],
         prefix: "tw\"",
-        platforms: Platforms::All,
+        platforms: Platforms::MacOnly,
         about: "dictionary lookup",
     },
     Mode {
@@ -236,16 +250,17 @@ pub enum Launch {
     Normal,
     Query {
         text: String,
-        toggle: bool,
     },
     ListModes,
     /// Named a mode and got it wrong. An error because they were specific,
     /// unlike a bare word that just means "open".
     UnknownMode(String),
+    /// A real mode this platform does not have.
+    UnavailableMode(String),
 }
 
-/// Arguments after the program name. Precedence: `--list-modes`, `--mode`,
-/// `--query`, then a bare mode name.
+/// Arguments after the program name. Precedence: a bare mode name, then
+/// `--list-modes`, `--mode`, `--query`.
 pub fn parse_args<I, S>(args: I) -> Launch
 where
     I: IntoIterator<Item = S>,
@@ -256,22 +271,33 @@ where
         .map(|arg| arg.as_ref().to_string())
         .collect();
 
+    // Before any flag parsing, so the rest is the term verbatim:
+    // `lookapp shell ls -la` has to keep its `-la`.
+    if let Some(first) = args.first()
+        && let Some(mode) = resolve(first)
+    {
+        return launch(mode, first, &args[1..]);
+    }
+
+    // `--` ends the options, for a term that starts with a hyphen.
+    let (flags, mut verbatim) = match args.iter().position(|arg| arg == "--") {
+        Some(at) => (&args[..at], args[at + 1..].to_vec()),
+        None => (&args[..], Vec::new()),
+    };
+
     let mut positionals: Vec<String> = Vec::new();
     let mut mode_name: Option<String> = None;
     let mut query: Option<String> = None;
     let mut list_modes = false;
     let mut saw_mode_flag = false;
-    let mut toggle = true;
 
     let mut index = 0;
-    while index < args.len() {
-        let arg = args[index].clone();
-        match arg.as_str() {
+    while index < flags.len() {
+        match flags[index].as_str() {
             "--list-modes" => list_modes = true,
-            "--no-toggle" => toggle = false,
             "--mode" => {
                 saw_mode_flag = true;
-                if let Some(value) = args.get(index + 1)
+                if let Some(value) = flags.get(index + 1)
                     && !value.starts_with('-')
                 {
                     mode_name = Some(value.clone());
@@ -279,7 +305,7 @@ where
                 }
             }
             "--query" => {
-                if let Some(value) = args.get(index + 1) {
+                if let Some(value) = flags.get(index + 1) {
                     query = Some(value.clone());
                     index += 1;
                 }
@@ -289,6 +315,7 @@ where
         }
         index += 1;
     }
+    positionals.append(&mut verbatim);
 
     // `--mode` with no name lists rather than erroring: a keybinding has no
     // terminal, so the useful failure is the one that teaches.
@@ -298,28 +325,27 @@ where
 
     if let Some(name) = mode_name {
         return match resolve(&name) {
-            Some(mode) => Launch::Query {
-                text: mode.query(&positionals.join(" ")),
-                toggle,
-            },
+            Some(mode) => launch(mode, &name, &positionals),
             None => Launch::UnknownMode(name),
         };
     }
 
     if let Some(text) = query {
-        return Launch::Query { text, toggle };
-    }
-
-    if let Some((first, rest)) = positionals.split_first()
-        && let Some(mode) = resolve(first)
-    {
-        return Launch::Query {
-            text: mode.query(&rest.join(" ")),
-            toggle,
-        };
+        return Launch::Query { text };
     }
 
     Launch::Normal
+}
+
+/// A resolved mode only opens where it exists. Saying so beats opening a search
+/// for `>` on a machine that has no AI session.
+fn launch(mode: &Mode, name: &str, term: &[String]) -> Launch {
+    if !mode.platforms.available_here() {
+        return Launch::UnavailableMode(name.to_string());
+    }
+    Launch::Query {
+        text: mode.query(&term.join(" ")),
+    }
 }
 
 #[cfg(test)]
@@ -416,7 +442,6 @@ mod tests {
     fn shown(text: &str) -> Launch {
         Launch::Query {
             text: text.to_string(),
-            toggle: true,
         }
     }
 
@@ -456,7 +481,7 @@ mod tests {
         assert_eq!(parse(&["--mode"]), Launch::ListModes);
         assert_eq!(parse(&["--list-modes"]), Launch::ListModes);
         // A flag after `--mode` is not a mode name.
-        assert_eq!(parse(&["--mode", "--no-toggle"]), Launch::ListModes);
+        assert_eq!(parse(&["--mode", "--list-modes"]), Launch::ListModes);
     }
 
     #[test]
@@ -465,14 +490,39 @@ mod tests {
         assert_eq!(parse(&["--query", ":shell ls"]), shown(":shell ls"));
     }
 
+    /// `lookapp shell ls -la` used to lose its `-la`, which is exactly the kind
+    /// of term the free-text modes exist for.
     #[test]
-    fn no_toggle_survives_wherever_it_is_written() {
-        let expected = Launch::Query {
-            text: "c\"".to_string(),
-            toggle: false,
+    fn a_term_keeps_its_hyphenated_arguments() {
+        assert_eq!(parse(&["shell", "ls", "-la"]), shown(":shell ls -la"));
+        assert_eq!(
+            parse(&["--mode", "shell", "--", "ls", "-la"]),
+            shown(":shell ls -la")
+        );
+    }
+
+    #[test]
+    fn a_mode_this_platform_lacks_says_so_rather_than_opening_a_dead_search() {
+        let macos = cfg!(target_os = "macos");
+        let expected = if macos {
+            shown(">")
+        } else {
+            Launch::UnavailableMode("ai".to_string())
         };
-        assert_eq!(parse(&["clipboard", "--no-toggle"]), expected);
-        assert_eq!(parse(&["--no-toggle", "clipboard"]), expected);
+
+        assert_eq!(parse(&["ai"]), expected);
+        assert_eq!(parse(&["--mode", "ai"]), expected);
+    }
+
+    /// The table is the platform's own answer, so a row and its shell have to
+    /// agree: `rc"` is in linows' prefix menu and parsed in shared Rust, and
+    /// `tw"` is not implemented there at all.
+    #[test]
+    fn platform_columns_match_the_shells() {
+        assert_eq!(resolve("recent").unwrap().platforms, Platforms::All);
+        assert_eq!(resolve("processes").unwrap().platforms, Platforms::All);
+        assert_eq!(resolve("dictionary").unwrap().platforms, Platforms::MacOnly);
+        assert_eq!(resolve("ai").unwrap().platforms, Platforms::MacOnly);
     }
 
     #[test]
