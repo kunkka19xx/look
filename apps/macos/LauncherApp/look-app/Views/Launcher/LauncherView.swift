@@ -1059,8 +1059,7 @@ struct LauncherView: View {
                 for: LaunchModes.deliveryNotification)
         ) { notification in
             guard let text = notification.object as? String else { return }
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            revealLauncherWindowIfHidden()
+            revealLauncherWindowForLaunch()
             activateLauncherModeAndFocus()
             // After the reveal, which runs `clearQueryIfRetentionExpired` and
             // would wipe the mode.

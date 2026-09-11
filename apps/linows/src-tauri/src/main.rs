@@ -119,47 +119,54 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         // On GNOME X11, Focused(false) races with this handler -
         // auto-hide hides the window before we run, so is_visible
         // is false.  The 200ms guard prevents re-showing.
-        LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
-        FOCUSED_SINCE_SHOWN.store(false, Ordering::Relaxed);
-
-        // A layer surface is placed and stacked by the compositor; neither is
-        // ours to ask for.
-        #[cfg(target_os = "linux")]
-        let placed_by_compositor = platform::linux::layer_shell::is_active();
-        #[cfg(not(target_os = "linux"))]
-        let placed_by_compositor = false;
-
-        // Tiling WMs (i3, sway, Hyprland) ignore set_position on unmapped
-        // windows - they apply their own placement on map. So we must
-        // recenter AFTER show. Desktop environments (GNOME, KDE, …) work
-        // best with recenter BEFORE show to avoid a visible jump.
-        #[cfg(target_os = "linux")]
-        let tiling = platform::linux::wm::is_tiling_wm();
-        #[cfg(not(target_os = "linux"))]
-        let tiling = false;
-
-        if !placed_by_compositor {
-            if !tiling {
-                recenter_window(&window);
-            }
-            let _ = window.set_always_on_top(true);
-        }
-        commands::show_launcher_before_event(&window, || {
-            if !placed_by_compositor && tiling {
-                recenter_window(&window);
-            }
-        });
-        // For X11 windows (native X11, or XWayland when the AppImage forces
-        // GDK_BACKEND=x11), bypass the compositor's focus-stealing
-        // prevention by bumping _NET_WM_USER_TIME before activation.
-        #[cfg(target_os = "linux")]
-        if platform::linux::transparency::window_is_x11() {
-            platform::linux::window_focus::activate_self();
-            platform::linux::window_focus::notify_shown();
-        }
-
-        commands::focus_launcher(&window);
+        show_window(&window);
     }
+}
+
+/// Every summon goes through here. Placement, the X11 focus-stealing bypass and
+/// the focus call are one unit: a path that shows the window without them opens
+/// off-centre, or on top without the keyboard.
+fn show_window(window: &tauri::WebviewWindow) {
+    LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
+    FOCUSED_SINCE_SHOWN.store(false, Ordering::Relaxed);
+
+    // A layer surface is placed and stacked by the compositor; neither is
+    // ours to ask for.
+    #[cfg(target_os = "linux")]
+    let placed_by_compositor = platform::linux::layer_shell::is_active();
+    #[cfg(not(target_os = "linux"))]
+    let placed_by_compositor = false;
+
+    // Tiling WMs (i3, sway, Hyprland) ignore set_position on unmapped
+    // windows - they apply their own placement on map. So we must
+    // recenter AFTER show. Desktop environments (GNOME, KDE, …) work
+    // best with recenter BEFORE show to avoid a visible jump.
+    #[cfg(target_os = "linux")]
+    let tiling = platform::linux::wm::is_tiling_wm();
+    #[cfg(not(target_os = "linux"))]
+    let tiling = false;
+
+    if !placed_by_compositor {
+        if !tiling {
+            recenter_window(window);
+        }
+        let _ = window.set_always_on_top(true);
+    }
+    commands::show_launcher_before_event(window, || {
+        if !placed_by_compositor && tiling {
+            recenter_window(window);
+        }
+    });
+    // For X11 windows (native X11, or XWayland when the AppImage forces
+    // GDK_BACKEND=x11), bypass the compositor's focus-stealing
+    // prevention by bumping _NET_WM_USER_TIME before activation.
+    #[cfg(target_os = "linux")]
+    if platform::linux::transparency::window_is_x11() {
+        platform::linux::window_focus::activate_self();
+        platform::linux::window_focus::notify_shown();
+    }
+
+    commands::focus_launcher(window);
 }
 
 /// Center and scale a window to fit the current monitor.
@@ -613,12 +620,12 @@ fn main() {
     let single_instance =
         tauri_plugin_single_instance::Builder::<tauri::Wry>::new().callback(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window(consts::MAIN_WINDOW) {
-                LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
                 // The second launch's argv, discarded here until now. Parked
                 // before the show, which is what the frontend pulls on.
                 park_launch(&modes::parse_args(args.iter().skip(1)));
-                commands::show_launcher(&window);
-                commands::focus_launcher(&window);
+                // The hotkey's summon, not a bare show: an explicit
+                // `lookapp <mode>` races no auto-hide, so it never toggles.
+                show_window(&window);
             }
         });
     // The plugin keys its lock on tauri.conf.json's `identifier`, which dev and
@@ -736,7 +743,7 @@ fn main() {
             // startup visibility it has today.
             if matches!(launch, modes::Launch::Query { .. }) {
                 park_launch(&launch);
-                commands::show_launcher(&window);
+                show_window(&window);
             }
 
             Ok(())

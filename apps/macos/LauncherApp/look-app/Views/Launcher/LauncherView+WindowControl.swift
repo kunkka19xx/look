@@ -181,6 +181,23 @@ extension LauncherView {
         revealLauncherWindowIfHidden()
     }
 
+    /// Show for a `lookapp <mode>` delivery, from hidden or from the background.
+    ///
+    /// Never activates before capturing: `captureFrontmostAppForRestoreIfNeeded`
+    /// nils the pid when Look is already frontmost, and then Esc has nothing to
+    /// hand focus back to and the terminal you typed in never returns.
+    func revealLauncherWindowForLaunch() {
+        guard let window = launcherWindow(), window.isVisible else {
+            revealLauncherWindowIfHidden()
+            return
+        }
+        if pidToRestoreOnHide == nil {
+            captureFrontmostAppForRestoreIfNeeded()
+        }
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
     func revealLauncherWindowIfHidden() {
         guard let window = launcherWindow(), !window.isVisible else { return }
 
