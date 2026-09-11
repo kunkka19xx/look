@@ -542,11 +542,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const input = rest.slice(spaceIdx + 1);
         commands.enterById(cmdId);
         enterCommandMode();
-        const cmdInput = document.getElementById('cmd-input');
-        if (cmdInput && input) {
-            cmdInput.value = input;
-            cmdInput.dispatchEvent(new Event('input'));
-        }
+        // After enter(), which resets the panel's input.
+        commands.prefill(input);
         queryInput.value = '';
         return true;
     }
@@ -711,6 +708,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     function applyLaunchQuery(text) {
         if (!text) return;
         launchQueryAppliedAt = Date.now();
+        // A mode lands on whatever was left on screen last time. Everything
+        // that owns the content area comes down first, or the query renders
+        // behind it (macOS applyLaunchQuery does the same).
+        if (commands.isActive()) commands.exit();
+        if (settings.isActive()) settings.exit(contentArea, queryInput.parentElement);
+        keyboard.closeHelp();
         queryInput.value = text;
         // Through the listener, not straight to search: the prefix jump, the
         // layout swap out of the launchpad and the hint bar all hang off it.
