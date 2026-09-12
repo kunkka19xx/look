@@ -30,9 +30,11 @@ mod trash;
 mod weather;
 mod weburl;
 
+use look_engine::modes;
 #[cfg(target_os = "linux")]
 use platform::linux::gpu;
 use state::AppState;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
@@ -117,47 +119,54 @@ fn toggle_window(app_handle: &tauri::AppHandle) {
         // On GNOME X11, Focused(false) races with this handler -
         // auto-hide hides the window before we run, so is_visible
         // is false.  The 200ms guard prevents re-showing.
-        LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
-        FOCUSED_SINCE_SHOWN.store(false, Ordering::Relaxed);
-
-        // A layer surface is placed and stacked by the compositor; neither is
-        // ours to ask for.
-        #[cfg(target_os = "linux")]
-        let placed_by_compositor = platform::linux::layer_shell::is_active();
-        #[cfg(not(target_os = "linux"))]
-        let placed_by_compositor = false;
-
-        // Tiling WMs (i3, sway, Hyprland) ignore set_position on unmapped
-        // windows - they apply their own placement on map. So we must
-        // recenter AFTER show. Desktop environments (GNOME, KDE, …) work
-        // best with recenter BEFORE show to avoid a visible jump.
-        #[cfg(target_os = "linux")]
-        let tiling = platform::linux::wm::is_tiling_wm();
-        #[cfg(not(target_os = "linux"))]
-        let tiling = false;
-
-        if !placed_by_compositor {
-            if !tiling {
-                recenter_window(&window);
-            }
-            let _ = window.set_always_on_top(true);
-        }
-        commands::show_launcher_before_event(&window, || {
-            if !placed_by_compositor && tiling {
-                recenter_window(&window);
-            }
-        });
-        // For X11 windows (native X11, or XWayland when the AppImage forces
-        // GDK_BACKEND=x11), bypass the compositor's focus-stealing
-        // prevention by bumping _NET_WM_USER_TIME before activation.
-        #[cfg(target_os = "linux")]
-        if platform::linux::transparency::window_is_x11() {
-            platform::linux::window_focus::activate_self();
-            platform::linux::window_focus::notify_shown();
-        }
-
-        commands::focus_launcher(&window);
+        show_window(&window);
     }
+}
+
+/// Every summon goes through here. Placement, the X11 focus-stealing bypass and
+/// the focus call are one unit: a path that shows the window without them opens
+/// off-centre, or on top without the keyboard.
+fn show_window(window: &tauri::WebviewWindow) {
+    LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
+    FOCUSED_SINCE_SHOWN.store(false, Ordering::Relaxed);
+
+    // A layer surface is placed and stacked by the compositor; neither is
+    // ours to ask for.
+    #[cfg(target_os = "linux")]
+    let placed_by_compositor = platform::linux::layer_shell::is_active();
+    #[cfg(not(target_os = "linux"))]
+    let placed_by_compositor = false;
+
+    // Tiling WMs (i3, sway, Hyprland) ignore set_position on unmapped
+    // windows - they apply their own placement on map. So we must
+    // recenter AFTER show. Desktop environments (GNOME, KDE, …) work
+    // best with recenter BEFORE show to avoid a visible jump.
+    #[cfg(target_os = "linux")]
+    let tiling = platform::linux::wm::is_tiling_wm();
+    #[cfg(not(target_os = "linux"))]
+    let tiling = false;
+
+    if !placed_by_compositor {
+        if !tiling {
+            recenter_window(window);
+        }
+        let _ = window.set_always_on_top(true);
+    }
+    commands::show_launcher_before_event(window, || {
+        if !placed_by_compositor && tiling {
+            recenter_window(window);
+        }
+    });
+    // For X11 windows (native X11, or XWayland when the AppImage forces
+    // GDK_BACKEND=x11), bypass the compositor's focus-stealing
+    // prevention by bumping _NET_WM_USER_TIME before activation.
+    #[cfg(target_os = "linux")]
+    if platform::linux::transparency::window_is_x11() {
+        platform::linux::window_focus::activate_self();
+        platform::linux::window_focus::notify_shown();
+    }
+
+    commands::focus_launcher(window);
 }
 
 /// Center and scale a window to fit the current monitor.
@@ -546,12 +555,58 @@ fn focus_loss_means_dismiss() -> bool {
     !cfg!(target_os = "linux")
 }
 
+/// A launch query, parked for the frontend to pull.
+///
+/// Parked on every path rather than pushed: cold start cannot push at all (at
+/// `setup()` the webview is still booting, so an emitted event has no listener
+/// and Tauri does not buffer it), and on a warm launch a pushed event races
+/// `window-shown`, whose reset clears the query and whose `select()` leaves it
+/// selected for the next keystroke to replace. The frontend pulls after that
+/// reset, so the show always runs first.
+static PENDING_LAUNCH: Mutex<Option<String>> = Mutex::new(None);
+
+#[tauri::command]
+fn take_launch_query() -> Option<String> {
+    PENDING_LAUNCH
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+}
+
+/// Park before showing: the pull hangs off `window-shown`.
+fn park_launch(launch: &modes::Launch) {
+    if let modes::Launch::Query { text } = launch {
+        *PENDING_LAUNCH
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(text.clone());
+    }
+}
+
 fn main() {
     crash::install_panic_hook();
 
     if std::env::args().any(|a| a == "--version" || a == "-V") {
         println!("lookapp {}", env!("APP_VERSION"));
         return;
+    }
+
+    // Answered before the app starts, so asking what you can bind never costs
+    // a window.
+    let launch = modes::parse_args(std::env::args().skip(1));
+    match &launch {
+        modes::Launch::ListModes => {
+            print!("{}", modes::list_text());
+            return;
+        }
+        modes::Launch::UnknownMode(name) => {
+            eprintln!("lookapp: unknown mode \"{name}\"\n\n{}", modes::list_text());
+            std::process::exit(2);
+        }
+        modes::Launch::UnavailableMode(name) => {
+            eprintln!("lookapp: mode \"{name}\" is not available on this platform");
+            std::process::exit(2);
+        }
+        _ => {}
     }
 
     #[cfg(debug_assertions)]
@@ -562,14 +617,28 @@ fn main() {
 
     sync_autostart();
 
-    let mut builder = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    let single_instance =
+        tauri_plugin_single_instance::Builder::<tauri::Wry>::new().callback(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window(consts::MAIN_WINDOW) {
-                LAST_SHOWN_AT.store(now_ms(), Ordering::Relaxed);
-                commands::show_launcher(&window);
-                commands::focus_launcher(&window);
+                // The second launch's argv, discarded here until now. Parked
+                // before the show, which is what the frontend pulls on.
+                park_launch(&modes::parse_args(args.iter().skip(1)));
+                // The hotkey's summon, not a bare show: an explicit
+                // `lookapp <mode>` races no auto-hide, so it never toggles.
+                show_window(&window);
             }
-        }))
+        });
+    // The plugin keys its lock on tauri.conf.json's `identifier`, which dev and
+    // release share, so an installed release would swallow a dev build's argv
+    // (`setup_dev_env` separates the config and DB but not this). Only the debug
+    // name is set: release keeps the plugin default, leaving the identifier the
+    // single source of truth. Linux only - Windows derives its mutex from the
+    // identifier with no override, so there the release app has to be quit.
+    #[cfg(debug_assertions)]
+    let single_instance = single_instance.dbus_id("com.look.desktop.dev");
+
+    let mut builder = tauri::Builder::default()
+        .plugin(single_instance.build())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
         .manage(platform::IconCache::new());
@@ -670,6 +739,13 @@ fn main() {
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
             }
 
+            // Only when a mode was named: a normal launch keeps whatever
+            // startup visibility it has today.
+            if matches!(launch, modes::Launch::Query { .. }) {
+                park_launch(&launch);
+                show_window(&window);
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -684,6 +760,7 @@ fn main() {
             commands::force_index_refresh,
             commands::toggle_window,
             commands::hide_window,
+            take_launch_query,
             commands::confirm_hide,
             commands::set_blur_region,
             commands::quit_app,

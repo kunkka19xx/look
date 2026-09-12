@@ -104,6 +104,30 @@ make app-run-dev
 
 `make app-run-dev` (macOS) builds a local Debug bundle, installs `/Applications/Look Dev.app` with bundle id `noah-code.Look.Dev`, leaves the Homebrew `/Applications/Look.app` untouched, then launches `Look Dev` with `LOOK_CONFIG_PATH=$HOME/.look/config.dev`. On Windows there is no separate dev install; use `make app-run` (hot reload) or `make app-run-release`.
 
+`lookapp` is a symlink to the **installed** app (`scripts/install-look.sh`), so it always runs the release binary no matter what you just built. `make app-install-dev` installs `lookdev` beside it as the same handle for the dev build:
+
+```bash
+lookdev                 # launch it with the dev config
+lookdev clipboard       # open it in a mode
+lookdev --list-modes
+```
+
+Install it on its own with `make dev-cli`. It reads `LOOK_DEV_APP` and `LOOK_DEV_CONFIG` if you keep them elsewhere.
+
+On Linux there is no `lookdev`. The debug binary is the handle, and it already points at the dev config and database:
+
+```bash
+cd apps/linows
+nix develop -c cargo build --manifest-path src-tauri/Cargo.toml   # NixOS; elsewhere plain cargo build
+./src-tauri/target/debug/lookapp --list-modes    # prints and exits, no window
+./src-tauri/target/debug/lookapp clipboard       # cold start
+./src-tauri/target/debug/lookapp files report    # run again while it is up: the warm path
+```
+
+Both routes end at the same parked query (`take_launch_query`), but they reach it differently, so a mode is worth trying from cold and from a running instance. Under `cargo tauri dev` the arguments need two separators: `cargo tauri dev -- -- clipboard`.
+
+On Linux and Windows, a debug build separates its config and database (`setup_dev_env`) but shares `identifier` with the release build, and the single-instance plugin keys its lock on that. Debug builds therefore register under `com.look.desktop.dev` so a running release does not swallow a dev build's arguments (`lookapp <mode>`, see the README). That override is Linux-only: Windows derives its mutex from the identifier with no way to change it, so quit the installed app before testing a dev build there.
+
 Override the macOS dev config path:
 
 ```bash

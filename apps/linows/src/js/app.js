@@ -28,6 +28,7 @@ import { load } from './html-loader.js';
 import {
     onWindowShown,
     onWindowHidden,
+    takeLaunchQuery,
     confirmHide,
     onIndexReady,
     requestIndexRefresh,
@@ -100,6 +101,10 @@ const BANNER_DURATION_SHORT = 1.0;
 const BANNER_DURATION_MEDIUM = 1.2;
 const BANNER_DURATION_LONG = 1.5;
 const KILL_FEEDBACK_DELAY_MS = 300;
+// How long a just-applied launch mode outranks the retention reset. The
+// cold-start pull can resolve just before a `window-shown` lands, and the reset
+// would wipe exactly what was asked for.
+const LAUNCH_QUERY_GRACE_MS = 500;
 
 // Layout modes applied to #results-area when the AI card is visible.
 // Stacked: card capped above results in col 1.
@@ -537,11 +542,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const input = rest.slice(spaceIdx + 1);
         commands.enterById(cmdId);
         enterCommandMode();
-        const cmdInput = document.getElementById('cmd-input');
-        if (cmdInput && input) {
-            cmdInput.value = input;
-            cmdInput.dispatchEvent(new Event('input'));
-        }
+        // After enter(), which resets the panel's input.
+        commands.prefill(input);
         queryInput.value = '';
         return true;
     }
@@ -665,10 +667,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
+    let launchQueryAppliedAt = 0;
+
     // When the launcher is shown, optionally clear an expired query before the
     // usual focus/refresh/reveal pass runs.
     onWindowShown((event) => {
-        if (event.payload === true) {
+        if (event.payload === true && Date.now() - launchQueryAppliedAt >= LAUNCH_QUERY_GRACE_MS) {
             // Reuse the full "back to home" reset so query-owned UI like the
             // translate surface, preview visibility, and running-apps strip all
             // return to the normal empty-query state together.
@@ -694,7 +698,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         superactions.replayEnter();
         // Last: the reveal is the frame the rest of the cascade lands in.
         motion.playReveal();
+        // A launch mode waits here, after the reset and select() above: pushed
+        // any earlier it would be cleared or left selected.
+        takeLaunchQuery().then(applyLaunchQuery);
     });
+
+    // Launch modes: `lookapp clipboard` puts `c"` in the input and searches.
+    // The text only ever lands in the input, never acts.
+    function applyLaunchQuery(text) {
+        if (!text) return;
+        launchQueryAppliedAt = Date.now();
+        // A mode lands on whatever was left on screen last time. Everything
+        // that owns the content area comes down first, or the query renders
+        // behind it (macOS applyLaunchQuery does the same).
+        if (commands.isActive()) commands.exit();
+        if (settings.isActive()) settings.exit(contentArea, queryInput.parentElement);
+        keyboard.closeHelp();
+        queryInput.value = text;
+        // Through the listener, not straight to search: the prefix jump, the
+        // layout swap out of the launchpad and the hint bar all hang off it.
+        queryInput.dispatchEvent(new Event('input'));
+        // A `:cmd ` jump moved into the command panel and cleared the input.
+        if (queryInput.value !== text) return;
+        queryInput.focus();
+        // Caret at the end, not selected: a selected mode would be replaced by
+        // the first keystroke.
+        const end = text.length;
+        queryInput.setSelectionRange(end, end);
+        smoothcaret.refresh(queryInput);
+    }
+
+    // Cold start: the show ran before this frontend existed, so no
+    // window-shown pull is coming.
+    takeLaunchQuery().then(applyLaunchQuery);
 
     // Hold the launchpad at its entrance-start pose before hiding, so the stale
     // buffer the compositor presents on the next summon matches frame 0 instead

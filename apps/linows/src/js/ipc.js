@@ -334,6 +334,12 @@ export async function onWindowHidden(callback) {
     return listen('window-hidden', callback);
 }
 
+// Launch modes: the backend parks the query, both cold and warm, and the
+// window-shown handler pulls it.
+export async function takeLaunchQuery() {
+    return invoke('take_launch_query');
+}
+
 export async function getHealthIssues() {
     return invoke('get_health_issues');
 }

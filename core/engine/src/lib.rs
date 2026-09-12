@@ -4,6 +4,7 @@ pub mod config_path;
 pub mod index;
 pub mod launchpad;
 pub mod launchpad_values;
+pub mod modes;
 mod normalize;
 mod platform;
 mod query;

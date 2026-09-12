@@ -1,0 +1,27 @@
+#!/bin/sh
+# lookdev - the dev build's handle, the way `lookapp` is the installed one's.
+# `lookapp` symlinks into /Applications/Look.app, so it always runs the release
+# binary no matter what you just built. Installed by `make app-install-dev`.
+#
+#   lookdev                 launch it with the dev config
+#   lookdev clipboard       open it in a mode
+#   lookdev --list-modes
+set -eu
+
+APP="${LOOK_DEV_APP:-/Applications/Look Dev.app}"
+CONFIG="${LOOK_DEV_CONFIG:-$HOME/.look/config.dev}"
+
+if [ ! -d "$APP" ]; then
+    echo "lookdev: $APP is not installed. Run: make app-install-dev" >&2
+    exit 3
+fi
+
+# `-u LOOK_DB_PATH` matches DEV_OPEN_ENV in scripts/Makefile.mac: an inherited
+# path would point the dev build at the release database.
+if [ "$#" -eq 0 ]; then
+    exec env -u LOOK_DB_PATH LOOK_CONFIG_PATH="$CONFIG" open -a "$APP"
+fi
+
+# The binary, not `open --args`: LaunchServices would activate the running
+# instance instead of starting a process that can read the arguments.
+exec env -u LOOK_DB_PATH LOOK_CONFIG_PATH="$CONFIG" "$APP/Contents/MacOS/Look" "$@"
