@@ -136,6 +136,8 @@ enum AppConstants {
             static let folders = "d\""
             static let regex = "r\""
             static let clipboard = "c\""
+            // Copied images (see LauncherClipboardImageFeature).
+            static let clipboardImage = "ci\""
             // Recent files/folders, newest-activity first. Handled engine-side
             // (needs last_used/fs_modified timestamps); the app just sends it
             // through search and suppresses pinned injection (see LauncherSearchLogic).
@@ -206,6 +208,9 @@ enum AppConstants {
                 Entry(
                     prefix: QueryPrefix.clipboard, argHint: "word",
                     description: "Clipboard history search (recent text clips)"),
+                Entry(
+                    prefix: QueryPrefix.clipboardImage, argHint: "word",
+                    description: "Copied images, newest first"),
                 Entry(prefix: QueryPrefix.translate, argHint: "word", description: "Web translate (VI/EN/JA)"),
                 Entry(
                     prefix: QueryPrefix.translateWord, argHint: "word",
@@ -398,9 +403,14 @@ enum AppConstants {
             ]
         }
 
-        enum Clipboard {
+        /// `nonisolated`: read by the writer that stores a clip off the main
+        /// thread.
+        nonisolated enum Clipboard {
             static let resultIDPrefix = "clipboard:"
             static let resultPath = "clipboard://history"
+            /// The `kind` column's values. Must match core/storage.
+            static let textKind = "text"
+            static let imageKind = "image"
             // How many clips history keeps. `maxEntries` is the default/fallback used
             // when `clipboard_history_limit` in ~/.look/config is absent or out of the
             // [minEntries, maxEntriesLimit] range. See ClipboardHistoryStore.
@@ -421,6 +431,33 @@ enum AppConstants {
             static let nonFileBanner = "Clipboard items are not files"
             static let copiedBannerDuration = 1.2
             static let infoBannerDuration = 1.1
+        }
+
+        /// The `ci"` history. Shares rows and storage with Clipboard above;
+        /// only the capture limits and the labels differ.
+        nonisolated enum ClipboardImage {
+            static let resultIDPrefix = "clipimage:"
+            static let resultPath = "clipboard://images"
+            /// The fallback when `clipboard_image_limit` in ~/.look/config is
+            /// absent or out of range.
+            static let maxEntries = 20
+            static let minEntries = 5
+            static let maxEntriesLimit = 50
+            static let limitConfigKey = "clipboard_image_limit"
+            /// Past this a paste is not a clip worth keeping a copy of.
+            static let maxImageBytes = 20 * 1024 * 1024
+            /// Bytes say nothing about what they decode to, at four bytes a
+            /// pixel. Clears an 8K screenshot and bounds the decode.
+            static let maxPixelCount = 64_000_000
+            /// Longest edge of the row thumbnail.
+            static let thumbnailMaxPixel: CGFloat = 128
+            static let fileExtension = "png"
+            /// Core sweeps by hash prefix, so any suffix here is safe.
+            static let thumbnailSuffix = ".thumb"
+            static let unnamedLabelPrefix = "Image from"
+            static let unnamedLabelFallbackSource = "screen"
+            static let copiedBanner = "Copied image"
+            static let deletedBanner = "Image removed from history"
         }
 
         enum Help {

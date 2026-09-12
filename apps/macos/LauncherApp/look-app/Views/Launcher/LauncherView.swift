@@ -399,6 +399,10 @@ struct LauncherView: View {
         LauncherClipboardFeature.isClipboardQuery(query)
     }
 
+    var isClipboardImageQuery: Bool {
+        LauncherClipboardImageFeature.isClipboardImageQuery(query)
+    }
+
     var isRecentQuery: Bool {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
@@ -488,6 +492,15 @@ struct LauncherView: View {
         }
     }
 
+    var clipboardImageResults: [LauncherResult] {
+        guard let term = LauncherClipboardImageFeature.searchTerm(from: query) else { return [] }
+
+        return clipboardStore.searchImages(term).map { entry in
+            LauncherClipboardImageFeature.makeResult(
+                entry: entry, dateFormatter: Self.clipboardSubtitleDateFormatter)
+        }
+    }
+
     /// Google autocomplete rows, appended after the engine results. Built by
     /// hand like `prefixSuggestionResults`; `openSelectedApp` recognises the id
     /// prefix and runs a web search instead of opening a file.
@@ -513,6 +526,8 @@ struct LauncherView: View {
         if isInLevel { return levelResults }
         if isPrefixSuggestionQuery { return prefixSuggestionResults }
         if isCommandSuggestionQuery { return commandSuggestionResults }
+        // Before the text history: `ci"` starts with `c`, but not with `c"`.
+        if isClipboardImageQuery { return clipboardImageResults }
         if isClipboardQuery { return clipboardResults }
         if isProcessQuery { return processResults }
         // Recent URLs interleave with local results by frecency; web-search rows
@@ -566,8 +581,8 @@ struct LauncherView: View {
     /// the disjunction out by hand, and they had already drifted apart. A new
     /// mode belongs HERE, not in each caller.
     var usesOwnResultPanel: Bool {
-        isInLevel || isClipboardQuery || isPrefixSuggestionQuery || isCommandSuggestionQuery
-            || isTranslationQuery || isProcessQuery
+        isInLevel || isClipboardQuery || isClipboardImageQuery || isPrefixSuggestionQuery
+            || isCommandSuggestionQuery || isTranslationQuery || isProcessQuery
     }
 
     var isTranslationQuery: Bool {
@@ -668,6 +683,10 @@ struct LauncherView: View {
 
         if isCommandSuggestionQuery {
             return ["Enter run command", "Up/Down move", "Esc clear"]
+        }
+
+        if isClipboardImageQuery {
+            return ["Enter copy", "Cmd+D remove"]
         }
 
         if isClipboardQuery {
@@ -956,6 +975,9 @@ struct LauncherView: View {
     private var notificationHandlers: some View {
         Color.clear
         .onReceive(clipboardStore.$entries) { _ in
+            refreshClipboardSelectionIfNeeded()
+        }
+        .onReceive(clipboardStore.$imageEntries) { _ in
             refreshClipboardSelectionIfNeeded()
         }
         .onChange(of: commandInput) { _, _ in
@@ -1339,17 +1361,18 @@ struct LauncherView: View {
                         themeStore: themeStore
                     )
                 }
-            } else if isClipboardQuery && displayedResults.isEmpty {
+            } else if (isClipboardQuery || isClipboardImageQuery) && displayedResults.isEmpty {
                 // The empty clipboard screen is naturally two columns (history /
                 // how-to), so float it as the same two-card grid as the results.
+                let copy: ClipboardEmptyStateCopy = isClipboardImageQuery ? .images : .text
                 if showsFloatingCards {
                     twoPaneGrid(hasRight: true) {
-                        ClipboardEmptyInfoView(themeStore: themeStore)
+                        ClipboardEmptyInfoView(themeStore: themeStore, copy: copy)
                     } right: {
-                        ClipboardEmptyHelpView(themeStore: themeStore)
+                        ClipboardEmptyHelpView(themeStore: themeStore, copy: copy)
                     }
                 } else {
-                    ClipboardEmptyStateView(themeStore: themeStore)
+                    ClipboardEmptyStateView(themeStore: themeStore, copy: copy)
                 }
             } else if isRecentQuery && displayedResults.isEmpty {
                 floatingPanel { RecentEmptyStateView(themeStore: themeStore) }

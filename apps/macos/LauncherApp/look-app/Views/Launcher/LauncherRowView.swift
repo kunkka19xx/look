@@ -89,6 +89,13 @@ struct LauncherRowView: View {
         }
 
         if result.kind == .clipboard {
+            // A copied image shows itself. A generic icon would leave the user
+            // picking from a column of identical rows named after their source.
+            if let thumbnailPath = result.clipboardImageThumbnailPath,
+                let thumbnail = RowIconCache.thumbnail(forFile: thumbnailPath)
+            {
+                return thumbnail
+            }
             return RowIconCache.image(key: "symbol:doc.on.clipboard") {
                 NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
                     ?? NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)
@@ -159,7 +166,7 @@ struct LauncherRowView: View {
         case .folder:
             return "Folder"
         case .clipboard:
-            return "Clipboard"
+            return result.isClipboardImage ? "Image" : "Clipboard"
         case .process:
             return "Process"
         case .action:

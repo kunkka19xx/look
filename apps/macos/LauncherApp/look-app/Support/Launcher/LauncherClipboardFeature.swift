@@ -2,17 +2,11 @@ import Foundation
 
 enum LauncherClipboardFeature {
     static func isClipboardQuery(_ query: String) -> Bool {
-        query
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .hasPrefix(AppConstants.Launcher.QueryPrefix.clipboard)
+        ClipboardQueryPrefix.text.matches(query)
     }
 
     static func searchTerm(from query: String) -> String? {
-        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let prefix = AppConstants.Launcher.QueryPrefix.clipboard
-        guard normalized.lowercased().hasPrefix(prefix) else { return nil }
-        return String(normalized.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        ClipboardQueryPrefix.text.searchTerm(in: query)
     }
 
     static func makeResult(entry: ClipboardHistoryEntry, dateFormatter: DateFormatter) -> LauncherResult {

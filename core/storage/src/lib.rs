@@ -18,6 +18,12 @@ const MAX_URL_HISTORY_ROWS: usize = 500;
 /// A recall corpus, not a paste ring - but still bounded: this is text the
 /// user copied.
 pub const MAX_CLIPBOARD_ROWS: usize = 5_000;
+/// Capped far lower than text, and separately: each row is megabytes on disk,
+/// and a screenshot burst must not evict text under a shared cap.
+pub const MAX_CLIPBOARD_IMAGE_ROWS: usize = 50;
+
+pub const CLIPBOARD_KIND_TEXT: &str = "text";
+pub const CLIPBOARD_KIND_IMAGE: &str = "image";
 
 const SETTINGS_KEY_WEB_SEARCH_ENABLED: &str = "web_search_enabled";
 const SETTINGS_KEY_WEB_SEARCH_ENGINE: &str = "web_search_engine";
@@ -89,6 +95,8 @@ pub struct ClipboardEntry {
     pub id: i64,
     pub content: String,
     pub kind: String,
+    /// For an image, the hash of the pixels, which also names the file.
+    pub content_hash: String,
     pub app_bundle_id: Option<String>,
     pub copied_at_unix_s: i64,
 }
@@ -519,6 +527,32 @@ impl SqliteStore {
     pub fn record_clipboard_entry(
         &self,
         content: &str,
+        app_bundle_id: Option<&str>,
+    ) -> StorageResult<Option<i64>> {
+        let hash = content_hash(content);
+        self.insert_clip(content, &hash, CLIPBOARD_KIND_TEXT, app_bundle_id)
+    }
+
+    /// `label` is what the row is listed and searched by; `image_hash` is the
+    /// identity, so the same picture under a new name still lifts one row. The
+    /// bytes are the shell's to write, under that hash.
+    pub fn record_clipboard_image(
+        &self,
+        label: &str,
+        image_hash: &str,
+        app_bundle_id: Option<&str>,
+    ) -> StorageResult<Option<i64>> {
+        if image_hash.trim().is_empty() {
+            return Ok(None);
+        }
+        self.insert_clip(label, image_hash, CLIPBOARD_KIND_IMAGE, app_bundle_id)
+    }
+
+    /// The hash is passed in: an image hashes bytes this layer never sees.
+    fn insert_clip(
+        &self,
+        content: &str,
+        hash: &str,
         kind: &str,
         app_bundle_id: Option<&str>,
     ) -> StorageResult<Option<i64>> {
@@ -526,7 +560,6 @@ impl SqliteStore {
             return Ok(None);
         }
         let now = current_unix_s()?;
-        let hash = content_hash(content);
         let tx = self.conn.unchecked_transaction()?;
         // Replaced, not updated: an in-place update keeps the old id, and
         // within the same second the id breaks the recency tie - so a re-copy
@@ -550,16 +583,23 @@ impl SqliteStore {
             params![content, hash, kind, app, now],
         )?;
         let row_id = tx.last_insert_rowid();
+        let cap = if kind == CLIPBOARD_KIND_IMAGE {
+            MAX_CLIPBOARD_IMAGE_ROWS
+        } else {
+            MAX_CLIPBOARD_ROWS
+        };
         // Only the overflow: `WHERE id NOT IN (SELECT ... LIMIT cap)` would
         // scan the whole table on every copy, for nothing until the 5,001st.
+        // Per kind, so the two histories cannot evict each other.
         tx.execute(
             "DELETE FROM clipboard_entries
-             WHERE (copied_at_unix_s, id) < (
+             WHERE kind = ?1 AND (copied_at_unix_s, id) < (
                SELECT copied_at_unix_s, id FROM clipboard_entries
+               WHERE kind = ?1
                ORDER BY copied_at_unix_s DESC, id DESC
-               LIMIT 1 OFFSET ?1
+               LIMIT 1 OFFSET ?2
              )",
-            params![MAX_CLIPBOARD_ROWS as i64 - 1],
+            params![kind, cap as i64 - 1],
         )?;
         tx.commit()?;
         Ok(Some(row_id))
@@ -570,6 +610,7 @@ impl SqliteStore {
     /// This is the keyword tier; semantic recall ranks the same rows later.
     pub fn clipboard_entries(
         &self,
+        kind: &str,
         query: &str,
         limit: usize,
     ) -> StorageResult<Vec<ClipboardEntry>> {
@@ -580,28 +621,39 @@ impl SqliteStore {
                 id: row.get(0)?,
                 content: row.get(1)?,
                 kind: row.get(2)?,
-                app_bundle_id: row.get(3)?,
-                copied_at_unix_s: row.get(4)?,
+                content_hash: row.get(3)?,
+                app_bundle_id: row.get(4)?,
+                copied_at_unix_s: row.get(5)?,
             })
         };
-        let select = "SELECT id, content, kind, app_bundle_id, copied_at_unix_s
-                      FROM clipboard_entries";
+        let select = "SELECT id, content, kind, content_hash, app_bundle_id, copied_at_unix_s
+                      FROM clipboard_entries WHERE kind = ?1";
         let rows = if query.is_empty() {
             let mut stmt = self.conn.prepare(&format!(
-                "{select} ORDER BY copied_at_unix_s DESC, id DESC LIMIT ?1"
+                "{select} ORDER BY copied_at_unix_s DESC, id DESC LIMIT ?2"
             ))?;
-            let mapped = stmt.query_map(params![limit], map_row)?;
+            let mapped = stmt.query_map(params![kind, limit], map_row)?;
             mapped.collect::<rusqlite::Result<Vec<_>>>()?
         } else {
             let pattern = format!("%{}%", like_escape(query));
             let mut stmt = self.conn.prepare(&format!(
-                "{select} WHERE content LIKE ?1 ESCAPE '\\'
-                 ORDER BY copied_at_unix_s DESC, id DESC LIMIT ?2"
+                "{select} AND content LIKE ?2 ESCAPE '\\'
+                 ORDER BY copied_at_unix_s DESC, id DESC LIMIT ?3"
             ))?;
-            let mapped = stmt.query_map(params![pattern, limit], map_row)?;
+            let mapped = stmt.query_map(params![kind, pattern, limit], map_row)?;
             mapped.collect::<rusqlite::Result<Vec<_>>>()?
         };
         Ok(rows)
+    }
+
+    /// What the shell sweeps its image directory against: a file with no hash
+    /// here is bytes the user believes they deleted.
+    pub fn clipboard_image_hashes(&self) -> StorageResult<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT content_hash FROM clipboard_entries WHERE kind = ?1")?;
+        let mapped = stmt.query_map(params![CLIPBOARD_KIND_IMAGE], |row| row.get(0))?;
+        Ok(mapped.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     pub fn delete_clipboard_entry(&self, id: i64) -> StorageResult<bool> {
@@ -1027,57 +1079,70 @@ mod tests {
     fn clipboard_history_dedupes_orders_and_stays_bounded() {
         let store = SqliteStore::open_in_memory().unwrap();
         store
-            .record_clipboard_entry("first clip", "text", Some("com.apple.Safari"))
+            .record_clipboard_entry("first clip", Some("com.apple.Safari"))
             .unwrap();
-        store
-            .record_clipboard_entry("second clip", "text", None)
-            .unwrap();
+        store.record_clipboard_entry("second clip", None).unwrap();
         // Re-copying moves the row to the top instead of adding a duplicate.
-        store
-            .record_clipboard_entry("first clip", "text", None)
-            .unwrap();
+        store.record_clipboard_entry("first clip", None).unwrap();
 
-        let all = store.clipboard_entries("", 10).unwrap();
+        let all = store
+            .clipboard_entries(CLIPBOARD_KIND_TEXT, "", 10)
+            .unwrap();
         assert_eq!(all.len(), 2);
         assert_eq!(all[0].content, "first clip");
         // The source app is kept from the first capture rather than nulled.
         assert_eq!(all[0].app_bundle_id.as_deref(), Some("com.apple.Safari"));
 
         // Substring search, case-insensitive, newest first.
-        let found = store.clipboard_entries("SECOND", 10).unwrap();
+        let found = store
+            .clipboard_entries(CLIPBOARD_KIND_TEXT, "SECOND", 10)
+            .unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].content, "second clip");
         assert!(
             store
-                .clipboard_entries("nothing here", 10)
+                .clipboard_entries(CLIPBOARD_KIND_TEXT, "nothing here", 10)
                 .unwrap()
                 .is_empty()
         );
 
         // Empty and whitespace-only clips are not worth remembering.
-        store.record_clipboard_entry("   ", "text", None).unwrap();
-        assert_eq!(store.clipboard_entries("", 10).unwrap().len(), 2);
+        store.record_clipboard_entry("   ", None).unwrap();
+        assert_eq!(
+            store
+                .clipboard_entries(CLIPBOARD_KIND_TEXT, "", 10)
+                .unwrap()
+                .len(),
+            2
+        );
 
         // The row id comes back from record, so a freshly captured clip has a
         // handle to delete by - without it a "deleted" clip returns on the
         // next launch.
         let fresh = store
-            .record_clipboard_entry("third clip", "text", None)
+            .record_clipboard_entry("third clip", None)
             .unwrap()
             .expect("row id");
         assert!(store.delete_clipboard_entry(fresh).unwrap());
-        assert!(store.clipboard_entries("third", 10).unwrap().is_empty());
-        // Nothing stored means no id to hand back.
-        assert_eq!(
-            store.record_clipboard_entry("  ", "text", None).unwrap(),
-            None
+        assert!(
+            store
+                .clipboard_entries(CLIPBOARD_KIND_TEXT, "third", 10)
+                .unwrap()
+                .is_empty()
         );
+        // Nothing stored means no id to hand back.
+        assert_eq!(store.record_clipboard_entry("  ", None).unwrap(), None);
 
         let id = all[0].id;
         assert!(store.delete_clipboard_entry(id).unwrap());
         assert!(!store.delete_clipboard_entry(id).unwrap());
         assert_eq!(store.clear_clipboard_entries().unwrap(), 1);
-        assert!(store.clipboard_entries("", 10).unwrap().is_empty());
+        assert!(
+            store
+                .clipboard_entries(CLIPBOARD_KIND_TEXT, "", 10)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1085,34 +1150,128 @@ mod tests {
         let store = SqliteStore::open_in_memory().unwrap();
         for i in 0..(MAX_CLIPBOARD_ROWS + 25) {
             store
-                .record_clipboard_entry(&format!("clip {i}"), "text", None)
+                .record_clipboard_entry(&format!("clip {i}"), None)
                 .unwrap();
         }
         let all = store
-            .clipboard_entries("", MAX_CLIPBOARD_ROWS + 100)
+            .clipboard_entries(CLIPBOARD_KIND_TEXT, "", MAX_CLIPBOARD_ROWS + 100)
             .unwrap();
         assert_eq!(all.len(), MAX_CLIPBOARD_ROWS);
         // The oldest went, not the newest: this is a recall corpus.
-        assert!(store.clipboard_entries("clip 0", 10).unwrap().is_empty());
+        assert!(
+            store
+                .clipboard_entries(CLIPBOARD_KIND_TEXT, "clip 0", 10)
+                .unwrap()
+                .is_empty()
+        );
         assert!(
             !store
-                .clipboard_entries(&format!("clip {}", MAX_CLIPBOARD_ROWS + 24), 10)
+                .clipboard_entries(
+                    CLIPBOARD_KIND_TEXT,
+                    &format!("clip {}", MAX_CLIPBOARD_ROWS + 24),
+                    10
+                )
                 .unwrap()
                 .is_empty()
         );
     }
 
     #[test]
-    fn a_typed_wildcard_is_searched_literally() {
+    fn image_clips_and_text_clips_cannot_see_each_other() {
+        let store = SqliteStore::open_in_memory().unwrap();
+        store.record_clipboard_entry("a note", None).unwrap();
+        store
+            .record_clipboard_image("Screenshot.png", "aaaa", Some("com.apple.Safari"))
+            .unwrap();
+
+        let text = store
+            .clipboard_entries(CLIPBOARD_KIND_TEXT, "", 10)
+            .unwrap();
+        assert_eq!(text.len(), 1);
+        assert_eq!(text[0].content, "a note");
+
+        let images = store
+            .clipboard_entries(CLIPBOARD_KIND_IMAGE, "", 10)
+            .unwrap();
+        assert_eq!(images.len(), 1);
+        // The path to the bytes is rebuilt from this.
+        assert_eq!(images[0].content_hash, "aaaa");
+        assert_eq!(images[0].app_bundle_id.as_deref(), Some("com.apple.Safari"));
+
+        // The label is what search matches, since the content is a name.
+        assert_eq!(
+            store
+                .clipboard_entries(CLIPBOARD_KIND_IMAGE, "screenshot", 10)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(store.clipboard_image_hashes().unwrap(), vec!["aaaa"]);
+    }
+
+    #[test]
+    fn re_copying_an_image_lifts_the_row_it_already_has() {
         let store = SqliteStore::open_in_memory().unwrap();
         store
-            .record_clipboard_entry("100% done", "text", None)
+            .record_clipboard_image("Screenshot.png", "aaaa", None)
             .unwrap();
         store
-            .record_clipboard_entry("nothing special", "text", None)
+            .record_clipboard_image("Other.png", "bbbb", None)
+            .unwrap();
+        // Same pixels, different name: one row, back on top.
+        store
+            .record_clipboard_image("Screenshot copy.png", "aaaa", None)
+            .unwrap();
+
+        let images = store
+            .clipboard_entries(CLIPBOARD_KIND_IMAGE, "", 10)
+            .unwrap();
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0].content, "Screenshot copy.png");
+
+        // No bytes, no row: the hash is the whole identity of an image clip.
+        assert_eq!(
+            store
+                .record_clipboard_image("Empty.png", "  ", None)
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn image_pruning_is_capped_separately_from_text() {
+        let store = SqliteStore::open_in_memory().unwrap();
+        store.record_clipboard_entry("a note", None).unwrap();
+        for i in 0..(MAX_CLIPBOARD_IMAGE_ROWS + 5) {
+            store
+                .record_clipboard_image(&format!("shot {i}.png"), &format!("hash{i}"), None)
+                .unwrap();
+        }
+        let images = store
+            .clipboard_entries(CLIPBOARD_KIND_IMAGE, "", MAX_CLIPBOARD_IMAGE_ROWS + 100)
+            .unwrap();
+        assert_eq!(images.len(), MAX_CLIPBOARD_IMAGE_ROWS);
+        // A burst of screenshots must not evict the text the user still wants.
+        assert_eq!(
+            store
+                .clipboard_entries(CLIPBOARD_KIND_TEXT, "", 10)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_typed_wildcard_is_searched_literally() {
+        let store = SqliteStore::open_in_memory().unwrap();
+        store.record_clipboard_entry("100% done", None).unwrap();
+        store
+            .record_clipboard_entry("nothing special", None)
             .unwrap();
         // Without escaping, "%" would match every row.
-        let found = store.clipboard_entries("100%", 10).unwrap();
+        let found = store
+            .clipboard_entries(CLIPBOARD_KIND_TEXT, "100%", 10)
+            .unwrap();
         assert_eq!(found.len(), 1);
     }
 
