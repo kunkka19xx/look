@@ -157,9 +157,9 @@ fn default_config_contents() -> String {
     );
 
     out.push_str(
-        "\n# Automatic update at startup: 0 = disabled, 1 = enabled (default).\n\
+        "\n# Automatic update at startup: 0 = disabled, 1 = enabled (opt-in).\n\
          # Manual Check/Update stays available. Windows NSIS/Scoop only for now.\n\
-         auto_update_enable=1\n",
+         auto_update_enable=0\n",
     );
 
     out
@@ -181,8 +181,8 @@ fn parse_auto_update_enabled(contents: &str) -> bool {
             (key.trim() == "auto_update_enable").then_some(value.trim())
         })
         .next_back();
-    // Missing or invalid values preserve the existing enabled behavior.
-    value != Some("0")
+    // Missing or invalid values keep automatic updates disabled by default.
+    value == Some("1")
 }
 
 /// Re-exported, not repeated: a second name is a second file.
@@ -309,11 +309,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reset_config_enables_self_update_by_default() {
+    fn reset_config_disables_self_update_by_default() {
         let contents = default_config_contents();
 
-        assert!(contents.lines().any(|line| line == "auto_update_enable=1"));
-        assert!(parse_auto_update_enabled(&contents));
+        assert!(contents.lines().any(|line| line == "auto_update_enable=0"));
+        assert!(!parse_auto_update_enabled(&contents));
     }
 
     #[test]
@@ -329,7 +329,7 @@ mod tests {
             "auto_update_enable=2",
             "auto_update_enable=false",
         ] {
-            assert!(parse_auto_update_enabled(contents), "{contents:?}");
+            assert!(!parse_auto_update_enabled(contents), "{contents:?}");
         }
         assert!(!parse_auto_update_enabled(
             "auto_update_enable=1\nauto_update_enable=0"

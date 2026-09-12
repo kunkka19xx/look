@@ -155,13 +155,16 @@ fn build_scoop_helper_script(current_pid: u32, exe_path: &Path, work_dir: &Path)
          $ExePath = '{exe_path}'\n\
          $LogPath = Join-Path '{work_dir}' 'update-error.log'\n\
          try {{\n\
+           Write-Host '[Look updater] Waiting for Look to close...'\n\
            Wait-Process -Id {current_pid} -ErrorAction SilentlyContinue\n\
            Start-Sleep -Milliseconds 350\n\
+           Write-Host '[Look updater] Running: scoop update look'\n\
            $OldHash = (Get-FileHash -Path $ExePath -Algorithm SHA256).Hash\n\
            $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', \"scoop update look; if (-not `$?) {{ exit 1 }}\") -NoNewWindow -PassThru -Wait\n\
            if ($proc.ExitCode -ne 0) {{ throw \"scoop update look exited with code $($proc.ExitCode)\" }}\n\
            if (-not (Test-Path $ExePath)) {{ throw 'Updated Look executable not found' }}\n\
            if ((Get-FileHash -Path $ExePath -Algorithm SHA256).Hash -eq $OldHash) {{ throw 'Scoop did not install a newer Look version' }}\n\
+           Write-Host '[Look updater] Update complete. Starting Look...'\n\
            Start-Process -FilePath $ExePath | Out-Null\n\
          }} catch {{\n\
            \"Scoop update failed. Check your Scoop. $($_.Exception.Message)\" | Out-File -FilePath $LogPath -Encoding utf8\n\
@@ -200,10 +203,13 @@ fn build_helper_script(
     script.push_str("$LogPath = Join-Path $WorkDir 'update-error.log'\n");
     script.push_str("try {\n");
     script.push_str("  if ($CurrentPid -gt 0) {\n");
+    script.push_str("    Write-Host '[Look updater] Waiting for Look to close...'\n");
     script.push_str("    Wait-Process -Id $CurrentPid -ErrorAction SilentlyContinue\n");
     script.push_str("    Start-Sleep -Milliseconds 350\n");
     script.push_str("  }\n");
+    script.push_str("  Write-Host '[Look updater] Downloading installer...'\n");
     script.push_str("  Invoke-WebRequest -Uri \"$BaseUrl/$SetupFileName\" -OutFile $SetupPath -UseBasicParsing -TimeoutSec 300\n");
+    script.push_str("  Write-Host '[Look updater] Downloading checksums...'\n");
     script.push_str("  Invoke-WebRequest -Uri \"$BaseUrl/$ChecksumsFileName\" -OutFile $ChecksumsPath -UseBasicParsing -TimeoutSec 60\n");
     script.push_str("  $expected = $null\n");
     script.push_str("  foreach ($line in Get-Content $ChecksumsPath) {\n");
@@ -220,15 +226,18 @@ fn build_helper_script(
     script.push_str("  if ([string]::IsNullOrWhiteSpace($expected)) {\n");
     script.push_str("    throw \"Checksums file has no entry for '$SetupFileName'.\"\n");
     script.push_str("  }\n");
+    script.push_str("  Write-Host '[Look updater] Verifying installer checksum...'\n");
     script
         .push_str("  $actual = (Get-FileHash -Path $SetupPath -Algorithm SHA256).Hash.ToLower()\n");
     script.push_str("  if ($actual -ne $expected) {\n");
     script.push_str("    throw \"SHA256 mismatch. expected=$expected actual=$actual\"\n");
     script.push_str("  }\n");
+    script.push_str("  Write-Host '[Look updater] Installing update...'\n");
     script.push_str("  $proc = Start-Process -FilePath $SetupPath -ArgumentList @('/S', \"/D=$InstallDir\") -PassThru -Wait\n");
     script.push_str("  if ($proc.ExitCode -ne 0) {\n");
     script.push_str("    throw \"Installer exited with code $($proc.ExitCode)\"\n");
     script.push_str("  }\n");
+    script.push_str("  Write-Host '[Look updater] Update complete. Starting Look...'\n");
     script.push_str("  if (Test-Path $ExePath) {\n");
     script.push_str("    Start-Process -FilePath $ExePath | Out-Null\n");
     script.push_str("  }\n");
