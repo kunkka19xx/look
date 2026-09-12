@@ -126,10 +126,9 @@ final class ClipboardHistoryStore: ObservableObject {
     /// Bumped by `clearHistory`, so a capture that raced ahead of the clear can
     /// tell that the list it was joining is gone.
     private var historyGeneration = 0
-    /// Every write runs after the one submitted before it. Actor isolation
-    /// gives the writer mutual exclusion, not ordering: two tasks created
-    /// independently can reach it either way round, so a copy could be stored
-    /// after the clear meant to erase it, or erased by a clear it preceded.
+    /// Every write runs after the one before it. Actor isolation gives mutual
+    /// exclusion, not ordering: two tasks created independently reach the
+    /// writer either way round.
     private var writeChain: Task<Void, Never>?
     private let maxStoredCharacters = AppConstants.Launcher.Clipboard.maxStoredCharacters
 
@@ -161,8 +160,6 @@ final class ClipboardHistoryStore: ObservableObject {
         rows.removeLast(rows.count - limit)
     }
 
-    /// Submission order is the main actor's, and so deterministic; what follows
-    /// it would not be (see `writeChain`).
     private func enqueueWrite(_ work: @escaping @Sendable () async -> Void) {
         let previous = writeChain
         writeChain = Task {
@@ -242,6 +239,7 @@ final class ClipboardHistoryStore: ObservableObject {
     private func loadPersistedHistory() {
         let limit = maxEntries
         let imageLimit = maxImageEntries
+        let generation = historyGeneration
         Task { [weak self] in
             let stored = await Task.detached(priority: .utility) {
                 (
@@ -252,7 +250,7 @@ final class ClipboardHistoryStore: ObservableObject {
                     ).compactMap(Self.restoredImageEntry)
                 )
             }.value
-            guard let self else { return }
+            guard let self, generation == self.historyGeneration else { return }
             if self.entries.isEmpty {
                 self.entries = stored.text.map {
                     ClipboardHistoryEntry(
