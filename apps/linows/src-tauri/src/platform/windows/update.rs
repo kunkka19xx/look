@@ -84,7 +84,13 @@ fn detect_install_method_for_path(path: &Path) -> InstallMethod {
     if lower.contains("\\scoop\\apps\\look\\") {
         return InstallMethod::Scoop;
     }
-    if lower.contains("\\appdata\\local\\look\\") {
+    // Tauri's currentUser bundle defaults to %LOCALAPPDATA%\Look, while the
+    // install script historically passes %LOCALAPPDATA%\Programs\Look via
+    // NSIS /D. Accept both paths so either supported NSIS entry point is
+    // routed to the installer updater.
+    if lower.contains("\\appdata\\local\\look\\")
+        || lower.contains("\\appdata\\local\\programs\\look\\")
+    {
         return InstallMethod::Nsis;
     }
     InstallMethod::Unknown
@@ -301,6 +307,12 @@ mod tests {
         assert_eq!(
             detect_install_method_for_path(Path::new(
                 r"C:\Users\me\AppData\Local\Look\lookapp.exe"
+            )),
+            InstallMethod::Nsis
+        );
+        assert_eq!(
+            detect_install_method_for_path(Path::new(
+                r"C:\Users\me\AppData\Local\Programs\Look\lookapp.exe"
             )),
             InstallMethod::Nsis
         );
