@@ -473,9 +473,8 @@ struct HintBar: View {
     }
 }
 
-/// What an empty clipboard screen says. `c"` and `ci"` share the layout and
-/// differ only in wording, so the words travel as a value rather than as a
-/// second copy of the views.
+/// The two histories share the empty screen's layout and differ only in
+/// wording, so the words travel as a value rather than a second copy of it.
 struct ClipboardEmptyStateCopy {
     let symbol: String
     let title: String

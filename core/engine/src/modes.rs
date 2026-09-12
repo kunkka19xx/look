@@ -366,8 +366,7 @@ mod tests {
         assert_eq!(resolve("cb").unwrap().name, "clipboard");
     }
 
-    /// The image history is its own mode, not a spelling of the text one: the
-    /// two lists cannot mix, so neither can the names that open them.
+    /// The two lists cannot mix, so neither can the names that open them.
     #[test]
     fn copied_images_resolve_to_their_own_mode() {
         assert_eq!(resolve("clipboard-image").unwrap().name, "clipboard-image");
@@ -541,8 +540,7 @@ mod tests {
         assert_eq!(resolve("processes").unwrap().platforms, Platforms::All);
         assert_eq!(resolve("dictionary").unwrap().platforms, Platforms::MacOnly);
         assert_eq!(resolve("ai").unwrap().platforms, Platforms::MacOnly);
-        // linows keeps clipboard history in its own JSON store, which has no
-        // image path, so it must not advertise `ci"`.
+        // linows keeps clipboard history in its own store, with no image path.
         assert_eq!(
             resolve("clipboard-image").unwrap().platforms,
             Platforms::MacOnly

@@ -1,11 +1,8 @@
 import Foundation
 
-/// The `ci"` screen: copied images, listed newest first.
-///
-/// A sibling of LauncherClipboardFeature rather than a branch inside it. The
-/// two share their storage but nothing else: text rows are searched by content
-/// and measured in lines, image rows are searched by name and drawn as
-/// pictures.
+/// The `ci"` screen. A sibling of LauncherClipboardFeature, not a branch in it:
+/// the two share storage but nothing else, since text rows are searched by
+/// content and measured in lines, image rows by name and drawn as pictures.
 enum LauncherClipboardImageFeature {
     static func isClipboardImageQuery(_ query: String) -> Bool {
         ClipboardQueryPrefix.image.matches(query)
@@ -40,8 +37,7 @@ enum LauncherClipboardImageFeature {
         return result
     }
 
-    /// The image hash a row id carries, or nil when the id belongs to some
-    /// other row. The delete and copy handlers get nothing but the id.
+    /// The image hash a row id carries, or nil when the id is another row's.
     static func entryID(fromResultID resultID: String) -> String? {
         let idPrefix = AppConstants.Launcher.ClipboardImage.resultIDPrefix
         guard resultID.hasPrefix(idPrefix) else { return nil }

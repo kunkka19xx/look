@@ -678,12 +678,8 @@ struct ResultPreviewView: View {
         }
     }
 
-    /// Icon, what the clip is, and the delete affordance. Shared by the text
-    /// and image panels: the two differ below this line, not at it.
-    ///
-    /// The capture time belongs to the InfoRow at the foot of both panels, and
-    /// only there. Repeated up here it pushed a long title onto a second line
-    /// to say what the panel already said.
+    /// Shared by the text and image panels: the two differ below this line, not
+    /// at it. The capture time lives in the InfoRow at the foot and only there.
     private func clipboardPreviewHeader(icon: NSImage, title: String) -> some View {
         HStack(spacing: 10) {
             Image(nsImage: icon)
@@ -698,9 +694,8 @@ struct ResultPreviewView: View {
                 .truncationMode(.middle)
             Spacer()
 
-            // Solid danger with contrasting text, as the kill and delete
-            // confirmations use. Tinted text on a tinted fill was the same hue
-            // twice and read as disabled.
+            // Solid, as the kill and delete confirmations are: tinted text on
+            // a tinted fill was one hue twice and read as disabled.
             if let onDeleteClipboard {
                 Button {
                     onDeleteClipboard()
@@ -763,8 +758,7 @@ struct ResultPreviewView: View {
 
     // MARK: - Copied image preview
 
-    /// The `ci"` panel. The picture is the whole point of the row, so it gets
-    /// the space the text preview gives the clip's characters.
+    /// The picture gets the space the text panel gives the clip's characters.
     private var clipboardImagePreview: some View {
         let capturedAt =
             result.clipboardCapturedAt.map { Self.clipboardDateFormatter.string(from: $0) }
@@ -798,8 +792,6 @@ struct ResultPreviewView: View {
                         themeStore.controlFillColor(),
                         in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
             } else {
-                // The row survives its file only until the next sweep, and the
-                // gap between is not the place to pretend.
                 Text("The image is no longer on disk")
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                     .foregroundStyle(themeStore.mutedTextColor())

@@ -1,12 +1,8 @@
 import Foundation
 
-/// Which clipboard history a query is asking for: the text clips behind `c"`,
-/// or the copied images behind `ci"`.
-///
-/// One rule for both, in one place. The two spellings are a character apart,
-/// and a caller that trims and drops a prefix by hand for each of them is a
-/// caller that will eventually disagree with the other one about which history
-/// `ci"logo` meant.
+/// Which clipboard history a query is asking for. One rule for both: the two
+/// spellings are a character apart, and callers that trim and drop each by hand
+/// eventually disagree about which history `ci"logo` meant.
 enum ClipboardQueryPrefix {
     case text
     case image

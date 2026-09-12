@@ -23,9 +23,8 @@ nonisolated enum RowIconCache {
         }
     }
 
-    /// The picture itself, for a row that IS one (a copied image). Cached like
-    /// every other row icon, and small on disk already, so the list draws it
-    /// without decoding the full-size original.
+    /// The picture itself, for a row that IS one. Small on disk already, so the
+    /// list never decodes the full-size original.
     static func thumbnail(forFile path: String) -> NSImage? {
         if let cached = cache.object(forKey: path as NSString) {
             return cached

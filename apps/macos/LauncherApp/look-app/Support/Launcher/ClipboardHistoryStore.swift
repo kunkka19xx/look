@@ -11,9 +11,8 @@ private actor ClipboardWriter {
         EngineBridge.shared.recordClipboard(content: content, appBundleID: appBundleID)
     }
 
-    /// Normalizes, writes and records a copied image in one hop off the main
-    /// thread: hashing and encoding a screenshot takes long enough to stutter
-    /// the poll loop that found it.
+    /// One hop off the main thread: hashing and encoding a screenshot would
+    /// stutter the poll loop that found it.
     func recordImage(data: Data, label: String, appBundleID: String?)
         -> (stored: StoredClipboardImage, storeID: Int64)?
     {
@@ -118,12 +117,17 @@ final class ClipboardHistoryStore: ObservableObject {
     }
 
     @Published private(set) var entries: [ClipboardHistoryEntry] = []
-    /// Copied images, kept apart from `entries` because `c"` and `ci"` share no
-    /// search key and no row shape. The storage underneath is the same table.
+    /// Apart from `entries` because the two share no search key and no row
+    /// shape. The storage underneath is one table.
     @Published private(set) var imageEntries: [ClipboardImageEntry] = []
 
     private var maxEntries = ClipboardHistoryStore.resolveMaxEntries()
     private var maxImageEntries = ClipboardHistoryStore.resolveMaxImageEntries()
+    /// Bumped by `clearHistory`. The writer actor serializes its calls but does
+    /// not order them, so a capture can land after the clear meant to erase it.
+    /// Text needs no counter: `attachStoreID` already drops a row whose entry
+    /// has left the list.
+    private var historyGeneration = 0
     private let maxStoredCharacters = AppConstants.Launcher.Clipboard.maxStoredCharacters
 
     /// Re-reads the clipboard section of `~/.look/config` and applies it live, so file-only
@@ -149,8 +153,6 @@ final class ClipboardHistoryStore: ObservableObject {
         Self.trim(&imageEntries, to: maxImageEntries)
     }
 
-    /// Drops everything past `limit`, oldest last. Both histories are capped
-    /// this way, and both cap on insert and on a config reload.
     private static func trim<Row>(_ rows: inout [Row], to limit: Int) {
         guard rows.count > limit else { return }
         rows.removeLast(rows.count - limit)
@@ -186,8 +188,7 @@ final class ClipboardHistoryStore: ObservableObject {
         resolveMaxImageEntries(from: loadConfigValues())
     }
 
-    /// Images are capped separately from text, and far lower: each one costs
-    /// megabytes on disk rather than characters in a row.
+    /// Capped separately from text, and far lower: megabytes, not characters.
     private static func resolveMaxImageEntries(from values: [String: String]) -> Int {
         typealias Image = AppConstants.Launcher.ClipboardImage
         return resolveLimit(
@@ -197,9 +198,8 @@ final class ClipboardHistoryStore: ObservableObject {
             fallback: Image.maxEntries)
     }
 
-    /// A config value only wins when it parses AND is in range. A limit outside
-    /// it is a typo, not a request, so the default stands rather than the
-    /// nearest bound: silently clamping 1000 to 100 looks like it worked.
+    /// An out-of-range limit is a typo, not a request, so the default stands
+    /// rather than the nearest bound: clamping 1000 to 100 looks like it worked.
     private static func resolveLimit(
         from values: [String: String], key: String, range: ClosedRange<Int>, fallback: Int
     ) -> Int {
@@ -233,8 +233,7 @@ final class ClipboardHistoryStore: ObservableObject {
             let stored = await Task.detached(priority: .utility) {
                 (
                     text: EngineBridge.shared.clipboardEntries(limit: limit),
-                    // Mapped here rather than on arrival: each image row stats
-                    // its file and reads its header.
+                    // Mapped here: each image row stats its file.
                     images: EngineBridge.shared.clipboardEntries(
                         kind: AppConstants.Launcher.Clipboard.imageKind, limit: imageLimit
                     ).compactMap(Self.restoredImageEntry)
@@ -253,9 +252,8 @@ final class ClipboardHistoryStore: ObservableObject {
         }
     }
 
-    /// Rebuilds an image row from its stored record. A row whose file is gone
-    /// is dropped rather than shown as a broken thumbnail: the bytes are the
-    /// clip, and without them there is nothing to paste.
+    /// A row whose file is gone is dropped rather than shown broken: the bytes
+    /// are the clip, and without them there is nothing to paste.
     nonisolated private static func restoredImageEntry(from stored: EngineBridge.ClipboardEntry)
         -> ClipboardImageEntry?
     {
@@ -309,6 +307,7 @@ final class ClipboardHistoryStore: ObservableObject {
     func clearHistory() {
         entries.removeAll()
         imageEntries.removeAll()
+        historyGeneration += 1
         Task { await ClipboardWriter.shared.clear() }
     }
 
@@ -390,12 +389,11 @@ final class ClipboardHistoryStore: ObservableObject {
         // Checked BEFORE the text is read, let alone stored: a password
         // manager marks its clip concealed precisely so history tools skip it,
         // and history is now written to disk. The core cannot enforce this -
-        // pasteboard markers only exist on this side. Images go through the
-        // same gate, and land on disk, so it runs before either branch.
+        // pasteboard markers only exist on this side. Images land on disk too,
+        // so it runs before either branch.
         if typesAreConcealed(types) { return }
 
-        // Before the file bail, because an image copied in Finder IS a file
-        // reference. Everything else on disk still bails below.
+        // Before the file bail: an image copied in Finder IS a file reference.
         if captureImageIfPresent(pasteboard, types: types) { return }
         if typesCarryFileReference(types, pasteboard) { return }
 
@@ -424,9 +422,7 @@ final class ClipboardHistoryStore: ObservableObject {
         persist(text, entryID: captured.id)
     }
 
-    /// Files, hashes and records a copied image, reporting whether the copy was
-    /// one. The work runs on the writer actor: encoding and hashing a
-    /// screenshot would stutter the poll loop that found it.
+    /// Files and records a copied image, reporting whether the copy was one.
     private func captureImageIfPresent(
         _ pasteboard: NSPasteboard, types: [NSPasteboard.PasteboardType]
     ) -> Bool {
@@ -434,8 +430,8 @@ final class ClipboardHistoryStore: ObservableObject {
         else {
             return false
         }
-        // Past this point the copy WAS an image, so it never falls through to
-        // the text branch, whether or not it is one worth keeping.
+        // The copy WAS an image, so it never falls through to the text branch,
+        // whether or not it is one worth keeping.
         guard candidate.data.count <= AppConstants.Launcher.ClipboardImage.maxImageBytes else {
             return true
         }
@@ -447,10 +443,17 @@ final class ClipboardHistoryStore: ObservableObject {
             ?? ClipboardImagePasteboard.label(
                 forSourceNamed: source?.localizedName, capturedAt: capturedAt)
         let appBundleID = source?.bundleIdentifier
+        let generation = historyGeneration
         Task { [weak self] in
             let recorded = await ClipboardWriter.shared.recordImage(
                 data: candidate.data, label: label, appBundleID: appBundleID)
             guard let self, let recorded else { return }
+            guard generation == self.historyGeneration else {
+                // Cleared while in flight: forget it on disk too, or the clip
+                // the user erased comes back with its file.
+                await ClipboardWriter.shared.delete(id: recorded.storeID)
+                return
+            }
             self.prependImage(
                 ClipboardImageEntry(
                     label: label,
@@ -464,10 +467,8 @@ final class ClipboardHistoryStore: ObservableObject {
         return true
     }
 
-    /// Inserts an image row at the front, dropping any older row for the same
-    /// pixels: the store dedupes by hash, so two rows here would be one row on
-    /// disk. The row's id IS the hash, so a re-copy lands on the row it already
-    /// had and the user's selection survives it.
+    /// Drops any older row for the same pixels: the store dedupes by hash, so
+    /// two rows here would be one row on disk.
     private func prependImage(_ entry: ClipboardImageEntry) {
         imageEntries.removeAll { $0.hash == entry.hash }
         imageEntries.insert(entry, at: 0)
@@ -484,16 +485,14 @@ final class ClipboardHistoryStore: ObservableObject {
         let storeIDs = imageEntries.filter { $0.id == id }.compactMap(\.storeID)
         imageEntries.removeAll { $0.id == id }
         guard !storeIDs.isEmpty else { return }
-        // Core unlinks the file as part of forgetting the row: the pixels are
-        // what the user asked to delete.
+        // Core unlinks the file with the row: the pixels are what was deleted.
         Task {
             for storeID in storeIDs { await ClipboardWriter.shared.delete(id: storeID) }
         }
     }
 
-    /// Puts a stored image back on the pasteboard, as both pixels and a file,
-    /// so it pastes into an editor and into Finder alike. Marks the change as
-    /// already seen so the poller does not re-capture Look's own write.
+    /// Both pixels and a file, so it pastes into an editor and into Finder
+    /// alike. Marks the change seen so the poller skips Look's own write.
     @discardableResult
     func copyImage(entry: ClipboardImageEntry) -> Bool {
         guard let url = entry.fileURL, let image = NSImage(contentsOf: url) else { return false }

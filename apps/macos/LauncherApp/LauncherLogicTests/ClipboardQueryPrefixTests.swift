@@ -3,9 +3,8 @@ import XCTest
 @testable import LauncherLogic
 
 final class ClipboardQueryPrefixTests: XCTestCase {
-    /// `ci"` begins with `c`, so the two histories are one keystroke apart.
-    /// Each prefix must answer only for itself, whichever order a caller checks
-    /// them in.
+    /// One keystroke apart, so each must answer only for itself, whichever
+    /// order a caller checks them in.
     func testTheTwoClipboardPrefixesDoNotSwallowEachOther() {
         XCTAssertTrue(ClipboardQueryPrefix.image.matches("ci\"logo"))
         XCTAssertFalse(ClipboardQueryPrefix.text.matches("ci\"logo"))

@@ -859,8 +859,7 @@ pub extern "C" fn look_clipboard_record(
 }
 
 /// Remembers a copied image, returning its row id (0 on failure). The bytes are
-/// the shell's to write, under `image_hash`, inside the directory
-/// `look_clipboard_images_dir` names. Same concealed-clip rule as above.
+/// the shell's to write, under `image_hash`. Same concealed-clip rule as above.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_clipboard_record_image(
     label: *const c_char,

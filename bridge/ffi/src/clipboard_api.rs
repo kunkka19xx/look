@@ -14,8 +14,8 @@ use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 const JSON_EMPTY_ARRAY: &str = "[]";
-/// Beside the database, not in it: an image clip is megabytes of pixels, and
-/// SQLite is the wrong place to keep them.
+/// Beside the database, not in it: SQLite is the wrong place for megabytes of
+/// pixels.
 const IMAGE_DIR_NAME: &str = "clipboard-images";
 
 /// One connection, opened once: `record` runs on every copy made anywhere in
@@ -60,9 +60,7 @@ impl From<ClipboardEntry> for ClipboardEntryJSON {
     }
 }
 
-/// Where image clips keep their bytes, created on demand. The shell writes the
-/// files here and rebuilds each path from the row's hash, so this is the one
-/// place the location is decided.
+/// The one place the location is decided; created on demand.
 fn image_dir() -> PathBuf {
     let dir = default_db_path()
         .parent()
@@ -72,17 +70,13 @@ fn image_dir() -> PathBuf {
     dir
 }
 
-/// Deletes every image file the table no longer refers to.
+/// Deletes every image file the table no longer refers to. Unlinking at each
+/// deletion site instead leaves megabytes behind whenever a prune, a crash or a
+/// failed write gets in between; sweeping self-heals, and the directory holds
+/// tens of files.
 ///
-/// Unlinking at each deletion site instead would leave megabytes behind
-/// whenever a prune, a crash, or a failed write got in between. Sweeping
-/// against the rows is the same work and self-heals, and the directory holds
-/// tens of files, so the listing is cheap.
-///
-/// The one rule the shell has to honour: a file here is named starting with the
-/// hash of the row that owns it. Everything after that (extension, a thumbnail
-/// suffix) is the shell's business, so the two sides cannot drift over a
-/// filename format.
+/// The shell's one obligation: a file here is named starting with the hash of
+/// the row that owns it. Anything after that is the shell's business.
 fn sweep_orphan_images() {
     let guard = store();
     let Some((_, store)) = guard.as_ref() else {
@@ -130,9 +124,8 @@ pub(crate) fn look_clipboard_record_impl(
         .unwrap_or(0)
 }
 
-/// Remembers a copied image, returning its row id (0 on failure). `label` is
-/// what the row is listed and searched by; `image_hash` names the file the
-/// shell already wrote under `look_clipboard_images_dir`.
+/// Returns the row id (0 on failure). `image_hash` names the file the shell
+/// already wrote under `look_clipboard_images_dir`.
 pub(crate) fn look_clipboard_record_image_impl(
     label: *const c_char,
     image_hash: *const c_char,
@@ -160,8 +153,7 @@ pub(crate) fn look_clipboard_record_image_impl(
     row_id
 }
 
-/// The directory image clips are stored in. The shell writes `<hash>.png` there
-/// before recording the row, and rebuilds the path from the hash when listing.
+/// Where the shell writes an image's bytes before recording its row.
 pub(crate) fn look_clipboard_images_dir_impl() -> *mut c_char {
     sweep_orphan_images();
     let path = image_dir().to_string_lossy().into_owned();
@@ -170,7 +162,7 @@ pub(crate) fn look_clipboard_images_dir_impl() -> *mut c_char {
 }
 
 /// JSON array of up to `limit` clips of `kind` matching `query` (newest first),
-/// or `[]`. The kind is required: `c"` and `ci"` must not see each other's rows.
+/// or `[]`.
 pub(crate) fn look_clipboard_list_json_impl(
     kind: *const c_char,
     query: *const c_char,
@@ -216,7 +208,6 @@ pub(crate) fn look_clipboard_clear_impl() -> u32 {
         .as_ref()
         .and_then(|(_, store)| store.clear_clipboard_entries().ok())
         .unwrap_or(0) as u32;
-    // The promise behind persisting history at all covers the pixels too.
     sweep_orphan_images();
     removed
 }

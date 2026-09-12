@@ -18,14 +18,10 @@ const MAX_URL_HISTORY_ROWS: usize = 500;
 /// A recall corpus, not a paste ring - but still bounded: this is text the
 /// user copied.
 pub const MAX_CLIPBOARD_ROWS: usize = 5_000;
-/// Images are capped far lower than text, and separately: the bytes live on
-/// disk, so every row here is megabytes rather than characters. Pruning is per
-/// kind for the same reason - one shared cap lets a screenshot burst evict text
-/// the user still wanted.
+/// Capped far lower than text, and separately: each row is megabytes on disk,
+/// and a screenshot burst must not evict text under a shared cap.
 pub const MAX_CLIPBOARD_IMAGE_ROWS: usize = 50;
 
-/// The `kind` column's two values. The shell picks one on every read and write,
-/// so `c"` and `ci"` cannot see each other's rows.
 pub const CLIPBOARD_KIND_TEXT: &str = "text";
 pub const CLIPBOARD_KIND_IMAGE: &str = "image";
 
@@ -99,9 +95,7 @@ pub struct ClipboardEntry {
     pub id: i64,
     pub content: String,
     pub kind: String,
-    /// Identity of what was copied. For text it is derived from `content`; for
-    /// an image it is the hash of the pixel bytes, which is also the name of
-    /// the file holding them.
+    /// For an image, the hash of the pixels, which also names the file.
     pub content_hash: String,
     pub app_bundle_id: Option<String>,
     pub copied_at_unix_s: i64,
@@ -539,10 +533,9 @@ impl SqliteStore {
         self.insert_clip(content, &hash, CLIPBOARD_KIND_TEXT, app_bundle_id)
     }
 
-    /// Remembers a copied image. `label` is what the row is searched and listed
-    /// by; `image_hash` is the identity of the pixels, so re-copying the same
-    /// picture under a different name still lifts the one row. The bytes
-    /// themselves are the shell's to write, under that hash.
+    /// `label` is what the row is listed and searched by; `image_hash` is the
+    /// identity, so the same picture under a new name still lifts one row. The
+    /// bytes are the shell's to write, under that hash.
     pub fn record_clipboard_image(
         &self,
         label: &str,
@@ -555,8 +548,7 @@ impl SqliteStore {
         self.insert_clip(label, image_hash, CLIPBOARD_KIND_IMAGE, app_bundle_id)
     }
 
-    /// The hash is passed in rather than derived: only text hashes what it
-    /// stores, an image hashes bytes this layer never sees.
+    /// The hash is passed in: an image hashes bytes this layer never sees.
     fn insert_clip(
         &self,
         content: &str,
@@ -598,7 +590,7 @@ impl SqliteStore {
         };
         // Only the overflow: `WHERE id NOT IN (SELECT ... LIMIT cap)` would
         // scan the whole table on every copy, for nothing until the 5,001st.
-        // Scoped to the kind, so the two histories cannot evict each other.
+        // Per kind, so the two histories cannot evict each other.
         tx.execute(
             "DELETE FROM clipboard_entries
              WHERE kind = ?1 AND (copied_at_unix_s, id) < (
@@ -654,9 +646,8 @@ impl SqliteStore {
         Ok(rows)
     }
 
-    /// Every stored image's hash, which is also its filename. The shell sweeps
-    /// its image directory against this: a file with no row here is bytes the
-    /// user believes they deleted.
+    /// What the shell sweeps its image directory against: a file with no hash
+    /// here is bytes the user believes they deleted.
     pub fn clipboard_image_hashes(&self) -> StorageResult<Vec<String>> {
         let mut stmt = self
             .conn
@@ -1203,8 +1194,7 @@ mod tests {
             .clipboard_entries(CLIPBOARD_KIND_IMAGE, "", 10)
             .unwrap();
         assert_eq!(images.len(), 1);
-        // The path to the bytes is rebuilt from this, so it has to survive the
-        // round trip.
+        // The path to the bytes is rebuilt from this.
         assert_eq!(images[0].content_hash, "aaaa");
         assert_eq!(images[0].app_bundle_id.as_deref(), Some("com.apple.Safari"));
 
