@@ -2,8 +2,8 @@ import AppKit
 import Combine
 import Foundation
 
-/// Serializes clipboard writes: unordered detached tasks let a copy land after
-/// the clear meant to erase it.
+/// Runs clipboard writes off the main thread, one at a time. Their ORDER is
+/// the caller's to establish (see `ClipboardHistoryStore.writeChain`).
 private actor ClipboardWriter {
     static let shared = ClipboardWriter()
 
@@ -123,11 +123,14 @@ final class ClipboardHistoryStore: ObservableObject {
 
     private var maxEntries = ClipboardHistoryStore.resolveMaxEntries()
     private var maxImageEntries = ClipboardHistoryStore.resolveMaxImageEntries()
-    /// Bumped by `clearHistory`. The writer actor serializes its calls but does
-    /// not order them, so a capture can land after the clear meant to erase it.
-    /// Text needs no counter: `attachStoreID` already drops a row whose entry
-    /// has left the list.
+    /// Bumped by `clearHistory`, so a capture that raced ahead of the clear can
+    /// tell that the list it was joining is gone.
     private var historyGeneration = 0
+    /// Every write runs after the one submitted before it. Actor isolation
+    /// gives the writer mutual exclusion, not ordering: two tasks created
+    /// independently can reach it either way round, so a copy could be stored
+    /// after the clear meant to erase it, or erased by a clear it preceded.
+    private var writeChain: Task<Void, Never>?
     private let maxStoredCharacters = AppConstants.Launcher.Clipboard.maxStoredCharacters
 
     /// Re-reads the clipboard section of `~/.look/config` and applies it live, so file-only
@@ -156,6 +159,16 @@ final class ClipboardHistoryStore: ObservableObject {
     private static func trim<Row>(_ rows: inout [Row], to limit: Int) {
         guard rows.count > limit else { return }
         rows.removeLast(rows.count - limit)
+    }
+
+    /// Submission order is the main actor's, and so deterministic; what follows
+    /// it would not be (see `writeChain`).
+    private func enqueueWrite(_ work: @escaping @Sendable () async -> Void) {
+        let previous = writeChain
+        writeChain = Task {
+            await previous?.value
+            await work()
+        }
     }
 
     /// Reads every `key=value` pair from the active config file once, or an empty map when
@@ -277,10 +290,10 @@ final class ClipboardHistoryStore: ObservableObject {
     /// has nothing to remove on disk and the clip returns next launch.
     private func persist(_ content: String, entryID: UUID) {
         let app = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        Task { [weak self] in
+        enqueueWrite { [weak self] in
             let storeID = await ClipboardWriter.shared.record(content: content, appBundleID: app)
             guard let self, let storeID else { return }
-            self.attachStoreID(storeID, to: entryID)
+            await self.attachStoreID(storeID, to: entryID)
         }
     }
 
@@ -290,7 +303,7 @@ final class ClipboardHistoryStore: ObservableObject {
         guard let index = entries.firstIndex(where: { $0.id == entryID }) else {
             // The user deleted it before the write landed: forget it on disk
             // too, or it comes back.
-            Task { await ClipboardWriter.shared.delete(id: storeID) }
+            enqueueWrite { await ClipboardWriter.shared.delete(id: storeID) }
             return
         }
         let existing = entries[index]
@@ -308,7 +321,7 @@ final class ClipboardHistoryStore: ObservableObject {
         entries.removeAll()
         imageEntries.removeAll()
         historyGeneration += 1
-        Task { await ClipboardWriter.shared.clear() }
+        enqueueWrite { await ClipboardWriter.shared.clear() }
     }
 
     deinit {
@@ -329,7 +342,7 @@ final class ClipboardHistoryStore: ObservableObject {
         let storeIDs = entries.filter { $0.id == id }.compactMap(\.storeID)
         entries.removeAll { $0.id == id }
         guard !storeIDs.isEmpty else { return }
-        Task {
+        enqueueWrite {
             for storeID in storeIDs { await ClipboardWriter.shared.delete(id: storeID) }
         }
     }
@@ -444,17 +457,17 @@ final class ClipboardHistoryStore: ObservableObject {
                 forSourceNamed: source?.localizedName, capturedAt: capturedAt)
         let appBundleID = source?.bundleIdentifier
         let generation = historyGeneration
-        Task { [weak self] in
+        enqueueWrite { [weak self] in
             let recorded = await ClipboardWriter.shared.recordImage(
                 data: candidate.data, label: label, appBundleID: appBundleID)
             guard let self, let recorded else { return }
-            guard generation == self.historyGeneration else {
+            guard await generation == self.historyGeneration else {
                 // Cleared while in flight: forget it on disk too, or the clip
                 // the user erased comes back with its file.
                 await ClipboardWriter.shared.delete(id: recorded.storeID)
                 return
             }
-            self.prependImage(
+            await self.prependImage(
                 ClipboardImageEntry(
                     label: label,
                     hash: recorded.stored.hash,
@@ -486,7 +499,7 @@ final class ClipboardHistoryStore: ObservableObject {
         imageEntries.removeAll { $0.id == id }
         guard !storeIDs.isEmpty else { return }
         // Core unlinks the file with the row: the pixels are what was deleted.
-        Task {
+        enqueueWrite {
             for storeID in storeIDs { await ClipboardWriter.shared.delete(id: storeID) }
         }
     }
