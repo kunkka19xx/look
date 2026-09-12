@@ -1,12 +1,18 @@
-// Notify-only update widget mounted in Settings ("About" footer) and Help.
-// We never download or replace the binary - Linux/Windows distros vary too
-// much to bundle a single upgrade command, so the banner links to the
-// release notes and the README install section instead.
+// Update widget mounted in Settings ("About" footer) and Help.
+// Linux stays notify-only because install paths vary too much; Windows can
+// update NSIS and Scoop installs automatically at startup or on user request.
 //
 // The check itself runs in the webview via `fetch()` (no Rust HTTP/TLS
 // dep); cross-origin works because `tauri.conf.json` has `csp: null`.
 // Dismissed versions persist in `localStorage`.
-import { getLookappVersion, openPath, isDevBuild } from '../ipc.js';
+import {
+    autoUpdateEnabled,
+    getInstallMethod,
+    getLookappVersion,
+    openPath,
+    isDevBuild,
+    startWindowsUpdate,
+} from '../ipc.js';
 import * as platform from '../platform.js';
 
 const RELEASES_API_URL = 'https://api.github.com/repos/kunkka19xx/look/releases/latest';
@@ -27,37 +33,65 @@ const widgets = new Map();
 const state = {
     currentVersion: '',
     isDev: false,
+    installMethod: '',
     available: null,
     status: '',
     isChecking: false,
+    isUpdating: false,
 };
+let initialization;
 
 export async function mountUpdateWidget(container, { label = '' } = {}) {
     if (!container) return;
     container.classList.add('update-widget');
     widgets.set(container, label);
     render(container);
-    if (!state.currentVersion) {
-        try {
-            [state.currentVersion, state.isDev] = await Promise.all([
-                getLookappVersion(),
-                isDevBuild(),
-            ]);
-        } catch {
-            state.currentVersion = '';
-            state.isDev = false;
-        }
-        renderAll();
+    // Settings and Help mount concurrently. Initialize and auto-update once.
+    initialization ??= initialize();
+    await initialization;
+    render(container);
+}
+
+async function initialize() {
+    try {
+        const loadInstallMethod =
+            platform.os() === 'windows' ? getInstallMethod() : Promise.resolve('');
+        [state.currentVersion, state.isDev, state.installMethod] = await Promise.all([
+            getLookappVersion(),
+            isDevBuild(),
+            loadInstallMethod,
+        ]);
+    } catch {
+        state.currentVersion = '';
+        state.isDev = false;
+        state.installMethod = '';
+    }
+    renderAll();
+    if (supportsSelfUpdate() && await autoUpdateEnabled().catch(() => false)) {
+        await handleCheck(false);
+        await handleUpdate();
     }
 }
 
-async function handleCheck() {
-    if (state.isChecking) return;
+function supportsSelfUpdate() {
+    switch (platform.os()) {
+        case 'windows':
+            return !state.isDev && ['nsis', 'scoop'].includes(state.installMethod);
+        case 'linux':
+            // TODO: implement Linux self-update.
+            return false;
+        default:
+            return false;
+    }
+}
+
+async function handleCheck(force = true) {
+    if (state.isChecking || state.isUpdating) return;
     state.isChecking = true;
     state.status = 'Checking…';
     renderAll();
     try {
-        const result = await performCheck(state.currentVersion, true);
+        const result = await performCheck(state.currentVersion, force);
         state.available = result.available;
         state.status = result.status;
     } catch {
@@ -84,6 +118,20 @@ function handleDismiss() {
 function handleNotes() {
     if (!state.available) return;
     openPath(state.available.release_url, 'browser', '');
+}
+
+async function handleUpdate() {
+    if (!state.available || !supportsSelfUpdate() || state.isChecking || state.isUpdating) return;
+    state.isUpdating = true;
+    state.status = 'Preparing update…';
+    renderAll();
+    try {
+        await startWindowsUpdate(state.available.version);
+    } catch (error) {
+        state.isUpdating = false;
+        state.status = error?.message || String(error || "Couldn't start the update");
+        renderAll();
+    }
 }
 
 function handleInstallHint() {
@@ -176,14 +224,17 @@ function renderAll() {
 
 function render(container) {
     const label = widgets.get(container) || '';
-    const { currentVersion, isDev, available, status, isChecking } = state;
+    const { currentVersion, isDev, installMethod, available, status, isChecking } = state;
     const devSuffix = isDev ? ' - dev' : '';
     const versionLabel = currentVersion
         ? `Look ${escapeHtml(currentVersion)}${devSuffix}`
         : 'Look …';
-    // Suppress the status text once a real update has surfaced - the banner below
-    // says the same thing more loudly.
-    const showStatus = status && !available;
+    const canSelfUpdate = supportsSelfUpdate() && !!available;
+    const busy = isChecking || state.isUpdating;
+    // Suppress only the duplicated "Update available" line; keep real progress
+    // or errors visible while the banner is shown.
+    const showStatus =
+        status && (!available || status !== `Update available: Look ${available.version}`);
 
     let html = '';
     if (label) {
@@ -193,7 +244,7 @@ function render(container) {
     <div class="update-row">
       <span class="update-version">${versionLabel}</span>
       ${showStatus ? `<span class="update-status">${escapeHtml(status)}</span>` : ''}
-      <button class="update-pill" type="button" data-action="check"${isChecking ? ' disabled' : ''}>
+      <button class="update-pill" type="button" data-action="check"${busy ? ' disabled' : ''}>
         ${isChecking ? 'Checking…' : 'Check for Updates'}
       </button>
     </div>
@@ -203,12 +254,25 @@ function render(container) {
         html += `
       <div class="update-banner">
         <span class="update-banner-text">Update available: Look ${escapeHtml(available.version)}</span>
-        <button class="update-pill" type="button" data-action="notes">Release Notes</button>
+        ${canSelfUpdate ? `<button class="update-pill" type="button" data-action="update"${busy ? ' disabled' : ''}>Update</button>` : ''}
+        <button class="update-pill" type="button" data-action="notes">Notes</button>
         <button class="update-pill update-pill-muted" type="button" data-action="dismiss">Dismiss</button>
       </div>
     `;
         const os = platform.os();
-        if (INSTALL_HINT_URLS[os]) {
+        if (os === 'windows' && installMethod === 'scoop') {
+            html += `
+        <div class="update-hint">
+          Update opens PowerShell and runs <code>scoop update look</code> automatically.
+        </div>
+      `;
+        } else if (os === 'windows' && installMethod === 'nsis') {
+            html += `
+        <div class="update-hint">
+          Update opens PowerShell to download and run the installer. Look closes and reopens after installation.
+        </div>
+      `;
+        } else if (INSTALL_HINT_URLS[os]) {
             const osLabel = os === 'windows' ? 'Windows' : 'Linux';
             html += `
         <div class="update-hint">
@@ -219,7 +283,8 @@ function render(container) {
     }
 
     container.innerHTML = html;
-    container.querySelector('[data-action="check"]')?.addEventListener('click', handleCheck);
+    container.querySelector('[data-action="check"]')?.addEventListener('click', () => handleCheck());
+    container.querySelector('[data-action="update"]')?.addEventListener('click', handleUpdate);
     container.querySelector('[data-action="notes"]')?.addEventListener('click', handleNotes);
     container.querySelector('[data-action="dismiss"]')?.addEventListener('click', handleDismiss);
     container.querySelector('[data-action="install-hint"]')?.addEventListener('click', (e) => {

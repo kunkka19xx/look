@@ -567,6 +567,7 @@ These keys have no control in the Settings screens. Edit `~/.look/config` direct
 
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
 - `query_retention_seconds` (how long the main query survives while Look is hidden, in seconds; the first open past it returns to the empty home screen; default 5, `0` clears on every hide, and any negative value keeps the query indefinitely)
+- `auto_update_enable` (automatic updates when the app starts: `0` disables, `1` enables; missing/invalid values default to `0`. Supported for Windows NSIS and Scoop release installs; macOS/Linux support is pending. Manual **Check for Updates** and **Update** remain available regardless of this setting. Update opens PowerShell automatically: NSIS downloads and runs the installer, while Scoop runs `scoop update look`. Look closes before updating and reopens afterward. Scoop failures report “Check your Scoop”. Edit `~/.look/config`; startup updates run once per app launch. Dev builds can check releases but do not install updates.)
 - `text_editor`, `code_editor`, `terminal`, `file_manager` (the tools `Cmd+E` / `Cmd+T` / `Cmd+F` act through, see [Preferred tools](#preferred-tools); undeclared means the system default)
 
 - `ignored_patterns_<group>` uses gitignore-style path glob syntax: `*`, `**`, `?`, `[abc]`
