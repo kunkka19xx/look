@@ -850,20 +850,46 @@ pub extern "C" fn look_recent_urls_json(query: *const c_char, limit: u32) -> *mu
 #[unsafe(no_mangle)]
 pub extern "C" fn look_clipboard_record(
     content: *const c_char,
-    kind: *const c_char,
     app_bundle_id: *const c_char,
 ) -> i64 {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        clipboard_api::look_clipboard_record_impl(content, kind, app_bundle_id)
+        clipboard_api::look_clipboard_record_impl(content, app_bundle_id)
     }))
     .unwrap_or(0)
 }
 
-/// JSON array of up to `limit` remembered clips matching `query` (or `[]`).
+/// Remembers a copied image, returning its row id (0 on failure). The bytes are
+/// the shell's to write, under `image_hash`. Same concealed-clip rule as above.
 #[unsafe(no_mangle)]
-pub extern "C" fn look_clipboard_list_json(query: *const c_char, limit: u32) -> *mut c_char {
+pub extern "C" fn look_clipboard_record_image(
+    label: *const c_char,
+    image_hash: *const c_char,
+    app_bundle_id: *const c_char,
+) -> i64 {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        clipboard_api::look_clipboard_list_json_impl(query, limit)
+        clipboard_api::look_clipboard_record_image_impl(label, image_hash, app_bundle_id)
+    }))
+    .unwrap_or(0)
+}
+
+/// Where image clips keep their bytes. Each file's name starts with the hash of
+/// the row that owns it; anything not backed by a row is swept.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_clipboard_images_dir() -> *mut c_char {
+    std::panic::catch_unwind(clipboard_api::look_clipboard_images_dir_impl)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// JSON array of up to `limit` remembered clips of `kind` matching `query`
+/// (or `[]`).
+#[unsafe(no_mangle)]
+pub extern "C" fn look_clipboard_list_json(
+    kind: *const c_char,
+    query: *const c_char,
+    limit: u32,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        clipboard_api::look_clipboard_list_json_impl(kind, query, limit)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

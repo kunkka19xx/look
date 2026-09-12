@@ -186,11 +186,19 @@ private func look_recent_urls_json(_ query: UnsafePointer<CChar>?, _ limit: UInt
 
 @_silgen_name("look_clipboard_record")
 nonisolated
-private func look_clipboard_record(_ content: UnsafePointer<CChar>?, _ kind: UnsafePointer<CChar>?, _ appBundleID: UnsafePointer<CChar>?) -> Int64
+private func look_clipboard_record(_ content: UnsafePointer<CChar>?, _ appBundleID: UnsafePointer<CChar>?) -> Int64
+
+@_silgen_name("look_clipboard_record_image")
+nonisolated
+private func look_clipboard_record_image(_ label: UnsafePointer<CChar>?, _ imageHash: UnsafePointer<CChar>?, _ appBundleID: UnsafePointer<CChar>?) -> Int64
+
+@_silgen_name("look_clipboard_images_dir")
+nonisolated
+private func look_clipboard_images_dir() -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_clipboard_list_json")
 nonisolated
-private func look_clipboard_list_json(_ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
+private func look_clipboard_list_json(_ kind: UnsafePointer<CChar>?, _ query: UnsafePointer<CChar>?, _ limit: UInt32) -> UnsafeMutablePointer<CChar>?
 
 @_silgen_name("look_clipboard_delete")
 nonisolated
@@ -1201,7 +1209,9 @@ final class EngineBridge: @unchecked Sendable {
     nonisolated struct ClipboardEntry: Decodable, Identifiable, Equatable {
         let id: Int64
         let content: String
-        let kind: String
+        /// Identity of what was copied. For an image clip it is also the stem
+        /// of the file holding the pixels.
+        let contentHash: String
         let appBundleID: String?
         let copiedAtUnixS: Int64
 
@@ -1218,24 +1228,64 @@ final class EngineBridge: @unchecked Sendable {
     /// manager's clip can be kept out of the database.
     /// Opens the shared look.db - call off the main thread.
     @discardableResult
-    nonisolated func recordClipboard(content: String, kind: String = "text", appBundleID: String? = nil) -> Int64? {
+    nonisolated func recordClipboard(content: String, appBundleID: String? = nil) -> Int64? {
         let id = content.withCString { contentC in
-            kind.withCString { kindC in
+            if let appBundleID {
+                return appBundleID.withCString { appC in
+                    look_clipboard_record(contentC, appC)
+                }
+            }
+            return look_clipboard_record(contentC, nil)
+        }
+        return id > 0 ? id : nil
+    }
+
+    /// Remembers a copied image and returns its row id. `imageHash` names the
+    /// file this side already wrote into `clipboardImagesDirectory()`; the row
+    /// is what keeps that file from being swept.
+    ///
+    /// Same concealed-clip rule as `recordClipboard`: only this side sees the
+    /// pasteboard markers.
+    @discardableResult
+    nonisolated func recordClipboardImage(
+        label: String, imageHash: String, appBundleID: String? = nil
+    ) -> Int64? {
+        let id = label.withCString { labelC in
+            imageHash.withCString { hashC in
                 if let appBundleID {
                     return appBundleID.withCString { appC in
-                        look_clipboard_record(contentC, kindC, appC)
+                        look_clipboard_record_image(labelC, hashC, appC)
                     }
                 }
-                return look_clipboard_record(contentC, kindC, nil)
+                return look_clipboard_record_image(labelC, hashC, nil)
             }
         }
         return id > 0 ? id : nil
     }
 
-    /// Up to `limit` remembered clips matching `query` (newest first). An empty
-    /// query returns the most recent. Opens look.db - call off the main thread.
-    nonisolated func clipboardEntries(query: String = "", limit: Int) -> [ClipboardEntry] {
-        let ptr = query.withCString { look_clipboard_list_json($0, UInt32(limit)) }
+    /// Where image clips keep their bytes. Core owns the location and sweeps
+    /// anything in it that no row claims, so this side asks rather than
+    /// assembling the path itself.
+    nonisolated func clipboardImagesDirectory() -> URL? {
+        guard let ptr = look_clipboard_images_dir() else { return nil }
+        defer { look_free_cstring(ptr) }
+        let path = String(cString: ptr)
+        return path.isEmpty ? nil : URL(fileURLWithPath: path)
+    }
+
+    /// Up to `limit` remembered clips of `kind` matching `query` (newest
+    /// first). An empty query returns the most recent. Opens look.db - call off
+    /// the main thread.
+    nonisolated func clipboardEntries(
+        kind: String = AppConstants.Launcher.Clipboard.textKind,
+        query: String = "",
+        limit: Int
+    ) -> [ClipboardEntry] {
+        let ptr = kind.withCString { kindC in
+            query.withCString { queryC in
+                look_clipboard_list_json(kindC, queryC, UInt32(limit))
+            }
+        }
         guard let ptr else { return [] }
         defer { look_free_cstring(ptr) }
         guard let data = String(cString: ptr).data(using: .utf8) else { return [] }

@@ -96,6 +96,10 @@ extension LauncherView {
             // something that wants the focus.
             performSourceBlock(selected)
         case .clipboard:
+            if selected.isClipboardImage {
+                copyClipboardImage(resultID: selected.id)
+                return
+            }
             // Labeled entries (e.g. calculator results) paste their value, not
             // the label shown in the list.
             guard let content = selected.clipboardPayload ?? selected.clipboardContent, !content.isEmpty else { return }
@@ -483,17 +487,41 @@ extension LauncherView {
     }
 
     func deleteClipboardResult(resultID: String) {
-        guard let entryID = LauncherClipboardFeature.entryID(fromResultID: resultID) else { return }
-        clipboardStore.deleteEntry(id: entryID)
+        let banner: String
+        if let imageID = LauncherClipboardImageFeature.entryID(fromResultID: resultID) {
+            clipboardStore.deleteImageEntry(id: imageID)
+            banner = AppConstants.Launcher.ClipboardImage.deletedBanner
+        } else if let entryID = LauncherClipboardFeature.entryID(fromResultID: resultID) {
+            clipboardStore.deleteEntry(id: entryID)
+            banner = AppConstants.Launcher.Clipboard.deletedBanner
+        } else {
+            return
+        }
 
         if selectedResultID == resultID {
             selectedResultID = displayedResults.first?.id
         }
 
         showBanner(
-            AppConstants.Launcher.Clipboard.deletedBanner,
+            banner,
             style: .info,
             duration: AppConstants.Launcher.Clipboard.infoBannerDuration
+        )
+    }
+
+    /// Puts a stored image back on the pasteboard. The launcher stays open, the
+    /// way copying a text clip does.
+    private func copyClipboardImage(resultID: String) {
+        guard let entryID = LauncherClipboardImageFeature.entryID(fromResultID: resultID),
+            let entry = clipboardStore.imageEntries.first(where: { $0.id == entryID }),
+            clipboardStore.copyImage(entry: entry)
+        else {
+            return
+        }
+        showBanner(
+            AppConstants.Launcher.ClipboardImage.copiedBanner,
+            style: .success,
+            duration: AppConstants.Launcher.Clipboard.copiedBannerDuration
         )
     }
 
@@ -650,7 +678,7 @@ extension LauncherView {
     }
 
     func refreshClipboardSelectionIfNeeded() {
-        guard !isCommandMode, isClipboardQuery else { return }
+        guard !isCommandMode, isClipboardQuery || isClipboardImageQuery else { return }
 
         if let selectedResultID,
            displayedResults.contains(where: { $0.id == selectedResultID }) {

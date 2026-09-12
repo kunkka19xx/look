@@ -473,19 +473,48 @@ struct HintBar: View {
     }
 }
 
+/// The two histories share the empty screen's layout and differ only in
+/// wording, so the words travel as a value rather than a second copy of it.
+struct ClipboardEmptyStateCopy {
+    let symbol: String
+    let title: String
+    let headline: String
+    let detail: String
+    let tips: String
+
+    static let text = ClipboardEmptyStateCopy(
+        symbol: "doc.on.clipboard",
+        title: "Clipboard History",
+        headline: "No clipboard items yet",
+        detail: "Copy any text, then search with c\"word to find it here.",
+        tips:
+            "• Type c\" to list latest 10 clips\n• Type c\"mail to filter\n• Press Enter to copy selected item"
+    )
+
+    static let images = ClipboardEmptyStateCopy(
+        symbol: "photo.on.rectangle",
+        title: "Copied Images",
+        headline: "No images copied yet",
+        detail: "Copy a picture or an image file, then find it here with ci\"name.",
+        tips:
+            "• Type ci\" to list the latest images\n• Type ci\"logo to filter by name\n• Press Enter to copy the selected image"
+    )
+}
+
 struct ClipboardEmptyStateView: View {
     let themeStore: ThemeStore
+    var copy: ClipboardEmptyStateCopy = .text
 
     var body: some View {
         HStack(spacing: 0) {
-            ClipboardEmptyInfoView(themeStore: themeStore)
+            ClipboardEmptyInfoView(themeStore: themeStore, copy: copy)
 
             Rectangle()
                 .fill(themeStore.dividerColor())
                 .frame(width: 1)
                 .padding(.vertical, 4)
 
-            ClipboardEmptyHelpView(themeStore: themeStore)
+            ClipboardEmptyHelpView(themeStore: themeStore, copy: copy)
         }
     }
 }
@@ -494,21 +523,22 @@ struct ClipboardEmptyStateView: View {
 /// it as its own card (matching the results list) when the panes are floating.
 struct ClipboardEmptyInfoView: View {
     let themeStore: ThemeStore
+    var copy: ClipboardEmptyStateCopy = .text
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Image(systemName: "doc.on.clipboard")
+                Image(systemName: copy.symbol)
                     .foregroundStyle(themeStore.accentColor())
-                Text("Clipboard History")
+                Text(copy.title)
                     .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 1), weight: .semibold))
             }
 
-            Text("No clipboard items yet")
+            Text(copy.headline)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .medium))
                 .foregroundStyle(themeStore.secondaryTextColor())
 
-            Text("Copy any text, then search with c\"word to find it here.")
+            Text(copy.detail)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                 .foregroundStyle(themeStore.secondaryTextColor())
                 .lineLimit(2)
@@ -523,13 +553,14 @@ struct ClipboardEmptyInfoView: View {
 /// Right half of the clipboard empty state (the "How to use" tips).
 struct ClipboardEmptyHelpView: View {
     let themeStore: ThemeStore
+    var copy: ClipboardEmptyStateCopy = .text
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("How to use")
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .semibold))
                 .foregroundStyle(themeStore.fontColor())
-            Text("• Type c\" to list latest 10 clips\n• Type c\"mail to filter\n• Press Enter to copy selected item")
+            Text(copy.tips)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                 .foregroundStyle(themeStore.secondaryTextColor())
                 .lineSpacing(4)
