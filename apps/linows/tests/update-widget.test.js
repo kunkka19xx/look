@@ -8,9 +8,14 @@ const source = readFileSync(new URL('../src/js/screens/update_widget.js', import
     .replace(/^import\s[\s\S]*?\sfrom\s+['"][^'"]+['"];\r?\n/gm, '')
     .replace('export async function', 'async function');
 
-async function widget({ enabled = false, installMethod = 'nsis', os = 'windows', failure, isDev = false, check = true, latest = '0.6.11' } = {}) {
+async function widget({ enabled = false, installMethod = 'nsis', os = 'windows', failure, isDev = false, check = true, latest = '0.6.11', dismissedVersion } = {}) {
     const calls = [];
     const listeners = new Map();
+    const localStorage = {
+        values: dismissedVersion ? new Map([['look.update.dismissedVersion', dismissedVersion]]) : new Map(),
+        getItem(key) { return this.values.get(key) ?? null; },
+        setItem(key, value) { this.values.set(key, String(value)); },
+    };
     const container = {
         innerHTML: '',
         classList: { add() {} },
@@ -33,6 +38,7 @@ async function widget({ enabled = false, installMethod = 'nsis', os = 'windows',
         fetch: async () => ({ ok: true, json: async () => ({
             tag_name: `v${latest}`, html_url: 'https://github.com/kunkka19xx/look/releases/tag/v0.6.11',
         }) }),
+        localStorage,
         AbortController, setTimeout, clearTimeout,
     });
     vm.runInContext(source + '\nglobalThis.mount = mountUpdateWidget;', context);
@@ -99,6 +105,14 @@ test('disabled startup update does nothing until the user checks', async () => {
 test('startup does not install when already on the latest release', async () => {
     const { calls } = await widget({ enabled: true, check: false, latest: '0.6.10' });
     assert.deepEqual(calls, []);
+});
+
+test('startup does not install a dismissed release, while manual check remains forced', async () => {
+    const { calls, click } = await widget({ enabled: true, check: false, dismissedVersion: '0.6.11' });
+    assert.deepEqual(calls, []);
+    await click('check');
+    await click('update');
+    assert.deepEqual(calls, ['0.6.11']);
 });
 
 test('Scoop launch errors tell the user to check Scoop', async () => {

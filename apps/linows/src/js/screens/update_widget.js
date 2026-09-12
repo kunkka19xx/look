@@ -68,7 +68,7 @@ async function initialize() {
     }
     renderAll();
     if (supportsSelfUpdate() && await autoUpdateEnabled().catch(() => false)) {
-        await handleCheck();
+        await handleCheck(false);
         await handleUpdate();
     }
 }
@@ -85,13 +85,13 @@ function supportsSelfUpdate() {
     }
 }
 
-async function handleCheck() {
+async function handleCheck(force = true) {
     if (state.isChecking || state.isUpdating) return;
     state.isChecking = true;
     state.status = 'Checking…';
     renderAll();
     try {
-        const result = await performCheck(state.currentVersion, true);
+        const result = await performCheck(state.currentVersion, force);
         state.available = result.available;
         state.status = result.status;
     } catch {
@@ -283,7 +283,7 @@ function render(container) {
     }
 
     container.innerHTML = html;
-    container.querySelector('[data-action="check"]')?.addEventListener('click', handleCheck);
+    container.querySelector('[data-action="check"]')?.addEventListener('click', () => handleCheck());
     container.querySelector('[data-action="update"]')?.addEventListener('click', handleUpdate);
     container.querySelector('[data-action="notes"]')?.addEventListener('click', handleNotes);
     container.querySelector('[data-action="dismiss"]')?.addEventListener('click', handleDismiss);

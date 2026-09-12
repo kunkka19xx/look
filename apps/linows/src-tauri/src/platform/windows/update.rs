@@ -84,7 +84,7 @@ fn detect_install_method_for_path(path: &Path) -> InstallMethod {
     if lower.contains("\\scoop\\apps\\look\\") {
         return InstallMethod::Scoop;
     }
-    if lower.contains("\\appdata\\local\\programs\\look\\") {
+    if lower.contains("\\appdata\\local\\look\\") {
         return InstallMethod::Nsis;
     }
     InstallMethod::Unknown
@@ -203,8 +203,8 @@ fn build_helper_script(
     script.push_str("    Wait-Process -Id $CurrentPid -ErrorAction SilentlyContinue\n");
     script.push_str("    Start-Sleep -Milliseconds 350\n");
     script.push_str("  }\n");
-    script.push_str("  Invoke-WebRequest -Uri \"$BaseUrl/$SetupFileName\" -OutFile $SetupPath -UseBasicParsing\n");
-    script.push_str("  Invoke-WebRequest -Uri \"$BaseUrl/$ChecksumsFileName\" -OutFile $ChecksumsPath -UseBasicParsing\n");
+    script.push_str("  Invoke-WebRequest -Uri \"$BaseUrl/$SetupFileName\" -OutFile $SetupPath -UseBasicParsing -TimeoutSec 300\n");
+    script.push_str("  Invoke-WebRequest -Uri \"$BaseUrl/$ChecksumsFileName\" -OutFile $ChecksumsPath -UseBasicParsing-TimeoutSec 60\n");
     script.push_str("  $expected = $null\n");
     script.push_str("  foreach ($line in Get-Content $ChecksumsPath) {\n");
     script.push_str("    $line = $line.Trim()\n");
@@ -291,7 +291,7 @@ mod tests {
     fn classifies_nsis_paths() {
         assert_eq!(
             detect_install_method_for_path(Path::new(
-                r"C:\Users\me\AppData\Local\Programs\Look\lookapp.exe"
+                r"C:\Users\me\AppData\Local\Look\lookapp.exe"
             )),
             InstallMethod::Nsis
         );
@@ -402,7 +402,7 @@ $ErrorActionPreference = 'Stop'
 function Wait-Process { param($Id, $ErrorAction) Add-Content (Join-Path $PSScriptRoot 'events') 'wait' }
 function Start-Sleep { param($Milliseconds) }
 function Invoke-WebRequest {
-    param($Uri, $OutFile, [switch]$UseBasicParsing)
+    param($Uri, $OutFile, [switch]$UseBasicParsing $TimeoutSec)
     Add-Content (Join-Path $PSScriptRoot 'events') 'download'
     if ($OutFile.EndsWith('.exe')) {
         [IO.File]::WriteAllText($OutFile, 'new installer')
