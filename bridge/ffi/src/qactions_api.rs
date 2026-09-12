@@ -90,6 +90,31 @@ pub(crate) fn look_launchpad_press_tile_json_impl(name: *const c_char) -> *mut c
     store_json(serde_json::json!({ "error": error }).to_string(), "{}")
 }
 
+/// Saves an arrangement a shell drew by dragging. `json` is
+/// `{"columns", "rows", "tiles": [{"action_id", "col", "row", "col_span",
+/// "row_span"}]}` - the same numbers the layout call handed out, moved. Answers
+/// `{"error": null}` or `{"error": "..."}` worded for a banner.
+///
+/// Rewrites `~/.look/super-actions.toml`, so it touches the disk: keep it off
+/// the thread the launchpad is drawn on. The next layout call reads the file
+/// back, which is how a shell learns what was actually written.
+pub(crate) fn look_launchpad_save_layout_json_impl(json: *const c_char) -> *mut c_char {
+    #[derive(serde::Deserialize)]
+    struct Request {
+        columns: u8,
+        rows: u8,
+        tiles: Vec<look_engine::launchpad::Placement>,
+    }
+
+    let error = serde_json::from_str::<Request>(&cstr_to_string(json))
+        .map_err(|err| format!("the arrangement could not be read: {err}"))
+        .and_then(|request| {
+            look_engine::launchpad::save_layout(&request.tiles, request.columns, request.rows)
+        })
+        .err();
+    store_json(serde_json::json!({ "error": error }).to_string(), "{}")
+}
+
 #[cfg(test)]
 mod tests {
     /// The exact JSON both shells decode, as a file rather than an inline
@@ -219,5 +244,38 @@ mnemonic = "C"
                 );
             }
         }
+    }
+
+    /// Reads the answer a shell would, then frees it the way a shell must.
+    fn answer(ptr: *mut std::os::raw::c_char) -> serde_json::Value {
+        assert!(!ptr.is_null(), "the call answered");
+        let text = unsafe { std::ffi::CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        crate::look_free_cstring(ptr);
+        serde_json::from_str(&text).expect("the answer is JSON")
+    }
+
+    #[test]
+    fn a_save_request_that_cannot_be_read_says_so() {
+        let json = std::ffi::CString::new(r#"{"tiles": 3}"#).expect("a C string");
+        let reply = answer(super::look_launchpad_save_layout_json_impl(json.as_ptr()));
+        let error = reply["error"].as_str().expect("an error");
+        assert!(error.contains("could not be read"), "{error}");
+    }
+
+    /// Judged before the file is opened, so this needs no home directory and
+    /// writes nothing on the developer's machine.
+    #[test]
+    fn a_save_that_stacks_two_tiles_is_refused() {
+        let json = std::ffi::CString::new(
+            r#"{"columns":2,"rows":1,"tiles":[
+                {"action_id":"mic","col":0,"row":0,"col_span":1,"row_span":1},
+                {"action_id":"wifi","col":0,"row":0,"col_span":1,"row_span":1}]}"#,
+        )
+        .expect("a C string");
+        let reply = answer(super::look_launchpad_save_layout_json_impl(json.as_ptr()));
+        let error = reply["error"].as_str().expect("an error");
+        assert!(error.contains("both claim"), "{error}");
     }
 }

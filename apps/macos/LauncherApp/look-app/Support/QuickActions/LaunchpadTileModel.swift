@@ -132,6 +132,53 @@ nonisolated struct LaunchpadTileModel: Decodable, Identifiable, Equatable {
         case pressable, confirm, hasValue, icon
     }
 
+    /// Every field, for a copy that differs from a decoded tile in one thing.
+    /// Spelled out because `init(from:)` below suppresses the synthesized one.
+    init(
+        actionId: String,
+        title: String,
+        size: LaunchpadTileSize,
+        role: LaunchpadTileRole,
+        mnemonic: Character?,
+        col: Int,
+        row: Int,
+        colSpan: Int,
+        rowSpan: Int,
+        onLabel: String? = nil,
+        offLabel: String? = nil,
+        pressable: Bool = false,
+        confirm: String? = nil,
+        hasValue: Bool = true,
+        icon: String? = nil
+    ) {
+        self.actionId = actionId
+        self.title = title
+        self.size = size
+        self.role = role
+        self.mnemonic = mnemonic
+        self.col = col
+        self.row = row
+        self.colSpan = colSpan
+        self.rowSpan = rowSpan
+        self.onLabel = onLabel
+        self.offLabel = offLabel
+        self.pressable = pressable
+        self.confirm = confirm
+        self.hasValue = hasValue
+        self.icon = icon
+    }
+
+    /// The same tile with its top-left corner at another cell. Its size
+    /// travels with it: a drag moves a tile and never resizes one.
+    func placed(atCol col: Int, row: Int) -> LaunchpadTileModel {
+        LaunchpadTileModel(
+            actionId: actionId, title: title, size: size, role: role, mnemonic: mnemonic,
+            col: col, row: row, colSpan: colSpan, rowSpan: rowSpan,
+            onLabel: onLabel, offLabel: offLabel, pressable: pressable, confirm: confirm,
+            hasValue: hasValue, icon: icon
+        )
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         actionId = try container.decode(String.self, forKey: .actionId)

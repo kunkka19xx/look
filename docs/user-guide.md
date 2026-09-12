@@ -172,6 +172,8 @@ There is no column or row count to declare: the drawing is the count. Every row 
 
 The names are the tile ids - `lslot`, `bluetooth`, `wifi`, `battery`, `theme`, `keepawake`, `screensaver`, `weather`, `mic`, `restart`, `shutdown`, `nowplaying` - and the seeded file lists them with what each one does.
 
+**Or drag (macOS).** Hold a tile until it lifts, then drop it on another to trade places, or on a gap to move it there. Tiles it cannot trade with dim while you drag. The drop is written straight into the file's `layout` - your comments and your own tiles untouched - so it is the same edit as moving the name by hand. A short click still works the tile. If the file names a tile the strip is not showing, a drag is refused and the banner says which, so nothing you still have to fix is erased.
+
 `Cmd+Shift+;` reloads the file, so you can arrange the strip while looking at it. **Delete the file to go back to the default.**
 
 If the drawing is wrong, Look says so in the window rather than failing quietly. A problem with one tile drops that tile and keeps the rest; a problem with the file's structure - a row with the wrong number of names, or TOML it cannot read - falls back to the whole default layout, so the strip is never empty and never silent about why.
