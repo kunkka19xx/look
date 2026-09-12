@@ -204,7 +204,7 @@ fn build_helper_script(
     script.push_str("    Start-Sleep -Milliseconds 350\n");
     script.push_str("  }\n");
     script.push_str("  Invoke-WebRequest -Uri \"$BaseUrl/$SetupFileName\" -OutFile $SetupPath -UseBasicParsing -TimeoutSec 300\n");
-    script.push_str("  Invoke-WebRequest -Uri \"$BaseUrl/$ChecksumsFileName\" -OutFile $ChecksumsPath -UseBasicParsing-TimeoutSec 60\n");
+    script.push_str("  Invoke-WebRequest -Uri \"$BaseUrl/$ChecksumsFileName\" -OutFile $ChecksumsPath -UseBasicParsing -TimeoutSec 60\n");
     script.push_str("  $expected = $null\n");
     script.push_str("  foreach ($line in Get-Content $ChecksumsPath) {\n");
     script.push_str("    $line = $line.Trim()\n");
@@ -402,7 +402,7 @@ $ErrorActionPreference = 'Stop'
 function Wait-Process { param($Id, $ErrorAction) Add-Content (Join-Path $PSScriptRoot 'events') 'wait' }
 function Start-Sleep { param($Milliseconds) }
 function Invoke-WebRequest {
-    param($Uri, $OutFile, [switch]$UseBasicParsing $TimeoutSec)
+    param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec)
     Add-Content (Join-Path $PSScriptRoot 'events') 'download'
     if ($OutFile.EndsWith('.exe')) {
         [IO.File]::WriteAllText($OutFile, 'new installer')
