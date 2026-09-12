@@ -880,6 +880,11 @@ struct LauncherView: View {
             reloadQueryRetentionPolicy()
             runningAppsService.refresh()
             actionController.pickedFilePaths = pickedFilePathsForTextOp()
+            // A cold `lookapp <mode>`: this process launched to serve it.
+            if let pending = LaunchModes.pendingQuery {
+                LaunchModes.pendingQuery = nil
+                applyLaunchQuery(pending)
+            }
         }
         // A text op reads the picked file rather than the clipboard, so the
         // controller needs the picks as they change.
@@ -1047,6 +1052,18 @@ struct LauncherView: View {
             }
             activateLauncherModeAndFocus()
             refreshClipboardMonitoringMode()
+        }
+        // `lookapp <mode>` arriving while this instance is already up.
+        .onReceive(
+            DistributedNotificationCenter.default().publisher(
+                for: LaunchModes.deliveryNotification)
+        ) { notification in
+            guard let text = notification.object as? String else { return }
+            revealLauncherWindowForLaunch()
+            activateLauncherModeAndFocus()
+            // After the reveal, which runs `clearQueryIfRetentionExpired` and
+            // would wipe the mode.
+            applyLaunchQuery(text)
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookToggleSettingsRequested)) { _ in
             toggleThemeSettings()
@@ -1569,6 +1586,22 @@ struct LauncherView: View {
         default:
             return false
         }
+    }
+
+    /// Only ever the input: it waits for an Enter a person has to press.
+    ///
+    /// Whatever the launcher was showing has to be left first. A warm
+    /// `lookapp clipboard` can land while command mode, the AI session, help or
+    /// settings owns the panel, and each of those would swallow the prefix:
+    /// command mode types into `commandInput`, AI into the session, and
+    /// `focusActiveInput` routes to the settings field.
+    private func applyLaunchQuery(_ text: String) {
+        exitCommandMode()
+        exitAIToHome()
+        showsHelpScreen = false
+        appUIState.showsThemeSettings = false
+        query = text
+        focusActiveInput()
     }
 
     private func setRecalledInput(_ text: String) {

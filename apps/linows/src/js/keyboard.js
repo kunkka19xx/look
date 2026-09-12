@@ -752,11 +752,20 @@ async function copyClipboardEntry() {
     }
 }
 
-function toggleHelp() {
-    if (!helpScreen) return;
-    helpScreen.hidden = !helpScreen.hidden;
-    layout.setModal('help', !helpScreen.hidden);
+function setHelpVisible(show) {
+    if (!helpScreen || helpScreen.hidden === !show) return;
+    helpScreen.hidden = !show;
+    layout.setModal('help', show);
     syncHomeFn?.();
+}
+
+function toggleHelp() {
+    setHelpVisible(helpScreen?.hidden === true);
+}
+
+// A launch mode has to reach the search surface, and help covers it.
+export function closeHelp() {
+    setHelpVisible(false);
 }
 
 async function removeClipboardEntry() {

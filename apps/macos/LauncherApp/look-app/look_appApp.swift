@@ -23,6 +23,11 @@ struct look_appApp: App {
             exit(exitCode)
         }
 
+        if let exitCode = LaunchModes.handleLaunchArguments() {
+            fflush(stdout)
+            exit(exitCode)
+        }
+
         ConfigPathResolver.applyDefaultConfigEnvironmentIfNeeded()
     }
 

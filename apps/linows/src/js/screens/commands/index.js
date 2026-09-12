@@ -71,6 +71,9 @@ export function enterById(cmdId) {
 }
 
 export function enter() {
+    // Re-entering with another command selected (a second `lookapp <mode>`)
+    // has to take the mounted panel down, or both render at once.
+    if (active) currentModule().exit();
     active = true;
     selectedIndex = COMMANDS.findIndex((c) => c.id === activeCommandId);
     if (selectedIndex < 0) selectedIndex = 0;
@@ -130,6 +133,17 @@ export function handleKey(e) {
 
 export function getActiveCommand() {
     return activeCommandId;
+}
+
+// Text that came in with the jump (`:calc 2+2`, `lookapp shell ls -la`) goes to
+// the panel's own input. Found from the panel, so a new command inherits this by
+// having an input bar rather than by being named here.
+export function prefill(text) {
+    if (!text) return;
+    const input = screen.querySelector(`#cmd-panel-${activeCommandId} .cmd-input-bar input`);
+    if (!input) return;
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
 }
 
 // Delegate methods for app.js

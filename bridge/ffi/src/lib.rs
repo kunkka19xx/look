@@ -8,6 +8,7 @@ mod clipboard_api;
 mod lunar_api;
 mod matching_api;
 mod meeting_api;
+mod modes_api;
 mod netspeed_api;
 mod qactions_api;
 mod runtime_config;
@@ -151,6 +152,24 @@ pub extern "C" fn look_todo_save_json(json: *const c_char) -> bool {
         todo_api::look_todo_save_json_impl(json)
     }))
     .unwrap_or(false)
+}
+
+/// The launch-mode table as `--list-modes` prints it. Free with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_modes_list_text() -> *mut c_char {
+    std::panic::catch_unwind(modes_api::look_modes_list_text_impl).unwrap_or(std::ptr::null_mut())
+}
+
+/// Parse argv (a JSON array of strings, program name already dropped) into
+/// `{"kind":"normal"|"query"|"list_modes"|"unknown_mode", ...}`. Free with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_modes_parse_json(argv_json: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        modes_api::look_modes_parse_json_impl(argv_json)
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 /// Lunar date JSON (`{day, month, year, leap}`) for a Gregorian `(year, month,
