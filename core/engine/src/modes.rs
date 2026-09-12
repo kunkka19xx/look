@@ -57,6 +57,13 @@ pub const MODES: &[Mode] = &[
         about: "clipboard history",
     },
     Mode {
+        name: "clipboard-image",
+        aliases: &["clipimg", "ci"],
+        prefix: "ci\"",
+        platforms: Platforms::MacOnly,
+        about: "copied images",
+    },
+    Mode {
         name: "apps",
         aliases: &["app"],
         prefix: "a\"",
@@ -359,6 +366,17 @@ mod tests {
         assert_eq!(resolve("cb").unwrap().name, "clipboard");
     }
 
+    /// The image history is its own mode, not a spelling of the text one: the
+    /// two lists cannot mix, so neither can the names that open them.
+    #[test]
+    fn copied_images_resolve_to_their_own_mode() {
+        assert_eq!(resolve("clipboard-image").unwrap().name, "clipboard-image");
+        assert_eq!(resolve("clipimg").unwrap().name, "clipboard-image");
+        assert_eq!(resolve("ci").unwrap().name, "clipboard-image");
+        assert_eq!(resolve("ci").unwrap().query("logo"), "ci\"logo");
+        assert_eq!(resolve("clip").unwrap().name, "clipboard");
+    }
+
     #[test]
     fn resolution_ignores_case_and_surrounding_space() {
         assert_eq!(resolve("Clipboard").unwrap().name, "clipboard");
@@ -523,6 +541,12 @@ mod tests {
         assert_eq!(resolve("processes").unwrap().platforms, Platforms::All);
         assert_eq!(resolve("dictionary").unwrap().platforms, Platforms::MacOnly);
         assert_eq!(resolve("ai").unwrap().platforms, Platforms::MacOnly);
+        // linows keeps clipboard history in its own JSON store, which has no
+        // image path, so it must not advertise `ci"`.
+        assert_eq!(
+            resolve("clipboard-image").unwrap().platforms,
+            Platforms::MacOnly
+        );
     }
 
     #[test]

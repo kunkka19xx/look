@@ -18,7 +18,7 @@ extension LauncherView {
         fileRecallEmptyMessage = nil
         fileRecallNote = nil
         mainBarAction = nil
-        guard !isClipboardQuery else {
+        guard !isClipboardQuery, !isClipboardImageQuery else {
             invalidateSearchRequests()
             setInitialSelection()
             return
@@ -298,7 +298,7 @@ extension LauncherView {
         let trimmed = currentQuery.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard themeStore.settings.aiEnabled,
-              !isCommandMode, !isClipboardQuery, !isPrefixSuggestionQuery,
+              !isCommandMode, !isClipboardQuery, !isClipboardImageQuery, !isPrefixSuggestionQuery,
               !isCommandSuggestionQuery, !isTranslationQuery,
               trimmed.count >= AppConstants.Launcher.minSuggestionQueryLength
         else {

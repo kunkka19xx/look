@@ -9,7 +9,8 @@ extension LauncherView {
     /// Modes where synthesized suggestion rows (URLs, web search) must not show:
     /// command, clipboard, and the `"`/`:` discovery menus.
     var allowsSuggestionRows: Bool {
-        !isCommandMode && !isClipboardQuery && !isPrefixSuggestionQuery && !isCommandSuggestionQuery
+        !isCommandMode && !isClipboardQuery && !isClipboardImageQuery && !isPrefixSuggestionQuery
+            && !isCommandSuggestionQuery
     }
 
     /// Builds a synthesized URL row. Shared by the live row and history rows so

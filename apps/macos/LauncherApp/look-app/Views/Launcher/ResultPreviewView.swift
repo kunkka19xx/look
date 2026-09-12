@@ -388,6 +388,8 @@ struct ResultPreviewView: View {
             actionPreview.overlay(alignment: .top) { floatingActionMenu }
         } else if result.kind == .process {
             processPreview
+        } else if result.isClipboardImage {
+            clipboardImagePreview
         } else if result.kind == .clipboard {
             clipboardPreview
         } else if isCalcResult {
@@ -676,6 +678,45 @@ struct ResultPreviewView: View {
         }
     }
 
+    /// Icon, what the clip is, and the delete affordance. Shared by the text
+    /// and image panels: the two differ below this line, not at it.
+    ///
+    /// The capture time belongs to the InfoRow at the foot of both panels, and
+    /// only there. Repeated up here it pushed a long title onto a second line
+    /// to say what the panel already said.
+    private func clipboardPreviewHeader(icon: NSImage, title: String) -> some View {
+        HStack(spacing: 10) {
+            Image(nsImage: icon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 34, height: 34)
+                .foregroundStyle(themeStore.accentColor())
+            Text(title)
+                .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 1), weight: .semibold))
+                .foregroundStyle(themeStore.fontColor())
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+
+            // Solid danger with contrasting text, as the kill and delete
+            // confirmations use. Tinted text on a tinted fill was the same hue
+            // twice and read as disabled.
+            if let onDeleteClipboard {
+                Button {
+                    onDeleteClipboard()
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
+                        .foregroundStyle(themeStore.onDangerColor())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(themeStore.dangerColor(), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     private var clipboardPreview: some View {
         let content = result.clipboardContent ?? ""
         let capturedAt = result.clipboardCapturedAt.map { Self.clipboardDateFormatter.string(from: $0) } ?? "Unknown"
@@ -687,36 +728,7 @@ struct ResultPreviewView: View {
         )
 
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Image(nsImage: clipboardIcon)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 34, height: 34)
-                    .foregroundStyle(themeStore.accentColor())
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Clipboard item")
-                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize + 1), weight: .semibold))
-                        .foregroundStyle(themeStore.fontColor())
-                    Text("Captured \(capturedAt)")
-                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
-                        .foregroundStyle(themeStore.mutedTextColor())
-                }
-                Spacer()
-
-                if let onDeleteClipboard {
-                    Button {
-                        onDeleteClipboard()
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                    .buttonStyle(.plain)
-                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .semibold))
-                    .foregroundStyle(themeStore.dangerColor().opacity(0.95))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(themeStore.dangerColor().opacity(0.16), in: Capsule())
-                }
-            }
+            clipboardPreviewHeader(icon: clipboardIcon, title: "Clipboard item")
 
             HStack(spacing: 8) {
                 KindBadge(kind: "clipboard")
@@ -747,6 +759,62 @@ struct ResultPreviewView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    // MARK: - Copied image preview
+
+    /// The `ci"` panel. The picture is the whole point of the row, so it gets
+    /// the space the text preview gives the clip's characters.
+    private var clipboardImagePreview: some View {
+        let capturedAt =
+            result.clipboardCapturedAt.map { Self.clipboardDateFormatter.string(from: $0) }
+            ?? "Unknown"
+        let image = result.clipboardImagePath.flatMap { NSImage(contentsOfFile: $0) }
+        let pixelSize = result.clipboardImagePixelSize
+
+        return VStack(alignment: .leading, spacing: 10) {
+            clipboardPreviewHeader(icon: clipboardImageIcon, title: result.title)
+
+            HStack(spacing: 8) {
+                KindBadge(kind: "image")
+                if let pixelSize {
+                    Text("\(Int(pixelSize.width)) × \(Int(pixelSize.height))")
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                        .foregroundStyle(themeStore.secondaryTextColor())
+                }
+                if let byteSize = result.clipboardImageByteSize {
+                    Text(formatFileSize(Int64(byteSize)))
+                        .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .regular))
+                        .foregroundStyle(themeStore.secondaryTextColor())
+                }
+            }
+
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(
+                        themeStore.controlFillColor(),
+                        in: RoundedRectangle(cornerRadius: themeStore.controlRadius, style: .continuous))
+            } else {
+                // The row survives its file only until the next sweep, and the
+                // gap between is not the place to pretend.
+                Text("The image is no longer on disk")
+                    .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
+                    .foregroundStyle(themeStore.mutedTextColor())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            InfoRow(label: "Captured", value: capturedAt)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var clipboardImageIcon: NSImage {
+        NSImage(systemSymbolName: "photo.on.rectangle", accessibilityDescription: nil)
+            ?? clipboardIcon
     }
 
     // MARK: - Process preview
@@ -839,7 +907,7 @@ struct KindBadge: View {
         case "app": return themeStore.accentColor()
         case "file": return themeStore.successColor()
         case "folder": return themeStore.warningColor()
-        case "clipboard": return themeStore.accentColor()
+        case "clipboard", "image": return themeStore.accentColor()
         default: return themeStore.mutedTextColor()
         }
     }

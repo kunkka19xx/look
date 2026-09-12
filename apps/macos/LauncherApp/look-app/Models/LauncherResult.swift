@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 enum LauncherResultKind: String, Codable {
@@ -36,6 +37,13 @@ struct LauncherResult: Identifiable {
     /// What re-copying a clipboard row actually pastes, when it differs from
     /// `clipboardContent` (a labeled entry like `2+2 = 4` pastes `4`).
     var clipboardPayload: String? = nil
+    /// Set only on the `ci"` rows: where the copied image's pixels live, the
+    /// small copy the row draws, and what it is. A clipboard row with a path
+    /// here IS an image row (see `isClipboardImage`).
+    var clipboardImagePath: String? = nil
+    var clipboardImageThumbnailPath: String? = nil
+    var clipboardImagePixelSize: CGSize? = nil
+    var clipboardImageByteSize: Int? = nil
     /// Set only for `.process` rows: the process id and its listening TCP ports.
     var processPID: Int32? = nil
     var processPorts: [Int]? = nil
@@ -59,6 +67,13 @@ extension LauncherResult {
     /// spelled out in three views, which is how a namespace check drifts.
     var isSourceRow: Bool {
         id.hasPrefix(AppConstants.Launcher.SourceBlock.idPrefix)
+    }
+
+    /// A clipboard row whose clip is a picture rather than text. One definition
+    /// for the row icon, the preview and the open handler, so the three cannot
+    /// disagree about what they are looking at.
+    var isClipboardImage: Bool {
+        kind == .clipboard && clipboardImagePath != nil
     }
 }
 
