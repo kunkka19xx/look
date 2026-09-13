@@ -18,6 +18,7 @@ struct TodoView: View {
     @State private var page: TodoPage
     @State private var search = ""
     @State private var savedToast = false
+    @State private var saveFailed = false
     @State private var savedToastToken = UUID()
     @FocusState private var searchFocused: Bool
 
@@ -47,13 +48,19 @@ struct TodoView: View {
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // The launcher's global hint bar already covers /todo's shortcuts,
-        // so the panel shows a transient Save confirmation here instead of
-        // a second hint row.
+        // so the panel shows Save feedback here instead of a second hint
+        // row. Failures stay visible with Retry until a save succeeds.
         .overlay(alignment: .bottom) {
-            if savedToast {
+            if savedToast || saveFailed {
                 HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text("Saved")
+                    Image(systemName: saveFailed ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    Text(saveFailed ? "Save failed. Changes are not saved." : "Saved")
+                    if saveFailed {
+                        Button(action: save) {
+                            Text("Retry").underline()
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .font(themeStore.uiFont(size: 12, weight: .semibold))
                 .foregroundStyle(themeStore.onAccentColor())
@@ -65,6 +72,7 @@ struct TodoView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: savedToast)
+        .animation(.easeInOut(duration: 0.2), value: saveFailed)
         .background(
             TodoKeyRecognizer(
                 onTogglePage: { page = (page == .tasks) ? .analytics : .tasks },
@@ -99,7 +107,13 @@ struct TodoView: View {
     }
 
     private func save() {
-        state.save()
+        guard state.save() else {
+            savedToast = false
+            savedToastToken = UUID()
+            saveFailed = true
+            return
+        }
+        saveFailed = false
         savedToast = true
         let token = UUID()
         savedToastToken = token

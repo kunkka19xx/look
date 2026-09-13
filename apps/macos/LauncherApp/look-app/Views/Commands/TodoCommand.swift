@@ -335,12 +335,13 @@ final class TodoState {
         }
     }
 
-    func save() {
-        TodoPersistence.save(groups)
+    func save() -> Bool {
+        guard TodoPersistence.save(groups) else { return false }
         undoHistory.removeAll()
         redoHistory.removeAll()
         savedRevision = revision
         dirty = false
+        return true
     }
 }
 
@@ -359,7 +360,7 @@ enum TodoPersistence {
         groups(from: EngineBridge.shared.todoList())
     }
 
-    static func save(_ groups: [TodoGroup]) {
+    static func save(_ groups: [TodoGroup]) -> Bool {
         EngineBridge.shared.todoSave(backendTasks(from: groups))
     }
 

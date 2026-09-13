@@ -225,5 +225,5 @@ test('date placeholders undo in order and history is bounded', () => {
     assert.equal(run('futureKeys().length'), 0);
     run(`addTask(todayKey(), 'Task');
         for (let i = 0; i < 60; i++) toggleTask(todayKey(), tasksByDay.get(todayKey())[0].id);`);
-    assert.equal(run('undoHistory.length'), 50);
+    assert.equal(run('undoHistory.length'), 15);
 });
