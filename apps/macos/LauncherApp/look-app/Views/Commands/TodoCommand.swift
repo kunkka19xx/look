@@ -176,6 +176,19 @@ final class TodoState {
     /// Unsaved edits pending. Save persists them to the backend.
     var dirty: Bool = false
 
+    private struct Snapshot {
+        let groups: [TodoGroup]
+        let futureDaysAdded: Int
+        let revision: Int
+    }
+    private var undoHistory: [Snapshot] = []
+    private var redoHistory: [Snapshot] = []
+    private var revision = 0
+    private var nextRevision = 0
+    private var savedRevision = 0
+    var canUndo: Bool { !undoHistory.isEmpty }
+    var canRedo: Bool { !redoHistory.isEmpty }
+
     /// Number of `future` placeholder days already generated, so
     /// "Add date" walks forward one calendar day at a time.
     @ObservationIgnored private var futureDaysAdded = 0
@@ -211,8 +224,35 @@ final class TodoState {
     var groupsLeft: Int { max(0, TodoCommand.dateGroupLimit - futureCount) }
 
     private func mutate(_ body: (inout [TodoGroup]) -> Void) {
+        let before = Snapshot(groups: groups, futureDaysAdded: futureDaysAdded, revision: revision)
         body(&groups)
+        guard groups != before.groups else { return }
+        redoHistory.removeAll()
+        undoHistory.append(before)
+        if undoHistory.count > 50 { undoHistory.removeFirst() }
+        nextRevision += 1
+        revision = nextRevision
         dirty = true
+    }
+
+    func undo() {
+        guard let previous = undoHistory.popLast() else { return }
+        redoHistory.append(Snapshot(groups: groups, futureDaysAdded: futureDaysAdded, revision: revision))
+        restore(previous)
+    }
+
+    func redo() {
+        guard let next = redoHistory.popLast() else { return }
+        undoHistory.append(Snapshot(groups: groups, futureDaysAdded: futureDaysAdded, revision: revision))
+        restore(next)
+    }
+
+    private func restore(_ snapshot: Snapshot) {
+        groups = snapshot.groups
+        futureDaysAdded = snapshot.futureDaysAdded
+        revision = snapshot.revision
+        dirty = revision != savedRevision
+        ensureTodayGroup()
     }
 
     private func withGroup(_ key: String, _ body: (inout TodoGroup) -> Void) {
@@ -297,6 +337,9 @@ final class TodoState {
 
     func save() {
         TodoPersistence.save(groups)
+        undoHistory.removeAll()
+        redoHistory.removeAll()
+        savedRevision = revision
         dirty = false
     }
 }

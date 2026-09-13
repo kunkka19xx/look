@@ -24,6 +24,7 @@ import {
 // (completing one frees a slot) and at most 3 upcoming date groups.
 const UNFINISHED_LIMIT = 3;
 const FUTURE_GROUP_LIMIT = 3;
+const UNDO_HISTORY_LIMIT = 15;
 // Days late an unfinished task stays completable (EXTENDED) before it
 // locks (OVERDUE). Mirrors macOS TodoCommand.extensionWindowDays.
 const EXTENSION_WINDOW_DAYS = 3;
@@ -49,6 +50,12 @@ const HEATMAP_ROW_LABELS = ['', 'M', '', 'W', '', 'F', ''];
 // as the task's due_date on save.
 let tasksByDay = new Map();
 let dirty = false;
+let undoHistory = [];
+let redoHistory = [];
+let revision = 0;
+let nextRevision = 0;
+let savedRevision = 0;
+let saving = false;
 let loaded = false;
 let visible = false;
 let page = 'tasks';
@@ -192,6 +199,25 @@ function showTooltip(el) {
 }
 
 export function handleKey(e) {
+    if (!visible) return false;
+    const active = document.activeElement;
+    // Keep native text undo/redo in add/rename fields and a nonempty search field.
+    const editingText =
+        active?.dataset?.todoField ||
+        (active === searchInput && searchInput.value.length > 0) ||
+        active?.isContentEditable;
+    if (
+        (e.ctrlKey || e.metaKey) &&
+        !e.altKey &&
+        e.key.toLowerCase() === 'z' &&
+        !editingText &&
+        (e.shiftKey ? redoHistory.length : undoHistory.length)
+    ) {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+        return true;
+    }
     // Ctrl+N flips Tasks/Stats, Ctrl+S saves; same pair as macOS Cmd+N/Cmd+S.
     if (e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === 'n' || e.key === 'N')) {
         e.preventDefault();
@@ -261,6 +287,10 @@ async function load() {
             });
         }
         loaded = true;
+        undoHistory = [];
+        redoHistory = [];
+        revision = ++nextRevision;
+        savedRevision = revision;
         dirty = false;
     } catch (err) {
         console.error('[todo] load failed:', err);
@@ -270,6 +300,9 @@ async function load() {
 }
 
 async function persist() {
+    if (saving) return;
+    saving = true;
+    const savingRevision = revision;
     const tasks = [];
     for (const [key, list] of tasksByDay) {
         for (const t of list) {
@@ -284,11 +317,16 @@ async function persist() {
     }
     try {
         await todoSave(tasks);
-        dirty = false;
+        undoHistory = [];
+        redoHistory = [];
+        savedRevision = savingRevision;
+        dirty = revision !== savedRevision;
         showToast(`${checkIcon} Saved`, false, SAVE_TOAST_SECS);
         renderToolbar();
     } catch (err) {
         showToast(`Save failed: ${escapeHtml(String(err))}`, true, 2.0);
+    } finally {
+        saving = false;
     }
 }
 
@@ -337,6 +375,38 @@ const nowUnixS = () => Math.floor(Date.now() / 1000);
 
 // --- Mutations (in-memory; Save persists) ---
 
+function rememberChange() {
+    redoHistory = [];
+    undoHistory.push({ tasksByDay: structuredClone(tasksByDay), revision });
+    if (undoHistory.length > UNDO_HISTORY_LIMIT) undoHistory.shift();
+    revision = ++nextRevision;
+}
+
+function undo() {
+    const previous = undoHistory.pop();
+    if (!previous) return;
+    redoHistory.push({ tasksByDay: structuredClone(tasksByDay), revision });
+    restore(previous);
+}
+
+function redo() {
+    const next = redoHistory.pop();
+    if (!next) return;
+    undoHistory.push({ tasksByDay: structuredClone(tasksByDay), revision });
+    restore(next);
+}
+
+function restore(snapshot) {
+    tasksByDay = snapshot.tasksByDay;
+    revision = snapshot.revision;
+    dirty = revision !== savedRevision;
+    editingAddKey = null;
+    editingTaskRef = null;
+    ensureTodayGroup();
+    fireQuickChange();
+    renderAll();
+}
+
 function markDirty() {
     dirty = true;
     fireQuickChange();
@@ -352,6 +422,7 @@ const openCount = (key) => (tasksByDay.get(key) || []).filter((t) => !t.done).le
 function addTask(key, rawName) {
     const name = rawName.trim().slice(0, NAME_MAX_LEN);
     if (!name || openCount(key) >= UNFINISHED_LIMIT) return false;
+    rememberChange();
     if (!tasksByDay.has(key)) tasksByDay.set(key, []);
     tasksByDay.get(key).push({ id: newTaskId(), name, done: false, createdAt: nowUnixS() });
     markDirty();
@@ -362,6 +433,7 @@ function toggleTask(key, id) {
     const t = (tasksByDay.get(key) || []).find((t) => t.id === id);
     if (!t) return;
     if (daysLate(key) > EXTENSION_WINDOW_DAYS) return;
+    rememberChange();
     t.done = !t.done;
     markDirty();
 }
@@ -370,6 +442,7 @@ function editTask(key, id, rawName) {
     const name = rawName.trim().slice(0, NAME_MAX_LEN);
     const t = (tasksByDay.get(key) || []).find((t) => t.id === id);
     if (!t || !name || t.name === name) return;
+    rememberChange();
     t.name = name;
     markDirty();
 }
@@ -379,6 +452,7 @@ function removeTask(key, id) {
     if (!list) return;
     const idx = list.findIndex((t) => t.id === id);
     if (idx < 0) return;
+    rememberChange();
     list.splice(idx, 1);
     // A past day emptied out has no add row, so drop the dead card.
     if (list.length === 0 && key < todayKey()) tasksByDay.delete(key);
@@ -388,6 +462,7 @@ function removeTask(key, id) {
 function completeAll(key) {
     const list = tasksByDay.get(key) || [];
     if (!list.some((t) => !t.done)) return;
+    rememberChange();
     list.forEach((t) => {
         t.done = true;
     });
@@ -396,6 +471,7 @@ function completeAll(key) {
 
 function clearAll(key) {
     if (!(tasksByDay.get(key) || []).length) return;
+    rememberChange();
     tasksByDay.set(key, []);
     markDirty();
 }
@@ -407,6 +483,7 @@ function addDate() {
     if (futureKeys().length >= FUTURE_GROUP_LIMIT) return;
     let d = addDays(today(), 1);
     while (tasksByDay.has(keyOf(d))) d = addDays(d, 1);
+    rememberChange();
     tasksByDay.set(keyOf(d), []);
     editingAddKey = keyOf(d);
     renderAll();

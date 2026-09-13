@@ -341,6 +341,8 @@ Built-in commands:
 - Past days are non-editable. Unfinished tasks 1-3 days late show an `EXTENDED` badge and can still be marked done; unfinished tasks more than 3 days late show `OVERDUE` and their completion state is locked
 - Search matches task names and dates (`jul 3`, `yesterday`); case- and diacritic-insensitive
 - Nothing autosaves: hit `Save` or `Cmd+S`; `Cmd+N` flips between the Tasks and Stats pages
+- Press `Cmd+Z` (`Ctrl+Z` on Linux/Windows) to undo task changes, including deleting one task or clearing a day. Up to 50 changes can be undone before saving. A successful Save clears both Undo and Redo history; new edits start a fresh history. A failed Save preserves both histories. Text fields keep their typing undo.
+- Press `Cmd+Shift+Z` (`Ctrl+Shift+Z` on Linux/Windows) to redo an undone task change before saving. Saving or making a new edit clears the redo history; text fields keep their typing redo.
 - When today has tasks, the home-screen hint bar shows a clickable `Todo X/Y` stat; hovering it lists what's still unfinished
 - Data lives in the local database and is kept for one year
 

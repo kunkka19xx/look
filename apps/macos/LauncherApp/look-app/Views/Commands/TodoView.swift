@@ -68,7 +68,17 @@ struct TodoView: View {
         .background(
             TodoKeyRecognizer(
                 onTogglePage: { page = (page == .tasks) ? .analytics : .tasks },
-                onSave: save
+                onSave: save,
+                onUndo: {
+                    guard state.canUndo else { return false }
+                    state.undo()
+                    return true
+                },
+                onRedo: {
+                    guard state.canRedo else { return false }
+                    state.redo()
+                    return true
+                }
             ))
         // The launcher does not focus /todo (it owns its own field), so
         // focus the search bar on entry and when returning to Tasks.
@@ -695,23 +705,31 @@ struct TodoGhostButton: View {
 struct TodoKeyRecognizer: NSViewRepresentable {
     var onTogglePage: () -> Void
     var onSave: () -> Void
+    var onUndo: () -> Bool
+    var onRedo: () -> Bool
 
     func makeNSView(context: Context) -> TodoKeyHostView {
         let v = TodoKeyHostView()
         v.onTogglePage = onTogglePage
         v.onSave = onSave
+        v.onUndo = onUndo
+        v.onRedo = onRedo
         return v
     }
 
     func updateNSView(_ nsView: TodoKeyHostView, context: Context) {
         nsView.onTogglePage = onTogglePage
         nsView.onSave = onSave
+        nsView.onUndo = onUndo
+        nsView.onRedo = onRedo
     }
 }
 
 final class TodoKeyHostView: NSView {
     var onTogglePage: (() -> Void)?
     var onSave: (() -> Void)?
+    var onUndo: (() -> Bool)?
+    var onRedo: (() -> Bool)?
     nonisolated(unsafe) private var monitor: Any?
 
     override func viewDidMoveToWindow() {
@@ -726,10 +744,18 @@ final class TodoKeyHostView: NSView {
     private func install() {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
+            guard let self, let window = self.window,
+                  window.isKeyWindow, event.window === window,
+                  !self.isHiddenOrHasHiddenAncestor else { return event }
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            guard mods == .command else { return event }
             let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            if chars == "z", mods == [.command, .shift] {
+                if let editor = window.firstResponder as? NSTextView,
+                   editor.undoManager?.canRedo == true { return event }
+                if self.onRedo?() == true { return nil }
+                return event
+            }
+            guard mods == .command else { return event }
             if chars == "n" {
                 self.onTogglePage?()
                 return nil
@@ -737,6 +763,12 @@ final class TodoKeyHostView: NSView {
             if chars == "s" {
                 self.onSave?()
                 return nil
+            }
+            if chars == "z" {
+                // Let the active text editor undo typing before task changes.
+                if let editor = window.firstResponder as? NSTextView,
+                   editor.undoManager?.canUndo == true { return event }
+                if self.onUndo?() == true { return nil }
             }
             return event
         }

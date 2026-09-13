@@ -659,7 +659,7 @@ struct LauncherView: View {
                 return ["Space start/pause", "R reset", "Esc back"]
             }
             if activeCommandID == AppConstants.Launcher.Command.todo {
-                return ["Cmd+N switch page", "Cmd+S save", "Esc back"]
+                return ["Cmd+N switch page", "Cmd+Z undo", "Cmd+Shift+Z redo", "Cmd+S save", "Esc back"]
             }
             return ["Enter run", "Tab select", "Esc back"]
         }
