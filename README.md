@@ -38,8 +38,7 @@ Results land as fast as you can type. A Rust core under a native SwiftUI app on 
 ### macOS
 
 ```bash
-brew tap kunkka19xx/tap
-brew install --cask look
+brew install --cask kunkka19xx/tap/look
 ```
 
 Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`). Release builds are signed and notarized - no Gatekeeper bypass needed.

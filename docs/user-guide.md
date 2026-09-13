@@ -27,8 +27,7 @@
 Install with Homebrew (see [README](../README.md#install) for alternatives):
 
 ```bash
-brew tap kunkka19xx/tap
-brew install --cask look
+brew install --cask kunkka19xx/tap/look
 ```
 
 On first launch, Look will index your apps, files, and folders in the background. You can start using it immediately - results appear as indexing completes.
