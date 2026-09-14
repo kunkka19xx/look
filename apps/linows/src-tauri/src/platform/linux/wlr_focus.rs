@@ -10,9 +10,6 @@
 
 use std::time::{Duration, Instant};
 
-/// `zwlr_foreign_toplevel_handle_v1.state.activated`.
-const ACTIVATED_STATE: u32 = 2;
-
 use wayland_client::{
     Connection, Dispatch, QueueHandle, event_created_child,
     protocol::{wl_registry, wl_seat},
@@ -22,9 +19,11 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_manager_v1::{self as wlr_manager, ZwlrForeignToplevelManagerV1},
 };
 
-/// The `app_id` of the toplevel the compositor currently has activated, which
-/// is the app the user is in. Used to name a copied image after where it came
-/// from, the way macOS names one after the frontmost app.
+/// `zwlr_foreign_toplevel_handle_v1.state.activated`.
+const ACTIVATED_STATE: u32 = 2;
+
+/// The `app_id` of the toplevel the compositor has activated, which is the app
+/// the user is in. Names a copied image after where it came from.
 pub fn focused_app_id() -> Option<String> {
     let state = collect_toplevels()?;
     state
@@ -49,8 +48,8 @@ pub fn list_toplevel_app_ids() -> std::collections::HashSet<String> {
     ids
 }
 
-/// One roundtrip pass over the toplevel list: every window the compositor
-/// manages, with the app_id and activated state it reported.
+/// Every window the compositor manages, with the app_id and activated state it
+/// reported.
 fn collect_toplevels() -> Option<State> {
     let conn = Connection::connect_to_env().ok()?;
     let mut queue = conn.new_event_queue::<State>();
@@ -248,8 +247,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for State {
         };
         match event {
             wlr_toplevel::Event::AppId { app_id } => entry.app_id = Some(app_id),
-            // The state arrives as a packed array of u32s, re-sent in full on
-            // every change, so this replaces rather than accumulates.
+            // A packed array of u32s, re-sent in full on every change.
             wlr_toplevel::Event::State { state } => {
                 entry.activated = state
                     .chunks_exact(4)

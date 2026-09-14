@@ -9,12 +9,10 @@ use crate::clipimage;
 
 const MAX_ENTRY_BYTES: usize = 30_000;
 const POLL_MS: u64 = 500;
-/// Polls between image reads, at the fastest. Reading an image decodes it,
-/// which is not work to do twice a second for as long as one sits on the
-/// clipboard.
+/// Polls between image reads, at the fastest and (once the same picture keeps
+/// coming back) at the slowest. Reading an image decodes it, which is not work
+/// to do twice a second for as long as one sits on the clipboard.
 const IMAGE_POLL_MIN_TICKS: u32 = 2;
-/// ... and at the slowest, once the same picture has come back unchanged a few
-/// times. A copy that replaces it is picked up within this many polls.
 const IMAGE_POLL_MAX_TICKS: u32 = 8;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -29,43 +27,38 @@ pub struct ClipboardEntry {
     pub payload: Option<String>,
 }
 
-/// One copied image. The pixels are not here: they live in a file named after
-/// `hash` (see `clipimage`), since a screenshot is megabytes and this is a
-/// list the user scrolls.
+/// One copied image. The pixels live in a file named after `hash`, which is
+/// also the row's identity: a re-copy lands on the row it already had.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ClipboardImageEntry {
-    /// Identity of the pixels, and so of the row: a re-copy lands on the row
-    /// it already had rather than a new one.
     pub hash: String,
     pub timestamp: u64,
     pub width: u32,
     pub height: u32,
     pub byte_size: usize,
-    /// The app the copy came from, when the session will say. A picture has
-    /// no name, so this is what the row is called (macOS: the frontmost app).
+    /// The app the copy came from, when the session will say. Pixels have no
+    /// name, so this is what the row is called.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
 }
 
-/// What the frontend reads: the entry plus the two paths it draws. Derived
-/// rather than stored, so moving the image directory cannot orphan the index.
+/// The thumbnail path is derived rather than stored, so moving the image
+/// directory cannot orphan the index. The picture itself travels as a data URL
+/// (`clipboard_image_data_url`), not as a path.
 #[derive(Serialize)]
 pub struct ClipboardImageRow {
     #[serde(flatten)]
     entry: ClipboardImageEntry,
-    path: String,
     thumb_path: String,
 }
 
 struct ClipboardState {
     entries: Vec<ClipboardEntry>,
-    /// Apart from `entries` because the two share no search key and no row
-    /// shape: text is searched by content and measured in lines, an image is
-    /// listed by when it was copied and drawn as a picture.
+    /// Apart from `entries`: the two share no search key and no row shape.
     images: Vec<ClipboardImageEntry>,
     last_text: String,
-    /// Pixels already filed, so an image left on the clipboard is read once
-    /// rather than re-encoded on every poll.
+    /// Pixels already filed, so one left on the clipboard is read once rather
+    /// than re-encoded on every poll.
     last_image_hash: String,
     max_entries: usize,
     max_images: usize,
@@ -114,8 +107,7 @@ fn save_entries(entries: &[ClipboardEntry]) {
     save_json("clipboard.json", &entries);
 }
 
-/// Rows whose file is gone are dropped rather than listed broken: the pixels
-/// are the clip, and without them there is nothing to paste.
+/// A row whose file is gone is dropped: the pixels are the clip.
 fn load_images() -> Vec<ClipboardImageEntry> {
     let entries: Vec<ClipboardImageEntry> = load_json("clipboard-images.json");
     entries
@@ -173,9 +165,8 @@ pub fn start_monitor() {
         loop {
             std::thread::sleep(std::time::Duration::from_millis(POLL_MS));
 
-            // A copy that carries text is not an image copy, so the two
-            // branches never both run for one clipboard change - and the
-            // cheap read is the one that runs every poll.
+            // A copy carrying text is not an image copy, and the cheap read
+            // is the one that runs every poll.
             if let Ok(text) = clipboard.get_text() {
                 image_backoff = IMAGE_POLL_MIN_TICKS;
                 image_wait = 0;
@@ -219,9 +210,8 @@ fn capture_text(text: String) {
     push_entry(state, text, None);
 }
 
-/// Whether a new picture was filed, which is what decides how soon to look
-/// again. The state lock is not held across the encode: writing a screenshot
-/// takes long enough to stall a `ci"` query behind it.
+/// Whether a new picture was filed, which decides how soon to look again. The
+/// lock is not held across the encode: that would stall a `ci"` query.
 fn capture_image(clipboard: &mut arboard::Clipboard) -> bool {
     let Ok(image) = clipboard.get_image() else {
         return false;
@@ -242,8 +232,7 @@ fn capture_image(clipboard: &mut arboard::Clipboard) -> bool {
     let Some(stored) = clipimage::store(width, height, &image.bytes) else {
         return false;
     };
-    // Asked before the lock: it talks to the compositor, which a `ci"` query
-    // should not have to wait behind.
+    // Before the lock: it talks to the compositor.
     let source = focused_app();
 
     let mut lock = STATE.lock().unwrap();
@@ -251,12 +240,24 @@ fn capture_image(clipboard: &mut arboard::Clipboard) -> bool {
         return false;
     };
     state.last_image_hash = stored.hash.clone();
-    push_image(state, stored, source);
+    insert_image(
+        &mut state.images,
+        ClipboardImageEntry {
+            hash: stored.hash,
+            timestamp: now_secs(),
+            width: stored.width,
+            height: stored.height,
+            byte_size: stored.byte_size,
+            source,
+        },
+        state.max_images,
+    );
+    save_images(&state.images);
     true
 }
 
-/// Where a copy came from. `None` on a session that will not say (GNOME and
-/// KDE Wayland), which the row words as "screen", as macOS does.
+/// `None` on a session that will not say (GNOME and KDE Wayland); the row
+/// words that as "screen", as macOS does.
 fn focused_app() -> Option<String> {
     #[cfg(target_os = "linux")]
     {
@@ -292,24 +293,8 @@ fn push_entry(state: &mut ClipboardState, text: String, payload: Option<String>)
     save_entries(&state.entries);
 }
 
-fn push_image(state: &mut ClipboardState, stored: clipimage::StoredImage, source: Option<String>) {
-    insert_image(
-        &mut state.images,
-        ClipboardImageEntry {
-            hash: stored.hash,
-            timestamp: now_secs(),
-            width: stored.width,
-            height: stored.height,
-            byte_size: stored.byte_size,
-            source,
-        },
-        state.max_images,
-    );
-    save_images(&state.images);
-}
-
 /// Drops any older row for the same pixels: the file is named after them, so
-/// two rows here would point at one picture.
+/// two rows would point at one picture.
 fn insert_image(images: &mut Vec<ClipboardImageEntry>, entry: ClipboardImageEntry, limit: usize) {
     images.retain(|e| e.hash != entry.hash);
     images.insert(0, entry);
@@ -332,7 +317,6 @@ pub fn reload_from_config() {
         state.max_images = crate::config::clipboard_image_limit();
         if state.images.len() > state.max_images {
             state.images.truncate(state.max_images);
-            // Saving sweeps, so the pixels of a trimmed row go with it.
             save_images(&state.images);
         }
     }
@@ -380,8 +364,8 @@ pub fn delete_clipboard_entry(timestamp: u64, text: String) -> bool {
     true
 }
 
-/// Every copied image, newest first. The list is capped at tens of rows, so it
-/// travels whole and `ci"word` filters it where the words are written.
+/// Every copied image, newest first. Capped at tens of rows, so it travels
+/// whole and `ci"word` filters it where the row's words are written.
 #[tauri::command]
 pub fn get_clipboard_images() -> Vec<ClipboardImageRow> {
     let lock = STATE.lock().unwrap();
@@ -393,9 +377,6 @@ pub fn get_clipboard_images() -> Vec<ClipboardImageRow> {
         .iter()
         .filter_map(|entry| {
             Some(ClipboardImageRow {
-                path: clipimage::file_path(&entry.hash)?
-                    .to_string_lossy()
-                    .into_owned(),
                 thumb_path: clipimage::thumbnail_path(&entry.hash)?
                     .to_string_lossy()
                     .into_owned(),
@@ -416,34 +397,32 @@ pub fn delete_clipboard_image(hash: String) -> bool {
     if state.images.len() == before {
         return false;
     }
-    // Saving sweeps: the pixels are what the user deleted.
+    // Saving sweeps, so the pixels go with the row.
     save_images(&state.images);
     true
 }
 
-/// The picture as a data URL. The preview panel reads it through the command
-/// bridge, the way every other image in the app arrives (icons, block glyphs):
-/// the asset protocol does not serve these files in the WebKitGTK webview.
+/// The picture as a data URL: the asset protocol does not serve these files in
+/// the WebKitGTK webview, so images arrive the way icons do.
 #[tauri::command]
 pub fn clipboard_image_data_url(hash: String) -> Option<String> {
     let path = clipimage::file_path(&hash)?;
     crate::platform::shared::read_icon_file(&path.to_string_lossy())
 }
 
-/// Puts a filed image back on the clipboard, as pixels and as a file, so it
-/// pastes into an editor and into a file manager alike.
+/// Back on the clipboard as pixels and as a file, so it pastes into an editor
+/// and into a file manager alike.
 #[tauri::command]
 pub fn copy_clipboard_image(hash: String) -> Result<(), String> {
     let path = clipimage::file_path(&hash).ok_or("no clipboard image directory")?;
     if !path.exists() {
         return Err("the image is no longer on disk".to_string());
     }
-    // The file form carries a path, which the monitor would otherwise file as
-    // a text clip.
+    // The file form carries a path the monitor would file as a text clip, and
+    // the pixels are already filed: without either, Look's own write comes
+    // back as a new row.
     mark_self_write();
     if let Some(state) = STATE.lock().unwrap().as_mut() {
-        // These pixels are already filed: without this the monitor reads back
-        // Look's own write and re-dates the row it came from.
         state.last_image_hash = hash;
     }
 
@@ -538,30 +517,25 @@ mod tests {
         assert_eq!(entries.len(), 1);
     }
 
-    /// Same picture copied twice is one row, back on top: the file is named
-    /// after the pixels, so a second row would point at the first one's bytes.
+    /// One row per picture, back on top when it returns, and the list stays
+    /// within its limit: the file is named after the pixels, so two rows would
+    /// point at one picture.
     #[test]
-    fn re_copying_an_image_lifts_the_row_it_already_has() {
+    fn an_image_list_dedupes_by_hash_and_stays_bounded() {
         let mut images = vec![image("aaaa", 10)];
-        insert_image(&mut images, image("bbbb", 20), 5);
-        insert_image(&mut images, image("aaaa", 30), 5);
+        insert_image(&mut images, image("bbbb", 20), 3);
+        insert_image(&mut images, image("aaaa", 30), 3);
 
         assert_eq!(images.len(), 2);
         assert_eq!(images[0].hash, "aaaa");
         assert_eq!(images[0].timestamp, 30);
-    }
 
-    /// The oldest goes, not the newest: the cap is there because each row is a
-    /// file on disk.
-    #[test]
-    fn the_image_list_stays_within_its_limit() {
-        let mut images = Vec::new();
-        for i in 0..5 {
+        for i in 0..3 {
             insert_image(&mut images, image(&format!("hash{i}"), i), 3);
         }
-
+        // The oldest went, not the newest: each row is a file on disk.
         assert_eq!(images.len(), 3);
-        assert_eq!(images[0].hash, "hash4");
-        assert_eq!(images[2].hash, "hash2");
+        assert_eq!(images[0].hash, "hash2");
+        assert!(!images.iter().any(|e| e.hash == "bbbb"));
     }
 }

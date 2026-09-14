@@ -235,9 +235,7 @@ function renderStandard(result, cacheKey) {
 }
 
 // Shared by the text and image panels: the two differ below the header, not at
-// it. `remove` is what the Delete button runs, since a clip and a picture are
-// forgotten in different places. The capture time is not here: it lives in the
-// InfoRow at the foot, and only there (macOS clipboardPreviewHeader).
+// it. The capture time is not here; it lives in the row at the foot.
 function clipboardPreviewHeader({ icon, title, remove, removed }) {
     const header = document.createElement('div');
     header.className = 'preview-header';
@@ -291,18 +289,12 @@ function renderClipboardPreview(result) {
         }),
     );
 
-    // Badge + counts
-    const badgeRow = document.createElement('div');
-    badgeRow.className = 'preview-header-sub';
-    const badge = document.createElement('span');
-    badge.className = 'preview-badge kind-clipboard';
-    badge.textContent = 'Clipboard';
-    badgeRow.appendChild(badge);
-    const counts = document.createElement('span');
-    counts.className = 'preview-clip-counts';
-    counts.textContent = `${result.clipCharCount} chars  ${result.clipLineCount} lines`;
-    badgeRow.appendChild(counts);
-    panel.appendChild(badgeRow);
+    panel.appendChild(
+        clipboardBadgeRow(
+            'Clipboard',
+            `${result.clipCharCount} chars  ${result.clipLineCount} lines`,
+        ),
+    );
 
     // Preview label
     const previewLabel = document.createElement('div');
@@ -323,9 +315,8 @@ function renderClipboardPreview(result) {
     panel.appendChild(capturedRow(result));
 }
 
-// The one fact at the foot of a clipboard panel, at the panel's own edges: a
-// lone row has no column of values to line up with, and macOS justifies it the
-// same way.
+// A lone row has no column of values to line up with, so it takes the panel's
+// own edges, as macOS does.
 function capturedRow(result) {
     const metaWrap = document.createElement('div');
     metaWrap.className = 'preview-meta is-justified';
@@ -344,27 +335,19 @@ function renderClipboardImagePreview(result) {
         }),
     );
 
-    const badgeRow = document.createElement('div');
-    badgeRow.className = 'preview-header-sub';
-    const badge = document.createElement('span');
-    badge.className = 'preview-badge kind-clipboard';
-    badge.textContent = 'Image';
-    badgeRow.appendChild(badge);
-    const facts = document.createElement('span');
-    facts.className = 'preview-clip-counts';
-    // Grouped and spaced here, unlike the row's compact `1520×782`: the panel
-    // has the width for it, and macOS reads the same way.
+    // Grouped and spaced, unlike the row's compact `1520×782`: the panel has
+    // the width for it.
     const pixels = `${result.clipImageWidth.toLocaleString()} × ${result.clipImageHeight.toLocaleString()}`;
-    facts.textContent = `${pixels}  ${formatSize(result.clipImageBytes)}`;
-    badgeRow.appendChild(facts);
-    panel.appendChild(badgeRow);
+    panel.appendChild(
+        clipboardBadgeRow('Image', `${pixels}  ${formatSize(result.clipImageBytes)}`),
+    );
 
     const card = document.createElement('div');
     card.className = 'preview-clip-card preview-clip-image';
     const img = document.createElement('img');
     img.alt = result.title;
-    // The bytes are the clip: with the file gone there is nothing to paste,
-    // so the panel says so instead of showing a broken frame.
+    // With the file gone there is nothing to paste, so say so rather than
+    // show a broken frame.
     const missing = () => {
         card.textContent = 'The image is no longer on disk';
         card.classList.add('preview-clip-image-missing');
@@ -387,6 +370,14 @@ function renderClipboardImagePreview(result) {
         .catch(missing);
 
     panel.appendChild(capturedRow(result));
+}
+
+function clipboardBadgeRow(kind, facts) {
+    const row = document.createElement('div');
+    row.className = 'preview-header-sub';
+    row.appendChild(valueSpan('preview-badge kind-clipboard', kind));
+    row.appendChild(valueSpan('preview-clip-counts', facts));
+    return row;
 }
 
 function renderProcessPreview(result) {
@@ -709,9 +700,8 @@ export function refreshQuickActions() {
     qactions.refresh();
 }
 
-// Right half of a clipboard empty state - the "How to use" tips card that
-// pairs with the results list's info half (macOS ClipboardEmptyHelpView).
-// `mode` picks the wording; the tips come from the catalog, not from here.
+// Right half of a clipboard empty state: the "How to use" tips that pair with
+// the results list's info half. `mode` picks the wording.
 export function showClipboardHelp(mode = 'clipboard') {
     if (!panel) return;
     const copy = CLIPBOARD_EMPTY_COPY[mode] || CLIPBOARD_EMPTY_COPY.clipboard;

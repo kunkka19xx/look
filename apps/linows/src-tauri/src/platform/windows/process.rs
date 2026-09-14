@@ -457,14 +457,13 @@ fn with_process<T>(pid: u32, f: impl FnOnce(HANDLE) -> T) -> Option<T> {
 }
 
 /// The app the user is in, named the way Explorer names it (the exe's
-/// `FileDescription`, else its stem). A copied image is filed under this, the
-/// way macOS files one under the frontmost app.
+/// `FileDescription`, else its stem). A copied image is filed under this.
 pub(crate) fn focused_app_name() -> Option<String> {
     let hwnd = unsafe { GetForegroundWindow() };
     let mut pid = 0u32;
     unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
-    // Look's own window is never the answer: it holds focus whenever the user
-    // is looking at it.
+    // Look holds focus whenever the user is looking at it, so it is never the
+    // answer.
     if pid == 0 || pid == std::process::id() {
         return None;
     }

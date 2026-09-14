@@ -452,9 +452,9 @@ function createRow(result, index) {
         declaredIcon ||
         windowsSettingsSvg ||
         (isLinuxSettings ? settingIcon : fallbacks[result.kind] || appIcon);
-    // A copied image shows itself: ten clipboard glyphs in a column are no way
-    // to pick one picture out of ten. The thumbnail loads like a declared icon
-    // (cached, data URL), so the glyph drawn above stays on a miss.
+    // A copied image shows itself; ten identical glyphs are no way to pick one
+    // picture out of ten. Loaded like a declared icon, so a miss keeps the
+    // glyph drawn above.
     if (result.clipImageThumbPath) {
         icon.classList.add('result-icon-thumb');
         loadIcon(icon, 'declared', result.clipImageThumbPath, result.id);
