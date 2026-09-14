@@ -83,7 +83,7 @@ const SWITCH_HINT = `Ctrl+1-${COMMAND_ENTRIES.length}: Switch`;
 // the fallback for commands without a dedicated line.
 const COMMAND_HINTS = {
     pomo: 'Space: Start/pause \u2022 R: Reset \u2022 Esc: Back',
-    todo: 'Ctrl+N: Switch page \u2022 Ctrl+Z: Undo \u2022 Ctrl+Shift+Z: Redo \u2022 Ctrl+S: Save \u2022 Esc: Back',
+    todo: 'Ctrl+N: Switch page \u2022 Ctrl+Z: Undo \u2022 Ctrl+Shift+Z: Redo \u2022 Ctrl+S: Save \u2022',
     speed: 'R: Rerun \u2022 E: Show IP \u2022 Esc: Back',
     kill: 'Y: Confirm \u2022 N: Cancel \u2022 Esc: Back',
     sys: `Tab/${SWITCH_HINT} \u2022 Ctrl+Shift+,: Settings \u2022 Esc: Back`,
