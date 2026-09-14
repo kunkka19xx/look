@@ -225,6 +225,33 @@ fn read_active_window(conn: &impl Connection, root: Window, atom: Atom) -> u32 {
         .unwrap_or(0)
 }
 
+/// The focused window's `WM_CLASS` class, in the case the app wrote it
+/// ("Firefox", "WezTerm"), for naming a clip after where it came from.
+pub fn focused_wm_class() -> Option<String> {
+    let (conn, screen_num) = x11rb::connect(None).ok()?;
+    let root = conn.setup().roots[screen_num].root;
+    let atom = conn
+        .intern_atom(false, b"_NET_ACTIVE_WINDOW")
+        .ok()?
+        .reply()
+        .ok()?
+        .atom;
+    let wid = read_active_window(&conn, root, atom);
+    if wid == 0 {
+        return None;
+    }
+    let reply = conn
+        .get_property(false, wid, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 256)
+        .ok()?
+        .reply()
+        .ok()?;
+    let raw = String::from_utf8_lossy(&reply.value);
+    // instance first, then class: the class is the one an app capitalizes.
+    let mut parts = raw.split('\0').filter(|s| !s.is_empty());
+    let instance = parts.next()?;
+    Some(parts.next().unwrap_or(instance).to_string())
+}
+
 /// One visible window's identifying properties - what we can read from X11
 /// without consulting `/proc`. Both `WM_CLASS` strings are lowercased so
 /// callers can compare case-insensitively against desktop file metadata.

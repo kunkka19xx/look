@@ -535,6 +535,40 @@ struct DesktopEntry {
     path: String,
 }
 
+/// The name a desktop file gives an `app_id` or `WM_CLASS`, so a row says
+/// "Ghostty" rather than "com.mitchellh.ghostty". Not every window belongs to
+/// an installed entry, hence the fallback.
+pub(crate) fn app_display_name(app_id: &str) -> String {
+    let wanted = app_id.to_lowercase();
+    let declared = scan_desktop_files().into_iter().find(|entry| {
+        let stem = Path::new(&entry.path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        stem == wanted
+            || entry
+                .wm_class
+                .as_deref()
+                .is_some_and(|class| class.eq_ignore_ascii_case(app_id))
+    });
+    match declared {
+        Some(entry) if !entry.name.is_empty() => entry.name,
+        _ => tidy_app_id(app_id),
+    }
+}
+
+/// `org.pwmt.zathura` reads as "Zathura", `brave-browser` as "Brave browser".
+fn tidy_app_id(app_id: &str) -> String {
+    let last = app_id.rsplit('.').next().unwrap_or(app_id);
+    let spaced = last.replace(['-', '_'], " ");
+    let mut chars = spaced.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => app_id.to_string(),
+    }
+}
+
 fn scan_desktop_files() -> Vec<DesktopEntry> {
     let mut entries = Vec::new();
     let dirs = xdg_app_dirs();

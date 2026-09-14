@@ -3,6 +3,8 @@ import {
     getFileMeta,
     getAppVersion,
     deleteClipboardEntry,
+    deleteClipboardImage,
+    getClipboardImageData,
     highlightFile,
     highlightShell,
     sourcePreview,
@@ -14,6 +16,7 @@ import {
 } from '../ipc.js';
 import {
     clipboard as clipboardIcon,
+    image as imageIcon,
     trash as trashIcon,
     cpu as cpuIcon,
     appIcon,
@@ -26,10 +29,18 @@ import {
 } from '../icons.js';
 import * as sourceblocks from './sourceblocks.js';
 import * as banner from './banner.js';
-import { classifyResultId, WEB_URL_OPEN_SUBTITLE } from '../catalog.js';
+import {
+    classifyResultId,
+    WEB_URL_OPEN_SUBTITLE,
+    CLIPBOARD_EMPTY_COPY,
+    CLIPBOARD_DELETED_BANNER,
+} from '../catalog.js';
 import * as qactions from './qactions.js';
 import * as actionmenu from './actionmenu.js';
 import { canRunElevated } from '../platform.js';
+
+// Matches the macOS info banner for the same action.
+const CLIP_BANNER_DURATION = 1.1;
 
 let panel = null;
 let currentPath = null;
@@ -223,14 +234,15 @@ function renderStandard(result, cacheKey) {
     qactions.render(qactionsSlot, result);
 }
 
-function renderClipboardPreview(result) {
-    // Header row: icon + title/date + Delete button
+// Shared by the text and image panels: the two differ below the header, not at
+// it. The capture time is not here; it lives in the row at the foot.
+function clipboardPreviewHeader({ icon, title, remove, removed }) {
     const header = document.createElement('div');
     header.className = 'preview-header';
 
     const iconWrap = document.createElement('div');
     iconWrap.className = 'preview-icon';
-    iconWrap.innerHTML = clipboardIcon;
+    iconWrap.innerHTML = icon;
     iconWrap.style.background = 'var(--control-fill)';
     iconWrap.style.color = 'var(--font-secondary)';
     header.appendChild(iconWrap);
@@ -238,25 +250,20 @@ function renderClipboardPreview(result) {
     const headerText = document.createElement('div');
     headerText.className = 'preview-header-text';
 
-    const title = document.createElement('div');
-    title.className = 'preview-title';
-    title.textContent = 'Clipboard item';
-    headerText.appendChild(title);
-
-    const dateSub = document.createElement('div');
-    dateSub.className = 'preview-path';
-    dateSub.textContent = `Captured ${result.clipDateMedium}`;
-    headerText.appendChild(dateSub);
+    const titleEl = document.createElement('div');
+    titleEl.className = 'preview-title';
+    titleEl.textContent = title;
+    headerText.appendChild(titleEl);
 
     header.appendChild(headerText);
 
-    // Delete button
     const delBtn = document.createElement('button');
     delBtn.className = 'preview-clip-delete';
     delBtn.innerHTML = trashIcon + ' Delete';
     delBtn.addEventListener('click', async () => {
         try {
-            await deleteClipboardEntry(result.clipTimestamp, result.clipText);
+            await remove();
+            banner.show(removed, 'info', CLIP_BANNER_DURATION);
             if (onClipDelete) onClipDelete();
         } catch (err) {
             console.error('Delete clipboard entry failed:', err);
@@ -264,20 +271,30 @@ function renderClipboardPreview(result) {
     });
     header.appendChild(delBtn);
 
-    panel.appendChild(header);
+    return header;
+}
 
-    // Badge + counts
-    const badgeRow = document.createElement('div');
-    badgeRow.className = 'preview-header-sub';
-    const badge = document.createElement('span');
-    badge.className = 'preview-badge kind-clipboard';
-    badge.textContent = 'Clipboard';
-    badgeRow.appendChild(badge);
-    const counts = document.createElement('span');
-    counts.className = 'preview-clip-counts';
-    counts.textContent = `${result.clipCharCount} chars  ${result.clipLineCount} lines`;
-    badgeRow.appendChild(counts);
-    panel.appendChild(badgeRow);
+function renderClipboardPreview(result) {
+    if (result.clipImageHash) {
+        renderClipboardImagePreview(result);
+        return;
+    }
+
+    panel.appendChild(
+        clipboardPreviewHeader({
+            icon: clipboardIcon,
+            title: 'Clipboard item',
+            remove: () => deleteClipboardEntry(result.clipTimestamp, result.clipText),
+            removed: CLIPBOARD_DELETED_BANNER.clipboard,
+        }),
+    );
+
+    panel.appendChild(
+        clipboardBadgeRow(
+            'Clipboard',
+            `${result.clipCharCount} chars  ${result.clipLineCount} lines`,
+        ),
+    );
 
     // Preview label
     const previewLabel = document.createElement('div');
@@ -295,10 +312,72 @@ function renderClipboardPreview(result) {
     panel.appendChild(previewCard);
 
     // Info rows
+    panel.appendChild(capturedRow(result));
+}
+
+// A lone row has no column of values to line up with, so it takes the panel's
+// own edges, as macOS does.
+function capturedRow(result) {
     const metaWrap = document.createElement('div');
-    metaWrap.className = 'preview-meta';
+    metaWrap.className = 'preview-meta is-justified';
     metaWrap.appendChild(infoRow('Captured', result.clipDateMedium));
-    panel.appendChild(metaWrap);
+    return metaWrap;
+}
+
+// The picture gets the space the text panel gives the clip's characters.
+function renderClipboardImagePreview(result) {
+    panel.appendChild(
+        clipboardPreviewHeader({
+            icon: imageIcon,
+            title: result.title,
+            remove: () => deleteClipboardImage(result.clipImageHash),
+            removed: CLIPBOARD_DELETED_BANNER['clipboard-image'],
+        }),
+    );
+
+    // Grouped and spaced, unlike the row's compact `1520×782`: the panel has
+    // the width for it.
+    const pixels = `${result.clipImageWidth.toLocaleString()} × ${result.clipImageHeight.toLocaleString()}`;
+    panel.appendChild(
+        clipboardBadgeRow('Image', `${pixels}  ${formatSize(result.clipImageBytes)}`),
+    );
+
+    const card = document.createElement('div');
+    card.className = 'preview-clip-card preview-clip-image';
+    const img = document.createElement('img');
+    img.alt = result.title;
+    // With the file gone there is nothing to paste, so say so rather than
+    // show a broken frame.
+    const missing = () => {
+        card.textContent = 'The image is no longer on disk';
+        card.classList.add('preview-clip-image-missing');
+    };
+    img.onerror = missing;
+    card.appendChild(img);
+    panel.appendChild(card);
+
+    const cacheKey = result.id;
+    getClipboardImageData(result.clipImageHash)
+        .then((dataUrl) => {
+            // Arrow keys may have moved on while the bytes were read.
+            if (currentPath !== cacheKey) return;
+            if (!dataUrl) {
+                missing();
+                return;
+            }
+            img.src = dataUrl;
+        })
+        .catch(missing);
+
+    panel.appendChild(capturedRow(result));
+}
+
+function clipboardBadgeRow(kind, facts) {
+    const row = document.createElement('div');
+    row.className = 'preview-header-sub';
+    row.appendChild(valueSpan('preview-badge kind-clipboard', kind));
+    row.appendChild(valueSpan('preview-clip-counts', facts));
+    return row;
 }
 
 function renderProcessPreview(result) {
@@ -621,21 +700,22 @@ export function refreshQuickActions() {
     qactions.refresh();
 }
 
-// Right half of the clipboard empty state - the "How to use" tips card that
-// pairs with the results list's "Clipboard History" info (macOS
-// ClipboardEmptyHelpView). Static content, safe as innerHTML.
-export function showClipboardHelp() {
+// Right half of a clipboard empty state: the "How to use" tips that pair with
+// the results list's info half. `mode` picks the wording.
+export function showClipboardHelp(mode = 'clipboard') {
     if (!panel) return;
+    const copy = CLIPBOARD_EMPTY_COPY[mode] || CLIPBOARD_EMPTY_COPY.clipboard;
     currentPath = null;
     qactions.clear();
     actionmenu.close();
     panel.hidden = false;
+    const tips = copy.tips
+        .map((tip) => `<div class="preview-clip-help-line">• ${tip}</div>`)
+        .join('');
     panel.innerHTML = `
     <div class="preview-clip-help">
       <div class="preview-clip-help-title">How to use</div>
-      <div class="preview-clip-help-line">• Type <kbd>c"</kbd> to list latest 10 clips</div>
-      <div class="preview-clip-help-line">• Type <kbd>c"mail</kbd> to filter</div>
-      <div class="preview-clip-help-line">• Press <kbd>Enter</kbd> to copy selected item</div>
+      ${tips}
     </div>`;
 }
 
@@ -933,7 +1013,8 @@ function valueSpan(className, text) {
     return el;
 }
 
-function formatSize(bytes) {
+// Shared with the ci" rows, which say how big a copied image is.
+export function formatSize(bytes) {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;

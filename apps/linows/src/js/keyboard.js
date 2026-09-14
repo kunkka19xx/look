@@ -11,7 +11,9 @@ import {
     copyFilesToClipboard,
     copyToClipboard,
     copyToClipboardLabeled,
+    copyClipboardImage,
     deleteClipboardEntry,
+    deleteClipboardImage,
     killProcess,
     trashPaths,
     countTrashItems,
@@ -33,9 +35,12 @@ import * as levels from './levels.js';
 import * as runningApps from './components/running-apps.js';
 import { canRunElevated } from './platform.js';
 import { trash as trashIcon } from './icons.js';
-import { classifyResultId, isSyntheticResultId } from './catalog.js';
+import { classifyResultId, isSyntheticResultId, CLIPBOARD_DELETED_BANNER } from './catalog.js';
 import * as platform from './platform.js';
 import * as layout from './layout.js';
+
+// Matches the macOS info banner for the same action.
+const CLIP_BANNER_DURATION = 1.1;
 
 // The quick-folder pin for the OS trash: `Trash` on Linux/macOS,
 // `Recycle Bin` on Windows (id is `quickfolder:<lowercased title>`).
@@ -310,8 +315,8 @@ function handleKeyDown(e) {
             if (search.isTranslateMode()) {
                 const text = search.getTranslateText();
                 if (text) translatePanel.perform(text);
-            } else if (search.isClipboardMode()) {
-                copyClipboardEntry();
+            } else if (search.isAnyClipboardMode()) {
+                copySelectedClip();
             } else if (search.isProcessMode()) {
                 // ps": Enter measures CPU on demand (kill is Ctrl+D). Keeps
                 // selection instant by never sampling until asked.
@@ -339,7 +344,7 @@ function handleKeyDown(e) {
             if (levels.isActive()) {
                 popLevelFn?.();
             } else if (
-                search.isClipboardMode() ||
+                search.isAnyClipboardMode() ||
                 search.isTranslateMode() ||
                 search.isProcessMode() ||
                 search.isPrefixHintMode() ||
@@ -420,8 +425,8 @@ function handleKeyDown(e) {
                 if (isDiscoveryMode()) break;
                 if (search.isProcessMode()) {
                     killSelectedProcess();
-                } else if (search.isClipboardMode()) {
-                    removeClipboardEntry();
+                } else if (search.isAnyClipboardMode()) {
+                    removeSelectedClip();
                 } else {
                     handleTrashShortcut();
                 }
@@ -740,15 +745,22 @@ async function revealSelected() {
     }
 }
 
-async function copyClipboardEntry() {
+// Enter and a click do the same thing to a clipboard row, and the row itself
+// says which history it came from.
+export async function copySelectedClip() {
     const item = results.getSelected();
     if (!item || item.kind !== 'clipboard') return;
     try {
+        if (item.clipImageHash) {
+            await copyClipboardImage(item.clipImageHash);
+            banner.show('Copied image', 'success', 1.0);
+            return;
+        }
         // Labelled entries (calculator results) paste their value, not their label.
         await copyToClipboard(item.clipPayload || item.clipText);
         banner.show('Copied to clipboard', 'success', 1.0);
     } catch (err) {
-        banner.show('Copy failed', 'error', 1.2);
+        banner.show(typeof err === 'string' ? err : 'Copy failed', 'error', 1.2);
     }
 }
 
@@ -768,11 +780,16 @@ export function closeHelp() {
     setHelpVisible(false);
 }
 
-async function removeClipboardEntry() {
+async function removeSelectedClip() {
     const item = results.getSelected();
     if (!item || item.kind !== 'clipboard') return;
+    const image = Boolean(item.clipImageHash);
     try {
-        await deleteClipboardEntry(item.clipTimestamp, item.clipText);
+        await (image
+            ? deleteClipboardImage(item.clipImageHash)
+            : deleteClipboardEntry(item.clipTimestamp, item.clipText));
+        const mode = image ? 'clipboard-image' : 'clipboard';
+        banner.show(CLIPBOARD_DELETED_BANNER[mode], 'info', CLIP_BANNER_DURATION);
         // Re-trigger search to refresh the list
         search.handleQueryInput(queryInput.value);
     } catch (err) {

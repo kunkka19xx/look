@@ -33,9 +33,9 @@ use windows::Win32::System::Threading::{
     TerminateProcess,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GW_OWNER, GWL_EXSTYLE, GetShellWindow, GetWindow, GetWindowLongW,
-    GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
-    WS_EX_TOOLWINDOW,
+    EnumWindows, GW_OWNER, GWL_EXSTYLE, GetForegroundWindow, GetShellWindow, GetWindow,
+    GetWindowLongW, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
+    IsWindowVisible, WS_EX_TOOLWINDOW,
 };
 use windows::core::{BOOL, PWSTR};
 
@@ -454,6 +454,26 @@ fn with_process<T>(pid: u32, f: impl FnOnce(HANDLE) -> T) -> Option<T> {
         let _ = CloseHandle(handle);
     }
     Some(out)
+}
+
+/// The app the user is in, named the way Explorer names it (the exe's
+/// `FileDescription`, else its stem). A copied image is filed under this.
+pub(crate) fn focused_app_name() -> Option<String> {
+    let hwnd = unsafe { GetForegroundWindow() };
+    let mut pid = 0u32;
+    unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+    // Look holds focus whenever the user is looking at it, so it is never the
+    // answer.
+    if pid == 0 || pid == std::process::id() {
+        return None;
+    }
+    let path = resolve_full_path(pid)?;
+    super::version::read_file_description(&path).or_else(|| {
+        Path::new(&path)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .map(str::to_string)
+    })
 }
 
 fn resolve_full_path(pid: u32) -> Option<String> {

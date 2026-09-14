@@ -3,7 +3,52 @@
 // `"` menu, the `:` menu, and the Help screen can't drift. linows omits
 // `tw"` (no dictionary lookup yet).
 
-import { calculator, timer, listChecks, gauge, xCircle, terminal, info, globe } from './icons.js';
+import {
+    calculator,
+    timer,
+    listChecks,
+    gauge,
+    xCircle,
+    terminal,
+    info,
+    globe,
+    clipboard,
+    image,
+} from './icons.js';
+
+// The two histories share one empty screen and differ only in the wording, so
+// the words travel as data (macOS ClipboardEmptyStateCopy). results.js draws
+// the info half, preview.js the tips half.
+export const CLIPBOARD_EMPTY_COPY = {
+    clipboard: {
+        icon: clipboard,
+        title: 'Clipboard History',
+        body: 'No clipboard items yet',
+        help: 'Copy any text, then search with <kbd>c"word</kbd> to find it here.',
+        tips: [
+            'Type <kbd>c"</kbd> to list latest 10 clips',
+            'Type <kbd>c"mail</kbd> to filter',
+            'Press <kbd>Enter</kbd> to copy selected item',
+        ],
+    },
+    'clipboard-image': {
+        icon: image,
+        title: 'Copied Images',
+        body: 'No images copied yet',
+        help: 'Copy a picture or take a screenshot, then find it here with <kbd>ci"name</kbd>.',
+        tips: [
+            'Type <kbd>ci"</kbd> to list the latest images',
+            'Type <kbd>ci"firefox</kbd> to filter by name',
+            'Press <kbd>Enter</kbd> to copy the selected image',
+        ],
+    },
+};
+
+// What each history says when a row is forgotten, keyed as above.
+export const CLIPBOARD_DELETED_BANNER = {
+    clipboard: 'Clipboard item deleted',
+    'clipboard-image': 'Image removed from history',
+};
 
 // Synthetic-row id namespaces: the renderer and Enter/click handlers tell
 // synthetic rows apart from real candidates by id prefix.
@@ -35,6 +80,7 @@ const PREFIX_ENTRIES = [
         argHint: 'word',
         description: 'Clipboard history search (latest 10 text clips)',
     },
+    { prefix: 'ci"', argHint: 'word', description: 'Copied images, newest first' },
     { prefix: 't"', argHint: 'word', description: 'Web translate (VI/EN/JA)' },
 ];
 
