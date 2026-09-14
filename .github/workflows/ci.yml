@@ -253,7 +253,7 @@ jobs:
           node-version: 24
 
       - name: Run tests
-        run: node --test apps/linows/tests/
+        run: node --test apps/linows/tests/*.test.js
 
   linows-build:
     name: Build linows (Tauri, Linux)

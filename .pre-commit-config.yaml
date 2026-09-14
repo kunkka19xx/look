@@ -83,7 +83,7 @@ repos:
 
       - id: node-test-linows
         name: node --test (linows js)
-        entry: node --test apps/linows/tests/
+        entry: bash -c 'node --test apps/linows/tests/*.test.js'
         language: system
         pass_filenames: false
         files: ^apps/linows/(src|tests)/.*\.js$
