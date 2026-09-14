@@ -24,7 +24,7 @@ import {
 // (completing one frees a slot) and at most 3 upcoming date groups.
 const UNFINISHED_LIMIT = 3;
 const FUTURE_GROUP_LIMIT = 3;
-const UNDO_HISTORY_LIMIT = 15;
+const UNDO_HISTORY_LIMIT = 50;
 // Days late an unfinished task stays completable (EXTENDED) before it
 // locks (OVERDUE). Mirrors macOS TodoCommand.extensionWindowDays.
 const EXTENSION_WINDOW_DAYS = 3;
@@ -49,13 +49,14 @@ const HEATMAP_ROW_LABELS = ['', 'M', '', 'W', '', 'F', ''];
 // Map of 'yyyy-MM-dd' -> [{id, name, done, createdAt}]. The date key doubles
 // as the task's due_date on save.
 let tasksByDay = new Map();
-let dirty = false;
 let undoHistory = [];
 let redoHistory = [];
 let revision = 0;
 let nextRevision = 0;
 let savedRevision = 0;
 let saving = false;
+let saveQueued = false;
+const isDirty = () => revision !== savedRevision;
 let loaded = false;
 let visible = false;
 let page = 'tasks';
@@ -91,6 +92,9 @@ export function init() {
     });
     addDateBtn.addEventListener('click', addDate);
     saveBtn.addEventListener('click', persist);
+    toastEl.addEventListener('click', () => {
+        if (toastEl.classList.contains('cmd-todo-toast-error')) persist();
+    });
 
     // All day-card actions are delegated: rows are re-rendered wholesale on
     // every mutation, so per-row listeners would leak.
@@ -176,12 +180,13 @@ export function exit() {
 
 // In-panel capsule toast at the panel bottom, matching the macOS TodoView
 // savedToast overlay (the global banner belongs to the home screen).
+// No `secs` means sticky, which is how a failure keeps its Retry.
 function showToast(html, isError, secs) {
     toastEl.innerHTML = html;
     toastEl.classList.toggle('cmd-todo-toast-error', isError);
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove('show'), secs * 1000);
+    toastTimer = secs ? setTimeout(() => toastEl.classList.remove('show'), secs * 1000) : null;
 }
 
 // Anchored above the hovered cell, clamped to the window edges.
@@ -200,19 +205,8 @@ function showTooltip(el) {
 
 export function handleKey(e) {
     if (!visible) return false;
-    const active = document.activeElement;
-    // Keep native text undo/redo in add/rename fields and a nonempty search field.
-    const editingText =
-        active?.dataset?.todoField ||
-        (active === searchInput && searchInput.value.length > 0) ||
-        active?.isContentEditable;
-    if (
-        (e.ctrlKey || e.metaKey) &&
-        !e.altKey &&
-        e.key.toLowerCase() === 'z' &&
-        !editingText &&
-        (e.shiftKey ? redoHistory.length : undoHistory.length)
-    ) {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
+        if (editingText() || !(e.shiftKey ? redoHistory : undoHistory).length) return false;
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
@@ -257,7 +251,7 @@ export function setOnQuickChange(fn) {
 // Reload from the store when nothing would be lost; used on window-show so
 // the quick view survives day rollovers and edits from other instances.
 export function reloadIfClean() {
-    if (!dirty && !visible) load();
+    if (!isDirty() && !visible) load();
 }
 
 function fireQuickChange() {
@@ -275,7 +269,7 @@ function fireQuickChange() {
 async function load() {
     try {
         const rows = await todoList();
-        if (dirty) return; // don't clobber edits made while the read was in flight
+        if (isDirty()) return; // don't clobber edits made while the read was in flight
         tasksByDay = new Map();
         for (const r of rows) {
             if (!tasksByDay.has(r.due_date)) tasksByDay.set(r.due_date, []);
@@ -291,7 +285,6 @@ async function load() {
         redoHistory = [];
         revision = ++nextRevision;
         savedRevision = revision;
-        dirty = false;
     } catch (err) {
         console.error('[todo] load failed:', err);
     }
@@ -300,8 +293,24 @@ async function load() {
 }
 
 async function persist() {
-    if (saving) return;
+    if (saving) {
+        // Fold it into a follow-up pass rather than dropping it.
+        saveQueued = true;
+        return;
+    }
     saving = true;
+    try {
+        do {
+            saveQueued = false;
+            await writeAll();
+        } while (saveQueued);
+    } finally {
+        saving = false;
+    }
+}
+
+// History survives a save: undoing back past one relights Save by itself.
+async function writeAll() {
     const savingRevision = revision;
     const tasks = [];
     for (const [key, list] of tasksByDay) {
@@ -317,16 +326,11 @@ async function persist() {
     }
     try {
         await todoSave(tasks);
-        undoHistory = [];
-        redoHistory = [];
         savedRevision = savingRevision;
-        dirty = revision !== savedRevision;
         showToast(`${checkIcon} Saved`, false, SAVE_TOAST_SECS);
         renderToolbar();
     } catch (err) {
-        showToast(`Save failed: ${escapeHtml(String(err))}`, true, 2.0);
-    } finally {
-        saving = false;
+        showToast(`Save failed: ${escapeHtml(String(err))} <u>Retry</u>`, true);
     }
 }
 
@@ -375,31 +379,37 @@ const nowUnixS = () => Math.floor(Date.now() / 1000);
 
 // --- Mutations (in-memory; Save persists) ---
 
-function rememberChange() {
+// `affectsSave` false for an empty date placeholder: undoable, no revision bump.
+function rememberChange(affectsSave = true) {
     redoHistory = [];
     undoHistory.push({ tasksByDay: structuredClone(tasksByDay), revision });
     if (undoHistory.length > UNDO_HISTORY_LIMIT) undoHistory.shift();
-    revision = ++nextRevision;
+    if (affectsSave) revision = ++nextRevision;
 }
 
-function undo() {
-    const previous = undoHistory.pop();
-    if (!previous) return;
-    redoHistory.push({ tasksByDay: structuredClone(tasksByDay), revision });
-    restore(previous);
+// Native text undo/redo wins inside add/rename fields and a nonempty search box.
+function editingText() {
+    const active = document.activeElement;
+    return (
+        active?.dataset?.todoField ||
+        (active === searchInput && searchInput.value.length > 0) ||
+        active?.isContentEditable
+    );
 }
 
-function redo() {
-    const next = redoHistory.pop();
-    if (!next) return;
-    undoHistory.push({ tasksByDay: structuredClone(tasksByDay), revision });
-    restore(next);
+const undo = () => step(undoHistory, redoHistory);
+const redo = () => step(redoHistory, undoHistory);
+
+function step(from, to) {
+    const snapshot = from.pop();
+    if (!snapshot) return;
+    to.push({ tasksByDay: structuredClone(tasksByDay), revision });
+    restore(snapshot);
 }
 
 function restore(snapshot) {
     tasksByDay = snapshot.tasksByDay;
     revision = snapshot.revision;
-    dirty = revision !== savedRevision;
     editingAddKey = null;
     editingTaskRef = null;
     ensureTodayGroup();
@@ -407,8 +417,7 @@ function restore(snapshot) {
     renderAll();
 }
 
-function markDirty() {
-    dirty = true;
+function afterChange() {
     fireQuickChange();
     renderAll();
 }
@@ -425,7 +434,7 @@ function addTask(key, rawName) {
     rememberChange();
     if (!tasksByDay.has(key)) tasksByDay.set(key, []);
     tasksByDay.get(key).push({ id: newTaskId(), name, done: false, createdAt: nowUnixS() });
-    markDirty();
+    afterChange();
     return true;
 }
 
@@ -435,7 +444,7 @@ function toggleTask(key, id) {
     if (daysLate(key) > EXTENSION_WINDOW_DAYS) return;
     rememberChange();
     t.done = !t.done;
-    markDirty();
+    afterChange();
 }
 
 function editTask(key, id, rawName) {
@@ -444,7 +453,7 @@ function editTask(key, id, rawName) {
     if (!t || !name || t.name === name) return;
     rememberChange();
     t.name = name;
-    markDirty();
+    afterChange();
 }
 
 function removeTask(key, id) {
@@ -456,7 +465,7 @@ function removeTask(key, id) {
     list.splice(idx, 1);
     // A past day emptied out has no add row, so drop the dead card.
     if (list.length === 0 && key < todayKey()) tasksByDay.delete(key);
-    markDirty();
+    afterChange();
 }
 
 function completeAll(key) {
@@ -466,14 +475,14 @@ function completeAll(key) {
     list.forEach((t) => {
         t.done = true;
     });
-    markDirty();
+    afterChange();
 }
 
 function clearAll(key) {
     if (!(tasksByDay.get(key) || []).length) return;
     rememberChange();
     tasksByDay.set(key, []);
-    markDirty();
+    afterChange();
 }
 
 const futureKeys = () => [...tasksByDay.keys()].filter((k) => k > todayKey());
@@ -483,7 +492,7 @@ function addDate() {
     if (futureKeys().length >= FUTURE_GROUP_LIMIT) return;
     let d = addDays(today(), 1);
     while (tasksByDay.has(keyOf(d))) d = addDays(d, 1);
-    rememberChange();
+    rememberChange(false);
     tasksByDay.set(keyOf(d), []);
     editingAddKey = keyOf(d);
     renderAll();
@@ -571,8 +580,8 @@ function renderToolbar() {
     addDateBtn.title =
         left > 0 ? `${left} upcoming group(s) left` : `Max ${FUTURE_GROUP_LIMIT} upcoming groups`;
 
-    saveBtn.innerHTML = `${saveIcon} <span>Save</span>${dirty ? '<span class="cmd-todo-dirty-dot"></span>' : ''}`;
-    saveBtn.classList.toggle('cmd-todo-btn-dirty', dirty);
+    saveBtn.innerHTML = `${saveIcon} <span>Save</span>${isDirty() ? '<span class="cmd-todo-dirty-dot"></span>' : ''}`;
+    saveBtn.classList.toggle('cmd-todo-btn-dirty', isDirty());
     saveBtn.title = 'Save (Ctrl+S)';
 }
 

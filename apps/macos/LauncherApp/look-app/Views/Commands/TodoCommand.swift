@@ -130,6 +130,8 @@ enum TodoCommand {
     static let taskLimit = 3
     /// Max upcoming (future) date groups the user can add ahead.
     static let dateGroupLimit = 3
+    /// Undo depth inside /todo. Mirrors linows UNDO_HISTORY_LIMIT.
+    static let undoHistoryLimit = 50
     /// Days late an unfinished task stays completable (EXTENDED) before it
     /// locks (OVERDUE). Mirrors linows EXTENSION_WINDOW_DAYS.
     static let extensionWindowDays = 3
@@ -173,8 +175,6 @@ enum TodoCommand {
 @Observable
 final class TodoState {
     private(set) var groups: [TodoGroup]
-    /// Unsaved edits pending. Save persists them to the backend.
-    var dirty: Bool = false
 
     private struct Snapshot {
         let groups: [TodoGroup]
@@ -186,8 +186,11 @@ final class TodoState {
     private var revision = 0
     private var nextRevision = 0
     private var savedRevision = 0
-    var canUndo: Bool { !undoHistory.isEmpty }
-    var canRedo: Bool { !redoHistory.isEmpty }
+    /// Unsaved edits pending. Save persists them to the backend.
+    var dirty: Bool { revision != savedRevision }
+    private var currentSnapshot: Snapshot {
+        Snapshot(groups: groups, futureDaysAdded: futureDaysAdded, revision: revision)
+    }
 
     /// Number of `future` placeholder days already generated, so
     /// "Add date" walks forward one calendar day at a time.
@@ -224,34 +227,37 @@ final class TodoState {
     var groupsLeft: Int { max(0, TodoCommand.dateGroupLimit - futureCount) }
 
     private func mutate(_ body: (inout [TodoGroup]) -> Void) {
-        let before = Snapshot(groups: groups, futureDaysAdded: futureDaysAdded, revision: revision)
+        let before = currentSnapshot
         body(&groups)
+        // Group equality is the whole test, dirty included.
         guard groups != before.groups else { return }
         redoHistory.removeAll()
         undoHistory.append(before)
-        if undoHistory.count > 50 { undoHistory.removeFirst() }
+        if undoHistory.count > TodoCommand.undoHistoryLimit { undoHistory.removeFirst() }
         nextRevision += 1
         revision = nextRevision
-        dirty = true
     }
 
-    func undo() {
-        guard let previous = undoHistory.popLast() else { return }
-        redoHistory.append(Snapshot(groups: groups, futureDaysAdded: futureDaysAdded, revision: revision))
+    /// False when there was nothing to step back to, so the caller can
+    /// pass the key on.
+    func undo() -> Bool {
+        guard let previous = undoHistory.popLast() else { return false }
+        redoHistory.append(currentSnapshot)
         restore(previous)
+        return true
     }
 
-    func redo() {
-        guard let next = redoHistory.popLast() else { return }
-        undoHistory.append(Snapshot(groups: groups, futureDaysAdded: futureDaysAdded, revision: revision))
+    func redo() -> Bool {
+        guard let next = redoHistory.popLast() else { return false }
+        undoHistory.append(currentSnapshot)
         restore(next)
+        return true
     }
 
     private func restore(_ snapshot: Snapshot) {
         groups = snapshot.groups
         futureDaysAdded = snapshot.futureDaysAdded
         revision = snapshot.revision
-        dirty = revision != savedRevision
         ensureTodayGroup()
     }
 
@@ -337,10 +343,7 @@ final class TodoState {
 
     func save() -> Bool {
         guard TodoPersistence.save(groups) else { return false }
-        undoHistory.removeAll()
-        redoHistory.removeAll()
         savedRevision = revision
-        dirty = false
         return true
     }
 }

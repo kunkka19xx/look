@@ -77,16 +77,8 @@ struct TodoView: View {
             TodoKeyRecognizer(
                 onTogglePage: { page = (page == .tasks) ? .analytics : .tasks },
                 onSave: save,
-                onUndo: {
-                    guard state.canUndo else { return false }
-                    state.undo()
-                    return true
-                },
-                onRedo: {
-                    guard state.canRedo else { return false }
-                    state.redo()
-                    return true
-                }
+                onUndo: state.undo,
+                onRedo: state.redo
             ))
         // The launcher does not focus /todo (it owns its own field), so
         // focus the search bar on entry and when returning to Tasks.
@@ -764,8 +756,7 @@ final class TodoKeyHostView: NSView {
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
             if chars == "z", mods == [.command, .shift] {
-                if let editor = window.firstResponder as? NSTextView,
-                   editor.undoManager?.canRedo == true { return event }
+                if Self.textFieldHasContent(in: window) { return event }
                 if self.onRedo?() == true { return nil }
                 return event
             }
@@ -780,12 +771,18 @@ final class TodoKeyHostView: NSView {
             }
             if chars == "z" {
                 // Let the active text editor undo typing before task changes.
-                if let editor = window.firstResponder as? NSTextView,
-                   editor.undoManager?.canUndo == true { return event }
+                if Self.textFieldHasContent(in: window) { return event }
                 if self.onUndo?() == true { return nil }
             }
             return event
         }
+    }
+
+    /// A TextField's field editor borrows the window's undo manager, which
+    /// reports canUndo long after the field was touched, so key off the text.
+    private static func textFieldHasContent(in window: NSWindow) -> Bool {
+        guard let editor = window.firstResponder as? NSTextView else { return false }
+        return !editor.string.isEmpty
     }
 
     private func remove() {

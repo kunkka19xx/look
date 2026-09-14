@@ -1097,6 +1097,12 @@
     background: var(--color-danger);
 }
 
+/* A failure sticks around until a save works; clicking it retries. */
+.cmd-todo-toast-error.show {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
 /* Day cards */
 .cmd-todo-days {
     display: flex;

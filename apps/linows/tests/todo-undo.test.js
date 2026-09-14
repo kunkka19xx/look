@@ -51,7 +51,7 @@ test('undo all unsaved edits returns to clean state; no-ops add no history', () 
         removeTask(todayKey(), 'missing');
         undo();`);
     assert.equal(run('tasksByDay.get(todayKey()).length'), 0);
-    assert.equal(run('dirty'), false);
+    assert.equal(run('isDirty()'), false);
     assert.equal(run('undoHistory.length'), 0);
 });
 
@@ -65,29 +65,31 @@ test('restoring the last deleted past task recreates its day', () => {
     assert.equal(run("tasksByDay.get('2020-01-01')[0].name"), 'Past');
 });
 
-test('successful save prevents undo and redo of saved changes; new edits start fresh', async () => {
+test('undo crosses a save, relights it, and the next save writes the reverted list', async () => {
     let saved;
     const run = panel(async (tasks) => {
         saved = structuredClone(tasks);
     });
     run(`addTask(todayKey(), 'Keep');`);
     await run('persist()');
+    assert.equal(saved.length, 1);
     run('clearAll(todayKey());');
     await run('persist()');
     assert.equal(saved.length, 0);
-    run('undo(); redo();');
-    assert.equal(run('undoHistory.length'), 0);
-    assert.equal(run('redoHistory.length'), 0);
-    assert.equal(run('tasksByDay.get(todayKey()).length'), 0);
-    assert.equal(run('dirty'), false);
-    run(`addTask(todayKey(), 'New'); undo();`);
-    assert.equal(run('tasksByDay.get(todayKey()).length'), 0);
-    assert.equal(run('dirty'), false);
+    assert.equal(run('isDirty()'), false);
+    // Back past the save: panel and store disagree again, so Save relights.
+    run('undo();');
+    assert.equal(run('tasksByDay.get(todayKey())[0].name'), 'Keep');
+    assert.equal(run('isDirty()'), true);
+    await run('persist()');
+    assert.equal(saved.length, 1);
+    assert.equal(run('isDirty()'), false);
     run('redo();');
-    assert.equal(run('tasksByDay.get(todayKey())[0].name'), 'New');
+    assert.equal(run('tasksByDay.get(todayKey()).length'), 0);
+    assert.equal(run('isDirty()'), true);
 });
 
-test('save completion clears history while edits during save remain dirty', async () => {
+test('an edit made while a save is in flight stays undoable and dirty', async () => {
     let finish;
     const run = panel(
         () =>
@@ -100,12 +102,13 @@ test('save completion clears history while edits during save remain dirty', asyn
     run(`addTask(todayKey(), 'Not saved');`);
     finish();
     await pending;
-    assert.equal(run('dirty'), true);
-    run('undo(); redo();');
-    assert.equal(run('undoHistory.length'), 0);
-    assert.equal(run('redoHistory.length'), 0);
-    assert.equal(run('dirty'), true);
+    assert.equal(run('isDirty()'), true);
+    run('undo();');
+    assert.equal(run('tasksByDay.get(todayKey()).length'), 1);
+    assert.equal(run('isDirty()'), false);
+    run('redo();');
     assert.equal(run('tasksByDay.get(todayKey()).length'), 2);
+    assert.equal(run('isDirty()'), true);
 });
 
 test('failed save retains undo and dirty state', async () => {
@@ -114,9 +117,9 @@ test('failed save retains undo and dirty state', async () => {
     });
     run(`addTask(todayKey(), 'Unsaved');`);
     await run('persist()');
-    assert.equal(run('dirty'), true);
+    assert.equal(run('isDirty()'), true);
     run('undo();');
-    assert.equal(run('dirty'), false);
+    assert.equal(run('isDirty()'), false);
 });
 
 test('Ctrl/Cmd+Z and Shift+Z undo/redo without taking text or hidden-panel keys', () => {
@@ -131,13 +134,13 @@ test('Ctrl/Cmd+Z and Shift+Z undo/redo without taking text or hidden-panel keys'
     run('searchInput.value = "";');
     assert.equal(run('handleKey({ ...key, shiftKey: true })'), false);
     assert.equal(run('handleKey(key)'), true);
-    assert.equal(run('dirty'), false);
+    assert.equal(run('isDirty()'), false);
     run("document.activeElement = { dataset: { todoField: 'rename' } };");
     assert.equal(run('handleKey({ ...key, shiftKey: true })'), false);
     run('document.activeElement = searchInput;');
     assert.equal(run('handleKey({ ...key, shiftKey: true })'), true);
     assert.equal(run('tasksByDay.get(todayKey())[0].name'), 'Task');
-    assert.equal(run('dirty'), true);
+    assert.equal(run('isDirty()'), true);
     assert.equal(run('handleKey(key)'), true);
     assert.equal(run('handleKey({ ...key, ctrlKey: false, metaKey: true, shiftKey: true })'), true);
     run(`addTask(todayKey(), 'Another');`);
@@ -157,32 +160,32 @@ test('multiple undo/redo steps preserve deleted task data and the saved revision
     const changed = run('JSON.stringify([...tasksByDay])');
     run('undo(); undo();');
     assert.equal(run('JSON.stringify([...tasksByDay])'), saved);
-    assert.equal(run('dirty'), false);
+    assert.equal(run('isDirty()'), false);
     run('redo(); redo();');
     assert.equal(run('JSON.stringify([...tasksByDay])'), changed);
-    assert.equal(run('dirty'), true);
+    assert.equal(run('isDirty()'), true);
     run('undo(); undo();');
     assert.equal(run('JSON.stringify([...tasksByDay])'), saved);
-    assert.equal(run('dirty'), false);
+    assert.equal(run('isDirty()'), false);
     run('clearAll(todayKey());');
     const deleted = run('JSON.stringify([...tasksByDay])');
     run('undo(); redo();');
     assert.equal(run('JSON.stringify([...tasksByDay])'), deleted);
-    assert.equal(run('dirty'), true);
+    assert.equal(run('isDirty()'), true);
     run('undo();');
     assert.equal(run('JSON.stringify([...tasksByDay])'), saved);
 });
 
-test('saving after undo clears redo even when undo returned to a clean state', async () => {
+test('a save made after an undo keeps the redo, which relights Save', async () => {
     const run = panel();
     run(`addTask(todayKey(), 'Discard'); undo();`);
-    assert.equal(run('dirty'), false);
+    assert.equal(run('isDirty()'), false);
     assert.equal(run('redoHistory.length'), 1);
     await run('persist()');
+    assert.equal(run('isDirty()'), false);
     run('redo();');
-    assert.equal(run('undoHistory.length'), 0);
-    assert.equal(run('redoHistory.length'), 0);
-    assert.equal(run('tasksByDay.get(todayKey()).length'), 0);
+    assert.equal(run('tasksByDay.get(todayKey())[0].name'), 'Discard');
+    assert.equal(run('isDirty()'), true);
 });
 
 test('new edits clear redo, but no-ops and failed saves preserve it', async () => {
@@ -201,7 +204,7 @@ test('new edits clear redo, but no-ops and failed saves preserve it', async () =
     assert.equal(run('tasksByDay.get(todayKey())[1].name'), 'Replacement');
 });
 
-test('save completion clears redo created while saving without clearing unsaved edits', async () => {
+test('an undo made while saving is still redoable afterwards', async () => {
     let finish;
     const run = panel(
         () =>
@@ -214,16 +217,54 @@ test('save completion clears redo created while saving without clearing unsaved 
     run('undo();');
     finish();
     await pending;
-    assert.equal(run('redoHistory.length'), 0);
-    assert.equal(run('dirty'), true);
+    assert.equal(run('isDirty()'), true);
     assert.equal(run('tasksByDay.get(todayKey()).length'), 0);
+    assert.equal(run('redoHistory.length'), 1);
+    run('redo();');
+    assert.equal(run('tasksByDay.get(todayKey())[0].name'), 'Saved');
+    assert.equal(run('isDirty()'), false);
 });
 
-test('date placeholders undo in order and history is bounded', () => {
+test('a Save pressed while one is in flight runs again instead of vanishing', async () => {
+    const writes = [];
+    const gates = [];
+    const run = panel(
+        (tasks) =>
+            new Promise((resolve) => {
+                // Joined: arrays built inside the vm realm are not
+                // deepStrictEqual to plain ones out here.
+                writes.push(tasks.map((t) => t.name).join(','));
+                gates.push(resolve);
+            }),
+    );
+    run(`addTask(todayKey(), 'First');`);
+    const pending = run('persist()');
+    run(`addTask(todayKey(), 'Second'); persist();`);
+    gates.shift()();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(writes, ['First', 'First,Second']);
+    gates.shift()();
+    await pending;
+    assert.equal(run('isDirty()'), false);
+});
+
+test('date placeholders undo in order without dirtying the panel', () => {
     const run = panel();
-    run('addDate(); undo();');
+    run('addDate();');
+    assert.equal(run('isDirty()'), false);
+    // An empty placeholder is never written, so undoing back past one has to
+    // land clean rather than leaving Save lit with nothing to save.
+    run(`addTask(todayKey(), 'Task'); undo();`);
+    assert.equal(run('isDirty()'), false);
+    run('undo();');
     assert.equal(run('futureKeys().length'), 0);
+    assert.equal(run('isDirty()'), false);
+});
+
+test('undo history is bounded', () => {
+    const run = panel();
     run(`addTask(todayKey(), 'Task');
-        for (let i = 0; i < 60; i++) toggleTask(todayKey(), tasksByDay.get(todayKey())[0].id);`);
-    assert.equal(run('undoHistory.length'), 15);
+        for (let i = 0; i < UNDO_HISTORY_LIMIT + 10; i++)
+            toggleTask(todayKey(), tasksByDay.get(todayKey())[0].id);`);
+    assert.equal(run('undoHistory.length'), run('UNDO_HISTORY_LIMIT'));
 });

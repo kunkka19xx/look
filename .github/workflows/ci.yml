@@ -240,6 +240,21 @@ jobs:
       - name: Build Look app (Debug)
         run: xcodebuild -project "apps/macos/LauncherApp/look-app.xcodeproj" -scheme "Look" -configuration Debug -destination "platform=macOS" build
 
+  linows-js-test:
+    name: Test linows (JS)
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.linows == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Run tests
+        run: node --test apps/linows/tests/
+
   linows-build:
     name: Build linows (Tauri, Linux)
     runs-on: ubuntu-22.04
