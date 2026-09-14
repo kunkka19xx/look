@@ -535,10 +535,9 @@ struct DesktopEntry {
     path: String,
 }
 
-/// The name a desktop file gives an `app_id` or `WM_CLASS`, so a row can say
-/// "Firefox" rather than "firefox" and "Ghostty" rather than
-/// "com.mitchellh.ghostty". Falls back to tidying the id itself when nothing
-/// declares it: not every window belongs to an installed desktop entry.
+/// The name a desktop file gives an `app_id` or `WM_CLASS`, so a row says
+/// "Ghostty" rather than "com.mitchellh.ghostty". Not every window belongs to
+/// an installed entry, hence the fallback.
 pub(crate) fn app_display_name(app_id: &str) -> String {
     let wanted = app_id.to_lowercase();
     let declared = scan_desktop_files().into_iter().find(|entry| {

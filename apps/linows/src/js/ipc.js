@@ -185,14 +185,12 @@ export async function deleteClipboardEntry(timestamp, text) {
     return invoke('delete_clipboard_entry', { timestamp, text });
 }
 
-// The ci" history. Capped at tens of rows, so it comes back whole and the
-// filter is applied where the row text is written (search.js).
 export async function getClipboardImages() {
     return invoke('get_clipboard_images');
 }
 
-// The picture as a data URL. Images come through the command bridge like
-// every icon in the app; the asset protocol does not serve them here.
+// Images come through the command bridge like icons do: the asset protocol
+// does not serve them in this webview.
 export async function getClipboardImageData(hash) {
     return invoke('clipboard_image_data_url', { hash });
 }
@@ -201,7 +199,6 @@ export async function deleteClipboardImage(hash) {
     return invoke('delete_clipboard_image', { hash });
 }
 
-// Puts the picture back on the clipboard, as pixels and as a file.
 export async function copyClipboardImage(hash) {
     return invoke('copy_clipboard_image', { hash });
 }

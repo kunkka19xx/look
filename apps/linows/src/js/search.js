@@ -31,12 +31,11 @@ const WEB_SUGGESTIONS_LIMIT = 6;
 const RECENT_URL_LIMIT = 5;
 const MIN_WEB_SUGGESTION_QUERY_LENGTH = 2;
 const CLIPBOARD_TITLE_MAX_CHARS = 80;
-// Kept in step with core/engine modes.rs, which spells the same two prefixes
-// for `lookapp clipboard` / `lookapp clipboard-image`.
+// In step with core/engine modes.rs, which spells the same two prefixes.
 const CLIPBOARD_PREFIX = 'c"';
 const CLIPBOARD_IMAGE_PREFIX = 'ci"';
 // What a clip is named after when the session will not say which app was in
-// front (GNOME and KDE Wayland). Same word macOS falls back to.
+// front (GNOME and KDE Wayland), as on macOS.
 const CLIPBOARD_IMAGE_UNKNOWN_SOURCE = 'screen';
 let debounceTimer = null;
 let webSuggestionTimer = null;
@@ -96,8 +95,7 @@ export function isClipboardImageMode() {
     return clipboardImageMode;
 }
 
-// The two histories share the screen they own: the hint bar, what Escape
-// clears, and the fact that the home hints do not apply.
+// The two histories share the screen they own: hint bar, Escape, empty state.
 export function isAnyClipboardMode() {
     return clipboardMode || clipboardImageMode;
 }
@@ -165,15 +163,15 @@ export function handleQueryInput(query) {
     // run before the t"/c"/rc" branches because the leading chars overlap.
     if (isPrefixSuggestionQuery(query)) {
         prefixHintMode = true;
-        commandHintMode = translateMode = clipboardMode = recentMode = processMode = false;
-        clipboardImageMode = false;
+        commandHintMode = translateMode = clipboardMode = clipboardImageMode = false;
+        recentMode = processMode = false;
         if (onResultsCallback) onResultsCallback(prefixSuggestionResults(query), query);
         return;
     }
     if (isCommandSuggestionQuery(query)) {
         commandHintMode = true;
-        prefixHintMode = translateMode = clipboardMode = recentMode = processMode = false;
-        clipboardImageMode = false;
+        prefixHintMode = translateMode = clipboardMode = clipboardImageMode = false;
+        recentMode = processMode = false;
         if (onResultsCallback) onResultsCallback(commandSuggestionResults(query), query);
         return;
     }
@@ -187,9 +185,7 @@ export function handleQueryInput(query) {
 
     if (query.startsWith('t"')) {
         translateMode = true;
-        clipboardMode = false;
-        clipboardImageMode = false;
-        recentMode = false;
+        clipboardMode = clipboardImageMode = recentMode = false;
         _translateText = query.slice(2).trim();
         // Translation is triggered on Enter, not on typing
         // Show empty results with hint
@@ -199,12 +195,10 @@ export function handleQueryInput(query) {
 
     translateMode = false;
 
-    // Before the c" branch only for the reader's sake: the two prefixes differ
-    // in their second character, so neither query can reach the other.
+    // Before the c" branch for the reader's sake; the two cannot overlap.
     if (query.startsWith(CLIPBOARD_IMAGE_PREFIX)) {
         clipboardImageMode = true;
-        clipboardMode = false;
-        recentMode = false;
+        clipboardMode = recentMode = false;
         const filter = query.slice(CLIPBOARD_IMAGE_PREFIX.length);
         debounceTimer = setTimeout(() => performClipboardImageSearch(filter), DEBOUNCE_MS);
         return;
@@ -502,9 +496,8 @@ async function performClipboardSearch(filter) {
     }
 }
 
-// Raw pixels carry no name, so the row is named after where they came from
-// and when, as on macOS. Filtering matches that text, which is the only text
-// an image clip has.
+// Raw pixels carry no name, so the row is named after where they came from and
+// when, as on macOS, and the filter matches that.
 async function performClipboardImageSearch(filter) {
     const query = `${CLIPBOARD_IMAGE_PREFIX}${filter}`;
     try {
@@ -522,13 +515,11 @@ async function performClipboardImageSearch(filter) {
                     path: 'clipboard://images',
                     score: 0,
                     clipImageHash: e.hash,
-                    clipImagePath: e.path,
                     clipImageThumbPath: e.thumb_path,
                     clipImageWidth: e.width,
                     clipImageHeight: e.height,
                     clipImageBytes: e.byte_size,
                     clipTimestamp: e.timestamp,
-                    clipDateShort: shortDate,
                     clipDateMedium: formatMediumDate(e.timestamp),
                 };
             })

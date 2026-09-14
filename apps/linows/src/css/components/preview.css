@@ -528,7 +528,9 @@
 .preview-clip-delete {
     margin-left: auto;
     flex-shrink: 0;
-    font-size: calc(var(--font-size) - 1px);
+    /* Two under the base size, as macOS sets it: at one under, the word
+     * out-weighed the title it sits beside. */
+    font-size: calc(var(--font-size) - 2px);
     font-weight: 600;
     padding: 4px 12px;
     border-radius: var(--chip-radius);
@@ -542,8 +544,8 @@
 }
 
 .preview-clip-delete svg {
-    width: 14px;
-    height: 14px;
+    width: 13px;
+    height: 13px;
 }
 
 .preview-clip-delete:hover {

@@ -16,10 +16,9 @@ import {
     image,
 } from './icons.js';
 
-// The two clipboard histories share one empty screen and differ only in the
-// wording, so the words travel as data rather than as a second copy of the
-// screen (macOS ClipboardEmptyStateCopy). results.js draws the left half,
-// preview.js the "How to use" half; the key is the empty-state mode.
+// The two histories share one empty screen and differ only in the wording, so
+// the words travel as data (macOS ClipboardEmptyStateCopy). results.js draws
+// the info half, preview.js the tips half.
 export const CLIPBOARD_EMPTY_COPY = {
     clipboard: {
         icon: clipboard,
@@ -45,9 +44,7 @@ export const CLIPBOARD_EMPTY_COPY = {
     },
 };
 
-// What each history says when a row is forgotten, keyed like the empty copy
-// above. macOS shows the same two lines (AppConstants ClipboardImage /
-// Clipboard deletedBanner).
+// What each history says when a row is forgotten, keyed as above.
 export const CLIPBOARD_DELETED_BANNER = {
     clipboard: 'Clipboard item deleted',
     'clipboard-image': 'Image removed from history',

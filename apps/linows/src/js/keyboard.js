@@ -315,10 +315,8 @@ function handleKeyDown(e) {
             if (search.isTranslateMode()) {
                 const text = search.getTranslateText();
                 if (text) translatePanel.perform(text);
-            } else if (search.isClipboardMode()) {
-                copyClipboardEntry();
-            } else if (search.isClipboardImageMode()) {
-                copyClipboardImageEntry();
+            } else if (search.isAnyClipboardMode()) {
+                copySelectedClip();
             } else if (search.isProcessMode()) {
                 // ps": Enter measures CPU on demand (kill is Ctrl+D). Keeps
                 // selection instant by never sampling until asked.
@@ -427,10 +425,8 @@ function handleKeyDown(e) {
                 if (isDiscoveryMode()) break;
                 if (search.isProcessMode()) {
                     killSelectedProcess();
-                } else if (search.isClipboardMode()) {
-                    removeClipboardEntry();
-                } else if (search.isClipboardImageMode()) {
-                    removeClipboardImage();
+                } else if (search.isAnyClipboardMode()) {
+                    removeSelectedClip();
                 } else {
                     handleTrashShortcut();
                 }
@@ -749,35 +745,20 @@ async function revealSelected() {
     }
 }
 
-async function copyClipboardEntry() {
+// Enter and a click do the same thing to a clipboard row, and the row itself
+// says which history it came from.
+export async function copySelectedClip() {
     const item = results.getSelected();
-    if (!item || item.kind !== 'clipboard' || item.clipImageHash) return;
+    if (!item || item.kind !== 'clipboard') return;
     try {
+        if (item.clipImageHash) {
+            await copyClipboardImage(item.clipImageHash);
+            banner.show('Copied image', 'success', 1.0);
+            return;
+        }
         // Labelled entries (calculator results) paste their value, not their label.
         await copyToClipboard(item.clipPayload || item.clipText);
         banner.show('Copied to clipboard', 'success', 1.0);
-    } catch (err) {
-        banner.show('Copy failed', 'error', 1.2);
-    }
-}
-
-// Enter and a click do the same thing to a clipboard row: put it back on the
-// clipboard, whichever history it came from.
-export function copySelectedClip() {
-    const item = results.getSelected();
-    if (item?.clipImageHash) {
-        copyClipboardImageEntry();
-        return;
-    }
-    copyClipboardEntry();
-}
-
-async function copyClipboardImageEntry() {
-    const item = results.getSelected();
-    if (!item?.clipImageHash) return;
-    try {
-        await copyClipboardImage(item.clipImageHash);
-        banner.show('Copied image', 'success', 1.0);
     } catch (err) {
         banner.show(typeof err === 'string' ? err : 'Copy failed', 'error', 1.2);
     }
@@ -799,29 +780,20 @@ export function closeHelp() {
     setHelpVisible(false);
 }
 
-async function removeClipboardEntry() {
+async function removeSelectedClip() {
     const item = results.getSelected();
-    if (!item || item.kind !== 'clipboard' || item.clipImageHash) return;
+    if (!item || item.kind !== 'clipboard') return;
+    const image = Boolean(item.clipImageHash);
     try {
-        await deleteClipboardEntry(item.clipTimestamp, item.clipText);
-        banner.show(CLIPBOARD_DELETED_BANNER.clipboard, 'info', CLIP_BANNER_DURATION);
+        await (image
+            ? deleteClipboardImage(item.clipImageHash)
+            : deleteClipboardEntry(item.clipTimestamp, item.clipText));
+        const mode = image ? 'clipboard-image' : 'clipboard';
+        banner.show(CLIPBOARD_DELETED_BANNER[mode], 'info', CLIP_BANNER_DURATION);
         // Re-trigger search to refresh the list
         search.handleQueryInput(queryInput.value);
     } catch (err) {
         console.error('Delete clipboard entry failed:', err);
-    }
-}
-
-async function removeClipboardImage() {
-    const item = results.getSelected();
-    if (!item?.clipImageHash) return;
-    try {
-        await deleteClipboardImage(item.clipImageHash);
-        banner.show(CLIPBOARD_DELETED_BANNER['clipboard-image'], 'info', CLIP_BANNER_DURATION);
-        // Re-trigger search to refresh the list
-        search.handleQueryInput(queryInput.value);
-    } catch (err) {
-        console.error('Delete clipboard image failed:', err);
     }
 }
 

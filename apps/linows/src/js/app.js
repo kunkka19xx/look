@@ -76,8 +76,7 @@ const HINT_PROCESS = 'Enter: CPU \u2022 Ctrl+D: Kill \u2022 Ctrl+C: Copy PID';
 const HINT_PREFIX_DISCOVERY = 'Enter: Pick prefix \u2022 Up/Down: Move \u2022 Esc: Clear';
 const HINT_COMMAND_DISCOVERY = 'Enter: Run command \u2022 Up/Down: Move \u2022 Esc: Clear';
 
-// Which clipboard history owns the screen, named the way its empty-state copy
-// is keyed (catalog CLIPBOARD_EMPTY_COPY).
+// Which history owns the screen, keyed as CLIPBOARD_EMPTY_COPY is.
 function clipboardEmptyMode() {
     return search.isClipboardImageMode() ? 'clipboard-image' : 'clipboard';
 }
@@ -475,9 +474,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Recent-empty renders as one wide card, which sends the hint bar back
         // to the bottom while the panes float (macOS showsFloatingGrid).
         layout.setRecentEmpty(search.isRecentMode() && items.length === 0);
-        // A clipboard history with nothing in it: the same two-card grid as
-        // normal results - the history's info on the left, "How to use" on the
-        // right (macOS ClipboardEmptyInfoView / ClipboardEmptyHelpView).
+        // A history with nothing in it: the same two-card grid as normal
+        // results, info on the left and "How to use" on the right.
         if (search.isAnyClipboardMode() && items.length === 0) {
             previewPanel.hidden = false;
             preview.showClipboardHelp(clipboardEmptyMode());

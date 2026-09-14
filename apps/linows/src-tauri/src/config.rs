@@ -171,8 +171,8 @@ pub const CLIPBOARD_HISTORY_LIMIT_DEFAULT: usize = 10;
 pub const CLIPBOARD_HISTORY_LIMIT_MIN: usize = 10;
 pub const CLIPBOARD_HISTORY_LIMIT_MAX: usize = 100;
 const CLIPBOARD_IMAGE_LIMIT_KEY: &str = "clipboard_image_limit";
-/// Capped far lower than text, and separately: each image is megabytes on
-/// disk, and a screenshot burst must not push the text history out.
+/// Capped far lower than text, and separately: each image is a file on disk,
+/// and a screenshot burst must not push the text history out.
 pub const CLIPBOARD_IMAGE_LIMIT_DEFAULT: usize = 20;
 pub const CLIPBOARD_IMAGE_LIMIT_MIN: usize = 5;
 pub const CLIPBOARD_IMAGE_LIMIT_MAX: usize = 50;
@@ -201,21 +201,28 @@ fn strip_inline_comment(value: &str) -> &str {
 /// config file. Returns the default (10) when the key is absent, unparseable, or
 /// outside the accepted [10, 100] range.
 pub fn clipboard_history_limit() -> usize {
-    let path = config_file_path();
-    let Ok(contents) = std::fs::read_to_string(&path) else {
-        return CLIPBOARD_HISTORY_LIMIT_DEFAULT;
-    };
-    parse_clipboard_history_limit(&contents)
+    limit_from_file(
+        CLIPBOARD_HISTORY_LIMIT_KEY,
+        CLIPBOARD_HISTORY_LIMIT_MIN..=CLIPBOARD_HISTORY_LIMIT_MAX,
+        CLIPBOARD_HISTORY_LIMIT_DEFAULT,
+    )
 }
 
 /// How many copied images to keep, read from `clipboard_image_limit`. Same
-/// rules as the text limit, with its own range: the accepted band is [5, 50].
+/// rules as the text limit, over [5, 50].
 pub fn clipboard_image_limit() -> usize {
-    let path = config_file_path();
-    let Ok(contents) = std::fs::read_to_string(&path) else {
-        return CLIPBOARD_IMAGE_LIMIT_DEFAULT;
+    limit_from_file(
+        CLIPBOARD_IMAGE_LIMIT_KEY,
+        CLIPBOARD_IMAGE_LIMIT_MIN..=CLIPBOARD_IMAGE_LIMIT_MAX,
+        CLIPBOARD_IMAGE_LIMIT_DEFAULT,
+    )
+}
+
+fn limit_from_file(key: &str, range: std::ops::RangeInclusive<usize>, default: usize) -> usize {
+    let Ok(contents) = std::fs::read_to_string(config_file_path()) else {
+        return default;
     };
-    parse_clipboard_image_limit(&contents)
+    parse_limit(&contents, key, range, default)
 }
 
 /// How long the main query survives while the launcher is hidden. A negative
@@ -226,29 +233,6 @@ pub fn query_retention_seconds() -> i64 {
         return QUERY_RETENTION_SECONDS_DEFAULT;
     };
     parse_query_retention_seconds(&contents)
-}
-
-/// Parses `clipboard_history_limit` out of raw config file contents. Split from
-/// `clipboard_history_limit` so the parsing rules can be unit-tested without touching
-/// the filesystem or the shared `LOOK_CONFIG_PATH` env var. The last assignment wins
-/// (matching how the file is applied line by line); returns the default when the key is
-/// absent, unparseable, or outside [10, 100].
-fn parse_clipboard_history_limit(contents: &str) -> usize {
-    parse_limit(
-        contents,
-        CLIPBOARD_HISTORY_LIMIT_KEY,
-        CLIPBOARD_HISTORY_LIMIT_MIN..=CLIPBOARD_HISTORY_LIMIT_MAX,
-        CLIPBOARD_HISTORY_LIMIT_DEFAULT,
-    )
-}
-
-fn parse_clipboard_image_limit(contents: &str) -> usize {
-    parse_limit(
-        contents,
-        CLIPBOARD_IMAGE_LIMIT_KEY,
-        CLIPBOARD_IMAGE_LIMIT_MIN..=CLIPBOARD_IMAGE_LIMIT_MAX,
-        CLIPBOARD_IMAGE_LIMIT_DEFAULT,
-    )
 }
 
 /// A count out of range is a typo, not a request, so the default stands rather
@@ -318,6 +302,17 @@ pub fn config_file_path() -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The parsing rules, without the filesystem or the shared
+    /// `LOOK_CONFIG_PATH` env var behind them.
+    fn parse_clipboard_history_limit(contents: &str) -> usize {
+        parse_limit(
+            contents,
+            CLIPBOARD_HISTORY_LIMIT_KEY,
+            CLIPBOARD_HISTORY_LIMIT_MIN..=CLIPBOARD_HISTORY_LIMIT_MAX,
+            CLIPBOARD_HISTORY_LIMIT_DEFAULT,
+        )
+    }
 
     #[test]
     fn missing_key_falls_back_to_default() {

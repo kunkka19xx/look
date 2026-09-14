@@ -225,9 +225,8 @@ fn read_active_window(conn: &impl Connection, root: Window, atom: Atom) -> u32 {
         .unwrap_or(0)
 }
 
-/// The `WM_CLASS` class of the window X11 currently has focused, in the case
-/// the app wrote it ("Firefox", "WezTerm"), for naming a clip after where it
-/// came from. `None` when nothing is focused or the property is missing.
+/// The focused window's `WM_CLASS` class, in the case the app wrote it
+/// ("Firefox", "WezTerm"), for naming a clip after where it came from.
 pub fn focused_wm_class() -> Option<String> {
     let (conn, screen_num) = x11rb::connect(None).ok()?;
     let root = conn.setup().roots[screen_num].root;

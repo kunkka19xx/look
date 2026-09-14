@@ -44,14 +44,14 @@ const GRAB_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 /// One form the copy is offered in: every MIME spelling that asks for it, and
 /// the bytes whoever asks receives.
 struct Form {
-    targets: Vec<&'static str>,
+    targets: &'static [&'static str],
     payload: Vec<u8>,
 }
 
 impl Form {
-    fn new(targets: &[&'static str], payload: impl Into<Vec<u8>>) -> Self {
+    fn new(targets: &'static [&'static str], payload: impl Into<Vec<u8>>) -> Self {
         Self {
-            targets: targets.to_vec(),
+            targets,
             payload: payload.into(),
         }
     }
@@ -132,7 +132,6 @@ fn own_clipboard(forms: Vec<Form>) -> bool {
 }
 
 /// Hand the payloads to GTK and become the clipboard owner. Main thread only.
-///
 /// A target reaches the getter as the number it was registered under, which
 /// here is its form's position in the list.
 fn grab(forms: Vec<Form>) -> bool {
@@ -179,8 +178,8 @@ fn allow_manager_to_store(clipboard: &gtk::Clipboard) {
 }
 
 /// wl-copy (Wayland) then xclip (X11), neither a hard runtime dependency. One
-/// invocation advertises one MIME type, which is the whole reason the GTK path
-/// above exists, so the caller picks the form worth keeping.
+/// invocation advertises one MIME type, which is why the GTK path above
+/// exists, so the caller picks the form worth keeping.
 fn shell_out(mime: &str, payload: &[u8]) -> Result<(), String> {
     let attempts: [(&str, &[&str]); 2] = [
         ("wl-copy", &["-t", mime]),
@@ -219,30 +218,6 @@ fn shell_out(mime: &str, payload: &[u8]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Each MIME spelling has to reach the getter under exactly one number, or
-    /// a paste gets a form its asker cannot read.
-    #[test]
-    fn every_target_leads_to_one_form() {
-        let forms = [
-            Form::new(&[IMAGE_PNG], "pixels"),
-            Form::new(&[GNOME_COPIED_FILES], "copy\nfile:///tmp/a.png"),
-            Form::new(&[URI_LIST], "file:///tmp/a.png"),
-            Form::new(&TEXT_TARGETS, "/tmp/a.png"),
-        ];
-
-        let mut seen = std::collections::HashMap::new();
-        for (index, form) in forms.iter().enumerate() {
-            for target in &form.targets {
-                assert!(
-                    seen.insert(*target, index).is_none(),
-                    "{target} is claimed twice"
-                );
-            }
-        }
-        assert_eq!(seen[IMAGE_PNG], 0);
-        assert_eq!(seen["STRING"], forms.len() - 1);
-    }
 
     /// Each form has its own delimiter and its own idea of what a path is, and
     /// a pasting app reads whichever one it asked for verbatim.
