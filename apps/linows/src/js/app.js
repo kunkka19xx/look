@@ -69,11 +69,18 @@ const HINT_MAIN = 'Enter: Open \u2022 Ctrl+K: Actions \u2022 Ctrl+H: Help';
 const HINT_LEVEL = 'Enter: Open \u2022 Ctrl+K: Actions \u2022 Esc: Back';
 const HINT_TRANSLATE = 'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help';
 const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Ctrl+D: Remove clip';
+const HINT_CLIPBOARD_IMAGE = 'Enter: Copy image \u2022 Ctrl+D: Remove image';
 const HINT_PROCESS = 'Enter: CPU \u2022 Ctrl+D: Kill \u2022 Ctrl+C: Copy PID';
 // Discovery-menu hints \u2014 mirror macOS prefixSuggestion / commandSuggestion
 // hint bars (LauncherView.swift hintItems).
 const HINT_PREFIX_DISCOVERY = 'Enter: Pick prefix \u2022 Up/Down: Move \u2022 Esc: Clear';
 const HINT_COMMAND_DISCOVERY = 'Enter: Run command \u2022 Up/Down: Move \u2022 Esc: Clear';
+
+// Which clipboard history owns the screen, named the way its empty-state copy
+// is keyed (catalog CLIPBOARD_EMPTY_COPY).
+function clipboardEmptyMode() {
+    return search.isClipboardImageMode() ? 'clipboard-image' : 'clipboard';
+}
 
 // "Ctrl+1-7: Switch", derived from the catalog so a new command can't leave the
 // hint stale (mirrors the macOS commandSwitchHint).
@@ -230,7 +237,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             !settings.isActive() &&
             helpScreen?.hidden !== false &&
             !search.isTranslateMode() &&
-            !search.isClipboardMode() &&
+            !search.isAnyClipboardMode() &&
             !search.isPrefixHintMode() &&
             !search.isCommandHintMode()
         );
@@ -468,12 +475,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Recent-empty renders as one wide card, which sends the hint bar back
         // to the bottom while the panes float (macOS showsFloatingGrid).
         layout.setRecentEmpty(search.isRecentMode() && items.length === 0);
-        // Clipboard with no clips: the same two-card grid as normal results -
-        // "Clipboard History" info on the left, "How to use" on the right
-        // (macOS ClipboardEmptyInfoView / ClipboardEmptyHelpView).
-        if (search.isClipboardMode() && items.length === 0) {
+        // A clipboard history with nothing in it: the same two-card grid as
+        // normal results - the history's info on the left, "How to use" on the
+        // right (macOS ClipboardEmptyInfoView / ClipboardEmptyHelpView).
+        if (search.isAnyClipboardMode() && items.length === 0) {
             previewPanel.hidden = false;
-            preview.showClipboardHelp();
+            preview.showClipboardHelp(clipboardEmptyMode());
         }
         if (isPrefixedQuery(query)) {
             aiAnswer.cancel();
@@ -580,9 +587,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        if (search.isClipboardMode()) {
-            setHint(hintMessage, HINT_CLIPBOARD);
-            results.setEmptyState({ mode: 'clipboard' });
+        if (search.isAnyClipboardMode()) {
+            setHint(hintMessage, search.isClipboardMode() ? HINT_CLIPBOARD : HINT_CLIPBOARD_IMAGE);
+            results.setEmptyState({ mode: clipboardEmptyMode() });
         } else if (search.isProcessMode()) {
             setHint(hintMessage, HINT_PROCESS);
             results.setEmptyState({ mode: 'default' });
@@ -651,6 +658,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Process row has no path to open; a click measures CPU like Enter.
         if (item.kind === 'process') {
             preview.measureCpu();
+            return;
+        }
+
+        // Neither history has a path to open: a clip is copied, not opened.
+        if (item.kind === 'clipboard') {
+            keyboard.copySelectedClip();
             return;
         }
 

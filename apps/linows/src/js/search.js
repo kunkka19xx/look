@@ -1,6 +1,7 @@
 import {
     search as ipcSearch,
     getClipboardHistory,
+    getClipboardImages,
     searchProcesses as ipcSearchProcesses,
     webSuggestions as ipcWebSuggestions,
     classifyUrl as ipcClassifyUrl,
@@ -21,6 +22,7 @@ import {
     WEB_URL_RECENT_SUBTITLE,
 } from './catalog.js';
 import * as layout from './layout.js';
+import { formatSize } from './components/preview.js';
 
 const DEBOUNCE_MS = 70;
 const MIN_QUICK_FOLDER_PREFIX = 2;
@@ -29,10 +31,18 @@ const WEB_SUGGESTIONS_LIMIT = 6;
 const RECENT_URL_LIMIT = 5;
 const MIN_WEB_SUGGESTION_QUERY_LENGTH = 2;
 const CLIPBOARD_TITLE_MAX_CHARS = 80;
+// Kept in step with core/engine modes.rs, which spells the same two prefixes
+// for `lookapp clipboard` / `lookapp clipboard-image`.
+const CLIPBOARD_PREFIX = 'c"';
+const CLIPBOARD_IMAGE_PREFIX = 'ci"';
+// What a clip is named after when the session will not say which app was in
+// front (GNOME and KDE Wayland). Same word macOS falls back to.
+const CLIPBOARD_IMAGE_UNKNOWN_SOURCE = 'screen';
 let debounceTimer = null;
 let webSuggestionTimer = null;
 let onResultsCallback = null;
 let clipboardMode = false;
+let clipboardImageMode = false;
 let translateMode = false;
 let recentMode = false;
 let processMode = false;
@@ -80,6 +90,16 @@ export function setQuickFolders(list) {
 
 export function isClipboardMode() {
     return clipboardMode;
+}
+
+export function isClipboardImageMode() {
+    return clipboardImageMode;
+}
+
+// The two histories share the screen they own: the hint bar, what Escape
+// clears, and the fact that the home hints do not apply.
+export function isAnyClipboardMode() {
+    return clipboardMode || clipboardImageMode;
 }
 
 export function isTranslateMode() {
@@ -146,12 +166,14 @@ export function handleQueryInput(query) {
     if (isPrefixSuggestionQuery(query)) {
         prefixHintMode = true;
         commandHintMode = translateMode = clipboardMode = recentMode = processMode = false;
+        clipboardImageMode = false;
         if (onResultsCallback) onResultsCallback(prefixSuggestionResults(query), query);
         return;
     }
     if (isCommandSuggestionQuery(query)) {
         commandHintMode = true;
         prefixHintMode = translateMode = clipboardMode = recentMode = processMode = false;
+        clipboardImageMode = false;
         if (onResultsCallback) onResultsCallback(commandSuggestionResults(query), query);
         return;
     }
@@ -166,6 +188,7 @@ export function handleQueryInput(query) {
     if (query.startsWith('t"')) {
         translateMode = true;
         clipboardMode = false;
+        clipboardImageMode = false;
         recentMode = false;
         _translateText = query.slice(2).trim();
         // Translation is triggered on Enter, not on typing
@@ -176,10 +199,23 @@ export function handleQueryInput(query) {
 
     translateMode = false;
 
-    if (query.startsWith('c"')) {
+    // Before the c" branch only for the reader's sake: the two prefixes differ
+    // in their second character, so neither query can reach the other.
+    if (query.startsWith(CLIPBOARD_IMAGE_PREFIX)) {
+        clipboardImageMode = true;
+        clipboardMode = false;
+        recentMode = false;
+        const filter = query.slice(CLIPBOARD_IMAGE_PREFIX.length);
+        debounceTimer = setTimeout(() => performClipboardImageSearch(filter), DEBOUNCE_MS);
+        return;
+    }
+
+    clipboardImageMode = false;
+
+    if (query.startsWith(CLIPBOARD_PREFIX)) {
         clipboardMode = true;
         recentMode = false;
-        const filter = query.slice(2);
+        const filter = query.slice(CLIPBOARD_PREFIX.length);
         debounceTimer = setTimeout(() => performClipboardSearch(filter), DEBOUNCE_MS);
         return;
     }
@@ -459,10 +495,48 @@ async function performClipboardSearch(filter) {
                 clipDateMedium: formatMediumDate(e.timestamp),
             };
         });
-        if (onResultsCallback) onResultsCallback(results, `c"${filter}`);
+        if (onResultsCallback) onResultsCallback(results, `${CLIPBOARD_PREFIX}${filter}`);
     } catch (err) {
         console.error('Clipboard search failed:', err);
-        if (onResultsCallback) onResultsCallback([], `c"${filter}`);
+        if (onResultsCallback) onResultsCallback([], `${CLIPBOARD_PREFIX}${filter}`);
+    }
+}
+
+// Raw pixels carry no name, so the row is named after where they came from
+// and when, as on macOS. Filtering matches that text, which is the only text
+// an image clip has.
+async function performClipboardImageSearch(filter) {
+    const query = `${CLIPBOARD_IMAGE_PREFIX}${filter}`;
+    try {
+        const entries = await getClipboardImages();
+        const term = filter.trim().toLowerCase();
+        const results = entries
+            .map((e) => {
+                const shortDate = formatShortDate(e.timestamp);
+                const source = e.source || CLIPBOARD_IMAGE_UNKNOWN_SOURCE;
+                return {
+                    id: `clipimg:${e.hash}`,
+                    kind: 'clipboard',
+                    title: `Image from ${source}, ${shortDate}`,
+                    subtitle: `Image  \u2022  ${e.width}×${e.height}  \u2022  ${formatSize(e.byte_size)}  \u2022  ${shortDate}`,
+                    path: 'clipboard://images',
+                    score: 0,
+                    clipImageHash: e.hash,
+                    clipImagePath: e.path,
+                    clipImageThumbPath: e.thumb_path,
+                    clipImageWidth: e.width,
+                    clipImageHeight: e.height,
+                    clipImageBytes: e.byte_size,
+                    clipTimestamp: e.timestamp,
+                    clipDateShort: shortDate,
+                    clipDateMedium: formatMediumDate(e.timestamp),
+                };
+            })
+            .filter((r) => !term || `${r.title} ${r.subtitle}`.toLowerCase().includes(term));
+        if (onResultsCallback) onResultsCallback(results, query);
+    } catch (err) {
+        console.error('Clipboard image search failed:', err);
+        if (onResultsCallback) onResultsCallback([], query);
     }
 }
 
