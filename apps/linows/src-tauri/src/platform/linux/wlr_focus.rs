@@ -250,9 +250,10 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for State {
             // A packed array of u32s, re-sent in full on every change.
             wlr_toplevel::Event::State { state } => {
                 entry.activated = state
-                    .chunks_exact(4)
-                    .filter_map(|word| word.try_into().ok())
-                    .any(|word| u32::from_ne_bytes(word) == ACTIVATED_STATE);
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|word| u32::from_ne_bytes(*word) == ACTIVATED_STATE);
             }
             wlr_toplevel::Event::Done => entry.done = true,
             wlr_toplevel::Event::Closed => entry.app_id = None,

@@ -123,12 +123,13 @@ pub fn hash_pixels(width: u32, height: u32, rgba: &[u8]) -> String {
     const MIX: u64 = 0x0000_0100_0000_01b3;
 
     let mut hash = SEED ^ (((width as u64) << 32) | height as u64);
-    let mut words = rgba.chunks_exact(8);
-    for word in &mut words {
-        let value = u64::from_le_bytes(word.try_into().unwrap_or_default());
-        hash = (hash ^ value).wrapping_mul(MIX).rotate_left(27);
+    let (words, remainder) = rgba.as_chunks::<8>();
+    for word in words {
+        hash = (hash ^ u64::from_le_bytes(*word))
+            .wrapping_mul(MIX)
+            .rotate_left(27);
     }
-    for &byte in words.remainder() {
+    for &byte in remainder {
         hash = (hash ^ byte as u64).wrapping_mul(MIX);
     }
     // Avalanche, so two images a pixel apart differ in the name.
