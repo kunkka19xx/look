@@ -473,6 +473,10 @@ clipboard_history_limit=10\n\
 # it on every hide; a negative value keeps it indefinitely.\n\
 query_retention_seconds=5\n\
 \n\
+# Automatic update at startup: 0 = disabled, 1 = enabled (opt-in).\n\
+# Manual Check/Update stays available. Windows NSIS/Scoop only for now.\n\
+auto_update_enable=0\n\
+\n\
 # Preferred tools. Name the tool, not a command: Look knows how to drive it,\n\
 # including running a terminal editor inside your terminal. Declare nothing and\n\
 # nothing changes. Editing uses text_editor on a file and code_editor on a\n\

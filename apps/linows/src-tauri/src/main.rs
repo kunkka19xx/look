@@ -766,6 +766,7 @@ fn main() {
             commands::quit_app,
             // Config
             config::get_config,
+            config::auto_update_enabled,
             config::set_config,
             config::reset_config,
             // Files: meta, version, clipboard, music, folder
@@ -873,6 +874,8 @@ fn main() {
             // About widget: version only. The update check itself runs in
             // the webview via fetch() - no Rust HTTP/TLS dep needed.
             files::get_lookapp_version,
+            commands::get_install_method,
+            commands::start_windows_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building look desktop")

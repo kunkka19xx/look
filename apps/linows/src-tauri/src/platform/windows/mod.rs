@@ -22,5 +22,6 @@ pub mod process;
 pub mod recycle_bin;
 pub mod sysinfo;
 pub mod tools;
+pub mod update;
 pub mod version;
 pub mod window_focus;
