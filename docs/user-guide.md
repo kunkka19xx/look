@@ -27,8 +27,7 @@
 Install with Homebrew (see [README](../README.md#install) for alternatives):
 
 ```bash
-brew tap kunkka19xx/tap
-brew install --cask look
+brew install --cask kunkka19xx/tap/look
 ```
 
 On first launch, Look will index your apps, files, and folders in the background. You can start using it immediately - results appear as indexing completes.
@@ -341,6 +340,8 @@ Built-in commands:
 - Past days are non-editable. Unfinished tasks 1-3 days late show an `EXTENDED` badge and can still be marked done; unfinished tasks more than 3 days late show `OVERDUE` and their completion state is locked
 - Search matches task names and dates (`jul 3`, `yesterday`); case- and diacritic-insensitive
 - Nothing autosaves: hit `Save` or `Cmd+S`; `Cmd+N` flips between the Tasks and Stats pages
+- Press `Cmd+Z` (`Ctrl+Z` on Linux/Windows) to undo task changes, including deleting one task or clearing a day. The last 50 changes are kept, saved or not: undoing back past a Save marks the panel unsaved again, so a second Save writes the reverted list. Text fields keep their typing undo.
+- Press `Cmd+Shift+Z` (`Ctrl+Shift+Z` on Linux/Windows) to redo an undone task change. Making a new edit clears the redo history; text fields keep their typing redo.
 - When today has tasks, the home-screen hint bar shows a clickable `Todo X/Y` stat; hovering it lists what's still unfinished
 - Data lives in the local database and is kept for one year
 

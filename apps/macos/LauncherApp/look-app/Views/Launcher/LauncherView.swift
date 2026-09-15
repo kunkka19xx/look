@@ -650,7 +650,7 @@ struct LauncherView: View {
                 return ["Y confirm", "N cancel", "Esc back"]
             }
             if activeCommandID == AppConstants.Launcher.Command.sys {
-                return ["Tab/\(commandSwitchHint)", "Cmd+Shift+, settings", "Esc back"]
+                return ["Esc back"]
             }
             if activeCommandID == AppConstants.Launcher.Command.speed {
                 return ["R rerun", "E show IP", "Esc back"]
@@ -659,7 +659,7 @@ struct LauncherView: View {
                 return ["Space start/pause", "R reset", "Esc back"]
             }
             if activeCommandID == AppConstants.Launcher.Command.todo {
-                return ["Cmd+N switch page", "Cmd+S save", "Esc back"]
+                return ["Cmd+Z/Shift+Z undo/redo", "Cmd+S save", "Esc back"]
             }
             return ["Enter run", "Tab select", "Esc back"]
         }
@@ -775,11 +775,6 @@ struct LauncherView: View {
         let normalized = commandInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let splitPoint = normalized.firstIndex(where: { $0.isWhitespace }) else { return "" }
         return String(normalized[splitPoint...]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// "Cmd+1-7 switch", derived so a new command can't leave the hint stale.
-    var commandSwitchHint: String {
-        "Cmd+1-\(commandCatalog.count) switch"
     }
 
     var activeCommand: AppCommand? {

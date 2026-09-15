@@ -75,18 +75,14 @@ const HINT_PROCESS = 'Enter: CPU \u2022 Ctrl+D: Kill \u2022 Ctrl+C: Copy PID';
 const HINT_PREFIX_DISCOVERY = 'Enter: Pick prefix \u2022 Up/Down: Move \u2022 Esc: Clear';
 const HINT_COMMAND_DISCOVERY = 'Enter: Run command \u2022 Up/Down: Move \u2022 Esc: Clear';
 
-// "Ctrl+1-7: Switch", derived from the catalog so a new command can't leave the
-// hint stale (mirrors the macOS commandSwitchHint).
-const SWITCH_HINT = `Ctrl+1-${COMMAND_ENTRIES.length}: Switch`;
-
 // Per-command hint lines while command mode is active; `shell` doubles as
 // the fallback for commands without a dedicated line.
 const COMMAND_HINTS = {
     pomo: 'Space: Start/pause \u2022 R: Reset \u2022 Esc: Back',
-    todo: 'Ctrl+N: Switch page \u2022 Ctrl+S: Save \u2022 Esc: Back',
+    todo: 'Ctrl+Z/Shift+Z: Undo/Redo \u2022 Ctrl+S: Save \u2022 Esc: Back',
     speed: 'R: Rerun \u2022 E: Show IP \u2022 Esc: Back',
     kill: 'Y: Confirm \u2022 N: Cancel \u2022 Esc: Back',
-    sys: `Tab/${SWITCH_HINT} \u2022 Ctrl+Shift+,: Settings \u2022 Esc: Back`,
+    sys: 'Esc: Back',
     calc: 'Enter: Evaluate \u2022 Tab: Select \u2022 Esc: Back',
     shell: 'Enter: Run \u2022 Tab: Select \u2022 Esc: Back',
 };
