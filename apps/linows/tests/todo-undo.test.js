@@ -129,12 +129,12 @@ test('Ctrl/Cmd+Z and Shift+Z undo/redo without taking text or hidden-panel keys'
         addTask(todayKey(), 'Task');
         document.activeElement = { dataset: { todoField: 'rename' } };`);
     assert.equal(run('handleKey(key)'), false);
+    // The search box only filters the list, so it never holds on to Ctrl+Z.
     run('document.activeElement = searchInput; searchInput.value = "query";');
-    assert.equal(run('handleKey(key)'), false);
-    run('searchInput.value = "";');
     assert.equal(run('handleKey({ ...key, shiftKey: true })'), false);
     assert.equal(run('handleKey(key)'), true);
     assert.equal(run('isDirty()'), false);
+    run('searchInput.value = "";');
     run("document.activeElement = { dataset: { todoField: 'rename' } };");
     assert.equal(run('handleKey({ ...key, shiftKey: true })'), false);
     run('document.activeElement = searchInput;');

@@ -804,8 +804,11 @@ final class TodoKeyHostView: NSView {
         }
     }
 
+    /// The search box only filters the list, so Cmd+Z there still means
+    /// "undo my last task change". Only a task name field owns text undo.
     private func textEditorOwnsUndo(in window: NSWindow) -> Bool {
-        window.firstResponder is NSTextView && fieldEdited
+        guard fieldEdited, let editor = window.firstResponder as? NSTextView else { return false }
+        return !(editor.delegate is CaretTextField)
     }
 
     private func remove() {

@@ -387,14 +387,11 @@ function rememberChange(affectsSave = true) {
     if (affectsSave) revision = ++nextRevision;
 }
 
-// Native text undo/redo wins inside add/rename fields and a nonempty search box.
+// Only a task name field owns native text undo. The search box just filters
+// the list, so Ctrl+Z there still means "undo my last task change".
 function editingText() {
     const active = document.activeElement;
-    return (
-        active?.dataset?.todoField ||
-        (active === searchInput && searchInput.value.length > 0) ||
-        active?.isContentEditable
-    );
+    return active?.dataset?.todoField || active?.isContentEditable;
 }
 
 const undo = () => step(undoHistory, redoHistory);
