@@ -64,6 +64,18 @@ enum Motion {
         }
     }
 
+    /// Launchpad tiles trading places under one the user is dragging, and the
+    /// dragged tile settling into its cell on release. Softer and slower than
+    /// `Press` so the grid reads as rearranging itself rather than snapping.
+    enum Reorder {
+        static let response: Double = 0.32
+        static let dampingFraction: Double = 0.8
+
+        static var animation: Animation {
+            .spring(response: response, dampingFraction: dampingFraction)
+        }
+    }
+
     /// Icon and value changes: a toggle flipping, a counter ticking.
     enum Value {
         /// Digit roll for a readout that ticks (battery, temperature, timers).
