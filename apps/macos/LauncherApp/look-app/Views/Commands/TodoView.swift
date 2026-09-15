@@ -737,6 +737,10 @@ final class TodoKeyHostView: NSView {
     var onUndo: (() -> Bool)?
     var onRedo: (() -> Bool)?
     nonisolated(unsafe) private var monitor: Any?
+    nonisolated(unsafe) private var editObservers: [NSObjectProtocol] = []
+    /// Set once the focused field editor takes a keystroke, cleared when
+    /// editing starts or ends.
+    private var fieldEdited = false
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -745,10 +749,12 @@ final class TodoKeyHostView: NSView {
 
     deinit {
         if let monitor { NSEvent.removeMonitor(monitor) }
+        for observer in editObservers { NotificationCenter.default.removeObserver(observer) }
     }
 
     private func install() {
         guard monitor == nil else { return }
+        observeFieldEditing()
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, let window = self.window,
                   window.isKeyWindow, event.window === window,
@@ -756,7 +762,7 @@ final class TodoKeyHostView: NSView {
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
             if chars == "z", mods == [.command, .shift] {
-                if Self.textFieldHasContent(in: window) { return event }
+                if self.textEditorOwnsUndo(in: window) { return event }
                 if self.onRedo?() == true { return nil }
                 return event
             }
@@ -771,23 +777,43 @@ final class TodoKeyHostView: NSView {
             }
             if chars == "z" {
                 // Let the active text editor undo typing before task changes.
-                if Self.textFieldHasContent(in: window) { return event }
+                if self.textEditorOwnsUndo(in: window) { return event }
                 if self.onUndo?() == true { return nil }
             }
             return event
         }
     }
 
-    /// A TextField's field editor borrows the window's undo manager, which
-    /// reports canUndo long after the field was touched, so key off the text.
-    private static func textFieldHasContent(in window: NSWindow) -> Bool {
-        guard let editor = window.firstResponder as? NSTextView else { return false }
-        return !editor.string.isEmpty
+    /// A field editor borrows the window's undo manager, so canUndo stays
+    /// true long after the field was touched, and a field the user emptied
+    /// still owns Cmd+Z. Track the keystrokes ourselves instead.
+    private func observeFieldEditing() {
+        guard editObservers.isEmpty else { return }
+        editObservers = [
+            (NSText.didBeginEditingNotification, false),
+            (NSText.didEndEditingNotification, false),
+            (NSText.didChangeNotification, true),
+        ].map { name, edited in
+            NotificationCenter.default.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.fieldEdited = edited }
+            }
+        }
+    }
+
+    private func textEditorOwnsUndo(in window: NSWindow) -> Bool {
+        window.firstResponder is NSTextView && fieldEdited
     }
 
     private func remove() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+        for observer in editObservers { NotificationCenter.default.removeObserver(observer) }
+        editObservers = []
+        fieldEdited = false
     }
 }
 

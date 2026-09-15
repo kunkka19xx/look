@@ -150,7 +150,7 @@ enum ShortcutCatalog {
             ShortcutEntry("todo.togglePage", "Cmd+N", "Switch the Tasks / Stats page inside /todo"),
             ShortcutEntry("todo.save", "Cmd+S", "Save changes inside /todo"),
             ShortcutEntry("todo.undo", "Cmd+Z", "Undo the last task change inside /todo"),
-            ShortcutEntry("todo.redo", "Cmd+Shift+Z", "Redo an undone task change inside /todo before saving"),
+            ShortcutEntry("todo.redo", "Cmd+Shift+Z", "Redo an undone task change inside /todo"),
             ShortcutEntry("speed.rerun", "R", "Run the test again inside /speed"),
             ShortcutEntry("speed.revealAddress", "E", "Show or hide the public address inside /speed"),
         ]),
