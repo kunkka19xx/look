@@ -5,6 +5,7 @@ mod answers;
 mod autostart;
 mod calc;
 mod clipboard;
+mod clipimage;
 mod commands;
 mod config;
 mod consts;
@@ -850,6 +851,10 @@ fn main() {
             // Clipboard
             clipboard::get_clipboard_history,
             clipboard::delete_clipboard_entry,
+            clipboard::get_clipboard_images,
+            clipboard::delete_clipboard_image,
+            clipboard::clipboard_image_data_url,
+            clipboard::copy_clipboard_image,
             clipboard::copy_to_clipboard,
             clipboard::copy_to_clipboard_labeled,
             // Music
