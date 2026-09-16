@@ -67,6 +67,9 @@ struct ClipboardState {
 static STATE: Mutex<Option<ClipboardState>> = Mutex::new(None);
 /// When true, the next clipboard change is from Look itself - skip it.
 static SKIP_NEXT: AtomicBool = AtomicBool::new(false);
+/// The text an image copy publishes, waiting to be read back. Keyed by the
+/// text, not a flag: the write may repeat what is already on the clipboard.
+static PENDING_SELF_TEXT: Mutex<Option<String>> = Mutex::new(None);
 
 fn now_secs() -> u64 {
     SystemTime::now()
@@ -193,6 +196,9 @@ fn capture_text(text: String) {
         return;
     }
 
+    // Before the `last_text` check: a repeat copy publishes the same path.
+    let own_write = claim_self_text(&text);
+
     let mut lock = STATE.lock().unwrap();
     let Some(state) = lock.as_mut() else { return };
 
@@ -203,11 +209,20 @@ fn capture_text(text: String) {
     state.last_text = text.clone();
 
     // Skip if this was Look's own write
-    if SKIP_NEXT.swap(false, Ordering::Relaxed) {
+    if own_write || SKIP_NEXT.swap(false, Ordering::Relaxed) {
         return;
     }
 
     push_entry(state, text, None);
+}
+
+fn claim_self_text(text: &str) -> bool {
+    let mut pending = PENDING_SELF_TEXT.lock().unwrap();
+    if pending.as_deref() == Some(text) {
+        *pending = None;
+        return true;
+    }
+    false
 }
 
 /// Whether a new picture was filed, which decides how soon to look again. The
@@ -420,22 +435,26 @@ pub fn copy_clipboard_image(hash: String) -> Result<(), String> {
     }
     // The pixels are filed already, so the monitor must not file them again.
     let previous = swap_last_image_hash(hash);
+    // Before the write: the Linux grab publishes the path as it takes.
+    set_pending_self_text(Some(path.to_string_lossy().into_owned()));
 
     match write_image(&path) {
-        // The copy carries the path as text, which the monitor would file as a
-        // clip of its own: that is the one event the flag is here to swallow.
-        Ok(true) => {
-            mark_self_write();
+        Ok(true) => Ok(()),
+        // Pixels alone: nothing will ever spend the claim.
+        Ok(false) => {
+            set_pending_self_text(None);
             Ok(())
         }
-        // Pixels alone leave no text event, so an armed flag would sit there
-        // and swallow the next external copy instead.
-        Ok(false) => Ok(()),
         Err(e) => {
+            set_pending_self_text(None);
             swap_last_image_hash(previous);
             Err(e)
         }
     }
+}
+
+fn set_pending_self_text(text: Option<String>) {
+    *PENDING_SELF_TEXT.lock().unwrap() = text;
 }
 
 /// Whether the write published the path as text alongside the pixels.
@@ -468,8 +487,7 @@ fn write_image(path: &std::path::Path) -> Result<bool, String> {
     }
 }
 
-/// Sets what the monitor treats as already filed, handing back what was there
-/// so a failed write can put it back.
+/// Hands back the previous hash, so a failed write can put it back.
 fn swap_last_image_hash(hash: String) -> String {
     let mut lock = STATE.lock().unwrap();
     match lock.as_mut() {
