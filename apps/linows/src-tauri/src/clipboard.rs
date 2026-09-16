@@ -418,23 +418,37 @@ pub fn copy_clipboard_image(hash: String) -> Result<(), String> {
     if !path.exists() {
         return Err("the image is no longer on disk".to_string());
     }
-    // The file form carries a path the monitor would file as a text clip, and
-    // the pixels are already filed: without either, Look's own write comes
-    // back as a new row.
-    mark_self_write();
-    if let Some(state) = STATE.lock().unwrap().as_mut() {
-        state.last_image_hash = hash;
-    }
+    // The pixels are filed already, so the monitor must not file them again.
+    let previous = swap_last_image_hash(hash);
 
+    match write_image(&path) {
+        // The copy carries the path as text, which the monitor would file as a
+        // clip of its own: that is the one event the flag is here to swallow.
+        Ok(true) => {
+            mark_self_write();
+            Ok(())
+        }
+        // Pixels alone leave no text event, so an armed flag would sit there
+        // and swallow the next external copy instead.
+        Ok(false) => Ok(()),
+        Err(e) => {
+            swap_last_image_hash(previous);
+            Err(e)
+        }
+    }
+}
+
+/// Whether the write published the path as text alongside the pixels.
+fn write_image(path: &std::path::Path) -> Result<bool, String> {
     #[cfg(target_os = "linux")]
     {
-        crate::platform::linux::clipboard::copy_image(&path)
+        crate::platform::linux::clipboard::copy_image(path)
     }
 
     #[cfg(target_os = "windows")]
     {
         let (width, height, rgba) =
-            clipimage::read_rgba(&path).ok_or("the image could not be read")?;
+            clipimage::read_rgba(path).ok_or("the image could not be read")?;
         let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
         clipboard
             .set_image(arboard::ImageData {
@@ -442,12 +456,25 @@ pub fn copy_clipboard_image(hash: String) -> Result<(), String> {
                 height: height as usize,
                 bytes: rgba.into(),
             })
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        // Windows replaces the clipboard with the pixels alone.
+        Ok(false)
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
+        let _ = path;
         Err("image clipboard not supported on this platform".to_string())
+    }
+}
+
+/// Sets what the monitor treats as already filed, handing back what was there
+/// so a failed write can put it back.
+fn swap_last_image_hash(hash: String) -> String {
+    let mut lock = STATE.lock().unwrap();
+    match lock.as_mut() {
+        Some(state) => std::mem::replace(&mut state.last_image_hash, hash),
+        None => String::new(),
     }
 }
 

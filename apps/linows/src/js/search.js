@@ -200,7 +200,8 @@ export function handleQueryInput(query) {
         clipboardImageMode = true;
         clipboardMode = recentMode = false;
         const filter = query.slice(CLIPBOARD_IMAGE_PREFIX.length);
-        debounceTimer = setTimeout(() => performClipboardImageSearch(filter), DEBOUNCE_MS);
+        const version = queryVersion;
+        debounceTimer = setTimeout(() => performClipboardImageSearch(filter, version), DEBOUNCE_MS);
         return;
     }
 
@@ -498,10 +499,13 @@ async function performClipboardSearch(filter) {
 
 // Raw pixels carry no name, so the row is named after where they came from and
 // when, as on macOS, and the filter matches that.
-async function performClipboardImageSearch(filter) {
+async function performClipboardImageSearch(filter, version) {
     const query = `${CLIPBOARD_IMAGE_PREFIX}${filter}`;
     try {
         const entries = await getClipboardImages();
+        // A newer query or a mode switch may have landed while the history was
+        // being read; discard this response so it can't overwrite fresher results.
+        if (isStale(version)) return;
         const term = filter.trim().toLowerCase();
         const results = entries
             .map((e) => {
@@ -526,6 +530,7 @@ async function performClipboardImageSearch(filter) {
             .filter((r) => !term || `${r.title} ${r.subtitle}`.toLowerCase().includes(term));
         if (onResultsCallback) onResultsCallback(results, query);
     } catch (err) {
+        if (isStale(version)) return;
         console.error('Clipboard image search failed:', err);
         if (onResultsCallback) onResultsCallback([], query);
     }

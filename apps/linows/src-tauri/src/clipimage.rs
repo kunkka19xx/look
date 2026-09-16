@@ -12,6 +12,8 @@ const EXTENSION: &str = "png";
 const THUMBNAIL_SUFFIX: &str = ".thumb";
 const THUMBNAIL_MAX_EDGE: u32 = 128;
 const CHANNELS: usize = 4;
+/// Characters in a name [`hash_pixels`] returns: a `u64` in hex.
+const HASH_LEN: usize = 16;
 /// Four bytes a pixel, so this is the real cap on what a capture costs. Clears
 /// an 8K screen.
 pub const MAX_PIXELS: usize = 64_000_000;
@@ -42,8 +44,11 @@ pub fn thumbnail_path(hash: &str) -> Option<PathBuf> {
     path_for(hash, THUMBNAIL_SUFFIX)
 }
 
+/// A hash is spliced into a file name, and the commands taking one are open to
+/// the webview: anything but the name [`hash_pixels`] writes is refused, so a
+/// separator or a `..` cannot reach outside [`DIR_NAME`].
 fn path_for(hash: &str, suffix: &str) -> Option<PathBuf> {
-    if hash.is_empty() {
+    if hash.len() != HASH_LEN || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     Some(dir()?.join(format!("{hash}{suffix}.{EXTENSION}")))

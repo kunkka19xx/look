@@ -78,7 +78,9 @@ pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
 
 /// Puts a copied image back on the clipboard the way macOS does: the pixels
 /// for an editor, the file for a file manager, the path for a text field.
-pub(crate) fn copy_image(path: &std::path::Path) -> Result<(), String> {
+/// `true` when the grab took, so the copy carries the path as text too and the
+/// monitor sees a text event; `false` when only the pixels went out.
+pub(crate) fn copy_image(path: &std::path::Path) -> Result<bool, String> {
     let png = std::fs::read(path).map_err(|e| format!("Failed to read the image: {e}"))?;
     let native = path.to_string_lossy().into_owned();
     let (gnome, uri_list, text) = payloads(std::slice::from_ref(&native));
@@ -90,10 +92,10 @@ pub(crate) fn copy_image(path: &std::path::Path) -> Result<(), String> {
         Form::new(&TEXT_TARGETS, text),
     ];
     if own_clipboard(forms) {
-        return Ok(());
+        return Ok(true);
     }
     // The pixels are what the copy was for, so that is the form worth saving.
-    shell_out(IMAGE_PNG, &png)
+    shell_out(IMAGE_PNG, &png).map(|_| false)
 }
 
 /// The three forms one file copy is offered in: [`GNOME_COPIED_FILES`],
