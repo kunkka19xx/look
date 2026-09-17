@@ -60,6 +60,10 @@ const PUNCT_CHORDS = {
 };
 
 function isChord(e, name) {
+    // AltGr reaches the webview as Ctrl+Alt (Windows) or the AltGraph
+    // modifier, and it is how several layouts type these very characters.
+    // None of our chords want Alt, so drop those events before matching.
+    if (e.altKey || e.getModifierState('AltGraph')) return false;
     const chord = PUNCT_CHORDS[name];
     if (e.code === chord.code) return true;
     return chord.keys.includes(e.key) && e.code !== chord.exceptCode;
