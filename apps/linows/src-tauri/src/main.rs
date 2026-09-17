@@ -751,7 +751,10 @@ fn main() {
             // Config
             config::get_config,
             config::set_config,
-            launcher_hotkey::launcher_hotkey_display,
+            launcher_hotkey::launcher_hotkey_state,
+            launcher_hotkey::hotkey_check,
+            launcher_hotkey::launcher_hotkey_suspend,
+            launcher_hotkey::launcher_hotkey_apply,
             config::reset_config,
             // Files: meta, version, clipboard, music, folder
             files::get_file_meta,

@@ -391,6 +391,21 @@
             <!-- Shortcuts tab -->
             <div class="settings-tab-content" id="settings-tab-shortcuts" hidden>
                 <div class="settings-shortcuts-list">
+                    <div class="settings-shortcut-notice" id="settings-shortcuts-notice" hidden></div>
+
+                    <!-- Global: rebindable, see components/shortcutrecorder.js -->
+                    <div class="settings-shortcut-section">Global</div>
+                    <div class="settings-shortcut" data-shortcut-id="global.toggleLauncher">
+                        <kbd>Alt+Space</kbd
+                        ><button class="settings-shortcut-reset" type="button" hidden>Reset</button
+                        ><span>Show or hide Look from any app</span>
+                    </div>
+                    <div
+                        class="settings-shortcut-error"
+                        data-shortcut-error="global.toggleLauncher"
+                        hidden
+                    ></div>
+
                     <!-- Core launcher -->
                     <div class="settings-shortcut-section">Core launcher</div>
                     <div class="settings-shortcut">
@@ -486,9 +501,6 @@
                     </div>
                     <div class="settings-shortcut">
                         <kbd>Esc</kbd><span>Back to app list (in command mode)</span>
-                    </div>
-                    <div class="settings-shortcut">
-                        <kbd id="settings-launcher-hotkey">Alt+Space</kbd><span>Toggle launcher</span>
                     </div>
 
                     <!-- Search prefixes -->
