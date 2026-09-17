@@ -17,6 +17,9 @@ pub const EVENT_HEALTH_CHANGED: &str = "health-changed";
 
 /// Stable issue ids: reports are deduped by id.
 pub const ISSUE_HOTKEY: &str = "hotkey";
+/// A `launcher_hotkey` value that was ignored, told apart from a registration
+/// failure so dismissing one does not hide the other.
+pub const KIND_HOTKEY_CONFIG: &str = "hotkey-config";
 #[cfg(target_os = "linux")]
 pub const ISSUE_GNOME_EXT: &str = "gnome-ext";
 
@@ -49,6 +52,23 @@ pub fn report_as(id: &'static str, kind: &'static str, message: String) {
         }
         eprintln!("[look:health] {message}");
         issues.push(HealthIssue { id, kind, message });
+    }
+    if let Some(handle) = crate::state::app_handle() {
+        let _ = handle.emit(EVENT_HEALTH_CHANGED, snapshot());
+    }
+}
+
+/// Drop an issue once its cause may be gone, so a later report can land.
+pub fn clear(id: &'static str) {
+    {
+        let Ok(mut issues) = ISSUES.lock() else {
+            return;
+        };
+        let before = issues.len();
+        issues.retain(|i| i.id != id);
+        if issues.len() == before {
+            return;
+        }
     }
     if let Some(handle) = crate::state::app_handle() {
         let _ = handle.emit(EVENT_HEALTH_CHANGED, snapshot());

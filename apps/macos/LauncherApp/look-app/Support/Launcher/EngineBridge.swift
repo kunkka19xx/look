@@ -244,6 +244,14 @@ private func look_todo_list_json() -> UnsafeMutablePointer<CChar>?
 nonisolated
 private func look_todo_save_json(_ json: UnsafePointer<CChar>?) -> Bool
 
+@_silgen_name("look_launcher_hotkey_json")
+nonisolated
+private func look_launcher_hotkey_json() -> UnsafeMutablePointer<CChar>?
+
+@_silgen_name("look_hotkey_check_json")
+nonisolated
+private func look_hotkey_check_json(_ spec: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+
 @_silgen_name("look_lunar_date_json")
 nonisolated
 private func look_lunar_date_json(_ year: Int64, _ month: Int64, _ day: Int64, _ tz: Double) -> UnsafeMutablePointer<CChar>?
@@ -602,6 +610,22 @@ final class EngineBridge: @unchecked Sendable {
     @discardableResult
     nonisolated func requestIndexRefresh() -> Bool {
         look_request_index_refresh()
+    }
+
+    /// `launcher_hotkey` resolved by core, already defaulted when unset or invalid.
+    nonisolated func launcherHotkey() -> LauncherHotkeySpec? {
+        guard let ptr = look_launcher_hotkey_json() else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(LauncherHotkeySpec.self, from: data)
+    }
+
+    /// `spec` checked against core's hotkey grammar.
+    nonisolated func hotkeyCheck(_ spec: String) -> HotkeyCheck? {
+        guard let ptr = spec.withCString({ look_hotkey_check_json($0) }) else { return nil }
+        defer { look_free_cstring(ptr) }
+        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(HotkeyCheck.self, from: data)
     }
 
     /// Lunar date from the shared core. `tzHours` is the viewer's UTC offset,

@@ -374,6 +374,7 @@ extension LauncherView {
     ) -> Bool {
         let result = themeStore.reloadFromConfig()
         let backendReloaded = bridge.reloadConfig()
+        let hotkeyWarning = LauncherHotkeyController.shared.reload()
         clipboardStore.reloadFromConfig()
         reloadQueryRetentionPolicy()
         // Declared block icons and `then` targets are cached for the process, so
@@ -391,7 +392,7 @@ extension LauncherView {
         // One banner carries both: the launchpad is reloaded here too, and its
         // drawing is the file most likely to be mid-edit when someone presses
         // the reload chord.
-        let warnings = result.warnings + launchpadWarnings
+        let warnings = result.warnings + launchpadWarnings + [hotkeyWarning].compactMap { $0 }
         if !backendReloaded {
             message = "Backend config reload failed"
             style = .error

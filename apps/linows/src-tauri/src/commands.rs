@@ -361,12 +361,19 @@ pub fn reveal_path(path: String) -> Result<(), String> {
 /// the request thread. Returns what the blocks did, so a script that broke
 /// says so rather than quietly producing no rows.
 #[tauri::command(async)]
-pub fn reload_config(state: State<'_, AppState>) -> look_engine::sources::RefreshOutcome {
+pub fn reload_config(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> look_engine::sources::RefreshOutcome {
     // The engine caches the parsed `~/.look/config` across calls (skips a disk
     // read on every refresh). When the user explicitly reloads, drop the cache
     // so the next bootstrap picks up their edits.
     RuntimeConfig::invalidate_cache();
     crate::clipboard::reload_from_config();
+    #[cfg(target_os = "windows")]
+    crate::launcher_hotkey::register(&app);
+    #[cfg(not(target_os = "windows"))]
+    let _ = app;
     // Before the index pass, never after: the pass reads the rows these blocks
     // write, and the other order indexes the previous run's.
     let sources = look_engine::sources::refresh_run_blocks();

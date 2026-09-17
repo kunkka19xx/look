@@ -5,6 +5,7 @@ mod answers_api;
 mod calc_api;
 mod calling_api;
 mod clipboard_api;
+mod hotkey_api;
 mod lunar_api;
 mod matching_api;
 mod meeting_api;
@@ -178,6 +179,25 @@ pub extern "C" fn look_modes_parse_json(argv_json: *const c_char) -> *mut c_char
 pub extern "C" fn look_lunar_date_json(year: i64, month: i64, day: i64, tz: f64) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         lunar_api::look_lunar_date_json_impl(year, month, day, tz)
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// The launcher toggle hotkey from `~/.look/config` (`{hotkey, display,
+/// accelerator, warning}`), falling back to the platform default. Free with
+/// `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_launcher_hotkey_json() -> *mut c_char {
+    std::panic::catch_unwind(hotkey_api::look_launcher_hotkey_json_impl)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// `spec` checked against the hotkey grammar (`{spec, display, error}`). Free
+/// with `look_free_cstring`.
+#[unsafe(no_mangle)]
+pub extern "C" fn look_hotkey_check_json(spec: *const c_char) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        hotkey_api::look_hotkey_check_json_impl(spec)
     }))
     .unwrap_or(std::ptr::null_mut())
 }

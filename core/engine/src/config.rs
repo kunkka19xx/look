@@ -1,3 +1,4 @@
+use crate::hotkey::{LAUNCHER_HOTKEY_CONFIG_KEY, LauncherHotkey};
 use crate::normalize::normalize_for_search;
 use crate::platform;
 #[cfg(test)]
@@ -94,6 +95,7 @@ pub struct RuntimeConfig {
     pub ignored_file_patterns: Vec<String>,
     pub lazy_indexing_enabled: bool,
     pub localized_app_names: bool,
+    pub launcher_hotkey: LauncherHotkey,
     pub search_aliases: HashMap<String, Vec<String>>,
     pub tools: Tools,
 }
@@ -126,6 +128,7 @@ impl Default for RuntimeConfig {
             ignored_file_patterns: Vec::new(),
             lazy_indexing_enabled: LAZY_INDEXING_ENABLED,
             localized_app_names: false,
+            launcher_hotkey: LauncherHotkey::default(),
             search_aliases: default_search_aliases(),
             tools: Tools::default(),
         }
@@ -244,6 +247,9 @@ impl RuntimeConfig {
             let value = value.trim();
 
             match key {
+                LAUNCHER_HOTKEY_CONFIG_KEY => {
+                    self.launcher_hotkey = LauncherHotkey::from_config_value(Some(value));
+                }
                 "app_scan_roots" => {
                     let parsed = parse_csv(value)
                         .into_iter()
@@ -437,6 +443,7 @@ fn default_config_contents() -> String {
     } else {
         "0.55"
     };
+    let launcher_hotkey_section = launcher_hotkey_config_section();
     format!(
         "# look configuration\n\
 # Generated on first launch. Edit values, then reload with Cmd+Shift+;\n\
@@ -473,6 +480,7 @@ clipboard_history_limit=10\n\
 # it on every hide; a negative value keeps it indefinitely.\n\
 query_retention_seconds=5\n\
 \n\
+{launcher_hotkey_section}\
 # Preferred tools. Name the tool, not a command: Look knows how to drive it,\n\
 # including running a terminal editor inside your terminal. Declare nothing and\n\
 # nothing changes. Editing uses text_editor on a file and code_editor on a\n\
@@ -511,6 +519,27 @@ alias_term=Terminal|iTerm|iTerm2|Ghostty|WezTerm|Alacritty|Kitty|Warp|Windows Te
 alias_chat=Slack|Discord|Telegram|Messages|Microsoft Teams|Teams|WhatsApp|Signal|Zoom\n\
 alias_music=Spotify|Apple Music|Music|YouTube Music|VLC|Windows Media Player|foobar2000\n\
 alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave|Microsoft Edge|Edge|Brave Browser|Vivaldi|Opera\n"
+    )
+}
+
+/// Linux has no entry: Wayland compositors own global shortcuts, so Look
+/// cannot honour the setting there.
+fn launcher_hotkey_config_section() -> String {
+    if cfg!(target_os = "linux") {
+        return String::new();
+    }
+    let modifier_names = if cfg!(target_os = "macos") {
+        "cmd, ctrl, option, shift"
+    } else {
+        "win, ctrl, alt, shift"
+    };
+    format!(
+        "# Global shortcut that shows and hides Look: modifiers ({modifier_names}) plus one key\n\
+# (a letter, digit, space, enter, tab, esc, f1-f20, or a symbol like `).\n\
+# Examples: ctrl+space, alt+shift+space, f13.\n\
+{LAUNCHER_HOTKEY_CONFIG_KEY}={}\n\
+\n",
+        crate::hotkey::DEFAULT_LAUNCHER_HOTKEY
     )
 }
 
@@ -1035,6 +1064,26 @@ mod tests {
 
         let _ = std::fs::remove_file(&tmp);
         config
+    }
+
+    #[test]
+    fn launcher_hotkey_loads_from_config() {
+        let config = config_from("launcher_hotkey=ctrl+shift+k\n", "launcher-hotkey");
+        assert_eq!(config.launcher_hotkey.hotkey.key.code, "KeyK");
+        assert!(config.launcher_hotkey.warning.is_none());
+
+        let invalid = config_from("launcher_hotkey=ctrl+nope\n", "launcher-hotkey-invalid");
+        assert_eq!(
+            invalid.launcher_hotkey.hotkey,
+            LauncherHotkey::default().hotkey
+        );
+        assert!(invalid.launcher_hotkey.warning.is_some());
+    }
+
+    #[test]
+    fn default_config_declares_launcher_hotkey_except_on_linux() {
+        let declared = default_config_contents().contains("launcher_hotkey=");
+        assert_eq!(declared, !cfg!(target_os = "linux"));
     }
 
     #[test]

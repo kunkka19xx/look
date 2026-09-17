@@ -93,6 +93,7 @@ final class KeyboardSelectionMonitor {
         self.isKillConfirmationActive = killConfirmationActive
 
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if ShortcutCapture.isActive { return event }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             Self.logKey(
                 "down keyCode=\(event.keyCode) chars=\(event.charactersIgnoringModifiers ?? "") flagsRaw=\(flags.rawValue) inCommand=\(inCommandMode())"

@@ -242,6 +242,10 @@ export async function getConfig() {
     return invoke('get_config');
 }
 
+export async function launcherHotkeyDisplay() {
+    return invoke('launcher_hotkey_display');
+}
+
 export async function setConfig(updates) {
     return invoke('set_config', { updates });
 }

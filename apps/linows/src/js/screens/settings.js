@@ -1,6 +1,7 @@
 import {
     getConfig,
     setConfig,
+    launcherHotkeyDisplay,
     forceIndexRefresh,
     resetConfig,
     listFonts,
@@ -889,6 +890,11 @@ function updateSuperActionsAvailability() {
 }
 
 async function loadConfig() {
+    launcherHotkeyDisplay()
+        .then((display) => {
+            document.getElementById('settings-launcher-hotkey').textContent = display;
+        })
+        .catch(() => {});
     try {
         const cfg = await getConfig();
 
