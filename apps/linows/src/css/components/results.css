@@ -153,6 +153,16 @@
     height: 78%;
 }
 
+/* A copied image is the row's own picture, so it fills the box instead of
+ * sitting inside it like an app icon. The ring keeps a white screenshot from
+ * bleeding into the row. */
+.result-icon-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    box-shadow: inset 0 0 0 1px var(--divider-color);
+}
+
 /* Text content */
 /* Two lines, three slots. The title keeps line one with the kind pinned to its
  * right, and the context gets line two to itself, left-aligned. Both columns

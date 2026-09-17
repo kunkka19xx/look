@@ -18,6 +18,7 @@ struct TodoView: View {
     @State private var page: TodoPage
     @State private var search = ""
     @State private var savedToast = false
+    @State private var saveFailed = false
     @State private var savedToastToken = UUID()
     @FocusState private var searchFocused: Bool
 
@@ -47,13 +48,19 @@ struct TodoView: View {
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // The launcher's global hint bar already covers /todo's shortcuts,
-        // so the panel shows a transient Save confirmation here instead of
-        // a second hint row.
+        // so the panel shows Save feedback here instead of a second hint
+        // row. Failures stay visible with Retry until a save succeeds.
         .overlay(alignment: .bottom) {
-            if savedToast {
+            if savedToast || saveFailed {
                 HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text("Saved")
+                    Image(systemName: saveFailed ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    Text(saveFailed ? "Save failed. Changes are not saved." : "Saved")
+                    if saveFailed {
+                        Button(action: save) {
+                            Text("Retry").underline()
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .font(themeStore.uiFont(size: 12, weight: .semibold))
                 .foregroundStyle(themeStore.onAccentColor())
@@ -65,10 +72,13 @@ struct TodoView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: savedToast)
+        .animation(.easeInOut(duration: 0.2), value: saveFailed)
         .background(
             TodoKeyRecognizer(
                 onTogglePage: { page = (page == .tasks) ? .analytics : .tasks },
-                onSave: save
+                onSave: save,
+                onUndo: state.undo,
+                onRedo: state.redo
             ))
         // The launcher does not focus /todo (it owns its own field), so
         // focus the search bar on entry and when returning to Tasks.
@@ -89,7 +99,13 @@ struct TodoView: View {
     }
 
     private func save() {
-        state.save()
+        guard state.save() else {
+            savedToast = false
+            savedToastToken = UUID()
+            saveFailed = true
+            return
+        }
+        saveFailed = false
         savedToast = true
         let token = UUID()
         savedToastToken = token
@@ -695,24 +711,36 @@ struct TodoGhostButton: View {
 struct TodoKeyRecognizer: NSViewRepresentable {
     var onTogglePage: () -> Void
     var onSave: () -> Void
+    var onUndo: () -> Bool
+    var onRedo: () -> Bool
 
     func makeNSView(context: Context) -> TodoKeyHostView {
         let v = TodoKeyHostView()
         v.onTogglePage = onTogglePage
         v.onSave = onSave
+        v.onUndo = onUndo
+        v.onRedo = onRedo
         return v
     }
 
     func updateNSView(_ nsView: TodoKeyHostView, context: Context) {
         nsView.onTogglePage = onTogglePage
         nsView.onSave = onSave
+        nsView.onUndo = onUndo
+        nsView.onRedo = onRedo
     }
 }
 
 final class TodoKeyHostView: NSView {
     var onTogglePage: (() -> Void)?
     var onSave: (() -> Void)?
+    var onUndo: (() -> Bool)?
+    var onRedo: (() -> Bool)?
     nonisolated(unsafe) private var monitor: Any?
+    nonisolated(unsafe) private var editObservers: [NSObjectProtocol] = []
+    /// Set once the focused field editor takes a keystroke, cleared when
+    /// editing starts or ends.
+    private var fieldEdited = false
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -721,15 +749,24 @@ final class TodoKeyHostView: NSView {
 
     deinit {
         if let monitor { NSEvent.removeMonitor(monitor) }
+        for observer in editObservers { NotificationCenter.default.removeObserver(observer) }
     }
 
     private func install() {
         guard monitor == nil else { return }
+        observeFieldEditing()
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
+            guard let self, let window = self.window,
+                  window.isKeyWindow, event.window === window,
+                  !self.isHiddenOrHasHiddenAncestor else { return event }
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            guard mods == .command else { return event }
             let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            if chars == "z", mods == [.command, .shift] {
+                if self.textEditorOwnsUndo(in: window) { return event }
+                if self.onRedo?() == true { return nil }
+                return event
+            }
+            guard mods == .command else { return event }
             if chars == "n" {
                 self.onTogglePage?()
                 return nil
@@ -738,13 +775,48 @@ final class TodoKeyHostView: NSView {
                 self.onSave?()
                 return nil
             }
+            if chars == "z" {
+                // Let the active text editor undo typing before task changes.
+                if self.textEditorOwnsUndo(in: window) { return event }
+                if self.onUndo?() == true { return nil }
+            }
             return event
         }
+    }
+
+    /// A field editor borrows the window's undo manager, so canUndo stays
+    /// true long after the field was touched, and a field the user emptied
+    /// still owns Cmd+Z. Track the keystrokes ourselves instead.
+    private func observeFieldEditing() {
+        guard editObservers.isEmpty else { return }
+        editObservers = [
+            (NSText.didBeginEditingNotification, false),
+            (NSText.didEndEditingNotification, false),
+            (NSText.didChangeNotification, true),
+        ].map { name, edited in
+            NotificationCenter.default.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.fieldEdited = edited }
+            }
+        }
+    }
+
+    /// The search box only filters the list, so Cmd+Z there still means
+    /// "undo my last task change". Only a task name field owns text undo.
+    private func textEditorOwnsUndo(in window: NSWindow) -> Bool {
+        guard fieldEdited, let editor = window.firstResponder as? NSTextView else { return false }
+        return !(editor.delegate is CaretTextField)
     }
 
     private func remove() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+        for observer in editObservers { NotificationCenter.default.removeObserver(observer) }
+        editObservers = []
+        fieldEdited = false
     }
 }
 

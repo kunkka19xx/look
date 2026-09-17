@@ -28,11 +28,8 @@ const TEXT_TARGETS: [&str; 4] = [
     "STRING",
 ];
 
-/// Which payload a request wants. A target reaches the getter as a number, so
-/// these are what the callback switches on.
-const INFO_GNOME: u32 = 0;
-const INFO_URI_LIST: u32 = 1;
-const INFO_TEXT: u32 = 2;
+/// What a copied image is offered as. Every image Look files is a PNG.
+const IMAGE_PNG: &str = "image/png";
 
 /// The verb `x-special/gnome-copied-files` opens with. Look never cuts.
 const COPY_VERB: &str = "copy";
@@ -44,21 +41,64 @@ const BYTE_FORMAT: i32 = 8;
 /// treating it as failed and shelling out.
 const GRAB_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
+/// One form the copy is offered in: every MIME spelling that asks for it, and
+/// the bytes whoever asks receives.
+struct Form {
+    targets: &'static [&'static str],
+    payload: Vec<u8>,
+}
+
+impl Form {
+    fn new(targets: &'static [&'static str], payload: impl Into<Vec<u8>>) -> Self {
+        Self {
+            targets,
+            payload: payload.into(),
+        }
+    }
+}
+
 pub(crate) fn copy_files(paths: &[String]) -> Result<(), String> {
     if paths.is_empty() {
         return Ok(());
     }
 
     let (gnome, uri_list, text) = payloads(paths);
-    if own_clipboard(gnome.clone(), uri_list, text) {
+    let forms = vec![
+        Form::new(&[GNOME_COPIED_FILES], gnome.clone()),
+        Form::new(&[URI_LIST], uri_list),
+        Form::new(&TEXT_TARGETS, text),
+    ];
+    if own_clipboard(forms) {
         return Ok(());
     }
     // No display to grab, or the selection went to someone else, so fall back to
     // the one type a file manager needs most.
-    shell_out(&gnome)
+    shell_out(GNOME_COPIED_FILES, gnome.as_bytes())
 }
 
-/// The three forms one copy is offered in: [`GNOME_COPIED_FILES`],
+/// Puts a copied image back on the clipboard the way macOS does: the pixels
+/// for an editor, the file for a file manager, the path for a text field.
+/// `true` when the grab took, so the copy carries the path as text too and the
+/// monitor sees a text event; `false` when only the pixels went out.
+pub(crate) fn copy_image(path: &std::path::Path) -> Result<bool, String> {
+    let png = std::fs::read(path).map_err(|e| format!("Failed to read the image: {e}"))?;
+    let native = path.to_string_lossy().into_owned();
+    let (gnome, uri_list, text) = payloads(std::slice::from_ref(&native));
+
+    let forms = vec![
+        Form::new(&[IMAGE_PNG], png.clone()),
+        Form::new(&[GNOME_COPIED_FILES], gnome),
+        Form::new(&[URI_LIST], uri_list),
+        Form::new(&TEXT_TARGETS, text),
+    ];
+    if own_clipboard(forms) {
+        return Ok(true);
+    }
+    // The pixels are what the copy was for, so that is the form worth saving.
+    shell_out(IMAGE_PNG, &png).map(|_| false)
+}
+
+/// The three forms one file copy is offered in: [`GNOME_COPIED_FILES`],
 /// [`URI_LIST`], and the plain text a text field pastes.
 fn payloads(paths: &[String]) -> (String, String, String) {
     let uris: Vec<String> = paths.iter().map(|path| super::file_uri(path)).collect();
@@ -75,9 +115,9 @@ fn payloads(paths: &[String]) -> (String, String, String) {
 /// Every GTK call belongs to the main thread. A sync Tauri command already
 /// answers there, so the usual path runs [`grab`] outright; a caller from
 /// anywhere else queues it and waits for the answer.
-fn own_clipboard(gnome: String, uri_list: String, text: String) -> bool {
+fn own_clipboard(forms: Vec<Form>) -> bool {
     if gtk::is_initialized_main_thread() {
-        return grab(gnome, uri_list, text);
+        return grab(forms);
     }
 
     let Some(app) = crate::state::app_handle() else {
@@ -85,7 +125,7 @@ fn own_clipboard(gnome: String, uri_list: String, text: String) -> bool {
     };
     let (answer, wait) = std::sync::mpsc::sync_channel(1);
     let queued = app.run_on_main_thread(move || {
-        let _ = answer.send(grab(gnome, uri_list, text));
+        let _ = answer.send(grab(forms));
     });
     if queued.is_err() {
         return false;
@@ -94,31 +134,31 @@ fn own_clipboard(gnome: String, uri_list: String, text: String) -> bool {
 }
 
 /// Hand the payloads to GTK and become the clipboard owner. Main thread only.
-fn grab(gnome: String, uri_list: String, text: String) -> bool {
+/// A target reaches the getter as the number it was registered under, which
+/// here is its form's position in the list.
+fn grab(forms: Vec<Form>) -> bool {
     let Some(display) = gdk::Display::default() else {
         return false;
     };
     let clipboard = gtk::Clipboard::for_display(&display, &gdk::SELECTION_CLIPBOARD);
 
-    let mut targets = vec![
-        TargetEntry::new(GNOME_COPIED_FILES, TargetFlags::empty(), INFO_GNOME),
-        TargetEntry::new(URI_LIST, TargetFlags::empty(), INFO_URI_LIST),
-    ];
-    targets.extend(
-        TEXT_TARGETS
-            .iter()
-            .map(|target| TargetEntry::new(target, TargetFlags::empty(), INFO_TEXT)),
-    );
+    let targets: Vec<TargetEntry> = forms
+        .iter()
+        .enumerate()
+        .flat_map(|(index, form)| {
+            form.targets
+                .iter()
+                .map(move |target| TargetEntry::new(target, TargetFlags::empty(), index as u32))
+        })
+        .collect();
 
     // Answered on demand, once per paste, for as long as Look holds the
     // clipboard, which is why the payloads are moved in rather than borrowed.
     let owned = clipboard.set_with_data(&targets, move |_, selection, info| {
-        let payload = match info {
-            INFO_GNOME => &gnome,
-            INFO_URI_LIST => &uri_list,
-            _ => &text,
+        let Some(form) = forms.get(info as usize) else {
+            return;
         };
-        selection.set(&selection.target(), BYTE_FORMAT, payload.as_bytes());
+        selection.set(&selection.target(), BYTE_FORMAT, &form.payload);
     });
 
     if owned {
@@ -139,16 +179,13 @@ fn allow_manager_to_store(clipboard: &gtk::Clipboard) {
     clipboard.store();
 }
 
-/// wl-copy (Wayland) then xclip (X11), neither a hard runtime dependency. Only
-/// the file-manager type: one invocation advertises one MIME type, which is the
-/// whole reason the GTK path above exists.
-fn shell_out(payload: &str) -> Result<(), String> {
+/// wl-copy (Wayland) then xclip (X11), neither a hard runtime dependency. One
+/// invocation advertises one MIME type, which is why the GTK path above
+/// exists, so the caller picks the form worth keeping.
+fn shell_out(mime: &str, payload: &[u8]) -> Result<(), String> {
     let attempts: [(&str, &[&str]); 2] = [
-        ("wl-copy", &["-t", GNOME_COPIED_FILES]),
-        (
-            "xclip",
-            &["-selection", "clipboard", "-t", GNOME_COPIED_FILES],
-        ),
+        ("wl-copy", &["-t", mime]),
+        ("xclip", &["-selection", "clipboard", "-t", mime]),
     ];
 
     let mut last = String::new();
@@ -161,7 +198,7 @@ fn shell_out(payload: &str) -> Result<(), String> {
             .spawn()
             .and_then(|mut child| {
                 if let Some(ref mut stdin) = child.stdin {
-                    stdin.write_all(payload.as_bytes())?;
+                    stdin.write_all(payload)?;
                 }
                 child.wait()
             });
@@ -176,26 +213,13 @@ fn shell_out(payload: &str) -> Result<(), String> {
     }
 
     Err(format!(
-        "Failed to copy files: {last}. Install xclip or wl-clipboard."
+        "Failed to copy: {last}. Install xclip or wl-clipboard."
     ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Each payload has to reach the getter under its own number, or a paste
-    /// gets a form its asker cannot read.
-    #[test]
-    fn every_target_group_is_told_apart() {
-        let numbers = [INFO_GNOME, INFO_URI_LIST, INFO_TEXT];
-        for (index, number) in numbers.iter().enumerate() {
-            assert!(
-                !numbers[..index].contains(number),
-                "{number} is claimed twice"
-            );
-        }
-    }
 
     /// Each form has its own delimiter and its own idea of what a path is, and
     /// a pasting app reads whichever one it asked for verbatim.

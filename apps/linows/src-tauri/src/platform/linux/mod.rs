@@ -3,6 +3,7 @@ pub mod blur;
 pub mod blur_wayland;
 pub mod clipboard;
 pub mod dbus;
+pub mod focused_app;
 pub mod fonts;
 pub mod gnome_ext;
 pub mod gpu;

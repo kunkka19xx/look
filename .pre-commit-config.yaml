@@ -79,7 +79,14 @@ repos:
         name: prettier (linows js/html/css, auto-fix)
         entry: bash -c 'command -v prettier >/dev/null && prettier --write "$@" || echo "Skipping prettier (run inside nix develop)"' --
         language: system
-        files: ^apps/linows/src/.*\.(js|html|css)$
+        files: ^apps/linows/(src|tests)/.*\.(js|html|css)$
+
+      - id: node-test-linows
+        name: node --test (linows js)
+        entry: bash -c 'node --test apps/linows/tests/*.test.js'
+        language: system
+        pass_filenames: false
+        files: ^apps/linows/(src|tests)/.*\.js$
 
       - id: secrets
         name: Detect secrets

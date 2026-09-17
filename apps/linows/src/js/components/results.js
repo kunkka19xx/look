@@ -11,7 +11,7 @@ import {
 } from '../icons.js';
 import * as sourceblocks from './sourceblocks.js';
 import { getSettingsIcon as getWindowsSettingsIcon } from '../settings-icons/windows.js';
-import { classifyResultId } from '../catalog.js';
+import { classifyResultId, CLIPBOARD_EMPTY_COPY } from '../catalog.js';
 import { prefersReducedMotion } from '../platform.js';
 import * as layout from '../layout.js';
 
@@ -86,15 +86,16 @@ export function setEmptyState(state) {
 }
 
 function renderEmptyState() {
-    // Left half of the clipboard empty state; the preview column shows the
+    // Left half of a clipboard empty state; the preview column shows the
     // "How to use" half (macOS ClipboardEmptyInfoView / ClipboardEmptyHelpView).
-    if (emptyState.mode === 'clipboard') {
+    const clipboardCopy = CLIPBOARD_EMPTY_COPY[emptyState.mode];
+    if (clipboardCopy) {
         return `
       <div class="empty-state empty-state-rich">
-        <div class="empty-state-icon">${clipboardIcon}</div>
-        <div class="empty-state-title">Clipboard History</div>
-        <div class="empty-state-body">No clipboard items yet</div>
-        <div class="empty-state-help">Copy any text, then search with <kbd>c"word</kbd> to find it here.</div>
+        <div class="empty-state-icon">${clipboardCopy.icon}</div>
+        <div class="empty-state-title">${clipboardCopy.title}</div>
+        <div class="empty-state-body">${clipboardCopy.body}</div>
+        <div class="empty-state-help">${clipboardCopy.help}</div>
       </div>`;
     }
     if (emptyState.mode === 'recent') {
@@ -342,6 +343,7 @@ const KIND_LABELS = {
     file: 'File',
     folder: 'Folder',
     clipboard: 'Clipboard',
+    image: 'Image',
     process: 'Process',
     action: 'Action',
 };
@@ -366,7 +368,8 @@ function pathInfo(path) {
  */
 function rowMeta(result) {
     if (result.kind === 'clipboard') {
-        return { context: result.subtitle || '', kind: KIND_LABELS.clipboard };
+        const kind = result.clipImageHash ? KIND_LABELS.image : KIND_LABELS.clipboard;
+        return { context: result.subtitle || '', kind };
     }
     // A row a user's block produced says WHICH block: the kind is already on
     // the icon, and where the row came from is the thing the list cannot
@@ -449,6 +452,13 @@ function createRow(result, index) {
         declaredIcon ||
         windowsSettingsSvg ||
         (isLinuxSettings ? settingIcon : fallbacks[result.kind] || appIcon);
+    // A copied image shows itself; ten identical glyphs are no way to pick one
+    // picture out of ten. Loaded like a declared icon, so a miss keeps the
+    // glyph drawn above.
+    if (result.clipImageThumbPath) {
+        icon.classList.add('result-icon-thumb');
+        loadIcon(icon, 'declared', result.clipImageThumbPath, result.id);
+    }
     row.appendChild(icon);
 
     // Skip backend icon fetch for ms-settings entries - the Shell PNG would just
