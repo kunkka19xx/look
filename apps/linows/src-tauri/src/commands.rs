@@ -370,10 +370,7 @@ pub fn reload_config(
     // so the next bootstrap picks up their edits.
     RuntimeConfig::invalidate_cache();
     crate::clipboard::reload_from_config();
-    #[cfg(target_os = "windows")]
-    crate::launcher_hotkey::register(&app);
-    #[cfg(not(target_os = "windows"))]
-    let _ = app;
+    crate::launcher_hotkey::launcher_hotkey_set_active(app, true);
     // Before the index pass, never after: the pass reads the rows these blocks
     // write, and the other order indexes the previous run's.
     let sources = look_engine::sources::refresh_run_blocks();

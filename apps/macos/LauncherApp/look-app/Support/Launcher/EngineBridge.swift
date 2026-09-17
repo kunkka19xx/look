@@ -614,18 +614,17 @@ final class EngineBridge: @unchecked Sendable {
 
     /// `launcher_hotkey` resolved by core, already defaulted when unset or invalid.
     nonisolated func launcherHotkey() -> LauncherHotkeySpec? {
-        guard let ptr = look_launcher_hotkey_json() else { return nil }
-        defer { look_free_cstring(ptr) }
-        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(LauncherHotkeySpec.self, from: data)
+        Self.decodeOwnedJSON(look_launcher_hotkey_json())
     }
 
-    /// `spec` checked against core's hotkey grammar.
     nonisolated func hotkeyCheck(_ spec: String) -> HotkeyCheck? {
-        guard let ptr = spec.withCString({ look_hotkey_check_json($0) }) else { return nil }
+        Self.decodeOwnedJSON(spec.withCString { look_hotkey_check_json($0) })
+    }
+
+    private nonisolated static func decodeOwnedJSON<T: Decodable>(_ ptr: UnsafeMutablePointer<CChar>?) -> T? {
+        guard let ptr else { return nil }
         defer { look_free_cstring(ptr) }
-        guard let data = String(cString: ptr).data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(HotkeyCheck.self, from: data)
+        return try? JSONDecoder().decode(T.self, from: Data(String(cString: ptr).utf8))
     }
 
     /// Lunar date from the shared core. `tzHours` is the viewer's UTC offset,

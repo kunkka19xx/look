@@ -250,12 +250,8 @@ export async function hotkeyCheck(spec) {
     return invoke('hotkey_check', { spec });
 }
 
-export async function suspendLauncherHotkey() {
-    return invoke('launcher_hotkey_suspend');
-}
-
-export async function applyLauncherHotkey() {
-    return invoke('launcher_hotkey_apply');
+export async function setLauncherHotkeyActive(active) {
+    return invoke('launcher_hotkey_set_active', { active });
 }
 
 export async function setConfig(updates) {

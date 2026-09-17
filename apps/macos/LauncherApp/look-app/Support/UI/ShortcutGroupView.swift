@@ -17,8 +17,7 @@ struct ShortcutGroupView: View {
 
     let title: String
     let entries: [ShortcutEntry]
-    /// Pending rebinds keyed by config key. Given, a configurable entry becomes a
-    /// recorder; nil keeps every row read-only, as the help screen wants.
+    /// Given, configurable entries become recorders; the help screen passes nil.
     var bindings: Binding<[String: String]>? = nil
 
     private enum Metrics {
@@ -53,7 +52,7 @@ struct ShortcutGroupView: View {
             if let bindings {
                 ShortcutRecorderField(shortcut: shortcut, bindings: bindings)
             } else {
-                keyCapsule(shortcut.currentDisplay)
+                keyCapsule(shortcut.registration.display)
             }
         } else {
             keyCapsule(entry.keys)

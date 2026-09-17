@@ -1,9 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// The key capsule of a rebindable shortcut. Clicking it listens for the next
-/// key press, core checks the combination, and a valid one lands in `bindings`
-/// under the shortcut's config key; Save Config writes it like any other value.
+/// The key capsule of a rebindable shortcut. Click, press a combination, and a
+/// valid one waits in `bindings` until Save Config writes it.
 struct ShortcutRecorderField: View {
     @EnvironmentObject private var themeStore: ThemeStore
     @ObservedObject private var launcherHotkey = LauncherHotkeyController.shared
@@ -11,102 +10,68 @@ struct ShortcutRecorderField: View {
     let shortcut: ConfigurableShortcut
     @Binding var bindings: [String: String]
 
-    @State private var isRecording = false
     @State private var error: String?
     @State private var monitor: Any?
 
-    private enum Metrics {
-        static let spacing: CGFloat = 6
-        static let statusSpacing: CGFloat = 2
-        static let horizontalPadding: CGFloat = 8
-        static let verticalPadding: CGFloat = 3
-        static let idleFillOpacity = 0.14
-        static let recordingFillOpacity = 0.28
-    }
+    private static let listening = "Press a shortcut, Esc to cancel"
+    private static let unknownKey = "That key cannot be used"
+    private static let fillOpacity = 0.14
+    private static let spacing: CGFloat = 6
 
-    private enum Copy {
-        static let listening = "Press a shortcut, Esc to cancel"
-        static let reset = "Reset"
-        static let unknownKey = "That key cannot be used"
-    }
-
+    private var isRecording: Bool { monitor != nil }
     private var fontSize: CGFloat { CGFloat(themeStore.settings.fontSize - 1) }
-
-    private var pendingDisplay: String? {
-        shortcut.pendingDisplay(in: bindings)
+    private var shown: String {
+        shortcut.pendingDisplay(in: bindings) ?? shortcut.registration.display
     }
 
-    private var label: String {
-        isRecording ? Copy.listening : (pendingDisplay ?? shortcut.currentDisplay)
+    private var defaultSpec: String? {
+        guard let spec = shortcut.registration.defaultSpec,
+            EngineBridge.shared.hotkeyCheck(spec)?.display != shown
+        else { return nil }
+        return spec
     }
 
-    private var isUnsaved: Bool {
-        shortcut.hasUnsavedChange(in: bindings)
+    private var outline: Color {
+        isRecording || shortcut.hasUnsavedChange(in: bindings) ? themeStore.accentColor() : .clear
     }
 
-    private var outlineColor: Color {
-        isRecording || isUnsaved ? themeStore.accentColor() : .clear
-    }
-
-    private var canReset: Bool {
-        guard let defaultSpec = shortcut.defaultSpec,
-            let defaultDisplay = EngineBridge.shared.hotkeyCheck(defaultSpec)?.display
-        else {
-            return false
-        }
-        return (pendingDisplay ?? shortcut.currentDisplay) != defaultDisplay
+    private var capsule: some View {
+        Text(isRecording ? Self.listening : shown)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(themeStore.liftColor(opacity: Self.fillOpacity), in: Capsule())
+            .overlay(Capsule().strokeBorder(outline))
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Metrics.statusSpacing) {
-            HStack(spacing: Metrics.spacing) {
-                Button(action: toggleRecording) {
-                    Text(label)
-                        .font(themeStore.uiFont(size: fontSize, weight: isRecording ? .semibold : .regular))
-                        .padding(.horizontal, Metrics.horizontalPadding)
-                        .padding(.vertical, Metrics.verticalPadding)
-                        .background(
-                            themeStore.liftColor(
-                                opacity: isRecording ? Metrics.recordingFillOpacity : Metrics.idleFillOpacity),
-                            in: Capsule()
-                        )
-                        .overlay(Capsule().strokeBorder(outlineColor))
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: Self.spacing) {
+                Button {
+                    if isRecording { stopRecording() } else { startRecording() }
+                } label: {
+                    capsule
                 }
                 .buttonStyle(.plain)
                 .pointingHandCursor()
 
-                if canReset && !isRecording {
-                    Button(Copy.reset, action: reset)
+                if let defaultSpec, !isRecording {
+                    Button("Reset") { bindings[shortcut.configKey] = defaultSpec }
                         .buttonStyle(.plain)
-                        .font(themeStore.uiFont(size: fontSize, weight: .regular))
                         .foregroundStyle(themeStore.secondaryTextColor())
                         .pointingHandCursor()
                 }
             }
-
             if let error {
-                Text(error)
-                    .font(themeStore.uiFont(size: fontSize - 1, weight: .regular))
-                    .foregroundStyle(themeStore.dangerColor())
+                Text(error).foregroundStyle(themeStore.dangerColor())
             }
         }
+        .font(themeStore.uiFont(size: fontSize, weight: .regular))
         .onDisappear(perform: stopRecording)
     }
 
-    private func toggleRecording() {
-        if isRecording {
-            stopRecording()
-        } else {
-            startRecording()
-        }
-    }
-
     private func startRecording() {
-        guard monitor == nil else { return }
-        error = nil
-        isRecording = true
         ShortcutCapture.isActive = true
-        shortcut.suspend()
+        shortcut.registration.suspend()
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             record(event)
             return nil
@@ -118,21 +83,18 @@ struct ShortcutRecorderField: View {
         NSEvent.removeMonitor(monitor)
         self.monitor = nil
         error = nil
-        isRecording = false
         ShortcutCapture.isActive = false
-        shortcut.resume()
+        shortcut.registration.reload()
     }
 
     private func record(_ event: NSEvent) {
-        let modifiers = event.modifierFlags.intersection(CarbonHotkey.modifierMask)
-        if event.keyCode == AppConstants.Launcher.KeyCode.escape, modifiers.isEmpty {
+        let bare = event.modifierFlags.intersection(CarbonHotkey.modifierMask).isEmpty
+        if event.keyCode == AppConstants.Launcher.KeyCode.escape, bare {
             stopRecording()
             return
         }
-        guard let spec = CarbonHotkey.spec(for: event),
-            let check = EngineBridge.shared.hotkeyCheck(spec)
-        else {
-            error = Copy.unknownKey
+        guard let check = CarbonHotkey.spec(for: event).flatMap(EngineBridge.shared.hotkeyCheck) else {
+            error = Self.unknownKey
             return
         }
         if let rejection = check.error {
@@ -141,11 +103,5 @@ struct ShortcutRecorderField: View {
         }
         bindings[shortcut.configKey] = check.spec
         stopRecording()
-    }
-
-    private func reset() {
-        guard let defaultSpec = shortcut.defaultSpec else { return }
-        error = nil
-        bindings[shortcut.configKey] = defaultSpec
     }
 }
