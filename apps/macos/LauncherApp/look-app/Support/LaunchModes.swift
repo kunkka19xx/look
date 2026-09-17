@@ -27,8 +27,14 @@ enum LaunchModes {
         Notification.Name("look.reloadConfigRequested.\(bundleID)")
     }
 
+    static var toggleNotification: Notification.Name {
+        Notification.Name("look.launchToggleDelivered.\(bundleID)")
+    }
+
     /// A query this process will serve itself, applied once the launcher is up.
     nonisolated(unsafe) static var pendingQuery: String?
+    /// A cold `lookapp --toggle`: show the launcher once it is up.
+    nonisolated(unsafe) static var pendingToggle = false
 
     /// An exit code when the process has said its piece and should stop before
     /// SwiftUI starts, or nil to keep launching.
@@ -71,12 +77,22 @@ enum LaunchModes {
             DistributedNotificationCenter.default().postNotificationName(
                 deliveryNotification, object: text, userInfo: nil, deliverImmediately: true)
             return 0
+
+        case .toggle:
+            guard isSameAppAlreadyRunning() else {
+                pendingToggle = true
+                return nil
+            }
+            DistributedNotificationCenter.default().postNotificationName(
+                toggleNotification, object: nil, userInfo: nil, deliverImmediately: true)
+            return 0
         }
     }
 
     private enum Launch {
         case normal
         case query(String)
+        case toggle
         case listModes
         case reloadConfig
         case unknownMode(String)
@@ -106,6 +122,7 @@ enum LaunchModes {
         case "query": return decoded.text.map(Launch.query) ?? .normal
         case "list_modes": return .listModes
         case "reload_config": return .reloadConfig
+        case "toggle": return .toggle
         case "unknown_mode": return .unknownMode(decoded.name ?? "")
         case "unavailable_mode": return .unavailableMode(decoded.name ?? "")
         default: return .normal

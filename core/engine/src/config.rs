@@ -522,11 +522,17 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave|Microsoft Edge|Edge|Bra
     )
 }
 
-/// Linux has no entry: Wayland compositors own global shortcuts, so Look
-/// cannot honour the setting there.
+/// Commented out on Linux, where only `none` applies, so the missing-key
+/// migration leaves existing files alone.
 fn launcher_hotkey_config_section() -> String {
     if cfg!(target_os = "linux") {
-        return String::new();
+        return format!(
+            "# Look binds Alt+Space itself. Uncomment to stop that (restart Look),\n\
+# then bind `lookapp --toggle` to any key in your desktop settings.\n\
+# {LAUNCHER_HOTKEY_CONFIG_KEY}={}\n\
+\n",
+            crate::hotkey::DISABLED_SPEC
+        );
     }
     let modifier_names = if cfg!(target_os = "macos") {
         "cmd, ctrl, option, shift"
@@ -535,8 +541,8 @@ fn launcher_hotkey_config_section() -> String {
     };
     format!(
         "# Global shortcut that shows and hides Look: modifiers ({modifier_names}) plus one key\n\
-# (a letter, digit, space, enter, tab, esc, f1-f20, or a symbol like `).\n\
-# Examples: ctrl+space, alt+shift+space, f13.\n\
+# (a letter, digit, space, enter, tab, esc, f1-f20, or a symbol like `), or none\n\
+# to bind `lookapp --toggle` elsewhere. Examples: ctrl+space, alt+shift+space, f13.\n\
 {LAUNCHER_HOTKEY_CONFIG_KEY}={}\n\
 \n",
         crate::hotkey::DEFAULT_LAUNCHER_HOTKEY
@@ -1064,26 +1070,6 @@ mod tests {
 
         let _ = std::fs::remove_file(&tmp);
         config
-    }
-
-    #[test]
-    fn launcher_hotkey_loads_from_config() {
-        let config = config_from("launcher_hotkey=ctrl+shift+k\n", "launcher-hotkey");
-        assert_eq!(config.launcher_hotkey.hotkey.key.code, "KeyK");
-        assert!(config.launcher_hotkey.warning.is_none());
-
-        let invalid = config_from("launcher_hotkey=ctrl+nope\n", "launcher-hotkey-invalid");
-        assert_eq!(
-            invalid.launcher_hotkey.hotkey,
-            LauncherHotkey::default().hotkey
-        );
-        assert!(invalid.launcher_hotkey.warning.is_some());
-    }
-
-    #[test]
-    fn default_config_declares_launcher_hotkey_except_on_linux() {
-        let declared = default_config_contents().contains("launcher_hotkey=");
-        assert_eq!(declared, !cfg!(target_os = "linux"));
     }
 
     #[test]

@@ -1,8 +1,8 @@
 //! The launcher toggle on the global-shortcut plugin path (Windows and X11).
-//! Only Windows reads `launcher_hotkey`: on Wayland the compositor owns the
-//! binding, and X11 keeps the same key so both Linux sessions agree.
+//! Only Windows rebinds it; Linux honours `launcher_hotkey=none` alone.
 
 use crate::health;
+use look_engine::config::RuntimeConfig;
 use look_engine::hotkey::{HotkeyCheck, LauncherHotkey};
 use serde::Serialize;
 use std::sync::Mutex;
@@ -10,7 +10,6 @@ use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 const CONFIGURABLE: bool = cfg!(target_os = "windows");
-
 const CONFLICT_REMEDY: &str = if CONFIGURABLE {
     "free it or set another launcher_hotkey, then reload the config"
 } else {
@@ -19,50 +18,40 @@ const CONFLICT_REMEDY: &str = if CONFIGURABLE {
 
 static REGISTERED: Mutex<Option<Shortcut>> = Mutex::new(None);
 
-fn configured() -> LauncherHotkey {
-    if CONFIGURABLE {
-        look_engine::config::RuntimeConfig::load_cached().launcher_hotkey
-    } else {
-        LauncherHotkey::default()
-    }
+pub fn configured() -> LauncherHotkey {
+    RuntimeConfig::load_cached().launcher_hotkey
 }
 
-/// Replaces the registered hotkey with the configured one. Failures become
-/// health issues: a launcher with a dead hotkey is still reachable by relaunching.
+/// Failures become health issues: a launcher with a dead hotkey is still
+/// reachable by relaunching it.
 pub fn register(app: &AppHandle) {
     unregister(app);
     health::clear(health::ISSUE_HOTKEY);
     let launcher = configured();
-
+    if !launcher.enabled {
+        return;
+    }
     if let Some(warning) = launcher.warning {
-        health::report_as(health::ISSUE_HOTKEY, health::KIND_HOTKEY_CONFIG, warning);
+        health::report(health::ISSUE_HOTKEY, warning);
     }
 
-    let shortcut = match launcher.accelerator.parse::<Shortcut>() {
-        Ok(shortcut) => shortcut,
-        Err(e) => {
-            health::report(
-                health::ISSUE_HOTKEY,
-                format!(
-                    "{} is not a shortcut this system accepts ({e}).",
-                    launcher.display
-                ),
-            );
-            return;
-        }
-    };
-
     let handle = app.clone();
-    let registered = app
-        .global_shortcut()
-        .on_shortcut(shortcut, move |_app, _shortcut, event| {
-            if event.state != ShortcutState::Pressed {
-                return;
-            }
-            crate::toggle_window(&handle);
+    let registered = launcher
+        .accelerator
+        .parse::<Shortcut>()
+        .map_err(|e| e.to_string())
+        .and_then(|shortcut| {
+            app.global_shortcut()
+                .on_shortcut(shortcut, move |_app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        crate::toggle_window(&handle);
+                    }
+                })
+                .map(|()| shortcut)
+                .map_err(|e| e.to_string())
         });
     match registered {
-        Ok(()) => {
+        Ok(shortcut) => {
             if let Ok(mut slot) = REGISTERED.lock() {
                 *slot = Some(shortcut);
             }
@@ -90,17 +79,16 @@ fn unregister(app: &AppHandle) {
 pub struct LauncherHotkeyState {
     display: String,
     default_spec: String,
-    default_display: String,
+    default_display: Option<String>,
     configurable: bool,
 }
 
 #[tauri::command]
 pub fn launcher_hotkey_state() -> LauncherHotkeyState {
     let launcher = configured();
-    let default = HotkeyCheck::new(&launcher.default_spec);
     LauncherHotkeyState {
         display: launcher.display,
-        default_display: default.display.unwrap_or_default(),
+        default_display: HotkeyCheck::new(&launcher.default_spec).display,
         default_spec: launcher.default_spec,
         configurable: CONFIGURABLE,
     }
@@ -111,19 +99,17 @@ pub fn hotkey_check(spec: String) -> HotkeyCheck {
     HotkeyCheck::new(&spec)
 }
 
-/// Frees the key while the settings recorder listens for it.
+/// Inactive frees the key for the settings recorder. Active re-reads the
+/// config, which `set_config` leaves stale in the engine's cache.
 #[tauri::command]
-pub fn launcher_hotkey_suspend(app: AppHandle) {
-    if CONFIGURABLE {
-        unregister(&app);
+pub fn launcher_hotkey_set_active(app: AppHandle, active: bool) {
+    if !CONFIGURABLE {
+        return;
     }
-}
-
-/// `set_config` leaves the engine's cached config stale, so drop it first.
-#[tauri::command]
-pub fn launcher_hotkey_apply(app: AppHandle) {
-    if CONFIGURABLE {
-        look_engine::config::RuntimeConfig::invalidate_cache();
+    if active {
+        RuntimeConfig::invalidate_cache();
         register(&app);
+    } else {
+        unregister(&app);
     }
 }

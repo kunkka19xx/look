@@ -13,13 +13,13 @@ final class GlobalHotKeyManager {
     nonisolated(unsafe) private var eventHandler: EventHandlerRef?
     // Carbon's RegisterEventHotKey only fires when the registering app is
     // NOT the currently-active app. When Look is in the foreground (e.g.
-    // user has the launcher open and focused), the hotkey goes through
+    // user has the launcher open and focused), Cmd+Space goes through
     // the normal local event chain instead. Install a parallel local
     // NSEvent monitor so the toggle works regardless of focus state.
     nonisolated(unsafe) private var localMonitor: Any?
 
     // Defense-in-depth for one specific, rare failure: another app already
-    // owns the hotkey when Look launches, so RegisterEventHotKey returns -9878
+    // owns Cmd+Space when Look launches, so RegisterEventHotKey returns -9878
     // ("hotkey already in use") and the global toggle silently never works.
     // Retry with backoff so a transient login-time conflict resolves on its own.
     //
@@ -61,7 +61,6 @@ final class GlobalHotKeyManager {
         unregister()
 
         let hotKeyId = EventHotKeyID(signature: fourCharCode("LOOK"), id: 1)
-
         let registerStatus = RegisterEventHotKey(
             hotkey.keyCode,
             hotkey.carbonModifiers,
@@ -70,7 +69,7 @@ final class GlobalHotKeyManager {
             0,
             &hotKeyRef
         )
-        hotkeyLog.notice("RegisterEventHotKey \(self.hotkey.display, privacy: .public) status=\(registerStatus) (noErr=0; -9878=hotkey already in use)")
+        hotkeyLog.notice("RegisterEventHotKey status=\(registerStatus) (noErr=0; -9878=hotkey already in use)")
 
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         if registerStatus == noErr {
@@ -115,7 +114,7 @@ final class GlobalHotKeyManager {
             if hotkey.matches(event) {
                 hotkeyLog.notice("LOCAL monitor fired (app active=\(NSApp.isActive))")
                 NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
-                return nil   // consume - don't let any field eat the key
+                return nil   // consume - don't let any field eat the space
             }
             return event
         }

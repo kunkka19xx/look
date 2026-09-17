@@ -16,7 +16,8 @@ pub(crate) fn look_modes_list_text_impl() -> *mut c_char {
 }
 
 /// Argv in as a JSON array (program name already dropped), the decision out as
-/// `{"kind":"normal"|"query"|"list_modes"|"reload_config"|"unknown_mode"|"unavailable_mode", ...}`.
+/// `{"kind":"normal"|"query"|"list_modes"|"reload_config"|"toggle"|"unknown_mode"
+/// |"unavailable_mode", ...}`.
 pub(crate) fn look_modes_parse_json_impl(argv_json: *const c_char) -> *mut c_char {
     if argv_json.is_null() {
         return allocate(NULL_JSON.to_string());
@@ -32,6 +33,7 @@ pub(crate) fn look_modes_parse_json_impl(argv_json: *const c_char) -> *mut c_cha
         modes::Launch::Normal => serde_json::json!({ "kind": "normal" }),
         modes::Launch::ListModes => serde_json::json!({ "kind": "list_modes" }),
         modes::Launch::ReloadConfig => serde_json::json!({ "kind": "reload_config" }),
+        modes::Launch::Toggle => serde_json::json!({ "kind": "toggle" }),
         modes::Launch::Query { text } => serde_json::json!({ "kind": "query", "text": text }),
         modes::Launch::UnknownMode(name) => {
             serde_json::json!({ "kind": "unknown_mode", "name": name })

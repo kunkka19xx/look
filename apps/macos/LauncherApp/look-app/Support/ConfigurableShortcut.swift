@@ -1,29 +1,27 @@
 import Foundation
 
-/// A shortcut the user can rebind in Settings > Shortcuts.
-///
-/// It names the `ShortcutCatalog` entry it replaces and the config key that
-/// stores it. Making another shortcut configurable is a new `Kind`, an entry in
-/// `all`, and its case in `ConfigurableShortcut+Registration.swift`; the
-/// settings row, the recorder and the save path already work from this list.
-struct ConfigurableShortcut: Identifiable {
-    enum Kind {
-        case launcherToggle
-    }
+/// What a rebindable shortcut needs from the code that registers it.
+@MainActor
+protocol ShortcutRegistration: AnyObject {
+    var display: String { get }
+    var defaultSpec: String? { get }
+    func suspend()
+    @discardableResult func reload() -> String?
+}
 
-    let kind: Kind
+/// A shortcut the user can rebind in Settings > Shortcuts. To add one, list it
+/// in `all`; the recorder, load and save paths work from this list.
+struct ConfigurableShortcut {
     let catalogID: String
     let configKey: String
+    let registration: ShortcutRegistration
 
-    var id: String { catalogID }
-
-    static let launcherToggle = ConfigurableShortcut(
-        kind: .launcherToggle,
-        catalogID: "global.toggleLauncher",
-        configKey: "launcher_hotkey"
-    )
-
-    static let all: [ConfigurableShortcut] = [.launcherToggle]
+    static let all = [
+        ConfigurableShortcut(
+            catalogID: "global.toggleLauncher",
+            configKey: "launcher_hotkey",
+            registration: LauncherHotkeyController.shared),
+    ]
 
     static func forEntry(_ entryID: String) -> ConfigurableShortcut? {
         all.first { $0.catalogID == entryID }
@@ -32,11 +30,18 @@ struct ConfigurableShortcut: Identifiable {
     static func forConfigKey(_ key: String) -> ConfigurableShortcut? {
         all.first { $0.configKey == key }
     }
+
+    func pendingDisplay(in bindings: [String: String]) -> String? {
+        guard let spec = bindings[configKey], !spec.isEmpty else { return nil }
+        return EngineBridge.shared.hotkeyCheck(spec)?.display
+    }
+
+    func hasUnsavedChange(in bindings: [String: String]) -> Bool {
+        pendingDisplay(in: bindings).map { $0 != registration.display } ?? false
+    }
 }
 
-/// Set while a shortcut recorder is listening. Every other key monitor passes
-/// events through untouched meanwhile, so the recorder sees the press whatever
-/// order AppKit runs the monitors in.
+/// Set while a recorder listens; other key monitors pass events through.
 enum ShortcutCapture {
     static var isActive = false
 }

@@ -437,7 +437,8 @@ fn register_shortcuts(app: &tauri::App, use_wayland: bool) {
             }
 
             let handle = app_handle.clone();
-            platform::linux::wayland_shortcut::start(move || {
+            let bind_key = launcher_hotkey::configured().enabled;
+            platform::linux::wayland_shortcut::start(bind_key, move || {
                 toggle_window(&handle);
             });
         }
@@ -613,6 +614,10 @@ fn main() {
                     let _ = window.emit(consts::EVENT_CONFIG_RELOAD_REQUESTED, ());
                     return;
                 }
+                if launch == modes::Launch::Toggle {
+                    toggle_window(app);
+                    return;
+                }
                 // The second launch's argv, discarded here until now. Parked
                 // before the show, which is what the frontend pulls on.
                 park_launch(&launch);
@@ -738,9 +743,9 @@ fn main() {
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
             }
 
-            // Only when a mode was named: a normal launch keeps whatever
-            // startup visibility it has today.
-            if matches!(launch, modes::Launch::Query { .. }) {
+            // Only when asked for: a normal launch keeps whatever startup
+            // visibility it has today. A cold `--toggle` has nothing to hide.
+            if matches!(launch, modes::Launch::Query { .. } | modes::Launch::Toggle) {
                 park_launch(&launch);
                 show_window(&window);
             }
@@ -768,8 +773,7 @@ fn main() {
             config::set_config,
             launcher_hotkey::launcher_hotkey_state,
             launcher_hotkey::hotkey_check,
-            launcher_hotkey::launcher_hotkey_suspend,
-            launcher_hotkey::launcher_hotkey_apply,
+            launcher_hotkey::launcher_hotkey_set_active,
             config::reset_config,
             // Files: meta, version, clipboard, music, folder
             files::get_file_meta,

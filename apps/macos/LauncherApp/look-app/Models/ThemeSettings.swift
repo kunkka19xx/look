@@ -289,8 +289,7 @@ struct ThemeSettings: Codable, Equatable {
     /// under `super_actions_enabled`.
     var superActionsEnabled: Bool = true
 
-    /// Rebound shortcuts as hotkey specs, keyed by config key (see
-    /// `ConfigurableShortcut`). Read from and written to `~/.look/config`.
+    /// Hotkey specs keyed by config key, see `ConfigurableShortcut`.
     var shortcutBindings: [String: String] = [:]
 
     static let `default` = ThemeSettings()

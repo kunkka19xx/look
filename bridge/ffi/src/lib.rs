@@ -183,17 +183,14 @@ pub extern "C" fn look_lunar_date_json(year: i64, month: i64, day: i64, tz: f64)
     .unwrap_or(std::ptr::null_mut())
 }
 
-/// The launcher toggle hotkey from `~/.look/config` (`{hotkey, display,
-/// accelerator, warning}`), falling back to the platform default. Free with
-/// `look_free_cstring`.
+/// The resolved `launcher_hotkey`. Free with `look_free_cstring`.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_launcher_hotkey_json() -> *mut c_char {
     std::panic::catch_unwind(hotkey_api::look_launcher_hotkey_json_impl)
         .unwrap_or(std::ptr::null_mut())
 }
 
-/// `spec` checked against the hotkey grammar (`{spec, display, error}`). Free
-/// with `look_free_cstring`.
+/// `spec` checked against the hotkey grammar. Free with `look_free_cstring`.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_hotkey_check_json(spec: *const c_char) -> *mut c_char {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

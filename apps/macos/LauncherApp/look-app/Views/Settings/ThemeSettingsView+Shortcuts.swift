@@ -21,8 +21,7 @@ extension ThemeSettingsView {
     }
 }
 
-/// One line for every rebound shortcut that Save Config has not applied yet,
-/// instead of a note under each row.
+/// One notice for all unsaved rebinds, not one per row.
 private struct UnsavedShortcutsNotice: View {
     @EnvironmentObject private var themeStore: ThemeStore
     @ObservedObject private var launcherHotkey = LauncherHotkeyController.shared

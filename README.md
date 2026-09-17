@@ -78,7 +78,7 @@ chmod +x Look_*.AppImage
 ./Look_*.AppImage
 ```
 
-After installing, launch with `lookapp` from a terminal, or search "Look" in your app launcher. Press `Alt+Space` to toggle the window at any time. Look autostarts on login by default (on full DEs like GNOME/KDE).
+After installing, launch with `lookapp` from a terminal, or search "Look" in your app launcher. Press `Alt+Space` to toggle the window at any time. To bind your own key instead, set `launcher_hotkey=none` in `~/.look/config`, restart Look, and bind `lookapp --toggle` in your desktop settings. Look autostarts on login by default (on full DEs like GNOME/KDE).
 
 Uninstall:
 

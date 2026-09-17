@@ -213,10 +213,12 @@ pub fn url_term_is_safe(term: &str) -> bool {
     !(trimmed.starts_with(':') || trimmed.starts_with('>') || term.contains('"'))
 }
 
+pub const TOGGLE_FLAG: &str = "--toggle";
+
 /// Rendered in core so both shells print the same listing.
 pub fn list_text() -> String {
     let width = MODES.iter().map(|mode| mode.name.len()).max().unwrap_or(0);
-    let mut out = String::new();
+    let mut out = format!("{TOGGLE_FLAG}  show or hide the running launcher\n\n");
     for mode in MODES {
         let aliases = if mode.aliases.is_empty() {
             String::new()
@@ -272,6 +274,7 @@ pub enum Launch {
     },
     ListModes,
     ReloadConfig,
+    Toggle,
     /// Named a mode and got it wrong. An error because they were specific,
     /// unlike a bare word that just means "open".
     UnknownMode(String),
@@ -280,7 +283,7 @@ pub enum Launch {
 }
 
 /// Arguments after the program name. Precedence: `reload-config`, a bare mode
-/// name, then `--list-modes`, `--mode`, `--query`.
+/// name, then `--list-modes`, `--mode`, `--query`, `--toggle`.
 pub fn parse_args<I, S>(args: I) -> Launch
 where
     I: IntoIterator<Item = S>,
@@ -315,12 +318,14 @@ where
     let mut mode_name: Option<String> = None;
     let mut query: Option<String> = None;
     let mut list_modes = false;
+    let mut toggle = false;
     let mut saw_mode_flag = false;
 
     let mut index = 0;
     while index < flags.len() {
         match flags[index].as_str() {
             "--list-modes" => list_modes = true,
+            TOGGLE_FLAG => toggle = true,
             "--mode" => {
                 saw_mode_flag = true;
                 if let Some(value) = flags.get(index + 1)
@@ -358,6 +363,10 @@ where
 
     if let Some(text) = query {
         return Launch::Query { text };
+    }
+
+    if toggle {
+        return Launch::Toggle;
     }
 
     Launch::Normal
