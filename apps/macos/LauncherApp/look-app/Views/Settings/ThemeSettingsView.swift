@@ -183,6 +183,7 @@ struct ThemeSettingsView: View {
         guard localKeyMonitor == nil else { return }
 
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if ShortcutCapture.isActive { return event }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
             if event.keyCode == 53 && flags.isEmpty {

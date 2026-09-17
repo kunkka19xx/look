@@ -5,12 +5,11 @@ import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let hotKeyManager = GlobalHotKeyManager()
     private let pomoMenuBarItem = PomoMenuBarItem()
 
     // The launcher window is owned by AppKit (created here), NOT by a SwiftUI
     // WindowGroup. SwiftUI refuses to create a WindowGroup window on a
-    // background login launch, which left LauncherView (and its Cmd+Space
+    // background login launch, which left LauncherView (and its hotkey
     // toggle observer) unmounted → the hotkey fired into the void. An AppKit
     // NSWindow is not subject to that suppression: we create it at launch
     // (hidden) so LauncherView is always mounted and the existing
@@ -34,14 +33,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        hotKeyManager.registerToggleHotKey()
+        LauncherHotkeyController.shared.reload()
         NSApp.setActivationPolicy(.accessory)
         pomoMenuBarItem.install()
 
         // Create the launcher window ourselves (hidden) so LauncherView mounts
         // at launch - even on a cold background-login launch, where SwiftUI
         // would never create a WindowGroup window. With the view mounted, its
-        // .lookToggleWindowRequested observer is live and Cmd+Space toggles it.
+        // .lookToggleWindowRequested observer is live and the hotkey toggles it.
         makeLauncherWindow()
 
         // Notifications: ask for permission early (so the prompt isn't

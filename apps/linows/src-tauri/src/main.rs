@@ -14,6 +14,7 @@ mod crash;
 mod files;
 mod health;
 mod highlight;
+mod launcher_hotkey;
 mod lunar;
 mod music;
 mod netspeed;
@@ -413,7 +414,7 @@ fn config_flag(content: &str, key: &str) -> Option<bool> {
     })
 }
 
-/// Register global shortcuts (Alt+Space to toggle, Alt+Shift+Q to quit).
+/// Register global shortcuts (the launcher toggle, Alt+Shift+Q to quit).
 /// Uses compositor-specific keybinding on Wayland, tauri-plugin on X11/macOS/Windows.
 ///
 /// Registration failures never abort startup: a launcher with a dead hotkey
@@ -442,25 +443,7 @@ fn register_shortcuts(app: &tauri::App, use_wayland: bool) {
         }
     } else {
         use tauri_plugin_global_shortcut::GlobalShortcutExt;
-        let handle = app_handle.clone();
-        if let Err(e) =
-            app.global_shortcut()
-                .on_shortcut("Alt+Space", move |_app, _shortcut, event| {
-                    if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        return;
-                    }
-                    toggle_window(&handle);
-                })
-        {
-            health::report(
-                health::ISSUE_HOTKEY,
-                format!(
-                    "Alt+Space could not be registered ({e}). Another app may hold \
-                     the key - free it and restart Look. Until then, open Look \
-                     again from the app menu to show this window."
-                ),
-            );
-        }
+        launcher_hotkey::register(&app_handle);
         if let Err(e) = app
             .global_shortcut()
             .on_shortcut("Alt+Shift+Q", |app, _shortcut, event| {
@@ -783,6 +766,7 @@ fn main() {
             // Config
             config::get_config,
             config::set_config,
+            launcher_hotkey::launcher_hotkey_display,
             config::reset_config,
             // Files: meta, version, clipboard, music, folder
             files::get_file_meta,

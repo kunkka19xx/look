@@ -54,6 +54,18 @@ final class ShortcutCatalogTests: XCTestCase {
         }
     }
 
+    /// A rebindable shortcut replaces a catalog row; one that names no row
+    /// would never get a recorder in Settings.
+    func testConfigurableShortcutsNameRemappableCatalogEntries() {
+        for shortcut in ConfigurableShortcut.all {
+            let row = entry(shortcut.catalogID)
+            XCTAssertNotNil(row, "\(shortcut.catalogID) is not in the catalog")
+            XCTAssertEqual(row?.remappable, true)
+        }
+        let keys = ConfigurableShortcut.all.map(\.configKey)
+        XCTAssertEqual(Set(keys).count, keys.count, "two shortcuts share a config key")
+    }
+
     func testGroupTitlesAreUnique() {
         let titles = ShortcutCatalog.groups.map(\.title)
         XCTAssertEqual(Set(titles).count, titles.count)

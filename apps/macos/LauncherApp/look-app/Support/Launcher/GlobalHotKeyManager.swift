@@ -13,13 +13,13 @@ final class GlobalHotKeyManager {
     nonisolated(unsafe) private var eventHandler: EventHandlerRef?
     // Carbon's RegisterEventHotKey only fires when the registering app is
     // NOT the currently-active app. When Look is in the foreground (e.g.
-    // user has the launcher open and focused), Cmd+Space goes through
+    // user has the launcher open and focused), the hotkey goes through
     // the normal local event chain instead. Install a parallel local
     // NSEvent monitor so the toggle works regardless of focus state.
     nonisolated(unsafe) private var localMonitor: Any?
 
     // Defense-in-depth for one specific, rare failure: another app already
-    // owns Cmd+Space when Look launches, so RegisterEventHotKey returns -9878
+    // owns the hotkey when Look launches, so RegisterEventHotKey returns -9878
     // ("hotkey already in use") and the global toggle silently never works.
     // Retry with backoff so a transient login-time conflict resolves on its own.
     //
@@ -33,6 +33,7 @@ final class GlobalHotKeyManager {
     private var retryAttempts = 0
     private static let maxRetryAttempts = 5
     private var retryWorkItem: DispatchWorkItem?
+    private var hotkey = CarbonHotkey.fallback
 
     // deinit is nonisolated; unregister is MainActor. Inline the cleanup
     // here using nonisolated-safe API only.
@@ -48,24 +49,28 @@ final class GlobalHotKeyManager {
         }
     }
 
-    func registerToggleHotKey() {
+    func registerToggleHotKey(_ hotkey: CarbonHotkey) {
+        self.hotkey = hotkey
+        retryAttempts = 0
+        registerCurrentHotKey()
+    }
+
+    private func registerCurrentHotKey() {
         retryWorkItem?.cancel()
         retryWorkItem = nil
         unregister()
 
         let hotKeyId = EventHotKeyID(signature: fourCharCode("LOOK"), id: 1)
-        let modifiers = UInt32(cmdKey)
-        let keyCode = UInt32(kVK_Space)
 
         let registerStatus = RegisterEventHotKey(
-            keyCode,
-            modifiers,
+            hotkey.keyCode,
+            hotkey.carbonModifiers,
             hotKeyId,
             GetEventDispatcherTarget(),
             0,
             &hotKeyRef
         )
-        hotkeyLog.notice("RegisterEventHotKey status=\(registerStatus) (noErr=0; -9878=hotkey already in use)")
+        hotkeyLog.notice("RegisterEventHotKey \(self.hotkey.display, privacy: .public) status=\(registerStatus) (noErr=0; -9878=hotkey already in use)")
 
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         if registerStatus == noErr {
@@ -105,12 +110,12 @@ final class GlobalHotKeyManager {
         // Local monitor: foreground-focused complement to the global
         // Carbon hotkey. Posts the same notification so the rest of the
         // app doesn't need to know which path delivered the event.
+        let hotkey = hotkey
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let plainCmd = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
-            if plainCmd && event.keyCode == UInt16(kVK_Space) {
+            if hotkey.matches(event) {
                 hotkeyLog.notice("LOCAL monitor fired (app active=\(NSApp.isActive))")
                 NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
-                return nil   // consume - don't let any field eat the space
+                return nil   // consume - don't let any field eat the key
             }
             return event
         }
@@ -127,10 +132,16 @@ final class GlobalHotKeyManager {
         let delay = min(3.0, 0.5 * Double(retryAttempts))
         hotkeyLog.notice("scheduling hotkey re-registration attempt \(self.retryAttempts) in \(delay)s")
         let work = DispatchWorkItem { [weak self] in
-            self?.registerToggleHotKey()
+            self?.registerCurrentHotKey()
         }
         retryWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    func suspend() {
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        unregister()
     }
 
     func unregister() {
