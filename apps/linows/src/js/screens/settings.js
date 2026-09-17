@@ -1,7 +1,6 @@
 import {
     getConfig,
     setConfig,
-    launcherHotkeyDisplay,
     forceIndexRefresh,
     resetConfig,
     listFonts,
@@ -18,6 +17,7 @@ import * as sourceblocks from '../components/sourceblocks.js';
 import * as platform from '../platform.js';
 import * as layout from '../layout.js';
 import * as superactions from '../components/superactions.js';
+import * as shortcutrecorder from '../components/shortcutrecorder.js';
 
 let screen = null;
 let active = false;
@@ -36,6 +36,7 @@ const INNER_GAP_DEFAULT = 7;
 
 const SAVE_MSG_MS = 1600;
 const ERROR_BANNER_SECONDS = 1.5;
+const SAVE_ERROR_BANNER_SECONDS = 4;
 let saveMsgTimer = null;
 
 // Maps config keys to CSS custom property update functions.
@@ -150,6 +151,7 @@ export function setOnConfigReload(fn) {
 export function init(exitFn) {
     onExit = exitFn;
     screen = document.getElementById('settings-screen');
+    shortcutrecorder.init(screen);
 
     // Tab clicks
     document.getElementById('settings-tabs').addEventListener('click', (e) => {
@@ -645,7 +647,10 @@ export function init(exitFn) {
                     : 'false';
             }
 
-            await saveConfig(updates);
+            Object.assign(updates, shortcutrecorder.pendingUpdates());
+
+            if (!(await saveConfig(updates))) return;
+            await shortcutrecorder.applySaved();
             // Clearing the field saves the sentinel; the live inline override
             // has to go with it or the old family outlives the config value.
             applyFontFamily(updates.ui_font_name);
@@ -666,6 +671,7 @@ export function isActive() {
 // Ctrl+Shift+; - reload all values from .look/config file into running app.
 // A headless reload passes announceSuccess: false, so only problems show a banner.
 export async function reloadFromFile({ announceSuccess = true } = {}) {
+    shortcutrecorder.discardPending();
     try {
         await sourceblocks.reload();
         // The launchpad drawing is cached for the process for the same reason
@@ -739,6 +745,7 @@ export async function enter(contentArea, searchBar) {
 
 export function exit(contentArea, searchBar) {
     active = false;
+    shortcutrecorder.cancel();
     layout.setModal('settings', false);
     screen.style.display = 'none';
     contentArea.style.display = '';
@@ -912,11 +919,7 @@ function updateSuperActionsAvailability() {
 }
 
 async function loadConfig() {
-    launcherHotkeyDisplay()
-        .then((display) => {
-            document.getElementById('settings-launcher-hotkey').textContent = display;
-        })
-        .catch(() => {});
+    shortcutrecorder.refresh();
     try {
         const cfg = await getConfig();
 
@@ -1501,12 +1504,17 @@ function formatValue(key, v) {
     return v.toFixed(2);
 }
 
+// Reports its own failure, so fire-and-forget callers are covered too.
 async function saveConfig(updates) {
     try {
         const list = Object.entries(updates).map(([key, value]) => ({ key, value: String(value) }));
         await setConfig(list);
+        return true;
     } catch (err) {
         console.error('Failed to save config:', err);
+        showSaveMessage('Save failed', true);
+        banner.show(`Save failed: ${err}`, 'error', SAVE_ERROR_BANNER_SECONDS);
+        return false;
     }
 }
 
@@ -1550,7 +1558,7 @@ async function addDirToConfig(key, folder) {
     if (current.includes(folder)) return;
     current.push(folder);
     const joined = csvJoin(current);
-    await saveConfig({ [key]: joined });
+    if (!(await saveConfig({ [key]: joined }))) return;
     configCache[key] = joined;
 }
 
@@ -1559,7 +1567,7 @@ async function removeDirFromConfig(key, folder) {
     const current = csvSplit(map[key] || '');
     const updated = current.filter((d) => d !== folder);
     const joined = csvJoin(updated);
-    await saveConfig({ [key]: joined });
+    if (!(await saveConfig({ [key]: joined }))) return;
     configCache[key] = joined;
 }
 
