@@ -46,6 +46,25 @@ const CLIP_BANNER_DURATION = 1.1;
 // `Recycle Bin` on Windows (id is `quickfolder:<lowercased title>`).
 const TRASH_PIN_IDS = ['quickfolder:trash', 'quickfolder:recycle bin'];
 
+// Punctuation chords have to look at both halves of the event: e.key is the
+// character the layout produces, e.code the physical key, and neither alone
+// pins down the chord. AZERTY puts ',' on the physical M key and Shift+','
+// gives '?', QWERTZ turns Shift+Comma into ';', JIS turns Shift+';' into '+'.
+// So the physical key always counts, and the character counts too, except a
+// '?' off the physical slash: that is QWERTY's Ctrl+Shift+/ asking for command
+// mode, not settings.
+const PUNCT_CHORDS = {
+    settings: { code: 'Comma', keys: [',', '<', '?'], exceptCode: 'Slash' },
+    reloadConfig: { code: 'Semicolon', keys: [';', ':'] },
+    command: { code: 'Slash', keys: ['/', '?'] },
+};
+
+function isChord(e, name) {
+    const chord = PUNCT_CHORDS[name];
+    if (e.code === chord.code) return true;
+    return chord.keys.includes(e.key) && e.code !== chord.exceptCode;
+}
+
 let queryInput = null;
 let shiftHeld = false;
 let commandMode = null;
@@ -151,7 +170,7 @@ function handleKeyDown(e) {
     }
 
     // Ctrl+Shift+, toggles settings
-    if (e.ctrlKey && (e.shiftKey || shiftHeld) && (e.key === ',' || e.key === '<')) {
+    if (e.ctrlKey && (e.shiftKey || shiftHeld) && isChord(e, 'settings')) {
         e.preventDefault();
         if (settingsModule?.isActive()) {
             settingsModule.exit(settingsContentArea, settingsSearchBar);
@@ -165,7 +184,7 @@ function handleKeyDown(e) {
     }
 
     // Ctrl+Shift+; reloads config from file (like Cmd+Shift+; on macOS)
-    if (e.ctrlKey && (e.shiftKey || shiftHeld) && (e.key === ';' || e.key === ':')) {
+    if (e.ctrlKey && (e.shiftKey || shiftHeld) && isChord(e, 'reloadConfig')) {
         e.preventDefault();
         if (settingsModule) settingsModule.reloadFromFile();
         return;
@@ -230,7 +249,7 @@ function handleKeyDown(e) {
     }
 
     // Ctrl+/ toggles command mode
-    if (e.ctrlKey && (e.key === '/' || e.key === '?')) {
+    if (e.ctrlKey && isChord(e, 'command')) {
         e.preventDefault();
         if (commandMode?.isActive()) {
             commandMode.exit();
