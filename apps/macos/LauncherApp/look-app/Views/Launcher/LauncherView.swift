@@ -899,6 +899,12 @@ struct LauncherView: View {
                 LaunchModes.pendingQuery = nil
                 applyLaunchQuery(pending)
             }
+            if LaunchModes.pendingToggle {
+                LaunchModes.pendingToggle = false
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
+                }
+            }
         }
         // A text op reads the picked file rather than the clipboard, so the
         // controller needs the picks as they change.
@@ -1081,6 +1087,11 @@ struct LauncherView: View {
             // After the reveal, which runs `clearQueryIfRetentionExpired` and
             // would wipe the mode.
             applyLaunchQuery(text)
+        }
+        .onReceive(
+            DistributedNotificationCenter.default().publisher(for: LaunchModes.toggleNotification)
+        ) { _ in
+            NotificationCenter.default.post(name: .lookToggleWindowRequested, object: nil)
         }
         .onReceive(NotificationCenter.default.publisher(for: .lookToggleSettingsRequested)) { _ in
             toggleThemeSettings()

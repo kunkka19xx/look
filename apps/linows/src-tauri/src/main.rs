@@ -13,6 +13,7 @@ mod crash;
 mod files;
 mod health;
 mod highlight;
+mod launcher_hotkey;
 mod lunar;
 mod music;
 mod netspeed;
@@ -409,7 +410,7 @@ fn sync_autostart() {
     let _ = autostart::set_autostart(enabled);
 }
 
-/// Register global shortcuts (Alt+Space to toggle, Alt+Shift+Q to quit).
+/// Register global shortcuts (the launcher toggle, Alt+Shift+Q to quit).
 /// Uses compositor-specific keybinding on Wayland, tauri-plugin on X11/macOS/Windows.
 ///
 /// Registration failures never abort startup: a launcher with a dead hotkey
@@ -432,31 +433,14 @@ fn register_shortcuts(app: &tauri::App, use_wayland: bool) {
             }
 
             let handle = app_handle.clone();
-            platform::linux::wayland_shortcut::start(move || {
+            let bind_key = launcher_hotkey::configured().enabled;
+            platform::linux::wayland_shortcut::start(bind_key, move || {
                 toggle_window(&handle);
             });
         }
     } else {
         use tauri_plugin_global_shortcut::GlobalShortcutExt;
-        let handle = app_handle.clone();
-        if let Err(e) =
-            app.global_shortcut()
-                .on_shortcut("Alt+Space", move |_app, _shortcut, event| {
-                    if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        return;
-                    }
-                    toggle_window(&handle);
-                })
-        {
-            health::report(
-                health::ISSUE_HOTKEY,
-                format!(
-                    "Alt+Space could not be registered ({e}). Another app may hold \
-                     the key - free it and restart Look. Until then, open Look \
-                     again from the app menu to show this window."
-                ),
-            );
-        }
+        launcher_hotkey::register(&app_handle);
         if let Err(e) = app
             .global_shortcut()
             .on_shortcut("Alt+Shift+Q", |app, _shortcut, event| {
@@ -621,9 +605,13 @@ fn main() {
     let single_instance =
         tauri_plugin_single_instance::Builder::<tauri::Wry>::new().callback(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window(consts::MAIN_WINDOW) {
-                // The second launch's argv, discarded here until now. Parked
-                // before the show, which is what the frontend pulls on.
-                park_launch(&modes::parse_args(args.iter().skip(1)));
+                let launch = modes::parse_args(args.iter().skip(1));
+                if launch == modes::Launch::Toggle {
+                    toggle_window(app);
+                    return;
+                }
+                // Parked before the show, which is what the frontend pulls on.
+                park_launch(&launch);
                 // The hotkey's summon, not a bare show: an explicit
                 // `lookapp <mode>` races no auto-hide, so it never toggles.
                 show_window(&window);
@@ -740,9 +728,9 @@ fn main() {
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
             }
 
-            // Only when a mode was named: a normal launch keeps whatever
-            // startup visibility it has today.
-            if matches!(launch, modes::Launch::Query { .. }) {
+            // Only when asked for: a normal launch keeps whatever startup
+            // visibility it has today. A cold `--toggle` has nothing to hide.
+            if matches!(launch, modes::Launch::Query { .. } | modes::Launch::Toggle) {
                 park_launch(&launch);
                 show_window(&window);
             }
@@ -768,6 +756,9 @@ fn main() {
             // Config
             config::get_config,
             config::set_config,
+            launcher_hotkey::launcher_hotkey_state,
+            launcher_hotkey::hotkey_check,
+            launcher_hotkey::launcher_hotkey_set_active,
             config::reset_config,
             // Files: meta, version, clipboard, music, folder
             files::get_file_meta,

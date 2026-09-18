@@ -32,7 +32,7 @@ brew install --cask kunkka19xx/tap/look
 
 On first launch, Look will index your apps, files, and folders in the background. You can start using it immediately - results appear as indexing completes.
 
-To bind `Cmd+Space` to Look, disable Spotlight's default shortcut: `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`.
+To bind `Cmd+Space` to Look, disable Spotlight's default shortcut: `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`. To keep Spotlight, set `launcher_hotkey` in `~/.look/config` to another shortcut (for example `launcher_hotkey=ctrl+space`) and reload with `Cmd+Shift+;`.
 
 ## Permissions
 
@@ -567,6 +567,7 @@ File-only settings (no Settings UI):
 These keys have no control in the Settings screens. Edit `~/.look/config` directly, then reload with `Cmd+Shift+;` (macOS) or `Ctrl+Shift+;` (Linux/Windows), or restart Look. Out-of-range or unparseable values fall back to the listed default. More keys will be added here over time.
 
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
+- `launcher_hotkey` (global shortcut that shows and hides Look; modifiers `cmd`/`win`, `ctrl`, `alt`/`option`, `shift` plus one key: a letter, digit, `space`, `enter`, `tab`, `esc`, `f1`-`f20`, or a symbol like `` ` ``. Examples: `ctrl+space`, `alt+shift+space`, `f13`. Default `cmd+space` on macOS, `alt+space` on Windows and Linux. `none` stops Look registering any key, so you can bind `lookapp --toggle` in your desktop or a tool like skhd/AutoHotkey instead; Linux accepts only `none` and applies it on restart. An invalid value falls back to the default and the reload banner says why)
 - `query_retention_seconds` (how long the main query survives while Look is hidden, in seconds; the first open past it returns to the empty home screen; default 5, `0` clears on every hide, and any negative value keeps the query indefinitely)
 - `text_editor`, `code_editor`, `terminal`, `file_manager` (the tools `Cmd+E` / `Cmd+T` / `Cmd+F` act through, see [Preferred tools](#preferred-tools); undeclared means the system default)
 
@@ -668,6 +669,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - confirm Spotlight's `Cmd+Space` is disabled or rebound (`System Settings > Keyboard > Keyboard Shortcuts > Spotlight`)
 - relaunch Look (`open "/Applications/Look.app"`) after changing the Spotlight binding
 - if you previously ran a dev/side-by-side build, make sure only one Look instance is running
+- if you changed `launcher_hotkey`, the toggle is that shortcut instead of `Cmd+Space`
 
 **The launcher opens behind another window.**
 

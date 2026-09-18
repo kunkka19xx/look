@@ -55,6 +55,16 @@ pub fn report_as(id: &'static str, kind: &'static str, message: String) {
     }
 }
 
+/// Drops an issue whose cause may be gone, so a later report can land.
+pub fn clear(id: &'static str) {
+    if let Ok(mut issues) = ISSUES.lock() {
+        issues.retain(|i| i.id != id);
+    }
+    if let Some(handle) = crate::state::app_handle() {
+        let _ = handle.emit(EVENT_HEALTH_CHANGED, snapshot());
+    }
+}
+
 fn snapshot() -> Vec<HealthIssue> {
     ISSUES.lock().map(|i| i.clone()).unwrap_or_default()
 }

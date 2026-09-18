@@ -31,6 +31,7 @@ pub(crate) fn look_modes_parse_json_impl(argv_json: *const c_char) -> *mut c_cha
     let value = match modes::parse_args(args) {
         modes::Launch::Normal => serde_json::json!({ "kind": "normal" }),
         modes::Launch::ListModes => serde_json::json!({ "kind": "list_modes" }),
+        modes::Launch::Toggle => serde_json::json!({ "kind": "toggle" }),
         modes::Launch::Query { text } => serde_json::json!({ "kind": "query", "text": text }),
         modes::Launch::UnknownMode(name) => {
             serde_json::json!({ "kind": "unknown_mode", "name": name })
