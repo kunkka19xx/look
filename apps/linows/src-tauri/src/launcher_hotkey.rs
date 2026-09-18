@@ -31,10 +31,6 @@ pub fn register(app: &AppHandle) {
     if !launcher.enabled {
         return;
     }
-    if let Some(warning) = launcher.warning {
-        health::report(health::ISSUE_HOTKEY, warning);
-    }
-
     let handle = app.clone();
     let registered = launcher
         .accelerator
@@ -55,13 +51,22 @@ pub fn register(app: &AppHandle) {
             if let Ok(mut slot) = REGISTERED.lock() {
                 *slot = Some(shortcut);
             }
+            if let Some(warning) = launcher.warning {
+                health::report(health::ISSUE_HOTKEY, warning);
+            }
         }
+        // Carries the config warning too: only the first report per id is kept,
+        // and this one is the more actionable of the two.
         Err(e) => health::report(
             health::ISSUE_HOTKEY,
             format!(
-                "{} could not be registered ({e}). Another app may hold the key - \
+                "{}{} could not be registered ({e}). Another app may hold the key - \
                  {CONFLICT_REMEDY}. Until then, open Look again from the app menu \
                  to show this window.",
+                launcher
+                    .warning
+                    .map(|warning| format!("{warning}. "))
+                    .unwrap_or_default(),
                 launcher.display
             ),
         ),

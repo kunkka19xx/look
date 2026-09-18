@@ -168,8 +168,7 @@ final class LauncherHotkeyController: ObservableObject, ShortcutRegistration {
 
     private func apply() -> String? {
         guard let spec = EngineBridge.shared.launcherHotkey() else {
-            register(.fallback)
-            return nil
+            return register(.fallback)
         }
         defaultSpec = spec.defaultSpec
         guard spec.enabled else {
@@ -178,15 +177,23 @@ final class LauncherHotkeyController: ObservableObject, ShortcutRegistration {
             return nil
         }
         guard let hotkey = CarbonHotkey(spec: spec) else {
-            register(.fallback)
-            return "\(spec.display) has no key on this keyboard layout. Using \(CarbonHotkey.fallback.display)"
+            let unusable =
+                "\(spec.display) has no key on this keyboard layout. Using \(CarbonHotkey.fallback.display)"
+            return [unusable, register(.fallback)].compactMap { $0 }.joined(separator: ". ")
         }
-        register(hotkey)
-        return spec.warning
+        return [spec.warning, register(hotkey)].compactMap { $0 }.joined(separator: ". ").nilIfEmpty
     }
 
-    private func register(_ hotkey: CarbonHotkey) {
-        manager.registerToggleHotKey(hotkey)
+    /// Returns why the key is dead, when Carbon refused it: another app owns it.
+    /// Retries continue in the background.
+    private func register(_ hotkey: CarbonHotkey) -> String? {
+        let status = manager.registerToggleHotKey(hotkey)
         display = hotkey.display
+        guard status != noErr else { return nil }
+        return "\(hotkey.display) is taken by another app, so it will not open Look"
     }
+}
+
+extension String {
+    fileprivate var nilIfEmpty: String? { isEmpty ? nil : self }
 }

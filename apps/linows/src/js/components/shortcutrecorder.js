@@ -26,8 +26,7 @@ export function init(root) {
     screen = root;
     for (const shortcut of CONFIGURABLE) {
         const row = rowFor(shortcut);
-        row.querySelector('kbd').addEventListener('click', () => {
-            if (!states.get(shortcut.configKey)?.configurable) return;
+        row.querySelector('.settings-shortcut-key').addEventListener('click', () => {
             if (recording?.shortcut === shortcut) stop();
             else start(shortcut);
         });
@@ -130,10 +129,10 @@ function render() {
         const changed = shown !== state.display;
         if (changed) unsaved += 1;
 
-        const kbd = row.querySelector('kbd');
-        kbd.textContent = isRecording ? LISTENING : shown;
-        kbd.classList.toggle('settings-shortcut-recorder', state.configurable);
-        kbd.classList.toggle('settings-shortcut-active', isRecording || changed);
+        const key = row.querySelector('.settings-shortcut-key');
+        key.textContent = isRecording ? LISTENING : shown;
+        key.disabled = !state.configurable;
+        key.classList.toggle('settings-shortcut-active', isRecording || changed);
 
         row.querySelector('.settings-shortcut-reset').hidden =
             !state.configurable || isRecording || shown === state.default_display;
