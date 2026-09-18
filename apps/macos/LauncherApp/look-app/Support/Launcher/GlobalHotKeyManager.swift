@@ -76,8 +76,10 @@ final class GlobalHotKeyManager {
         hotkeyLog.notice("RegisterEventHotKey status=\(registerStatus) (noErr=0; -9878=hotkey already in use)")
 
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        if registerStatus == noErr {
-            InstallEventHandler(
+        var status = registerStatus
+        if status == noErr {
+            // Without this handler the hotkey is dead outside Look.
+            status = InstallEventHandler(
                 GetEventDispatcherTarget(),
                 { _, event, _ in
                     var hotKeyId = EventHotKeyID()
@@ -105,13 +107,18 @@ final class GlobalHotKeyManager {
                 nil,
                 &eventHandler
             )
+            hotkeyLog.notice("InstallEventHandler status=\(status)")
+        }
+
+        if status == noErr {
             retryAttempts = 0
         } else {
+            unregister()
             scheduleRetry()
         }
 
         installLocalMonitor()
-        return registerStatus
+        return status
     }
 
     private func installLocalMonitor() {
