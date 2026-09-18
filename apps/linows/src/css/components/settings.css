@@ -520,7 +520,8 @@ html:not([data-os="linux"]) .settings-linux-only {
     padding: 3px 0;
 }
 
-.settings-shortcut kbd {
+.settings-shortcut kbd,
+.settings-shortcut-key {
     font-family: var(--font-mono);
     font-size: calc(var(--font-size) - 2px);
     font-weight: 400;
@@ -531,11 +532,17 @@ html:not([data-os="linux"]) .settings-linux-only {
     white-space: nowrap;
 }
 
-.settings-shortcut-recorder {
+/* Focusable, so a keyboard can start the recorder. */
+.settings-shortcut-key {
+    border: none;
     cursor: pointer;
 }
 
-.settings-shortcut kbd.settings-shortcut-active {
+.settings-shortcut-key:disabled {
+    cursor: default;
+}
+
+.settings-shortcut-key.settings-shortcut-active {
     box-shadow: inset 0 0 0 1px var(--accent-color);
 }
 

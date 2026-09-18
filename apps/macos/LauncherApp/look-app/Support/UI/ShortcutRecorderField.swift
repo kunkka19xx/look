@@ -15,6 +15,7 @@ struct ShortcutRecorderField: View {
 
     private static let listening = "Press a shortcut, Esc to cancel"
     private static let unknownKey = "That key cannot be used"
+    private static let deafRecorder = "Could not listen for keys"
     private static let fillOpacity = 0.14
     private static let spacing: CGFloat = 6
 
@@ -70,12 +71,20 @@ struct ShortcutRecorderField: View {
     }
 
     private func startRecording() {
-        ShortcutCapture.isActive = true
         shortcut.registration.suspend()
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        let installed = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             record(event)
             return nil
         }
+        guard let installed else {
+            // Nothing would reach the recorder, and stopRecording() would not
+            // run, so hand the shortcut back here.
+            shortcut.registration.reload()
+            error = Self.deafRecorder
+            return
+        }
+        monitor = installed
+        ShortcutCapture.isActive = true
     }
 
     private func stopRecording() {

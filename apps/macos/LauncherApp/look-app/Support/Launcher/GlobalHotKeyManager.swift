@@ -49,13 +49,17 @@ final class GlobalHotKeyManager {
         }
     }
 
-    func registerToggleHotKey(_ hotkey: CarbonHotkey) {
+    /// `noErr`, or the Carbon status that made the hotkey dead. Retries keep
+    /// running either way.
+    @discardableResult
+    func registerToggleHotKey(_ hotkey: CarbonHotkey) -> OSStatus {
         self.hotkey = hotkey
         retryAttempts = 0
-        registerCurrentHotKey()
+        return registerCurrentHotKey()
     }
 
-    private func registerCurrentHotKey() {
+    @discardableResult
+    private func registerCurrentHotKey() -> OSStatus {
         retryWorkItem?.cancel()
         retryWorkItem = nil
         unregister()
@@ -106,6 +110,11 @@ final class GlobalHotKeyManager {
             scheduleRetry()
         }
 
+        installLocalMonitor()
+        return registerStatus
+    }
+
+    private func installLocalMonitor() {
         // Local monitor: foreground-focused complement to the global
         // Carbon hotkey. Posts the same notification so the rest of the
         // app doesn't need to know which path delivered the event.
