@@ -19,13 +19,39 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_manager_v1::{self as wlr_manager, ZwlrForeignToplevelManagerV1},
 };
 
+/// `zwlr_foreign_toplevel_handle_v1.state.activated`.
+const ACTIVATED_STATE: u32 = 2;
+
+/// The `app_id` of the toplevel the compositor has activated, which is the app
+/// the user is in. Names a copied image after where it came from.
+pub fn focused_app_id() -> Option<String> {
+    let state = collect_toplevels()?;
+    state
+        .toplevels
+        .iter()
+        .find(|t| t.activated)
+        .and_then(|t| t.app_id.clone())
+}
+
 /// Collect app_ids of all visible toplevels on wlroots-based compositors.
 /// Returns an empty set if the protocol isn't available.
 pub fn list_toplevel_app_ids() -> std::collections::HashSet<String> {
     let mut ids = std::collections::HashSet::new();
-    let Ok(conn) = Connection::connect_to_env() else {
+    let Some(state) = collect_toplevels() else {
         return ids;
     };
+    for tl in &state.toplevels {
+        if let Some(id) = &tl.app_id {
+            ids.insert(id.to_lowercase());
+        }
+    }
+    ids
+}
+
+/// Every window the compositor manages, with the app_id and activated state it
+/// reported.
+fn collect_toplevels() -> Option<State> {
+    let conn = Connection::connect_to_env().ok()?;
     let mut queue = conn.new_event_queue::<State>();
     let qh = queue.handle();
     let _registry = conn.display().get_registry(&qh, ());
@@ -38,7 +64,7 @@ pub fn list_toplevel_app_ids() -> std::collections::HashSet<String> {
     };
 
     if queue.roundtrip(&mut state).is_err() || !state.manager_bound {
-        return ids;
+        return None;
     }
     let deadline = Instant::now() + Duration::from_millis(500);
     while Instant::now() < deadline {
@@ -49,12 +75,7 @@ pub fn list_toplevel_app_ids() -> std::collections::HashSet<String> {
             break;
         }
     }
-    for tl in &state.toplevels {
-        if let Some(id) = &tl.app_id {
-            ids.insert(id.to_lowercase());
-        }
-    }
-    ids
+    Some(state)
 }
 
 /// Try to activate an existing toplevel whose `app_id` matches (case-insensitive).
@@ -129,6 +150,8 @@ pub fn try_focus(app_id: &str) -> bool {
 struct ToplevelEntry {
     handle: ZwlrForeignToplevelHandleV1,
     app_id: Option<String>,
+    /// The compositor's own word for "this is the window with focus".
+    activated: bool,
     done: bool,
 }
 
@@ -195,6 +218,7 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for State {
             state.toplevels.push(ToplevelEntry {
                 handle: toplevel,
                 app_id: None,
+                activated: false,
                 done: false,
             });
         }
@@ -223,6 +247,14 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for State {
         };
         match event {
             wlr_toplevel::Event::AppId { app_id } => entry.app_id = Some(app_id),
+            // A packed array of u32s, re-sent in full on every change.
+            wlr_toplevel::Event::State { state } => {
+                entry.activated = state
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|word| u32::from_ne_bytes(*word) == ACTIVATED_STATE);
+            }
             wlr_toplevel::Event::Done => entry.done = true,
             wlr_toplevel::Event::Closed => entry.app_id = None,
             _ => {}

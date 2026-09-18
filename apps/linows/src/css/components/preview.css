@@ -109,6 +109,17 @@
     margin-top: 14px;
 }
 
+/* The exception: a panel whose whole footer is one row (the clipboard
+ * histories) puts the value on the right edge, as macOS does. With nothing
+ * above or below it, there is no column for it to line up with. */
+.preview-meta.is-justified .preview-info-row {
+    grid-template-columns: auto 1fr;
+}
+
+.preview-meta.is-justified .preview-info-value {
+    text-align: right;
+}
+
 /* Two columns, not a justified pair: at opposite edges of a 480px panel the
  * label and its value stop reading as one fact. */
 .preview-info-row {
@@ -517,7 +528,9 @@
 .preview-clip-delete {
     margin-left: auto;
     flex-shrink: 0;
-    font-size: calc(var(--font-size) - 1px);
+    /* Two under the base size, as macOS sets it: at one under, the word
+     * out-weighed the title it sits beside. */
+    font-size: calc(var(--font-size) - 2px);
     font-weight: 600;
     padding: 4px 12px;
     border-radius: var(--chip-radius);
@@ -531,8 +544,8 @@
 }
 
 .preview-clip-delete svg {
-    width: 14px;
-    height: 14px;
+    width: 13px;
+    height: 13px;
 }
 
 .preview-clip-delete:hover {
@@ -558,6 +571,30 @@
     max-height: 200px;
     overflow-y: auto;
     margin-bottom: 10px;
+}
+
+/* The picture takes the space the text card gives a clip's characters, and no
+ * more: the panel still has to fit its Captured row underneath. */
+.preview-clip-image {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-height: 320px;
+    overflow: hidden;
+}
+
+.preview-clip-image img {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 6px;
+    object-fit: contain;
+}
+
+.preview-clip-image-missing {
+    justify-content: center;
+    padding: 24px 10px;
+    font-size: calc(var(--font-size) - 1px);
+    color: var(--font-muted);
 }
 
 .preview-clip-text {

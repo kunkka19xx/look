@@ -60,7 +60,7 @@ pub const MODES: &[Mode] = &[
         name: "clipboard-image",
         aliases: &["clipimg", "ci"],
         prefix: "ci\"",
-        platforms: Platforms::MacOnly,
+        platforms: Platforms::All,
         about: "copied images",
     },
     Mode {
@@ -540,10 +540,9 @@ mod tests {
         assert_eq!(resolve("processes").unwrap().platforms, Platforms::All);
         assert_eq!(resolve("dictionary").unwrap().platforms, Platforms::MacOnly);
         assert_eq!(resolve("ai").unwrap().platforms, Platforms::MacOnly);
-        // linows keeps clipboard history in its own store, with no image path.
         assert_eq!(
             resolve("clipboard-image").unwrap().platforms,
-            Platforms::MacOnly
+            Platforms::All
         );
     }
 

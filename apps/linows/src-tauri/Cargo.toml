@@ -28,6 +28,9 @@ base64 = "0.22"
 rodio = "0.20"
 arboard = { version = "3", features = ["wayland-data-control"] }
 dirs = "6"
+# PNG for the ci" image clipboard (encode a capture, decode it to paste) and
+# for Windows icon conversion.
+png = "0.17"
 tauri-plugin-dialog = "2"
 trash = "5"
 tokio = { version = "1.52.3", features = ["rt", "time"] }
@@ -98,7 +101,6 @@ windows = { version = "0.61", features = [
     "Win32_UI_Shell_Common",
     "Win32_UI_WindowsAndMessaging",
 ] }
-png = "0.17"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

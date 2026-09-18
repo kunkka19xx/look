@@ -175,7 +175,7 @@ private struct LaunchpadToggleTile: View {
         Button(action: onTap) {
             HStack(spacing: 8) {
                 Image(systemName: iconName)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: Const.tileIconFontSize, weight: .medium))
                     .foregroundColor(isOn ? themeStore.accentColor() : themeStore.mutedTextColor())
                     // Theme and Keep Awake swap glyph on flip.
                     .contentTransition(.symbolEffect(.replace))
@@ -257,7 +257,7 @@ private struct LaunchpadInfoTile: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: iconName)
-                .font(.system(size: 18, weight: .medium))
+                .font(.system(size: Const.tileIconFontSize, weight: .medium))
                 .foregroundColor(themeStore.accentColor())
                 // The glyph gains and loses its bolt as charging changes.
                 .contentTransition(.symbolEffect(.replace))
@@ -320,14 +320,14 @@ private struct LaunchpadCustomTile: View {
     /// A tile that only acts, drawn like Mic and Screensaver. A placeholder
     /// would be a permanent "--" for something never going to fill in.
     private var button: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             Image(systemName: value?.icon ?? model.icon ?? Const.customTileFallbackIcon)
-                .font(.system(size: 24, weight: .medium))
+                .font(.system(size: Const.tileIconFontSize, weight: .medium))
                 .foregroundColor(confirming ? themeStore.dangerColor() : themeStore.accentColor())
             mnemonicText(
                 confirming ? (model.confirm ?? "Confirm?") : model.title,
                 mnemonic: confirming ? nil : model.mnemonic,
-                font: themeStore.uiFont(size: Const.titleFontSize, weight: .semibold),
+                font: themeStore.uiFont(size: Const.smallLabelFontSize, weight: .semibold),
                 base: confirming ? themeStore.dangerColor() : themeStore.fontColor(),
                 highlight: themeStore.warningColor()
             )
@@ -351,7 +351,7 @@ private struct LaunchpadCustomTile: View {
         HStack(spacing: 10) {
             if let icon = (value?.icon ?? model.icon), !icon.isEmpty {
                 Image(systemName: icon)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: Const.tileIconFontSize, weight: .medium))
                     .foregroundColor(themeStore.accentColor())
                     .contentTransition(.symbolEffect(.replace))
             }
@@ -505,7 +505,7 @@ private struct LaunchpadActionTile: View {
         Button(action: onTap) {
             VStack(spacing: 6) {
                 Image(systemName: iconName)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: Const.tileIconFontSize, weight: .medium))
                     .foregroundColor(tint)
                 mnemonicText(
                     confirming ? (model.confirm ?? "Confirm?") : model.title,
@@ -585,7 +585,7 @@ private struct LaunchpadMediaTile: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "music.note")
-                .font(.system(size: 18, weight: .medium))
+                .font(.system(size: Const.tileIconFontSize, weight: .medium))
                 .foregroundColor(themeStore.accentColor())
             VStack(alignment: .leading, spacing: 1) {
                 Text(trackTitle)

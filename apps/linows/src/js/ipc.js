@@ -185,6 +185,24 @@ export async function deleteClipboardEntry(timestamp, text) {
     return invoke('delete_clipboard_entry', { timestamp, text });
 }
 
+export async function getClipboardImages() {
+    return invoke('get_clipboard_images');
+}
+
+// Images come through the command bridge like icons do: the asset protocol
+// does not serve them in this webview.
+export async function getClipboardImageData(hash) {
+    return invoke('clipboard_image_data_url', { hash });
+}
+
+export async function deleteClipboardImage(hash) {
+    return invoke('delete_clipboard_image', { hash });
+}
+
+export async function copyClipboardImage(hash) {
+    return invoke('copy_clipboard_image', { hash });
+}
+
 export async function copyToClipboard(text) {
     return invoke('copy_to_clipboard', { text });
 }
