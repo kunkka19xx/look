@@ -77,8 +77,7 @@ struct ShortcutRecorderField: View {
             return nil
         }
         guard let installed else {
-            // Nothing would reach the recorder, and stopRecording() would not
-            // run, so hand the shortcut back here.
+            // stopRecording() will not run, so hand the shortcut back here.
             shortcut.registration.reload()
             error = Self.deafRecorder
             return

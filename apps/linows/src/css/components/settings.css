@@ -532,7 +532,6 @@ html:not([data-os="linux"]) .settings-linux-only {
     white-space: nowrap;
 }
 
-/* Focusable, so a keyboard can start the recorder. */
 .settings-shortcut-key {
     border: none;
     cursor: pointer;

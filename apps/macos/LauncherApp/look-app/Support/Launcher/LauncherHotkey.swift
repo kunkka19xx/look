@@ -184,8 +184,7 @@ final class LauncherHotkeyController: ObservableObject, ShortcutRegistration {
         return [spec.warning, register(hotkey)].compactMap { $0 }.joined(separator: ". ").nilIfEmpty
     }
 
-    /// Returns why the key is dead, when Carbon refused it: another app owns it.
-    /// Retries continue in the background.
+    /// Returns why the key is dead when Carbon refuses it; retries continue.
     private func register(_ hotkey: CarbonHotkey) -> String? {
         let status = manager.registerToggleHotKey(hotkey)
         display = hotkey.display

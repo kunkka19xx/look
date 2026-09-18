@@ -55,8 +55,7 @@ pub fn register(app: &AppHandle) {
                 health::report(health::ISSUE_HOTKEY, warning);
             }
         }
-        // Carries the config warning too: only the first report per id is kept,
-        // and this one is the more actionable of the two.
+        // Carries the config warning too: only the first report per id is kept.
         Err(e) => health::report(
             health::ISSUE_HOTKEY,
             format!(
