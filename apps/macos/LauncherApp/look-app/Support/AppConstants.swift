@@ -578,6 +578,10 @@ enum AppConstants {
             /// Crossfade duration when the L slot's active source changes.
             static let rotateFadeSeconds: TimeInterval = 0.45
 
+            /// Size every tile draws its leading glyph at, so a user tile sits
+            /// level with the built-ins beside it.
+            static let tileIconFontSize: CGFloat = 18
+
             static let titleFontSize: CGFloat = 12.5
             static let valueFontSize: CGFloat = 22
             static let captionFontSize: CGFloat = 10.5
