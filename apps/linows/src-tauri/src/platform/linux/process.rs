@@ -820,9 +820,52 @@ pub(crate) fn list_all() -> Vec<ProcRow> {
         if uid != my_uid {
             continue;
         }
-        let name = parse_status_field(&status, "Name:").unwrap_or_default();
+        let mut name = parse_status_field(&status, "Name:").unwrap_or_default();
         if name.is_empty() {
             continue;
+        }
+        // `Name:` is TASK_COMM_LEN-1 == 15 chars, so `Presentation.Service` → `Presentation.Sy`.
+        // Prefer the untruncated `exe` basename; for interpreter launches the exe
+        // is the interpreter itself, so the real app is the first file-path arg.
+        if name.len() >= 15 {
+            let exe_base = fs::read_link(format!("/proc/{pid}/exe"))
+                .ok()
+                .and_then(|p| {
+                    p.file_name()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.to_string())
+                });
+            if let Some(base) = exe_base.clone() {
+                if !base.is_empty() {
+                    name = base;
+                }
+            }
+            if let Ok(bytes) = fs::read(format!("/proc/{pid}/cmdline")) {
+                let cmd = bytes_to_cmdline(&bytes);
+                let mut tokens = cmd.split_whitespace();
+                let first = tokens.next().unwrap_or("");
+                let first_base = Path::new(first)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("");
+                // Interpreter case: exe == argv0 (e.g. dotnet/dotnet, python/python3)
+                let is_interpreter =
+                    exe_base.as_deref() == Some(first_base) && !first_base.is_empty();
+                if is_interpreter || name.len() >= 15 {
+                    for token in tokens {
+                        if token.contains('/') || token.contains('\\') {
+                            if let Some(stem) =
+                                Path::new(token).file_stem().and_then(|s| s.to_str())
+                            {
+                                if !stem.is_empty() {
+                                    name = stem.to_string();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         let ports = if inode_ports.is_empty() {
             Vec::new()
