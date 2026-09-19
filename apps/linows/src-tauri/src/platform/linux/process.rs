@@ -835,11 +835,12 @@ pub(crate) fn list_all() -> Vec<ProcRow> {
                         .and_then(|s| s.to_str())
                         .map(|s| s.to_string())
                 });
-            if let Some(base) = exe_base.clone() {
-                if !base.is_empty() {
-                    name = base;
-                }
+            if let Some(base) = exe_base.clone()
+                && !base.is_empty()
+            {
+                name = base;
             }
+
             if let Ok(bytes) = fs::read(format!("/proc/{pid}/cmdline")) {
                 let cmd = bytes_to_cmdline(&bytes);
                 let mut tokens = cmd.split_whitespace();
@@ -853,15 +854,13 @@ pub(crate) fn list_all() -> Vec<ProcRow> {
                     exe_base.as_deref() == Some(first_base) && !first_base.is_empty();
                 if is_interpreter || name.len() >= 15 {
                     for token in tokens {
-                        if token.contains('/') || token.contains('\\') {
-                            if let Some(stem) =
+                        if (token.contains('/') || token.contains('\\'))
+                            && let Some(stem) =
                                 Path::new(token).file_stem().and_then(|s| s.to_str())
-                            {
-                                if !stem.is_empty() {
-                                    name = stem.to_string();
-                                    break;
-                                }
-                            }
+                            && !stem.is_empty()
+                        {
+                            name = stem.to_string();
+                            break;
                         }
                     }
                 }
