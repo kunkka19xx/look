@@ -366,6 +366,10 @@ export async function onHealthChanged(callback) {
     return listen('health-changed', callback);
 }
 
+export async function onConfigReloadRequested(callback) {
+    return listen('config-reload-requested', callback);
+}
+
 export async function onIndexReady(callback) {
     return listen('index-ready', callback);
 }
@@ -396,6 +400,15 @@ export async function setAutostart(enabled) {
 
 export async function getAutostart() {
     return invoke('get_autostart');
+}
+
+// Windows-only in effect: the Linux packages already put lookapp on PATH.
+export async function setCliPath(enabled) {
+    return invoke('set_cli_path', { enabled });
+}
+
+export async function getCliPath() {
+    return invoke('get_cli_path');
 }
 
 export async function highlightFile(path) {

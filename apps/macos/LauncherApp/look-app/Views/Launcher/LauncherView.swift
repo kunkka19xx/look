@@ -1049,6 +1049,13 @@ struct LauncherView: View {
         .onReceive(NotificationCenter.default.publisher(for: .lookReloadConfigRequested)) { _ in
             reloadConfig()
         }
+        // `lookapp reload-config` from a script: applied in place, no window.
+        .onReceive(
+            DistributedNotificationCenter.default().publisher(
+                for: LaunchModes.reloadConfigNotification)
+        ) { _ in
+            reloadConfig(announcesSuccess: false)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .lookSourceTargetsLoaded)) { _ in
             refreshQuickActions()
         }

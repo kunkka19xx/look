@@ -562,6 +562,7 @@ All settings are persisted to `.look/config`:
 **Runtime:**
 - `backend_log_level` - error, info, debug
 - `launch_at_login` - true/false
+- `add_to_path` - true/false (Windows; puts the install directory on the user PATH)
 
 ### Config Reload Validation
 

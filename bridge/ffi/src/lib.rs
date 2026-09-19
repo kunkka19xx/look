@@ -162,7 +162,7 @@ pub extern "C" fn look_modes_list_text() -> *mut c_char {
 }
 
 /// Parse argv (a JSON array of strings, program name already dropped) into
-/// `{"kind":"normal"|"query"|"list_modes"|"unknown_mode", ...}`. Free with
+/// `{"kind":"normal"|"query"|"list_modes"|"reload_config"|"unknown_mode", ...}`. Free with
 /// `look_free_cstring`.
 #[unsafe(no_mangle)]
 pub extern "C" fn look_modes_parse_json(argv_json: *const c_char) -> *mut c_char {

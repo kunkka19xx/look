@@ -366,11 +366,14 @@ extension LauncherView {
     /// Callers reloading as a side effect of some other action pass their own
     /// `success*` values rather than posting a second banner, which would replace
     /// any config warnings reported here before the user could read them.
+    /// A headless reload passes `announcesSuccess: false` so a script firing it
+    /// often stays silent unless something is wrong.
     @discardableResult
     func reloadConfig(
         successMessage: String = "Config reloaded",
         successStyle: BannerStyle = .info,
-        successDuration: Double = 2.0
+        successDuration: Double = 2.0,
+        announcesSuccess: Bool = true
     ) -> Bool {
         let result = themeStore.reloadFromConfig()
         let backendReloaded = bridge.reloadConfig()
@@ -403,12 +406,18 @@ extension LauncherView {
             copyText = warnings.joined(separator: "\n")
         }
 
-        showBanner(message, style: style, copyText: copyText, duration: duration)
-        if isCommandMode {
-            commandFeedback = message
+        let hasProblem = !backendReloaded || !warnings.isEmpty
+        if announcesSuccess || hasProblem {
+            showBanner(message, style: style, copyText: copyText, duration: duration)
+            if isCommandMode {
+                commandFeedback = message
+            }
         }
         refreshSearchResults()
-        focusActiveInput()
+        // A headless reload arrives while hidden, and focusing would activate Look.
+        if launcherWindow()?.isVisible == true {
+            focusActiveInput()
+        }
         return backendReloaded
     }
 

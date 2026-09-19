@@ -100,6 +100,7 @@ Runtime file: `~/.look/config` (or `LOOK_CONFIG_PATH`).
   - Cost: measured on a 134-app machine, the app+settings index pass goes from ~3 ms to ~35 ms on the first run, then ~10 ms once Foundation's bundle cache is warm. The per-bundle Info.plist reads are spread over a small thread pool, which is what keeps the first run cheap. This runs at index time, not per keystroke. Foundation retains that metadata for the process lifetime, so memory grows with the size of the app catalog.
 - `backend_log_level`
 - `launch_at_login`
+- `add_to_path` (Windows only, no default) - registers the install directory in `HKCU\Environment` PATH so `lookapp <mode>` runs from a terminal. Synced on every launch, so an update that lands elsewhere re-registers. An absent key leaves PATH untouched.
 
 Behavior:
 

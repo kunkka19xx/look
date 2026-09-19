@@ -513,6 +513,7 @@ Runtime config file:
 - path: `~/.look/config`
 - optional override: `LOOK_CONFIG_PATH=/path/to/config`
 - reload after manual edits: `Cmd+Shift+;`
+- reload from a script: `lookapp reload-config` applies the file in the running Look without opening the window, so a script that rewrites the theme (for example to follow the wallpaper) takes effect immediately. If Look is not running it does nothing and exits 0.
 - reset to fresh defaults from UI: `Settings -> Advanced -> Create Fresh Config` (confirmation popup)
 
 NixOS / Home Manager users can manage the same file declaratively through the
@@ -560,7 +561,7 @@ Backend-related keys:
 - `lazy_indexing_enabled`
 - `skip_dir_names`
 - `alias_<keyword>` (for app + System Settings query aliases, for example `alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq`)
-- `backend_log_level`, `launch_at_login`
+- `backend_log_level`, `launch_at_login`, `add_to_path` (Windows)
 
 File-only settings (no Settings UI):
 

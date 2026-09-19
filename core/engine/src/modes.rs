@@ -177,6 +177,14 @@ pub const MODES: &[Mode] = &[
     },
 ];
 
+/// Not a mode: tells the running instance to re-read its config and exits,
+/// without opening a window. For scripts that rewrite the config (a theme that
+/// follows the wallpaper) and want it applied immediately.
+pub const RELOAD_CONFIG_COMMAND: &str = "reload-config";
+const RELOAD_CONFIG_FLAG: &str = "--reload-config";
+const RELOAD_CONFIG_ABOUT: &str = "re-read the config in the running Look, no window";
+const COMMANDS_HEADING: &str = "commands:";
+
 /// The single resolution point: an unmatched name is where a future fallback
 /// goes (user-declared blocks are the obvious candidate), which only stays
 /// possible while callers ask here instead of matching names themselves.
@@ -225,6 +233,10 @@ pub fn list_text() -> String {
             mode.name, mode.about
         ));
     }
+    out.push_str(&format!(
+        "\n{COMMANDS_HEADING}\n{:<width$}  {RELOAD_CONFIG_ABOUT}\n",
+        RELOAD_CONFIG_COMMAND
+    ));
     out
 }
 
@@ -259,6 +271,7 @@ pub enum Launch {
         text: String,
     },
     ListModes,
+    ReloadConfig,
     /// Named a mode and got it wrong. An error because they were specific,
     /// unlike a bare word that just means "open".
     UnknownMode(String),
@@ -266,8 +279,8 @@ pub enum Launch {
     UnavailableMode(String),
 }
 
-/// Arguments after the program name. Precedence: a bare mode name, then
-/// `--list-modes`, `--mode`, `--query`.
+/// Arguments after the program name. Precedence: `reload-config`, a bare mode
+/// name, then `--list-modes`, `--mode`, `--query`.
 pub fn parse_args<I, S>(args: I) -> Launch
 where
     I: IntoIterator<Item = S>,
@@ -277,6 +290,12 @@ where
         .into_iter()
         .map(|arg| arg.as_ref().to_string())
         .collect();
+
+    if let Some(first) = args.first()
+        && (first.eq_ignore_ascii_case(RELOAD_CONFIG_COMMAND) || first == RELOAD_CONFIG_FLAG)
+    {
+        return Launch::ReloadConfig;
+    }
 
     // Before any flag parsing, so the rest is the term verbatim:
     // `lookapp shell ls -la` has to keep its `-la`.
@@ -544,6 +563,14 @@ mod tests {
             resolve("clipboard-image").unwrap().platforms,
             Platforms::All
         );
+    }
+
+    #[test]
+    fn reload_config_is_its_own_launch_not_a_search() {
+        assert_eq!(parse(&["reload-config"]), Launch::ReloadConfig);
+        assert_eq!(parse(&["--reload-config"]), Launch::ReloadConfig);
+        assert!(resolve(RELOAD_CONFIG_COMMAND).is_none());
+        assert!(list_text().contains(RELOAD_CONFIG_COMMAND));
     }
 
     #[test]
