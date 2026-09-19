@@ -53,8 +53,15 @@ pub(crate) fn set_string(
     let name_w = to_wide(name);
     let wide = to_wide(value);
     let bytes = unsafe { std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2) };
-    let err =
-        unsafe { RegSetValueExW(key.0, PCWSTR(name_w.as_ptr()), None, value_type, Some(bytes)) };
+    let err = unsafe {
+        RegSetValueExW(
+            key.0,
+            PCWSTR(name_w.as_ptr()),
+            None,
+            value_type,
+            Some(bytes),
+        )
+    };
     if err.0 != 0 {
         return Err(format!("RegSetValueExW({name}) failed: {}", err.0));
     }
