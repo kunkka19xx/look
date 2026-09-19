@@ -1,4 +1,4 @@
-/* Notify-only update widget. Shared between Settings (About) and Help. */
+/* Update widget. Shared between Settings (About) and Help. */
 
 .update-widget {
     display: flex;
@@ -95,6 +95,11 @@
 .update-hint {
     font-size: calc(var(--font-size) - 2px);
     color: var(--font-secondary);
+}
+
+.update-hint > .update-pill {
+    margin-left: 6px;
+    padding: 2px 10px;
 }
 
 .update-hint-link {
