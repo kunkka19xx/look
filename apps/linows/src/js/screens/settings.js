@@ -8,6 +8,8 @@ import {
     pickImage,
     setAutostart,
     getAutostart,
+    setCliPath,
+    getCliPath,
     listCandidateDrives,
 } from '../ipc.js';
 import * as banner from '../components/banner.js';
@@ -443,6 +445,12 @@ export function init(exitFn) {
         setAutostart(enabled).catch(() => {});
     });
 
+    document.getElementById('settings-add-to-path').addEventListener('change', (e) => {
+        const enabled = e.target.checked;
+        saveConfig({ add_to_path: enabled ? 'true' : 'false' });
+        setCliPath(enabled).catch(() => {});
+    });
+
     // Fresh config
     document.getElementById('settings-fresh-config').addEventListener('click', async () => {
         try {
@@ -622,6 +630,12 @@ export function init(exitFn) {
             updates.launch_at_login = document.getElementById('settings-launch-login').checked
                 ? 'true'
                 : 'false';
+            // Windows-only row; elsewhere the key would just sit in the config.
+            if (platform.isWindows()) {
+                updates.add_to_path = document.getElementById('settings-add-to-path').checked
+                    ? 'true'
+                    : 'false';
+            }
 
             await saveConfig(updates);
             // Clearing the field saves the sentinel; the live inline override
@@ -1024,13 +1038,18 @@ async function loadConfig() {
             logItem.classList.add('settings-dropdown-active');
         }
 
-        // Launch at login - read actual system state
+        // Launch at login and PATH: read actual system state
         try {
             const autostartEnabled = await getAutostart();
             document.getElementById('settings-launch-login').checked = autostartEnabled;
         } catch {
             document.getElementById('settings-launch-login').checked =
                 map.launch_at_login === 'true';
+        }
+        try {
+            document.getElementById('settings-add-to-path').checked = await getCliPath();
+        } catch {
+            document.getElementById('settings-add-to-path').checked = map.add_to_path === 'true';
         }
     } catch (err) {
         console.error('Failed to load config:', err);

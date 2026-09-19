@@ -402,6 +402,15 @@ export async function getAutostart() {
     return invoke('get_autostart');
 }
 
+// Windows-only in effect: the Linux packages already put lookapp on PATH.
+export async function setCliPath(enabled) {
+    return invoke('set_cli_path', { enabled });
+}
+
+export async function getCliPath() {
+    return invoke('get_cli_path');
+}
+
 export async function highlightFile(path) {
     return invoke('highlight_file_cmd', { path });
 }

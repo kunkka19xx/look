@@ -4,6 +4,7 @@
 mod answers;
 mod autostart;
 mod calc;
+mod cli_path;
 mod clipboard;
 mod clipimage;
 mod commands;
@@ -364,49 +365,52 @@ fn setup_dev_env() {
     );
 }
 
-/// Sync autostart registration with config on every launch.
+/// Sync OS integrations (autostart, PATH) with config on every launch, so the
+/// registered exe path stays valid after updates or reinstalls.
 ///
-/// On first launch (no `launch_at_login` key yet) - enable autostart and persist.
-/// On subsequent launches - re-sync the registry/desktop-entry with the current
-/// exe path so it stays valid after updates or reinstalls.
-fn sync_autostart() {
-    // Debug builds live under target/debug and (when produced by `tauri dev`)
-    // load the frontend from devUrl. If we wrote them into autostart, login
-    // would launch a binary that fails with "Could not connect to 127.0.0.1"
-    // because the dev server isn't running. Leave the installed binary's
-    // autostart entry alone.
+/// Debug builds live under target/debug and (when produced by `tauri dev`)
+/// load the frontend from devUrl. Registering them would launch or shadow the
+/// installed binary with one that fails without the dev server, so skip.
+fn sync_integrations() {
     if cfg!(debug_assertions) {
         return;
     }
 
+    let content = std::fs::read_to_string(config::config_file_path()).unwrap_or_default();
+
     const KEY: &str = "launch_at_login";
-
-    let config_path = config::config_file_path();
-    let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
-
-    let config_value = config_content.lines().find_map(|l| {
-        let l = l.trim();
-        if !l.starts_with('#') {
-            l.split_once('=')
-                .filter(|(k, _)| k.trim() == KEY)
-                .map(|(_, v)| v.trim() == "true")
-        } else {
-            None
-        }
-    });
-
-    let enabled = if let Some(val) = config_value {
-        val
-    } else {
-        // First launch - enable by default and persist.
+    let enabled = config_flag(&content, KEY).unwrap_or_else(|| {
+        // First launch: enable by default and persist.
         let _ = config::set_config(vec![config::ConfigUpdate {
             key: KEY.into(),
             value: "true".into(),
         }]);
         true
-    };
-
+    });
     let _ = autostart::set_autostart(enabled);
+
+    // No default for PATH: an absent key leaves it alone, since the install
+    // script may have added the entry already. Off the main thread because the
+    // environment broadcast can block for up to a second.
+    if let Some(enabled) = config_flag(&content, "add_to_path") {
+        std::thread::spawn(move || {
+            let _ = cli_path::set_cli_path(enabled);
+        });
+    }
+}
+
+/// Reads a `key=true|false` line straight off the config text. Cheaper than a
+/// full parse, and runs before the window opens.
+fn config_flag(content: &str, key: &str) -> Option<bool> {
+    content.lines().find_map(|line| {
+        let line = line.trim();
+        if line.starts_with('#') {
+            return None;
+        }
+        line.split_once('=')
+            .filter(|(k, _)| k.trim() == key)
+            .map(|(_, v)| v.trim() == "true")
+    })
 }
 
 /// Register global shortcuts (Alt+Space to toggle, Alt+Shift+Q to quit).
@@ -616,7 +620,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     let disable_gpu = gpu::detect_and_disable_virtual_gpu() || gpu::disable_gpu_from_config();
 
-    sync_autostart();
+    sync_integrations();
 
     let single_instance =
         tauri_plugin_single_instance::Builder::<tauri::Wry>::new().callback(|app, args, _cwd| {
@@ -881,6 +885,8 @@ fn main() {
             // Autostart
             autostart::set_autostart,
             autostart::get_autostart,
+            cli_path::set_cli_path,
+            cli_path::get_cli_path,
             // Setup health (hotkey/extension problems shown in the UI)
             health::get_health_issues,
             // Highlight

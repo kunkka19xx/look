@@ -561,7 +561,7 @@ Backend-related keys:
 - `lazy_indexing_enabled`
 - `skip_dir_names`
 - `alias_<keyword>` (for app + System Settings query aliases, for example `alias_note=Notion|Obsidian|Notes|Apple Notes|Bear|Logseq`)
-- `backend_log_level`, `launch_at_login`
+- `backend_log_level`, `launch_at_login`, `add_to_path` (Windows)
 
 File-only settings (no Settings UI):
 
