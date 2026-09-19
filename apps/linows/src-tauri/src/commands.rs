@@ -411,10 +411,10 @@ pub fn get_install_method() -> String {
 }
 
 #[tauri::command]
-pub fn start_windows_update(app: tauri::AppHandle, version: String) -> Result<(), String> {
+pub async fn start_windows_update(app: tauri::AppHandle, version: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        crate::platform::windows::update::start(app, &version)
+        crate::platform::windows::update::start(app, version).await
     }
 
     #[cfg(not(target_os = "windows"))]

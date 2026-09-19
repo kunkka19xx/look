@@ -1,12 +1,12 @@
 // Update widget mounted in Settings ("About" footer) and Help.
-// Linux stays notify-only because install paths vary too much; Windows can
-// update NSIS and Scoop installs automatically at startup or on user request.
+// Windows installer builds get an Update button after a check. Package-manager
+// installs (Scoop, deb, Nix) stay notify-only so the manager owns the version;
+// Scoop gets its upgrade command to copy.
 //
 // The check itself runs in the webview via `fetch()` (no Rust HTTP/TLS
 // dep); cross-origin works because `tauri.conf.json` has `csp: null`.
 // Dismissed versions persist in `localStorage`.
 import {
-    autoUpdateEnabled,
     getInstallMethod,
     getLookappVersion,
     openPath,
@@ -19,6 +19,9 @@ const RELEASES_API_URL = 'https://api.github.com/repos/kunkka19xx/look/releases/
 const FALLBACK_RELEASES_URL = 'https://github.com/kunkka19xx/look/releases/latest';
 const DISMISSED_VERSION_KEY = 'look.update.dismissedVersion';
 const HTTP_TIMEOUT_MS = 15_000;
+const SELF_UPDATE_INSTALL_METHOD = 'nsis';
+const SCOOP_INSTALL_METHOD = 'scoop';
+const SCOOP_UPDATE_COMMAND = 'scoop update look';
 
 // Linux/Windows each have several install paths (deb / AppImage / NixOS /
 // Nix profile / NSIS / install scripts); sending the user to the README
@@ -46,7 +49,7 @@ export async function mountUpdateWidget(container, { label = '' } = {}) {
     container.classList.add('update-widget');
     widgets.set(container, label);
     render(container);
-    // Settings and Help mount concurrently. Initialize and auto-update once.
+    // Settings and Help mount concurrently. Initialize once.
     initialization ??= initialize();
     await initialization;
     render(container);
@@ -54,12 +57,10 @@ export async function mountUpdateWidget(container, { label = '' } = {}) {
 
 async function initialize() {
     try {
-        const loadInstallMethod =
-            platform.os() === 'windows' ? getInstallMethod() : Promise.resolve('');
         [state.currentVersion, state.isDev, state.installMethod] = await Promise.all([
             getLookappVersion(),
             isDevBuild(),
-            loadInstallMethod,
+            getInstallMethod(),
         ]);
     } catch {
         state.currentVersion = '';
@@ -67,31 +68,23 @@ async function initialize() {
         state.installMethod = '';
     }
     renderAll();
-    if (supportsSelfUpdate() && await autoUpdateEnabled().catch(() => false)) {
-        await handleCheck(false);
-        await handleUpdate();
-    }
 }
 
 function supportsSelfUpdate() {
-    switch (platform.os()) {
-        case 'windows':
-            return !state.isDev && ['nsis', 'scoop'].includes(state.installMethod);
-        case 'linux':
-            // TODO: implement Linux self-update.
-            return false;
-        default:
-            return false;
-    }
+    return (
+        platform.os() === 'windows' &&
+        !state.isDev &&
+        state.installMethod === SELF_UPDATE_INSTALL_METHOD
+    );
 }
 
-async function handleCheck(force = true) {
+async function handleCheck() {
     if (state.isChecking || state.isUpdating) return;
     state.isChecking = true;
     state.status = 'Checking…';
     renderAll();
     try {
-        const result = await performCheck(state.currentVersion, force);
+        const result = await performCheck(state.currentVersion, true);
         state.available = result.available;
         state.status = result.status;
     } catch {
@@ -123,7 +116,7 @@ function handleNotes() {
 async function handleUpdate() {
     if (!state.available || !supportsSelfUpdate() || state.isChecking || state.isUpdating) return;
     state.isUpdating = true;
-    state.status = 'Preparing update…';
+    state.status = 'Downloading update…';
     renderAll();
     try {
         await startWindowsUpdate(state.available.version);
@@ -132,6 +125,16 @@ async function handleUpdate() {
         state.status = error?.message || String(error || "Couldn't start the update");
         renderAll();
     }
+}
+
+async function handleCopyScoopCommand() {
+    try {
+        await navigator.clipboard.writeText(SCOOP_UPDATE_COMMAND);
+        state.status = 'Command copied';
+    } catch {
+        state.status = "Couldn't copy the command";
+    }
+    renderAll();
 }
 
 function handleInstallHint() {
@@ -175,10 +178,9 @@ async function performCheck(currentVersion, force) {
     if (!force && safeGetItem(DISMISSED_VERSION_KEY) === latest) {
         return { available: null, status: '' };
     }
-    return {
-        available: { version: latest, release_url: releaseUrl },
-        status: `Update available: Look ${latest}`,
-    };
+    // The banner announces the update, so the status line stays free for
+    // progress and errors.
+    return { available: { version: latest, release_url: releaseUrl }, status: '' };
 }
 
 function latestStatus(currentVersion) {
@@ -224,17 +226,13 @@ function renderAll() {
 
 function render(container) {
     const label = widgets.get(container) || '';
-    const { currentVersion, isDev, installMethod, available, status, isChecking } = state;
+    const { currentVersion, isDev, installMethod, available, status, isChecking, isUpdating } = state;
     const devSuffix = isDev ? ' - dev' : '';
     const versionLabel = currentVersion
         ? `Look ${escapeHtml(currentVersion)}${devSuffix}`
         : 'Look …';
     const canSelfUpdate = supportsSelfUpdate() && !!available;
-    const busy = isChecking || state.isUpdating;
-    // Suppress only the duplicated "Update available" line; keep real progress
-    // or errors visible while the banner is shown.
-    const showStatus =
-        status && (!available || status !== `Update available: Look ${available.version}`);
+    const busy = isChecking || isUpdating;
 
     let html = '';
     if (label) {
@@ -243,7 +241,7 @@ function render(container) {
     html += `
     <div class="update-row">
       <span class="update-version">${versionLabel}</span>
-      ${showStatus ? `<span class="update-status">${escapeHtml(status)}</span>` : ''}
+      ${status ? `<span class="update-status">${escapeHtml(status)}</span>` : ''}
       <button class="update-pill" type="button" data-action="check"${busy ? ' disabled' : ''}>
         ${isChecking ? 'Checking…' : 'Check for Updates'}
       </button>
@@ -255,21 +253,22 @@ function render(container) {
       <div class="update-banner">
         <span class="update-banner-text">Update available: Look ${escapeHtml(available.version)}</span>
         ${canSelfUpdate ? `<button class="update-pill" type="button" data-action="update"${busy ? ' disabled' : ''}>Update</button>` : ''}
-        <button class="update-pill" type="button" data-action="notes">Notes</button>
+        <button class="update-pill" type="button" data-action="notes">Release Notes</button>
         <button class="update-pill update-pill-muted" type="button" data-action="dismiss">Dismiss</button>
       </div>
     `;
         const os = platform.os();
-        if (os === 'windows' && installMethod === 'scoop') {
+        if (os === 'windows' && installMethod === SCOOP_INSTALL_METHOD) {
             html += `
         <div class="update-hint">
-          Update opens PowerShell and runs <code>scoop update look</code> automatically.
+          Quit Look, then run <code>${SCOOP_UPDATE_COMMAND}</code> once Scoop has the new version.
+          <button class="update-pill update-pill-muted" type="button" data-action="copy-scoop">Copy</button>
         </div>
       `;
-        } else if (os === 'windows' && installMethod === 'nsis') {
+        } else if (canSelfUpdate) {
             html += `
         <div class="update-hint">
-          Update opens PowerShell to download and run the installer. Look closes and reopens after installation.
+          Update downloads the installer first, then Look restarts to install it.
         </div>
       `;
         } else if (INSTALL_HINT_URLS[os]) {
@@ -283,10 +282,11 @@ function render(container) {
     }
 
     container.innerHTML = html;
-    container.querySelector('[data-action="check"]')?.addEventListener('click', () => handleCheck());
+    container.querySelector('[data-action="check"]')?.addEventListener('click', handleCheck);
     container.querySelector('[data-action="update"]')?.addEventListener('click', handleUpdate);
     container.querySelector('[data-action="notes"]')?.addEventListener('click', handleNotes);
     container.querySelector('[data-action="dismiss"]')?.addEventListener('click', handleDismiss);
+    container.querySelector('[data-action="copy-scoop"]')?.addEventListener('click', handleCopyScoopCommand);
     container.querySelector('[data-action="install-hint"]')?.addEventListener('click', (e) => {
         e.preventDefault();
         handleInstallHint();

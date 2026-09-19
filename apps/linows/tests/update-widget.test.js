@@ -8,8 +8,9 @@ const source = readFileSync(new URL('../src/js/screens/update_widget.js', import
     .replace(/^import\s[\s\S]*?\sfrom\s+['"][^'"]+['"];\r?\n/gm, '')
     .replace('export async function', 'async function');
 
-async function widget({ enabled = false, installMethod = 'nsis', os = 'windows', failure, isDev = false, check = true, latest = '0.6.11', dismissedVersion } = {}) {
+async function widget({ installMethod = 'nsis', os = 'windows', failure, isDev = false, check = true, latest = '0.6.11', dismissedVersion } = {}) {
     const calls = [];
+    const copied = [];
     const listeners = new Map();
     const localStorage = {
         values: dismissedVersion ? new Map([['look.update.dismissedVersion', dismissedVersion]]) : new Map(),
@@ -27,7 +28,6 @@ async function widget({ enabled = false, installMethod = 'nsis', os = 'windows',
     };
     const context = vm.createContext({
         platform: { os: () => os },
-        autoUpdateEnabled: async () => enabled,
         getInstallMethod: async () => installMethod,
         getLookappVersion: async () => '0.6.10',
         isDevBuild: async () => isDev,
@@ -39,6 +39,7 @@ async function widget({ enabled = false, installMethod = 'nsis', os = 'windows',
             tag_name: `v${latest}`, html_url: 'https://github.com/kunkka19xx/look/releases/tag/v0.6.11',
         }) }),
         localStorage,
+        navigator: { clipboard: { writeText: async text => { copied.push(text); } } },
         AbortController, setTimeout, clearTimeout,
     });
     vm.runInContext(source + '\nglobalThis.mount = mountUpdateWidget;', context);
@@ -49,16 +50,16 @@ async function widget({ enabled = false, installMethod = 'nsis', os = 'windows',
         return callback();
     };
     if (check) await click('check');
-    return { container, click, calls, remount: () => context.mount(container) };
+    return { container, click, calls, copied };
 }
 
 test('Check then Update successfully hands the new version to the native updater', async () => {
     const { container, click, calls } = await widget();
-    assert.match(container.innerHTML, /data-action="update"[^>]*>Update<\/button>\s*<button[^>]*data-action="notes">Notes/);
+    assert.match(container.innerHTML, /data-action="update"[^>]*>Update<\/button>\s*<button[^>]*data-action="notes">Release Notes/);
     await click('update');
     assert.deepEqual(calls, ['0.6.11']);
     // IPC returning success means handoff only; this does not prove installation or restart.
-    assert.match(container.innerHTML, /Preparing update/);
+    assert.match(container.innerHTML, /Downloading update/);
 });
 
 test('native updater rejection is shown in the widget', async () => {
@@ -67,7 +68,7 @@ test('native updater rejection is shown in the widget', async () => {
     assert.match(container.innerHTML, /Failed to spawn update helper/);
 });
 
-for (const options of [{ installMethod: 'unknown' }, { os: 'linux' }, { isDev: true }]) {
+for (const options of [{ installMethod: 'unknown' }, { installMethod: 'scoop' }, { os: 'linux' }, { isDev: true }]) {
     test(`Update remains unavailable for ${JSON.stringify(options)}`, async () => {
         const { container, calls } = await widget(options);
         assert.ok(!container.innerHTML.includes('data-action="update"'));
@@ -76,24 +77,8 @@ for (const options of [{ installMethod: 'unknown' }, { os: 'linux' }, { isDev: t
     });
 }
 
-test('Scoop manual Update works with automatic updates disabled', async () => {
-    const { click, calls } = await widget({ installMethod: 'scoop', enabled: false });
-    await click('update');
-    assert.deepEqual(calls, ['0.6.11']);
-});
-
-for (const installMethod of ['nsis', 'scoop']) {
-    test(`${installMethod} automatically updates once on startup when enabled`, async () => {
-        const { calls, remount, click } = await widget({ enabled: true, installMethod, check: false });
-        assert.deepEqual(calls, ['0.6.11']);
-        await remount();
-        await click('update');
-        assert.deepEqual(calls, ['0.6.11']);
-    });
-}
-
-test('disabled startup update does nothing until the user checks', async () => {
-    const { calls, container, click } = await widget({ enabled: false, check: false });
+test('opening the widget never updates until the user checks and presses Update', async () => {
+    const { calls, container, click } = await widget({ check: false });
     assert.deepEqual(calls, []);
     assert.ok(!container.innerHTML.includes('data-action="update"'));
     await click('check');
@@ -102,21 +87,16 @@ test('disabled startup update does nothing until the user checks', async () => {
     assert.deepEqual(calls, ['0.6.11']);
 });
 
-test('startup does not install when already on the latest release', async () => {
-    const { calls } = await widget({ enabled: true, check: false, latest: '0.6.10' });
-    assert.deepEqual(calls, []);
-});
-
-test('startup does not install a dismissed release, while manual check remains forced', async () => {
-    const { calls, click } = await widget({ enabled: true, check: false, dismissedVersion: '0.6.11' });
-    assert.deepEqual(calls, []);
-    await click('check');
+test('a manual check surfaces a previously dismissed release', async () => {
+    const { calls, click } = await widget({ dismissedVersion: '0.6.11' });
     await click('update');
     assert.deepEqual(calls, ['0.6.11']);
 });
 
-test('Scoop launch errors tell the user to check Scoop', async () => {
-    const { container, click } = await widget({ installMethod: 'scoop', failure: 'Check your Scoop.' });
-    await click('update');
-    assert.match(container.innerHTML, /Check your Scoop/);
+test('Scoop installs get a copyable upgrade command instead of Update', async () => {
+    const { container, click, copied } = await widget({ installMethod: 'scoop' });
+    assert.match(container.innerHTML, /scoop update look/);
+    await click('copy-scoop');
+    assert.deepEqual(copied, ['scoop update look']);
+    assert.match(container.innerHTML, /Command copied/);
 });

@@ -767,7 +767,6 @@ fn main() {
             commands::quit_app,
             // Config
             config::get_config,
-            config::auto_update_enabled,
             config::set_config,
             config::reset_config,
             // Files: meta, version, clipboard, music, folder
