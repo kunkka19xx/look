@@ -641,8 +641,9 @@ export function isActive() {
     return active;
 }
 
-// Ctrl+Shift+; - reload all values from .look/config file into running app
-export async function reloadFromFile() {
+// Ctrl+Shift+; - reload all values from .look/config file into running app.
+// A headless reload passes announceSuccess: false, so only problems show a banner.
+export async function reloadFromFile({ announceSuccess = true } = {}) {
     try {
         await sourceblocks.reload();
         // The launchpad drawing is cached for the process for the same reason
@@ -692,7 +693,7 @@ export async function reloadFromFile() {
         if (onConfigReloadFn) onConfigReloadFn(map);
         // One banner carries both: super-actions.toml is the file most likely to be
         // mid-edit when someone reaches for the reload chord.
-        if (!superactions.warningBanner(launchpadWarnings)) {
+        if (!superactions.warningBanner(launchpadWarnings) && announceSuccess) {
             banner.show('Config reloaded from file', 'success', 1.2);
         }
     } catch {

@@ -23,6 +23,10 @@ enum LaunchModes {
         Notification.Name("look.launchQueryDelivered.\(bundleID)")
     }
 
+    static var reloadConfigNotification: Notification.Name {
+        Notification.Name("look.reloadConfigRequested.\(bundleID)")
+    }
+
     /// A query this process will serve itself, applied once the launcher is up.
     nonisolated(unsafe) static var pendingQuery: String?
 
@@ -35,6 +39,18 @@ enum LaunchModes {
 
         case .listModes:
             print(listText(), terminator: "")
+            return 0
+
+        case .reloadConfig:
+            // Headless by contract: with no instance up there is nothing to
+            // reload, and the next launch reads the file anyway.
+            guard isSameAppAlreadyRunning() else {
+                FileHandle.standardError.write(
+                    Data("lookapp: Look is not running, config will load on next launch\n".utf8))
+                return 0
+            }
+            DistributedNotificationCenter.default().postNotificationName(
+                reloadConfigNotification, object: nil, userInfo: nil, deliverImmediately: true)
             return 0
 
         case .unknownMode(let name):
@@ -62,6 +78,7 @@ enum LaunchModes {
         case normal
         case query(String)
         case listModes
+        case reloadConfig
         case unknownMode(String)
         case unavailableMode(String)
     }
@@ -88,6 +105,7 @@ enum LaunchModes {
         switch decoded.kind {
         case "query": return decoded.text.map(Launch.query) ?? .normal
         case "list_modes": return .listModes
+        case "reload_config": return .reloadConfig
         case "unknown_mode": return .unknownMode(decoded.name ?? "")
         case "unavailable_mode": return .unavailableMode(decoded.name ?? "")
         default: return .normal

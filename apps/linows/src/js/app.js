@@ -31,6 +31,7 @@ import {
     takeLaunchQuery,
     confirmHide,
     onIndexReady,
+    onConfigReloadRequested,
     requestIndexRefresh,
     getQuickFolders,
     copyFilesToClipboard,
@@ -779,6 +780,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             motion.playReveal();
         }
     });
+
+    onConfigReloadRequested(() => settings.reloadFromFile({ announceSuccess: false }));
 
     onIndexReady(() => {
         // A level's rows are not in the index, and its query filters them.

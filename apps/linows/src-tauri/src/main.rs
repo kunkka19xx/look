@@ -38,7 +38,7 @@ use state::AppState;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// Timestamp (ms) of last window show, used to debounce focus-loss auto-hide.
 static LAST_SHOWN_AT: AtomicU64 = AtomicU64::new(0);
@@ -621,9 +621,14 @@ fn main() {
     let single_instance =
         tauri_plugin_single_instance::Builder::<tauri::Wry>::new().callback(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window(consts::MAIN_WINDOW) {
+                let launch = modes::parse_args(args.iter().skip(1));
+                if launch == modes::Launch::ReloadConfig {
+                    let _ = window.emit(consts::EVENT_CONFIG_RELOAD_REQUESTED, ());
+                    return;
+                }
                 // The second launch's argv, discarded here until now. Parked
                 // before the show, which is what the frontend pulls on.
-                park_launch(&modes::parse_args(args.iter().skip(1)));
+                park_launch(&launch);
                 // The hotkey's summon, not a bare show: an explicit
                 // `lookapp <mode>` races no auto-hide, so it never toggles.
                 show_window(&window);
@@ -657,6 +662,12 @@ fn main() {
 
     builder
         .setup(move |app| {
+            // Reaching setup means the single-instance plugin found no running
+            // Look to forward to. Headless by contract, so do not start one.
+            if launch == modes::Launch::ReloadConfig {
+                eprintln!("lookapp: Look is not running, config will load on next launch");
+                std::process::exit(0);
+            }
             #[cfg(target_os = "linux")]
             if disable_gpu {
                 gpu::disable_gpu_acceleration(app);

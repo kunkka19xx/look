@@ -366,6 +366,10 @@ export async function onHealthChanged(callback) {
     return listen('health-changed', callback);
 }
 
+export async function onConfigReloadRequested(callback) {
+    return listen('config-reload-requested', callback);
+}
+
 export async function onIndexReady(callback) {
     return listen('index-ready', callback);
 }
