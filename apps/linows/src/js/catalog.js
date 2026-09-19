@@ -169,6 +169,7 @@ export function prefixSuggestionResults(query) {
         subtitle: entry.description,
         path: '',
         score: entries.length - index,
+        iconSvg: SEARCH_GLYPH,
     }));
 }
 
