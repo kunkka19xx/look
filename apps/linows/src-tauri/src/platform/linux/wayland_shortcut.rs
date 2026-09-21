@@ -108,6 +108,8 @@ enum Compositor {
     Hyprland,
     Niri,
     Other,
+    /// `launcher_hotkey=none`: Look binds nothing.
+    Unbound,
 }
 
 fn detect_compositor() -> Compositor {
@@ -169,18 +171,22 @@ where
 /// Start a background thread that:
 /// 1. Registers a compositor-specific keybinding for Alt+Space
 /// 2. Registers a D-Bus service to listen for Toggle calls
-pub fn start<F>(on_toggle: F)
+pub fn start<F>(bind_key: bool, on_toggle: F)
 where
     F: Fn() + Send + Sync + 'static,
 {
-    let compositor = detect_compositor();
+    let compositor = if bind_key {
+        detect_compositor()
+    } else {
+        Compositor::Unbound
+    };
     let on_toggle = off_runtime(on_toggle);
 
     std::thread::spawn(move || {
         // Reported before registration: health::report keeps the first message
         // per issue id, and a missing caller explains the dead key better than
         // the per-compositor failures that follow.
-        if compositor != Compositor::Kde && dbus_caller().is_none() {
+        if bind_key && compositor != Compositor::Kde && dbus_caller().is_none() {
             health::report_as(
                 health::ISSUE_HOTKEY,
                 "no-dbus-tool",
@@ -200,6 +206,7 @@ where
             Compositor::Sway => ensure_sway_keybinding(),
             Compositor::Hyprland => ensure_hyprland_keybinding(),
             Compositor::Niri => report_niri_keybinding(),
+            Compositor::Unbound => cleanup_keybinding(),
             // KDE registers via async D-Bus alongside the Toggle service below.
             Compositor::Kde => {}
             Compositor::Other => {
@@ -241,7 +248,9 @@ where
             }
 
             if let Err(e) = run_dbus_service(move || on_toggle()).await {
-                if compositor == Compositor::Kde {
+                if compositor == Compositor::Unbound {
+                    eprintln!("[look] D-Bus service error: {e}");
+                } else if compositor == Compositor::Kde {
                     // The KDE task toggles via the kglobalaccel signal alone;
                     // keep it alive.
                     eprintln!("[look] D-Bus service error: {e}");
@@ -970,7 +979,7 @@ pub fn cleanup_keybinding() {
         Compositor::Sway => cleanup_sway_keybinding(),
         Compositor::Hyprland => cleanup_hyprland_keybinding(),
         // Nothing registered: the niri bind lives in the user's own config.
-        Compositor::Niri | Compositor::Other => {}
+        Compositor::Niri | Compositor::Other | Compositor::Unbound => {}
     }
 }
 

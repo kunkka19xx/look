@@ -40,7 +40,7 @@ final class PlainKeyCommandsHostView: NSView {
     private func installMonitor() {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
+            guard let self, !ShortcutCapture.isActive else { return event }
             if event.window?.firstResponder is NSText { return event }
             if let responder = event.window?.firstResponder as? NSView,
                 responder.isKind(of: NSTextField.self) || responder.isKind(of: NSTextView.self)

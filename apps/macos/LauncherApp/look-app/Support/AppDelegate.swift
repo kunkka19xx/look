@@ -5,7 +5,6 @@ import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let hotKeyManager = GlobalHotKeyManager()
     private let pomoMenuBarItem = PomoMenuBarItem()
 
     // The launcher window is owned by AppKit (created here), NOT by a SwiftUI
@@ -34,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        hotKeyManager.registerToggleHotKey()
+        LauncherHotkeyController.shared.reload()
         NSApp.setActivationPolicy(.accessory)
         pomoMenuBarItem.install()
 

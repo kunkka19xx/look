@@ -228,6 +228,12 @@ final class ThemeStore: ObservableObject {
         ConfigFileLines.upsert(&lines, key: "backend_log_level", value: settings.backendLogLevel.rawValue)
         ConfigFileLines.upsert(&lines, key: "launch_at_login", value: settings.launchAtLogin ? "true" : "false")
 
+        for shortcut in ConfigurableShortcut.all {
+            if let spec = settings.shortcutBindings[shortcut.configKey], !spec.isEmpty {
+                ConfigFileLines.upsert(&lines, key: shortcut.configKey, value: spec)
+            }
+        }
+
         // Background image
         if let bgPath = settings.backgroundImagePath, !bgPath.isEmpty {
             ConfigFileLines.upsert(&lines, key: "ui_background_image", value: bgPath)
@@ -444,6 +450,7 @@ final class ThemeStore: ObservableObject {
         excludedFolderPaths = []
         fileScanRoots = defaultFileScanRoots()
         extraFileScanRoots = []
+        settings.shortcutBindings = [:]
 
         // Base, not override: the ui_* keys below win. Applied last, it threw
         // away tuned values on every load. Accepted cost: a hand-written
@@ -633,6 +640,8 @@ final class ThemeStore: ObservableObject {
                 } else {
                     settings.runningAppsPlacement = .none
                 }
+            case _ where ConfigurableShortcut.forConfigKey(key) != nil:
+                settings.shortcutBindings[key] = value
             default:
                 continue
             }
@@ -983,6 +992,9 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
         }
         if object["surfaceRadius"] == nil {
             object["surfaceRadius"] = ThemeSettings.default.surfaceRadius
+        }
+        if object["shortcutBindings"] == nil {
+            object["shortcutBindings"] = ThemeSettings.default.shortcutBindings
         }
 
         guard

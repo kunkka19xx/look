@@ -289,5 +289,8 @@ struct ThemeSettings: Codable, Equatable {
     /// under `super_actions_enabled`.
     var superActionsEnabled: Bool = true
 
+    /// Hotkey specs keyed by config key, see `ConfigurableShortcut`.
+    var shortcutBindings: [String: String] = [:]
+
     static let `default` = ThemeSettings()
 }

@@ -41,7 +41,7 @@ Results land as fast as you can type. A Rust core under a native SwiftUI app on 
 brew install --cask kunkka19xx/tap/look
 ```
 
-Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`). Release builds are signed and notarized - no Gatekeeper bypass needed.
+Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`), or pick another shortcut with `launcher_hotkey` in `~/.look/config`. Release builds are signed and notarized - no Gatekeeper bypass needed.
 
 ### Linux
 
@@ -78,7 +78,7 @@ chmod +x Look_*.AppImage
 ./Look_*.AppImage
 ```
 
-After installing, launch with `lookapp` from a terminal, or search "Look" in your app launcher. Press `Alt+Space` to toggle the window at any time. Look autostarts on login by default (on full DEs like GNOME/KDE).
+After installing, launch with `lookapp` from a terminal, or search "Look" in your app launcher. Press `Alt+Space` to toggle the window at any time. To bind your own key instead, set `launcher_hotkey=none` in `~/.look/config`, restart Look, and bind `lookapp --toggle` in your desktop settings. Look autostarts on login by default (on full DEs like GNOME/KDE).
 
 Uninstall:
 
@@ -214,7 +214,7 @@ iex "& { $(irm https://raw.githubusercontent.com/kunkka19xx/look/main/scripts/wi
 Remove-Item -Recurse "$env:LOCALAPPDATA\look"
 ```
 
-The launcher's global hotkey is `Alt+Space` (not user-configurable yet - if it conflicts with another app you use, remap that one). For a manual install: download `Look_<version>_x64-setup.exe` from [Releases](https://github.com/kunkka19xx/look/releases/latest), verify the SHA256 against the published `Look-<version>-windows-checksums.txt`, then run. Uninstall via Settings → Apps or `%LOCALAPPDATA%\Programs\Look\uninstall.exe`. To wipe user data: `Remove-Item -Recurse "$env:LOCALAPPDATA\look"`.
+The launcher's global hotkey defaults to `Alt+Space`; set `launcher_hotkey` in `~/.look/config` (for example `launcher_hotkey=ctrl+space`) to change it, then reload with `Ctrl+Shift+;`. For a manual install: download `Look_<version>_x64-setup.exe` from [Releases](https://github.com/kunkka19xx/look/releases/latest), verify the SHA256 against the published `Look-<version>-windows-checksums.txt`, then run. Uninstall via Settings → Apps or `%LOCALAPPDATA%\Programs\Look\uninstall.exe`. To wipe user data: `Remove-Item -Recurse "$env:LOCALAPPDATA\look"`.
 
 <details>
 <summary>Other install options (curl, pin version, update/uninstall)</summary>
