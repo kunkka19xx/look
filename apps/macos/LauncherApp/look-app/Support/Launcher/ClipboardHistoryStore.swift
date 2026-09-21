@@ -549,11 +549,13 @@ final class ClipboardHistoryStore: ObservableObject {
     }
 
     /// Marks the write as seen, so what the user already had is not filed again
-    /// as a fresh copy. `changeCount` is the borrow: anything copied since is
-    /// newer than the snapshot and must not be clobbered by it.
-    func restorePasteboard(_ snapshot: ClipboardPasteboardSnapshot, ifUnchangedSince changeCount: Int) {
+    /// as a fresh copy. `ifUnchangedSince` is the borrow: anything copied after
+    /// it is newer than the snapshot and must not be clobbered by it.
+    func restorePasteboard(
+        _ snapshot: ClipboardPasteboardSnapshot, ifUnchangedSince changeCount: Int? = nil
+    ) {
         let pasteboard = NSPasteboard.general
-        guard pasteboard.changeCount == changeCount else { return }
+        if let changeCount, pasteboard.changeCount != changeCount { return }
         pasteboard.clearContents()
         let items = snapshot.items.map { payload -> NSPasteboardItem in
             let item = NSPasteboardItem()

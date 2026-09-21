@@ -70,8 +70,7 @@ enum FrontmostAppPaste {
             }
             await waitForModifierRelease()
             try? await Task.sleep(for: Timing.settle)
-            postCommandV()
-            guard let pasted else { return }
+            guard postCommandV(), let pasted else { return }
             try? await Task.sleep(for: Timing.pasteboardHandback)
             pasted()
         }
@@ -105,22 +104,25 @@ enum FrontmostAppPaste {
             .isEmpty
     }
 
-    private static func postCommandV() {
+    /// False when nothing was posted, so the caller keeps the clip in place
+    /// rather than handing the pasteboard back after a paste that never was.
+    private static func postCommandV() -> Bool {
         guard let source = CGEventSource(stateID: .combinedSessionState) else {
             logger.notice("paste: no event source")
-            return
+            return false
         }
         let key = pasteKeyCode()
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
             let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
         else {
             logger.notice("paste: could not build the key events")
-            return
+            return false
         }
         down.flags = .maskCommand
         up.flags = .maskCommand
         down.post(tap: .cgAnnotatedSessionEventTap)
         up.post(tap: .cgAnnotatedSessionEventTap)
+        return true
     }
 
     /// The key that types "v" on the active layout. `kVK_ANSI_V` is a physical

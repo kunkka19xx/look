@@ -278,7 +278,7 @@ Clipboard mode (`c"`):
 
 - stores recent text clips for the running app session (history size is configurable via `clipboard_history_limit`, see File-only settings below),
 - `Enter` on a clipboard row copies that content back to clipboard,
-- `Cmd+I` (macOS) pastes the selected row straight into the app you came from, text clips and image clips (`ci"`) alike: Look borrows the pasteboard for the paste and hands it straight back, so your own `Cmd+C` value survives and your next `Cmd+V` still pastes it. It needs Look enabled under System Settings > Privacy & Security > Accessibility, and it cannot reach a secure input field (a password prompt, `sudo` in a terminal) - Look says so instead of pasting nothing,
+- `Cmd+I` (macOS) pastes the selected row straight into the app you came from, text clips and image clips (`ci"`) alike: Look borrows the pasteboard for the paste and hands it straight back, so your own `Cmd+C` value survives and your next `Cmd+V` still pastes it (a clipboard over 20 MB is left as pasted, rather than held a second time in memory). It needs Look enabled under System Settings > Privacy & Security > Accessibility, and it cannot reach a secure input field (a password prompt, `sudo` in a terminal) - Look says so instead of pasting nothing,
 - `Cmd+D` (`Ctrl+D` on Linux/Windows) removes the selected row from Look's clipboard history.
 
 Translation mode (`t"`/`tw"`):
