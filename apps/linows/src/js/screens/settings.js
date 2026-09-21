@@ -34,6 +34,7 @@ const DEFAULT_FONT_NAME = 'system-ui';
 const INNER_GAP_DEFAULT = 7;
 
 const SAVE_MSG_MS = 1600;
+const ERROR_BANNER_SECONDS = 1.5;
 let saveMsgTimer = null;
 
 // Maps config keys to CSS custom property update functions.
@@ -445,10 +446,16 @@ export function init(exitFn) {
         setAutostart(enabled).catch(() => {});
     });
 
-    document.getElementById('settings-add-to-path').addEventListener('change', (e) => {
+    document.getElementById('settings-add-to-path').addEventListener('change', async (e) => {
         const enabled = e.target.checked;
+        // The config value stays: startup re-applies it, so a failed write retries.
         saveConfig({ add_to_path: enabled ? 'true' : 'false' });
-        setCliPath(enabled).catch(() => {});
+        try {
+            await setCliPath(enabled);
+        } catch {
+            e.target.checked = !enabled;
+            banner.show('Could not update PATH', 'error', ERROR_BANNER_SECONDS);
+        }
     });
 
     // Fresh config
