@@ -83,6 +83,9 @@ final class KeyboardSelectionMonitor {
         onUndoAction: (@MainActor () -> Bool)? = nil,
         onStopGeneration: (@MainActor () -> Bool)? = nil,
         onToggleQuickAction: (@MainActor () -> Void)? = nil,
+        /// Cmd+I on a clipboard row: paste it into the app the launcher came
+        /// from. True means it acted.
+        onPasteSelection: (@MainActor () -> Bool)? = nil,
         hasToggleQuickAction: @escaping @MainActor () -> Bool = { false },
         isLaunchpadActive: @escaping @MainActor () -> Bool = { false },
         onLaunchpadMnemonic: (@MainActor (Character) -> Bool)? = nil,
@@ -328,6 +331,15 @@ final class KeyboardSelectionMonitor {
                 && hasToggleQuickAction()
             {
                 onToggleQuickAction?()
+                return nil
+            }
+
+            // Matched on the typed character, like Cmd+O above, and swallowed
+            // only when there was a clip to paste.
+            if event.charactersIgnoringModifiers?.lowercased() == "i"
+                && flags == [.command]
+                && onPasteSelection?() == true
+            {
                 return nil
             }
 

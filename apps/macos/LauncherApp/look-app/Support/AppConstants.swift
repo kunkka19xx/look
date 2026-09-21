@@ -431,6 +431,14 @@ enum AppConstants {
             static let nonFileBanner = "Clipboard items are not files"
             static let copiedBannerDuration = 1.2
             static let infoBannerDuration = 1.1
+            /// Why a Cmd+I paste could not happen.
+            static let accessibilityDeniedBanner =
+                "Allow Look under Privacy > Accessibility to paste into other apps"
+            static let secureInputBanner = "Secure input is on, so paste is blocked here"
+            static let blockedBannerDuration = 3.0
+            /// Past this a snapshot would hold a second copy of a large image,
+            /// so Cmd+I leaves the clip on the pasteboard instead.
+            static let maxRestoredBytes = 20 * 1024 * 1024
         }
 
         /// The `ci"` history. Shares rows and storage with Clipboard above;

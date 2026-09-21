@@ -278,6 +278,7 @@ Clipboard mode (`c"`):
 
 - stores recent text clips for the running app session (history size is configurable via `clipboard_history_limit`, see File-only settings below),
 - `Enter` on a clipboard row copies that content back to clipboard,
+- `Cmd+I` (macOS) pastes the selected row straight into the app you came from, text clips and image clips (`ci"`) alike: Look borrows the pasteboard for the paste and hands it straight back, so your own `Cmd+C` value survives and your next `Cmd+V` still pastes it. It needs Look enabled under System Settings > Privacy & Security > Accessibility, and it cannot reach a secure input field (a password prompt, `sudo` in a terminal) - Look says so instead of pasting nothing,
 - `Cmd+D` (`Ctrl+D` on Linux/Windows) removes the selected row from Look's clipboard history.
 
 Translation mode (`t"`/`tw"`):
@@ -649,6 +650,7 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - `Cmd+F`: reveal in Finder, or in the `file_manager` you declared
 - `Cmd+C`: copy selected file/folder
 - `Cmd+P` / `Cmd+Shift+P`: toggle pick / clear picked set
+- `Cmd+I` (macOS): paste the selected clipboard history item into the app you came from
 - `Cmd+D`: remove the selected clipboard history item; otherwise move selected file/folder (or picked items) to Trash, or empty the pinned Trash folder
 - `Cmd+Shift+,`: toggle settings panel
 - `Cmd+Shift+;` (macOS) / `Ctrl+Shift+;` (Linux, Windows): reload config, re-read your declared sources, and re-read `~/.look/super-actions.toml` so the strip can be arranged while you look at it

@@ -28,6 +28,14 @@ LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/Launc
 DEV_APP_NAME ?= Look Dev
 DEV_APP_ID ?= noah-code.Look.Dev
 DEV_APP_INSTALL_BUNDLE := /Applications/$(DEV_APP_NAME).app
+# TCC keys a permission grant (Accessibility, Automation) to the app's signing
+# identity. An ad-hoc signature has none, so the grant falls back to the
+# binary's cdhash and every reinstall voids it silently: the switch in System
+# Settings stays on while the app is no longer trusted. Signing dev with a real
+# certificate keeps those grants across rebuilds. Ad-hoc when the machine has
+# no Developer ID, which is what CI and a fresh clone get.
+DEV_SIGN_IDENTITY ?= $(or $(shell security find-identity -v -p codesigning 2>/dev/null \
+	| sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1),-)
 LOG_PREDICATE ?= subsystem == "noah-code.Look"
 
 REAL_DB_PATH := $(HOME)/Library/Application Support/look/look.db
@@ -118,13 +126,13 @@ app-install-dev: app-build app-ensure-bundle
 	@# update-available notice be exercised in dev builds.
 	@plutil -replace CFBundleShortVersionString -string "0.0" "$(DEV_APP_INSTALL_BUNDLE)/Contents/Info.plist"
 	@plutil -replace CFBundleVersion -string "0" "$(DEV_APP_INSTALL_BUNDLE)/Contents/Info.plist"
-	@# Keep the Apple Events entitlement (Empty Trash via Finder) the ad-hoc
-	@# re-sign would otherwise strip, so dev matches the notarized release.
-	@codesign --force --sign - --deep \
+	@# Keep the Apple Events entitlement (Empty Trash via Finder) the re-sign
+	@# would otherwise strip, so dev matches the notarized release.
+	@codesign --force --sign "$(DEV_SIGN_IDENTITY)" --deep \
 		--entitlements apps/macos/LauncherApp/look-app/Look.entitlements \
 		"$(DEV_APP_INSTALL_BUNDLE)" >/dev/null
 	@"$(LSREGISTER)" -f "$(DEV_APP_INSTALL_BUNDLE)" >/dev/null
-	@echo "Installed $(DEV_APP_NAME) with bundle id $(DEV_APP_ID)"
+	@echo "Installed $(DEV_APP_NAME) with bundle id $(DEV_APP_ID), signed by $(DEV_SIGN_IDENTITY)"
 	@$(MAKE) --no-print-directory dev-cli
 
 # Beside whatever directory `lookapp` already lives in.
