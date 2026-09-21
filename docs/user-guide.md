@@ -670,7 +670,8 @@ Note: `Settings Blur` is stored as local app UI state (UserDefaults) and is not 
 - confirm Spotlight's `Cmd+Space` is disabled or rebound (`System Settings > Keyboard > Keyboard Shortcuts > Spotlight`)
 - relaunch Look (`open "/Applications/Look.app"`) after changing the Spotlight binding
 - if you previously ran a dev/side-by-side build, make sure only one Look instance is running
-- if you changed `launcher_hotkey`, the toggle is that shortcut instead of `Cmd+Space`
+- if you changed `launcher_hotkey` to a shortcut, use that shortcut instead of `Cmd+Space`
+- if you set `launcher_hotkey=none`, use an external binding such as `lookapp --toggle`
 
 **The launcher opens behind another window.**
 
