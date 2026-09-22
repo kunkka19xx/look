@@ -436,9 +436,6 @@ enum AppConstants {
                 "Allow Look under Privacy > Accessibility to paste into other apps"
             static let secureInputBanner = "Secure input is on, so paste is blocked here"
             static let blockedBannerDuration = 3.0
-            /// Past this a snapshot would hold a second copy of a large image,
-            /// so Cmd+I leaves the clip on the pasteboard instead.
-            static let maxRestoredBytes = 20 * 1024 * 1024
         }
 
         /// The `ci"` history. Shares rows and storage with Clipboard above;

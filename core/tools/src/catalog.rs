@@ -167,7 +167,9 @@ pub const TERMINAL_NAMES: &[&str] = &[
     "urxvt",
     "rxvt",
     "st",
+    // GNOME Console: `kgx` is the binary, `console` the name on the window.
     "kgx",
+    "console",
     "xfce4-terminal",
     "tilix",
     "terminator",

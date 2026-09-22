@@ -1,8 +1,9 @@
 //! Auto-install and communicate with the Look GNOME Shell extension.
 //!
-//! The extension exposes a single D-Bus method `FocusApp(desktop_id)` that
-//! uses gnome-shell's internal `Shell.App.activate()` to focus existing
-//! windows - the same mechanism GNOME's own Activities search uses.
+//! The extension exposes what a plain Wayland client on GNOME cannot reach:
+//! `FocusApp(desktop_id)` raises an existing window through gnome-shell's own
+//! `Shell.App.activate()`, and `SendPaste` types into one through the Clutter
+//! virtual device, which is the only keyboard injection Mutter allows.
 
 use std::path::PathBuf;
 
@@ -260,31 +261,7 @@ fn classify_dbus_error(err: &zbus::Error) -> ExtensionError {
 /// callers should fall back to other heuristics in that case. Returns
 /// `Some(vec![])` if the extension answered but no apps have windows.
 pub fn list_windowed_apps() -> Option<Vec<String>> {
-    let conn = dbus_conn()?;
-    dbus_block_on(async {
-        match conn
-            .call_method(
-                Some(DBUS_NAME),
-                DBUS_PATH,
-                Some(DBUS_IFACE),
-                "ListWindowedApps",
-                &(),
-            )
-            .await
-        {
-            Ok(reply) => reply
-                .body()
-                .deserialize::<(Vec<String>,)>()
-                .ok()
-                .map(|r| r.0),
-            Err(err) => {
-                if classify_dbus_error(&err) == ExtensionError::Stale {
-                    warn_stale_extension_once();
-                }
-                None
-            }
-        }
-    })
+    call("ListWindowedApps", &())
 }
 
 /// "Once" comes from health::report deduping by issue id: gnome-shell can't
@@ -298,33 +275,49 @@ fn warn_stale_extension_once() {
     );
 }
 
+/// Mutter implements no virtual-keyboard protocol, so the shell itself is the
+/// only thing on a GNOME Wayland session that can type into another window.
+pub fn send_paste(shift: bool) -> bool {
+    call("SendPaste", &shift).unwrap_or(false)
+}
+
+/// The desktop id (or WM_CLASS, for an X11 window) of whatever holds the
+/// keyboard. `None` when the extension is unreachable, which doubles as "this
+/// session cannot paste".
+pub fn focused_app_id() -> Option<String> {
+    call::<_, String>("FocusedAppId", &()).filter(|id| !id.is_empty())
+}
+
+/// One call to the extension, for the methods answering a single value.
+fn call<T, R>(method: &str, args: &T) -> Option<R>
+where
+    T: serde::Serialize + zbus::zvariant::DynamicType + Sync,
+    R: serde::de::DeserializeOwned + zbus::zvariant::Type + Send,
+{
+    let conn = dbus_conn()?;
+    dbus_block_on(async {
+        match conn
+            .call_method(Some(DBUS_NAME), DBUS_PATH, Some(DBUS_IFACE), method, args)
+            .await
+        {
+            Ok(reply) => reply.body().deserialize::<(R,)>().ok().map(|r| r.0),
+            Err(err) => {
+                if classify_dbus_error(&err) == ExtensionError::Stale {
+                    warn_stale_extension_once();
+                }
+                None
+            }
+        }
+    })
+}
+
 /// Try to focus an app by its desktop file ID using the GNOME Shell extension.
 /// Returns true if the app was focused (had existing windows).
 ///
 /// Uses zbus to call directly from Look's process (which has focus),
 /// so GNOME trusts the activation request without showing a "ready" popup.
 pub fn try_focus_app(desktop_id: &str) -> bool {
-    let Some(conn) = dbus_conn() else {
-        return false;
-    };
-    let id = desktop_id.to_string();
-    dbus_block_on(async {
-        let reply: (bool,) = conn
-            .call_method(
-                Some(DBUS_NAME),
-                DBUS_PATH,
-                Some(DBUS_IFACE),
-                "FocusApp",
-                &id,
-            )
-            .await
-            .ok()?
-            .body()
-            .deserialize()
-            .ok()?;
-        Some(reply.0)
-    })
-    .unwrap_or(false)
+    call("FocusApp", &desktop_id).unwrap_or(false)
 }
 
 fn extension_dir() -> PathBuf {
@@ -410,7 +403,13 @@ mod tests {
 
     /// Methods called from Rust must be declared in the extension's IFACE XML.
     /// Add to this list when adding a new D-Bus call site in this file.
-    const RUST_CALLED_METHODS: &[&str] = &["FocusApp", "GetPointer", "ListWindowedApps"];
+    const RUST_CALLED_METHODS: &[&str] = &[
+        "FocusApp",
+        "FocusedAppId",
+        "GetPointer",
+        "ListWindowedApps",
+        "SendPaste",
+    ];
 
     fn fnv1a_hex(bytes: &[u8]) -> String {
         let mut h: u64 = 0xcbf29ce484222325;

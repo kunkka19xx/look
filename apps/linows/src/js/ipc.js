@@ -213,6 +213,16 @@ export async function copyToClipboardLabeled(text, label) {
     return invoke('copy_to_clipboard_labeled', { text, label });
 }
 
+// Why Ctrl+I cannot type into the app behind Look, or null when it can.
+export async function clipboardPasteBlocker() {
+    return invoke('clipboard_paste_blocker');
+}
+
+// Hides the launcher, then types the paste chord into whatever takes focus.
+export async function pasteIntoFocusedApp() {
+    return invoke('paste_into_focused_app');
+}
+
 export async function resetConfig() {
     return invoke('reset_config');
 }

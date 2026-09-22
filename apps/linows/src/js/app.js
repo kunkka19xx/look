@@ -69,8 +69,8 @@ const HINT_MAIN = 'Enter: Open \u2022 Ctrl+K: Actions \u2022 Ctrl+H: Help';
 // Inside a level the way out is the thing to say.
 const HINT_LEVEL = 'Enter: Open \u2022 Ctrl+K: Actions \u2022 Esc: Back';
 const HINT_TRANSLATE = 'Enter: Translate \u2022 Copy per result \u2022 Ctrl+H: Help';
-const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Ctrl+D: Remove clip';
-const HINT_CLIPBOARD_IMAGE = 'Enter: Copy image \u2022 Ctrl+D: Remove image';
+const HINT_CLIPBOARD = 'Enter: Copy clip \u2022 Ctrl+I: Paste \u2022 Ctrl+D: Remove clip';
+const HINT_CLIPBOARD_IMAGE = 'Enter: Copy image \u2022 Ctrl+I: Paste \u2022 Ctrl+D: Remove image';
 const HINT_PROCESS = 'Enter: CPU \u2022 Ctrl+D: Kill \u2022 Ctrl+C: Copy PID';
 // Discovery-menu hints \u2014 mirror macOS prefixSuggestion / commandSuggestion
 // hint bars (LauncherView.swift hintItems).

@@ -27,8 +27,6 @@ enum FrontmostAppPaste {
         /// A freshly activated window still has to give some text view first
         /// responder before it holds a cursor.
         static let settle: Duration = .milliseconds(40)
-        /// How long the clip stays on the pasteboard after ⌘V is posted.
-        static let pasteboardHandback: Duration = .milliseconds(500)
     }
 
     /// The value of `kAXTrustedCheckOptionPrompt`, spelled out: the constant is
@@ -55,10 +53,8 @@ enum FrontmostAppPaste {
     }
 
     /// Posts ⌘V once `pid` owns the keyboard, nil meaning whatever takes focus
-    /// after Look leaves. `pasted` runs when the target has had time to read the
-    /// pasteboard, and is skipped when nothing was pasted, so the clip stays
-    /// there for a ⌘V by hand.
-    static func paste(into pid: pid_t?, pasted: (@MainActor () -> Void)? = nil) {
+    /// after Look leaves.
+    static func paste(into pid: pid_t?) {
         Task { @MainActor in
             let deadline = Date().addingTimeInterval(Timing.activationTimeout)
             while !targetHasFocus(pid) {
@@ -70,9 +66,7 @@ enum FrontmostAppPaste {
             }
             await waitForModifierRelease()
             try? await Task.sleep(for: Timing.settle)
-            guard postCommandV(), let pasted else { return }
-            try? await Task.sleep(for: Timing.pasteboardHandback)
-            pasted()
+            postCommandV()
         }
     }
 
@@ -104,25 +98,22 @@ enum FrontmostAppPaste {
             .isEmpty
     }
 
-    /// False when nothing was posted, so the caller keeps the clip in place
-    /// rather than handing the pasteboard back after a paste that never was.
-    private static func postCommandV() -> Bool {
+    private static func postCommandV() {
         guard let source = CGEventSource(stateID: .combinedSessionState) else {
             logger.notice("paste: no event source")
-            return false
+            return
         }
         let key = pasteKeyCode()
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
             let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
         else {
             logger.notice("paste: could not build the key events")
-            return false
+            return
         }
         down.flags = .maskCommand
         up.flags = .maskCommand
         down.post(tap: .cgAnnotatedSessionEventTap)
         up.post(tap: .cgAnnotatedSessionEventTap)
-        return true
     }
 
     /// The key that types "v" on the active layout. `kVK_ANSI_V` is a physical

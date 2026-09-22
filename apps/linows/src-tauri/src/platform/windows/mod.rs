@@ -17,6 +17,7 @@ pub mod effects;
 pub mod fonts;
 pub mod icons;
 pub mod install_path;
+pub mod keysynth;
 pub mod known_folders;
 pub mod launch;
 pub mod path_env;

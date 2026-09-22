@@ -36,7 +36,8 @@ trash = "5"
 tokio = { version = "1.52.3", features = ["rt", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-x11rb = { version = "0.13", features = ["allow-unsafe-code"] }
+# xtest: typing the paste chord into another window, the X11 half of Ctrl+I.
+x11rb = { version = "0.13", features = ["allow-unsafe-code", "xtest"] }
 # Window/display pointers for the Wayland blur bind, without GDK FFI.
 raw-window-handle = "0.6"
 zbus = "5"
@@ -63,6 +64,11 @@ wayland-protocols = { version = "0.32", features = [
     "staging",
 ], default-features = false }
 wayland-protocols-plasma = { version = "0.3", features = [
+    "client",
+], default-features = false }
+# zwp_virtual_keyboard_v1: the Wayland half of Ctrl+I. Every compositor but
+# Mutter offers it; GNOME goes through Look's own shell extension instead.
+wayland-protocols-misc = { version = "0.3", features = [
     "client",
 ], default-features = false }
 

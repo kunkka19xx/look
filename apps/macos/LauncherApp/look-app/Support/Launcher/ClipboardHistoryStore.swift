@@ -101,11 +101,6 @@ struct ClipboardHistoryEntry: Identifiable, Equatable {
     }
 }
 
-/// A pasteboard's contents, copied out so a ⌘I paste can hand them back.
-struct ClipboardPasteboardSnapshot {
-    fileprivate let items: [[NSPasteboard.PasteboardType: Data]]
-}
-
 final class ClipboardHistoryStore: ObservableObject {
     enum MonitoringMode {
         case foreground
@@ -519,50 +514,11 @@ final class ClipboardHistoryStore: ObservableObject {
         return wrote
     }
 
-    /// The bytes are copied now on purpose: `NSPasteboardItem`s read from a
-    /// pasteboard go dead the moment it is cleared, so keeping the items would
-    /// restore nothing. Nil past `maxRestoredBytes`.
-    func capturePasteboardSnapshot() -> ClipboardPasteboardSnapshot? {
-        var total = 0
-        var items: [[NSPasteboard.PasteboardType: Data]] = []
-        for item in NSPasteboard.general.pasteboardItems ?? [] {
-            var payload: [NSPasteboard.PasteboardType: Data] = [:]
-            for type in item.types {
-                guard let data = item.data(forType: type) else { continue }
-                total += data.count
-                guard total <= AppConstants.Launcher.Clipboard.maxRestoredBytes else { return nil }
-                payload[type] = data
-            }
-            if !payload.isEmpty { items.append(payload) }
-        }
-        guard !items.isEmpty else { return nil }
-        return ClipboardPasteboardSnapshot(items: items)
-    }
-
-    /// Writes `content` and marks the change seen: borrowing the pasteboard for
-    /// a paste should not reorder history.
+    /// Marks the change seen, so a clip sent on with ⌘I is not filed twice.
     func copyTextSilently(_ content: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(content, forType: .string)
-        lastChangeCount = pasteboard.changeCount
-    }
-
-    /// Marks the write as seen, so what the user already had is not filed again
-    /// as a fresh copy. `ifUnchangedSince` is the borrow: anything copied after
-    /// it is newer than the snapshot and must not be clobbered by it.
-    func restorePasteboard(
-        _ snapshot: ClipboardPasteboardSnapshot, ifUnchangedSince changeCount: Int? = nil
-    ) {
-        let pasteboard = NSPasteboard.general
-        if let changeCount, pasteboard.changeCount != changeCount { return }
-        pasteboard.clearContents()
-        let items = snapshot.items.map { payload -> NSPasteboardItem in
-            let item = NSPasteboardItem()
-            for (type, data) in payload { item.setData(data, forType: type) }
-            return item
-        }
-        pasteboard.writeObjects(items)
         lastChangeCount = pasteboard.changeCount
     }
 

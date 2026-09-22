@@ -552,23 +552,12 @@ extension LauncherView {
             return true
         }
 
-        // ⌘I borrows the pasteboard rather than spending it, so what the user
-        // had copied comes back once the target has pasted.
-        let borrowed = clipboardStore.capturePasteboardSnapshot()
-        guard writeClipboardTargetToPasteboard(target) else {
-            // An image write clears the pasteboard before it can fail, so the
-            // snapshot goes back rather than leaving the user with nothing.
-            if let borrowed { clipboardStore.restorePasteboard(borrowed) }
-            return false
-        }
-        let borrowedAt = NSPasteboard.general.changeCount
+        // The clip stays on the pasteboard, where Enter leaves it too.
+        guard writeClipboardTargetToPasteboard(target) else { return false }
         // The hide consumes the restore pid, so the paste target is taken first.
         let targetPID = pidToRestoreOnHide
         hideLauncherWindow()
-        FrontmostAppPaste.paste(into: targetPID) { [clipboardStore] in
-            guard let borrowed else { return }
-            clipboardStore.restorePasteboard(borrowed, ifUnchangedSince: borrowedAt)
-        }
+        FrontmostAppPaste.paste(into: targetPID)
         return true
     }
 

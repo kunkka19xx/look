@@ -686,11 +686,11 @@ struct LauncherView: View {
         }
 
         if isClipboardImageQuery {
-            return ["Enter copy", "Cmd+D remove"]
+            return ["Enter copy", "Cmd+I paste", "Cmd+D remove"]
         }
 
         if isClipboardQuery {
-            return ["Enter copy clip", "Cmd+D remove clip"]
+            return ["Enter copy clip", "Cmd+I paste", "Cmd+D remove clip"]
         }
 
         // Mirrors the linows ps" hint, with Cmd for Ctrl.

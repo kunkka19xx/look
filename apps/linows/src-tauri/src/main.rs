@@ -19,6 +19,7 @@ mod lunar;
 mod music;
 mod netspeed;
 mod nowplaying;
+mod paste;
 mod platform;
 mod process;
 mod qactions;
@@ -863,6 +864,8 @@ fn main() {
             clipboard::copy_clipboard_image,
             clipboard::copy_to_clipboard,
             clipboard::copy_to_clipboard_labeled,
+            paste::clipboard_paste_blocker,
+            paste::paste_into_focused_app,
             // Music
             music::music_play,
             music::music_pause,
