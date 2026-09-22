@@ -105,12 +105,20 @@ fn wait_until_hidden(window: &tauri::WebviewWindow) -> bool {
 /// since the app decides the chord. `None` where the session will not say.
 #[cfg(target_os = "linux")]
 fn wait_for_target() -> Option<String> {
+    use crate::platform::linux::focused_app;
+
+    // Focus lands on the window underneath a moment after the launcher goes,
+    // so an early unnamed focus is worth waiting on. Where the session names
+    // no focus at all, waiting only delays the chord by the whole timeout.
+    if !focused_app::focus_is_reportable() {
+        return None;
+    }
     let deadline = Instant::now() + FOCUS_TIMEOUT;
     loop {
-        match crate::platform::linux::focused_app::focused_app_id() {
-            Some(app) if !app.eq_ignore_ascii_case(SELF_APP_ID) => return Some(app),
-            None => return None,
-            _ => {}
+        if let Some(app) = focused_app::focused_app_id()
+            && !app.eq_ignore_ascii_case(SELF_APP_ID)
+        {
+            return Some(app);
         }
         if Instant::now() >= deadline {
             return None;

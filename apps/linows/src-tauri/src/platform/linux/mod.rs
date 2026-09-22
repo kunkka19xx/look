@@ -12,6 +12,7 @@ pub mod kde_focus;
 pub mod keysynth;
 pub mod layer_shell;
 pub mod niri;
+pub mod plasma_focus;
 pub mod process;
 pub mod sysinfo;
 pub mod tools;

@@ -61,16 +61,23 @@ fn x11_send_paste(shift: bool) -> bool {
         mods.extend(keycode_for(&conn, KEYSYM_SHIFT_L));
     }
 
-    for code in &mods {
+    let mut down = Vec::with_capacity(mods.len() + 1);
+    let mut typed = true;
+    for code in mods.iter().chain(std::iter::once(&v)) {
         if !fake_key(&conn, *code, true) {
-            return false;
+            typed = false;
+            break;
         }
+        down.push(*code);
     }
-    let typed = fake_key(&conn, v, true) && fake_key(&conn, v, false);
-    for code in mods.iter().rev() {
-        fake_key(&conn, *code, false);
+
+    // Whatever went down comes back up, half-typed chord included: a modifier
+    // left held is the user's keyboard stuck until they press it themselves.
+    let mut released = true;
+    for code in down.iter().rev() {
+        released &= fake_key(&conn, *code, false);
     }
-    conn.flush().is_ok() && typed
+    conn.flush().is_ok() && typed && released
 }
 
 /// Sent and accepted: a fake key the server refuses comes back on the reply.

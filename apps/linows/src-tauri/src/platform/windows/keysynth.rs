@@ -32,8 +32,31 @@ pub fn send_paste(_shift: bool) -> bool {
         inputs.push(key_input(VK_CONTROL, true));
     }
 
-    let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
-    sent as usize == inputs.len()
+    let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) } as usize;
+    if sent == inputs.len() {
+        return true;
+    }
+    // The queue takes the events in order, so a short insert can stop with a
+    // key logically down and no release behind it. Only those need one.
+    release_outstanding(&inputs[..sent.min(inputs.len())]);
+    false
+}
+
+fn release_outstanding(inserted: &[INPUT]) {
+    let mut down: Vec<VIRTUAL_KEY> = Vec::new();
+    for input in inserted {
+        let key = unsafe { input.Anonymous.ki };
+        if key.dwFlags & KEYEVENTF_KEYUP == KEYEVENTF_KEYUP {
+            down.retain(|held| *held != key.wVk);
+        } else {
+            down.push(key.wVk);
+        }
+    }
+    if down.is_empty() {
+        return;
+    }
+    let ups: Vec<INPUT> = down.iter().rev().map(|key| key_input(*key, true)).collect();
+    let _ = unsafe { SendInput(&ups, std::mem::size_of::<INPUT>() as i32) };
 }
 
 pub fn self_is_foreground() -> bool {

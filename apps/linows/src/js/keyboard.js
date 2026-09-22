@@ -47,6 +47,9 @@ const CLIP_BANNER_DURATION = 1.1;
 // A refused paste is a sentence to read, not a flash.
 const PASTE_BLOCKED_DURATION = 3.0;
 
+// The backend went quiet on us, so name the one thing the user can still do.
+const PASTE_FAILED_BANNER = 'Nothing typed the paste - the clip is copied, press Ctrl+V';
+
 // The quick-folder pin for the OS trash: `Trash` on Linux/macOS,
 // `Recycle Bin` on Windows (id is `quickfolder:<lowercased title>`).
 const TRASH_PIN_IDS = ['quickfolder:trash', 'quickfolder:recycle bin'];
@@ -806,18 +809,22 @@ export async function copySelectedClip() {
 async function pasteSelectedClip() {
     const item = results.getSelected();
     if (!item || item.kind !== 'clipboard') return;
-    const blocker = await clipboardPasteBlocker().catch(() => null);
     try {
         await writeClip(item);
     } catch (err) {
         banner.show(typeof err === 'string' ? err : 'Copy failed', 'error', 1.2);
         return;
     }
-    if (blocker) {
-        banner.show(blocker, 'warning', PASTE_BLOCKED_DURATION);
-        return;
+    try {
+        const blocker = await clipboardPasteBlocker();
+        if (blocker) {
+            banner.show(blocker, 'warning', PASTE_BLOCKED_DURATION);
+            return;
+        }
+        await pasteIntoFocusedApp();
+    } catch {
+        banner.show(PASTE_FAILED_BANNER, 'warning', PASTE_BLOCKED_DURATION);
     }
-    await pasteIntoFocusedApp();
 }
 
 function setHelpVisible(show) {
