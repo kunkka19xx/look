@@ -10,9 +10,10 @@ use wayland_protocols_plasma::plasma_window_management::client::{
     org_kde_plasma_window_management::{self as plasma_management, OrgKdePlasmaWindowManagement},
 };
 
-/// Where the uuid a window is asked for by arrived, Plasma 5.22 on. The
-/// integer ids before it are not worth a second code path.
-const UUID_VERSION: u32 = 12;
+/// Where `window_with_uuid` arrived. `get_window_by_uuid` landed a version
+/// earlier, but without the event nothing announces a window to ask about,
+/// and the integer ids of the older path are not worth a second code path.
+const UUID_VERSION: u32 = 13;
 /// How long KWin gets to enumerate its windows before the answer goes without
 /// them.
 const ENUMERATE_TIMEOUT: Duration = Duration::from_millis(500);
