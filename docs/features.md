@@ -32,7 +32,7 @@ This document tracks what `look` supports today and what is planned next.
 
 - clipboard history mode with `c"` prefix
 - clipboard history (recent text clips, size set by `clipboard_history_limit`, default 10, range 10 to 100); file/folder copies are excluded. Kept in memory on macOS, on disk on Linux and Windows
-- copied-image history with `ci"` prefix: thumbnail rows named after the app the copy came from, each stored as a PNG beside the database, size set by `clipboard_image_limit` (default 20, range 5 to 50)
+- copied-image history with `ci"` prefix: thumbnail rows named after the app the copy came from, or `Image from screen` on a session that will not say which window was in front (GNOME and KDE Wayland); each image is stored as a PNG beside the database, size set by `clipboard_image_limit` (default 20, range 5 to 50)
 - paste the selected clip straight into the app you came from with `Cmd+I` / `Ctrl+I`, text and images alike; the clip stays on the clipboard
 - remove the selected clipboard history item with `Cmd+D` / `Ctrl+D`
 - quick translation with `t"...`
