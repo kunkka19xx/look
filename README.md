@@ -21,13 +21,14 @@ Results land as fast as you can type. A Rust core under a native SwiftUI app on 
 <details>
 <summary><b>How it compares</b></summary>
 
-|                 | **look**                | Spotlight  | Raycast            | Alfred       | ulauncher  | rofi       |
-| --------------- | ----------------------- | ---------- | ------------------ | ------------ | ---------- | ---------- |
-| Platform        | macOS · Windows · Linux | macOS only | macOS · Win (beta) | macOS only   | Linux only | Linux only |
-| Open source     | ✅ GPLv3                | ❌         | ❌                 | ❌           | ✅         | ✅         |
-| Local-first     | ✅                      | ✅         | ❌ cloud sync      | ✅           | ✅         | ✅         |
-| No Electron     | ✅                      | ✅         | ❌                 | ✅           | ✅         | ✅         |
-| No plugin store | ✅                      | ✅         | ❌                 | ❌ Powerpack | ✅         | ✅         |
+|                    | **look**                | Spotlight          | Raycast               | Alfred               | ulauncher  | rofi       |
+| ------------------ | ----------------------- | ------------------ | --------------------- | -------------------- | ---------- | ---------- |
+| Platform           | macOS · Windows · Linux | macOS only         | macOS · Windows       | macOS only           | Linux only | Linux only |
+| Open source        | ✅ GPLv3                | ❌                 | ❌                    | ❌                   | ✅         | ✅         |
+| Free, no paid tier | ✅                      | ✅                 | ❌ Pro $8-10/mo       | ❌ Powerpack £34     | ✅         | ✅         |
+| No account needed  | ✅                      | ✅                 | ✅ core, ❌ sync and AI | ✅                   | ✅         | ✅         |
+| Clipboard history  | ✅ text and images      | ✅ macOS 26+       | ✅ (free: 3 months)   | ❌ Powerpack only    | ❌         | ❌         |
+| Extension store    | ❌                      | ❌                 | ✅                    | ✅ Workflows         | ✅         | ❌         |
 
 </details>
 
@@ -38,10 +39,8 @@ Results land as fast as you can type. A Rust core under a native SwiftUI app on 
 ### macOS
 
 ```bash
-brew install --cask kunkka19xx/tap/look
+brew install --cask look
 ```
-
-> Look is being submitted to the official Homebrew cask repository. Once it is accepted, `brew install --cask look` will work without the tap. Until then, use the command above.
 
 Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`), or pick another shortcut with `launcher_hotkey` in `~/.look/config`. Release builds are signed and notarized - no Gatekeeper bypass needed.
 
@@ -224,7 +223,7 @@ The launcher's global hotkey defaults to `Alt+Space`; set `launcher_hotkey` in `
 **macOS - Homebrew update / uninstall:**
 
 ```bash
-# update (works for tap installs; same as brew upgrade --cask kunkka19xx/tap/look)
+# update
 brew upgrade --cask look
 
 # uninstall
