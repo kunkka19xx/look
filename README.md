@@ -41,6 +41,8 @@ Results land as fast as you can type. A Rust core under a native SwiftUI app on 
 brew install --cask kunkka19xx/tap/look
 ```
 
+> Look is being submitted to the official Homebrew cask repository. Once it is accepted, `brew install --cask look` will work without the tap. Until then, use the command above.
+
 Then bind `Cmd+Space` to Look (disable Spotlight's shortcut in `System Settings > Keyboard > Keyboard Shortcuts > Spotlight`), or pick another shortcut with `launcher_hotkey` in `~/.look/config`. Release builds are signed and notarized - no Gatekeeper bypass needed.
 
 ### Linux
@@ -222,7 +224,7 @@ The launcher's global hotkey defaults to `Alt+Space`; set `launcher_hotkey` in `
 **macOS - Homebrew update / uninstall:**
 
 ```bash
-# update
+# update (works for tap installs; same as brew upgrade --cask kunkka19xx/tap/look)
 brew upgrade --cask look
 
 # uninstall
