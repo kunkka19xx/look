@@ -223,7 +223,7 @@ The launcher's global hotkey defaults to `Alt+Space`; set `launcher_hotkey` in `
 
 ```bash
 # update
-brew upgrade --cask kunkka19xx/tap/look
+brew upgrade --cask look
 
 # uninstall
 brew uninstall --cask look

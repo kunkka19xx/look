@@ -36,12 +36,18 @@ enum LaunchModes {
     /// A cold `lookapp --toggle`: show the launcher once it is up.
     nonisolated(unsafe) static var pendingToggle = false
 
+    /// Set on the app a cold `lookapp` launches, so it serves the mode itself
+    /// instead of mistaking that still-exiting `lookapp` for a running Look.
+    private static let handoffEnvironmentKey = "LOOK_LAUNCH_HANDOFF"
+    private static let handoffEnvironmentValue = "1"
+    private static let handoffTimeoutSeconds: TimeInterval = 10
+
     /// An exit code when the process has said its piece and should stop before
     /// SwiftUI starts, or nil to keep launching.
     static func handleLaunchArguments() -> Int32? {
         switch parse(Array(CommandLine.arguments.dropFirst())) {
         case .normal:
-            return nil
+            return AppBundle.isLaunchedOutsideBundle ? handOff() : nil
 
         case .listModes:
             print(listText(), terminator: "")
@@ -71,6 +77,7 @@ enum LaunchModes {
 
         case .query(let text):
             guard isSameAppAlreadyRunning() else {
+                guard consumeHandoffMarker() else { return handOff() }
                 pendingQuery = text
                 return nil
             }
@@ -80,6 +87,7 @@ enum LaunchModes {
 
         case .toggle:
             guard isSameAppAlreadyRunning() else {
+                guard consumeHandoffMarker() else { return handOff() }
                 pendingToggle = true
                 return nil
             }
@@ -106,7 +114,7 @@ enum LaunchModes {
     }
 
     private static var bundleID: String {
-        Bundle.main.bundleIdentifier ?? "unknown"
+        AppBundle.identifier ?? "unknown"
     }
 
     private static func parse(_ arguments: [String]) -> Launch {
@@ -143,10 +151,52 @@ enum LaunchModes {
         return String(cString: ptr)
     }
 
+    /// Starts Look.app through Launch Services with this invocation's arguments
+    /// and returns the CLI's exit code. The CLI never becomes the app itself: run
+    /// through a symlink it has no bundle, and from a shell it would tie Look's
+    /// lifetime to the terminal and block whatever ran it.
+    private static func handOff() -> Int32 {
+        guard let appURL = AppBundle.url else {
+            FileHandle.standardError.write(Data("lookapp: cannot locate Look.app\n".utf8))
+            return 1
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.arguments = Array(CommandLine.arguments.dropFirst())
+        configuration.environment = [handoffEnvironmentKey: handoffEnvironmentValue]
+
+        let outcome = HandoffOutcome()
+        let finished = DispatchSemaphore(value: 0)
+        NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, error in
+            outcome.error = error
+            finished.signal()
+        }
+        guard finished.wait(timeout: .now() + handoffTimeoutSeconds) == .success else {
+            FileHandle.standardError.write(Data("lookapp: timed out launching Look\n".utf8))
+            return 1
+        }
+        if let error = outcome.error {
+            FileHandle.standardError.write(Data("lookapp: \(error.localizedDescription)\n".utf8))
+            return 1
+        }
+        return 0
+    }
+
+    private static func consumeHandoffMarker() -> Bool {
+        guard ProcessInfo.processInfo.environment[handoffEnvironmentKey] == handoffEnvironmentValue else {
+            return false
+        }
+        unsetenv(handoffEnvironmentKey)
+        return true
+    }
+
     private static func isSameAppAlreadyRunning() -> Bool {
         let current = NSRunningApplication.current.processIdentifier
         return NSWorkspace.shared.runningApplications.contains {
             $0.bundleIdentifier == bundleID && $0.processIdentifier != current
         }
     }
+}
+
+nonisolated private final class HandoffOutcome: @unchecked Sendable {
+    var error: Error?
 }

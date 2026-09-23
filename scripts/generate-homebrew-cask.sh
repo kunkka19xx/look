@@ -23,12 +23,28 @@ cask "look" do
   sha256 "${SHA256}"
 
   url "https://github.com/${REPO_SLUG}/releases/download/v#{version}/Look-#{version}-macOS.zip"
-  name "look"
-  desc "Keyboard-first local launcher for macOS"
+  name "Look"
+  desc "Keyboard-first local launcher"
   homepage "https://github.com/${REPO_SLUG}"
 
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+  depends_on macos: :sequoia
+
   app "Look.app"
-  binary "Look.app/Contents/MacOS/Look", target: "lookapp"
+  binary "#{appdir}/Look.app/Contents/MacOS/Look", target: "lookapp"
+
+  zap trash: [
+    "~/.look",
+    "~/Library/Application Support/Look",
+    "~/Library/Caches/noah-code.Look",
+    "~/Library/HTTPStorages/noah-code.Look",
+    "~/Library/HTTPStorages/noah-code.Look.binarycookies",
+    "~/Library/Preferences/noah-code.Look.plist",
+  ]
 end
 EOF
 
