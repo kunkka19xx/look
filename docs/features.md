@@ -31,7 +31,9 @@ This document tracks what `look` supports today and what is planned next.
 ### Clipboard and translation
 
 - clipboard history mode with `c"` prefix
-- in-memory clipboard history (recent text clips, size set by `clipboard_history_limit`, default 10, range 10 to 100); file/folder copies are excluded
+- clipboard history (recent text clips, size set by `clipboard_history_limit`, default 10, range 10 to 100); file/folder copies are excluded. Kept in memory on macOS, on disk on Linux and Windows
+- copied-image history with `ci"` prefix: thumbnail rows named after the app the copy came from, each stored as a PNG beside the database, size set by `clipboard_image_limit` (default 20, range 5 to 50)
+- paste the selected clip straight into the app you came from with `Cmd+I` / `Ctrl+I`, text and images alike; the clip stays on the clipboard
 - remove the selected clipboard history item with `Cmd+D` / `Ctrl+D`
 - quick translation with `t"...`
 - dictionary lookup panel with `tw"...`
@@ -65,7 +67,7 @@ This document tracks what `look` supports today and what is planned next.
 - `Cmd+/` command mode entry, or inline `:cmdid` shortcut from the home screen (e.g. `:calc 2+2`, `:kill chrome`, `:pomo`); space after a known command id triggers a live switch with args pre-filled
 - built-in commands: `calc`, `pomo`, `todo`, `speed`, `kill`, `shell`, `sys`
 - `pomo`: pomodoro focus timer with editable session list, three timer styles (Modern Ring / Vintage Dial / Minimal Text), shuffled background-music folder, menu-bar mini-timer, 5s standby fade, "ending soon" alert at 10s remaining
-- `todo`: daily tasks grouped by date (3 unfinished per day, 3 upcoming groups, past days stay non-editable, unfinished tasks 1-3 days late show an `EXTENDED` badge and can still be completed, tasks more than 3 days late show `OVERDUE`, fuzzy search over tasks and dates, manual save) plus a Stats page: weekly/monthly completion donuts, streak, 30-day trend, GitHub-style year heatmap. Today's done/total shows as a clickable stat in the home hint bar. Stored in the shared `look.db` (`core/todo`), one-year retention
+- `todo`: daily tasks grouped by date (3 unfinished per day, 3 upcoming groups, past days stay non-editable, unfinished tasks 1-3 days late show an `EXTENDED` badge and can still be completed, tasks more than 3 days late show `OVERDUE`, fuzzy search over tasks and dates, manual save) plus a Stats page: weekly/monthly completion donuts, streak, 30-day trend, GitHub-style year heatmap. Today's done/total shows as a clickable stat in the home hint bar. Undo and redo with `Cmd+Z` / `Cmd+Shift+Z` over the last 50 task changes, saved or not. Stored in the shared `look.db` (`core/todo`), one-year retention
 - `speed`: internet speed test on a live dial - download and upload as counter-rotating comets on a log scale (1 Mbps to 1 Gbps), latency at the centre pulsing once per round trip, plus LAN/public addresses (public masked by default, both click-to-copy), ISP, location, and a plain-language read of the result. Measurement is shared (`core/netspeed`): a latency probe plus four parallel curl streams per direction against Cloudflare's keyless endpoints, falling back to the nearest of several public test mirrors when Cloudflare rate-limits the connection. Runs on open (reusing a reading under a minute old) and on `R`, never on a timer
 - calc parser (`core/calc`, shared by every shell) supports exponent (`^`), factorial (`!`), constants (`pi`, `e`), math functions (`sqrt`, `abs`, `round`, `floor`, `ceil`), `%` shorthand while keeping modulo, implicit multiplication (`2pi`, `3sqrt(9)`), comma-grouped and scientific-notation input (`1,500`, `1e6`), and aliases `x`/`:`/leading `v` (multiply, divide, `sqrt`) honored wherever they land inside `/calc` (`1920x1080`, `16:9`) - results are limited only by what an `f64` can represent, not an artificial ceiling
 - kill flow with explicit confirmation and process-by-port lookup (`:3000` / `port 3000`)
@@ -133,6 +135,7 @@ This document tracks what `look` supports today and what is planned next.
 - in-app settings panel (`Cmd+Shift+,`)
 - local config file `~/.look/config`
 - runtime reload (`Cmd+Shift+;`)
+- rebindable launcher hotkey: record one in `Settings > Shortcuts` (macOS, Windows) or set `launcher_hotkey` in `~/.look/config`; `none` frees the key for your own binding of `lookapp --toggle`
 - 9 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, Custom)
 - Behind-window blur requested from the compositor where it exists (macOS material; KDE / Hyprland / Niri on Linux), clear glass everywhere else
 - query alias presets in `~/.look/config` for app + System Settings intent expansion (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`)

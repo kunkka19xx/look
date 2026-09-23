@@ -263,6 +263,7 @@ Don't remember the prefixes? Type a single `"` to open a menu listing every pref
 - `rc"term` -> recent files/folders, newest activity first (optional filter; `rc"` alone lists all). Blends what you've opened through Look with what recently appeared/changed on disk (downloads, screenshots). macOS for now.
 - `r"pattern` -> regex search (case-insensitive)
 - `c"term` -> clipboard history search
+- `ci"term` -> copied images, newest first
 - `t"text` -> quick translation panel
 - `tw"text` -> dictionary lookup panel
 
