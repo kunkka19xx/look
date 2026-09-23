@@ -27,6 +27,7 @@ This document tracks what `look` supports today and what is planned next.
 - preview pane: text/image file previews, plus folder previews listing the immediate children (folders first, capped at 30, click to open)
 - hide the selected app from Look with `Cmd+Shift+H` / `Ctrl+Shift+H` so it stops appearing in results
 - run the selected app as administrator with `Ctrl+Shift+Enter` (Windows only, triggers a UAC prompt)
+- process search with `ps"` prefix: `Enter` measures the selected process's CPU on demand, `Cmd+D` / `Ctrl+D` kills it, `Cmd+C` / `Ctrl+C` copies its PID. Typing scores a cached snapshot, so the process table is walked only on entering the mode and after a kill
 
 ### Clipboard and translation
 
@@ -132,6 +133,7 @@ This document tracks what `look` supports today and what is planned next.
 
 ### Settings and runtime config
 
+- launch modes: `lookapp <mode> [term]` opens straight into a mode from a keybinding (18 modes with aliases, `lookapp clipboard`, `lookapp calc 2+2`), plus `--toggle`, `--mode`/`--query`, `--list-modes`, and `reload-config`. Parsed in `core/engine/src/modes.rs` so a name means the same thing on every platform
 - in-app settings panel (`Cmd+Shift+,`)
 - local config file `~/.look/config`
 - runtime reload (`Cmd+Shift+;`)

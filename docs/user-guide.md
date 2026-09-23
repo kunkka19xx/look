@@ -262,6 +262,7 @@ Don't remember the prefixes? Type a single `"` to open a menu listing every pref
 - `d"term` -> folders only
 - `rc"term` -> recent files/folders, newest activity first (optional filter; `rc"` alone lists all). Blends what you've opened through Look with what recently appeared/changed on disk (downloads, screenshots). macOS for now.
 - `r"pattern` -> regex search (case-insensitive)
+- `ps"term` -> running processes; `Enter` measures that process's CPU, `Cmd+D` (`Ctrl+D`) kills it, `Cmd+C` (`Ctrl+C`) copies its PID
 - `c"term` -> clipboard history search
 - `ci"term` -> copied images, newest first
 - `t"text` -> quick translation panel
@@ -357,6 +358,50 @@ Behavior:
 - `R` / `E` (inside `/speed`): run the test again, show or hide the public address
 - `Up` / `Down`: in `kill`, navigate process/app results
 - shell text containing `sudo` shows an orange warning cue
+
+## Launch modes (command line)
+
+Look can open straight into a mode instead of the empty home screen, so a key you bind in your desktop or window manager becomes "open my clipboard history" rather than just "open Look".
+
+```bash
+lookapp clipboard          # opens with c" in the field
+lookapp todo               # opens the todo panel
+lookapp calc 2+2           # opens /calc with 2+2 typed
+lookapp files report       # files-only search for "report"
+```
+
+The mode name comes first, and everything after it is the term, verbatim: `lookapp shell ls -la` keeps its `-la` instead of reading it as an option. Names are case-insensitive and most have shorter aliases.
+
+| Mode | Aliases | Opens | Where |
+| --- | --- | --- | --- |
+| `clipboard` | `clip`, `cb` | `c"` clipboard history | all |
+| `clipboard-image` | `clipimg`, `ci` | `ci"` copied images | all |
+| `apps` | `app` | `a"` applications only | all |
+| `files` | `file` | `f"` files only | all |
+| `folders` | `folder`, `dirs` | `d"` folders only | all |
+| `recent` | | `rc"` recent files and folders | all |
+| `regex` | `re` | `r"` regex search | all |
+| `processes` | `ps` | `ps"` find and kill running processes | all |
+| `translate` | `tr` | `t"` quick translation | all |
+| `dictionary` | `dict` | `tw"` dictionary lookup | macOS |
+| `calc` | `calculator` | the calculator panel | all |
+| `pomo` | `pomodoro` | the pomodoro timer | all |
+| `todo` | | daily tasks | all |
+| `speed` | | the network speed test | all |
+| `kill` | | running processes | all |
+| `shell` | | the shell command panel | all |
+| `sys` | | system info | all |
+| `ai` | `chat`, `ask` | the `>` AI session | macOS |
+
+Flags:
+
+- `--toggle` shows or hides the running launcher. This is what you bind when `launcher_hotkey=none`
+- `--mode <name> [term]` is the long form of a bare mode name, and `--query <text>` opens with exactly that text and no mode
+- `--list-modes` prints the table as the build you are running sees it, so a macOS-only mode says so instead of disappearing
+- `reload-config` re-reads `~/.look/config` in the running Look and exits without opening a window
+- `--` ends the options, for a term that starts with a hyphen
+
+A misspelled mode is an error and prints the list, since you were specific and missed. A mode this platform does not have says so rather than opening a search for `>`. Any other unrecognised argument opens Look normally, which is what keeps existing autostart lines working. `--mode` with no name prints the list instead of erroring, because a keybinding has no terminal to complain to.
 
 ## Your own sources
 
