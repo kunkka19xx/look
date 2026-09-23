@@ -5,9 +5,17 @@ pkgrel=1
 pkgdesc="Keyboard-first, local-first launcher for apps, files, clipboard, and quick commands"
 arch=('x86_64')
 url="https://github.com/kunkka19xx/look"
-license=('MIT')
-depends=('webkit2gtk-4.1' 'gtk3' 'libappindicator-gtk3' 'librsvg')
+license=('GPL-3.0-or-later')
+depends=('webkit2gtk-4.1' 'gtk3' 'librsvg' 'alsa-lib' 'dbus' 'xdg-desktop-portal')
 makedepends=('binutils' 'tar')
+optdepends=(
+    'gtk-layer-shell: anchored window on Wayland compositors'
+    'wl-clipboard: copy files to the clipboard on Wayland'
+    'xclip: copy files to the clipboard on X11'
+    'zenity: crash report dialog on GNOME'
+    'kdialog: crash report dialog on KDE'
+    'libnotify: crash report notification elsewhere'
+)
 provides=('lookapp')
 conflicts=('lookapp' 'look')
 options=(!strip !debug)
