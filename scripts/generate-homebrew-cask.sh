@@ -37,6 +37,8 @@ cask "look" do
   app "Look.app"
   binary "#{appdir}/Look.app/Contents/MacOS/Look", target: "lookapp"
 
+  uninstall quit: "noah-code.Look"
+
   zap trash: [
     "~/.look",
     "~/Library/Application Support/Look",
