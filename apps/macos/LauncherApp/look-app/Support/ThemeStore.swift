@@ -717,9 +717,11 @@ final class ThemeStore: ObservableObject {
         value: String,
         range: ClosedRange<Double>
     ) {
-        guard let parsed = Double(value), !range.contains(parsed) else { return }
-        warnings.append(
-            "\(key)=\(value) invalid (expected \(formatted(range.lowerBound))-\(formatted(range.upperBound)))")
+        guard let parsed = Double(value), range.contains(parsed) else {
+            warnings.append(
+                "\(key)=\(value) invalid (expected \(formatted(range.lowerBound))-\(formatted(range.upperBound)))")
+            return
+        }
     }
 
     /// Drops the decimals a whole bound does not need, so a warning reads
