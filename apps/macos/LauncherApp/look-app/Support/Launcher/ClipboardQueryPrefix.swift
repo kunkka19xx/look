@@ -22,9 +22,10 @@ enum ClipboardQueryPrefix {
 
     /// What follows the prefix, or nil when the query is not this history's.
     func searchTerm(in query: String) -> String? {
-        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard normalized.lowercased().hasPrefix(prefix) else { return nil }
-        return String(normalized.dropFirst(prefix.count))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if self == .text && ClipboardQueryPrefix.image.matches(query) {
+            return nil
+        }
+        let prefixName = self == .image ? "ci" : "c"
+        return AppConstants.Launcher.QueryPrefix.strip(from: query, prefixName: prefixName)
     }
 }

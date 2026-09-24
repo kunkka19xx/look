@@ -10,23 +10,21 @@ enum LauncherPinnedLookupScope: Equatable {
 
 enum LauncherSearchLogic {
     static func pinnedLookupScope(for query: String) -> LauncherPinnedLookupScope {
-        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
-        if normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.regex)
-            || normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.clipboard)
-            || normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.recent)
+        if AppConstants.Launcher.QueryPrefix.matches(query, prefixName: "r")
+            || AppConstants.Launcher.QueryPrefix.matches(query, prefixName: "c")
+            || AppConstants.Launcher.QueryPrefix.matches(query, prefixName: "rc")
         {
             // Recent (rc") is engine-ranked by recency; suppress quick-folder and
             // Finder pinned injection so they don't pollute the recent list.
             return .disabled
         }
-        if normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.apps) {
+        if AppConstants.Launcher.QueryPrefix.matches(query, prefixName: "a") {
             return .apps
         }
-        if normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.files) {
+        if AppConstants.Launcher.QueryPrefix.matches(query, prefixName: "f") {
             return .files
         }
-        if normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.folders) {
+        if AppConstants.Launcher.QueryPrefix.matches(query, prefixName: "d") {
             return .folders
         }
         return .unscoped
@@ -36,24 +34,25 @@ enum LauncherSearchLogic {
         for query: String,
         scope: LauncherPinnedLookupScope
     ) -> String? {
-        var normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
-        if scope == .apps, normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.apps) {
-            normalized = String(normalized.dropFirst(AppConstants.Launcher.QueryPrefix.apps.count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        } else if scope == .files, normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.files) {
-            normalized = String(normalized.dropFirst(AppConstants.Launcher.QueryPrefix.files.count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        } else if scope == .folders, normalized.hasPrefix(AppConstants.Launcher.QueryPrefix.folders) {
-            normalized = String(normalized.dropFirst(AppConstants.Launcher.QueryPrefix.folders.count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+        var normalized: String?
+        switch scope {
+        case .disabled:
+            return nil
+        case .apps:
+            normalized = AppConstants.Launcher.QueryPrefix.strip(from: query, prefixName: "a")
+        case .files:
+            normalized = AppConstants.Launcher.QueryPrefix.strip(from: query, prefixName: "f")
+        case .folders:
+            normalized = AppConstants.Launcher.QueryPrefix.strip(from: query, prefixName: "d")
+        case .unscoped:
+            normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
 
-        if scope == .disabled || normalized.isEmpty {
+        guard let norm = normalized, !norm.isEmpty else {
             return nil
         }
 
-        return normalized
+        return norm.lowercased()
     }
 
     static func shouldInjectFinder(

@@ -27,13 +27,23 @@ final class LauncherSearchLogicTests: XCTestCase {
     func testPinnedScopeDetection() {
         XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "finder"), .unscoped)
         XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "a\"finder"), .apps)
+        XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "a:finder"), .apps)
+        XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "a finder"), .apps)
         XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "f\"report"), .files)
+        XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "f:report"), .files)
+        XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "f report"), .files)
         XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "d\"doc"), .folders)
+        XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "d:doc"), .folders)
+        XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "d doc"), .folders)
         XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "r\".*"), .disabled)
         XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "c\"note"), .disabled)
+        XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "c:note"), .disabled)
+        XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "c note"), .disabled)
         // rc" (recent) suppresses pinned quick-folder/Finder injection.
         XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "rc\""), .disabled)
         XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "rc\"report"), .disabled)
+        XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "rc:report"), .disabled)
+        XCTAssertEqual(LauncherSearchLogic.pinnedLookupScope(for: "rc report"), .disabled)
     }
 
     func testNormalizedPinnedQueryRespectsScope() {
@@ -42,7 +52,23 @@ final class LauncherSearchLogicTests: XCTestCase {
             "finder"
         )
         XCTAssertEqual(
+            LauncherSearchLogic.normalizedPinnedLookupQuery(for: "a: Finder ", scope: .apps),
+            "finder"
+        )
+        XCTAssertEqual(
+            LauncherSearchLogic.normalizedPinnedLookupQuery(for: "a Finder ", scope: .apps),
+            "finder"
+        )
+        XCTAssertEqual(
             LauncherSearchLogic.normalizedPinnedLookupQuery(for: "d\" Documents ", scope: .folders),
+            "documents"
+        )
+        XCTAssertEqual(
+            LauncherSearchLogic.normalizedPinnedLookupQuery(for: "d: Documents ", scope: .folders),
+            "documents"
+        )
+        XCTAssertEqual(
+            LauncherSearchLogic.normalizedPinnedLookupQuery(for: "d Documents ", scope: .folders),
             "documents"
         )
         XCTAssertNil(

@@ -62,15 +62,23 @@ private struct RunningAppIconItem: View {
     private let iconSize: CGFloat = AppConstants.Launcher.RunningAppsStrip.iconSize
     private var iconCornerRadius: CGFloat { iconSize * 0.22 }
 
+    private var isThemeTinted: Bool {
+        themeStore.settings.runningAppsThemeTint && !isHovered
+    }
+
+    private var themeFilterColor: Color {
+        themeStore.accentColor()
+    }
+
     var body: some View {
         ZStack {
             iconView
                 .overlay(alignment: .topTrailing) { badge }
                 .overlay { activeRing }
                 .scaleEffect(isHovered ? 1.12 : 1.0)
-                .opacity(isActive ? 1.0 : (isHovered ? 0.95 : 0.75))
-                .animation(.easeOut(duration: 0.15), value: isHovered)
-                .animation(.easeOut(duration: 0.15), value: isActive)
+                .opacity(isActive ? 1.0 : (isHovered ? 1.0 : (isThemeTinted ? 0.65 : 0.75)))
+                .animation(.easeOut(duration: 0.12), value: isHovered)
+                .animation(.easeOut(duration: 0.12), value: isActive)
                 .contentShape(Rectangle())
                 .onTapGesture { onTap() }
                 .onHover { hovering in onHoverChange(hovering) }
@@ -86,15 +94,23 @@ private struct RunningAppIconItem: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: iconSize, height: iconSize)
+                .grayscale(isThemeTinted ? 0.85 : 0.0)
+                .overlay {
+                    if isThemeTinted {
+                        RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous)
+                            .fill(themeFilterColor.opacity(0.38))
+                            .blendMode(.color)
+                    }
+                }
                 .clipShape(RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous))
         } else {
             RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous)
-                .fill(themeStore.fontColor(opacityMultiplier: 0.14))
+                .fill(isThemeTinted ? themeFilterColor.opacity(0.20) : themeStore.fontColor(opacityMultiplier: 0.14))
                 .frame(width: iconSize, height: iconSize)
                 .overlay {
                     Text(String(item.name.prefix(1)).uppercased())
                         .font(themeStore.uiFont(size: 12, weight: .semibold))
-                        .foregroundStyle(themeStore.fontColor())
+                        .foregroundStyle(isHovered ? themeStore.fontColor() : themeStore.secondaryTextColor())
                 }
         }
     }

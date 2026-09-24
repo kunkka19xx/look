@@ -223,6 +223,8 @@ struct LabeledSlider: View {
     let title: String
     @Binding var value: Double
     let range: ClosedRange<Double>
+    var step: Double? = nil
+    var fractionLength: Int = 2
 
     private var valueColumnWidth: CGFloat {
         let scaledFontSize = CGFloat(themeStore.settings.fontSize) * themeStore.uiScale
@@ -235,10 +237,16 @@ struct LabeledSlider: View {
                 .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                 .foregroundStyle(themeStore.secondaryTextColor())
-            Slider(value: $value, in: range)
-                .controlSize(.mini)
-                .tint(themeStore.fontColor(opacityMultiplier: 0.92))
-            Text(value, format: .number.precision(.fractionLength(2)))
+            if let step {
+                Slider(value: $value, in: range, step: step)
+                    .controlSize(.mini)
+                    .tint(themeStore.fontColor(opacityMultiplier: 0.92))
+            } else {
+                Slider(value: $value, in: range)
+                    .controlSize(.mini)
+                    .tint(themeStore.fontColor(opacityMultiplier: 0.92))
+            }
+            Text(value, format: .number.precision(.fractionLength(fractionLength)))
                 .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 1), weight: .regular))
                 .monospacedDigit()
                 .lineLimit(1)

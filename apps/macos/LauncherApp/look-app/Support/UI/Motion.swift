@@ -6,14 +6,14 @@ enum Motion {
     /// The "materialize on open" reveal: tiles grow and rise into place,
     /// staggered so the grid assembles rather than appearing at once.
     enum Spawn {
-        static let startScale: CGFloat = 0.88
-        static let startOffsetY: CGFloat = 14
-        static let staggerSeconds: Double = 0.035
+        static let startScale: CGFloat = 0.92
+        static let startOffsetY: CGFloat = 8
+        static let staggerSeconds: Double = 0.012
         /// Ceiling on the cascade so a large grid never trails on too long.
-        static let maxStaggerSeconds: Double = 0.34
-        static let response: Double = 0.46
+        static let maxStaggerSeconds: Double = 0.08
+        static let response: Double = 0.24
         /// Under 1 to overshoot slightly and settle back.
-        static let dampingFraction: Double = 0.68
+        static let dampingFraction: Double = 0.82
 
         static func animation(index: Int) -> Animation {
             let delay = min(Double(max(0, index)) * staggerSeconds, maxStaggerSeconds)
@@ -24,20 +24,20 @@ enum Motion {
     /// The single highlight pill gliding between rows on keyboard navigation.
     enum Selection {
         static let geometryID = "look.selection.pill"
-        static let response: Double = 0.3
-        static let dampingFraction: Double = 0.85
+        static let response: Double = 0.18
+        static let dampingFraction: Double = 0.86
 
         /// One-shot zoom as a row takes the selection. The icon needs a much
         /// larger factor than the pill: at 22pt a few percent is one point,
         /// while the same on a full-width pill looks like the layout breathing.
-        static let iconZoomScale: CGFloat = 1.24
-        static let pillZoomScale: CGFloat = 1.02
-        static let zoomInSeconds: Double = 0.11
-        static let zoomOutResponse: Double = 0.3
-        static let zoomOutDamping: Double = 0.6
+        static let iconZoomScale: CGFloat = 1.15
+        static let pillZoomScale: CGFloat = 1.015
+        static let zoomInSeconds: Double = 0.06
+        static let zoomOutResponse: Double = 0.18
+        static let zoomOutDamping: Double = 0.72
 
         /// Horizontal offset held by the selected row's text while selected.
-        static let titleShift: CGFloat = 4
+        static let titleShift: CGFloat = 3
 
         static var glide: Animation {
             .spring(response: response, dampingFraction: dampingFraction)
@@ -55,9 +55,9 @@ enum Motion {
     /// The press-down on an interactive surface (result rows, tiles), so a
     /// click reads as physical rather than instant.
     enum Press {
-        static let scale: CGFloat = 0.975
-        static let response: Double = 0.24
-        static let dampingFraction: Double = 0.9
+        static let scale: CGFloat = 0.98
+        static let response: Double = 0.14
+        static let dampingFraction: Double = 0.92
 
         static var animation: Animation {
             .spring(response: response, dampingFraction: dampingFraction)
@@ -69,7 +69,7 @@ enum Motion {
         /// Digit roll for a readout that ticks (battery, temperature, timers).
         /// Kept under the one-second tick of the fastest caller (the pomo
         /// countdown) so a roll always settles before the next value lands.
-        static let rollSeconds: Double = 0.28
+        static let rollSeconds: Double = 0.14
 
         static var rollDigits: Animation {
             .easeInOut(duration: rollSeconds)
@@ -79,10 +79,10 @@ enum Motion {
     /// A row landing in or leaving a list: a skipped folder, an extra scan
     /// directory. Springs so an entry reads as placed rather than popped in.
     enum Insert {
-        static let response: Double = 0.34
-        static let dampingFraction: Double = 0.82
+        static let response: Double = 0.20
+        static let dampingFraction: Double = 0.84
         /// Grown from, and collapsed back to, on the row's leading edge.
-        static let startScale: CGFloat = 0.9
+        static let startScale: CGFloat = 0.94
 
         static var animation: Animation {
             .spring(response: response, dampingFraction: dampingFraction)
@@ -96,7 +96,7 @@ enum Motion {
     /// Content changing in place rather than moving: the pomo panel dimming to
     /// its idle state, a chosen path replacing the empty-state line.
     enum Fade {
-        static let seconds: Double = 0.4
+        static let seconds: Double = 0.16
 
         static var animation: Animation {
             .easeInOut(duration: seconds)
@@ -107,9 +107,9 @@ enum Motion {
     /// on purpose: animating the window would mean touching the
     /// `makeKeyAndOrderFront` path the Cmd+Space cold-login bug lives in.
     enum Surface {
-        static let arriveScale: CGFloat = 0.965
-        static let arriveResponse: Double = 0.34
-        static let arriveDamping: Double = 0.86
+        static let arriveScale: CGFloat = 0.98
+        static let arriveResponse: Double = 0.20
+        static let arriveDamping: Double = 0.88
 
         static var arrive: Animation {
             .spring(response: arriveResponse, dampingFraction: arriveDamping)
@@ -119,17 +119,17 @@ enum Motion {
     /// Horizontal slide-ins on open: the search placeholder from the right, the
     /// running-apps strip from the left.
     enum Slide {
-        static let placeholderOffsetX: CGFloat = 20
-        static let stripOffsetX: CGFloat = -18
-        static let startScale: CGFloat = 0.92
+        static let placeholderOffsetX: CGFloat = 12
+        static let stripOffsetX: CGFloat = -10
+        static let startScale: CGFloat = 0.96
         /// The spring's period: the main dial for how fast these read.
-        static let response: Double = 0.8
+        static let response: Double = 0.26
         /// Loose enough to carry a little past 1 and settle back.
-        static let dampingFraction: Double = 0.76
+        static let dampingFraction: Double = 0.84
         /// Lands just behind the bar these sit in.
-        static let delaySeconds: Double = 0.09
-        static let staggerSeconds: Double = 0.04
-        static let maxStaggerSeconds: Double = 0.28
+        static let delaySeconds: Double = 0.02
+        static let staggerSeconds: Double = 0.015
+        static let maxStaggerSeconds: Double = 0.08
 
         static func arrive(index: Int) -> Animation {
             let stagger = min(Double(max(0, index)) * staggerSeconds, maxStaggerSeconds)
@@ -144,10 +144,10 @@ enum Motion {
         static let cornerRadius: CGFloat = 1
         /// Multiplier on the font's line height so the bar reads as a caret.
         static let heightScale: CGFloat = 1.05
-        static let glideSeconds: CFTimeInterval = 0.105
-        static let blinkPeriodSeconds: CFTimeInterval = 1.05
+        static let glideSeconds: CFTimeInterval = 0.065
+        static let blinkPeriodSeconds: CFTimeInterval = 0.95
         /// Idle time after a keystroke before the blink resumes (solid while typing).
-        static let blinkResumeSeconds: TimeInterval = 0.4
+        static let blinkResumeSeconds: TimeInterval = 0.25
     }
 
     /// House easing as cubic-bezier control points, for the CoreAnimation caret

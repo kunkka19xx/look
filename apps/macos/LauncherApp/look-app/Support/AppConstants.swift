@@ -152,6 +152,30 @@ enum AppConstants {
             // Typing a lone `"` opens the prefix-discovery menu (see
             // PrefixSuggestion.all / LauncherView.isPrefixSuggestionQuery).
             static let discovery = "\""
+
+            /// Checks if `input` starts with prefix `prefixName` followed by `"`, `:`, or a space delimiter.
+            /// Returns the stripped remainder (trimmed), or `nil` if it doesn't match.
+            public static func strip(from input: String, prefixName: String) -> String? {
+                let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmed.count >= prefixName.count else { return nil }
+                let lower = trimmed.lowercased()
+                let prefixLower = prefixName.lowercased()
+                guard lower.hasPrefix(prefixLower) else { return nil }
+
+                let index = trimmed.index(trimmed.startIndex, offsetBy: prefixName.count)
+                let rest = trimmed[index...]
+                if rest.hasPrefix("\"") || rest.hasPrefix(":") {
+                    return String(rest.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if rest.hasPrefix(" ") {
+                    return String(rest).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                return nil
+            }
+
+            public static func matches(_ input: String, prefixName: String) -> Bool {
+                strip(from: input, prefixName: prefixName) != nil
+            }
         }
 
         // Canonical list of query prefixes, with a usage hint and a description.
@@ -487,6 +511,7 @@ enum AppConstants {
             static let h: UInt16 = 4
             static let c: UInt16 = 8
             static let e: UInt16 = 14
+            static let r: UInt16 = 15
             static let t: UInt16 = 17
             static let j: UInt16 = 38
             static let k: UInt16 = 40
@@ -687,6 +712,8 @@ enum AppConstants {
     enum ThemeUI {
         static let labelWidth: CGFloat = 150
         static let pickerWidth: CGFloat = 140
+        static let windowWidthRange: ClosedRange<Double> = 500...1400
+        static let searchBarWidthRange: ClosedRange<Double> = 350...1400
         /// Bounds shared by the slider, the config parser and the reload check,
         /// so a value the slider cannot reach is reported rather than clamped.
         static let innerGapRange: ClosedRange<Double> = 0...24

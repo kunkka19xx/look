@@ -14,24 +14,16 @@ extension LauncherView {
     }
 
     func extractTranslationQuery(from input: String) -> TranslationCommand? {
-        let translate = AppConstants.Launcher.QueryPrefix.translate
-        let translateWord = AppConstants.Launcher.QueryPrefix.translateWord
-        if input.hasPrefix(translate) {
-            let text = String(input.dropFirst(translate.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.isEmpty ? nil : .network(text)
+        if let text = AppConstants.Launcher.QueryPrefix.strip(from: input, prefixName: "tw"), !text.isEmpty {
+            return .lookup(text)
         }
-
-        if input.count >= translateWord.count,
-            input.prefix(translateWord.count).lowercased() == translateWord {
-            let text = String(input.dropFirst(translateWord.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.isEmpty ? nil : .lookup(text)
+        if let text = AppConstants.Launcher.QueryPrefix.strip(from: input, prefixName: "t"), !text.isEmpty {
+            return .network(text)
         }
-
         if input.lowercased().hasPrefix("tr ") {
             let text = String(input.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
             return text.isEmpty ? nil : .network(text)
         }
-
         return nil
     }
 

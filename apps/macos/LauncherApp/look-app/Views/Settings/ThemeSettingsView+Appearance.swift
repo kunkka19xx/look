@@ -30,6 +30,16 @@ extension ThemeSettingsView {
                     .labelsHidden()
                     .help("Show running apps in the right half of the search bar (⌘1-9 to switch)")
 
+                    if settings.runningAppsPlacement != .none {
+                        Spacer().frame(width: 30)
+
+                        inlinePickerLabel("Theme Tint")
+                        Toggle("Tint running apps with theme", isOn: $settings.runningAppsThemeTint)
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                            .help("Discreetly tint open app icons to match the active theme palette")
+                    }
+
                     Spacer().frame(width: 40)
 
                     inlinePickerLabel("Super Actions")
@@ -46,6 +56,22 @@ extension ThemeSettingsView {
                     .padding(.vertical, 4)
 
                 sectionHeader("Layout")
+
+                LabeledSlider(
+                    title: "Content Width",
+                    value: $settings.windowWidth,
+                    range: AppConstants.ThemeUI.windowWidthRange,
+                    step: 10,
+                    fractionLength: 0)
+                    .help("Width of the results and preview content in points (500–1400; default 860).")
+
+                LabeledSlider(
+                    title: "Search Bar Width",
+                    value: $settings.searchBarWidth,
+                    range: AppConstants.ThemeUI.searchBarWidthRange,
+                    step: 10,
+                    fractionLength: 0)
+                    .help("Width of the search bar in points (350–1400; default 860). Can be narrower than the content.")
 
                 LabeledSlider(
                     title: "Inner Gap",

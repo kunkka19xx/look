@@ -62,7 +62,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// autoscale.
     private func makeLauncherWindow() {
         let baseSize = WindowAutoScale.baseSize()
-        let (minW, minH) = (baseSize.width, baseSize.height)
+        let minW = CGFloat(min(AppConstants.ThemeUI.windowWidthRange.lowerBound, AppConstants.ThemeUI.searchBarWidthRange.lowerBound))
+        let minH = baseSize.height
         let content = ContentView()
             .frame(minWidth: minW, minHeight: minH)
             .background(WindowConfigurator(themeStore: .shared))
@@ -70,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .environmentObject(ThemeStore.shared)
 
         let window = LauncherPanelWindow(
-            contentRect: NSRect(x: 0, y: 0, width: minW, height: minH),
+            contentRect: NSRect(x: 0, y: 0, width: baseSize.width, height: minH),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false

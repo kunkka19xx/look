@@ -19,7 +19,9 @@ import Foundation
 enum WindowAutoScale {
     // Base size matches the Linux/Windows build (apps/linows/src-tauri):
     // 860×580 logical, landscape - list pane + preview pane side by side.
-    static let baseWidth: CGFloat = 860
+    static var baseWidth: CGFloat {
+        CGFloat(max(ThemeStore.shared.settings.windowWidth, ThemeStore.shared.settings.searchBarWidth))
+    }
     static let baseHeight: CGFloat = 600
 
     /// Extra points to lift the launcher above vertical center. The window is

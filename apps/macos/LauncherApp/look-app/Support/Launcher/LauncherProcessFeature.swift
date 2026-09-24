@@ -6,18 +6,13 @@ import UniformTypeIdentifiers
 /// holds the constants, this owns the logic.
 enum LauncherProcessFeature {
     static func isProcessQuery(_ query: String) -> Bool {
-        query.trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .hasPrefix(AppConstants.Launcher.QueryPrefix.process)
+        AppConstants.Launcher.QueryPrefix.matches(query, prefixName: "ps")
     }
 
     /// The text typed after `ps"` (empty when just the prefix is present), or
     /// nil when `query` isn't a process query.
     static func searchTerm(from query: String) -> String? {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let prefix = AppConstants.Launcher.QueryPrefix.process
-        guard trimmed.lowercased().hasPrefix(prefix) else { return nil }
-        return String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        AppConstants.Launcher.QueryPrefix.strip(from: query, prefixName: "ps")
     }
 
     /// A results-list row for a process. Subtitle is `PID <pid>` plus `· :port`

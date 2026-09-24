@@ -101,6 +101,13 @@ struct look_appApp: App {
                         NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
                     }
                 }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+
+                Button("Reload Config (Legacy)") {
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)
+                    }
+                }
                 .keyboardShortcut(";", modifiers: [.command, .shift])
 
                 Divider()

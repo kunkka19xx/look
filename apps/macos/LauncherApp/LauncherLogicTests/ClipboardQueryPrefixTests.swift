@@ -31,4 +31,16 @@ final class ClipboardQueryPrefixTests: XCTestCase {
             XCTAssertNil(ClipboardQueryPrefix.image.searchTerm(in: query), query)
         }
     }
+
+    func testClipboardPrefixSupportsColonAndSpace() {
+        XCTAssertTrue(ClipboardQueryPrefix.text.matches("c:mail"))
+        XCTAssertEqual(ClipboardQueryPrefix.text.searchTerm(in: "c:mail"), "mail")
+        XCTAssertTrue(ClipboardQueryPrefix.text.matches("c mail"))
+        XCTAssertEqual(ClipboardQueryPrefix.text.searchTerm(in: "c mail"), "mail")
+
+        XCTAssertTrue(ClipboardQueryPrefix.image.matches("ci:logo"))
+        XCTAssertEqual(ClipboardQueryPrefix.image.searchTerm(in: "ci:logo"), "logo")
+        XCTAssertTrue(ClipboardQueryPrefix.image.matches("ci logo"))
+        XCTAssertEqual(ClipboardQueryPrefix.image.searchTerm(in: "ci logo"), "logo")
+    }
 }

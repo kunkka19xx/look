@@ -230,6 +230,18 @@ struct ThemeSettings: Codable, Equatable {
     var launchAtLogin: Bool = true
 
     var runningAppsPlacement: RunningAppsPlacement = .right
+    /// Whether open apps in the running apps strip are discreetly tinted to match
+    /// the active theme. Defaults to true. Persisted in config under `running_apps_theme_tint`.
+    var runningAppsThemeTint: Bool = true
+
+    /// Width of the content / results window in points (500-1400; default 860).
+    /// Persisted in config under `window_width` or `content_width`.
+    var windowWidth: Double = 860
+
+    /// Width of the search bar in points (350-1400; default 860).
+    /// Persisted in config under `search_bar_width` or `bar_width`.
+    /// Can be configured independently from `windowWidth`.
+    var searchBarWidth: Double = 860
 
     /// i3-style inner gap (in points) inserted between the three home-screen panes
     /// - the top row (search bar + running apps), the results list and the preview.

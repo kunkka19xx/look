@@ -404,9 +404,7 @@ struct LauncherView: View {
     }
 
     var isRecentQuery: Bool {
-        query.trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .hasPrefix(AppConstants.Launcher.QueryPrefix.recent)
+        AppConstants.Launcher.QueryPrefix.matches(query, prefixName: "rc")
     }
 
     /// A leading `"` opens the prefix-discovery menu: a list of every query
@@ -633,7 +631,7 @@ struct LauncherView: View {
     /// Settings > Shortcuts.
     var hintItems: [String] {
         if appUIState.showsThemeSettings {
-            return ["Cmd+Shift+; apply config", "Cmd+Shift+, close settings", "Cmd+H help"]
+            return ["Cmd+Shift+R / Cmd+Shift+; apply config", "Cmd+Shift+, close settings", "Cmd+H help"]
         }
 
         if isHideAppConfirmationVisible {
@@ -920,6 +918,16 @@ struct LauncherView: View {
             if !stillAI {
                 dismissMentionPopup()
                 clearAttachments()
+            }
+        }
+        .onChange(of: themeStore.settings.windowWidth) { _, _ in
+            if let window = launcherWindow() {
+                positionOnActiveScreen(window)
+            }
+        }
+        .onChange(of: themeStore.settings.searchBarWidth) { _, _ in
+            if let window = launcherWindow() {
+                positionOnActiveScreen(window)
             }
         }
         .onDisappear {
@@ -1316,6 +1324,8 @@ struct LauncherView: View {
     private var panelContent: some View {
         if appUIState.showsThemeSettings {
             ThemeSettingsView(settings: $themeStore.settings)
+                .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                .frame(maxWidth: .infinity, alignment: .center)
         } else {
             if !isCommandMode && !showsHelpScreen {
                 // The search field and running-apps icons always share one
@@ -1344,14 +1354,20 @@ struct LauncherView: View {
                         }
                     }
                 }
+                .frame(maxWidth: CGFloat(themeStore.settings.searchBarWidth))
+                .frame(maxWidth: .infinity, alignment: .center)
             }
 
             if let bannerMessage {
                 bannerView(message: bannerMessage)
+                    .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
 
             if isCommandMode {
                 commandModeView
+                    .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                    .frame(maxWidth: .infinity, alignment: .center)
             } else if showsHelpScreen {
                 // Ahead of the AI panel: ⌘H must reach help from inside a
                 // conversation too, and the mode is only paused - ⌘H again (or
@@ -1360,11 +1376,15 @@ struct LauncherView: View {
                 LauncherHelpScreenView(
                     themeStore: themeStore,
                     initialTopic: isAIMode ? .ai : .all)
+                    .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                    .frame(maxWidth: .infinity, alignment: .center)
             } else if isActionSessionUI {
                 // `>` owns the whole panel area, like translation and clipboard
                 // do: the session screen holds completed actions, the pending
                 // confirm, and progress - one coherent place, not floating bars.
                 floatingPanel { aiSessionPanel }
+                    .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                    .frame(maxWidth: .infinity, alignment: .center)
             } else if isTranslationQuery {
                 floatingPanel {
                     LookupDefinitionPanelView(
@@ -1374,21 +1394,29 @@ struct LauncherView: View {
                         themeStore: themeStore
                     )
                 }
+                .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                .frame(maxWidth: .infinity, alignment: .center)
             } else if (isClipboardQuery || isClipboardImageQuery) && displayedResults.isEmpty {
                 // The empty clipboard screen is naturally two columns (history /
                 // how-to), so float it as the same two-card grid as the results.
                 let copy: ClipboardEmptyStateCopy = isClipboardImageQuery ? .images : .text
-                if showsFloatingCards {
-                    twoPaneGrid(hasRight: true) {
-                        ClipboardEmptyInfoView(themeStore: themeStore, copy: copy)
-                    } right: {
-                        ClipboardEmptyHelpView(themeStore: themeStore, copy: copy)
+                Group {
+                    if showsFloatingCards {
+                        twoPaneGrid(hasRight: true) {
+                            ClipboardEmptyInfoView(themeStore: themeStore, copy: copy)
+                        } right: {
+                            ClipboardEmptyHelpView(themeStore: themeStore, copy: copy)
+                        }
+                    } else {
+                        ClipboardEmptyStateView(themeStore: themeStore, copy: copy)
                     }
-                } else {
-                    ClipboardEmptyStateView(themeStore: themeStore, copy: copy)
                 }
+                .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                .frame(maxWidth: .infinity, alignment: .center)
             } else if isRecentQuery && displayedResults.isEmpty {
                 floatingPanel { RecentEmptyStateView(themeStore: themeStore) }
+                    .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                    .frame(maxWidth: .infinity, alignment: .center)
             } else if let fileRecallEmptyMessage, displayedResults.isEmpty {
                 floatingPanel {
                     VStack(alignment: .leading, spacing: 6) {
@@ -1402,6 +1430,8 @@ struct LauncherView: View {
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                .frame(maxWidth: .infinity, alignment: .center)
             } else if hidesResultsForEmptyQuery {
                 // Empty query while floating: the launchpad control strip sits
                 // below the top bar; a spacer keeps them pinned to the top. When
@@ -1414,13 +1444,19 @@ struct LauncherView: View {
                         themeStore: themeStore,
                         revealToken: appearanceRevealToken
                     )
+                    .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                    .frame(maxWidth: .infinity, alignment: .center)
                 }
                 Spacer(minLength: 0)
             } else {
                 if let fileRecallNote {
                     fileRecallNoteLine(fileRecallNote)
+                        .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
                 resultsRow
+                    .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
 
             if isCommandMode {
@@ -1436,6 +1472,8 @@ struct LauncherView: View {
                 && !isHideAppConfirmationVisible
             {
                 HintBar(hint: panelHint, todo: todoQuickView, themeStore: themeStore)
+                    .frame(maxWidth: CGFloat(themeStore.settings.windowWidth))
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
         }
     }

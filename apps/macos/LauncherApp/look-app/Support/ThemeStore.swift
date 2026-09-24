@@ -107,6 +107,10 @@ final class ThemeStore: ObservableObject {
                     }
                 case "inner_gap":
                     appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.innerGapRange)
+                case "window_width", "content_width":
+                    appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.windowWidthRange)
+                case "search_bar_width", "bar_width":
+                    appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.searchBarWidthRange)
                 case "ui_surface_radius":
                     appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.surfaceRadiusRange)
                 case "file_scan_depth":
@@ -142,6 +146,8 @@ final class ThemeStore: ObservableObject {
         let originalTintOpacity = settings.tintOpacity
         let originalFontSize = settings.fontSize
         let originalInnerGap = settings.innerGap
+        let originalWindowWidth = settings.windowWidth
+        let originalSearchBarWidth = settings.searchBarWidth
         let originalSurfaceRadius = settings.surfaceRadius
 
         // Apply config
@@ -165,6 +171,12 @@ final class ThemeStore: ObservableObject {
         }
         if warnings.contains(where: { $0.hasPrefix("inner_gap") }) {
             settings.innerGap = originalInnerGap
+        }
+        if warnings.contains(where: { $0.hasPrefix("window_width") || $0.hasPrefix("content_width") }) {
+            settings.windowWidth = originalWindowWidth
+        }
+        if warnings.contains(where: { $0.hasPrefix("search_bar_width") || $0.hasPrefix("bar_width") }) {
+            settings.searchBarWidth = originalSearchBarWidth
         }
         if warnings.contains(where: { $0.hasPrefix("ui_surface_radius") }) {
             settings.surfaceRadius = originalSurfaceRadius
@@ -252,6 +264,9 @@ final class ThemeStore: ObservableObject {
 
         // Running apps switcher
         ConfigFileLines.upsert(&lines, key: "running_apps_placement", value: settings.runningAppsPlacement.rawValue)
+        ConfigFileLines.upsert(&lines, key: "running_apps_theme_tint", value: settings.runningAppsThemeTint ? "true" : "false")
+        ConfigFileLines.upsert(&lines, key: "window_width", value: String(format: "%.0f", settings.windowWidth))
+        ConfigFileLines.upsert(&lines, key: "search_bar_width", value: String(format: "%.0f", settings.searchBarWidth))
         ConfigFileLines.upsert(&lines, key: "inner_gap", value: String(format: "%.0f", settings.innerGap))
         ConfigFileLines.upsert(
             &lines,
@@ -550,6 +565,14 @@ final class ThemeStore: ObservableObject {
                 if let parsed = Double(value) {
                     settings.innerGap = clamped(parsed, to: AppConstants.ThemeUI.innerGapRange)
                 }
+            case "window_width", "content_width":
+                if let parsed = Double(value) {
+                    settings.windowWidth = clamped(parsed, to: AppConstants.ThemeUI.windowWidthRange)
+                }
+            case "search_bar_width", "bar_width":
+                if let parsed = Double(value) {
+                    settings.searchBarWidth = clamped(parsed, to: AppConstants.ThemeUI.searchBarWidthRange)
+                }
             case "ui_surface_radius":
                 // Clamped rather than parsePositiveDouble: 0 squares the corners
                 // and is a value the slider offers, which `> 0` would drop.
@@ -604,6 +627,10 @@ final class ThemeStore: ObservableObject {
             case "ai_allow_remote_context":
                 if let parsed = parseBool(value) {
                     settings.aiAllowRemoteContext = parsed
+                }
+            case "running_apps_theme_tint":
+                if let parsed = parseBool(value) {
+                    settings.runningAppsThemeTint = parsed
                 }
             case "super_actions_enabled":
                 if let parsed = parseBool(value) {
@@ -869,7 +896,7 @@ final class ThemeStore: ObservableObject {
 
     private static let defaultConfigContents = """
 # look configuration
-# Generated on first launch. Edit values and press Cmd+Shift+; to reload.
+# Generated on first launch. Edit values and press Cmd+Shift+R (or Cmd+Shift+;) to reload.
 
 # Backend indexing
 app_scan_roots=/Applications,/System/Applications,/System/Applications/Utilities,/System/Library/CoreServices/Applications,/System/Library/CoreServices/Finder.app/Contents/Applications
@@ -919,6 +946,13 @@ ui_border_opacity=0.12
 
 # Running apps switcher: none, top, right, bottom
 running_apps_placement=right
+running_apps_theme_tint=true
+
+# Window / content width (points, 500-1400; default 860)
+window_width=860
+
+# Search bar width (points, 350-1400; default 860)
+search_bar_width=860
 
 # Inner gap (points, 0-24) between the three home panes; 0 = classic flat layout
 inner_gap=7
