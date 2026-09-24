@@ -317,14 +317,16 @@ impl RuntimeConfig {
                 }
                 "window_width" | "content_width" => {
                     if let Some(parsed) = parse_positive_usize(value) {
-                        self.window_width =
-                            parsed.clamp(WINDOW_WIDTH_MIN as usize, WINDOW_WIDTH_MAX as usize) as u32;
+                        self.window_width = parsed
+                            .clamp(WINDOW_WIDTH_MIN as usize, WINDOW_WIDTH_MAX as usize)
+                            as u32;
                     }
                 }
                 "search_bar_width" | "bar_width" => {
                     if let Some(parsed) = parse_positive_usize(value) {
-                        self.search_bar_width =
-                            parsed.clamp(SEARCH_BAR_WIDTH_MIN as usize, SEARCH_BAR_WIDTH_MAX as usize) as u32;
+                        self.search_bar_width = parsed
+                            .clamp(SEARCH_BAR_WIDTH_MIN as usize, SEARCH_BAR_WIDTH_MAX as usize)
+                            as u32;
                     }
                 }
                 "file_exclude_paths" => {

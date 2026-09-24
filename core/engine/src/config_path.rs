@@ -34,12 +34,10 @@ pub fn xdg_config_dir_scoped(home: &Path, custom_xdg: Option<&Path>) -> PathBuf 
     }
     if let Ok(custom) = std::env::var("XDG_CONFIG_HOME") {
         let trimmed = custom.trim();
-        if !trimmed.is_empty() {
-            if let Some(user_home) = crate::config::user_home_dir() {
-                if home == Path::new(&user_home) {
-                    return PathBuf::from(trimmed).join("look");
-                }
-            }
+        let is_user_home =
+            crate::config::user_home_dir().is_some_and(|user_home| home == Path::new(&user_home));
+        if !trimmed.is_empty() && is_user_home {
+            return PathBuf::from(trimmed).join("look");
         }
     }
     home.join(".config").join("look")

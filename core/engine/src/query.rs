@@ -142,15 +142,24 @@ mod tests {
     #[test]
     fn app_prefix_supports_colon_and_space() {
         let parsed_quote = ParsedQuery::from_input("a\"chrome");
-        assert_eq!(parsed_quote.kind_filter, Some(look_indexing::CandidateKind::App));
+        assert_eq!(
+            parsed_quote.kind_filter,
+            Some(look_indexing::CandidateKind::App)
+        );
         assert_eq!(parsed_quote.normalized_query, "chrome");
 
         let parsed_colon = ParsedQuery::from_input("a:chrome");
-        assert_eq!(parsed_colon.kind_filter, Some(look_indexing::CandidateKind::App));
+        assert_eq!(
+            parsed_colon.kind_filter,
+            Some(look_indexing::CandidateKind::App)
+        );
         assert_eq!(parsed_colon.normalized_query, "chrome");
 
         let parsed_space = ParsedQuery::from_input("a chrome");
-        assert_eq!(parsed_space.kind_filter, Some(look_indexing::CandidateKind::App));
+        assert_eq!(
+            parsed_space.kind_filter,
+            Some(look_indexing::CandidateKind::App)
+        );
         assert_eq!(parsed_space.normalized_query, "chrome");
     }
 
