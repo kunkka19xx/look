@@ -146,8 +146,6 @@ final class ThemeStore: ObservableObject {
         let originalTintOpacity = settings.tintOpacity
         let originalFontSize = settings.fontSize
         let originalInnerGap = settings.innerGap
-        let originalWindowWidth = settings.windowWidth
-        let originalSearchBarWidth = settings.searchBarWidth
         let originalSurfaceRadius = settings.surfaceRadius
 
         // Apply config
@@ -171,12 +169,6 @@ final class ThemeStore: ObservableObject {
         }
         if warnings.contains(where: { $0.hasPrefix("inner_gap") }) {
             settings.innerGap = originalInnerGap
-        }
-        if warnings.contains(where: { $0.hasPrefix("window_width") || $0.hasPrefix("content_width") }) {
-            settings.windowWidth = originalWindowWidth
-        }
-        if warnings.contains(where: { $0.hasPrefix("search_bar_width") || $0.hasPrefix("bar_width") }) {
-            settings.searchBarWidth = originalSearchBarWidth
         }
         if warnings.contains(where: { $0.hasPrefix("ui_surface_radius") }) {
             settings.surfaceRadius = originalSurfaceRadius
@@ -568,12 +560,14 @@ final class ThemeStore: ObservableObject {
                     settings.innerGap = clamped(parsed, to: AppConstants.ThemeUI.innerGapRange)
                 }
             case "window_width", "content_width":
-                if let parsed = Double(value) {
-                    settings.windowWidth = clamped(parsed, to: AppConstants.ThemeUI.windowWidthRange)
+                if let parsed = Double(value),
+                   AppConstants.ThemeUI.windowWidthRange.contains(parsed) {
+                    settings.windowWidth = parsed
                 }
             case "search_bar_width", "bar_width":
-                if let parsed = Double(value) {
-                    settings.searchBarWidth = clamped(parsed, to: AppConstants.ThemeUI.searchBarWidthRange)
+                if let parsed = Double(value),
+                   AppConstants.ThemeUI.searchBarWidthRange.contains(parsed) {
+                    settings.searchBarWidth = parsed
                 }
             case "ui_surface_radius":
                 // Clamped rather than parsePositiveDouble: 0 squares the corners
