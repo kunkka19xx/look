@@ -468,6 +468,7 @@ final class ThemeStore: ObservableObject {
            let preset = BuiltinThemePreset.preset(forThemeName: themeValue) {
             applyBuiltinTheme(preset)
         }
+        var explicitSearchBarWidth = false
 
         for line in raw.split(whereSeparator: \ .isNewline) {
             let stripped = ConfigFileLines.stripComment(String(line)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -565,6 +566,7 @@ final class ThemeStore: ObservableObject {
                     settings.windowWidth = parsed
                 }
             case "search_bar_width", "bar_width":
+                explicitSearchBarWidth = true
                 if let parsed = Double(value),
                    AppConstants.ThemeUI.searchBarWidthRange.contains(parsed) {
                     settings.searchBarWidth = parsed
@@ -668,6 +670,10 @@ final class ThemeStore: ObservableObject {
             default:
                 continue
             }
+        }
+
+        if !explicitSearchBarWidth {
+            settings.searchBarWidth = settings.windowWidth
         }
 
         // Keeps the Settings picker in step when the config file is what changed.
@@ -1025,6 +1031,15 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
         }
         if object["shortcutBindings"] == nil {
             object["shortcutBindings"] = ThemeSettings.default.shortcutBindings
+        }
+        if object["windowWidth"] == nil {
+            object["windowWidth"] = ThemeSettings.default.windowWidth
+        }
+        if object["searchBarWidth"] == nil {
+            object["searchBarWidth"] = object["windowWidth"] ?? ThemeSettings.default.searchBarWidth
+        }
+        if object["runningAppsThemeTint"] == nil {
+            object["runningAppsThemeTint"] = ThemeSettings.default.runningAppsThemeTint
         }
 
         guard
