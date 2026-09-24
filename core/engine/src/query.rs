@@ -18,10 +18,10 @@ pub(crate) struct ParsedQuery {
 
 impl ParsedQuery {
     pub(crate) fn from_input(input: &str) -> Self {
-        let trimmed = input.trim();
+        let untrimmed_start = input.trim_start();
 
         // `rc` is checked before `r` (single-char) so it isn't swallowed by regex mode.
-        if let Some(rest) = match_query_prefix(trimmed, "rc") {
+        if let Some(rest) = match_query_prefix(untrimmed_start, "rc") {
             return Self {
                 normalized_query: normalize_for_search(rest),
                 raw_query: None,
@@ -31,7 +31,7 @@ impl ParsedQuery {
             };
         }
 
-        if let Some(rest) = match_query_prefix(trimmed, "d") {
+        if let Some(rest) = match_query_prefix(untrimmed_start, "d") {
             return Self {
                 normalized_query: normalize_for_search(rest),
                 raw_query: None,
@@ -41,7 +41,7 @@ impl ParsedQuery {
             };
         }
 
-        if let Some(rest) = match_query_prefix(trimmed, "f") {
+        if let Some(rest) = match_query_prefix(untrimmed_start, "f") {
             return Self {
                 normalized_query: normalize_for_search(rest),
                 raw_query: None,
@@ -51,7 +51,7 @@ impl ParsedQuery {
             };
         }
 
-        if let Some(rest) = match_query_prefix(trimmed, "a") {
+        if let Some(rest) = match_query_prefix(untrimmed_start, "a") {
             return Self {
                 normalized_query: normalize_for_search(rest),
                 raw_query: None,
@@ -61,7 +61,7 @@ impl ParsedQuery {
             };
         }
 
-        if let Some(rest) = match_query_prefix(trimmed, "r") {
+        if let Some(rest) = match_query_prefix(untrimmed_start, "r") {
             return Self {
                 normalized_query: String::new(),
                 raw_query: Some(rest.to_string()),
@@ -72,7 +72,7 @@ impl ParsedQuery {
         }
 
         Self {
-            normalized_query: normalize_for_search(trimmed),
+            normalized_query: normalize_for_search(input.trim()),
             raw_query: None,
             kind_filter: None,
             is_regex: false,
@@ -96,7 +96,7 @@ fn match_query_prefix<'a>(input: &'a str, name: &str) -> Option<&'a str> {
         return Some(rest[1..].trim());
     }
     if rest.starts_with(' ') {
-        return Some(rest.trim_start());
+        return Some(rest.trim());
     }
     None
 }
@@ -133,6 +133,10 @@ mod tests {
         let parsed_colon = ParsedQuery::from_input("RC:");
         assert!(parsed_colon.is_recent);
         assert!(parsed_colon.normalized_query.is_empty());
+
+        let parsed_space = ParsedQuery::from_input("RC ");
+        assert!(parsed_space.is_recent);
+        assert!(parsed_space.normalized_query.is_empty());
     }
 
     #[test]

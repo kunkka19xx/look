@@ -169,7 +169,7 @@ There is no column or row count to declare: the drawing is the count. Look autom
 
 The names are the tile ids - `lslot`, `bluetooth`, `wifi`, `battery`, `theme`, `keepawake`, `screensaver`, `weather`, `mic`, `restart`, `shutdown`, `nowplaying` - and the seeded file lists them with what each one does. Look looks for `~/.config/look/super-actions.toml` first, then falls back to `~/.look/super-actions.toml`.
 
-`Cmd+Shift+R` (or `Cmd+Shift+;`) reloads the file, so you can arrange the strip while looking at it. **Delete the file to go back to the default.**
+`Cmd+Shift+R` (or `Cmd+Shift+;`) reloads the file, so you can arrange the strip while looking at it. **Delete the file (or both `~/.config/look/super-actions.toml` and `~/.look/super-actions.toml` if both exist) to go back to the default.**
 
 If the drawing is invalid (for example an unrecognized shape or TOML it cannot read), Look says so in the window rather than failing quietly. A problem with one tile drops that tile and keeps the rest; an unrecoverable structural syntax error falls back to the default layout, so the strip is never empty and never silent about why.
 
@@ -624,7 +624,7 @@ These keys can be configured directly in your config file (`~/.config/look/confi
 - `window_width` or `content_width` (content and results window width in points, range 500 to 1400, default 860; can also be adjusted interactively in Settings → Appearance → Layout)
 - `search_bar_width` or `bar_width` (search bar width in points, range 350 to 1400, default 860; can be set independently so the top search bar is compact while results and document preview sections remain at their full, comfortable size)
 - `inner_gap` (gap between cards in points, range 0 to 24, default 7; 0 keeps flat classic layout)
-- `ui_surface_radius` (corner radius multiplier, range 0.0 to 3.0, default 1.50)
+- `ui_surface_radius` (corner radius multiplier, range 0.0 to 2.5, default 1.50)
 - `clipboard_history_limit` (clipboard history size, range 10 to 100, default 10)
 - `launcher_hotkey` (global shortcut that shows and hides Look; modifiers `cmd`/`win`, `ctrl`, `alt`/`option`, `shift` plus one key: a letter, digit, `space`, `enter`, `tab`, `esc`, `f1`-`f20`, or a symbol like `` ` ``. Examples: `ctrl+space`, `alt+shift+space`, `f13`. Default `cmd+space` on macOS, `alt+space` on Windows and Linux. `none` stops Look registering any key, so you can bind `lookapp --toggle` in your desktop or a tool like skhd/AutoHotkey instead; Linux accepts only `none` and applies it on restart. An invalid value falls back to the default and the reload banner says why)
 - `query_retention_seconds` (how long the main query survives while Look is hidden, in seconds; the first open past it returns to the empty home screen; default 5, `0` clears on every hide, and any negative value keeps the query indefinitely)

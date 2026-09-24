@@ -156,14 +156,17 @@ enum AppConstants {
             /// Checks if `input` starts with prefix `prefixName` followed by `"`, `:`, or a space delimiter.
             /// Returns the stripped remainder (trimmed), or `nil` if it doesn't match.
             public static func strip(from input: String, prefixName: String) -> String? {
-                let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard trimmed.count >= prefixName.count else { return nil }
-                let lower = trimmed.lowercased()
+                var strippedLeading = input
+                while let first = strippedLeading.first, first.isWhitespace || first.isNewline {
+                    strippedLeading.removeFirst()
+                }
+                guard strippedLeading.count >= prefixName.count else { return nil }
+                let lower = strippedLeading.lowercased()
                 let prefixLower = prefixName.lowercased()
                 guard lower.hasPrefix(prefixLower) else { return nil }
 
-                let index = trimmed.index(trimmed.startIndex, offsetBy: prefixName.count)
-                let rest = trimmed[index...]
+                let index = strippedLeading.index(strippedLeading.startIndex, offsetBy: prefixName.count)
+                let rest = strippedLeading[index...]
                 if rest.hasPrefix("\"") || rest.hasPrefix(":") {
                     return String(rest.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
                 }

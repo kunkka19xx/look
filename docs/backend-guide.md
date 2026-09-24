@@ -90,7 +90,7 @@ Use this guide when you are changing:
 
 ## Runtime config keys (backend-relevant)
 
-Runtime file: `$XDG_CONFIG_HOME/look/config` (or `~/.config/look/config`), falling back to `~/.look/config`, or explicit `LOOK_CONFIG_PATH`. Reload with `Cmd+Shift+R` / `Cmd+Shift+;` (macOS) or `Ctrl+Shift+R` / `Ctrl+Shift+;` (Linux/Windows).
+Runtime file: explicit `LOOK_CONFIG_PATH`, falling back to `$XDG_CONFIG_HOME/look/config` (or `~/.config/look/config`), then `~/.look/config`. Reload with `Cmd+Shift+R` / `Cmd+Shift+;` (macOS) or `Ctrl+Shift+R` / `Ctrl+Shift+;` (Linux/Windows).
 
 - `app_scan_roots`, `app_scan_depth`, `app_exclude_paths`, `app_exclude_names`
 - `file_scan_roots`, `file_scan_extra_roots`, `file_scan_depth` (default: 4, range: 1-12), `file_scan_limit` (default: 4000, range: 500-50000), `file_exclude_paths`

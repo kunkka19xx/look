@@ -253,7 +253,7 @@ final class KeyboardSelectionMonitor {
             }
 
             // The handler owns the gating, so the key is only consumed when it acts.
-            if (event.keyCode == KeyCode.r || event.charactersIgnoringModifiers?.lowercased() == "r")
+            if event.charactersIgnoringModifiers?.lowercased() == "r"
                 && flags == [.command, .shift]
             {
                 NotificationCenter.default.post(name: .lookReloadConfigRequested, object: nil)

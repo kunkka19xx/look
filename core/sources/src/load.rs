@@ -44,7 +44,10 @@ pub fn sources_dir(home: &Path) -> PathBuf {
     }
     let xdg_sources = if let Ok(val) = env::var("XDG_CONFIG_HOME") {
         let trimmed = val.trim();
-        if !trimmed.is_empty() {
+        let is_user_home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .is_some_and(|h| h == home);
+        if !trimmed.is_empty() && is_user_home {
             PathBuf::from(trimmed).join("look").join("sources")
         } else {
             home.join(".config").join("look").join("sources")
@@ -404,7 +407,7 @@ mod tests {
 
     #[test]
     fn the_directory_falls_back_to_the_home_relative_default() {
-        if env::var(SOURCES_DIR_ENV).is_ok() || env::var("XDG_CONFIG_HOME").is_ok() {
+        if env::var(SOURCES_DIR_ENV).is_ok() {
             return;
         }
         assert_eq!(

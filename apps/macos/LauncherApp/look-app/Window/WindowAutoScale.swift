@@ -58,9 +58,12 @@ enum WindowAutoScale {
     /// consistent on any display size or orientation. Clamped to stay fully
     /// within the visible area so it never runs off a short display.
     static func spotlightFrame(on screen: NSScreen) -> NSRect {
-        let size = size(for: screen)
+        var size = size(for: screen)
         let visible = screen.visibleFrame
-        let x = visible.midX - size.width / 2
+        if size.width > visible.width {
+            size.width = visible.width
+        }
+        let x = min(max(visible.minX, visible.midX - size.width / 2), visible.maxX - size.width)
         // middle + height/2 + lift = window top; center the panel, then lift it.
         let windowTop = visible.midY + size.height / 2 + spotlightLift
         let y = min(max(windowTop - size.height, visible.minY), visible.maxY - size.height)

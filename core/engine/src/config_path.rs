@@ -23,10 +23,23 @@ pub const LEGACY_CONFIG_NAME: &str = ".look.config";
 
 /// The XDG base directory for look configuration: `$XDG_CONFIG_HOME/look` or `~/.config/look`.
 pub fn xdg_config_dir(home: &Path) -> PathBuf {
+    xdg_config_dir_scoped(home, None)
+}
+
+/// Allows scoping or overriding the XDG root, preventing ambient `$XDG_CONFIG_HOME`
+/// from redirecting test-local homes into the developer's real configuration directory.
+pub fn xdg_config_dir_scoped(home: &Path, custom_xdg: Option<&Path>) -> PathBuf {
+    if let Some(custom) = custom_xdg {
+        return custom.join("look");
+    }
     if let Ok(custom) = std::env::var("XDG_CONFIG_HOME") {
         let trimmed = custom.trim();
         if !trimmed.is_empty() {
-            return PathBuf::from(trimmed).join("look");
+            if let Some(user_home) = crate::config::user_home_dir() {
+                if home == Path::new(&user_home) {
+                    return PathBuf::from(trimmed).join("look");
+                }
+            }
         }
     }
     home.join(".config").join("look")
@@ -106,7 +119,16 @@ pub fn resolve_home(home: &Path) -> ResolvedConfig {
 /// is created by hand, so a released build has nothing to move and no business
 /// touching it.
 pub fn resolve_home_variant(home: &Path, dev: bool) -> ResolvedConfig {
-    let xdg_dir = xdg_config_dir(home);
+    resolve_home_variant_scoped(home, dev, None)
+}
+
+/// Variant resolution allowing an explicit test-local or custom XDG root.
+pub fn resolve_home_variant_scoped(
+    home: &Path,
+    dev: bool,
+    custom_xdg: Option<&Path>,
+) -> ResolvedConfig {
+    let xdg_dir = xdg_config_dir_scoped(home, custom_xdg);
     let dot_dir = home.join(CONFIG_DIR);
 
     if dev {

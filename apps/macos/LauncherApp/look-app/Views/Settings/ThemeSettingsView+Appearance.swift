@@ -19,8 +19,18 @@ extension ThemeSettingsView {
                         themeStore.applyBuiltinTheme(newValue)
                     }
 
-                    Spacer().frame(width: 40)
+                    Spacer().frame(width: 24)
 
+                    inlinePickerLabel("Super Actions")
+                    Toggle("Show super actions", isOn: $settings.superActionsEnabled)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .help("Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
+
+                    Spacer(minLength: 0)
+                }
+
+                HStack(spacing: 14) {
                     inlinePickerLabel("Running Apps")
                     Toggle("Show running apps", isOn: Binding(
                         get: { settings.runningAppsPlacement != .none },
@@ -31,7 +41,7 @@ extension ThemeSettingsView {
                     .help("Show running apps in the right half of the search bar (⌘1-9 to switch)")
 
                     if settings.runningAppsPlacement != .none {
-                        Spacer().frame(width: 30)
+                        Spacer().frame(width: 24)
 
                         inlinePickerLabel("Theme Tint")
                         Toggle("Tint running apps with theme", isOn: $settings.runningAppsThemeTint)
@@ -39,14 +49,6 @@ extension ThemeSettingsView {
                             .labelsHidden()
                             .help("Discreetly tint open app icons to match the active theme palette")
                     }
-
-                    Spacer().frame(width: 40)
-
-                    inlinePickerLabel("Super Actions")
-                    Toggle("Show super actions", isOn: $settings.superActionsEnabled)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .help("Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
 
                     Spacer(minLength: 0)
                 }

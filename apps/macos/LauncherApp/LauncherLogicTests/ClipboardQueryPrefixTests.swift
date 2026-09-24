@@ -37,10 +37,14 @@ final class ClipboardQueryPrefixTests: XCTestCase {
         XCTAssertEqual(ClipboardQueryPrefix.text.searchTerm(in: "c:mail"), "mail")
         XCTAssertTrue(ClipboardQueryPrefix.text.matches("c mail"))
         XCTAssertEqual(ClipboardQueryPrefix.text.searchTerm(in: "c mail"), "mail")
+        XCTAssertTrue(ClipboardQueryPrefix.text.matches("c "))
+        XCTAssertEqual(ClipboardQueryPrefix.text.searchTerm(in: "c "), "")
 
         XCTAssertTrue(ClipboardQueryPrefix.image.matches("ci:logo"))
         XCTAssertEqual(ClipboardQueryPrefix.image.searchTerm(in: "ci:logo"), "logo")
         XCTAssertTrue(ClipboardQueryPrefix.image.matches("ci logo"))
         XCTAssertEqual(ClipboardQueryPrefix.image.searchTerm(in: "ci logo"), "logo")
+        XCTAssertTrue(ClipboardQueryPrefix.image.matches("ci "))
+        XCTAssertEqual(ClipboardQueryPrefix.image.searchTerm(in: "ci "), "")
     }
 }

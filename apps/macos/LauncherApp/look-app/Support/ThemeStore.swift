@@ -266,7 +266,9 @@ final class ThemeStore: ObservableObject {
         ConfigFileLines.upsert(&lines, key: "running_apps_placement", value: settings.runningAppsPlacement.rawValue)
         ConfigFileLines.upsert(&lines, key: "running_apps_theme_tint", value: settings.runningAppsThemeTint ? "true" : "false")
         ConfigFileLines.upsert(&lines, key: "window_width", value: String(format: "%.0f", settings.windowWidth))
+        ConfigFileLines.remove(&lines, key: "content_width")
         ConfigFileLines.upsert(&lines, key: "search_bar_width", value: String(format: "%.0f", settings.searchBarWidth))
+        ConfigFileLines.remove(&lines, key: "bar_width")
         ConfigFileLines.upsert(&lines, key: "inner_gap", value: String(format: "%.0f", settings.innerGap))
         ConfigFileLines.upsert(
             &lines,

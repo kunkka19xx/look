@@ -97,9 +97,13 @@ private struct RunningAppIconItem: View {
                 .grayscale(isThemeTinted ? 0.85 : 0.0)
                 .overlay {
                     if isThemeTinted {
-                        RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous)
-                            .fill(themeFilterColor.opacity(0.38))
+                        themeFilterColor.opacity(0.38)
                             .blendMode(.color)
+                            .mask(
+                                Image(nsImage: icon)
+                                    .resizable()
+                                    .interpolation(.high)
+                            )
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous))
