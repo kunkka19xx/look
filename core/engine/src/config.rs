@@ -24,6 +24,14 @@ pub const FILE_SCAN_LIMIT_MAX: usize = 50_000;
 pub const FILE_EXCLUDE_PATHS: [&str; 0] = [];
 pub const LAZY_INDEXING_ENABLED: bool = true;
 
+pub const WINDOW_WIDTH_DEFAULT: u32 = 860;
+pub const WINDOW_WIDTH_MIN: u32 = 500;
+pub const WINDOW_WIDTH_MAX: u32 = 1400;
+
+pub const SEARCH_BAR_WIDTH_DEFAULT: u32 = 860;
+pub const SEARCH_BAR_WIDTH_MIN: u32 = 350;
+pub const SEARCH_BAR_WIDTH_MAX: u32 = 1400;
+
 pub const SCORE_TITLE_CONTAINS: i64 = 1200;
 pub const SCORE_SUBTITLE_CONTAINS: i64 = 900;
 pub const SCORE_TOKEN_ALL_MATCH: i64 = 850;
@@ -98,6 +106,8 @@ pub struct RuntimeConfig {
     pub launcher_hotkey: LauncherHotkey,
     pub search_aliases: HashMap<String, Vec<String>>,
     pub tools: Tools,
+    pub window_width: u32,
+    pub search_bar_width: u32,
 }
 
 impl Default for RuntimeConfig {
@@ -131,6 +141,8 @@ impl Default for RuntimeConfig {
             launcher_hotkey: LauncherHotkey::default(),
             search_aliases: default_search_aliases(),
             tools: Tools::default(),
+            window_width: WINDOW_WIDTH_DEFAULT,
+            search_bar_width: SEARCH_BAR_WIDTH_DEFAULT,
         }
     }
 }
@@ -301,6 +313,18 @@ impl RuntimeConfig {
                     if let Some(parsed) = parse_positive_usize(value) {
                         self.file_scan_limit =
                             parsed.clamp(FILE_SCAN_LIMIT_MIN, FILE_SCAN_LIMIT_MAX);
+                    }
+                }
+                "window_width" | "content_width" => {
+                    if let Some(parsed) = parse_positive_usize(value) {
+                        self.window_width =
+                            parsed.clamp(WINDOW_WIDTH_MIN as usize, WINDOW_WIDTH_MAX as usize) as u32;
+                    }
+                }
+                "search_bar_width" | "bar_width" => {
+                    if let Some(parsed) = parse_positive_usize(value) {
+                        self.search_bar_width =
+                            parsed.clamp(SEARCH_BAR_WIDTH_MIN as usize, SEARCH_BAR_WIDTH_MAX as usize) as u32;
                     }
                 }
                 "file_exclude_paths" => {
@@ -1096,6 +1120,46 @@ mod tests {
         assert_eq!(tools.terminal.as_deref(), Some("ghostty"));
         assert_eq!(tools.browser.as_deref(), Some("ghostty"));
         assert_eq!(tools.file_manager.as_deref(), Some("ghostty"));
+    }
+
+    #[test]
+    fn window_width_loads_and_clamps() {
+        assert_eq!(
+            config_from("window_width=720\n", "width-ok").window_width,
+            720
+        );
+        assert_eq!(
+            config_from("content_width=750\n", "content-ok").window_width,
+            750
+        );
+        assert_eq!(
+            config_from("window_width=200\n", "width-under").window_width,
+            WINDOW_WIDTH_MIN
+        );
+        assert_eq!(
+            config_from("window_width=2500\n", "width-over").window_width,
+            WINDOW_WIDTH_MAX
+        );
+    }
+
+    #[test]
+    fn search_bar_width_loads_and_clamps() {
+        assert_eq!(
+            config_from("search_bar_width=550\n", "bar-ok").search_bar_width,
+            550
+        );
+        assert_eq!(
+            config_from("bar_width=600\n", "bar-alias-ok").search_bar_width,
+            600
+        );
+        assert_eq!(
+            config_from("search_bar_width=100\n", "bar-under").search_bar_width,
+            SEARCH_BAR_WIDTH_MIN
+        );
+        assert_eq!(
+            config_from("search_bar_width=3000\n", "bar-over").search_bar_width,
+            SEARCH_BAR_WIDTH_MAX
+        );
     }
 
     #[test]

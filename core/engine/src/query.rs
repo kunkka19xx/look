@@ -1,15 +1,11 @@
 use crate::normalize::normalize_for_search;
 use look_indexing::CandidateKind;
 
-// Query prefixes: leading letter(s) matched case-insensitively, trailing `"`
-// exactly (see `strip_query_prefix`). `rc"` must be checked before `r"` - see
-// `from_input`. `rc"` is engine-side (unlike the Swift-handled `t"`/`tw"`/`c"`)
-// because recency ordering needs the per-candidate timestamps only the engine has.
-const PREFIX_APPS: &[u8] = b"a\"";
-const PREFIX_FILES: &[u8] = b"f\"";
-const PREFIX_FOLDERS: &[u8] = b"d\"";
-const PREFIX_REGEX: &[u8] = b"r\"";
-const RECENT_PREFIX: &[u8] = b"rc\"";
+// Query prefixes: leading letter(s) matched case-insensitively, followed by
+// `"`, `:`, or a space delimiter (`a"term`, `a:term`, `a term`).
+// `rc` must be checked before `r` - see `from_input`.
+// `rc` is engine-side (unlike the Swift-handled `t`/`tw`/`c`) because recency
+// ordering needs the per-candidate timestamps only the engine has.
 
 #[derive(Clone, Debug)]
 pub(crate) struct ParsedQuery {
@@ -24,9 +20,8 @@ impl ParsedQuery {
     pub(crate) fn from_input(input: &str) -> Self {
         let trimmed = input.trim();
 
-        // `rc"` is checked before `r"` (single-char) - they can't collide since
-        // `r"` requires the 2nd byte to be `"`, which is `c` here.
-        if let Some(rest) = strip_query_prefix(trimmed, RECENT_PREFIX) {
+        // `rc` is checked before `r` (single-char) so it isn't swallowed by regex mode.
+        if let Some(rest) = match_query_prefix(trimmed, "rc") {
             return Self {
                 normalized_query: normalize_for_search(rest),
                 raw_query: None,
@@ -36,7 +31,7 @@ impl ParsedQuery {
             };
         }
 
-        if let Some(rest) = strip_query_prefix(trimmed, PREFIX_FOLDERS) {
+        if let Some(rest) = match_query_prefix(trimmed, "d") {
             return Self {
                 normalized_query: normalize_for_search(rest),
                 raw_query: None,
@@ -46,7 +41,7 @@ impl ParsedQuery {
             };
         }
 
-        if let Some(rest) = strip_query_prefix(trimmed, PREFIX_FILES) {
+        if let Some(rest) = match_query_prefix(trimmed, "f") {
             return Self {
                 normalized_query: normalize_for_search(rest),
                 raw_query: None,
@@ -56,7 +51,7 @@ impl ParsedQuery {
             };
         }
 
-        if let Some(rest) = strip_query_prefix(trimmed, PREFIX_APPS) {
+        if let Some(rest) = match_query_prefix(trimmed, "a") {
             return Self {
                 normalized_query: normalize_for_search(rest),
                 raw_query: None,
@@ -66,7 +61,7 @@ impl ParsedQuery {
             };
         }
 
-        if let Some(rest) = strip_query_prefix(trimmed, PREFIX_REGEX) {
+        if let Some(rest) = match_query_prefix(trimmed, "r") {
             return Self {
                 normalized_query: String::new(),
                 raw_query: Some(rest.to_string()),
@@ -86,17 +81,24 @@ impl ParsedQuery {
     }
 }
 
-/// Strips a `…"` query prefix, returning the trimmed text after it (or `None`
-/// when `input` doesn't start with `prefix`). The prefix is matched ASCII
-/// case-insensitively - the trailing `"` has no case, so it matches exactly.
-/// `prefix` is all-ASCII, so its length is always a UTF-8 char boundary in a
-/// matched input.
-fn strip_query_prefix<'a>(input: &'a str, prefix: &[u8]) -> Option<&'a str> {
+/// Matches a prefix name (`a`, `f`, `d`, `r`, `rc`) followed by `"`, `:`, or a space delimiter.
+/// Returns the remaining term (trimmed), or `None` if it does not match.
+fn match_query_prefix<'a>(input: &'a str, name: &str) -> Option<&'a str> {
     let bytes = input.as_bytes();
-    if bytes.len() < prefix.len() || !bytes[..prefix.len()].eq_ignore_ascii_case(prefix) {
+    let name_bytes = name.as_bytes();
+    let len = name_bytes.len();
+    if bytes.len() < len || !bytes[..len].eq_ignore_ascii_case(name_bytes) {
         return None;
     }
-    Some(input[prefix.len()..].trim())
+    // Since `name` is ASCII and matched, `len` is guaranteed to be a char boundary.
+    let rest = &input[len..];
+    if rest.starts_with('"') || rest.starts_with(':') {
+        return Some(rest[1..].trim());
+    }
+    if rest.starts_with(' ') {
+        return Some(rest.trim_start());
+    }
+    None
 }
 
 #[cfg(test)]
@@ -104,7 +106,7 @@ mod tests {
     use super::ParsedQuery;
 
     #[test]
-    fn recent_prefix_sets_flag_and_filter() {
+    fn recent_prefix_sets_flag_and_filter_with_quotes() {
         let parsed = ParsedQuery::from_input("rc\"report");
         assert!(parsed.is_recent);
         assert!(!parsed.is_regex);
@@ -112,10 +114,51 @@ mod tests {
     }
 
     #[test]
+    fn recent_prefix_supports_colon_and_space() {
+        let parsed_colon = ParsedQuery::from_input("rc:report");
+        assert!(parsed_colon.is_recent);
+        assert_eq!(parsed_colon.normalized_query, "report");
+
+        let parsed_space = ParsedQuery::from_input("rc report");
+        assert!(parsed_space.is_recent);
+        assert_eq!(parsed_space.normalized_query, "report");
+    }
+
+    #[test]
     fn recent_prefix_is_case_insensitive_and_allows_empty_filter() {
         let parsed = ParsedQuery::from_input("RC\"");
         assert!(parsed.is_recent);
         assert!(parsed.normalized_query.is_empty());
+
+        let parsed_colon = ParsedQuery::from_input("RC:");
+        assert!(parsed_colon.is_recent);
+        assert!(parsed_colon.normalized_query.is_empty());
+    }
+
+    #[test]
+    fn app_prefix_supports_colon_and_space() {
+        let parsed_quote = ParsedQuery::from_input("a\"chrome");
+        assert_eq!(parsed_quote.kind_filter, Some(look_indexing::CandidateKind::App));
+        assert_eq!(parsed_quote.normalized_query, "chrome");
+
+        let parsed_colon = ParsedQuery::from_input("a:chrome");
+        assert_eq!(parsed_colon.kind_filter, Some(look_indexing::CandidateKind::App));
+        assert_eq!(parsed_colon.normalized_query, "chrome");
+
+        let parsed_space = ParsedQuery::from_input("a chrome");
+        assert_eq!(parsed_space.kind_filter, Some(look_indexing::CandidateKind::App));
+        assert_eq!(parsed_space.normalized_query, "chrome");
+    }
+
+    #[test]
+    fn plain_words_starting_with_prefix_letters_are_not_prefixes() {
+        let parsed_apple = ParsedQuery::from_input("apple");
+        assert_eq!(parsed_apple.kind_filter, None);
+        assert_eq!(parsed_apple.normalized_query, "apple");
+
+        let parsed_radio = ParsedQuery::from_input("radio");
+        assert!(!parsed_radio.is_regex);
+        assert_eq!(parsed_radio.normalized_query, "radio");
     }
 
     #[test]
@@ -123,5 +166,13 @@ mod tests {
         let parsed = ParsedQuery::from_input("r\"foo");
         assert!(parsed.is_regex);
         assert!(!parsed.is_recent);
+
+        let parsed_colon = ParsedQuery::from_input("r:foo");
+        assert!(parsed_colon.is_regex);
+        assert!(!parsed_colon.is_recent);
+
+        let parsed_space = ParsedQuery::from_input("r foo");
+        assert!(parsed_space.is_regex);
+        assert!(!parsed_space.is_recent);
     }
 }

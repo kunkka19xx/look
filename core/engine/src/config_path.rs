@@ -16,10 +16,21 @@ pub const ENV_CONFIG_PATH: &str = "LOOK_CONFIG_PATH";
 
 /// The home-relative locations, newest first. A dev build keeps its own pair so
 /// running Look Dev never edits the settings of the installed copy.
-const CONFIG_DIR: &str = ".look";
-const CONFIG_NAME: &str = "config";
-const DEV_CONFIG_NAME: &str = "config.dev";
-const LEGACY_CONFIG_NAME: &str = ".look.config";
+pub const CONFIG_DIR: &str = ".look";
+pub const CONFIG_NAME: &str = "config";
+pub const DEV_CONFIG_NAME: &str = "config.dev";
+pub const LEGACY_CONFIG_NAME: &str = ".look.config";
+
+/// The XDG base directory for look configuration: `$XDG_CONFIG_HOME/look` or `~/.config/look`.
+pub fn xdg_config_dir(home: &Path) -> PathBuf {
+    if let Ok(custom) = std::env::var("XDG_CONFIG_HOME") {
+        let trimmed = custom.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed).join("look");
+        }
+    }
+    home.join(".config").join("look")
+}
 
 /// Prepended to the legacy file once its contents have been copied across, so
 /// someone who edits it out of habit is told why nothing happened. Doubles as
@@ -31,7 +42,7 @@ const MOVED_NOTICE_PREFIX: &str = "# Moved to ~/.look/";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedConfig {
     pub path: PathBuf,
-    /// True when the legacy file was copied into `~/.look/` by this call.
+    /// True when the legacy file was copied into the active config dir by this call.
     pub migrated: bool,
 }
 
@@ -95,29 +106,65 @@ pub fn resolve_home(home: &Path) -> ResolvedConfig {
 /// is created by hand, so a released build has nothing to move and no business
 /// touching it.
 pub fn resolve_home_variant(home: &Path, dev: bool) -> ResolvedConfig {
+    let xdg_dir = xdg_config_dir(home);
+    let dot_dir = home.join(CONFIG_DIR);
+
     if dev {
+        let xdg_dev = xdg_dir.join(DEV_CONFIG_NAME);
+        if xdg_dev.exists() {
+            return ResolvedConfig {
+                path: xdg_dev,
+                migrated: false,
+            };
+        }
+        let dot_dev = dot_dir.join(DEV_CONFIG_NAME);
+        if dot_dev.exists() {
+            return ResolvedConfig {
+                path: dot_dev,
+                migrated: false,
+            };
+        }
+        let target = if dot_dir.exists() && !xdg_dir.exists() {
+            dot_dev
+        } else {
+            xdg_dev
+        };
         return ResolvedConfig {
-            path: ensured(home.join(CONFIG_DIR).join(DEV_CONFIG_NAME)),
+            path: ensured(target),
             migrated: false,
         };
     }
 
-    let current = home.join(CONFIG_DIR).join(CONFIG_NAME);
-    if current.exists() {
+    // 1. XDG config (~/.config/look/config or $XDG_CONFIG_HOME/look/config)
+    let xdg_config = xdg_dir.join(CONFIG_NAME);
+    if xdg_config.exists() {
         return ResolvedConfig {
-            path: current,
+            path: xdg_config,
             migrated: false,
         };
     }
 
+    // 2. Existing ~/.look/config fallback
+    let dot_config = dot_dir.join(CONFIG_NAME);
+    if dot_config.exists() {
+        return ResolvedConfig {
+            path: dot_config,
+            migrated: false,
+        };
+    }
+
+    // 3. Legacy ~/.look.config
     let legacy = home.join(LEGACY_CONFIG_NAME);
     if !legacy.exists() {
-        // A fresh install: nothing to migrate, and `~/.look/` may not exist
-        // yet. Every caller here goes on to WRITE this path, so the directory
-        // has to be there or the default config is silently never created and
-        // settings never persist.
+        // A fresh install: If ~/.look already exists on disk, keep using it;
+        // otherwise default to standard XDG ~/.config/look/config.
+        let target = if dot_dir.exists() && !xdg_dir.exists() {
+            dot_config
+        } else {
+            xdg_config
+        };
         return ResolvedConfig {
-            path: ensured(current),
+            path: ensured(target),
             migrated: false,
         };
     }
@@ -132,15 +179,21 @@ pub fn resolve_home_variant(home: &Path, dev: bool) -> ResolvedConfig {
         };
     }
 
-    match migrate(&legacy, &current, CONFIG_NAME) {
+    let target = if dot_dir.exists() && !xdg_dir.exists() {
+        dot_config
+    } else {
+        xdg_config
+    };
+
+    match migrate(&legacy, &target, CONFIG_NAME) {
         Ok(()) => ResolvedConfig {
-            path: current,
+            path: target,
             migrated: true,
         },
         // Another process copied it while this one was resolving. Its file is
         // the one to read, the same as if it had been there all along.
         Err(NotMigrated::AlreadyThere) => ResolvedConfig {
-            path: current,
+            path: target,
             migrated: false,
         },
         // Moved once already, or the copy failed. Both files are kept and the
@@ -219,8 +272,16 @@ mod tests {
             self.0.join(LEGACY_CONFIG_NAME)
         }
 
-        fn current(&self) -> PathBuf {
+        fn xdg(&self) -> PathBuf {
+            xdg_config_dir(&self.0).join(CONFIG_NAME)
+        }
+
+        fn dot_look(&self) -> PathBuf {
             self.0.join(CONFIG_DIR).join(CONFIG_NAME)
+        }
+
+        fn current(&self) -> PathBuf {
+            self.xdg()
         }
     }
 
@@ -237,10 +298,18 @@ mod tests {
         // fail to persist on every launch.
         let home = TempHome::new("fresh");
         let resolved = resolve_home(&home.0);
-        assert_eq!(resolved.path, home.current());
+        assert_eq!(resolved.path, home.xdg());
         assert!(!resolved.migrated);
         assert!(resolved.path.parent().is_some_and(Path::exists));
         fs::write(&resolved.path, "ui_theme=x\n").expect("the path must be writable");
+    }
+
+    #[test]
+    fn an_existing_dot_look_user_is_preserved_on_fresh_resolve() {
+        let home = TempHome::new("dotlook");
+        fs::create_dir_all(home.0.join(CONFIG_DIR)).unwrap();
+        let resolved = resolve_home(&home.0);
+        assert_eq!(resolved.path, home.dot_look());
     }
 
     #[test]
@@ -308,7 +377,7 @@ mod tests {
         fs::write(home.legacy(), "ui_theme=installed\n").unwrap();
 
         let resolved = resolve_home_variant(&home.0, true);
-        assert_eq!(resolved.path, home.0.join(CONFIG_DIR).join(DEV_CONFIG_NAME));
+        assert_eq!(resolved.path, xdg_config_dir(&home.0).join(DEV_CONFIG_NAME));
         assert!(!resolved.migrated);
         assert_eq!(
             fs::read_to_string(home.legacy()).unwrap(),

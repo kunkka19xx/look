@@ -92,19 +92,19 @@ This document tracks what `look` supports today and what is planned next.
 
 - a control strip on the empty home screen (no query typed) with system toggles, one-shot actions and read-only info tiles
 - the tile set, sizes and mnemonics come from the shared `core/qactions` catalog, so macOS, Linux and Windows render the same strip; only the native state reads and control paths differ. On Linux the strip works across GNOME, KDE and tiling WMs including i3
-- the arrangement is the user's, in `~/.look/super-actions.toml`: a drawing of the grid where each line is a row and each name a cell. Repeat a name to make a tile span, `.` for a deliberate gap, delete a name to hide that tile, up to five rows and six columns. Each role has a minimum size (`look_qactions::min_span`: L slot 2x2, weather 1x2, now playing 2x1); drawn under it the tile is dropped rather than clipped. Seeded on first run with the default layout, so the file documents itself; `rm` it to reset. Resolved once in the core, so both shells place from the same coordinates and neither works out a span for itself
+- the arrangement is the user's, in `~/.config/look/super-actions.toml` (or `~/.look/super-actions.toml`): a drawing of the grid where each line is a row and each name a cell. Repeat a name to make a tile span, `.` for a deliberate gap, delete a name to hide that tile, up to five rows and six columns. Ragged rows are gracefully padded with empty gaps (`.`) rather than aborting. Each role has a minimum size (`look_qactions::min_span`: L slot 2x2, weather 1x2, now playing 2x1); drawn under it the tile is dropped rather than clipped. Seeded on first run with the default layout, so the file documents itself; `rm` it to reset. Resolved once in the core, so both shells place from the same coordinates and neither works out a span for itself
 - a drawing that cannot be trusted never yields an empty strip: a bad tile is dropped and the rest renders, a structural error falls back to the whole default, and either way the reason is reported in the window and on stderr
 - tiles: L slot (Pomodoro session > remaining todos > clock), Bluetooth, Wi-Fi, Battery, Theme, Keep Awake, Screensaver, Weather, Mic, Restart, Shut Down, Now Playing
 - activation: click a tile, or press the platform modifier + its highlighted letter - `Cmd` (macOS) / `Alt` (Linux, Windows): `B` Bluetooth, `W` Wi-Fi, `T` Theme, `K` Keep Awake, `S` Screensaver, `M` Mic, `R` Restart, `D` Shut Down, `P` Now Playing play/pause
 - Restart and Shut Down arm on the first press and fire on the second; `Esc` (macOS) or the auto-disarm timeout cancels
 - Battery, Weather and the L slot are read-only
-- toggled on/off via `Settings > Appearance > Super Actions`. Persisted as `super_actions_enabled` in `~/.look/config`
+- toggled on/off via `Settings > Appearance > Super Actions`. Persisted as `super_actions_enabled` in config
 - off hides the strip and disables its mnemonics
 
 ### Preferred tools and row actions (v0.6.12)
 
 - `Cmd+K` / `Ctrl+K` on a file, folder, or app row opens an action menu listing what Look can do to it (open, edit, terminal here, reveal, copy path), each with its chord and the declared tool's name
-- **Edit** (`Cmd+E`) and **Open terminal here** (`Cmd+T`) act through tools named in `~/.look/config`: `text_editor`, `code_editor`, `terminal`, `file_manager`
+- **Edit** (`Cmd+E`) and **Open terminal here** (`Cmd+T`) act through tools named in config: `text_editor`, `code_editor`, `terminal`, `file_manager`
 - a value is a tool name, never a command with its own arguments; Look owns how each tool is driven, including running a terminal editor inside the declared terminal
 - `text_editor` on a file row, `code_editor` on a folder row; declaring only one of the two covers both
 - terminal here opens the folder itself, or a file's parent; app rows get neither verb, reveal still applies
@@ -115,7 +115,7 @@ This document tracks what `look` supports today and what is planned next.
 
 ### User-declared sources (v0.6.12)
 
-- your own rows from TOML files in `~/.look/sources/`, indexed and ranked alongside apps and files, with their own usage history
+- your own rows from TOML files in `~/.config/look/sources/` (or `~/.look/sources/`), indexed and ranked alongside apps and files, with their own usage history
 - as many `.toml` files as you like in that directory, merged into one set of blocks (ids unique across all of them, `then` resolves across files); `LOOK_SOURCES_DIR` repoints the directory for dotfiles kept elsewhere
 - commands are shell text run by the user's login shell (`$SHELL -lc` on Unix, `cmd /D /S /C` on Windows), so a block can call the user's own script in any language; non-POSIX shells (fish, nu) fall back to `/bin/sh` rather than failing per-command
 - four block kinds, one producer key each: `do` (one row that performs steps), `dir` (children of one or more directories), `file` (lines of a text file), `run` (lines a command prints)
@@ -128,16 +128,17 @@ This document tracks what `look` supports today and what is planned next.
 - row wire formats: tab-separated lines (`id<TAB>title<TAB>subtitle`) or `format = "json"` for per-row `path` and `icon`
 - an executable dropped in the sources directory is a `run` block with everything inferred, no declaration needed
 - `aliases`, `bias`, `icon`, and `enabled` per block; unknown keys reported, never fatal
-- `run` rows are refreshed on reload (`Cmd+Shift+;`) and cached in `~/.look/cache/rows/`, so a failed command keeps the last good rows and their ranking
+- `run` rows are refreshed on reload (`Cmd+Shift+R` / `Cmd+Shift+;`) and cached in `$XDG_CACHE_HOME/look/rows/` (or `~/.cache/look/rows/` / `~/.look/cache/rows/`), so a failed command keeps the last good rows and their ranking
 - shared `core/sources` engine on macOS, Linux, and Windows. See [`docs/user-sources.md`](user-sources.md), and [lookbook](https://github.com/kunkka19xx/lookbook) for ready-made sources to copy
 
 ### Settings and runtime config
 
 - launch modes: `lookapp <mode> [term]` opens straight into a mode from a keybinding (18 modes with aliases, `lookapp clipboard`, `lookapp calc 2+2`), plus `--toggle`, `--mode`/`--query`, `--list-modes`, and `reload-config`. Parsed in `core/engine/src/modes.rs` so a name means the same thing on every platform
 - in-app settings panel (`Cmd+Shift+,`)
-- local config file `~/.look/config`
-- runtime reload (`Cmd+Shift+;`)
-- rebindable launcher hotkey: record one in `Settings > Shortcuts` (macOS, Windows) or set `launcher_hotkey` in `~/.look/config`; `none` frees the key for your own binding of `lookapp --toggle`
+- local config file: prioritizes `$XDG_CONFIG_HOME/look/config` (or `~/.config/look/config`), falling back to `~/.look/config`
+- runtime reload (`Cmd+Shift+R` / `Cmd+Shift+;`)
+- configurable independent search bar and content widths (`search_bar_width` / `bar_width`, 350-1400 points; `window_width` / `content_width`, 500-1400 points; allows a narrow search bar without squishing the results list or document preview)
+- rebindable launcher hotkey: record one in `Settings > Shortcuts` (macOS, Windows) or set `launcher_hotkey` in config; `none` frees the key for your own binding of `lookapp --toggle`
 - 9 built-in theme presets (Catppuccin, Tokyo Night, Rose Pine, Gruvbox, Dracula, Kanagawa, Kindle, Liquid, Custom)
 - Behind-window blur requested from the compositor where it exists (macOS material; KDE / Hyprland / Niri on Linux), clear glass everywhere else
 - query alias presets in `~/.look/config` for app + System Settings intent expansion (`alias_note`, `alias_code`, `alias_term`, `alias_chat`, `alias_music`, `alias_brow`)

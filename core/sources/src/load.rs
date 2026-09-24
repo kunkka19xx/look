@@ -34,7 +34,7 @@ pub struct Loaded {
     pub problems: Vec<Problem>,
 }
 
-/// Where sources live: `$LOOK_SOURCES_DIR`, else `~/.look/sources`.
+/// Where sources live: `$LOOK_SOURCES_DIR`, else XDG `$XDG_CONFIG_HOME/look/sources` / `~/.config/look/sources` (or fallback `~/.look/sources`).
 pub fn sources_dir(home: &Path) -> PathBuf {
     if let Ok(custom) = env::var(SOURCES_DIR_ENV) {
         let trimmed = custom.trim();
@@ -42,7 +42,28 @@ pub fn sources_dir(home: &Path) -> PathBuf {
             return PathBuf::from(trimmed);
         }
     }
-    home.join(SOURCES_DIR_NAME)
+    let xdg_sources = if let Ok(val) = env::var("XDG_CONFIG_HOME") {
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            PathBuf::from(trimmed).join("look").join("sources")
+        } else {
+            home.join(".config").join("look").join("sources")
+        }
+    } else {
+        home.join(".config").join("look").join("sources")
+    };
+    if xdg_sources.exists() {
+        return xdg_sources;
+    }
+    let dot_sources = home.join(SOURCES_DIR_NAME);
+    if dot_sources.exists() {
+        return dot_sources;
+    }
+    if home.join(".look").exists() {
+        dot_sources
+    } else {
+        xdg_sources
+    }
 }
 
 /// Loads every block in `dir`. A directory that does not exist is not a problem
@@ -383,12 +404,12 @@ mod tests {
 
     #[test]
     fn the_directory_falls_back_to_the_home_relative_default() {
-        if env::var(SOURCES_DIR_ENV).is_ok() {
+        if env::var(SOURCES_DIR_ENV).is_ok() || env::var("XDG_CONFIG_HOME").is_ok() {
             return;
         }
         assert_eq!(
             sources_dir(Path::new("/home/u")),
-            PathBuf::from("/home/u").join(SOURCES_DIR_NAME)
+            PathBuf::from("/home/u/.config/look/sources")
         );
     }
 }

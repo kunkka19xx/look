@@ -27,7 +27,7 @@ fn cache_dir() -> Option<PathBuf> {
     cache_dir_named(CACHE_DIR_ENV, CACHE_DIR_NAME)
 }
 
-/// A cache directory under the user's home, or whatever `env_var` names.
+/// A cache directory under the user's home or XDG cache, or whatever `env_var` names.
 /// Shared so every cache resolves its home the same way.
 pub(crate) fn cache_dir_named(env_var: &str, dir_name: &str) -> Option<PathBuf> {
     if let Ok(custom) = std::env::var(env_var) {
@@ -36,7 +36,30 @@ pub(crate) fn cache_dir_named(env_var: &str, dir_name: &str) -> Option<PathBuf> 
             return Some(PathBuf::from(trimmed));
         }
     }
-    Some(PathBuf::from(crate::config::user_home_dir()?).join(dir_name))
+    let home = PathBuf::from(crate::config::user_home_dir()?);
+    let subfolder = dir_name.strip_prefix(".look/cache/").unwrap_or(dir_name);
+    let xdg_cache = if let Ok(val) = std::env::var("XDG_CACHE_HOME") {
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            PathBuf::from(trimmed).join("look").join(subfolder)
+        } else {
+            home.join(".cache").join("look").join(subfolder)
+        }
+    } else {
+        home.join(".cache").join("look").join(subfolder)
+    };
+    if xdg_cache.exists() {
+        return Some(xdg_cache);
+    }
+    let dot_cache = home.join(dir_name);
+    if dot_cache.exists() {
+        return Some(dot_cache);
+    }
+    if home.join(crate::config_path::CONFIG_DIR).exists() {
+        Some(dot_cache)
+    } else {
+        Some(xdg_cache)
+    }
 }
 
 /// Same ceiling the collectors use, applied again on read: a cache file edited

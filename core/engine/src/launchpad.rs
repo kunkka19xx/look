@@ -499,17 +499,23 @@ pub fn resolve(contents: &str) -> Resolved {
         grid.truncate(MAX_ROWS);
     }
 
-    // Ragged is structural: a row short of a token silently shifts everything
-    // after it, so there is no partial reading of this that is safe to show.
-    let mut columns = grid[0].len();
-    if let Some(index) = grid.iter().position(|row| row.len() != columns) {
-        return Resolved::default_with(vec![format!(
-            "super-actions.toml row {} has {} tokens but row 1 has {columns}, using the default layout",
-            index + 1,
-            grid[index].len()
-        )]);
+    // Pad ragged rows with "." (gap) up to the widest row so minor token count discrepancies
+    // do not discard the user's custom layout and force a reset to default.
+    let max_columns = grid.iter().map(|row| row.len()).max().unwrap_or(0);
+    for (index, row) in grid.iter_mut().enumerate() {
+        if row.len() < max_columns {
+            warnings.push(format!(
+                "super-actions.toml row {} has {} tokens; padded with gaps to match width {max_columns}",
+                index + 1,
+                row.len()
+            ));
+            while row.len() < max_columns {
+                row.push(".");
+            }
+        }
     }
 
+    let mut columns = max_columns;
     if columns > MAX_COLUMNS {
         warnings.push(format!(
             "super-actions.toml draws {columns} columns; only the first {MAX_COLUMNS} are shown"
@@ -695,7 +701,19 @@ pub fn launchpad_path(home: &Path) -> PathBuf {
             return PathBuf::from(trimmed);
         }
     }
-    home.join(LAUNCHPAD_FILE_NAME)
+    let xdg_path = crate::config_path::xdg_config_dir(home).join("super-actions.toml");
+    if xdg_path.exists() {
+        return xdg_path;
+    }
+    let dot_path = home.join(LAUNCHPAD_FILE_NAME);
+    if dot_path.exists() {
+        return dot_path;
+    }
+    if home.join(crate::config_path::CONFIG_DIR).exists() {
+        dot_path
+    } else {
+        xdg_path
+    }
 }
 
 /// Writes the commented default on first run, the way `config.rs` seeds
@@ -1448,16 +1466,16 @@ mnemonic = "Cmd+C"
     }
 
     #[test]
-    fn a_ragged_drawing_falls_back_to_the_whole_default_and_names_the_row() {
-        // Partial rendering is worse than the default here: one missing token
-        // shifts every tile after it, and the user cannot see why by looking.
+    fn a_ragged_drawing_is_gracefully_padded_with_gaps() {
         let resolved = resolve(
             r#"layout = [
                 "mic   theme  wifi",
                 "mic   theme",
             ]"#,
         );
-        assert!(is_default(&resolved));
+        assert!(!is_default(&resolved));
+        assert_eq!(resolved.columns, 3);
+        assert_eq!(resolved.rows, 2);
         assert!(
             resolved.warnings[0].contains("row 2"),
             "{:?}",
