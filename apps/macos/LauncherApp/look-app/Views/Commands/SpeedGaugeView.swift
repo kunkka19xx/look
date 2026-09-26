@@ -176,7 +176,7 @@ struct SpeedGaugeView: View {
     let latencyLevel: String?
     let themeStore: ThemeStore
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.reducesMotion) private var reduceMotion
     @State private var motion = GaugeMotion()
 
     var body: some View {

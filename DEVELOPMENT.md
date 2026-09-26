@@ -156,12 +156,13 @@ Benchmark snapshots land under [docs/bench-notes/](docs/bench-notes/). Add a new
 
 ## Releasing (maintainers)
 
-Build release artifacts and Homebrew cask:
+Build release artifacts:
 
 ```bash
 ./scripts/build-release.sh 1.0.0
-./scripts/generate-homebrew-cask.sh 1.0.0 <sha256> kunkka19xx/look
 ```
+
+The Homebrew cask lives in [homebrew/cask](https://github.com/Homebrew/homebrew-cask/blob/main/Casks/l/look.rb). BrewTestBot bumps it automatically after a GitHub release; only changes beyond version and sha256 (artifact names, minimum macOS, zap paths) need a manual `brew bump-cask-pr`.
 
 Signing and notarization:
 

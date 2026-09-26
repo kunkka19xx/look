@@ -8,8 +8,11 @@
 import SwiftUI
 
 struct ContentView: View {
+    @EnvironmentObject private var themeStore: ThemeStore
+
     var body: some View {
         LauncherView()
+            .motionPreference(animationsEnabled: themeStore.settings.animationsEnabled)
     }
 }
 
