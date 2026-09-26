@@ -41,6 +41,7 @@ let hintMessage = null;
 let copyright = null;
 let leftFooter = null;
 let rightFooter = null;
+let topBar = null;
 
 export function init() {
     win = document.getElementById('app');
@@ -64,7 +65,7 @@ export function init() {
 }
 
 export function initHints(refs) {
-    ({ hintBar, hintMessage, copyright, leftFooter, rightFooter } = refs);
+    ({ hintBar, hintMessage, copyright, leftFooter, rightFooter, topBar } = refs);
     apply();
 }
 
@@ -204,7 +205,11 @@ function placeHints(floating, floatingGrid) {
     if (!hintBar) return;
     let msgTarget = hintBar;
     let copyTarget = hintBar;
-    if (floatingGrid) {
+    if (compact) {
+        // No footer rows in compact: the hint is hidden with the bottom bar, and
+        // the copyright takes the free end of the search bar.
+        copyTarget = topBar;
+    } else if (floatingGrid) {
         msgTarget = leftFooter;
         copyTarget = rightFooter;
     } else if (floating) {

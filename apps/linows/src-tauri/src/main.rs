@@ -83,7 +83,7 @@ pub(crate) const BASE_W: f64 = 860.0;
 pub(crate) const BASE_H: f64 = 600.0;
 /// The compact layout's base size: the results list alone, tall enough for 6-7
 /// rows. Mirrors `WindowAutoScale.compactBaseWidth/Height` on macOS.
-const COMPACT_W: f64 = 620.0;
+const COMPACT_W: f64 = 680.0;
 const COMPACT_H: f64 = 440.0;
 /// Grace period (ms) after show - ignore focus-loss within this window.
 const AUTO_HIDE_GRACE_MS: u64 = 300;

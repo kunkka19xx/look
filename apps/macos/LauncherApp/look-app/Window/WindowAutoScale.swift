@@ -24,7 +24,7 @@ enum WindowAutoScale {
 
     // Compact layout: results list alone, tall enough for 6-7 rows at the
     // default font size. Mirrors COMPACT_W/COMPACT_H in the Linux/Windows build.
-    static let compactBaseWidth: CGFloat = 620
+    static let compactBaseWidth: CGFloat = 680
     static let compactBaseHeight: CGFloat = 440
 
     /// Extra points to lift the launcher above vertical center. The window is

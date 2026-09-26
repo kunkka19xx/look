@@ -192,6 +192,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         copyright: hintBar.querySelector('.hint-bar-copy'),
         leftFooter: document.getElementById('results-footer'),
         rightFooter: previewFooter,
+        topBar: document.getElementById('top-bar'),
     });
 
     // Todo quick view: when today has tasks, the last main-hint item

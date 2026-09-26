@@ -1355,6 +1355,12 @@ struct LauncherView: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
+                        // Compact has no footer row, and the strip's end of the
+                        // bar is free there.
+                        if isCompactLayout {
+                            copyrightLink
+                                .padding(.trailing, Self.barCopyrightTrailingInset)
+                        }
                     }
                     .frame(minHeight: AppConstants.Launcher.topRowMinHeight)
                 }
@@ -1443,7 +1449,9 @@ struct LauncherView: View {
 
             // While floating, every card carries its own hint footer; only the
             // classic (no-gap) layout keeps the full-width bar below the panel.
+            // The compact window has no room for hints.
             if !showsFloatingCards
+                && !isCompactLayout
                 && !restsAsBareBar
                 && !isKillConfirmationVisible
                 && !isDeleteConfirmationVisible
@@ -2292,18 +2300,21 @@ struct LauncherView: View {
     }
 
     /// A thin footer strip inside a floating card holding a slice of the old
-    /// full-width hint bar.
+    /// full-width hint bar. Compact has none: no hints, and its copyright sits at
+    /// the right end of the search bar rather than taking a row.
     @ViewBuilder
     private func cardFooter<Content: View>(
         placement: CardFooterPlacement = .gridPane,
         @ViewBuilder _ content: () -> Content
     ) -> some View {
-        HStack(spacing: 0) {
-            content()
+        if !isCompactLayout {
+            HStack(spacing: 0) {
+                content()
+            }
+            .padding(.horizontal, placement.horizontal)
+            .padding(.top, placement.top)
+            .padding(.bottom, placement.bottom)
         }
-        .padding(.horizontal, placement.horizontal)
-        .padding(.top, placement.top)
-        .padding(.bottom, placement.bottom)
     }
 
     /// i3-style inner gap between the three home panes (0 = classic flat layout).
@@ -2520,6 +2531,8 @@ struct LauncherView: View {
         !isCompactLayout && (!pickedKeys.isEmpty || previewResult != nil)
     }
 
+    private static let barCopyrightTrailingInset: CGFloat = 12
+
     private var copyrightLink: some View {
         Link("© 2026 by Kunkka", destination: URL(string: "https://github.com/kunkka19xx")!)
             .font(themeStore.uiFont(size: CGFloat(max(9, themeStore.settings.fontSize - 4)), weight: .regular))
@@ -2566,7 +2579,8 @@ struct LauncherView: View {
         // While floating the copyright moves into a card footer; on the empty-rest
         // screen it's hidden entirely; otherwise it stays in the panel's
         // bottom-right corner.
-        if !showsFloatingCards && !restsAsBareBar && !isHideAppConfirmationVisible {
+        // Compact carries it in the search bar instead.
+        if !showsFloatingCards && !isCompactLayout && !restsAsBareBar && !isHideAppConfirmationVisible {
             copyrightLink
                 .padding(.trailing, 10)
                 .padding(.bottom, 8)

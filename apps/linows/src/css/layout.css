@@ -213,6 +213,12 @@ html[data-os="windows"] .bar-free .pane-tile {
     display: none;
 }
 
+/* No hint rows in compact: layout.js moves the copyright into the top bar. */
+.launcher-window.compact #hint-bar,
+.launcher-window.compact .pane-footer {
+    display: none;
+}
+
 /* Two-col AI (knowledge lookup): app.js moves the suggestion list into the
  * right pane, so the lookup renders through the same two equal columns as
  * normal results (macOS twoPaneGrid) - same tiles, same footers. The
@@ -367,7 +373,8 @@ html[data-os="windows"] .bar-free .pane-tile {
 }
 
 .hint-bar .hint-bar-copy,
-.pane-footer .hint-bar-copy {
+.pane-footer .hint-bar-copy,
+.top-bar .hint-bar-copy {
     font-size: 10px;
     color: var(--font-muted);
     opacity: 0.6;
