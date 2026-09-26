@@ -37,12 +37,7 @@ import * as levels from './levels.js';
 import * as runningApps from './components/running-apps.js';
 import { canRunElevated } from './platform.js';
 import { trash as trashIcon } from './icons.js';
-import {
-    classifyResultId,
-    isSyntheticResultId,
-    CLIPBOARD_DELETED_BANNER,
-    COMMAND_ENTRIES,
-} from './catalog.js';
+import { classifyResultId, isSyntheticResultId, CLIPBOARD_DELETED_BANNER } from './catalog.js';
 import * as platform from './platform.js';
 import * as layout from './layout.js';
 
@@ -272,30 +267,6 @@ function handleKeyDown(e) {
             commandMode.exit();
         } else if (enterCommandModeFn) {
             enterCommandModeFn();
-        }
-        return;
-    }
-
-    // Ctrl+1..N also works while the `:` discovery list is open. At this
-    // point commandMode is not active yet, so its own handler cannot receive
-    // the event; jump directly into the selected command panel instead.
-    const numberKey = e.code?.match(/^Digit([1-9])$/);
-    if (
-        search.isCommandHintMode() &&
-        e.ctrlKey &&
-        !e.shiftKey &&
-        !e.altKey &&
-        !e.metaKey &&
-        numberKey
-    ) {
-        const idx = Number(numberKey[1]) - 1;
-        const command = COMMAND_ENTRIES[idx];
-        if (command) {
-            e.preventDefault();
-            commandMode?.enterById(command.id);
-            enterCommandModeFn?.();
-            queryInput.value = '';
-            queryInput.dispatchEvent(new Event('input'));
         }
         return;
     }
