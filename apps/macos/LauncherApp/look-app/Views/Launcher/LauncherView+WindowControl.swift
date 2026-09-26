@@ -247,20 +247,17 @@ extension LauncherView {
         window.setFrame(frame, display: true)
     }
 
-    /// Resizes a visible launcher in place when the layout setting changes, so
-    /// the settings screen that changed it follows at once. A hidden launcher
-    /// takes the new size on its next show.
+    /// Resizes a visible launcher in place on a layout change; a hidden one takes
+    /// the new size on its next show.
     func layoutSettingChanged() {
         closeActionMenu()
         refreshLaunchpadState()
         guard let window = launcherWindow(), window.isVisible,
             let screen = window.screen ?? NSScreen.main
         else { return }
-        // The anchor is taken now: the content's minimum size follows the layout,
-        // and a growing minimum can resize the window from its bottom edge before
-        // the block below runs. The resize itself waits a turn so a shrinking
-        // minimum has let go first. The layout is read when the block runs, so
-        // rapid toggles all land on the last value.
+        // Anchor now, before a growing content minimum can move the window; resize
+        // a turn later, once a shrinking one has let go. Reading the layout late
+        // makes rapid toggles land on the last value.
         let anchor = window.frame
         DispatchQueue.main.async {
             let frame = WindowAutoScale.resizedFrame(

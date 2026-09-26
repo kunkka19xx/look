@@ -120,7 +120,7 @@ const LAUNCH_QUERY_GRACE_MS = 500;
 const AI_LAYOUT_CLASSES = ['ai-mode-full', 'ai-mode-two-col', 'ai-mode-stacked'];
 const AI_LAYOUT_STACKED = 'ai-mode-stacked';
 const AI_LAYOUT_TWO_COL = 'ai-mode-two-col';
-// `layout` config value for the single-column window (the other is `split`).
+// `layout` config value for the single-column window.
 const LAYOUT_COMPACT = 'compact';
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -247,13 +247,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         );
     }
 
-    // The empty-state control strip (super actions) stands in for the results
-    // row whenever the query is empty on the bare home screen. Single source of
-    // truth: any transition that changes the query or the active screen calls
-    // this, and the strip renders itself only when it should. When the strip
-    // yields to results (first keystroke from empty), ease the results list in.
-    // null until the config is first read: startup is sized by the backend,
-    // so only a later switch asks it to resize the window.
+    // null until the config is first read: the backend sizes the window at
+    // startup, so only a later switch asks it to resize.
     let compactApplied = null;
 
     function applyLayoutSetting(value) {
@@ -272,6 +267,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // The empty-state control strip (super actions) stands in for the results
+    // row whenever the query is empty on the bare home screen. Single source of
+    // truth: any transition that changes the query or the active screen calls
+    // this, and the strip renders itself only when it should. When the strip
+    // yields to results (first keystroke from empty), ease the results list in.
     function syncControlStrip() {
         const was = superactions.isVisible();
         superactions.setVisible(queryInput.value === '' && isHomeHintContext());

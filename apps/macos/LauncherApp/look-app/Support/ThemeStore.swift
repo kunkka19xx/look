@@ -110,7 +110,7 @@ final class ThemeStore: ObservableObject {
                 case "ui_surface_radius":
                     appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.surfaceRadiusRange)
                 case "layout":
-                    if LauncherLayout(rawValue: value.lowercased()) == nil {
+                    if LauncherLayout(configValue: value) == nil {
                         let expected = LauncherLayout.allCases.map(\.rawValue).joined(separator: " or ")
                         warnings.append("\(key)=\(value) invalid (expected \(expected))")
                     }
@@ -559,7 +559,7 @@ final class ThemeStore: ObservableObject {
                     settings.innerGap = clamped(parsed, to: AppConstants.ThemeUI.innerGapRange)
                 }
             case "layout":
-                settings.layout = LauncherLayout(rawValue: value.lowercased()) ?? .split
+                settings.layout = LauncherLayout(configValue: value) ?? .split
             case "ui_surface_radius":
                 // Clamped rather than parsePositiveDouble: 0 squares the corners
                 // and is a value the slider offers, which `> 0` would drop.

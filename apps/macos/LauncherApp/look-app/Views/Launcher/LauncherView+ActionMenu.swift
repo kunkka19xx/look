@@ -39,9 +39,7 @@ extension LauncherView {
     }
 
     /// Cmd+K. Opening with nothing to offer would show an empty box, so a row
-    /// with no actions says so instead. The menu is drawn in the preview pane,
-    /// which the compact layout does not have, so it stays closed there rather
-    /// than taking the arrow keys while invisible.
+    /// with no actions says so instead. Compact has no preview pane to draw it in.
     func toggleActionMenu() {
         if isActionMenuOpen {
             closeActionMenu()

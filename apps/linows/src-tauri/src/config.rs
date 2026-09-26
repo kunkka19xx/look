@@ -185,13 +185,11 @@ pub const QUERY_RETENTION_SECONDS_DEFAULT: i64 = 5;
 pub const QUERY_RETENTION_SECONDS_NEVER: i64 = -1;
 const LAYOUT_KEY: &str = "layout";
 
-/// Launcher window layout. Same key and values as macOS `LauncherLayout`.
+/// Same key and values as macOS `LauncherLayout`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum LauncherLayout {
-    /// Results list beside the preview pane.
     #[default]
     Split,
-    /// Smaller window with the results list alone.
     Compact,
 }
 
@@ -242,8 +240,7 @@ pub fn clipboard_image_limit() -> usize {
     )
 }
 
-/// The layout from `layout` in the config file. Split when the key is absent or
-/// holds anything but a known value.
+/// `layout` from the config file; split when absent or unknown.
 pub fn launcher_layout() -> LauncherLayout {
     let Ok(contents) = std::fs::read_to_string(config_file_path()) else {
         return LauncherLayout::default();

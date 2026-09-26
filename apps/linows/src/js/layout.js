@@ -75,7 +75,6 @@ export function setInnerGap(gap) {
     apply();
 }
 
-/** Compact layout: the results list alone, no preview column. */
 export function setCompact(on) {
     compact = !!on;
     apply();
@@ -83,6 +82,11 @@ export function setCompact(on) {
 
 export function isCompact() {
     return compact;
+}
+
+/** Single gate for the command sidebar; a future split-mode setting plugs in here. */
+export function showsCommandSidebar() {
+    return !compact;
 }
 
 export function setModal(screen, on) {
@@ -187,6 +191,7 @@ function apply() {
     const floatingGrid = floating && !translateQuery && !recentEmptyQuery && !compact;
 
     win.classList.toggle('compact', compact);
+    win.classList.toggle('cmd-sidebar-hidden', !showsCommandSidebar());
     win.classList.toggle('floating', floating);
     win.classList.toggle('resting', resting);
     win.classList.toggle('bar-free', barFree);
@@ -206,8 +211,7 @@ function placeHints(floating, floatingGrid) {
     let msgTarget = hintBar;
     let copyTarget = hintBar;
     if (compact) {
-        // No footer rows in compact: the hint is hidden with the bottom bar, and
-        // the copyright takes the free end of the search bar.
+        // Compact has no footer rows; the copyright takes the free end of the bar.
         copyTarget = topBar;
     } else if (floatingGrid) {
         msgTarget = leftFooter;

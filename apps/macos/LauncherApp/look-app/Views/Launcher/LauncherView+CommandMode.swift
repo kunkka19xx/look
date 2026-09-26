@@ -343,6 +343,15 @@ extension LauncherView {
         requestCommandInputFocusIfNeeded()
     }
 
+    /// Single gate for the command sidebar; a future split-mode setting plugs in
+    /// here. /pomo standby hides it to keep focus on the clock + music card.
+    var showsCommandSidebar: Bool {
+        if isCompactLayout { return false }
+        let pomoStandby = activeCommandID == AppConstants.Launcher.Command.pomo
+            && PomoSharedState.shared.idle
+        return !pomoStandby
+    }
+
     @ViewBuilder
     var commandModeView: some View {
         // Fixed sidebar width - the launcher window is non-resizable
@@ -355,14 +364,8 @@ extension LauncherView {
         let dividerWidth: CGFloat = 1
         let leftWidth: CGFloat = 170
 
-        // Hide the command sidebar while /pomo is in standby/idle mode
-        // - keeps the user's focus on the clock + music card with no
-        // distractions. Other commands keep the sidebar always visible.
-        let hideSidebar = activeCommandID == AppConstants.Launcher.Command.pomo
-            && PomoSharedState.shared.idle
-
         HStack(spacing: splitSpacing) {
-                if !hideSidebar {
+                if showsCommandSidebar {
                     CommandListView(
                         commands: commandCatalog,
                         selectedID: selectedCommandID,

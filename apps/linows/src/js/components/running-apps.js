@@ -10,7 +10,7 @@ const iconCache = new Map();
 
 let container = null;
 let apps = []; // sorted alphabetically, max 9
-// What the user asked for; the compact layout hides the strip without touching it.
+// The user's setting; compact hides the strip without changing it.
 let preferred = true;
 let compact = false;
 let enabled = true;
@@ -29,7 +29,6 @@ export function setEnabled(on) {
     applyEnabled();
 }
 
-/** The compact window is too narrow to share the search bar with the strip. */
 export function setCompact(on) {
     compact = on;
     applyEnabled();

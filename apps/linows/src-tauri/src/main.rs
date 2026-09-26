@@ -81,8 +81,8 @@ fn supports_transparency() -> bool {
 /// tauri.conf's window size, and the 1.0x rung of `scaled_window_size`.
 pub(crate) const BASE_W: f64 = 860.0;
 pub(crate) const BASE_H: f64 = 600.0;
-/// The compact layout's base size: the results list alone, tall enough for 6-7
-/// rows. Mirrors `WindowAutoScale.compactBaseWidth/Height` on macOS.
+/// Compact layout base size, tall enough for 6-7 rows. Mirrors macOS
+/// `WindowAutoScale.compactBaseWidth/Height`.
 const COMPACT_W: f64 = 680.0;
 const COMPACT_H: f64 = 440.0;
 /// Grace period (ms) after show - ignore focus-loss within this window.
@@ -97,13 +97,8 @@ fn hide_launcher(window: &tauri::WebviewWindow) {
 
 /// Scale window size (logical pixels) to fit the current monitor.
 /// Base size targets 1080p (1.0×). Scales up for larger logical screens
-/// (1440p → 1.2×, 4K → 1.3× cap).
-fn scaled_window_size(
-    screen_w: u32,
-    screen_h: u32,
-    scale: f64,
-    layout: config::LauncherLayout,
-) -> (u32, u32) {
+/// (1440p → 1.2×, 4K → 1.3× cap). The base follows the configured layout.
+fn scaled_window_size(screen_w: u32, screen_h: u32, scale: f64) -> (u32, u32) {
     let logical_h = screen_h as f64 / scale;
     let ratio = if logical_h <= 1080.0 {
         1.0
@@ -113,7 +108,7 @@ fn scaled_window_size(
         r.min(1.3)
     };
     let _ = screen_w; // used only for centering
-    let (base_w, base_h) = match layout {
+    let (base_w, base_h) = match config::launcher_layout() {
         config::LauncherLayout::Split => (BASE_W, BASE_H),
         config::LauncherLayout::Compact => (COMPACT_W, COMPACT_H),
     };
@@ -197,12 +192,7 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) -> Option<(i32, i32)> 
     let pos = monitor.position();
     let screen = monitor.size();
     let scale = monitor.scale_factor();
-    let (win_w, win_h) = scaled_window_size(
-        screen.width,
-        screen.height,
-        scale,
-        config::launcher_layout(),
-    );
+    let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
     let logical_screen_w = screen.width as f64 / scale;
     let logical_screen_h = screen.height as f64 / scale;
     eprintln!(
@@ -304,12 +294,7 @@ fn recenter_window(window: &tauri::WebviewWindow) {
     let pos = monitor.position();
     let screen = monitor.size();
     let scale = monitor.scale_factor();
-    let (win_w, win_h) = scaled_window_size(
-        screen.width,
-        screen.height,
-        scale,
-        config::launcher_layout(),
-    );
+    let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
     let logical_screen_w = screen.width as f64 / scale;
     let logical_screen_h = screen.height as f64 / scale;
     resize_locked(window, tauri::LogicalSize::new(win_w as f64, win_h as f64));
@@ -318,8 +303,8 @@ fn recenter_window(window: &tauri::WebviewWindow) {
     let _ = window.set_position(tauri::LogicalPosition::new(lx, ly));
 }
 
-/// Relaxes the min/max constraints FIRST so the new size isn't clamped to the
-/// old one, then resizes, then locks them to the new size again.
+/// Relaxes min/max first so the old lock can't clamp the new size, then locks
+/// them to it again.
 fn resize_locked(window: &tauri::WebviewWindow, size: tauri::LogicalSize<f64>) {
     let _ = window.set_min_size(None::<tauri::Size>);
     let _ = window.set_max_size(None::<tauri::Size>);
@@ -328,10 +313,9 @@ fn resize_locked(window: &tauri::WebviewWindow, size: tauri::LogicalSize<f64>) {
     let _ = window.set_max_size(Some(tauri::Size::Logical(size)));
 }
 
-/// Resizes the launcher after the `layout` setting changed. A visible window
-/// keeps its top edge and horizontal centre, so the search bar stays put. A
-/// hidden one takes the new size from `recenter_window` on its next show,
-/// except the layer surface, which is sized only here and at startup.
+/// Resizes for a `layout` change, keeping a visible window's top edge and
+/// centre. A hidden window is resized by `recenter_window` on its next show;
+/// the layer surface is not, so it is resized here either way.
 #[tauri::command]
 fn apply_layout(window: tauri::WebviewWindow) {
     let Some(monitor) = window
@@ -344,12 +328,7 @@ fn apply_layout(window: tauri::WebviewWindow) {
     };
     let screen = monitor.size();
     let scale = monitor.scale_factor();
-    let (win_w, win_h) = scaled_window_size(
-        screen.width,
-        screen.height,
-        scale,
-        config::launcher_layout(),
-    );
+    let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
 
     #[cfg(target_os = "linux")]
     if platform::linux::layer_shell::is_active() {

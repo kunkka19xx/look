@@ -155,14 +155,17 @@ enum RunningAppsPlacement: String, CaseIterable, Codable, Identifiable {
     var id: String { rawValue }
 }
 
-/// Launcher window layout, persisted in `~/.look/config` under `layout`.
-/// `split` is the results list beside the preview pane; `compact` is a smaller
-/// window with the results list alone.
+/// Launcher window layout, persisted in `~/.look/config` under `layout`:
+/// results beside the preview (`split`), or a smaller results-only window.
 enum LauncherLayout: String, CaseIterable, Codable, Identifiable {
     case split
     case compact
 
     var id: String { rawValue }
+
+    init?(configValue: String) {
+        self.init(rawValue: configValue.lowercased())
+    }
 }
 
 /// Which AI backend powers query understanding. On-device Apple Intelligence is

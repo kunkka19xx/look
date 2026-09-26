@@ -74,8 +74,7 @@ extension LauncherView {
 
     /// True while the empty-state launchpad is the visible content (empty query,
     /// not in command mode / settings / help). Gates the Command-mnemonic keys so
-    /// they only fire when the strip is actually shown. The compact layout has
-    /// no launchpad, so its mnemonics are inert there.
+    /// they only fire when the strip is actually shown. Compact has no launchpad.
     var isLaunchpadActive: Bool {
         themeStore.settings.superActionsEnabled && !isCompactLayout && hidesResultsForEmptyQuery
             && !launchpadTiles.isEmpty && !isAIMode

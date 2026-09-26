@@ -222,8 +222,7 @@ struct LauncherView: View {
 
     /// AI mode hides the strip: the assistant screen is about the conversation,
     /// not about switching apps, and the freed ⌘1-9 chords tag the listed
-    /// sessions instead (see `sessionJumpKeyLimit`). The compact window is too
-    /// narrow to share the bar, so it hides the strip too.
+    /// sessions instead (see `sessionJumpKeyLimit`). Compact is too narrow for it.
     var shouldShowRunningAppsStrip: Bool {
         runningAppsPlacement != .none
             && !isCompactLayout
@@ -1355,8 +1354,7 @@ struct LauncherView: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
-                        // Compact has no footer row, and the strip's end of the
-                        // bar is free there.
+                        // Compact has no footer row; the strip's end of the bar is free.
                         if isCompactLayout {
                             copyrightLink
                                 .padding(.trailing, Self.barCopyrightTrailingInset)
@@ -1449,7 +1447,7 @@ struct LauncherView: View {
 
             // While floating, every card carries its own hint footer; only the
             // classic (no-gap) layout keeps the full-width bar below the panel.
-            // The compact window has no room for hints.
+            // Compact shows no hints.
             if !showsFloatingCards
                 && !isCompactLayout
                 && !restsAsBareBar
@@ -2300,8 +2298,7 @@ struct LauncherView: View {
     }
 
     /// A thin footer strip inside a floating card holding a slice of the old
-    /// full-width hint bar. Compact has none: no hints, and its copyright sits at
-    /// the right end of the search bar rather than taking a row.
+    /// full-width hint bar. Compact has none (its copyright is in the search bar).
     @ViewBuilder
     private func cardFooter<Content: View>(
         placement: CardFooterPlacement = .gridPane,
@@ -2356,9 +2353,8 @@ struct LauncherView: View {
         showsFloatingCards || restsAsBareBar
     }
 
-    /// The empty-query rest state as it is drawn: just the bar, no panel. The AI
-    /// session also starts on an empty query, but its conversation list owns
-    /// the panel and needs the backdrop behind it.
+    /// The empty-query rest state as drawn: just the bar. The AI session starts
+    /// empty too, but its conversation list needs the panel behind it.
     private var restsAsBareBar: Bool {
         hidesResultsForEmptyQuery && !isActionSessionUI
     }
@@ -2578,8 +2574,7 @@ struct LauncherView: View {
     private var copyrightOverlay: some View {
         // While floating the copyright moves into a card footer; on the empty-rest
         // screen it's hidden entirely; otherwise it stays in the panel's
-        // bottom-right corner.
-        // Compact carries it in the search bar instead.
+        // bottom-right corner. Compact carries it in the search bar.
         if !showsFloatingCards && !isCompactLayout && !restsAsBareBar && !isHideAppConfirmationVisible {
             copyrightLink
                 .padding(.trailing, 10)

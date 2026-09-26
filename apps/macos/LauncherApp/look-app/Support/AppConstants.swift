@@ -514,9 +514,8 @@ enum AppConstants {
             static let height: CGFloat = 580
         }
 
-        /// The top row's height when the running-apps strip is hidden (compact
-        /// layout, AI mode, turned off), so the bar never shrinks to the bare
-        /// text field. A little under the strip's own height.
+        /// Keeps the bar from shrinking to the bare text field when the
+        /// running-apps strip (which sets its height otherwise) is hidden.
         static let topRowMinHeight: CGFloat = 45
 
         enum RunningAppsStrip {

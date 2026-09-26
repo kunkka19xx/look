@@ -23,7 +23,7 @@ extension ThemeSettingsView {
                 }
 
                 HStack(spacing: 14) {
-                    // The compact layout shows neither the strip nor the launchpad.
+                    // Compact shows neither the strip nor the launchpad.
                     if settings.layout == .split {
                         appearanceSwitch(
                             "Running Apps",

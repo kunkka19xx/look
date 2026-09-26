@@ -22,8 +22,7 @@ enum WindowAutoScale {
     static let baseWidth: CGFloat = 860
     static let baseHeight: CGFloat = 600
 
-    // Compact layout: results list alone, tall enough for 6-7 rows at the
-    // default font size. Mirrors COMPACT_W/COMPACT_H in the Linux/Windows build.
+    // Compact: tall enough for 6-7 rows. Mirrors COMPACT_W/H in the Linux/Windows build.
     static let compactBaseWidth: CGFloat = 680
     static let compactBaseHeight: CGFloat = 440
 
@@ -67,21 +66,20 @@ enum WindowAutoScale {
     static func spotlightFrame(on screen: NSScreen, layout: LauncherLayout) -> NSRect {
         let size = size(for: screen, layout: layout)
         let visible = screen.visibleFrame
-        let x = visible.midX - size.width / 2
         // middle + height/2 + lift = window top; center the panel, then lift it.
-        let windowTop = visible.midY + size.height / 2 + spotlightLift
-        let y = min(max(windowTop - size.height, visible.minY), visible.maxY - size.height)
-        return NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
+        let top = visible.midY + size.height / 2 + spotlightLift
+        return frame(size: size, midX: visible.midX, top: top, within: visible)
     }
 
-    /// Frame for a layout switch while the launcher is on screen: same top edge
-    /// and horizontal center, so the search bar stays where the user is looking
-    /// and the window grows or shrinks downward. Clamped to the visible area.
+    /// Frame for a live layout switch: same top edge and center, so the search
+    /// bar stays put and the window grows or shrinks downward.
     static func resizedFrame(from current: NSRect, on screen: NSScreen, layout: LauncherLayout) -> NSRect {
-        let size = size(for: screen, layout: layout)
-        let visible = screen.visibleFrame
-        let x = min(max(current.midX - size.width / 2, visible.minX), visible.maxX - size.width)
-        let y = min(max(current.maxY - size.height, visible.minY), visible.maxY - size.height)
+        frame(size: size(for: screen, layout: layout), midX: current.midX, top: current.maxY, within: screen.visibleFrame)
+    }
+
+    private static func frame(size: CGSize, midX: CGFloat, top: CGFloat, within visible: NSRect) -> NSRect {
+        let x = min(max(midX - size.width / 2, visible.minX), visible.maxX - size.width)
+        let y = min(max(top - size.height, visible.minY), visible.maxY - size.height)
         return NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
     }
 }

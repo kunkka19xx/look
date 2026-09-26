@@ -198,8 +198,7 @@ html[data-os="windows"] .bar-free .pane-tile {
     display: none;
 }
 
-/* Compact layout: the results list alone, whatever the preview would show.
- * app.js keeps the AI lookup stacked there, so column 2 never holds the list. */
+/* Compact: the results list alone (app.js keeps the AI lookup stacked). */
 .launcher-window.compact .results-row {
     grid-template-columns: 1fr;
 }
@@ -208,12 +207,12 @@ html[data-os="windows"] .bar-free .pane-tile {
     display: none;
 }
 
-/* Settings for things the compact layout does not show (running apps, launchpad). */
+/* Settings for features compact does not show. */
 .launcher-window.compact .split-only {
     display: none;
 }
 
-/* No hint rows in compact: layout.js moves the copyright into the top bar. */
+/* No hint rows; layout.js moves the copyright into the top bar. */
 .launcher-window.compact #hint-bar,
 .launcher-window.compact .pane-footer {
     display: none;

@@ -78,7 +78,6 @@ let container = null;
 let built = false;
 // What the user asked for, before the platform gets a say (see applyEnabled).
 let configEnabled = true;
-// The compact layout has no launchpad.
 let compact = false;
 let visible = false;
 // User setting (Settings -> Appearance -> Super Actions). When off the strip

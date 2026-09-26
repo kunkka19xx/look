@@ -16,7 +16,6 @@ const EMPTY_BANNER = 'Nothing to do here';
 // chord does not read as a dead key.
 const FAILED_BANNER = 'Could not read this row';
 const BANNER_SECONDS = 1.2;
-// The menu hangs off the preview pane, which the compact layout does not have.
 const COMPACT_CONFIRM_BANNER = 'Switch to the split layout to confirm this';
 // Clear of the header, so the popup still reads as attached to the row above.
 const HEADER_GAP = 8;
@@ -64,8 +63,8 @@ function isOpen() {
     return menuEl != null;
 }
 
-/** Keeps the menu closed while its pane is hidden, rather than letting an
- *  invisible list take the arrow keys. */
+/** The menu hangs off the preview pane, which compact hides: keep it closed
+ *  rather than let an invisible list take the keys. */
 export function setCompact(on) {
     compact = on;
     if (on) close();

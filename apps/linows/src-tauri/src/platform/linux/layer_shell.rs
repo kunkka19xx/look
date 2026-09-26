@@ -197,8 +197,7 @@ fn usable_size((width, height): (i32, i32)) -> (i32, i32) {
     (crate::BASE_W as i32, crate::BASE_H as i32)
 }
 
-/// Resizes the surface for a layout switch. Anchored nowhere, so the
-/// compositor keeps it centred.
+/// Resizes the surface; anchored nowhere, the compositor keeps it centred.
 pub fn resize(width: i32, height: i32) {
     let (width, height) = usable_size((width, height));
     on_main(move |layer| {
