@@ -1356,6 +1356,7 @@ struct LauncherView: View {
                             .frame(maxWidth: .infinity)
                         }
                     }
+                    .frame(minHeight: AppConstants.Launcher.topRowMinHeight)
                 }
             }
 
