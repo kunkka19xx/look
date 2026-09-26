@@ -37,7 +37,9 @@ pub fn get_file_meta(path: String) -> FileMeta {
     let p = std::path::Path::new(&path);
     let meta = std::fs::metadata(p).ok();
 
-    let size = meta.as_ref().map(|m| m.len());
+    // A directory's own length is its entry table (4 KB on ext4, 0 on NTFS),
+    // not its contents; folders show item counts instead.
+    let size = meta.as_ref().filter(|m| !m.is_dir()).map(|m| m.len());
 
     let modified = meta.as_ref().and_then(|m| {
         let mod_time = m.modified().ok()?;
