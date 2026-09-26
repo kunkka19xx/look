@@ -98,6 +98,15 @@ pub(crate) fn copy_image(path: &std::path::Path) -> Result<bool, String> {
     shell_out(IMAGE_PNG, &png).map(|_| false)
 }
 
+/// Text, in every spelling a pasting app might ask for. Through GTK like the
+/// rest, so a copy needs no X server on a Wayland session.
+pub(crate) fn copy_text(text: &str) -> Result<(), String> {
+    if own_clipboard(vec![Form::new(&TEXT_TARGETS, text.as_bytes())]) {
+        return Ok(());
+    }
+    shell_out(TEXT_TARGETS[0], text.as_bytes())
+}
+
 /// The three forms one file copy is offered in: [`GNOME_COPIED_FILES`],
 /// [`URI_LIST`], and the plain text a text field pastes.
 fn payloads(paths: &[String]) -> (String, String, String) {

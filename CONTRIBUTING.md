@@ -29,7 +29,7 @@ A good bug report must include:
   - OS + version (macOS 15.x / Windows 11 24H2 / etc.)
   - look app version or commit SHA
   - install method:
-    - macOS: Xcode run, zip install, Homebrew tap
+    - macOS: Xcode run, zip install, Homebrew
     - Windows: NSIS installer (`.exe`), or a local `make app-run` dev build
     - Linux: `.deb`, AppImage, AUR, or a local `make app-run` dev build
   - architecture (`arm64` / `x86_64` on macOS; `x64` / `ARM64` on Windows)

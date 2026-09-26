@@ -16,7 +16,8 @@ pub(crate) fn look_modes_list_text_impl() -> *mut c_char {
 }
 
 /// Argv in as a JSON array (program name already dropped), the decision out as
-/// `{"kind":"normal"|"query"|"list_modes"|"unknown_mode"|"unavailable_mode", ...}`.
+/// `{"kind":"normal"|"query"|"list_modes"|"reload_config"|"toggle"|"unknown_mode"
+/// |"unavailable_mode", ...}`.
 pub(crate) fn look_modes_parse_json_impl(argv_json: *const c_char) -> *mut c_char {
     if argv_json.is_null() {
         return allocate(NULL_JSON.to_string());
@@ -31,6 +32,8 @@ pub(crate) fn look_modes_parse_json_impl(argv_json: *const c_char) -> *mut c_cha
     let value = match modes::parse_args(args) {
         modes::Launch::Normal => serde_json::json!({ "kind": "normal" }),
         modes::Launch::ListModes => serde_json::json!({ "kind": "list_modes" }),
+        modes::Launch::ReloadConfig => serde_json::json!({ "kind": "reload_config" }),
+        modes::Launch::Toggle => serde_json::json!({ "kind": "toggle" }),
         modes::Launch::Query { text } => serde_json::json!({ "kind": "query", "text": text }),
         modes::Launch::UnknownMode(name) => {
             serde_json::json!({ "kind": "unknown_mode", "name": name })
@@ -91,6 +94,11 @@ mod tests {
     #[test]
     fn listing_is_asked_for_by_kind() {
         assert_eq!(parse(&["--list-modes"])["kind"], "list_modes");
+    }
+
+    #[test]
+    fn reload_config_crosses_as_its_own_kind() {
+        assert_eq!(parse(&["reload-config"])["kind"], "reload_config");
     }
 
     #[test]

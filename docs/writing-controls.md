@@ -17,9 +17,9 @@ has no cross-platform implementation, so we share the *declaration* and keep the
 
 | Piece | Location | Scope |
 |-------|----------|-------|
-| **Descriptor** — what it is: id, match, control kind, on/off labels, info fields | `core/qactions` catalog | shared, all OSes |
-| **Adapter** — how it runs: read + set the OS state (`state()` / `apply()`) | macOS: `…/QuickActions/Controls/<Name>Control.swift`; linows: `…/src-tauri/src/qactions/controls/<name>.rs` (Linux) and `<name>_windows.rs` (Windows), each `cfg`-gated | native, per OS |
-| **Registration** — wire the adapter to its action id | macOS: `…/QuickActions/ActionAdapterRegistry.swift`; linows: `qactions/mod.rs` `adapter()` | native, one line |
+| **Descriptor** - what it is: id, match, control kind, on/off labels, info fields | `core/qactions` catalog | shared, all OSes |
+| **Adapter** - how it runs: read + set the OS state (`state()` / `apply()`) | macOS: `…/QuickActions/Controls/<Name>Control.swift`; linows: `…/src-tauri/src/qactions/controls/<name>.rs` (Linux) and `<name>_windows.rs` (Windows), each `cfg`-gated | native, per OS |
+| **Registration** - wire the adapter to its action id | macOS: `…/QuickActions/ActionAdapterRegistry.swift`; linows: `qactions/mod.rs` `adapter()` | native, one line |
 
 A control is searchable **and** actionable from its single descriptor; you do not
 separately register it with the search engine. If an OS has no adapter for a
@@ -82,10 +82,10 @@ apps/linows/src/js/components/qactions.js                 renders controls, load
 
 A control conforms to `SystemControl`:
 
-- `state() async -> ActionState` — read current state for display. Return
+- `state() async -> ActionState` - read current state for display. Return
   `.on` / `.off` for a toggle, `.value("…")` for a non-boolean control, or
   `.unavailable("reason")` when it does not apply on this machine.
-- `apply(_ intent: ActionIntent) async -> ActionOutcome` — perform the change and
+- `apply(_ intent: ActionIntent) async -> ActionOutcome` - perform the change and
   report the outcome. It is best-effort: never throw, never block; surface
   problems as `.failed("…")` or `.needsPermission("…")`.
 

@@ -52,82 +52,11 @@ struct look_appApp: App {
     }
 
     private func readVersionInfo() -> (version: String?, build: String?) {
-        let bundleVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        let bundleBuild = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
-        if bundleVersion != nil || bundleBuild != nil {
-            return (bundleVersion, bundleBuild)
-        }
-
-        let executablePath = resolvedExecutablePath()
-        let executableDir = executablePath.deletingLastPathComponent()
-
-        let directInfoPlist = executableDir
-            .deletingLastPathComponent()
-            .appendingPathComponent("Info.plist")
-        if let info = readInfoPlist(at: directInfoPlist) {
-            let version = info["CFBundleShortVersionString"] as? String
-            let build = info["CFBundleVersion"] as? String
-            if version != nil || build != nil {
-                return (version, build)
-            }
-        }
-
-        var cursor = executablePath.deletingLastPathComponent()
-        for _ in 0..<8 {
-            if cursor.pathExtension == "app" {
-                let infoURL = cursor.appendingPathComponent("Contents/Info.plist")
-                if let info = readInfoPlist(at: infoURL) {
-                    let version = info["CFBundleShortVersionString"] as? String
-                    let build = info["CFBundleVersion"] as? String
-                    return (version, build)
-                }
-                break
-            }
-            let next = cursor.deletingLastPathComponent()
-            if next.path == cursor.path {
-                break
-            }
-            cursor = next
-        }
-
-        return (nil, nil)
-    }
-
-    private func resolvedExecutablePath() -> URL {
-        var size: UInt32 = 0
-        _ = _NSGetExecutablePath(nil, &size)
-        if size > 0 {
-            var buffer = [CChar](repeating: 0, count: Int(size))
-            if _NSGetExecutablePath(&buffer, &size) == 0 {
-                let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
-                let path = String(decoding: bytes, as: UTF8.self)
-                return URL(fileURLWithPath: path).resolvingSymlinksInPath()
-            }
-        }
-
-        if let firstArg = CommandLine.arguments.first,
-            firstArg.hasPrefix("/")
-        {
-            return URL(fileURLWithPath: firstArg).resolvingSymlinksInPath()
-        }
-
-        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent(CommandLine.arguments.first ?? "Look")
-            .resolvingSymlinksInPath()
-    }
-
-    private func readInfoPlist(at url: URL) -> [String: Any]? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        guard
-            let plist = try? PropertyListSerialization.propertyList(
-                from: data,
-                options: [],
-                format: nil
-            )
-        else {
-            return nil
-        }
-        return plist as? [String: Any]
+        let bundle = AppBundle.bundle
+        return (
+            bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+            bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        )
     }
 
     var body: some Scene {

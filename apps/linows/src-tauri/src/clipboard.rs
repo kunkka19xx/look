@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,10 @@ const POLL_MS: u64 = 500;
 /// to do twice a second for as long as one sits on the clipboard.
 const IMAGE_POLL_MIN_TICKS: u32 = 2;
 const IMAGE_POLL_MAX_TICKS: u32 = 8;
+/// How long the monitor waits before asking for a clipboard handle again, at
+/// the first failure and at the slowest.
+const CONNECT_RETRY_MIN: Duration = Duration::from_secs(1);
+const CONNECT_RETRY_MAX: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ClipboardEntry {
@@ -154,19 +158,13 @@ pub fn start_monitor() {
     });
 
     std::thread::spawn(|| {
-        let mut clipboard = match arboard::Clipboard::new() {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[clipboard] failed to init: {e}");
-                return;
-            }
-        };
+        let mut clipboard = connect();
 
         let mut image_backoff = IMAGE_POLL_MIN_TICKS;
         let mut image_wait = 0;
 
         loop {
-            std::thread::sleep(std::time::Duration::from_millis(POLL_MS));
+            std::thread::sleep(Duration::from_millis(POLL_MS));
 
             // A copy carrying text is not an image copy, and the cheap read
             // is the one that runs every poll.
@@ -189,6 +187,33 @@ pub fn start_monitor() {
             image_wait = image_backoff;
         }
     });
+}
+
+/// Waits for a clipboard handle, however long it takes. Look can be up before
+/// the session's clipboard is reachable: where the compositor offers no
+/// data-control protocol the handle is an X11 connection, and GNOME starts
+/// XWayland on demand. One failed try used to end the history for the run.
+fn connect() -> arboard::Clipboard {
+    let mut wait = CONNECT_RETRY_MIN;
+    let mut waited = false;
+    loop {
+        match arboard::Clipboard::new() {
+            Ok(clipboard) => {
+                if waited {
+                    eprintln!("[clipboard] handle acquired, history is recording");
+                }
+                return clipboard;
+            }
+            // Said once: the retry runs for as long as the app does.
+            Err(e) if !waited => {
+                eprintln!("[clipboard] no handle yet, retrying: {e}");
+                waited = true;
+            }
+            Err(_) => {}
+        }
+        std::thread::sleep(wait);
+        wait = (wait * 2).min(CONNECT_RETRY_MAX);
+    }
 }
 
 fn capture_text(text: String) {
@@ -499,9 +524,21 @@ fn swap_last_image_hash(hash: String) -> String {
 #[tauri::command]
 pub fn copy_to_clipboard(text: String) -> Result<(), String> {
     mark_self_write();
-    let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-    clipboard.set_text(&text).map_err(|e| e.to_string())?;
-    Ok(())
+
+    // The same GTK owner as a file or an image copy: arboard reaches the
+    // clipboard through X11 wherever the compositor offers no data-control
+    // protocol, which on GNOME means a copy fails with XWayland out of reach.
+    #[cfg(target_os = "linux")]
+    {
+        crate::platform::linux::clipboard::copy_text(&text)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+        clipboard.set_text(&text).map_err(|e| e.to_string())?;
+        Ok(())
+    }
 }
 
 /// Copy `text` but file it under `label` in the history. `last_text` is set so

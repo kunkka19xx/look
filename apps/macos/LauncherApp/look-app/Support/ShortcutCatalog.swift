@@ -61,6 +61,12 @@ struct ShortcutGroup: Identifiable {
 /// had gone stale enough to name the wrong command.
 enum ShortcutCatalog {
     static let groups: [ShortcutGroup] = [
+        // Rebindable in Settings > Shortcuts (see `ConfigurableShortcut`), so
+        // `keys` here is only the default.
+        ShortcutGroup(title: "Global", topic: .main, entries: [
+            ShortcutEntry("global.toggleLauncher", "Cmd+Space", "Show or hide Look from any app"),
+        ]),
+
         ShortcutGroup(title: "Main", topic: .main, entries: [
             ShortcutEntry("main.open", "Enter", "Open selected app/file/folder or copy selected clipboard item"),
             ShortcutEntry("main.copy", "Cmd+C", "Copy selected file/folder to pasteboard"),
@@ -96,6 +102,7 @@ enum ShortcutCatalog {
 
         ShortcutGroup(title: "Clipboard history", topic: .main, entries: [
             ShortcutEntry("clipboard.copyBack", "Enter", "Copy selected history item back to clipboard"),
+            ShortcutEntry("clipboard.paste", "Cmd+I", "Paste selected history item into the app you came from (text or image)"),
             ShortcutEntry("clipboard.remove", "Cmd+D", "Remove selected clipboard item from Look history"),
         ]),
 

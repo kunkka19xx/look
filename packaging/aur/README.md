@@ -5,7 +5,7 @@ End-to-end guide for publishing `look` to the Arch User Repository as `look-bin`
 ## Architecture
 
 ```
-git tag v0.5.1 ──► release-linux.yml ──► build .deb ──► GitHub Release
+git tag v0.7.0 ──► release-linux.yml ──► build .deb ──► GitHub Release
                                                 ▲              │
                                                 │              ▼
                                                 │     publish-aur job
@@ -101,8 +101,8 @@ That's the end of one-time setup.
 1. Bump version in `apps/linows/src-tauri/tauri.conf.json`.
 2. Commit, then tag and push:
    ```bash
-   git tag v0.5.1
-   git push origin v0.5.1
+   git tag v0.7.0
+   git push origin v0.7.0
    ```
 3. `release-linux.yml` runs:
    - `build-release` builds `.deb` + `.AppImage` and attaches them to the GitHub Release.
@@ -123,7 +123,7 @@ cd ~/Documents/git/look-bin
 git pull
 
 # Template a fresh PKGBUILD
-VERSION=0.5.1
+VERSION=$(git -C ../look describe --tags --abbrev=0 | sed 's/^v//')
 SHA256=$(curl -fsSL "https://github.com/kunkka19xx/look/releases/download/v${VERSION}/Look_${VERSION}_amd64.deb" | sha256sum | awk '{print $1}')
 sed -e "s/__VERSION__/${VERSION}/" -e "s/__SHA256__/${SHA256}/" \
     ../look/packaging/aur/PKGBUILD > PKGBUILD
@@ -148,8 +148,8 @@ SSH key isn't registered correctly on AUR, or the `IdentityFile` path in `~/.ssh
 **`fatal: pathspec '.SRCINFO' did not match any files`**
 The Docker container failed silently. Re-run with the `useradd` line - `makepkg` refuses to run as root.
 
-**CI `publish-aur` job fails with `error: vendor hash mismatch` or similar**
-That's the Nix `nix-build` job, not AUR. Update `cargoHash` in `apps/linows/nix/package.nix` and retag.
+**CI `nix-build` job fails on vendoring**
+That's the Nix job, not AUR. `apps/linows/nix/package.nix` vendors from the committed `Cargo.lock` via `importCargoLock`, so there is no `cargoHash` to regenerate - check that the lockfile is committed and in sync with the manifests.
 
 **CI fails with `Could not resolve host: github.com` or `curl: (22) ... 404`**
 The `.deb` filename pattern doesn't match. Inspect the latest GitHub Release; if Tauri changed naming (e.g. uppercase vs lowercase, `_amd64` vs `_x86_64`), update the `source=` line in `packaging/aur/PKGBUILD` and the curl URL in `.github/workflows/release-linux.yml`'s `publish-aur` job.

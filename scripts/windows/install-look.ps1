@@ -29,6 +29,11 @@
   Launch lookapp.exe after install. Default: $true. Pass -Launch:$false
   to skip.
 
+.PARAMETER NoPath
+  Skip adding the install directory to the user PATH. By default the installer
+  adds it so `lookapp <mode>` works from a terminal; -Uninstall always removes
+  it again.
+
 .PARAMETER Uninstall
   Run the bundled NSIS uninstaller silently.
 
@@ -52,6 +57,7 @@ param(
     [string]$Url = "",
     [string]$InstallDir = "",
     [switch]$Launch = $true,
+    [switch]$NoPath,
     [switch]$Uninstall
 )
 
@@ -144,6 +150,93 @@ function Verify-Sha256($filePath, $checksumsPath, $expectedFileName) {
     Write-Ok "SHA256 verified."
 }
 
+# PATH edits go through HKCU Environment ("User" scope), never $env:PATH:
+# the process copy is the merged machine + user PATH, so writing it back would
+# copy every machine entry into the user scope.
+
+function Test-SameDir($a, $b) {
+    return $a.Trim().TrimEnd("\", "/").ToLower() -eq $b.Trim().TrimEnd("\", "/").ToLower()
+}
+
+function Get-PathWithDir($current, $dir) {
+    $entries = @($current -split ";" | Where-Object { $_.Trim() -ne "" })
+    foreach ($entry in $entries) {
+        if (Test-SameDir $entry $dir) { return $current }
+    }
+    return (@($entries) + $dir) -join ";"
+}
+
+function Get-PathWithoutDir($current, $dir) {
+    $kept = @($current -split ";" | Where-Object {
+        $_.Trim() -ne "" -and -not (Test-SameDir $_ $dir)
+    })
+    return $kept -join ";"
+}
+
+# Read raw: DoNotExpandEnvironmentNames keeps %USERPROFILE%-style entries as
+# written, so a rewrite cannot bake in this session values.
+function Get-UserPath {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Environment", $false)
+    if ($null -eq $key) { return "" }
+    try {
+        return [string]$key.GetValue("Path", "", "DoNotExpandEnvironmentNames")
+    } finally {
+        $key.Close()
+    }
+}
+
+# Not [Environment]::SetEnvironmentVariable: that writes REG_SZ, and demoting a
+# REG_EXPAND_SZ PATH stops every %VAR% entry in it from expanding.
+function Set-UserPath($value) {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Environment", $true)
+    if ($null -eq $key) { throw "Cannot open HKCU\Environment for writing." }
+    try {
+        $kind = "ExpandString"
+        try { $kind = $key.GetValueKind("Path") } catch { }
+        $key.SetValue("Path", $value, $kind)
+    } finally {
+        $key.Close()
+    }
+    Publish-EnvironmentChange
+}
+
+# Explorer (and so every terminal launched from it) only reloads the
+# environment on this broadcast; without it the entry waits for a logoff.
+function Publish-EnvironmentChange {
+    if (-not ("LookEnv.Native" -as [type])) {
+        Add-Type -Namespace LookEnv -Name Native -MemberDefinition @"
+[DllImport("user32.dll", CharSet = CharSet.Auto)]
+public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+"@
+    }
+    $HWND_BROADCAST = [IntPtr]0xffff
+    $WM_SETTINGCHANGE = 0x1A
+    $SMTO_ABORTIFHUNG = 0x2
+    $result = [UIntPtr]::Zero
+    [void][LookEnv.Native]::SendMessageTimeout($HWND_BROADCAST, $WM_SETTINGCHANGE, [UIntPtr]::Zero, "Environment", $SMTO_ABORTIFHUNG, 1000, [ref]$result)
+}
+
+function Add-ToUserPath($dir) {
+    $current = Get-UserPath
+    $next = Get-PathWithDir $current $dir
+    if ($next -eq $current) {
+        Write-Ok "Already on PATH: $dir"
+        return
+    }
+    Set-UserPath $next
+    Write-Ok "Added to PATH: $dir"
+    Write-Warn "Open a new terminal before running lookapp."
+}
+
+function Remove-FromUserPath($dir) {
+    $current = Get-UserPath
+    if ([string]::IsNullOrEmpty($current)) { return }
+    $next = Get-PathWithoutDir $current $dir
+    if ($next -eq $current) { return }
+    Set-UserPath $next
+    Write-Ok "Removed from PATH: $dir"
+}
+
 function Invoke-Install {
     if (-not [string]::IsNullOrWhiteSpace($Url)) {
         $setupUrl = $Url
@@ -191,9 +284,14 @@ function Invoke-Install {
         }
         Write-Ok "Installed to $InstallDir"
 
+        if (-not $NoPath) {
+            Add-ToUserPath $InstallDir
+        }
+
         Write-Host ""
         Write-Host "Look $resolvedVersion installed." -ForegroundColor Green
         Write-Host "  - Press Alt+Space to summon (hotkey is fixed for now)" -ForegroundColor Green
+        Write-Host "  - Run lookapp <mode> from a new terminal (see: lookapp --list-modes)" -ForegroundColor Green
         Write-Host "  - Uninstall later: rerun this script with -Uninstall" -ForegroundColor Green
         Write-Host ""
 
@@ -208,6 +306,7 @@ function Invoke-Install {
 
 function Invoke-Uninstall {
     Stop-LookProcess
+    Remove-FromUserPath $InstallDir
 
     # Tauri's NSIS template emits `uninstall.exe` at the install root.
     $uninstaller = Join-Path $InstallDir "uninstall.exe"

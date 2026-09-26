@@ -391,6 +391,17 @@
             <!-- Shortcuts tab -->
             <div class="settings-tab-content" id="settings-tab-shortcuts" hidden>
                 <div class="settings-shortcuts-list">
+                    <div class="settings-shortcut-notice" id="settings-shortcuts-notice" hidden></div>
+
+                    <!-- Global -->
+                    <div class="settings-shortcut-section">Global</div>
+                    <div class="settings-shortcut" data-shortcut-id="global.toggleLauncher">
+                        <button class="settings-shortcut-key" type="button" disabled>Alt+Space</button
+                        ><button class="settings-shortcut-reset" type="button" hidden>Reset</button
+                        ><span>Show or hide Look from any app</span
+                        ><span class="settings-shortcut-error" hidden></span>
+                    </div>
+
                     <!-- Core launcher -->
                     <div class="settings-shortcut-section">Core launcher</div>
                     <div class="settings-shortcut">
@@ -407,6 +418,13 @@
                         ><span
                             >Copy the selected file/folder: paste it as a file in a file manager, as
                             its path anywhere else</span
+                        >
+                    </div>
+                    <div class="settings-shortcut">
+                        <kbd>Ctrl+I</kbd
+                        ><span
+                            >In clipboard history: paste the selected clip into the app you came
+                            from (text or image)</span
                         >
                     </div>
                     <div class="settings-shortcut settings-linux-only">
@@ -486,9 +504,6 @@
                     </div>
                     <div class="settings-shortcut">
                         <kbd>Esc</kbd><span>Back to app list (in command mode)</span>
-                    </div>
-                    <div class="settings-shortcut">
-                        <kbd>Alt+Space</kbd><span>Toggle launcher</span>
                     </div>
 
                     <!-- Search prefixes -->
@@ -789,6 +804,17 @@
                         </label>
                         <span class="settings-hint-text"
                             >Start Look automatically when you sign in</span
+                        >
+                    </div>
+                    <div class="settings-row settings-windows-only">
+                        <label class="settings-label">Add to PATH</label>
+                        <label class="settings-toggle">
+                            <input type="checkbox" id="settings-add-to-path" />
+                            <span class="settings-toggle-track"></span>
+                        </label>
+                        <span class="settings-hint-text"
+                            >Run <code>lookapp</code> from a terminal; open a new one after
+                            enabling</span
                         >
                     </div>
                 </div>

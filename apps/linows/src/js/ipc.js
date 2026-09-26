@@ -213,6 +213,16 @@ export async function copyToClipboardLabeled(text, label) {
     return invoke('copy_to_clipboard_labeled', { text, label });
 }
 
+// Why Ctrl+I cannot type into the app behind Look, or null when it can.
+export async function clipboardPasteBlocker() {
+    return invoke('clipboard_paste_blocker');
+}
+
+// Hides the launcher, then types the paste chord into whatever takes focus.
+export async function pasteIntoFocusedApp() {
+    return invoke('paste_into_focused_app');
+}
+
 export async function resetConfig() {
     return invoke('reset_config');
 }
@@ -240,6 +250,18 @@ export async function listFonts() {
 
 export async function getConfig() {
     return invoke('get_config');
+}
+
+export async function launcherHotkeyState() {
+    return invoke('launcher_hotkey_state');
+}
+
+export async function hotkeyCheck(spec) {
+    return invoke('hotkey_check', { spec });
+}
+
+export async function setLauncherHotkeyActive(active) {
+    return invoke('launcher_hotkey_set_active', { active });
 }
 
 export async function setConfig(updates) {
@@ -366,6 +388,10 @@ export async function onHealthChanged(callback) {
     return listen('health-changed', callback);
 }
 
+export async function onConfigReloadRequested(callback) {
+    return listen('config-reload-requested', callback);
+}
+
 export async function onIndexReady(callback) {
     return listen('index-ready', callback);
 }
@@ -396,6 +422,15 @@ export async function setAutostart(enabled) {
 
 export async function getAutostart() {
     return invoke('get_autostart');
+}
+
+// Windows-only in effect: the Linux packages already put lookapp on PATH.
+export async function setCliPath(enabled) {
+    return invoke('set_cli_path', { enabled });
+}
+
+export async function getCliPath() {
+    return invoke('get_cli_path');
 }
 
 export async function highlightFile(path) {

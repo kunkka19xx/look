@@ -8,6 +8,8 @@ import {
     pickImage,
     setAutostart,
     getAutostart,
+    setCliPath,
+    getCliPath,
     listCandidateDrives,
 } from '../ipc.js';
 import * as banner from '../components/banner.js';
@@ -15,6 +17,7 @@ import * as sourceblocks from '../components/sourceblocks.js';
 import * as platform from '../platform.js';
 import * as layout from '../layout.js';
 import * as superactions from '../components/superactions.js';
+import * as shortcutrecorder from '../components/shortcutrecorder.js';
 
 let screen = null;
 let active = false;
@@ -32,6 +35,8 @@ const DEFAULT_FONT_NAME = 'system-ui';
 const INNER_GAP_DEFAULT = 7;
 
 const SAVE_MSG_MS = 1600;
+const ERROR_BANNER_SECONDS = 1.5;
+const SAVE_ERROR_BANNER_SECONDS = 4;
 let saveMsgTimer = null;
 
 // Maps config keys to CSS custom property update functions.
@@ -146,6 +151,7 @@ export function setOnConfigReload(fn) {
 export function init(exitFn) {
     onExit = exitFn;
     screen = document.getElementById('settings-screen');
+    shortcutrecorder.init(screen);
 
     // Tab clicks
     document.getElementById('settings-tabs').addEventListener('click', (e) => {
@@ -443,6 +449,18 @@ export function init(exitFn) {
         setAutostart(enabled).catch(() => {});
     });
 
+    document.getElementById('settings-add-to-path').addEventListener('change', async (e) => {
+        const enabled = e.target.checked;
+        // The config value stays: startup re-applies it, so a failed write retries.
+        saveConfig({ add_to_path: enabled ? 'true' : 'false' });
+        try {
+            await setCliPath(enabled);
+        } catch {
+            e.target.checked = !enabled;
+            banner.show('Could not update PATH', 'error', ERROR_BANNER_SECONDS);
+        }
+    });
+
     // Fresh config
     document.getElementById('settings-fresh-config').addEventListener('click', async () => {
         try {
@@ -622,8 +640,17 @@ export function init(exitFn) {
             updates.launch_at_login = document.getElementById('settings-launch-login').checked
                 ? 'true'
                 : 'false';
+            // Windows-only row; elsewhere the key would just sit in the config.
+            if (platform.isWindows()) {
+                updates.add_to_path = document.getElementById('settings-add-to-path').checked
+                    ? 'true'
+                    : 'false';
+            }
 
-            await saveConfig(updates);
+            Object.assign(updates, shortcutrecorder.pendingUpdates());
+
+            if (!(await saveConfig(updates))) return;
+            await shortcutrecorder.applySaved();
             // Clearing the field saves the sentinel; the live inline override
             // has to go with it or the old family outlives the config value.
             applyFontFamily(updates.ui_font_name);
@@ -641,8 +668,10 @@ export function isActive() {
     return active;
 }
 
-// Ctrl+Shift+; - reload all values from .look/config file into running app
-export async function reloadFromFile() {
+// Ctrl+Shift+; - reload all values from .look/config file into running app.
+// A headless reload passes announceSuccess: false, so only problems show a banner.
+export async function reloadFromFile({ announceSuccess = true } = {}) {
+    shortcutrecorder.discardPending();
     try {
         await sourceblocks.reload();
         // The launchpad drawing is cached for the process for the same reason
@@ -692,7 +721,7 @@ export async function reloadFromFile() {
         if (onConfigReloadFn) onConfigReloadFn(map);
         // One banner carries both: super-actions.toml is the file most likely to be
         // mid-edit when someone reaches for the reload chord.
-        if (!superactions.warningBanner(launchpadWarnings)) {
+        if (!superactions.warningBanner(launchpadWarnings) && announceSuccess) {
             banner.show('Config reloaded from file', 'success', 1.2);
         }
     } catch {
@@ -716,6 +745,7 @@ export async function enter(contentArea, searchBar) {
 
 export function exit(contentArea, searchBar) {
     active = false;
+    shortcutrecorder.cancel();
     layout.setModal('settings', false);
     screen.style.display = 'none';
     contentArea.style.display = '';
@@ -889,6 +919,7 @@ function updateSuperActionsAvailability() {
 }
 
 async function loadConfig() {
+    shortcutrecorder.refresh();
     try {
         const cfg = await getConfig();
 
@@ -1023,13 +1054,18 @@ async function loadConfig() {
             logItem.classList.add('settings-dropdown-active');
         }
 
-        // Launch at login - read actual system state
+        // Launch at login and PATH: read actual system state
         try {
             const autostartEnabled = await getAutostart();
             document.getElementById('settings-launch-login').checked = autostartEnabled;
         } catch {
             document.getElementById('settings-launch-login').checked =
                 map.launch_at_login === 'true';
+        }
+        try {
+            document.getElementById('settings-add-to-path').checked = await getCliPath();
+        } catch {
+            document.getElementById('settings-add-to-path').checked = map.add_to_path === 'true';
         }
     } catch (err) {
         console.error('Failed to load config:', err);
@@ -1468,12 +1504,17 @@ function formatValue(key, v) {
     return v.toFixed(2);
 }
 
+// Reports its own failure, so fire-and-forget callers are covered too.
 async function saveConfig(updates) {
     try {
         const list = Object.entries(updates).map(([key, value]) => ({ key, value: String(value) }));
         await setConfig(list);
+        return true;
     } catch (err) {
         console.error('Failed to save config:', err);
+        showSaveMessage('Save failed', true);
+        banner.show(`Save failed: ${err}`, 'error', SAVE_ERROR_BANNER_SECONDS);
+        return false;
     }
 }
 
@@ -1517,7 +1558,7 @@ async function addDirToConfig(key, folder) {
     if (current.includes(folder)) return;
     current.push(folder);
     const joined = csvJoin(current);
-    await saveConfig({ [key]: joined });
+    if (!(await saveConfig({ [key]: joined }))) return;
     configCache[key] = joined;
 }
 
@@ -1526,7 +1567,7 @@ async function removeDirFromConfig(key, folder) {
     const current = csvSplit(map[key] || '');
     const updated = current.filter((d) => d !== folder);
     const joined = csvJoin(updated);
-    await saveConfig({ [key]: joined });
+    if (!(await saveConfig({ [key]: joined }))) return;
     configCache[key] = joined;
 }
 
