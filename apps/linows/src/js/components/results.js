@@ -192,6 +192,17 @@ export function getSelected() {
     return null;
 }
 
+/** Live facts for the selected process row (memory, CPU), appended to its
+ *  context line. Compact shows them there because it hides the preview. */
+export function setSelectedProcessDetail(pid, detail) {
+    const result = getSelected();
+    if (result?.procPid !== pid) return;
+    const context = container.querySelector('.result-row.selected .result-path');
+    if (!context) return;
+    const base = rowMeta(result).context;
+    context.textContent = detail ? `${base} · ${detail}` : base;
+}
+
 export function getSelectedIndex() {
     return selectedIndex;
 }

@@ -57,6 +57,25 @@ extension ThemeSettingsView {
 
                 sectionHeader("Layout")
 
+                HStack(spacing: 10) {
+                    Text("Window")
+                        .frame(width: AppConstants.ThemeUI.labelWidth, alignment: .leading)
+                        .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .regular))
+                        .foregroundStyle(themeStore.secondaryTextColor())
+
+                    Picker("Window", selection: $settings.layout) {
+                        ForEach(LauncherLayout.allCases) { layout in
+                            Text(layout.title).tag(layout)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: AppConstants.ThemeUI.pickerWidth)
+                    .help("Split shows results beside a preview; Compact is a smaller window with results only.")
+
+                    Spacer(minLength: 0)
+                }
+
                 LabeledSlider(
                     title: "Inner Gap",
                     value: $settings.innerGap,

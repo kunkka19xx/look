@@ -14,6 +14,9 @@ extension LauncherView {
         static let terminal = "\(prefix)terminal"
         static let reveal = "\(prefix)reveal"
         static let copyPath = "\(prefix)copypath"
+        static let openAllPicked = "\(prefix)openallpicked"
+        static let clearPicked = "\(prefix)clearpicked"
+        static let deleteClipboard = "\(prefix)deleteclipboard"
 
         static func isOne(_ actionID: String) -> Bool {
             actionID.hasPrefix(prefix)
@@ -75,16 +78,33 @@ extension LauncherView {
         let tools = resolvedTools(for: result, entries: offered)
 
         return offered.map { entry in
-            QuickActionDescriptor(
-                actionId: entry.id,
-                title: Self.label(for: entry, tools: tools),
-                control: .button,
-                onLabel: nil,
-                offLabel: nil,
-                info: [],
-                shortcut: entry.chord
-            )
+            Self.menuEntry(entry.id, title: Self.label(for: entry, tools: tools), chord: entry.chord)
         }
+    }
+
+    /// What the split layout's side panels offer, which compact has no room for:
+    /// the picked items' verbs and a clipboard row's delete.
+    var compactPanelDescriptors: [QuickActionDescriptor] {
+        guard isCompactLayout else { return [] }
+        var entries: [QuickActionDescriptor] = []
+        if !pickedKeys.isEmpty {
+            entries.append(Self.menuEntry(RowAction.openAllPicked, title: "Open picked", chord: "⇧⏎"))
+            entries.append(Self.menuEntry(RowAction.clearPicked, title: "Clear picked", chord: "⇧⌘P"))
+        }
+        if selectedClipboardResult != nil {
+            entries.append(Self.menuEntry(RowAction.deleteClipboard, title: "Delete from history", chord: "⌘⌫"))
+        }
+        return entries
+    }
+
+    private var selectedClipboardResult: LauncherResult? {
+        displayedResults.first { $0.id == selectedResultID && $0.kind == .clipboard }
+    }
+
+    private static func menuEntry(_ id: String, title: String, chord: String) -> QuickActionDescriptor {
+        QuickActionDescriptor(
+            actionId: id, title: title, control: .button,
+            onLabel: nil, offLabel: nil, info: [], shortcut: chord)
     }
 
     private static func label(for entry: RowActionEntry, tools: [String: ToolAction]) -> String {
@@ -128,6 +148,14 @@ extension LauncherView {
             revealSelectedResult()
         case RowAction.copyPath:
             _ = copySelectedResultToPasteboard()
+        case RowAction.openAllPicked:
+            openAllPicked()
+        case RowAction.clearPicked:
+            clearAllPicked()
+        case RowAction.deleteClipboard:
+            if let result = selectedClipboardResult {
+                deleteClipboardResult(resultID: result.id)
+            }
         default:
             break
         }

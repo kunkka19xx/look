@@ -314,7 +314,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         smoothcaret.attach(input);
     }
     preview.init(previewPanel);
-    actionmenu.init(previewPanel, queryInput);
+    actionmenu.init(previewPanel, queryInput, document.getElementById('results-col'));
     // What each declared block asked to be drawn as, read once: rows render
     // synchronously and a miss costs them their icon until it lands.
     sourceblocks.prefill();
@@ -454,8 +454,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         search.handleQueryInput(queryInput.value);
     });
 
+    // Compact has no picked panel; the top bar says how many are picked.
+    const pickedCount = document.getElementById('picked-count');
+
     // Update right panel when picks change + auto-copy
     results.setOnPickChange((pickedItems) => {
+        pickedCount.hidden = pickedItems.length === 0;
+        pickedCount.textContent = `${pickedItems.length} picked`;
         if (pickedItems.length > 0) {
             preview.clear();
             picked.update(pickedItems);
@@ -1045,6 +1050,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const enabled = e.detail.enabled;
         runningApps.setEnabled(enabled);
         if (enabled) runningApps.refresh();
+    });
+
+    document.addEventListener('look:layout-changed', (e) => {
+        applyLayoutSetting(e.detail.value);
     });
 
     // Live-update when the Settings → Appearance → Super Actions toggle changes.

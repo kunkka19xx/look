@@ -212,6 +212,33 @@ html[data-os="windows"] .bar-free .pane-tile {
     display: none;
 }
 
+/* Compact floats the action menu over the results list, centered on its right edge. */
+.launcher-window.compact #results-col {
+    position: relative;
+}
+
+.action-menu.action-menu-compact {
+    top: 50%;
+    left: auto;
+    right: 10px;
+    width: 320px;
+    transform: translateY(-50%);
+}
+
+/* Picked count in the top bar, standing in for split's picked panel. */
+.picked-count {
+    flex-shrink: 0;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--selection-fill);
+    font-size: 11px;
+}
+
+.launcher-window:not(.compact) .picked-count,
+.picked-count[hidden] {
+    display: none;
+}
+
 /* No hint rows; layout.js moves the copyright into the top bar. */
 .launcher-window.compact #hint-bar,
 .launcher-window.compact .pane-footer {

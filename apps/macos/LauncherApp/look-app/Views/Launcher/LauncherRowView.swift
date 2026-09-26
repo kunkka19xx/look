@@ -12,6 +12,8 @@ struct LauncherRowView: View {
     /// Shared namespace for the single selection pill that glides between rows
     /// (see `Motion.Selection`). Only the selected row is the geometry source.
     let selectionNamespace: Namespace.ID
+    /// Live facts appended to the context line (a process's memory and CPU).
+    var liveDetail: String? = nil
     let onOpen: () -> Void
 
     private enum Layout {
@@ -189,7 +191,8 @@ struct LauncherRowView: View {
         }
         if result.kind == .process {
             // "PID 1234 · :3000" - carries the pid and any listening ports.
-            return (result.subtitle ?? "", kindLabel)
+            let parts = [result.subtitle, liveDetail].compactMap { $0 }.filter { !$0.isEmpty }
+            return (parts.joined(separator: " · "), kindLabel)
         }
         if result.kind == .app {
             return ("", kindLabel)

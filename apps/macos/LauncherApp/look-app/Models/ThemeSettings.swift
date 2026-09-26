@@ -166,6 +166,8 @@ enum LauncherLayout: String, CaseIterable, Codable, Identifiable {
     init?(configValue: String) {
         self.init(rawValue: configValue.lowercased())
     }
+
+    var title: String { rawValue.capitalized }
 }
 
 /// Which AI backend powers query understanding. On-device Apple Intelligence is

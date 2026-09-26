@@ -86,6 +86,29 @@
                 <div class="settings-section">
                     <div
                         class="settings-row"
+                        title="Split shows results beside a preview; Compact is a smaller window with results only."
+                    >
+                        <label class="settings-label">Window</label>
+                        <div class="settings-dropdown" id="settings-layout">
+                            <button class="settings-dropdown-btn" type="button">
+                                <span class="settings-dropdown-label">Split</span>
+                                <span class="settings-dropdown-arrow">&#9662;</span>
+                            </button>
+                            <div class="settings-dropdown-menu" hidden>
+                                <div
+                                    class="settings-dropdown-item settings-dropdown-active"
+                                    data-value="split"
+                                >
+                                    Split
+                                </div>
+                                <div class="settings-dropdown-item" data-value="compact">
+                                    Compact
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div
+                        class="settings-row"
                         data-key="inner_gap"
                         title="i3-style gap between the top row, results list and preview. 0 = flat layout; higher turns each into its own card."
                     >

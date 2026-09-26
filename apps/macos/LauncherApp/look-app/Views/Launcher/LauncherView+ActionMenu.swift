@@ -9,7 +9,7 @@ extension LauncherView {
     /// what is on screen and cover it - and ⌘K is Keep Awake, so opening one
     /// would shadow the key the user meant.
     var actionMenuDescriptors: [QuickActionDescriptor] {
-        quickActionDescriptors
+        compactPanelDescriptors + quickActionDescriptors
     }
 
     /// Ids of the two rows the menu shows in place of the action list while a
@@ -39,13 +39,12 @@ extension LauncherView {
     }
 
     /// Cmd+K. Opening with nothing to offer would show an empty box, so a row
-    /// with no actions says so instead. Compact has no preview pane to draw it in.
+    /// with no actions says so instead.
     func toggleActionMenu() {
         if isActionMenuOpen {
             closeActionMenu()
             return
         }
-        guard !isCompactLayout else { return }
         guard !actionMenuDescriptors.isEmpty else {
             showBanner("Nothing to do here", style: .info, duration: 1.2)
             return

@@ -41,6 +41,23 @@ extension LauncherView {
         return processModel.cpu[pid]
     }
 
+    /// Compact has no preview, so the selected process row carries its memory
+    /// and, once measured, its CPU.
+    var compactProcessDetail: String? {
+        guard isCompactLayout,
+            let result = displayedResults.first(where: { $0.id == selectedResultID }),
+            result.kind == .process
+        else { return nil }
+        var parts: [String] = []
+        if let detail = processDetail(for: result) {
+            parts.append(ByteCountFormatter.string(fromByteCount: Int64(detail.memoryKB) * 1024, countStyle: .file))
+        }
+        if let cpu = processCPU(for: result) {
+            parts.append(String(format: "%.1f%% CPU", cpu))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     func isMeasuringCPU(for result: LauncherResult) -> Bool {
         guard let pid = result.processPID else { return false }
         return processModel.measuringCPU.contains(pid)

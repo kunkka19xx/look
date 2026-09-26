@@ -16,7 +16,6 @@ const EMPTY_BANNER = 'Nothing to do here';
 // chord does not read as a dead key.
 const FAILED_BANNER = 'Could not read this row';
 const BANNER_SECONDS = 1.2;
-const COMPACT_CONFIRM_BANNER = 'Switch to the split layout to confirm this';
 // Clear of the header, so the popup still reads as attached to the row above.
 const HEADER_GAP = 8;
 // Where to hang the menu when the preview has no header to hang it under.
@@ -36,6 +35,8 @@ const CONFIRM_CANCEL = 'Cancel';
 
 let panel = null;
 let input = null;
+// Where the menu floats in compact, which has no preview pane to hang it under.
+let compactHost = null;
 let compact = false;
 let menuEl = null;
 let rows = [];
@@ -54,20 +55,21 @@ let token = 0;
  * `aria-controls` points at the list, `aria-activedescendant` at the row the
  * user is on.
  */
-export function init(panelEl, inputEl) {
+export function init(panelEl, inputEl, compactHostEl) {
     panel = panelEl;
     input = inputEl;
+    compactHost = compactHostEl;
 }
 
 function isOpen() {
     return menuEl != null;
 }
 
-/** The menu hangs off the preview pane, which compact hides: keep it closed
- *  rather than let an invisible list take the keys. */
+/** Moves the menu between the preview pane and the results list; one that is
+ *  open is closed, since it hangs in the other place. */
 export function setCompact(on) {
     compact = on;
-    if (on) close();
+    close();
 }
 
 /**
@@ -100,14 +102,15 @@ export function close() {
  * movement keys, so Escape is what closes it.
  */
 export async function open() {
-    if (isOpen() || compact) return;
+    if (isOpen()) return;
 
     token += 1;
     const myToken = token;
 
     let descriptors;
     try {
-        descriptors = await rowactions.descriptorsFor();
+        const panelEntries = compact ? rowactions.panelDescriptors() : [];
+        descriptors = [...panelEntries, ...(await rowactions.descriptorsFor())];
     } catch (err) {
         console.error('actionmenu: could not resolve actions', err);
         if (token === myToken) banner.show(FAILED_BANNER, 'error', BANNER_SECONDS);
@@ -158,10 +161,6 @@ export function handleKey(e) {
  * learn (specs/user-sources.md §2.5).
  */
 export function askConfirm(question) {
-    if (compact) {
-        banner.show(COMPACT_CONFIRM_BANNER, 'info', BANNER_SECONDS);
-        return Promise.resolve(false);
-    }
     return new Promise((resolve) => {
         close();
         pendingConfirm = { resolve };
@@ -198,7 +197,8 @@ function mount(descriptors, label = MENU_LABEL) {
     // focused input is allowed to point at.
     menuEl.setAttribute('role', 'listbox');
     menuEl.setAttribute('aria-label', label);
-    menuEl.style.top = `${anchorTop()}px`;
+    if (compact) menuEl.classList.add('action-menu-compact');
+    else menuEl.style.top = `${anchorTop()}px`;
 
     rows = descriptors.map((descriptor, index) => {
         const row = document.createElement('div');
@@ -225,10 +225,14 @@ function mount(descriptors, label = MENU_LABEL) {
         return { id: descriptor.id, title: descriptor.title, confirm: descriptor.confirm, el: row };
     });
 
-    // The menu hangs off the header, so a panel scrolled away from it would
-    // open the menu out of sight.
-    panel.scrollTop = 0;
-    panel.appendChild(menuEl);
+    if (compact) {
+        compactHost.appendChild(menuEl);
+    } else {
+        // The menu hangs off the header, so a panel scrolled away from it would
+        // open the menu out of sight.
+        panel.scrollTop = 0;
+        panel.appendChild(menuEl);
+    }
     input?.setAttribute('aria-controls', MENU_ID);
     // After the menu is in the document: applyFocus scrolls the focused row
     // into view, which a detached node cannot do.

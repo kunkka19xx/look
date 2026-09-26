@@ -1354,8 +1354,12 @@ struct LauncherView: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
-                        // Compact has no footer row; the strip's end of the bar is free.
+                        // Compact has no footer row or picked panel; the strip's end
+                        // of the bar is free.
                         if isCompactLayout {
+                            if !pickedKeys.isEmpty {
+                                pickedCountPill
+                            }
                             copyrightLink
                                 .padding(.trailing, Self.barCopyrightTrailingInset)
                         }
@@ -2154,9 +2158,11 @@ struct LauncherView: View {
                 selectedID: selectedResultID,
                 pickedKeys: Set(pickedKeys),
                 themeStore: themeStore,
+                selectedRowDetail: compactProcessDetail,
                 onSelect: { selectedResultID = $0 },
                 onOpen: { _ in openSelectedApp() }
             )
+            .overlay(alignment: .trailing) { compactActionMenu }
         } right: {
             if !pickedKeys.isEmpty {
                 PickedItemsPanel(
@@ -2204,6 +2210,24 @@ struct LauncherView: View {
                 // inside this pane still animates on open.
                 .animation(nil, value: selectedResult.id)
             }
+        }
+    }
+
+    /// Compact has no preview pane to hold the Cmd+K menu, so it floats over
+    /// the results list instead.
+    @ViewBuilder
+    private var compactActionMenu: some View {
+        if isCompactLayout && isActionMenuOpen {
+            ActionMenuView(
+                descriptors: actionMenuRows,
+                states: quickActionStates,
+                focusedIndex: actionMenuIndex,
+                themeStore: themeStore,
+                onActivate: { activateActionMenuRow($0) }
+            )
+            .frame(width: AppConstants.Launcher.ActionMenu.compactWidth)
+            .padding(AppConstants.Launcher.ActionMenu.compactInset)
+            .transition(.opacity.combined(with: .move(edge: .trailing)))
         }
     }
 
@@ -2528,6 +2552,15 @@ struct LauncherView: View {
     }
 
     private static let barCopyrightTrailingInset: CGFloat = 12
+
+    private var pickedCountPill: some View {
+        Text("\(pickedKeys.count) picked")
+            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
+            .foregroundStyle(themeStore.fontColor())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(themeStore.selectionFillColor(), in: Capsule())
+    }
 
     private var copyrightLink: some View {
         Link("© 2026 by Kunkka", destination: URL(string: "https://github.com/kunkka19xx")!)

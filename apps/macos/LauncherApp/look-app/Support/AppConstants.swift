@@ -345,6 +345,9 @@ enum AppConstants {
             static let rowVerticalPadding: CGFloat = 7
             static let rowHorizontalPadding: CGFloat = 10
             static let shadowRadius: CGFloat = 14
+            /// Compact floats the menu over the results list, centered on its right edge.
+            static let compactWidth: CGFloat = 320
+            static let compactInset: CGFloat = 10
         }
 
         /// Preferred tools: Cmd+E and Cmd+T act through the tools a user named

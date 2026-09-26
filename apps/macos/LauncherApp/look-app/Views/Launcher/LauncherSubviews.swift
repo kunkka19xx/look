@@ -267,6 +267,8 @@ struct ResultsListView: View {
     let selectedID: String?
     let pickedKeys: Set<String>
     let themeStore: ThemeStore
+    /// See `LauncherRowView.liveDetail`; shown on the selected row only.
+    var selectedRowDetail: String? = nil
     let onSelect: (String) -> Void
     let onOpen: (String) -> Void
 
@@ -284,6 +286,7 @@ struct ResultsListView: View {
                             isPicked: pickedKeys.contains("\(result.kind.rawValue)|\(result.path)"),
                             isLast: result.id == results.last?.id,
                             selectionNamespace: selectionNamespace,
+                            liveDetail: selectedID == result.id ? selectedRowDetail : nil,
                             onOpen: {
                                 onSelect(result.id)
                                 onOpen(result.id)
