@@ -162,7 +162,7 @@ Build release artifacts:
 ./scripts/build-release.sh 1.0.0
 ```
 
-The Homebrew cask lives in [homebrew/cask](https://github.com/Homebrew/homebrew-cask/blob/main/Casks/l/look.rb). BrewTestBot bumps it automatically after a GitHub release; only changes beyond version and sha256 (artifact names, minimum macOS, zap paths) need a manual `brew bump-cask-pr`.
+The Homebrew cask lives in [homebrew/cask](https://github.com/Homebrew/homebrew-cask/blob/main/Casks/l/look.rb). BrewTestBot bumps it automatically after a GitHub release; if it misses one, run `brew bump-cask-pr --version <version> look`. Other changes (artifact names, minimum macOS, zap paths) need a regular pull request editing the cask.
 
 Signing and notarization:
 
