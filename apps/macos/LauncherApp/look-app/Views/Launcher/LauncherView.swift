@@ -216,11 +216,16 @@ struct LauncherView: View {
         !isCommandMode && !appUIState.showsThemeSettings && !showsHelpScreen
     }
 
+    var isCompactLayout: Bool {
+        themeStore.settings.layout == .compact
+    }
+
     /// AI mode hides the strip: the assistant screen is about the conversation,
     /// not about switching apps, and the freed ⌘1-9 chords tag the listed
-    /// sessions instead (see `sessionJumpKeyLimit`).
+    /// sessions instead (see `sessionJumpKeyLimit`). Compact is too narrow for it.
     var shouldShowRunningAppsStrip: Bool {
         runningAppsPlacement != .none
+            && !isCompactLayout
             && isLauncherIdle
             && !isAIMode
             && !runningAppsService.items.isEmpty
@@ -938,6 +943,9 @@ struct LauncherView: View {
         .onChange(of: themeStore.settings.superActionsEnabled) { _, enabled in
             launchpadSettingChanged(enabled: enabled)
         }
+        .onChange(of: themeStore.settings.layout) { _, _ in
+            layoutSettingChanged()
+        }
         // Bumped on every show, so it stands in for the missing re-onAppear.
         .onChange(of: appearanceRevealToken) { _, _ in
             refreshLaunchpadState()
@@ -1346,7 +1354,17 @@ struct LauncherView: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
+                        // Compact has no footer row or picked panel; the strip's end
+                        // of the bar is free.
+                        if isCompactLayout {
+                            if !pickedKeys.isEmpty {
+                                pickedCountPill
+                            }
+                            copyrightLink
+                                .padding(.trailing, Self.barCopyrightTrailingInset)
+                        }
                     }
+                    .frame(minHeight: AppConstants.Launcher.topRowMinHeight)
                 }
             }
 
@@ -1433,8 +1451,10 @@ struct LauncherView: View {
 
             // While floating, every card carries its own hint footer; only the
             // classic (no-gap) layout keeps the full-width bar below the panel.
+            // Compact shows no hints.
             if !showsFloatingCards
-                && !hidesResultsForEmptyQuery
+                && !isCompactLayout
+                && !restsAsBareBar
                 && !isKillConfirmationVisible
                 && !isDeleteConfirmationVisible
                 && !isHideAppConfirmationVisible
@@ -2048,7 +2068,7 @@ struct LauncherView: View {
         if aiAnswer.isActive {
             if displayedResults.isEmpty {
                 aiAnswerOnlyRow
-            } else if backendFilteredResults.isEmpty {
+            } else if backendFilteredResults.isEmpty && !isCompactLayout {
                 aiKnowledgeLookupRow
             } else {
                 aiAnswerWithResultsRow
@@ -2138,9 +2158,11 @@ struct LauncherView: View {
                 selectedID: selectedResultID,
                 pickedKeys: Set(pickedKeys),
                 themeStore: themeStore,
+                selectedRowDetail: compactProcessDetail,
                 onSelect: { selectedResultID = $0 },
                 onOpen: { _ in openSelectedApp() }
             )
+            .overlay(alignment: .trailing) { compactActionMenu }
         } right: {
             if !pickedKeys.isEmpty {
                 PickedItemsPanel(
@@ -2188,6 +2210,24 @@ struct LauncherView: View {
                 // inside this pane still animates on open.
                 .animation(nil, value: selectedResult.id)
             }
+        }
+    }
+
+    /// Compact has no preview pane to hold the Cmd+K menu, so it floats over
+    /// the results list instead.
+    @ViewBuilder
+    private var compactActionMenu: some View {
+        if isCompactLayout && isActionMenuOpen {
+            ActionMenuView(
+                descriptors: actionMenuRows,
+                states: quickActionStates,
+                focusedIndex: actionMenuIndex,
+                themeStore: themeStore,
+                onActivate: { activateActionMenuRow($0) }
+            )
+            .frame(width: AppConstants.Launcher.ActionMenu.compactWidth)
+            .padding(AppConstants.Launcher.ActionMenu.compactInset)
+            .transition(.opacity.combined(with: .move(edge: .trailing)))
         }
     }
 
@@ -2282,18 +2322,20 @@ struct LauncherView: View {
     }
 
     /// A thin footer strip inside a floating card holding a slice of the old
-    /// full-width hint bar.
+    /// full-width hint bar. Compact has none (its copyright is in the search bar).
     @ViewBuilder
     private func cardFooter<Content: View>(
         placement: CardFooterPlacement = .gridPane,
         @ViewBuilder _ content: () -> Content
     ) -> some View {
-        HStack(spacing: 0) {
-            content()
+        if !isCompactLayout {
+            HStack(spacing: 0) {
+                content()
+            }
+            .padding(.horizontal, placement.horizontal)
+            .padding(.top, placement.top)
+            .padding(.bottom, placement.bottom)
         }
-        .padding(.horizontal, placement.horizontal)
-        .padding(.top, placement.top)
-        .padding(.bottom, placement.bottom)
     }
 
     /// i3-style inner gap between the three home panes (0 = classic flat layout).
@@ -2332,7 +2374,13 @@ struct LauncherView: View {
     /// query. In both cases the top bar becomes a self-contained frosted tile so
     /// it stays legible on the bare desktop.
     private var barFloatsFree: Bool {
-        showsFloatingCards || hidesResultsForEmptyQuery
+        showsFloatingCards || restsAsBareBar
+    }
+
+    /// The empty-query rest state as drawn: just the bar. The AI session starts
+    /// empty too, but its conversation list needs the panel behind it.
+    private var restsAsBareBar: Bool {
+        hidesResultsForEmptyQuery && !isActionSessionUI
     }
 
     /// Wraps a home-screen pane in its own rounded, frosted card so the inner gap
@@ -2499,7 +2547,20 @@ struct LauncherView: View {
     }
 
     /// Whether a right-hand pane (picked list or preview) is currently shown.
-    private var hasRightPane: Bool { !pickedKeys.isEmpty || previewResult != nil }
+    private var hasRightPane: Bool {
+        !isCompactLayout && (!pickedKeys.isEmpty || previewResult != nil)
+    }
+
+    private static let barCopyrightTrailingInset: CGFloat = 12
+
+    private var pickedCountPill: some View {
+        Text("\(pickedKeys.count) picked")
+            .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize - 2), weight: .medium))
+            .foregroundStyle(themeStore.fontColor())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(themeStore.selectionFillColor(), in: Capsule())
+    }
 
     private var copyrightLink: some View {
         Link("© 2026 by Kunkka", destination: URL(string: "https://github.com/kunkka19xx")!)
@@ -2546,8 +2607,8 @@ struct LauncherView: View {
     private var copyrightOverlay: some View {
         // While floating the copyright moves into a card footer; on the empty-rest
         // screen it's hidden entirely; otherwise it stays in the panel's
-        // bottom-right corner.
-        if !showsFloatingCards && !hidesResultsForEmptyQuery && !isHideAppConfirmationVisible {
+        // bottom-right corner. Compact carries it in the search bar.
+        if !showsFloatingCards && !isCompactLayout && !restsAsBareBar && !isHideAppConfirmationVisible {
             copyrightLink
                 .padding(.trailing, 10)
                 .padding(.bottom, 8)

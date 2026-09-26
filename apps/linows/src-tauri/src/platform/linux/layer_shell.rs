@@ -197,6 +197,16 @@ fn usable_size((width, height): (i32, i32)) -> (i32, i32) {
     (crate::BASE_W as i32, crate::BASE_H as i32)
 }
 
+/// Resizes the surface; anchored nowhere, the compositor keeps it centred.
+pub fn resize(width: i32, height: i32) {
+    let (width, height) = usable_size((width, height));
+    on_main(move |layer| {
+        layer.set_default_size(width, height);
+        layer.set_size_request(width, height);
+        layer.resize(width, height);
+    });
+}
+
 pub fn is_active() -> bool {
     ACTIVE.load(Ordering::Relaxed)
 }

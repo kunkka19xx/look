@@ -1,6 +1,11 @@
 /* Command mode layout */
 
-/* Sidebar */
+/* Sidebar; layout.js showsCommandSidebar() decides */
+.cmd-sidebar-hidden .cmd-sidebar,
+.cmd-sidebar-hidden .cmd-divider {
+    display: none;
+}
+
 .cmd-sidebar {
     width: 180px;
     flex-shrink: 0;

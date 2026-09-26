@@ -132,6 +132,9 @@ export function init(inputEl) {
     rowactions.setHandlers({
         open: () => openSelected(),
         copyPath: copySelectedPath,
+        openAllPicked,
+        clearPicked: () => results.clearPicks(),
+        deleteClipboard: removeSelectedClip,
     });
 }
 

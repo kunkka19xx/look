@@ -18,11 +18,11 @@ struct SystemInfoView: View {
     @State private var refreshTask: Task<Void, Never>?
 
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(items) { item in
                     if item.isHeader {
-                        Text(item.label)
+                        Text(item.value)
                             .font(themeStore.uiFont(size: CGFloat(themeStore.settings.fontSize), weight: .bold))
                             .foregroundStyle(themeStore.fontColor())
                             .padding(.top, 4)
@@ -44,6 +44,7 @@ struct SystemInfoView: View {
                 }
             }
             .padding(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .onAppear {

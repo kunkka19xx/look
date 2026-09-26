@@ -49,19 +49,22 @@
                             <div class="settings-dropdown-item" data-value="custom">Custom</div>
                         </div>
                     </div>
-                    <span style="margin-left: 40px">Running Apps</span>
+                    <span class="split-only" style="margin-left: 40px">Running Apps</span>
                     <label
-                        class="settings-toggle"
+                        class="settings-toggle split-only"
                         title="Show running apps strip on the main screen (Ctrl+1-9 to switch)"
                     >
                         <input type="checkbox" id="settings-running-apps" checked />
                         <span class="settings-toggle-track"></span>
                     </label>
-                    <span id="settings-super-actions-label" style="margin-left: 40px"
+                    <span
+                        id="settings-super-actions-label"
+                        class="split-only"
+                        style="margin-left: 40px"
                         >Super Actions</span
                     >
                     <label
-                        class="settings-toggle"
+                        class="settings-toggle split-only"
                         title="Show quick-actions launchpad on the empty home screen (Alt+letter)"
                     >
                         <input
@@ -81,6 +84,29 @@
                     <span class="settings-section-arrow">&#9654;</span><span>Layout</span>
                 </div>
                 <div class="settings-section">
+                    <div
+                        class="settings-row"
+                        title="Split shows results beside a preview; Compact is a smaller window with results only."
+                    >
+                        <label class="settings-label">Window</label>
+                        <div class="settings-dropdown" id="settings-layout">
+                            <button class="settings-dropdown-btn" type="button">
+                                <span class="settings-dropdown-label">Split</span>
+                                <span class="settings-dropdown-arrow">&#9662;</span>
+                            </button>
+                            <div class="settings-dropdown-menu" hidden>
+                                <div
+                                    class="settings-dropdown-item settings-dropdown-active"
+                                    data-value="split"
+                                >
+                                    Split
+                                </div>
+                                <div class="settings-dropdown-item" data-value="compact">
+                                    Compact
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div
                         class="settings-row"
                         data-key="inner_gap"

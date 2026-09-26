@@ -109,6 +109,11 @@ final class ThemeStore: ObservableObject {
                     appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.innerGapRange)
                 case "ui_surface_radius":
                     appendRangeWarning(&warnings, key: key, value: value, range: AppConstants.ThemeUI.surfaceRadiusRange)
+                case "layout":
+                    if LauncherLayout(configValue: value) == nil {
+                        let expected = LauncherLayout.allCases.map(\.rawValue).joined(separator: " or ")
+                        warnings.append("\(key)=\(value) invalid (expected \(expected))")
+                    }
                 case "file_scan_depth":
                     if let parsed = Int(value), parsed < AppConstants.FileScan.minDepth || parsed > AppConstants.FileScan.maxDepth {
                         warnings.append("\(key)=\(value) invalid (must be \(AppConstants.FileScan.minDepth)-\(AppConstants.FileScan.maxDepth))")
@@ -253,6 +258,7 @@ final class ThemeStore: ObservableObject {
         // Running apps switcher
         ConfigFileLines.upsert(&lines, key: "running_apps_placement", value: settings.runningAppsPlacement.rawValue)
         ConfigFileLines.upsert(&lines, key: "inner_gap", value: String(format: "%.0f", settings.innerGap))
+        ConfigFileLines.upsert(&lines, key: "layout", value: settings.layout.rawValue)
         ConfigFileLines.upsert(
             &lines,
             key: "ui_surface_radius",
@@ -552,6 +558,8 @@ final class ThemeStore: ObservableObject {
                 if let parsed = Double(value) {
                     settings.innerGap = clamped(parsed, to: AppConstants.ThemeUI.innerGapRange)
                 }
+            case "layout":
+                settings.layout = LauncherLayout(configValue: value) ?? .split
             case "ui_surface_radius":
                 // Clamped rather than parsePositiveDouble: 0 squares the corners
                 // and is a value the slider offers, which `> 0` would drop.
@@ -930,6 +938,9 @@ running_apps_placement=right
 inner_gap=7
 ui_surface_radius=1.50
 
+# Window layout: split (results + preview) or compact (smaller, results only)
+layout=split
+
 # Apple Intelligence / AI features. ai_provider: appleIntelligence | ollama
 ai_enabled=true
 ai_provider=appleIntelligence
@@ -1002,6 +1013,9 @@ alias_brow=Safari|Arc|Google Chrome|Chrome|Firefox|Brave
         }
         if object["animationsEnabled"] == nil {
             object["animationsEnabled"] = ThemeSettings.default.animationsEnabled
+        }
+        if object["layout"] == nil {
+            object["layout"] = ThemeSettings.default.layout.rawValue
         }
         if object["surfaceRadius"] == nil {
             object["surfaceRadius"] = ThemeSettings.default.surfaceRadius

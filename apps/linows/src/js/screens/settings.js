@@ -415,11 +415,27 @@ export function init(exitFn) {
     logMenu.addEventListener('click', (e) => {
         const item = e.target.closest('.settings-dropdown-item');
         if (!item) return;
-        logDD.querySelector('.settings-dropdown-label').textContent = item.textContent;
-        for (const el of logMenu.children) el.classList.remove('settings-dropdown-active');
-        item.classList.add('settings-dropdown-active');
+        selectDropdownItem(logDD, item.dataset.value);
         logMenu.hidden = true;
         saveConfig({ backend_log_level: item.dataset.value });
+    });
+
+    // Window layout: saved before app.js applies it, since the backend reads
+    // the file to size the window.
+    const layoutDD = document.getElementById('settings-layout');
+    const layoutMenu = layoutDD.querySelector('.settings-dropdown-menu');
+    layoutDD.querySelector('.settings-dropdown-btn').addEventListener('click', () => {
+        layoutMenu.hidden = !layoutMenu.hidden;
+    });
+    layoutMenu.addEventListener('click', async (e) => {
+        const item = e.target.closest('.settings-dropdown-item');
+        if (!item) return;
+        const value = item.dataset.value;
+        selectDropdownItem(layoutDD, value);
+        layoutMenu.hidden = true;
+        if (await saveConfig({ layout: value })) {
+            document.dispatchEvent(new CustomEvent('look:layout-changed', { detail: { value } }));
+        }
     });
 
     // Rendering workarounds
@@ -635,6 +651,11 @@ export function init(exitFn) {
             const logDD = document.getElementById('settings-log-level');
             const activeLog = logDD?.querySelector('.settings-dropdown-active');
             if (activeLog) updates.backend_log_level = activeLog.dataset.value;
+
+            const activeLayout = document
+                .getElementById('settings-layout')
+                ?.querySelector('.settings-dropdown-active');
+            if (activeLayout) updates.layout = activeLayout.dataset.value;
 
             // Advanced: launch at login
             updates.launch_at_login = document.getElementById('settings-launch-login').checked
@@ -1043,16 +1064,11 @@ async function loadConfig() {
             bgLayoutItem.classList.add('settings-dropdown-active');
         }
 
-        // Log level
-        const logLevel = map.backend_log_level || 'error';
-        const logDD = document.getElementById('settings-log-level');
-        const logItem = logDD.querySelector(`.settings-dropdown-item[data-value="${logLevel}"]`);
-        if (logItem) {
-            logDD.querySelector('.settings-dropdown-label').textContent = logItem.textContent;
-            for (const el of logDD.querySelector('.settings-dropdown-menu').children)
-                el.classList.remove('settings-dropdown-active');
-            logItem.classList.add('settings-dropdown-active');
-        }
+        selectDropdownItem(
+            document.getElementById('settings-log-level'),
+            map.backend_log_level || 'error',
+        );
+        selectDropdownItem(document.getElementById('settings-layout'), map.layout || 'split');
 
         // Launch at login and PATH: read actual system state
         try {
@@ -1505,6 +1521,16 @@ function formatValue(key, v) {
 }
 
 // Reports its own failure, so fire-and-forget callers are covered too.
+/** Marks the item for `value` active and shows its label; unknown values leave it as is. */
+function selectDropdownItem(dropdown, value) {
+    const item = dropdown.querySelector(`.settings-dropdown-item[data-value="${value}"]`);
+    if (!item) return;
+    dropdown.querySelector('.settings-dropdown-label').textContent = item.textContent.trim();
+    for (const el of dropdown.querySelector('.settings-dropdown-menu').children) {
+        el.classList.toggle('settings-dropdown-active', el === item);
+    }
+}
+
 async function saveConfig(updates) {
     try {
         const list = Object.entries(updates).map(([key, value]) => ({ key, value: String(value) }));

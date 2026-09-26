@@ -29,6 +29,7 @@ import {
     onWindowShown,
     onWindowHidden,
     takeLaunchQuery,
+    applyLayout,
     confirmHide,
     onIndexReady,
     onConfigReloadRequested,
@@ -119,6 +120,8 @@ const LAUNCH_QUERY_GRACE_MS = 500;
 const AI_LAYOUT_CLASSES = ['ai-mode-full', 'ai-mode-two-col', 'ai-mode-stacked'];
 const AI_LAYOUT_STACKED = 'ai-mode-stacked';
 const AI_LAYOUT_TWO_COL = 'ai-mode-two-col';
+// `layout` config value for the single-column window.
+const LAYOUT_COMPACT = 'compact';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const app = document.getElementById('app');
@@ -189,6 +192,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         copyright: hintBar.querySelector('.hint-bar-copy'),
         leftFooter: document.getElementById('results-footer'),
         rightFooter: previewFooter,
+        topBar: document.getElementById('top-bar'),
     });
 
     // Todo quick view: when today has tasks, the last main-hint item
@@ -243,6 +247,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         );
     }
 
+    // null until the config is first read: the backend sizes the window at
+    // startup, so only a later switch asks it to resize.
+    let compactApplied = null;
+
+    function applyLayoutSetting(value) {
+        const compact = (value || '').trim().toLowerCase() === LAYOUT_COMPACT;
+        if (compact === compactApplied) return;
+        const isSwitch = compactApplied !== null;
+        compactApplied = compact;
+        layout.setCompact(compact);
+        runningApps.setCompact(compact);
+        superactions.setCompact(compact);
+        actionmenu.setCompact(compact);
+        syncControlStrip();
+        applyAiLayoutMode();
+        if (isSwitch) {
+            applyLayout().catch((err) => console.error('[layout] resize failed:', err));
+        }
+    }
+
     // The empty-state control strip (super actions) stands in for the results
     // row whenever the query is empty on the bare home screen. Single source of
     // truth: any transition that changes the query or the active screen calls
@@ -290,7 +314,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         smoothcaret.attach(input);
     }
     preview.init(previewPanel);
-    actionmenu.init(previewPanel, queryInput);
+    actionmenu.init(previewPanel, queryInput, document.getElementById('results-col'));
     // What each declared block asked to be drawn as, read once: rows render
     // synchronously and a miss costs them their icon until it lands.
     sourceblocks.prefill();
@@ -366,6 +390,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Running apps strip
     runningApps.init(document.getElementById('running-apps-strip'));
     getConfig().then((cfg) => {
+        applyLayoutSetting(cfg.entries.find((e) => e.key === 'layout')?.value);
+
         const placement = cfg.entries.find((e) => e.key === 'running_apps_placement');
         const on = !placement || placement.value !== 'none';
         runningApps.setEnabled(on);
@@ -428,8 +454,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         search.handleQueryInput(queryInput.value);
     });
 
+    // Compact has no picked panel; the top bar says how many are picked.
+    const pickedCount = document.getElementById('picked-count');
+
     // Update right panel when picks change + auto-copy
     results.setOnPickChange((pickedItems) => {
+        pickedCount.hidden = pickedItems.length === 0;
+        pickedCount.textContent = `${pickedItems.length} picked`;
         if (pickedItems.length > 0) {
             preview.clear();
             picked.update(pickedItems);
@@ -516,7 +547,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         let mode = null;
         if (lastAiState !== AiState.idle) {
             const hasLocal = lastResults.some((r) => !isSyntheticSuggestionRow(r));
-            mode = hasLocal ? AI_LAYOUT_STACKED : AI_LAYOUT_TWO_COL;
+            // Compact has no right pane to hold the suggestion list.
+            mode = hasLocal || layout.isCompact() ? AI_LAYOUT_STACKED : AI_LAYOUT_TWO_COL;
             resultsArea.classList.add(mode);
         }
         // Two-col hosts the suggestion list in the right pane; every other mode
@@ -999,6 +1031,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Sync running apps strip + AI when config is reloaded from file. Both
     // settings have live downstream consumers, so propagate on every reload.
     settings.setOnConfigReload((map) => {
+        applyLayoutSetting(map.layout);
+
         const on = (map.running_apps_placement || 'right') !== 'none';
         runningApps.setEnabled(on);
         if (on) runningApps.refresh();
@@ -1016,6 +1050,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const enabled = e.detail.enabled;
         runningApps.setEnabled(enabled);
         if (enabled) runningApps.refresh();
+    });
+
+    document.addEventListener('look:layout-changed', (e) => {
+        applyLayoutSetting(e.detail.value);
     });
 
     // Live-update when the Settings → Appearance → Super Actions toggle changes.
