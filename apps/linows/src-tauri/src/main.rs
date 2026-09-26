@@ -81,6 +81,10 @@ fn supports_transparency() -> bool {
 /// tauri.conf's window size, and the 1.0x rung of `scaled_window_size`.
 pub(crate) const BASE_W: f64 = 860.0;
 pub(crate) const BASE_H: f64 = 600.0;
+/// The compact layout's base size: the results list alone, tall enough for 6-7
+/// rows. Mirrors `WindowAutoScale.compactBaseWidth/Height` on macOS.
+const COMPACT_W: f64 = 620.0;
+const COMPACT_H: f64 = 440.0;
 /// Grace period (ms) after show - ignore focus-loss within this window.
 const AUTO_HIDE_GRACE_MS: u64 = 300;
 /// Guard (ms) to prevent re-showing after auto-hide (GNOME X11 race).
@@ -94,7 +98,12 @@ fn hide_launcher(window: &tauri::WebviewWindow) {
 /// Scale window size (logical pixels) to fit the current monitor.
 /// Base size targets 1080p (1.0×). Scales up for larger logical screens
 /// (1440p → 1.2×, 4K → 1.3× cap).
-fn scaled_window_size(screen_w: u32, screen_h: u32, scale: f64) -> (u32, u32) {
+fn scaled_window_size(
+    screen_w: u32,
+    screen_h: u32,
+    scale: f64,
+    layout: config::LauncherLayout,
+) -> (u32, u32) {
     let logical_h = screen_h as f64 / scale;
     let ratio = if logical_h <= 1080.0 {
         1.0
@@ -104,8 +113,12 @@ fn scaled_window_size(screen_w: u32, screen_h: u32, scale: f64) -> (u32, u32) {
         r.min(1.3)
     };
     let _ = screen_w; // used only for centering
-    let w = (BASE_W * ratio).round() as u32;
-    let h = (BASE_H * ratio).round() as u32;
+    let (base_w, base_h) = match layout {
+        config::LauncherLayout::Split => (BASE_W, BASE_H),
+        config::LauncherLayout::Compact => (COMPACT_W, COMPACT_H),
+    };
+    let w = (base_w * ratio).round() as u32;
+    let h = (base_h * ratio).round() as u32;
     (w, h)
 }
 
@@ -184,20 +197,22 @@ fn center_and_scale_window(window: &tauri::WebviewWindow) -> Option<(i32, i32)> 
     let pos = monitor.position();
     let screen = monitor.size();
     let scale = monitor.scale_factor();
-    let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
+    let (win_w, win_h) = scaled_window_size(
+        screen.width,
+        screen.height,
+        scale,
+        config::launcher_layout(),
+    );
     let logical_screen_w = screen.width as f64 / scale;
     let logical_screen_h = screen.height as f64 / scale;
     eprintln!(
         "[look:scale] monitor={}x{} scale={} logical_screen={}x{} → window={}x{}",
         screen.width, screen.height, scale, logical_screen_w, logical_screen_h, win_w, win_h,
     );
-    let size = tauri::LogicalSize::new(win_w as f64, win_h as f64);
-    let _ = window.set_size(size);
     // Lock min/max to the scaled size: on Wayland, hide()/show() can
     // otherwise revert to tauri.conf's default (860×600) on remap,
     // producing a visible "big rectangle then snap" on toggle.
-    let _ = window.set_min_size(Some(tauri::Size::Logical(size)));
-    let _ = window.set_max_size(Some(tauri::Size::Logical(size)));
+    resize_locked(window, tauri::LogicalSize::new(win_w as f64, win_h as f64));
     let lx = pos.x as f64 / scale + (logical_screen_w - win_w as f64) / 2.0;
     let ly = pos.y as f64 / scale + (logical_screen_h - win_h as f64) / 2.0;
     let _ = window.set_position(tauri::LogicalPosition::new(lx, ly));
@@ -289,20 +304,70 @@ fn recenter_window(window: &tauri::WebviewWindow) {
     let pos = monitor.position();
     let screen = monitor.size();
     let scale = monitor.scale_factor();
-    let (win_w, win_h) = scaled_window_size(screen.width, screen.height, scale);
+    let (win_w, win_h) = scaled_window_size(
+        screen.width,
+        screen.height,
+        scale,
+        config::launcher_layout(),
+    );
     let logical_screen_w = screen.width as f64 / scale;
     let logical_screen_h = screen.height as f64 / scale;
-    // Relax min/max constraints FIRST so the new size isn't clamped to the
-    // old monitor's dimensions, then resize, then lock constraints again.
-    let size = tauri::LogicalSize::new(win_w as f64, win_h as f64);
+    resize_locked(window, tauri::LogicalSize::new(win_w as f64, win_h as f64));
+    let lx = pos.x as f64 / scale + (logical_screen_w - win_w as f64) / 2.0;
+    let ly = pos.y as f64 / scale + (logical_screen_h - win_h as f64) / 2.0;
+    let _ = window.set_position(tauri::LogicalPosition::new(lx, ly));
+}
+
+/// Relaxes the min/max constraints FIRST so the new size isn't clamped to the
+/// old one, then resizes, then locks them to the new size again.
+fn resize_locked(window: &tauri::WebviewWindow, size: tauri::LogicalSize<f64>) {
     let _ = window.set_min_size(None::<tauri::Size>);
     let _ = window.set_max_size(None::<tauri::Size>);
     let _ = window.set_size(size);
     let _ = window.set_min_size(Some(tauri::Size::Logical(size)));
     let _ = window.set_max_size(Some(tauri::Size::Logical(size)));
-    let lx = pos.x as f64 / scale + (logical_screen_w - win_w as f64) / 2.0;
-    let ly = pos.y as f64 / scale + (logical_screen_h - win_h as f64) / 2.0;
-    let _ = window.set_position(tauri::LogicalPosition::new(lx, ly));
+}
+
+/// Resizes the launcher after the `layout` setting changed. A visible window
+/// keeps its top edge and horizontal centre, so the search bar stays put. A
+/// hidden one takes the new size from `recenter_window` on its next show,
+/// except the layer surface, which is sized only here and at startup.
+#[tauri::command]
+fn apply_layout(window: tauri::WebviewWindow) {
+    let Some(monitor) = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| monitor_at_cursor(&window))
+    else {
+        return;
+    };
+    let screen = monitor.size();
+    let scale = monitor.scale_factor();
+    let (win_w, win_h) = scaled_window_size(
+        screen.width,
+        screen.height,
+        scale,
+        config::launcher_layout(),
+    );
+
+    #[cfg(target_os = "linux")]
+    if platform::linux::layer_shell::is_active() {
+        platform::linux::layer_shell::resize(win_w as i32, win_h as i32);
+        return;
+    }
+
+    if !commands::launcher_visible(&window) {
+        return;
+    }
+    let (Ok(position), Ok(old_size)) = (window.outer_position(), window.outer_size()) else {
+        return;
+    };
+    let top = position.y as f64 / scale;
+    let center_x = (position.x as f64 + old_size.width as f64 / 2.0) / scale;
+    resize_locked(&window, tauri::LogicalSize::new(win_w as f64, win_h as f64));
+    let left = center_x - win_w as f64 / 2.0;
+    let _ = window.set_position(tauri::LogicalPosition::new(left, top));
 }
 
 #[cfg(target_os = "linux")]
@@ -766,6 +831,7 @@ fn main() {
             commands::toggle_window,
             commands::hide_window,
             take_launch_query,
+            apply_layout,
             commands::confirm_hide,
             commands::set_blur_region,
             commands::quit_app,

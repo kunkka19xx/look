@@ -74,16 +74,17 @@ extension LauncherView {
 
     /// True while the empty-state launchpad is the visible content (empty query,
     /// not in command mode / settings / help). Gates the Command-mnemonic keys so
-    /// they only fire when the strip is actually shown.
+    /// they only fire when the strip is actually shown. The compact layout has
+    /// no launchpad, so its mnemonics are inert there.
     var isLaunchpadActive: Bool {
-        themeStore.settings.superActionsEnabled && hidesResultsForEmptyQuery
+        themeStore.settings.superActionsEnabled && !isCompactLayout && hidesResultsForEmptyQuery
             && !launchpadTiles.isEmpty && !isAIMode
     }
 
     /// Re-reads adapter-backed tiles and weather. Called on every open: the
     /// window is only ordered out, so `onAppear` fires once per process.
     func refreshLaunchpadState() {
-        guard themeStore.settings.superActionsEnabled else { return }
+        guard themeStore.settings.superActionsEnabled, !isCompactLayout else { return }
         Task { await launchpadController.refreshStates() }
         Task { await launchpadController.refreshWeather() }
         // Off the main thread; the strip draws from the cache meanwhile.

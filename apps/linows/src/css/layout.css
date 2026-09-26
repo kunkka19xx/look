@@ -198,6 +198,16 @@ html[data-os="windows"] .bar-free .pane-tile {
     display: none;
 }
 
+/* Compact layout: the results list alone, whatever the preview would show.
+ * app.js keeps the AI lookup stacked there, so column 2 never holds the list. */
+.launcher-window.compact .results-row {
+    grid-template-columns: 1fr;
+}
+
+.launcher-window.compact #preview-col {
+    display: none;
+}
+
 /* Two-col AI (knowledge lookup): app.js moves the suggestion list into the
  * right pane, so the lookup renders through the same two equal columns as
  * normal results (macOS twoPaneGrid) - same tiles, same footers. The

@@ -148,6 +148,9 @@ fn default_config_contents() -> String {
          # above 0 the home screen splits into floating tiles separated by this gap.\n\
          inner_gap=7\n\
          \n\
+         # Window layout: split (results + preview) or compact (smaller, results only)\n\
+         layout=split\n\
+         \n\
          # Web answers - inline answer card for question-like queries. Set false to\n\
          # disable all network answer features and run fully offline.\n\
          ai_enabled=true\n\
@@ -180,6 +183,27 @@ const QUERY_RETENTION_SECONDS_KEY: &str = "query_retention_seconds";
 pub const QUERY_RETENTION_SECONDS_DEFAULT: i64 = 5;
 /// The opt-out every negative value normalizes to.
 pub const QUERY_RETENTION_SECONDS_NEVER: i64 = -1;
+const LAYOUT_KEY: &str = "layout";
+
+/// Launcher window layout. Same key and values as macOS `LauncherLayout`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LauncherLayout {
+    /// Results list beside the preview pane.
+    #[default]
+    Split,
+    /// Smaller window with the results list alone.
+    Compact,
+}
+
+impl LauncherLayout {
+    fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "split" => Some(Self::Split),
+            "compact" => Some(Self::Compact),
+            _ => None,
+        }
+    }
+}
 
 /// Drops a trailing comment. `#` only starts one at the beginning of the line or after
 /// whitespace, so it survives inside a value: cutting at the first `#` anywhere would
@@ -218,6 +242,38 @@ pub fn clipboard_image_limit() -> usize {
     )
 }
 
+/// The layout from `layout` in the config file. Split when the key is absent or
+/// holds anything but a known value.
+pub fn launcher_layout() -> LauncherLayout {
+    let Ok(contents) = std::fs::read_to_string(config_file_path()) else {
+        return LauncherLayout::default();
+    };
+    parse_launcher_layout(&contents)
+}
+
+fn parse_launcher_layout(contents: &str) -> LauncherLayout {
+    last_value(contents, LAYOUT_KEY)
+        .and_then(LauncherLayout::parse)
+        .unwrap_or_default()
+}
+
+/// The value of the last uncommented `key=value` line for `key`, trimmed.
+fn last_value<'a>(contents: &'a str, key: &str) -> Option<&'a str> {
+    let mut last: Option<&str> = None;
+    for raw_line in contents.lines() {
+        let line = strip_inline_comment(raw_line).trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((name, value)) = line.split_once('=')
+            && name.trim() == key
+        {
+            last = Some(value.trim());
+        }
+    }
+    last
+}
+
 fn limit_from_file(key: &str, range: std::ops::RangeInclusive<usize>, default: usize) -> usize {
     let Ok(contents) = std::fs::read_to_string(config_file_path()) else {
         return default;
@@ -243,19 +299,7 @@ fn parse_limit(
     range: std::ops::RangeInclusive<usize>,
     default: usize,
 ) -> usize {
-    let mut last_value: Option<&str> = None;
-    for raw_line in contents.lines() {
-        let line = strip_inline_comment(raw_line).trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Some((name, value)) = line.split_once('=')
-            && name.trim() == key
-        {
-            last_value = Some(value.trim());
-        }
-    }
-    match last_value.map(str::parse::<usize>) {
+    match last_value(contents, key).map(str::parse::<usize>) {
         Some(Ok(parsed)) if range.contains(&parsed) => parsed,
         _ => default,
     }
@@ -265,19 +309,7 @@ fn parse_limit(
 /// assignment wins; returns the default only when the key is absent or
 /// unparseable, so any number the user writes is the number they get.
 fn parse_query_retention_seconds(contents: &str) -> i64 {
-    let mut last_value: Option<&str> = None;
-    for raw_line in contents.lines() {
-        let line = strip_inline_comment(raw_line).trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Some((key, value)) = line.split_once('=')
-            && key.trim() == QUERY_RETENTION_SECONDS_KEY
-        {
-            last_value = Some(value.trim());
-        }
-    }
-    let Some(value) = last_value else {
+    let Some(value) = last_value(contents, QUERY_RETENTION_SECONDS_KEY) else {
         return QUERY_RETENTION_SECONDS_DEFAULT;
     };
     match value.parse::<i64>() {
@@ -540,6 +572,41 @@ mod tests {
                  query_retention_seconds=3\n"
             ),
             3
+        );
+    }
+
+    #[test]
+    fn layout_defaults_to_split() {
+        assert_eq!(parse_launcher_layout(""), LauncherLayout::Split);
+        assert_eq!(parse_launcher_layout("layout=\n"), LauncherLayout::Split);
+    }
+
+    #[test]
+    fn layout_reads_known_values_in_any_case() {
+        assert_eq!(
+            parse_launcher_layout("layout=compact\n"),
+            LauncherLayout::Compact
+        );
+        assert_eq!(
+            parse_launcher_layout("layout = Compact # small\n"),
+            LauncherLayout::Compact
+        );
+        assert_eq!(
+            parse_launcher_layout("layout=split\n"),
+            LauncherLayout::Split
+        );
+    }
+
+    #[test]
+    fn unknown_layout_falls_back_to_split() {
+        assert_eq!(parse_launcher_layout("layout=foo\n"), LauncherLayout::Split);
+    }
+
+    #[test]
+    fn layout_key_must_match_exactly() {
+        assert_eq!(
+            parse_launcher_layout("ui_layout=compact\n"),
+            LauncherLayout::Split
         );
     }
 }

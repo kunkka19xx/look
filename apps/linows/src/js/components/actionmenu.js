@@ -16,6 +16,8 @@ const EMPTY_BANNER = 'Nothing to do here';
 // chord does not read as a dead key.
 const FAILED_BANNER = 'Could not read this row';
 const BANNER_SECONDS = 1.2;
+// The menu hangs off the preview pane, which the compact layout does not have.
+const COMPACT_CONFIRM_BANNER = 'Switch to the split layout to confirm this';
 // Clear of the header, so the popup still reads as attached to the row above.
 const HEADER_GAP = 8;
 // Where to hang the menu when the preview has no header to hang it under.
@@ -35,6 +37,7 @@ const CONFIRM_CANCEL = 'Cancel';
 
 let panel = null;
 let input = null;
+let compact = false;
 let menuEl = null;
 let rows = [];
 let focusedIndex = 0;
@@ -59,6 +62,13 @@ export function init(panelEl, inputEl) {
 
 function isOpen() {
     return menuEl != null;
+}
+
+/** Keeps the menu closed while its pane is hidden, rather than letting an
+ *  invisible list take the arrow keys. */
+export function setCompact(on) {
+    compact = on;
+    if (on) close();
 }
 
 /**
@@ -91,7 +101,7 @@ export function close() {
  * movement keys, so Escape is what closes it.
  */
 export async function open() {
-    if (isOpen()) return;
+    if (isOpen() || compact) return;
 
     token += 1;
     const myToken = token;
@@ -149,6 +159,10 @@ export function handleKey(e) {
  * learn (specs/user-sources.md §2.5).
  */
 export function askConfirm(question) {
+    if (compact) {
+        banner.show(COMPACT_CONFIRM_BANNER, 'info', BANNER_SECONDS);
+        return Promise.resolve(false);
+    }
     return new Promise((resolve) => {
         close();
         pendingConfirm = { resolve };

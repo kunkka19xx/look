@@ -380,6 +380,11 @@ export async function takeLaunchQuery() {
     return invoke('take_launch_query');
 }
 
+// Resizes the window to the `layout` currently in the config file.
+export async function applyLayout() {
+    return invoke('apply_layout');
+}
+
 export async function getHealthIssues() {
     return invoke('get_health_issues');
 }

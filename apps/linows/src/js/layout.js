@@ -16,6 +16,7 @@ const GAP_MIN = 0;
 const GAP_MAX = 24;
 
 let innerGap = 0;
+let compact = false;
 let queryEmpty = true;
 let translateQuery = false;
 let recentEmptyQuery = false;
@@ -71,6 +72,16 @@ export function setInnerGap(gap) {
     innerGap = Math.max(GAP_MIN, Math.min(GAP_MAX, Math.round(gap) || 0));
     document.documentElement.style.setProperty('--inner-gap', `${innerGap}px`);
     apply();
+}
+
+/** Compact layout: the results list alone, no preview column. */
+export function setCompact(on) {
+    compact = !!on;
+    apply();
+}
+
+export function isCompact() {
+    return compact;
 }
 
 export function setModal(screen, on) {
@@ -172,8 +183,9 @@ function apply() {
     const floating = supported && innerGap > 0 && home; // showsFloatingCards
     const resting = supported && queryEmpty && home; // macOS hidesResultsForEmptyQuery, as a CSS state
     const barFree = floating || resting; // barFloatsFree
-    const floatingGrid = floating && !translateQuery && !recentEmptyQuery;
+    const floatingGrid = floating && !translateQuery && !recentEmptyQuery && !compact;
 
+    win.classList.toggle('compact', compact);
     win.classList.toggle('floating', floating);
     win.classList.toggle('resting', resting);
     win.classList.toggle('bar-free', barFree);

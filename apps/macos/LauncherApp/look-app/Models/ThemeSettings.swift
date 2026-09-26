@@ -155,6 +155,16 @@ enum RunningAppsPlacement: String, CaseIterable, Codable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Launcher window layout, persisted in `~/.look/config` under `layout`.
+/// `split` is the results list beside the preview pane; `compact` is a smaller
+/// window with the results list alone.
+enum LauncherLayout: String, CaseIterable, Codable, Identifiable {
+    case split
+    case compact
+
+    var id: String { rawValue }
+}
+
 /// Which AI backend powers query understanding. On-device Apple Intelligence is
 /// the only option today; cloud providers can be added as new cases without
 /// touching the rest of the app. Persisted in `~/.look/config` as `ai_provider`.
@@ -237,6 +247,8 @@ struct ThemeSettings: Codable, Equatable {
     /// each pane into its own rounded card separated by empty space. Persisted in
     /// `~/.look/config` under `inner_gap`.
     var innerGap: Double = 7
+
+    var layout: LauncherLayout = .split
 
     /// Multiplier on every surface's resting corner radius - the panel, the top
     /// bar, the launchpad tiles and the controls. One geometry for all of them

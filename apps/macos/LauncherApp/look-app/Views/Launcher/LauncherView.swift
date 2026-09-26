@@ -216,11 +216,17 @@ struct LauncherView: View {
         !isCommandMode && !appUIState.showsThemeSettings && !showsHelpScreen
     }
 
+    var isCompactLayout: Bool {
+        themeStore.settings.layout == .compact
+    }
+
     /// AI mode hides the strip: the assistant screen is about the conversation,
     /// not about switching apps, and the freed ⌘1-9 chords tag the listed
-    /// sessions instead (see `sessionJumpKeyLimit`).
+    /// sessions instead (see `sessionJumpKeyLimit`). The compact window is too
+    /// narrow to share the bar, so it hides the strip too.
     var shouldShowRunningAppsStrip: Bool {
         runningAppsPlacement != .none
+            && !isCompactLayout
             && isLauncherIdle
             && !isAIMode
             && !runningAppsService.items.isEmpty
@@ -937,6 +943,9 @@ struct LauncherView: View {
         }
         .onChange(of: themeStore.settings.superActionsEnabled) { _, enabled in
             launchpadSettingChanged(enabled: enabled)
+        }
+        .onChange(of: themeStore.settings.layout) { _, _ in
+            layoutSettingChanged()
         }
         // Bumped on every show, so it stands in for the missing re-onAppear.
         .onChange(of: appearanceRevealToken) { _, _ in
@@ -2048,7 +2057,7 @@ struct LauncherView: View {
         if aiAnswer.isActive {
             if displayedResults.isEmpty {
                 aiAnswerOnlyRow
-            } else if backendFilteredResults.isEmpty {
+            } else if backendFilteredResults.isEmpty && !isCompactLayout {
                 aiKnowledgeLookupRow
             } else {
                 aiAnswerWithResultsRow
@@ -2499,7 +2508,9 @@ struct LauncherView: View {
     }
 
     /// Whether a right-hand pane (picked list or preview) is currently shown.
-    private var hasRightPane: Bool { !pickedKeys.isEmpty || previewResult != nil }
+    private var hasRightPane: Bool {
+        !isCompactLayout && (!pickedKeys.isEmpty || previewResult != nil)
+    }
 
     private var copyrightLink: some View {
         Link("© 2026 by Kunkka", destination: URL(string: "https://github.com/kunkka19xx")!)

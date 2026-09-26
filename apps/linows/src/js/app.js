@@ -29,6 +29,7 @@ import {
     onWindowShown,
     onWindowHidden,
     takeLaunchQuery,
+    applyLayout,
     confirmHide,
     onIndexReady,
     onConfigReloadRequested,
@@ -119,6 +120,8 @@ const LAUNCH_QUERY_GRACE_MS = 500;
 const AI_LAYOUT_CLASSES = ['ai-mode-full', 'ai-mode-two-col', 'ai-mode-stacked'];
 const AI_LAYOUT_STACKED = 'ai-mode-stacked';
 const AI_LAYOUT_TWO_COL = 'ai-mode-two-col';
+// `layout` config value for the single-column window (the other is `split`).
+const LAYOUT_COMPACT = 'compact';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const app = document.getElementById('app');
@@ -248,6 +251,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     // truth: any transition that changes the query or the active screen calls
     // this, and the strip renders itself only when it should. When the strip
     // yields to results (first keystroke from empty), ease the results list in.
+    // null until the config is first read: startup is sized by the backend,
+    // so only a later switch asks it to resize the window.
+    let compactApplied = null;
+
+    function applyLayoutSetting(value) {
+        const compact = (value || '').trim().toLowerCase() === LAYOUT_COMPACT;
+        if (compact === compactApplied) return;
+        const isSwitch = compactApplied !== null;
+        compactApplied = compact;
+        layout.setCompact(compact);
+        runningApps.setCompact(compact);
+        superactions.setCompact(compact);
+        actionmenu.setCompact(compact);
+        syncControlStrip();
+        applyAiLayoutMode();
+        if (isSwitch) {
+            applyLayout().catch((err) => console.error('[layout] resize failed:', err));
+        }
+    }
+
     function syncControlStrip() {
         const was = superactions.isVisible();
         superactions.setVisible(queryInput.value === '' && isHomeHintContext());
@@ -366,6 +389,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Running apps strip
     runningApps.init(document.getElementById('running-apps-strip'));
     getConfig().then((cfg) => {
+        applyLayoutSetting(cfg.entries.find((e) => e.key === 'layout')?.value);
+
         const placement = cfg.entries.find((e) => e.key === 'running_apps_placement');
         const on = !placement || placement.value !== 'none';
         runningApps.setEnabled(on);
@@ -516,7 +541,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         let mode = null;
         if (lastAiState !== AiState.idle) {
             const hasLocal = lastResults.some((r) => !isSyntheticSuggestionRow(r));
-            mode = hasLocal ? AI_LAYOUT_STACKED : AI_LAYOUT_TWO_COL;
+            // Compact has no right pane to hold the suggestion list.
+            mode = hasLocal || layout.isCompact() ? AI_LAYOUT_STACKED : AI_LAYOUT_TWO_COL;
             resultsArea.classList.add(mode);
         }
         // Two-col hosts the suggestion list in the right pane; every other mode
@@ -999,6 +1025,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Sync running apps strip + AI when config is reloaded from file. Both
     // settings have live downstream consumers, so propagate on every reload.
     settings.setOnConfigReload((map) => {
+        applyLayoutSetting(map.layout);
+
         const on = (map.running_apps_placement || 'right') !== 'none';
         runningApps.setEnabled(on);
         if (on) runningApps.refresh();

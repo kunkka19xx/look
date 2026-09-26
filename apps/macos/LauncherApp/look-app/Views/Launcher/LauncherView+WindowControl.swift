@@ -237,7 +237,7 @@ extension LauncherView {
             let screen = NSScreen.screens.first(where: { NSMouseInRect(cursor, $0.frame, false) })
                 ?? NSScreen.main
         else { return }
-        let frame = WindowAutoScale.spotlightFrame(on: screen)
+        let frame = WindowAutoScale.spotlightFrame(on: screen, layout: themeStore.settings.layout)
         // Log the real screen + placement so the spotlight fraction can be
         // calibrated from actual displays rather than estimates.
         let topGap = screen.visibleFrame.maxY - frame.maxY
@@ -245,6 +245,28 @@ extension LauncherView {
             "position: visible=\(NSStringFromRect(screen.visibleFrame), privacy: .public) frame=\(NSStringFromRect(frame), privacy: .public) topGap=\(topGap, privacy: .public)"
         )
         window.setFrame(frame, display: true)
+    }
+
+    /// Resizes a visible launcher in place when the layout setting changes, so
+    /// the settings screen that changed it follows at once. A hidden launcher
+    /// takes the new size on its next show.
+    func layoutSettingChanged() {
+        closeActionMenu()
+        refreshLaunchpadState()
+        guard let window = launcherWindow(), window.isVisible,
+            let screen = window.screen ?? NSScreen.main
+        else { return }
+        // The anchor is taken now: the content's minimum size follows the layout,
+        // and a growing minimum can resize the window from its bottom edge before
+        // the block below runs. The resize itself waits a turn so a shrinking
+        // minimum has let go first. The layout is read when the block runs, so
+        // rapid toggles all land on the last value.
+        let anchor = window.frame
+        DispatchQueue.main.async {
+            let frame = WindowAutoScale.resizedFrame(
+                from: anchor, on: screen, layout: themeStore.settings.layout)
+            window.setFrame(frame, display: true)
+        }
     }
 
     func hideLauncherWindow(restorePreviousApp: Bool = true) {

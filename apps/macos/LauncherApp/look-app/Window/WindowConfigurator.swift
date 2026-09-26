@@ -69,7 +69,7 @@ struct WindowConfigurator: NSViewRepresentable {
         // Initial placement; toggleWindowVisibility re-places it on the active
         // screen every show, so this only seeds a sane frame before first show.
         if let screen = window.screen ?? NSScreen.main {
-            window.setFrame(WindowAutoScale.spotlightFrame(on: screen), display: true)
+            window.setFrame(WindowAutoScale.spotlightFrame(on: screen, layout: themeStore.settings.layout), display: true)
         }
     }
 }

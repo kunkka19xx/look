@@ -10,6 +10,9 @@ const iconCache = new Map();
 
 let container = null;
 let apps = []; // sorted alphabetically, max 9
+// What the user asked for; the compact layout hides the strip without touching it.
+let preferred = true;
+let compact = false;
 let enabled = true;
 let suspended = false; // temporarily hidden (e.g. command mode, settings)
 // What the strip currently shows. macOS lets SwiftUI diff its items; here the
@@ -22,8 +25,20 @@ export function init(containerEl) {
 }
 
 export function setEnabled(on) {
-    enabled = on;
-    if (container) container.hidden = !on || suspended;
+    preferred = on;
+    applyEnabled();
+}
+
+/** The compact window is too narrow to share the search bar with the strip. */
+export function setCompact(on) {
+    compact = on;
+    applyEnabled();
+    refresh();
+}
+
+function applyEnabled() {
+    enabled = preferred && !compact;
+    if (container) container.hidden = !enabled || suspended;
 }
 
 export function isEnabled() {
