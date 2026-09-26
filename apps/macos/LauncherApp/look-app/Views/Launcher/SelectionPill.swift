@@ -50,7 +50,7 @@ private struct SelectionPillModifier: ViewModifier {
     /// Bumped on every zoom and on deselect, so a pending reset belonging to an
     /// earlier zoom cannot cut short a newer one (arrow away and back fast).
     @State private var generation = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.reducesMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content

@@ -528,6 +528,8 @@ Saved as `running_apps_placement=<value>` in `~/.look/config` (`none` = off, any
 
 **Super Actions**: a switch that shows the control strip on the empty home screen. Off hides it and disables its letter shortcuts. See [Super actions](#super-actions). Saved as `super_actions_enabled=true|false`. Which tiles are on the strip, and where, is not a setting - it is the drawing in `~/.look/super-actions.toml`; see [Rearranging the strip](#rearranging-the-strip).
 
+**Animations** (macOS): a switch for the launcher's motion, the open cascade, the selection glide and the caret glide. Off shows every change instantly. macOS Reduce Motion is still respected when it is on. Saved as `animations_enabled=true|false`.
+
 ### Indexing Settings
 
 Default values:

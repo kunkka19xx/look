@@ -19,24 +19,31 @@ extension ThemeSettingsView {
                         themeStore.applyBuiltinTheme(newValue)
                     }
 
+                    Spacer(minLength: 0)
+                }
+
+                HStack(spacing: 14) {
+                    appearanceSwitch(
+                        "Running Apps",
+                        isOn: Binding(
+                            get: { settings.runningAppsPlacement != .none },
+                            set: { settings.runningAppsPlacement = $0 ? .right : .none }
+                        ),
+                        help: "Show running apps in the right half of the search bar (⌘1-9 to switch)")
+
                     Spacer().frame(width: 40)
 
-                    inlinePickerLabel("Running Apps")
-                    Toggle("Show running apps", isOn: Binding(
-                        get: { settings.runningAppsPlacement != .none },
-                        set: { settings.runningAppsPlacement = $0 ? .right : .none }
-                    ))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .help("Show running apps in the right half of the search bar (⌘1-9 to switch)")
+                    appearanceSwitch(
+                        "Super Actions",
+                        isOn: $settings.superActionsEnabled,
+                        help: "Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
 
                     Spacer().frame(width: 40)
 
-                    inlinePickerLabel("Super Actions")
-                    Toggle("Show super actions", isOn: $settings.superActionsEnabled)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .help("Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
+                    appearanceSwitch(
+                        "Animations",
+                        isOn: $settings.animationsEnabled,
+                        help: "Animate the launcher when it opens and as the selection moves. Off shows every change instantly.")
 
                     Spacer(minLength: 0)
                 }
@@ -234,6 +241,18 @@ extension ThemeSettingsView {
             Text(title)
                 .font(themeStore.uiFont(size: CGFloat(settings.fontSize - 1), weight: .semibold))
                 .foregroundStyle(themeStore.secondaryTextColor())
+        }
+    }
+
+    /// A labelled switch; the label keeps one line so a narrow row cannot wrap it.
+    func appearanceSwitch(_ title: String, isOn: Binding<Bool>, help: String) -> some View {
+        HStack(spacing: 14) {
+            inlinePickerLabel(title)
+                .fixedSize()
+            Toggle(title, isOn: isOn)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .help(help)
         }
     }
 
