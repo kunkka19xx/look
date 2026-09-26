@@ -189,11 +189,12 @@ function buildSidebar() {
     COMMANDS.forEach((cmd, i) => {
         const row = document.createElement('div');
         row.className = 'cmd-row';
+        row.title = cmd.detail;
+        row.setAttribute('aria-label', `${cmd.label}: ${cmd.detail}`);
         row.innerHTML = `
       <span class="cmd-row-icon">${cmd.icon}</span>
       <div class="cmd-row-text">
-        <div class="cmd-row-label">${cmd.label} <span class="cmd-row-shortcut">(Ctrl+${cmd.shortcut})</span></div>
-        <div class="cmd-row-detail">${cmd.detail}</div>
+        <div class="cmd-row-label">${cmd.label} <span class="cmd-row-shortcut"></span></div>
       </div>`;
         row.addEventListener('click', () => {
             if (i !== selectedIndex) switchTo(i);
