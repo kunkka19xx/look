@@ -190,7 +190,6 @@ function buildSidebar() {
         const row = document.createElement('div');
         row.className = 'cmd-row';
         row.title = cmd.detail;
-        row.setAttribute('aria-label', `${cmd.label}: ${cmd.detail}`);
         row.innerHTML = `
       <span class="cmd-row-icon">${cmd.icon}</span>
       <div class="cmd-row-text">
