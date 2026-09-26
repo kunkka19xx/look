@@ -57,14 +57,6 @@
     font-size: calc(var(--font-size) - 2px);
 }
 
-.cmd-row-detail {
-    font-size: calc(var(--font-size) - 2px);
-    color: var(--font-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 /* Divider */
 .cmd-divider {
     width: 1px;
