@@ -295,6 +295,7 @@ function handleKeyDown(e) {
             commandMode?.enterById(command.id);
             enterCommandModeFn?.();
             queryInput.value = '';
+            queryInput.dispatchEvent(new Event('input'));
         }
         return;
     }
