@@ -109,7 +109,7 @@ const COMMAND_DEFINITIONS = [
 export const COMMAND_ENTRIES = COMMAND_DEFINITIONS.map((entry, index) => ({
     ...entry,
     shortcut: index + 1,
-    title: `${entry.id} (Ctrl+${index + 1})`,
+    title: `${entry.id}`,
 }));
 
 // True when `id` names a built-in command, for the `:cmd <args>` live trigger.
