@@ -1444,7 +1444,7 @@ struct LauncherView: View {
             // While floating, every card carries its own hint footer; only the
             // classic (no-gap) layout keeps the full-width bar below the panel.
             if !showsFloatingCards
-                && !hidesResultsForEmptyQuery
+                && !restsAsBareBar
                 && !isKillConfirmationVisible
                 && !isDeleteConfirmationVisible
                 && !isHideAppConfirmationVisible
@@ -2342,7 +2342,14 @@ struct LauncherView: View {
     /// query. In both cases the top bar becomes a self-contained frosted tile so
     /// it stays legible on the bare desktop.
     private var barFloatsFree: Bool {
-        showsFloatingCards || hidesResultsForEmptyQuery
+        showsFloatingCards || restsAsBareBar
+    }
+
+    /// The empty-query rest state as it is drawn: just the bar, no panel. The AI
+    /// session also starts on an empty query, but its conversation list owns
+    /// the panel and needs the backdrop behind it.
+    private var restsAsBareBar: Bool {
+        hidesResultsForEmptyQuery && !isActionSessionUI
     }
 
     /// Wraps a home-screen pane in its own rounded, frosted card so the inner gap
@@ -2559,7 +2566,7 @@ struct LauncherView: View {
         // While floating the copyright moves into a card footer; on the empty-rest
         // screen it's hidden entirely; otherwise it stays in the panel's
         // bottom-right corner.
-        if !showsFloatingCards && !hidesResultsForEmptyQuery && !isHideAppConfirmationVisible {
+        if !showsFloatingCards && !restsAsBareBar && !isHideAppConfirmationVisible {
             copyrightLink
                 .padding(.trailing, 10)
                 .padding(.bottom, 8)

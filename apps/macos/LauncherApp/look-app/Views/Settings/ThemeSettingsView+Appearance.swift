@@ -22,23 +22,33 @@ extension ThemeSettingsView {
                     Spacer(minLength: 0)
                 }
 
-                // The labels never truncate, so a window too narrow for one row
-                // (the compact layout) stacks the switches instead of widening
-                // the whole screen past its edges.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 14) {
-                        runningAppsSwitch
-                        Spacer().frame(width: Self.switchGap)
-                        superActionsSwitch
-                        Spacer().frame(width: Self.switchGap)
-                        animationsSwitch
-                        Spacer(minLength: 0)
+                HStack(spacing: 14) {
+                    // The compact layout shows neither the strip nor the launchpad.
+                    if settings.layout == .split {
+                        appearanceSwitch(
+                            "Running Apps",
+                            isOn: Binding(
+                                get: { settings.runningAppsPlacement != .none },
+                                set: { settings.runningAppsPlacement = $0 ? .right : .none }
+                            ),
+                            help: "Show running apps in the right half of the search bar (⌘1-9 to switch)")
+
+                        Spacer().frame(width: 40)
+
+                        appearanceSwitch(
+                            "Super Actions",
+                            isOn: $settings.superActionsEnabled,
+                            help: "Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
+
+                        Spacer().frame(width: 40)
                     }
-                    VStack(alignment: .leading, spacing: 10) {
-                        runningAppsSwitch
-                        superActionsSwitch
-                        animationsSwitch
-                    }
+
+                    appearanceSwitch(
+                        "Animations",
+                        isOn: $settings.animationsEnabled,
+                        help: "Animate the launcher when it opens and as the selection moves. Off shows every change instantly.")
+
+                    Spacer(minLength: 0)
                 }
 
                 Divider()
@@ -238,32 +248,6 @@ extension ThemeSettingsView {
     }
 
     /// A labelled switch; the label keeps one line so a narrow row cannot wrap it.
-    private static let switchGap: CGFloat = 40
-
-    private var runningAppsSwitch: some View {
-        appearanceSwitch(
-            "Running Apps",
-            isOn: Binding(
-                get: { settings.runningAppsPlacement != .none },
-                set: { settings.runningAppsPlacement = $0 ? .right : .none }
-            ),
-            help: "Show running apps in the right half of the search bar (⌘1-9 to switch)")
-    }
-
-    private var superActionsSwitch: some View {
-        appearanceSwitch(
-            "Super Actions",
-            isOn: $settings.superActionsEnabled,
-            help: "Show the quick-actions launchpad on the empty home screen (⌘ + letter)")
-    }
-
-    private var animationsSwitch: some View {
-        appearanceSwitch(
-            "Animations",
-            isOn: $settings.animationsEnabled,
-            help: "Animate the launcher when it opens and as the selection moves. Off shows every change instantly.")
-    }
-
     func appearanceSwitch(_ title: String, isOn: Binding<Bool>, help: String) -> some View {
         HStack(spacing: 14) {
             inlinePickerLabel(title)

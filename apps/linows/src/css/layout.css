@@ -208,6 +208,11 @@ html[data-os="windows"] .bar-free .pane-tile {
     display: none;
 }
 
+/* Settings for things the compact layout does not show (running apps, launchpad). */
+.launcher-window.compact .split-only {
+    display: none;
+}
+
 /* Two-col AI (knowledge lookup): app.js moves the suggestion list into the
  * right pane, so the lookup renders through the same two equal columns as
  * normal results (macOS twoPaneGrid) - same tiles, same footers. The
