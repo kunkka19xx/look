@@ -62,16 +62,18 @@ extension LauncherView {
 
                 // Re-focusing a field that is already editing makes NSTextField
                 // select all, so the next keystroke replaces what was just typed.
-                // Selection on show is therefore explicit, and happens once.
+                // Selection on show is therefore explicit, and happens once the
+                // field is editing, whichever pass gets it there.
                 if let field = findEditableTextField(in: window.contentView) as? NSTextField {
+                    if field.currentEditor() == nil {
+                        window.makeFirstResponder(field)
+                    }
                     if let editor = field.currentEditor() {
                         if field.stringValue == queryToSelectOnFocus {
                             editor.selectAll(nil)
                         }
-                    } else {
-                        window.makeFirstResponder(field)
+                        queryToSelectOnFocus = nil
                     }
-                    queryToSelectOnFocus = nil
                 }
 
                 isQueryFocused = true
