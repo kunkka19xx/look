@@ -317,7 +317,9 @@ final class CaretTextField: NSTextField {
             let container = editor.textContainer
         else { return nil }
 
-        let caretLocation = editor.selectedRange().location
+        // The selection's end, so a selected query shows the caret after its
+        // last character rather than before its first.
+        let caretLocation = NSMaxRange(editor.selectedRange())
         layoutManager.ensureLayout(for: container)
 
         let fontLineHeight = font.map { $0.ascender - $0.descender + $0.leading }

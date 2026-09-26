@@ -162,6 +162,10 @@ struct LauncherView: View {
     @State var recentlyKilledPIDs: Set<Int32> = []
     @State var showsHelpScreen = false
     @State var focusRequestToken: UInt64 = 0
+    /// The query as it stood on show. The first focus pass selects it so the
+    /// first keystroke replaces it, but only if the field still holds exactly
+    /// this: anything typed since means the user has already started.
+    @State var queryToSelectOnFocus: String?
     /// Bumped every time the launcher window is shown, so the empty state tiles and
     /// quick actions replay their spawn cascade on each open (see `Motion.Spawn`).
     @State var appearanceRevealToken: UInt64 = 0

@@ -62,10 +62,16 @@ extension LauncherView {
 
                 // Re-focusing a field that is already editing makes NSTextField
                 // select all, so the next keystroke replaces what was just typed.
-                if let responder = findEditableTextField(in: window.contentView),
-                    (responder as? NSTextField)?.currentEditor() == nil
-                {
-                    window.makeFirstResponder(responder)
+                // Selection on show is therefore explicit, and happens once.
+                if let field = findEditableTextField(in: window.contentView) as? NSTextField {
+                    if let editor = field.currentEditor() {
+                        if field.stringValue == queryToSelectOnFocus {
+                            editor.selectAll(nil)
+                        }
+                    } else {
+                        window.makeFirstResponder(field)
+                    }
+                    queryToSelectOnFocus = nil
                 }
 
                 isQueryFocused = true
@@ -140,6 +146,7 @@ extension LauncherView {
         hotkeyLog.notice("toggle: -> SHOW branch")
         // Before the window is ordered front, so a dropped query is never painted.
         clearQueryIfRetentionExpired()
+        queryToSelectOnFocus = query
         // Re-arm the spawn cascade so the launchpad tiles and quick actions
         // settle in fresh on every open, not just the first per process.
         appearanceRevealToken &+= 1
